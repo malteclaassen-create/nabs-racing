@@ -38,7 +38,7 @@ export default function NavBar() {
               end={l.end}
               className={({ isActive }) =>
                 `flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                  isActive ? "bg-primary/10 text-primary" : "text-medium hover:bg-surface2"
+                  isActive ? "bg-brand/20 text-dark ring-1 ring-brand/50" : "text-medium hover:bg-surface2"
                 }`
               }
             >
