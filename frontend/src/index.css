@@ -1,0 +1,222 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --c-bg: #e7ecf3;
+  --c-card: #ffffff;
+  --c-surface2: #f1f5f9;
+  --c-border: #dbe2ec;
+  --c-text: #0f172a;
+  --c-text2: #334155;
+  --c-text3: #64748b;
+  --c-faint: #c2ccda;
+  /* Card elevation — tuned per theme so widgets lift off the background. */
+  --c-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 10px 26px -14px rgba(15, 23, 42, 0.28);
+  --c-shadow-lift: 0 2px 6px rgba(15, 23, 42, 0.08), 0 18px 40px -16px rgba(15, 23, 42, 0.34);
+  --c-page-glow: radial-gradient(1200px 540px at 50% -10%, rgba(244, 175, 198, 0.16), transparent 70%);
+}
+
+.dark {
+  color-scheme: dark;
+  --c-bg: #080d18;
+  --c-card: #131c2e;
+  --c-surface2: #0d1626;
+  --c-border: #243248;
+  --c-text: #e8eef7;
+  --c-text2: #aebacd;
+  --c-text3: #8492a8;
+  --c-faint: #3a475f;
+  --c-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 30px -16px rgba(0, 0, 0, 0.7);
+  --c-shadow-lift: 0 2px 8px rgba(0, 0, 0, 0.5), 0 22px 48px -18px rgba(0, 0, 0, 0.8);
+  --c-page-glow: radial-gradient(1200px 560px at 50% -10%, rgba(244, 175, 198, 0.1), transparent 70%);
+}
+
+body {
+  margin: 0;
+  background: var(--c-bg);
+  background-image: var(--c-page-glow);
+  background-attachment: fixed;
+  color: var(--c-text);
+  font-family: theme("fontFamily.sans");
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+@layer components {
+  .container-page {
+    @apply max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10 2xl:px-14;
+  }
+  .card {
+    @apply bg-card rounded-xl border border-border;
+    box-shadow: var(--c-shadow);
+  }
+  /* Interactive widgets lift on hover. */
+  .lift {
+    @apply transition duration-200;
+  }
+  .lift:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--c-shadow-lift);
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg bg-surface2 px-4 py-2 text-sm font-semibold text-medium transition hover:bg-border focus:outline-none focus:ring-2 focus:ring-border disabled:opacity-50;
+  }
+  .input {
+    @apply w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark placeholder:text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide;
+  }
+  /* Slim, theme-matched scrollbar for horizontal strips (e.g. the round strip).
+     Replaces the chunky native bar; thumb only shows on hover of the area. */
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .scrollbar-slim:hover {
+    scrollbar-color: var(--c-border) transparent;
+  }
+  .scrollbar-slim::-webkit-scrollbar {
+    height: 6px;
+  }
+  .scrollbar-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 9999px;
+  }
+  .scrollbar-slim:hover::-webkit-scrollbar-thumb {
+    background-color: var(--c-border);
+  }
+  .scrollbar-slim::-webkit-scrollbar-thumb:hover {
+    background-color: var(--c-faint);
+  }
+  .section-title {
+    @apply text-xs font-bold uppercase tracking-[0.18em] text-light;
+  }
+}
+
+/* --- Home / editorial accents -------------------------------------- */
+/* Diagonal speed hatching, used as a subtle texture behind hero edges. */
+.speed-hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.06) 0,
+    rgba(255, 255, 255, 0.06) 2px,
+    transparent 2px,
+    transparent 9px
+  );
+}
+
+/* A slim moving "live" pulse for the season ticker. */
+@keyframes nabs-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
+}
+.live-dot {
+  animation: nabs-pulse 1.6s ease-in-out infinite;
+}
+
+/* Oversized ghost numeral behind hero content. */
+.ghost-numeral {
+  font-family: theme("fontFamily.display");
+  font-weight: 900;
+  line-height: 0.8;
+  letter-spacing: -0.04em;
+}
+
+/* Circuit "lap" draw-on: the outline traces itself once from the start line,
+   all the way around. Relies on pathLength="1" so the dash maths is normalized. */
+@keyframes circuit-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.circuit-draw {
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+  animation-name: circuit-draw;
+  animation-duration: 2.6s;
+  animation-timing-function: cubic-bezier(0.4, 0.1, 0.3, 1);
+  animation-fill-mode: forwards;
+  animation-iteration-count: 1;
+}
+/* After the lap is drawn, a bright segment keeps tracing the circuit forever,
+   like a car running laps. Starts once the draw finishes (delay set inline). */
+@keyframes circuit-trace {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes circuit-trace-fade {
+  to { opacity: 1; }
+}
+.circuit-trace {
+  stroke-dasharray: 0.1 0.9;
+  stroke-dashoffset: 1;
+  opacity: 0;
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.7));
+  animation: circuit-trace 3.8s linear infinite, circuit-trace-fade 0.6s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .circuit-draw {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .circuit-trace {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* --- Entrance / motion ---------------------------------------------- */
+/* Sections and cards rise + fade in on mount. Stagger with inline
+   animation-delay. `both` keeps them hidden until their delay elapses. */
+@keyframes nabs-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+.reveal {
+  animation: nabs-rise 0.55s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+}
+
+/* Chart lines draw themselves in. Needs pathLength="1" on the path. */
+@keyframes nabs-line-draw {
+  from { stroke-dashoffset: 1; }
+  to   { stroke-dashoffset: 0; }
+}
+.chart-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: nabs-line-draw 1.5s cubic-bezier(0.33, 0.1, 0.25, 1) forwards;
+}
+
+/* Fade/scale-in for tooltips and popovers. */
+@keyframes nabs-pop {
+  from { opacity: 0; transform: translateY(4px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+.pop-in {
+  animation: nabs-pop 0.14s ease-out both;
+}
+
+/* Soft pulse used for "next race" / live accents. */
+@keyframes nabs-sheen {
+  0% { background-position: -150% 0; }
+  100% { background-position: 250% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .chart-line,
+  .pop-in {
+    animation: none !important;
+  }
+  .chart-line { stroke-dashoffset: 0; }
+  .lift:hover { transform: none; }
+}
