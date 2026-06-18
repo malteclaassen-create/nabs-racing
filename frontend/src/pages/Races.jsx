@@ -126,7 +126,7 @@ function RaceCard({ e, isNext, dbRace, selected, onSelect }) {
   const inner = (
     <div
       className={`relative h-44 overflow-hidden rounded-2xl border bg-card transition ${
-        selected ? "border-brand ring-2 ring-brand/60" : isNext ? "border-brand/50" : "border-border"
+        selected ? "border-emerald-500 ring-2 ring-emerald-500/50" : isNext ? "border-brand/50" : "border-border"
       }`}
     >
       {/* accent edge */}
