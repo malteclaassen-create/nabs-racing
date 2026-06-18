@@ -102,70 +102,72 @@ function RoundStrip({ races, selectedId, onSelect }) {
 }
 
 // ---------------------------------------------------------------------------
-// Calendar card — the circuit outline is the hero. Completed championship
-// rounds are buttons that load results; SEs and upcoming rounds are static.
+// Calendar card — the circuit outline is a full-card watermark. Completed
+// championship rounds are buttons that load results; SEs and upcoming rounds
+// are static info cards.
 // ---------------------------------------------------------------------------
+const EMERALD = "#10b981";
+const BRAND = "#f4afc6"; // NABS pastel pink
+
 function RaceCard({ e, isNext, dbRace, selected, onSelect }) {
   const se = e.type === "se";
   const circuit = se ? null : circuitFor(e.track);
-  const past = new Date(e.date).getTime() < Date.now();
   const done = !!dbRace?.isCompleted;
   const clickable = done && !!dbRace;
 
-  // Top-right status pill.
-  let pill = null;
+  const tone = se || done ? EMERALD : isNext ? BRAND : null;
+
+  let pill;
   if (se) pill = <span className="pill bg-emerald-500/15 text-emerald-600">Special Event</span>;
   else if (done) pill = <span className="pill bg-emerald-500/15 text-emerald-600">View results</span>;
-  else if (isNext) pill = <span className="pill bg-brand/20 text-dark">Next up</span>;
-  else pill = <span className="pill bg-surface2 text-light">{past ? "Pending" : "Upcoming"}</span>;
-
-  const accent = se ? "#10b981" : done ? "#10b981" : isNext ? "var(--brand, #ec4899)" : null;
+  else if (isNext) pill = <span className="pill bg-brand/30 text-dark">Next up</span>;
+  else pill = <span className="pill bg-surface2 text-light">Upcoming</span>;
 
   const inner = (
     <div
-      className={`relative flex h-full flex-col overflow-hidden rounded-2xl border bg-card transition ${
-        selected ? "border-brand ring-1 ring-brand" : isNext ? "border-brand/40" : "border-border"
-      } ${clickable ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg" : ""}`}
+      className={`relative h-44 overflow-hidden rounded-2xl border bg-card transition ${
+        selected ? "border-brand ring-2 ring-brand/60" : isNext ? "border-brand/50" : "border-border"
+      }`}
     >
-      {/* accent top line */}
-      <div className="h-1 w-full" style={{ background: accent || "transparent" }} />
+      {/* accent edge */}
+      <div className="absolute inset-x-0 top-0 h-1" style={{ background: tone || "transparent" }} />
 
-      {/* hero: circuit outline */}
-      <div className="relative flex h-28 items-center justify-center bg-surface2/40">
-        {circuit ? (
-          <CircuitMap
-            track={e.track}
-            className="h-20 w-32"
-            stroke="currentColor"
-            strokeWidth={2.5}
-            style={{ color: done ? "#10b981" : isNext ? "#ec4899" : "var(--light, #94a3b8)" }}
-          />
-        ) : (
-          <span className="font-display text-3xl font-black uppercase tracking-widest text-emerald-600/70">
-            {se ? "SE" : "—"}
-          </span>
-        )}
-        {/* round badge */}
-        <div className="absolute left-3 top-3 flex h-9 min-w-9 items-center justify-center rounded-lg bg-ink/90 px-2 font-display text-sm font-black tabular-nums text-white">
-          {se ? "SE" : `R${e.number}`}
+      {/* watermark: circuit outline, or a ghost "SE" for special events */}
+      {circuit ? (
+        <div
+          className="pointer-events-none absolute inset-0 flex items-center justify-center p-7"
+          style={{ color: tone || "var(--c-faint)" }}
+        >
+          <CircuitMap track={e.track} animate={isNext} className="h-full w-full opacity-[0.18]" strokeWidth={2} />
         </div>
-        <div className="absolute right-3 top-3">{pill}</div>
-      </div>
+      ) : (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="ghost-numeral select-none text-[7rem] leading-none text-emerald-500/10">SE</span>
+        </div>
+      )}
 
-      {/* body */}
-      <div className="flex flex-1 flex-col gap-2 p-4">
-        <div className="flex items-center gap-2.5">
-          {circuit && <Flag code={circuit.country} title={circuit.countryName} />}
-          <h4 className={`font-display text-lg font-extrabold uppercase tracking-tight ${se ? "text-emerald-600" : "text-dark"}`}>
-            {e.track}
-          </h4>
-        </div>
-        <div className="mt-auto flex items-end justify-between gap-2 pt-1">
-          <div>
-            <div className="font-mono text-sm font-semibold tabular-nums text-medium">{fmtDate(e.date)}</div>
-            <div className="font-mono text-xs text-light">6:00 PM GMT</div>
+      {/* content */}
+      <div className="relative flex h-full flex-col justify-between p-4">
+        <div className="flex items-start justify-between">
+          <div className="flex h-10 min-w-10 items-center justify-center rounded-xl bg-ink px-2.5 font-display text-base font-black tabular-nums text-white shadow">
+            {se ? "SE" : `R${e.number}`}
           </div>
-          {isNext && !done && <Countdown date={e.date} />}
+          {pill}
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2.5">
+            {circuit && <Flag code={circuit.country} title={circuit.countryName} />}
+            <h4 className={`font-display text-xl font-extrabold uppercase tracking-tight ${se ? "text-emerald-600" : "text-dark"}`}>
+              {e.track}
+            </h4>
+          </div>
+          <div className="flex items-end justify-between gap-2">
+            <div>
+              <div className="font-mono text-sm font-semibold tabular-nums text-medium">{fmtDate(e.date)}</div>
+              <div className="font-mono text-xs text-light">6:00 PM GMT</div>
+            </div>
+            {isNext && !done && <Countdown date={e.date} />}
+          </div>
         </div>
       </div>
     </div>
@@ -173,7 +175,7 @@ function RaceCard({ e, isNext, dbRace, selected, onSelect }) {
 
   if (clickable) {
     return (
-      <button type="button" onClick={() => onSelect(dbRace.id)} aria-pressed={selected} className="lift text-left">
+      <button type="button" onClick={() => onSelect(dbRace.id)} aria-pressed={selected} className="lift block w-full text-left">
         {inner}
       </button>
     );
@@ -187,6 +189,7 @@ export default function Races() {
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
+  const [tab, setTab] = useState("rounds"); // "rounds" | "se"
   const panelRef = useRef(null);
 
   const raceByNumber = new Map((races || []).map((r) => [r.number, r]));
@@ -229,8 +232,14 @@ export default function Races() {
   if (error) return <ErrorBox message={error} />;
 
   const now = Date.now();
-  const nextIdx = SCHEDULE.findIndex((e) => new Date(e.date).getTime() >= now);
+  const nextEntry = SCHEDULE.find((e) => new Date(e.date).getTime() >= now);
   const hasAnyResults = races.some((r) => r.isCompleted);
+
+  const rounds = SCHEDULE.filter((e) => e.type === "round");
+  const specials = SCHEDULE.filter((e) => e.type === "se");
+  const shown = tab === "rounds" ? rounds : specials;
+  const tabCls = (active) =>
+    `rounded-lg px-4 py-2 text-sm font-bold transition ${active ? "bg-primary text-white shadow" : "text-light hover:text-dark"}`;
 
   return (
     <div className="space-y-12">
@@ -273,16 +282,28 @@ export default function Races() {
       </div>
 
       {/* Full calendar */}
-      <div className="space-y-4">
-        <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Full calendar</h3>
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="section-title">Calendar</h3>
+          <div className="inline-flex rounded-xl border border-border bg-card p-1">
+            <button type="button" onClick={() => setTab("rounds")} className={tabCls(tab === "rounds")}>
+              Championship
+              <span className="ml-1.5 opacity-70">{rounds.length}</span>
+            </button>
+            <button type="button" onClick={() => setTab("se")} className={tabCls(tab === "se")}>
+              Special Events
+              <span className="ml-1.5 opacity-70">{specials.length}</span>
+            </button>
+          </div>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {SCHEDULE.map((e, i) => {
+          {shown.map((e, i) => {
             const dbRace = e.type === "round" ? raceByNumber.get(e.number) : null;
             return (
               <RaceCard
                 key={i}
                 e={e}
-                isNext={i === nextIdx}
+                isNext={e === nextEntry}
                 dbRace={dbRace}
                 selected={!!dbRace && dbRace.id === selectedId}
                 onSelect={selectRace}
