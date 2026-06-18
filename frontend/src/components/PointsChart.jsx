@@ -75,7 +75,7 @@ export default function PointsChart({ standings = [], completed = [] }) {
   }
 
   return (
-    <div className="card p-5 sm:p-6">
+    <div className="reveal-chart card p-5 sm:p-6">
       <div className="relative">
         <svg
           ref={svgRef}

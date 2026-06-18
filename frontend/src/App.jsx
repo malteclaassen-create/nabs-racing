@@ -1,4 +1,5 @@
 import { Routes, Route } from "react-router-dom";
+import { useScrollReveal } from "./hooks/useScrollReveal.js";
 import NavBar from "./components/NavBar.jsx";
 import Home from "./pages/Home.jsx";
 import DriverStandings from "./pages/DriverStandings.jsx";
@@ -11,6 +12,7 @@ import DiscordCallback from "./pages/DiscordCallback.jsx";
 import Admin from "./pages/Admin.jsx";
 
 export default function App() {
+  useScrollReveal();
   return (
     <div className="flex min-h-screen flex-col">
       <NavBar />

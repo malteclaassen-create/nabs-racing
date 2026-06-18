@@ -181,7 +181,12 @@ body {
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: none; }
 }
+/* Hidden until scrolled into view (see useScrollReveal); then it rises in. */
 .reveal {
+  opacity: 0;
+  transform: translateY(14px);
+}
+.reveal.is-visible {
   animation: nabs-rise 0.55s cubic-bezier(0.22, 0.61, 0.24, 1) both;
 }
 
@@ -190,9 +195,13 @@ body {
   from { stroke-dashoffset: 1; }
   to   { stroke-dashoffset: 0; }
 }
+/* Lines stay hidden until the chart scrolls into view (.reveal-chart wrapper
+   gets .is-visible), so the draw-in isn't wasted below the fold. */
 .chart-line {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
+}
+.reveal-chart.is-visible .chart-line {
   animation: nabs-line-draw 1.5s cubic-bezier(0.33, 0.1, 0.25, 1) forwards;
 }
 
@@ -217,6 +226,7 @@ body {
   .pop-in {
     animation: none !important;
   }
+  .reveal { opacity: 1; transform: none; }
   .chart-line { stroke-dashoffset: 0; }
   .lift:hover { transform: none; }
 }
