@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton } from "../components/ui.jsx";
+import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton } from "../components/ui.jsx";
 import RaceResults from "../components/RaceResults.jsx";
+import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
 import { circuitFor } from "../data/circuits.js";
 
@@ -27,69 +28,157 @@ const SCHEDULE = [
   { type: "round", number: 12, track: "Interlagos", date: "2026-07-10T18:00:00Z" },
 ];
 
-function fmt(d) {
-  return new Date(d).toLocaleDateString("en-GB", {
-    weekday: "short", day: "2-digit", month: "long", year: "numeric",
-  });
+function fmtDate(d) {
+  return new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
 }
 
-// One schedule entry. Completed championship rounds (those with a DB race) are
-// buttons that load their results; special events and upcoming rounds are static.
-function ScheduleRow({ e, isNext, dbRace, selected, onSelect }) {
-  const past = new Date(e.date).getTime() < Date.now();
+// Live ticking countdown to a future date. Renders nothing once the date passes.
+function Countdown({ date }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const diff = new Date(date).getTime() - now;
+  if (diff <= 0) return null;
+  const days = Math.floor(diff / 86400000);
+  const h = Math.floor(diff / 3600000) % 24;
+  const m = Math.floor(diff / 60000) % 60;
+  const s = Math.floor(diff / 1000) % 60;
+  const parts = days > 0 ? [`${days}d`, `${h}h`, `${m}m`] : [`${h}h`, `${m}m`, `${s}s`];
+  return (
+    <span className="flex items-center gap-1.5 font-mono text-sm font-bold tabular-nums text-dark">
+      {parts.map((p) => (
+        <span key={p} className="rounded-md bg-brand/15 px-1.5 py-0.5">{p}</span>
+      ))}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Quick round-picker strip — a horizontal scrollable row of the DB rounds, for
+// flipping between results fast without scrolling down to the calendar.
+// ---------------------------------------------------------------------------
+function RoundStrip({ races, selectedId, onSelect }) {
+  return (
+    <div className="scrollbar-slim -mx-1 flex gap-2 overflow-x-auto px-1 pb-2">
+      {races.map((r) => {
+        const c = circuitFor(r.track);
+        const active = r.id === selectedId;
+        const done = r.isCompleted;
+        const border = active
+          ? "border-brand ring-1 ring-brand bg-brand/10"
+          : done
+          ? "border-emerald-500/40 bg-emerald-500/[0.06] hover:bg-emerald-500/10"
+          : "border-border bg-card hover:bg-surface2 opacity-70";
+        return (
+          <button
+            key={r.id}
+            type="button"
+            onClick={() => onSelect(r.id)}
+            aria-pressed={active}
+            className={`group flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition ${border}`}
+          >
+            <span className={`font-display text-lg font-black leading-none tabular-nums ${active ? "text-dark" : done ? "text-emerald-600" : "text-faint group-hover:text-light"}`}>
+              {String(r.number).padStart(2, "0")}
+            </span>
+            {c && <Flag code={c.country} title={c.countryName} />}
+            <span className="flex flex-col leading-tight">
+              <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">{r.track}</span>
+              <span className={`flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider ${done ? "text-emerald-600" : "text-light"}`}>
+                {done && (
+                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor" aria-hidden="true">
+                    <path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z" />
+                  </svg>
+                )}
+                {done ? "Done" : "Upcoming"}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Calendar card — the circuit outline is the hero. Completed championship
+// rounds are buttons that load results; SEs and upcoming rounds are static.
+// ---------------------------------------------------------------------------
+function RaceCard({ e, isNext, dbRace, selected, onSelect }) {
   const se = e.type === "se";
   const circuit = se ? null : circuitFor(e.track);
+  const past = new Date(e.date).getTime() < Date.now();
   const done = !!dbRace?.isCompleted;
   const clickable = done && !!dbRace;
 
-  const badge = (
+  // Top-right status pill.
+  let pill = null;
+  if (se) pill = <span className="pill bg-emerald-500/15 text-emerald-600">Special Event</span>;
+  else if (done) pill = <span className="pill bg-emerald-500/15 text-emerald-600">View results</span>;
+  else if (isNext) pill = <span className="pill bg-brand/20 text-dark">Next up</span>;
+  else pill = <span className="pill bg-surface2 text-light">{past ? "Pending" : "Upcoming"}</span>;
+
+  const accent = se ? "#10b981" : done ? "#10b981" : isNext ? "var(--brand, #ec4899)" : null;
+
+  const inner = (
     <div
-      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl font-display text-lg font-black tabular-nums ${
-        se ? "bg-emerald-500/15 text-emerald-600" : done ? "bg-emerald-500/15 text-emerald-600" : past ? "bg-surface2 text-light" : "bg-brand/20 text-dark"
-      }`}
+      className={`relative flex h-full flex-col overflow-hidden rounded-2xl border bg-card transition ${
+        selected ? "border-brand ring-1 ring-brand" : isNext ? "border-brand/40" : "border-border"
+      } ${clickable ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg" : ""}`}
     >
-      {se ? "SE" : e.number}
+      {/* accent top line */}
+      <div className="h-1 w-full" style={{ background: accent || "transparent" }} />
+
+      {/* hero: circuit outline */}
+      <div className="relative flex h-28 items-center justify-center bg-surface2/40">
+        {circuit ? (
+          <CircuitMap
+            track={e.track}
+            className="h-20 w-32"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            style={{ color: done ? "#10b981" : isNext ? "#ec4899" : "var(--light, #94a3b8)" }}
+          />
+        ) : (
+          <span className="font-display text-3xl font-black uppercase tracking-widest text-emerald-600/70">
+            {se ? "SE" : "—"}
+          </span>
+        )}
+        {/* round badge */}
+        <div className="absolute left-3 top-3 flex h-9 min-w-9 items-center justify-center rounded-lg bg-ink/90 px-2 font-display text-sm font-black tabular-nums text-white">
+          {se ? "SE" : `R${e.number}`}
+        </div>
+        <div className="absolute right-3 top-3">{pill}</div>
+      </div>
+
+      {/* body */}
+      <div className="flex flex-1 flex-col gap-2 p-4">
+        <div className="flex items-center gap-2.5">
+          {circuit && <Flag code={circuit.country} title={circuit.countryName} />}
+          <h4 className={`font-display text-lg font-extrabold uppercase tracking-tight ${se ? "text-emerald-600" : "text-dark"}`}>
+            {e.track}
+          </h4>
+        </div>
+        <div className="mt-auto flex items-end justify-between gap-2 pt-1">
+          <div>
+            <div className="font-mono text-sm font-semibold tabular-nums text-medium">{fmtDate(e.date)}</div>
+            <div className="font-mono text-xs text-light">6:00 PM GMT</div>
+          </div>
+          {isNext && !done && <Countdown date={e.date} />}
+        </div>
+      </div>
     </div>
   );
 
-  const body = (
-    <>
-      {badge}
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2.5">
-          {circuit && <Flag code={circuit.country} title={circuit.countryName} />}
-          <span className={`font-display text-lg font-extrabold uppercase tracking-tight ${se ? "text-emerald-600" : "text-dark"}`}>
-            {e.track}
-          </span>
-          {se && <span className="pill bg-emerald-500/15 text-emerald-600">Special Event</span>}
-          {isNext && !done && <span className="pill bg-brand/20 text-dark">Next up</span>}
-          {done && <span className="pill bg-emerald-500/15 text-emerald-600">Results</span>}
-          {past && !done && !se && <span className="pill bg-surface2 text-light">Done</span>}
-        </div>
-      </div>
-      <div className="shrink-0 text-right">
-        <div className="font-mono text-sm font-semibold tabular-nums text-medium">{fmt(e.date)}</div>
-        <div className="font-mono text-xs text-light">6:00 PM GMT</div>
-      </div>
-    </>
-  );
-
-  const base = "flex w-full items-center gap-4 border-b border-border px-5 py-4 text-left last:border-0 transition";
   if (clickable) {
     return (
-      <li>
-        <button
-          type="button"
-          onClick={() => onSelect(dbRace.id)}
-          aria-pressed={selected}
-          className={`${base} ${selected ? "bg-brand/10" : "hover:bg-surface2"}`}
-        >
-          {body}
-        </button>
-      </li>
+      <button type="button" onClick={() => onSelect(dbRace.id)} aria-pressed={selected} className="lift text-left">
+        {inner}
+      </button>
     );
   }
-  return <li className={`${base} ${isNext ? "bg-brand/5" : ""}`}>{body}</li>;
+  return inner;
 }
 
 export default function Races() {
@@ -100,10 +189,8 @@ export default function Races() {
   const [detailError, setDetailError] = useState(null);
   const panelRef = useRef(null);
 
-  // Map round number -> DB race, so schedule rows can find their results.
   const raceByNumber = new Map((races || []).map((r) => [r.number, r]));
 
-  // Default to the latest completed race.
   useEffect(() => {
     if (races && races.length && !selectedId) {
       const last = [...races].reverse().find((r) => r.isCompleted);
@@ -131,15 +218,18 @@ export default function Races() {
     return (
       <div>
         <PageHeaderSkeleton />
+        <div className="mb-7 flex gap-2 overflow-hidden">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-[52px] w-44 shrink-0 rounded-xl" />
+          ))}
+        </div>
         <TableSkeleton rows={10} />
       </div>
     );
   if (error) return <ErrorBox message={error} />;
 
-  // first event still in the future = "next"
   const now = Date.now();
   const nextIdx = SCHEDULE.findIndex((e) => new Date(e.date).getTime() >= now);
-  const half = Math.ceil(SCHEDULE.length / 2);
   const hasAnyResults = races.some((r) => r.isCompleted);
 
   return (
@@ -149,6 +239,9 @@ export default function Races() {
         title="Races"
         subtitle="The full Season 7 calendar. Pick a completed round to see its results; upcoming rounds and special events show the schedule."
       />
+
+      {/* Quick round picker */}
+      {hasAnyResults && <RoundStrip races={races} selectedId={selectedId} onSelect={selectRace} />}
 
       {/* Selected race results */}
       <div ref={panelRef} className="scroll-mt-24">
@@ -179,30 +272,23 @@ export default function Races() {
         )}
       </div>
 
-      {/* Full schedule */}
-      <div className="space-y-3">
+      {/* Full calendar */}
+      <div className="space-y-4">
         <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Full calendar</h3>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {[SCHEDULE.slice(0, half), SCHEDULE.slice(half)].map((chunk, col) => (
-            <div key={col} className="card overflow-hidden self-start">
-              <ul>
-                {chunk.map((e, j) => {
-                  const i = col * half + j;
-                  const dbRace = e.type === "round" ? raceByNumber.get(e.number) : null;
-                  return (
-                    <ScheduleRow
-                      key={i}
-                      e={e}
-                      isNext={i === nextIdx}
-                      dbRace={dbRace}
-                      selected={!!dbRace && dbRace.id === selectedId}
-                      onSelect={selectRace}
-                    />
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {SCHEDULE.map((e, i) => {
+            const dbRace = e.type === "round" ? raceByNumber.get(e.number) : null;
+            return (
+              <RaceCard
+                key={i}
+                e={e}
+                isNext={i === nextIdx}
+                dbRace={dbRace}
+                selected={!!dbRace && dbRace.id === selectedId}
+                onSelect={selectRace}
+              />
+            );
+          })}
         </div>
       </div>
     </div>
