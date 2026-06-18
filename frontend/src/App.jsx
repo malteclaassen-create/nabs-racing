@@ -3,11 +3,9 @@ import NavBar from "./components/NavBar.jsx";
 import Home from "./pages/Home.jsx";
 import DriverStandings from "./pages/DriverStandings.jsx";
 import DriverProfile from "./pages/DriverProfile.jsx";
-import ConstructorStandings from "./pages/ConstructorStandings.jsx";
-import Teams from "./pages/Teams.jsx";
-import Results from "./pages/Results.jsx";
+import Constructors from "./pages/Constructors.jsx";
+import Races from "./pages/Races.jsx";
 import Live from "./pages/Live.jsx";
-import Calendar from "./pages/Calendar.jsx";
 import RaceSignup from "./pages/RaceSignup.jsx";
 import DiscordCallback from "./pages/DiscordCallback.jsx";
 import Admin from "./pages/Admin.jsx";
@@ -21,11 +19,12 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/drivers" element={<DriverStandings />} />
           <Route path="/drivers/:id" element={<DriverProfile />} />
-          <Route path="/constructors" element={<ConstructorStandings />} />
-          <Route path="/teams" element={<Teams />} />
-          <Route path="/results" element={<Results />} />
+          <Route path="/constructors" element={<Constructors />} />
+          <Route path="/teams" element={<Constructors />} />
+          <Route path="/races" element={<Races />} />
+          <Route path="/results" element={<Races />} />
+          <Route path="/calendar" element={<Races />} />
           <Route path="/live" element={<Live />} />
-          <Route path="/calendar" element={<Calendar />} />
           <Route path="/signup" element={<RaceSignup />} />
           <Route path="/rennen" element={<RaceSignup />} />
           <Route path="/auth/discord/callback" element={<DiscordCallback />} />

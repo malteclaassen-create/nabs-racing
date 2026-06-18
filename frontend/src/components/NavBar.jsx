@@ -6,10 +6,8 @@ const links = [
   { to: "/", label: "Home", end: true },
   { to: "/drivers", label: "Drivers" },
   { to: "/constructors", label: "Constructors" },
-  { to: "/teams", label: "Teams" },
-  { to: "/results", label: "Results" },
+  { to: "/races", label: "Races" },
   { to: "/live", label: "Live", live: true },
-  { to: "/calendar", label: "Calendar" },
   { to: "/signup", label: "Sign Up" },
 ];
 

@@ -162,7 +162,7 @@ export default function Home() {
 
           <div className="mt-9 flex flex-wrap gap-3">
             <Link
-              to="/results"
+              to="/races"
               className="group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
             >
               Full Results
