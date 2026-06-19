@@ -94,6 +94,8 @@ export const CIRCUITS = {
 const TRACK_ALIASES = {
   istanbul_park: "Turkey",
   istanbul: "Turkey",
+  fn_imola: "Imola",
+  ks_imola: "Imola",
 };
 
 function normKey(s) {
@@ -114,4 +116,21 @@ export function circuitFor(track) {
     if (normKey(key) === n || normKey(CIRCUITS[key].circuit) === n) return CIRCUITS[key];
   }
   return null;
+}
+
+// Resolve a raw track string (e.g. an Assetto Corsa id like "istanbul_park") to
+// the clean canonical name ("Turkey"). Used at import time so stored race names
+// are always tidy. Unknown tracks are returned unchanged for the admin to edit.
+export function canonicalTrack(track) {
+  if (!track) return track;
+  if (CIRCUITS[track]) return track;
+
+  const alias = TRACK_ALIASES[track] || TRACK_ALIASES[String(track).toLowerCase()];
+  if (alias && CIRCUITS[alias]) return alias;
+
+  const n = normKey(track);
+  for (const key in CIRCUITS) {
+    if (normKey(key) === n || normKey(CIRCUITS[key].circuit) === n) return key;
+  }
+  return track;
 }

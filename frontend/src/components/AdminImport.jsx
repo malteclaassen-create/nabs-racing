@@ -2,11 +2,9 @@ import { useCallback, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { Notice, CardHead } from "./ui.jsx";
+import { canonicalTrack } from "../data/circuits.js";
 
 const STATUSES = ["FINISHED", "DNS", "DNF", "DSQ"];
-
-// AC track name -> friendly label (extend as needed)
-const TRACK_LABELS = { fn_imola: "Imola", ks_imola: "Imola" };
 
 function fmtRemote(r) {
   const d = r.date ? new Date(r.date) : null;
@@ -39,7 +37,7 @@ export default function AdminImport({ onCommitted }) {
     setParsed(res);
     setMeta((m) => ({
       ...m,
-      track: TRACK_LABELS[res.track] || res.track || "",
+      track: canonicalTrack(res.track) || "",
       date: res.date ? String(res.date).slice(0, 10) : "",
     }));
     setRows(
