@@ -90,7 +90,28 @@ export const CIRCUITS = {
   },
 };
 
+// Raw Assetto Corsa track ids / alternate spellings -> canonical CIRCUITS key.
+const TRACK_ALIASES = {
+  istanbul_park: "Turkey",
+  istanbul: "Turkey",
+};
+
+function normKey(s) {
+  return String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 export function circuitFor(track) {
   if (!track) return null;
-  return CIRCUITS[track] || null;
+  if (CIRCUITS[track]) return CIRCUITS[track];
+
+  const alias = TRACK_ALIASES[track] || TRACK_ALIASES[String(track).toLowerCase()];
+  if (alias && CIRCUITS[alias]) return CIRCUITS[alias];
+
+  // Fall back to a normalized match against the key or the circuit's real name,
+  // so an imported AC id like "istanbul_park" still resolves to "Istanbul Park".
+  const n = normKey(track);
+  for (const key in CIRCUITS) {
+    if (normKey(key) === n || normKey(CIRCUITS[key].circuit) === n) return CIRCUITS[key];
+  }
+  return null;
 }
