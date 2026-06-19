@@ -31,11 +31,11 @@ export default function StandingsTable({ variant, raceNumbers, rows }) {
   return (
     <div className="card overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
+        <table className="w-full min-w-[720px] border-collapse">
           <thead>
             <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-              <th className="w-14 px-3 py-3 text-center">Pos</th>
-              <th className="px-3 py-3">{isDriver ? "Driver" : "Team"}</th>
+              <th className="sticky left-0 z-20 w-14 bg-card px-3 py-3 text-center">Pos</th>
+              <th className="sticky left-14 z-20 bg-card px-3 py-3">{isDriver ? "Driver" : "Team"}</th>
               {isDriver && <th className="hidden px-3 py-3 lg:table-cell">Discord</th>}
               {isDriver && <th className="hidden px-3 py-3 md:table-cell">Team</th>}
               {isDriver && <th className="px-3 py-3 text-center">Tier</th>}
@@ -50,19 +50,20 @@ export default function StandingsTable({ variant, raceNumbers, rows }) {
           <tbody>
             {rows.map((row) => {
               const isLeader = row.position === 1;
+              const stickyBg = isLeader ? "bg-brand/5" : "bg-card";
               return (
                 <tr
                   key={row.driverId || row.teamId}
-                  className={`border-b border-border last:border-0 transition hover:bg-surface2 ${
+                  className={`group border-b border-border last:border-0 transition hover:bg-surface2 ${
                     isLeader ? "bg-brand/5" : ""
                   }`}
                 >
-                  <td className="px-3 py-3 text-center">
+                  <td className={`sticky left-0 z-10 px-3 py-3 text-center ${stickyBg} group-hover:bg-surface2`}>
                     <Rank position={row.position} />
                   </td>
 
                   {isDriver ? (
-                    <td className="px-3 py-3">
+                    <td className={`sticky left-14 z-10 px-3 py-3 ${stickyBg} group-hover:bg-surface2`}>
                       <div className="flex items-center gap-3">
                         <span
                           className="h-7 w-1.5 shrink-0 rounded-full"
@@ -77,7 +78,7 @@ export default function StandingsTable({ variant, raceNumbers, rows }) {
                       </div>
                     </td>
                   ) : (
-                    <td className="px-3 py-3">
+                    <td className={`sticky left-14 z-10 px-3 py-3 ${stickyBg} group-hover:bg-surface2`}>
                       <div className="flex items-center gap-3">
                         <span
                           className="h-7 w-1.5 shrink-0 rounded-full"
