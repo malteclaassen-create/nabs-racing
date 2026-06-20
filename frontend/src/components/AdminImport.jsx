@@ -49,6 +49,7 @@ export default function AdminImport({ onCommitted }) {
         subForTeamId: "",
         penaltyPositions: 0,
         bestLapMs: en.bestLap || null,
+        grid: en.grid ?? null,
         suggestions: en.suggestions,
       }))
     );
@@ -104,6 +105,7 @@ export default function AdminImport({ onCommitted }) {
         penaltyPositions: Number(r.penaltyPositions) || 0,
         // AC stores a huge sentinel for "no valid lap" — drop those.
         bestLapMs: r.bestLapMs > 0 && r.bestLapMs <= 1800000 ? r.bestLapMs : null,
+        grid: r.grid ?? null,
       }));
       const res = await api.commitRace({
         number: Number(meta.number),

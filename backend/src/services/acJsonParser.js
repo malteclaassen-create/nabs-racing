@@ -83,6 +83,7 @@ export function parseAcRaceJson(json, drivers) {
         totalTime: r.TotalTime,
         bestLap: r.BestLap,
         numLaps: r.NumLaps ?? null,
+        grid: Number.isFinite(r.GridPosition) ? r.GridPosition : null,
         disqualified: !!r.Disqualified,
         hasPenalty: !!r.HasPenalty,
         lapPenalty: r.LapPenalty ?? 0,
