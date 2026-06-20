@@ -67,11 +67,15 @@ function lastPage(html) {
 async function getAllRows() {
   if (cache.rows && Date.now() - cache.ts < CACHE_MS) return cache.rows;
 
-  const first = await fetchWithTimeout(`${BASE}/results?page=1`);
+  // NOTE: on this server the page param is offset by one — the bare /results
+  // page (no ?page) is the NEWEST set, and ?page=1 is already the *second*
+  // page. So fetch the bare page first, then ?page=1..lastPage; otherwise the
+  // ~25 most recent sessions (newest races) are silently skipped.
+  const first = await fetchWithTimeout(`${BASE}/results`);
   const pages = lastPage(first);
   const rest = await Promise.all(
-    Array.from({ length: pages - 1 }, (_, i) =>
-      fetchWithTimeout(`${BASE}/results?page=${i + 2}`).catch(() => "")
+    Array.from({ length: pages }, (_, i) =>
+      fetchWithTimeout(`${BASE}/results?page=${i + 1}`).catch(() => "")
     )
   );
 
