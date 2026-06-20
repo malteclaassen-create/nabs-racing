@@ -80,6 +80,8 @@ router.get("/:id/results", async (req, res, next) => {
           status: r.status,
           points: getDriverResultPoints(r),
           penaltyPositions: r.penaltyPositions,
+          grid: r.grid,
+          bestLapMs: r.bestLapMs,
           team: {
             id: r.driver.team.id,
             name: r.driver.team.name,

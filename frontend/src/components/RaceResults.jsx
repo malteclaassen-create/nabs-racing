@@ -2,6 +2,8 @@ import { StatusPill, Rank, TierBadge } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
 
+const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"]; // gold / silver / bronze
+
 // Small "?" help marker with a hover tooltip (native title).
 function Help({ text }) {
   return (
@@ -14,18 +16,101 @@ function Help({ text }) {
   );
 }
 
+// A plausible lap time (AC stores a huge sentinel for "no lap set").
+const MAX_LAP_MS = 1_800_000; // 30 min
+const isLap = (ms) => ms > 0 && ms <= MAX_LAP_MS;
+
+// milliseconds -> "1:20.027"
+function fmtLap(ms) {
+  if (!isLap(ms)) return null;
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  const millis = ms % 1000;
+  return `${m}:${String(s).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
+}
+
+function PodiumCard({ row, rank }) {
+  return (
+    <div className="relative flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-3">
+      <span className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: row.team.color }} />
+      <span
+        className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-display text-base font-black text-ink"
+        style={{ backgroundColor: MEDAL[rank] }}
+      >
+        {rank + 1}
+      </span>
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark">
+            {row.name}
+          </span>
+          <Flag code={countryFor(row.driverId)} w={16} h={12} />
+        </div>
+        <div className="truncate text-xs text-light">
+          {(row.effectiveTeam || row.team).name}
+        </div>
+      </div>
+      <div className="ml-auto pr-1 text-right">
+        <div className="font-mono text-lg font-bold leading-none tabular-nums text-dark">{row.points}</div>
+        <div className="font-mono text-[10px] uppercase tracking-wider text-light">pts</div>
+      </div>
+    </div>
+  );
+}
+
 export default function RaceResults({ race, results }) {
   const detailed = race.hasPositions;
 
+  const lapRows = results.filter((r) => isLap(r.bestLapMs));
+  const hasLaps = lapRows.length > 0;
+  const hasGrid = results.some((r) => r.grid != null);
+  const fastestMs = hasLaps ? Math.min(...lapRows.map((r) => r.bestLapMs)) : null;
+  const fastestDriverId = hasLaps ? lapRows.find((r) => r.bestLapMs === fastestMs)?.driverId : null;
+  const fastest = fastestDriverId ? results.find((r) => r.driverId === fastestDriverId) : null;
+
+  const podium = detailed
+    ? results.filter((r) => r.position != null && (!r.status || r.status === "FINISHED")).slice(0, 3)
+    : [];
+  const finishers = results.filter((r) => (!r.status || r.status === "FINISHED") && r.position != null).length;
+
   return (
     <div className="card overflow-hidden">
+      {/* Summary: podium + fastest lap */}
+      {detailed && podium.length > 0 && (
+        <div className="grid gap-3 border-b border-border bg-surface2/40 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          {podium.map((row, i) => (
+            <PodiumCard key={row.driverId} row={row} rank={i} />
+          ))}
+          {fastest && (
+            <div className="relative flex items-center gap-3 overflow-hidden rounded-xl border border-purple-500/40 bg-purple-500/[0.07] p-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-500/20 text-base">
+                ⏱️
+              </span>
+              <div className="min-w-0">
+                <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-purple-500">
+                  Fastest Lap
+                </div>
+                <div className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark">
+                  {fastest.name}
+                </div>
+              </div>
+              <div className="ml-auto pr-1 font-mono text-base font-bold tabular-nums text-purple-500">
+                {fmtLap(fastestMs)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr className="border-b border-border bg-surface2/50 text-left font-mono text-[11px] font-bold uppercase tracking-wider text-light">
               {detailed && <th className="w-14 px-3 py-3 text-center">Pos</th>}
+              {detailed && hasGrid && <th className="hidden px-3 py-3 text-center md:table-cell">Grid</th>}
               <th className="px-3 py-3">Driver</th>
               <th className="hidden px-3 py-3 sm:table-cell">Team</th>
+              {detailed && hasLaps && <th className="hidden px-3 py-3 text-right md:table-cell">Best Lap</th>}
               {detailed && <th className="px-3 py-3 text-center">Status</th>}
               {detailed && (
                 <th className="hidden px-3 py-3 text-center lg:table-cell">
@@ -41,6 +126,8 @@ export default function RaceResults({ race, results }) {
           <tbody>
             {results.map((r) => {
               const tier = r.tier ?? r.team?.tier;
+              const isFastest = r.driverId === fastestDriverId;
+              const gridDelta = r.grid != null && r.position != null ? r.grid - r.position : null;
               return (
                 <tr
                   key={r.driverId}
@@ -50,6 +137,27 @@ export default function RaceResults({ race, results }) {
                     <td className="px-3 py-3.5 text-center">
                       {r.position != null ? (
                         <Rank position={r.position} />
+                      ) : (
+                        <span className="font-mono text-faint">—</span>
+                      )}
+                    </td>
+                  )}
+
+                  {detailed && hasGrid && (
+                    <td className="hidden px-3 py-3.5 text-center md:table-cell">
+                      {r.grid != null ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="font-mono text-sm tabular-nums text-medium">{r.grid}</span>
+                          {gridDelta != null && gridDelta !== 0 && (
+                            <span
+                              className={`font-mono text-[10px] font-bold ${
+                                gridDelta > 0 ? "text-emerald-600" : "text-red-500"
+                              }`}
+                            >
+                              {gridDelta > 0 ? `▲${gridDelta}` : `▼${-gridDelta}`}
+                            </span>
+                          )}
+                        </span>
                       ) : (
                         <span className="font-mono text-faint">—</span>
                       )}
@@ -67,8 +175,18 @@ export default function RaceResults({ race, results }) {
                       </span>
                       <Flag code={countryFor(r.driverId)} />
                       {tier != null && <TierBadge tier={tier} />}
+                      {isFastest && (
+                        <span className="pill bg-purple-500/15 text-purple-500" title="Fastest lap of the race">
+                          FL
+                        </span>
+                      )}
                       {r.isSub && r.subForTeam && (
                         <span className="pill bg-amber-100 text-amber-700">sub · {r.subForTeam.name}</span>
+                      )}
+                      {r.penaltyPositions > 0 && (
+                        <span className="pill bg-red-500/15 text-red-500" title="Grid/finish penalty positions applied">
+                          +{r.penaltyPositions} pen
+                        </span>
                       )}
                     </div>
                   </td>
@@ -76,6 +194,16 @@ export default function RaceResults({ race, results }) {
                   <td className="hidden px-3 py-3.5 text-sm text-medium sm:table-cell">
                     {r.effectiveTeam ? r.effectiveTeam.name : r.team.name}
                   </td>
+
+                  {detailed && hasLaps && (
+                    <td
+                      className={`hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums md:table-cell ${
+                        isFastest ? "font-bold text-purple-500" : "text-medium"
+                      }`}
+                    >
+                      {fmtLap(r.bestLapMs) || <span className="text-faint">—</span>}
+                    </td>
+                  )}
 
                   {detailed && (
                     <td className="px-3 py-3.5 text-center">
@@ -132,6 +260,11 @@ export default function RaceResults({ race, results }) {
           <span className="flex items-center gap-1.5">
             <TierBadge tier={0} /> Reserve
           </span>
+          {hasLaps && (
+            <span className="flex items-center gap-1.5">
+              <span className="pill bg-purple-500/15 text-purple-500">FL</span> Fastest lap
+            </span>
+          )}
           <span>
             <span className="font-semibold text-medium">Tier 2 column</span> = re-ranked position once Tier-1
             drivers are removed → constructor points.

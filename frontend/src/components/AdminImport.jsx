@@ -48,6 +48,7 @@ export default function AdminImport({ onCommitted }) {
         status: en.disqualified ? "DSQ" : "FINISHED",
         subForTeamId: "",
         penaltyPositions: 0,
+        bestLapMs: en.bestLap || null,
         suggestions: en.suggestions,
       }))
     );
@@ -101,6 +102,8 @@ export default function AdminImport({ onCommitted }) {
         status: r.status,
         subForTeamId: r.subForTeamId || null,
         penaltyPositions: Number(r.penaltyPositions) || 0,
+        // AC stores a huge sentinel for "no valid lap" — drop those.
+        bestLapMs: r.bestLapMs > 0 && r.bestLapMs <= 1800000 ? r.bestLapMs : null,
       }));
       const res = await api.commitRace({
         number: Number(meta.number),

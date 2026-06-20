@@ -239,7 +239,7 @@ export default function Races() {
   const specials = SCHEDULE.filter((e) => e.type === "se");
   const shown = tab === "rounds" ? rounds : specials;
   const tabCls = (active) =>
-    `rounded-lg px-4 py-2 text-sm font-bold transition ${active ? "bg-primary text-white shadow" : "text-light hover:text-dark"}`;
+    `rounded-lg px-4 py-2 text-sm font-bold transition ${active ? "bg-brand text-ink shadow" : "text-light hover:text-dark"}`;
 
   return (
     <div className="space-y-12">
