@@ -10,7 +10,7 @@ const VALID = ["ACCEPTED", "DECLINED", "TENTATIVE"];
 router.get("/", async (req, res, next) => {
   try {
     const races = await prisma.race.findMany({
-      where: { isCompleted: false },
+      where: { isCompleted: false, isSpecialEvent: false },
       orderBy: { number: "asc" },
       include: {
         rsvps: { include: { driver: { include: { team: true } } } },

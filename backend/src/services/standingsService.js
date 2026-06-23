@@ -8,7 +8,7 @@ import { getDriverResultPoints } from "./pointsCalculator.js";
 // Returns the ordered list of completed race numbers, e.g. [1,2,...,9].
 async function getRaceNumbers(prisma, seasonId) {
   const races = await prisma.race.findMany({
-    where: { seasonId },
+    where: { seasonId, isSpecialEvent: false },
     orderBy: { number: "asc" },
     select: { number: true },
   });
@@ -19,7 +19,7 @@ async function getRaceNumbers(prisma, seasonId) {
 export async function getDriverStandings(prisma, seasonId) {
   const [drivers, races, results] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
-    prisma.race.findMany({ where: { seasonId }, orderBy: { number: "asc" } }),
+    prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
     prisma.raceResult.findMany({ where: { race: { seasonId } } }),
   ]);
 
@@ -71,7 +71,7 @@ export async function getDriverStandings(prisma, seasonId) {
 async function getConstructorStandings(prisma, tier, seasonId) {
   const [teams, races, scores] = await Promise.all([
     prisma.team.findMany({ where: { tier, seasonId } }),
-    prisma.race.findMany({ where: { seasonId }, orderBy: { number: "asc" } }),
+    prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
     prisma.constructorRaceScore.findMany({ where: { tier, race: { seasonId } } }),
   ]);
 
