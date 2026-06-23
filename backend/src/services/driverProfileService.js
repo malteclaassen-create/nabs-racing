@@ -19,9 +19,11 @@ export async function getDriverProfile(prisma, driverId) {
   });
   if (!driver) return null;
 
+  // A driver entry belongs to one season; their stats are scoped to it.
+  const seasonId = driver.seasonId;
   const [standings, races, results] = await Promise.all([
-    getDriverStandings(prisma),
-    prisma.race.findMany({ where: { isCompleted: true }, orderBy: { number: "asc" } }),
+    getDriverStandings(prisma, seasonId),
+    prisma.race.findMany({ where: { seasonId, isCompleted: true }, orderBy: { number: "asc" } }),
     prisma.raceResult.findMany({ where: { driverId } }),
   ]);
 

@@ -1,13 +1,16 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { getDriverResultPoints, getPointsForPosition } from "../services/pointsCalculator.js";
+import { resolveSeasonId } from "../services/seasonService.js";
 
 const router = Router();
 
-// GET /api/races -> list of all races
+// GET /api/races -> list of all races in the selected (default: active) season
 router.get("/", async (req, res, next) => {
   try {
+    const seasonId = await resolveSeasonId(prisma, req.query.season);
     const races = await prisma.race.findMany({
+      where: { seasonId },
       orderBy: { number: "asc" },
       include: { _count: { select: { results: true } } },
     });
@@ -37,8 +40,8 @@ router.get("/:id/results", async (req, res, next) => {
         where: { raceId: race.id },
         include: { driver: { include: { team: true } }, subForTeam: true },
       }),
-      prisma.driver.findMany(),
-      prisma.team.findMany(),
+      prisma.driver.findMany({ where: { seasonId: race.seasonId } }),
+      prisma.team.findMany({ where: { seasonId: race.seasonId } }),
     ]);
 
     const teamById = new Map(teams.map((t) => [t.id, t]));

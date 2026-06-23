@@ -28,6 +28,16 @@ const RACE_POSITIONS = JSON.parse(
 
 const DEFAULT_PIN = "nabs2026";
 
+// --- SEASON ----------------------------------------------------------------
+// All seeded data belongs to Season 7 (F1 2007). Later seasons are created via
+// the admin tab, not seeded here.
+const SEASON = {
+  id: "season7",
+  number: 7,
+  name: "Season 7",
+  game: "F1 2007 · Assetto Corsa",
+};
+
 // --- TEAMS -----------------------------------------------------------------
 const TEAMS = [
   { id: "porsche", name: "Porsche Martini", tier: 1, color: "#8B0000" },
@@ -304,15 +314,20 @@ async function main() {
   await prisma.race.deleteMany();
   await prisma.driver.deleteMany();
   await prisma.team.deleteMany();
+  await prisma.season.deleteMany();
+
+  // Season 7 (the only seeded season; the active one)
+  await prisma.season.create({ data: { ...SEASON, isActive: true } });
+  const seasonId = SEASON.id;
 
   // Teams
-  for (const t of TEAMS) await prisma.team.create({ data: t });
+  for (const t of TEAMS) await prisma.team.create({ data: { ...t, seasonId } });
 
   // Drivers
   const allDrivers = [...T1_DRIVERS, ...T2_DRIVERS, ...RESERVE_DRIVERS];
   for (const d of allDrivers) {
     await prisma.driver.create({
-      data: { id: d.id, name: d.name, discordName: d.discord, teamId: d.teamId, tier: d.tier },
+      data: { id: d.id, name: d.name, discordName: d.discord, teamId: d.teamId, tier: d.tier, seasonId },
     });
   }
   console.log(`  ${TEAMS.length} teams, ${allDrivers.length} drivers`);
@@ -326,6 +341,7 @@ async function main() {
         track: RACE_TRACKS[n],
         date: SCHEDULE[n].date ? new Date(SCHEDULE[n].date) : null,
         isCompleted: true,
+        seasonId,
       },
     });
   }
@@ -338,6 +354,7 @@ async function main() {
         track: up.track,
         date: up.date ? new Date(up.date) : null,
         isCompleted: false,
+        seasonId,
       },
     });
   }

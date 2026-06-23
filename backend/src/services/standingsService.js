@@ -6,8 +6,9 @@
 import { getDriverResultPoints } from "./pointsCalculator.js";
 
 // Returns the ordered list of completed race numbers, e.g. [1,2,...,9].
-async function getRaceNumbers(prisma) {
+async function getRaceNumbers(prisma, seasonId) {
   const races = await prisma.race.findMany({
+    where: { seasonId },
     orderBy: { number: "asc" },
     select: { number: true },
   });
@@ -15,11 +16,11 @@ async function getRaceNumbers(prisma) {
 }
 
 // DRIVER STANDINGS -----------------------------------------------------------
-export async function getDriverStandings(prisma) {
+export async function getDriverStandings(prisma, seasonId) {
   const [drivers, races, results] = await Promise.all([
-    prisma.driver.findMany({ include: { team: true } }),
-    prisma.race.findMany({ orderBy: { number: "asc" } }),
-    prisma.raceResult.findMany(),
+    prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
+    prisma.race.findMany({ where: { seasonId }, orderBy: { number: "asc" } }),
+    prisma.raceResult.findMany({ where: { race: { seasonId } } }),
   ]);
 
   const raceNumberById = new Map(races.map((r) => [r.id, r.number]));
@@ -66,11 +67,11 @@ export async function getDriverStandings(prisma) {
 }
 
 // CONSTRUCTOR STANDINGS ------------------------------------------------------
-async function getConstructorStandings(prisma, tier) {
+async function getConstructorStandings(prisma, tier, seasonId) {
   const [teams, races, scores] = await Promise.all([
-    prisma.team.findMany({ where: { tier } }),
-    prisma.race.findMany({ orderBy: { number: "asc" } }),
-    prisma.constructorRaceScore.findMany({ where: { tier } }),
+    prisma.team.findMany({ where: { tier, seasonId } }),
+    prisma.race.findMany({ where: { seasonId }, orderBy: { number: "asc" } }),
+    prisma.constructorRaceScore.findMany({ where: { tier, race: { seasonId } } }),
   ]);
 
   const raceNumberById = new Map(races.map((r) => [r.id, r.number]));
@@ -101,12 +102,12 @@ async function getConstructorStandings(prisma, tier) {
   return { tier, raceNumbers, standings: rows };
 }
 
-export function getT1ConstructorStandings(prisma) {
-  return getConstructorStandings(prisma, 1);
+export function getT1ConstructorStandings(prisma, seasonId) {
+  return getConstructorStandings(prisma, 1, seasonId);
 }
 
-export function getT2ConstructorStandings(prisma) {
-  return getConstructorStandings(prisma, 2);
+export function getT2ConstructorStandings(prisma, seasonId) {
+  return getConstructorStandings(prisma, 2, seasonId);
 }
 
 export { getRaceNumbers };

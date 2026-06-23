@@ -23,11 +23,35 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// A league season (e.g. Season 7 = F1 2007). Each season is a self-contained
+// world: its own teams, drivers and races. Exactly one season is `isActive`,
+// which is what the public site shows by default; older seasons stay readable
+// as an archive via the season switcher.
+model Season {
+  id        String   @id @default(cuid())
+  number    Int      @unique
+  name      String // display label, e.g. "Season 7"
+  game      String? // e.g. "F1 2007 · Assetto Corsa"
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  teams   Team[]
+  drivers Driver[]
+  races   Race[]
+}
+
 model Team {
   id      String @id
   name    String
   tier    Int // 0=Reserve, 1=Tier1, 2=Tier2
   color   String // HEX
+  // Optional logo image path (e.g. "/teams/ferrari.png"), uploaded via admin.
+  logoUrl String?
+
+  // Which season this team belongs to. Nullable for backward-compatibility with
+  // the pre-season-model data; backfilled to Season 7 and always set going forward.
+  seasonId String?
+  season   Season? @relation(fields: [seasonId], references: [id])
 
   drivers          Driver[]
   results          RaceResult[]
@@ -40,6 +64,9 @@ model Driver {
   discordName String
   teamId      String
   team        Team     @relation(fields: [teamId], references: [id])
+  // Which season this driver entry belongs to (backfilled to Season 7).
+  seasonId    String?
+  season      Season?  @relation(fields: [seasonId], references: [id])
   tier        Int // 0/1/2
   isActive    Boolean  @default(true)
   // Linked Discord account id (set on first Discord login) -> forgery-proof RSVP
@@ -55,7 +82,13 @@ model Driver {
 
 model Race {
   id          String       @id @default(cuid())
+  // Round number within its season. Unique per season (a later migration moves
+  // this to a composite [seasonId, number]); kept globally unique for now since
+  // only one season exists.
   number      Int          @unique
+  // Which season this race belongs to (backfilled to Season 7).
+  seasonId    String?
+  season      Season?      @relation(fields: [seasonId], references: [id])
   track       String
   date        DateTime?
   isCompleted Boolean      @default(false)
