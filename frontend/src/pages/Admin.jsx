@@ -313,10 +313,14 @@ function Drivers() {
     }
   }
 
-  async function toggleActive(d) {
-    await api.updateDriver(d.id, { isActive: !d.isActive });
-    reload();
+  async function patchDriver(d, patch) {
+    setBusy(true); setError(null); setMsg(null);
+    try { await api.updateDriver(d.id, patch); reload(); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
   }
+
+  // Teams (sorted by tier, then name) with their drivers — the roster grouped by team.
+  const teamGroups = [...(teams || [])].sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
 
   return (
     <div>
@@ -351,21 +355,46 @@ function Drivers() {
         </button>
       </form>
 
-      <div className="card max-h-[600px] overflow-y-auto p-5">
-        <CardHead eyebrow="Roster" title={`All drivers (${allDrivers.length})`} />
-        <ul className="divide-y divide-border">
-          {allDrivers.map((d) => (
-            <li key={d.id} className="flex items-center justify-between py-2 text-sm">
-              <div>
-                <span className={`font-semibold ${d.isActive ? "text-dark" : "text-light line-through"}`}>{d.name}</span>
-                <span className="ml-2 text-light">{d.teamName}</span>
+      <div className="card max-h-[640px] overflow-y-auto p-5">
+        <CardHead eyebrow="Roster" title={`Drivers by team (${allDrivers.length})`} />
+        <p className="mb-3 text-xs text-light">Use the dropdowns to move a driver to another team or change their tier.</p>
+        <div className="space-y-5">
+          {teamGroups.map((t) => (
+            <div key={t.id}>
+              <div className="mb-1.5 flex items-center gap-2">
+                <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={20} />
+                <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">{t.name}</span>
+                <span className="text-xs text-light">{TIER_LABEL[t.tier]} · {t.drivers.length}</span>
               </div>
-              <button className="text-xs font-semibold text-primary hover:underline" onClick={() => toggleActive(d)}>
-                {d.isActive ? "Deactivate" : "Reactivate"}
-              </button>
-            </li>
+              <ul className="divide-y divide-border border-t border-border">
+                {t.drivers.length === 0 && <li className="py-2 text-xs text-light">No drivers.</li>}
+                {t.drivers.map((d) => (
+                  <li key={d.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+                    <span className={`min-w-0 flex-1 truncate font-semibold ${d.isActive ? "text-dark" : "text-light line-through"}`}>
+                      {d.name}
+                    </span>
+                    <select className="input py-1 text-xs" value={d.teamId} disabled={busy}
+                      onChange={(e) => patchDriver(d, { teamId: e.target.value })}>
+                      {teamGroups.map((o) => (
+                        <option key={o.id} value={o.id}>{o.name}</option>
+                      ))}
+                    </select>
+                    <select className="input py-1 text-xs" value={d.tier} disabled={busy}
+                      onChange={(e) => patchDriver(d, { tier: Number(e.target.value) })}>
+                      <option value={1}>T1</option>
+                      <option value={2}>T2</option>
+                      <option value={0}>Res</option>
+                    </select>
+                    <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                      onClick={() => patchDriver(d, { isActive: !d.isActive })}>
+                      {d.isActive ? "Deactivate" : "Reactivate"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       </div>
     </div>
     </div>
