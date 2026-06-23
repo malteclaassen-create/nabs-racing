@@ -82,10 +82,12 @@ model Driver {
 
 model Race {
   id          String       @id @default(cuid())
-  // Round number within its season. Unique per season (a later migration moves
-  // this to a composite [seasonId, number]); kept globally unique for now since
-  // only one season exists.
-  number      Int          @unique
+  // Round number within its season (unique per season, so each season can start
+  // again at round 1). Null for non-championship special events.
+  number      Int?
+  // Whether this is a non-championship special event (shown on the calendar but
+  // not scored / not part of the round numbering).
+  isSpecialEvent Boolean   @default(false)
   // Which season this race belongs to (backfilled to Season 7).
   seasonId    String?
   season      Season?      @relation(fields: [seasonId], references: [id])
@@ -99,6 +101,8 @@ model Race {
   results     RaceResult[]
   constructorScores ConstructorRaceScore[]
   rsvps       RaceRsvp[]
+
+  @@unique([seasonId, number])
 }
 
 // Per-race attendance (replaces Apollo): a driver's status for an upcoming race.

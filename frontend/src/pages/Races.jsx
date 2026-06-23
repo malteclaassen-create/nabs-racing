@@ -7,26 +7,9 @@ import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
 import { circuitFor } from "../data/circuits.js";
 
-// Full Season 7 schedule. SE = Special Event (not a championship round).
-// Championship rounds are matched to DB races by `number` so completed rounds
-// become clickable and reveal their results.
-const SCHEDULE = [
-  { type: "round", number: 1, track: "Melbourne", date: "2026-04-10T18:00:00Z" },
-  { type: "round", number: 2, track: "Mugello", date: "2026-04-17T18:00:00Z" },
-  { type: "se", track: "Watkins Glen 2.5", date: "2026-04-25T18:00:00Z" },
-  { type: "round", number: 3, track: "Most", date: "2026-05-01T18:00:00Z" },
-  { type: "round", number: 4, track: "Bahrain", date: "2026-05-08T18:00:00Z" },
-  { type: "round", number: 5, track: "Monza", date: "2026-05-15T18:00:00Z" },
-  { type: "round", number: 6, track: "Jeddah", date: "2026-05-22T18:00:00Z" },
-  { type: "round", number: 7, track: "Nurburgring", date: "2026-05-29T18:00:00Z" },
-  { type: "round", number: 8, track: "Spa", date: "2026-06-05T18:00:00Z" },
-  { type: "se", track: "NASCAR Oval", date: "2026-06-06T18:00:00Z" },
-  { type: "round", number: 9, track: "Imola", date: "2026-06-12T18:00:00Z" },
-  { type: "round", number: 10, track: "Turkey", date: "2026-06-19T18:00:00Z" },
-  { type: "se", track: "Le Mans 2.5", date: "2026-06-26T18:00:00Z" },
-  { type: "round", number: 11, track: "COTA", date: "2026-07-03T18:00:00Z" },
-  { type: "round", number: 12, track: "Interlagos", date: "2026-07-10T18:00:00Z" },
-];
+// The calendar is built entirely from the season's races (DB), so it stays in
+// sync with whatever the admin schedules. Championship rounds (number set) are
+// clickable once completed; special events (isSpecialEvent) are info-only.
 
 function fmtDate(d) {
   return new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
@@ -109,11 +92,13 @@ function RoundStrip({ races, selectedId, onSelect }) {
 const EMERALD = "#10b981";
 const BRAND = "#f4afc6"; // NABS pastel pink
 
-function RaceCard({ e, isNext, dbRace, selected, onSelect }) {
-  const se = e.type === "se";
-  const circuit = se ? null : circuitFor(e.track);
-  const done = !!dbRace?.isCompleted;
-  const clickable = done && !!dbRace;
+function RaceCard({ r, isNext, selected, onSelect }) {
+  const e = { type: r.isSpecialEvent ? "se" : "round", number: r.number, track: r.track, date: r.date };
+  const se = r.isSpecialEvent;
+  const circuit = se ? null : circuitFor(r.track);
+  const done = !!r.isCompleted;
+  const clickable = done && !se;
+  const dbRace = r;
 
   const tone = se || done ? EMERALD : isNext ? BRAND : null;
 
@@ -192,11 +177,9 @@ export default function Races() {
   const [tab, setTab] = useState("rounds"); // "rounds" | "se"
   const panelRef = useRef(null);
 
-  const raceByNumber = new Map((races || []).map((r) => [r.number, r]));
-
   useEffect(() => {
     if (races && races.length && !selectedId) {
-      const last = [...races].reverse().find((r) => r.isCompleted);
+      const last = [...races].reverse().find((r) => r.isCompleted && !r.isSpecialEvent);
       if (last) setSelectedId(last.id);
     }
   }, [races, selectedId]);
@@ -232,11 +215,20 @@ export default function Races() {
   if (error) return <ErrorBox message={error} />;
 
   const now = Date.now();
-  const nextEntry = SCHEDULE.find((e) => new Date(e.date).getTime() >= now);
-  const hasAnyResults = races.some((r) => r.isCompleted);
+  const withDate = (r) => (r.date ? new Date(r.date).getTime() : Infinity);
+  // Championship rounds (have a number) and special events, each in calendar order.
+  const rounds = races
+    .filter((r) => !r.isSpecialEvent && r.number != null)
+    .sort((a, b) => a.number - b.number);
+  const specials = races.filter((r) => r.isSpecialEvent).sort((a, b) => withDate(a) - withDate(b));
+  const championRounds = rounds; // RoundStrip only flips between scored rounds
+  const hasAnyResults = races.some((r) => r.isCompleted && !r.isSpecialEvent);
 
-  const rounds = SCHEDULE.filter((e) => e.type === "round");
-  const specials = SCHEDULE.filter((e) => e.type === "se");
+  // "Next up" = earliest not-yet-completed entry with a future date.
+  const nextEntry = [...races]
+    .filter((r) => !r.isCompleted && r.date && new Date(r.date).getTime() >= now)
+    .sort((a, b) => withDate(a) - withDate(b))[0];
+
   const shown = tab === "rounds" ? rounds : specials;
   const tabCls = (active) =>
     `rounded-lg px-4 py-2 text-sm font-bold transition ${active ? "bg-brand text-ink shadow" : "text-light hover:text-dark"}`;
@@ -246,11 +238,11 @@ export default function Races() {
       <PageHeader
         eyebrow="Schedule & Results"
         title="Races"
-        subtitle="The full Season 7 calendar. Pick a completed round to see its results; upcoming rounds and special events show the schedule."
+        subtitle="The full season calendar. Pick a completed round to see its results; upcoming rounds and special events show the schedule."
       />
 
       {/* Quick round picker */}
-      {hasAnyResults && <RoundStrip races={races} selectedId={selectedId} onSelect={selectRace} />}
+      {hasAnyResults && <RoundStrip races={championRounds} selectedId={selectedId} onSelect={selectRace} />}
 
       {/* Selected race results */}
       <div ref={panelRef} className="scroll-mt-24">
@@ -297,19 +289,20 @@ export default function Races() {
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {shown.map((e, i) => {
-            const dbRace = e.type === "round" ? raceByNumber.get(e.number) : null;
-            return (
-              <RaceCard
-                key={i}
-                e={e}
-                isNext={e === nextEntry}
-                dbRace={dbRace}
-                selected={!!dbRace && dbRace.id === selectedId}
-                onSelect={selectRace}
-              />
-            );
-          })}
+          {shown.map((r) => (
+            <RaceCard
+              key={r.id}
+              r={r}
+              isNext={nextEntry && r.id === nextEntry.id}
+              selected={r.id === selectedId}
+              onSelect={selectRace}
+            />
+          ))}
+          {shown.length === 0 && (
+            <div className="card col-span-full p-8 text-center text-medium">
+              {tab === "rounds" ? "No championship rounds scheduled yet." : "No special events scheduled."}
+            </div>
+          )}
         </div>
       </div>
     </div>

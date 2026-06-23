@@ -13,6 +13,22 @@ export function setToken(t) {
 
 const USER_TOKEN_KEY = "nabs_user_token";
 
+// The season the public site is currently viewing (a round number), or null for
+// the active season. Set by the SeasonProvider; appended to season-scoped reads.
+let SELECTED_SEASON = null;
+export function setSelectedSeason(n) {
+  SELECTED_SEASON = n === undefined ? null : n;
+}
+export function getSelectedSeason() {
+  return SELECTED_SEASON;
+}
+function seasonQ(extra = "") {
+  const parts = [];
+  if (SELECTED_SEASON != null) parts.push(`season=${SELECTED_SEASON}`);
+  if (extra) parts.push(extra);
+  return parts.length ? `?${parts.join("&")}` : "";
+}
+
 async function request(path, { method = "GET", body, auth = false, userAuth = false, form = false } = {}) {
   const headers = {};
   if (!form) headers["Content-Type"] = "application/json";
@@ -40,14 +56,15 @@ async function request(path, { method = "GET", body, auth = false, userAuth = fa
 }
 
 export const api = {
-  // public
-  driverStandings: () => request("/standings/drivers"),
+  // public (season-scoped reads honour the selected season)
+  driverStandings: () => request(`/standings/drivers${seasonQ()}`),
   driverProfile: (id) => request(`/drivers/${id}/profile`),
-  t1Standings: () => request("/standings/constructors/t1"),
-  t2Standings: () => request("/standings/constructors/t2"),
-  races: () => request("/races"),
+  t1Standings: () => request(`/standings/constructors/t1${seasonQ()}`),
+  t2Standings: () => request(`/standings/constructors/t2${seasonQ()}`),
+  races: () => request(`/races${seasonQ()}`),
   raceResults: (id) => request(`/races/${id}/results`),
-  teams: () => request("/teams"),
+  teams: () => request(`/teams${seasonQ()}`),
+  seasons: () => request("/seasons"),
 
   // events / RSVP (public)
   events: () => request("/events"),
@@ -84,4 +101,25 @@ export const api = {
   testWebhook: () => request("/admin/discord/test", { method: "POST", auth: true }),
   createEvent: (body) => request("/admin/events", { method: "POST", body, auth: true }),
   announceEvent: (id) => request(`/admin/events/${id}/announce`, { method: "POST", auth: true }),
+  deleteEvent: (id) => request(`/admin/events/${id}`, { method: "DELETE", auth: true }),
+
+  // seasons + teams (admin)
+  adminSeasons: () => request("/admin/seasons", { auth: true }),
+  createSeason: (body) => request("/admin/seasons", { method: "POST", body, auth: true }),
+  updateSeason: (id, body) => request(`/admin/seasons/${id}`, { method: "PUT", body, auth: true }),
+  activateSeason: (id) => request(`/admin/seasons/${id}/activate`, { method: "POST", auth: true }),
+  cloneTeams: (id, fromSeasonId) =>
+    request(`/admin/seasons/${id}/clone-teams`, { method: "POST", body: { fromSeasonId }, auth: true }),
+  createTeam: (body) => request("/admin/teams", { method: "POST", body, auth: true }),
+  updateTeam: (id, body) => request(`/admin/teams/${id}`, { method: "PUT", body, auth: true }),
+  deleteTeam: (id) => request(`/admin/teams/${id}`, { method: "DELETE", auth: true }),
+  uploadTeamLogo: (id, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/teams/${id}/logo`, { method: "POST", body: fd, auth: true, form: true });
+  },
+
+  // season-scoped reads by explicit season number (used by the admin editor)
+  teamsForSeason: (n) => request(`/teams?season=${n}`),
+  racesForSeason: (n) => request(`/races?season=${n}`),
 };

@@ -38,7 +38,7 @@ function TeamCard({ team }) {
       <div className="h-1.5 w-full" style={{ backgroundColor: team.color }} />
       <div className="p-5">
         <div className="flex items-center gap-3">
-          <TeamLogo id={team.id} name={team.name} color={team.color} size={36} />
+          <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={36} />
           <h4 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{team.name}</h4>
         </div>
         <ul className="mt-4 space-y-2.5">

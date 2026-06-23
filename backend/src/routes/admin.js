@@ -1,15 +1,25 @@
 import { Router } from "express";
 import multer from "multer";
 import bcrypt from "bcryptjs";
+import { writeFileSync, mkdirSync } from "fs";
+import { dirname, join, extname } from "path";
+import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { parseAcRaceJson } from "../services/acJsonParser.js";
 import { listRemoteResults, fetchRemoteResult } from "../services/emperorResults.js";
 import { saveRaceResults } from "../services/raceWriter.js";
 import { getWebhookUrl, setWebhookUrl, announce, syncRaceToDiscord } from "../services/discordService.js";
+import { resolveSeasonId } from "../services/seasonService.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+// Team logos are written into the frontend's public/teams folder so they are
+// served at /teams/<file> (same place the seeded logos live).
+const __dir = dirname(fileURLToPath(import.meta.url));
+const TEAMS_DIR = join(__dir, "../../../frontend/public/teams");
+const LOGO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg" };
 
 // All routes below require admin auth.
 router.use(requireAdmin);
@@ -73,15 +83,23 @@ router.post("/results/remote/import", async (req, res, next) => {
 // Creates or updates the race, then stores results + recomputes constructor scores.
 router.post("/races/commit", async (req, res, next) => {
   try {
-    const { number, track, date, results } = req.body || {};
+    const { number, track, date, results, seasonId } = req.body || {};
     if (!number || !Array.isArray(results)) {
       return res.status(400).json({ error: "number and results[] required" });
     }
 
-    let race = await prisma.race.findUnique({ where: { number: Number(number) } });
+    const targetSeasonId = seasonId || (await resolveSeasonId(prisma, undefined));
+    let race = await prisma.race.findFirst({
+      where: { number: Number(number), seasonId: targetSeasonId },
+    });
     if (!race) {
       race = await prisma.race.create({
-        data: { number: Number(number), track: track || "Unknown", date: date ? new Date(date) : null },
+        data: {
+          number: Number(number),
+          track: track || "Unknown",
+          date: date ? new Date(date) : null,
+          seasonId: targetSeasonId,
+        },
       });
     } else {
       race = await prisma.race.update({
@@ -119,9 +137,15 @@ router.put("/races/:id/results", async (req, res, next) => {
 // ---------------------------------------------------------------------------
 router.post("/drivers", async (req, res, next) => {
   try {
-    const { id, name, discordName, teamId, tier, isActive } = req.body || {};
+    const { id, name, discordName, teamId, tier, isActive, seasonId } = req.body || {};
     if (!id || !name || !teamId || tier === undefined) {
       return res.status(400).json({ error: "id, name, teamId, tier required" });
+    }
+    // Default to the season the chosen team belongs to (or the active season).
+    let resolvedSeasonId = seasonId;
+    if (!resolvedSeasonId) {
+      const team = await prisma.team.findUnique({ where: { id: teamId } });
+      resolvedSeasonId = team?.seasonId || (await resolveSeasonId(prisma, undefined));
     }
     const driver = await prisma.driver.create({
       data: {
@@ -131,6 +155,7 @@ router.post("/drivers", async (req, res, next) => {
         teamId,
         tier: Number(tier),
         isActive: isActive !== false,
+        seasonId: resolvedSeasonId,
       },
     });
     res.status(201).json(driver);
@@ -219,22 +244,28 @@ router.post("/discord/test", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/events  { number, track, date }  -> create an upcoming race
+// POST /api/admin/events  { number?, track, date?, seasonId?, isSpecialEvent? }
+// Creates an upcoming race (or a non-championship special event when
+// isSpecialEvent is set; those have no round number).
 router.post("/events", async (req, res, next) => {
   try {
-    const { number, track, date } = req.body || {};
-    if (!number || !track) return res.status(400).json({ error: "number and track required" });
+    const { number, track, date, seasonId, isSpecialEvent } = req.body || {};
+    if (!track) return res.status(400).json({ error: "track required" });
+    if (!isSpecialEvent && !number) return res.status(400).json({ error: "number required" });
+    const targetSeasonId = seasonId || (await resolveSeasonId(prisma, undefined));
     const race = await prisma.race.create({
       data: {
-        number: Number(number),
+        number: isSpecialEvent ? null : Number(number),
         track,
         date: date ? new Date(date) : null,
         isCompleted: false,
+        isSpecialEvent: !!isSpecialEvent,
+        seasonId: targetSeasonId,
       },
     });
     res.status(201).json(race);
   } catch (e) {
-    if (e.code === "P2002") return res.status(409).json({ error: "Round number already exists" });
+    if (e.code === "P2002") return res.status(409).json({ error: "Round number already exists in this season" });
     next(e);
   }
 });
@@ -246,6 +277,194 @@ router.post("/events/:id/announce", async (req, res, next) => {
     if (result.skipped) return res.status(400).json({ error: "No webhook configured" });
     if (!result.ok) return res.status(502).json({ error: result.reason || "Discord error" });
     res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/events/:id -> remove an upcoming race / special event.
+// Refuses to delete a race that already has stored results.
+router.delete("/events/:id", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({
+      where: { id: req.params.id },
+      include: { _count: { select: { results: true } } },
+    });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    if (race._count.results > 0) {
+      return res.status(409).json({ error: "Race has results; edit them instead of deleting." });
+    }
+    await prisma.race.delete({ where: { id: race.id } });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// SEASONS
+// ---------------------------------------------------------------------------
+// GET /api/admin/seasons -> all seasons with content counts.
+router.get("/seasons", async (req, res, next) => {
+  try {
+    const seasons = await prisma.season.findMany({
+      orderBy: { number: "desc" },
+      include: { _count: { select: { teams: true, drivers: true, races: true } } },
+    });
+    res.json(seasons);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/seasons  { number, name, game? }
+router.post("/seasons", async (req, res, next) => {
+  try {
+    const { number, name, game } = req.body || {};
+    if (number === undefined || !name) return res.status(400).json({ error: "number and name required" });
+    const season = await prisma.season.create({
+      data: { number: Number(number), name, game: game || null },
+    });
+    res.status(201).json(season);
+  } catch (e) {
+    if (e.code === "P2002") return res.status(409).json({ error: "A season with that number already exists" });
+    next(e);
+  }
+});
+
+// PUT /api/admin/seasons/:id  { number?, name?, game? }
+router.put("/seasons/:id", async (req, res, next) => {
+  try {
+    const { number, name, game } = req.body || {};
+    const data = {};
+    if (number !== undefined) data.number = Number(number);
+    if (name !== undefined) data.name = name;
+    if (game !== undefined) data.game = game || null;
+    const season = await prisma.season.update({ where: { id: req.params.id }, data });
+    res.json(season);
+  } catch (e) {
+    if (e.code === "P2002") return res.status(409).json({ error: "A season with that number already exists" });
+    if (e.code === "P2025") return res.status(404).json({ error: "Season not found" });
+    next(e);
+  }
+});
+
+// POST /api/admin/seasons/:id/activate -> make this the active (public default) season.
+router.post("/seasons/:id/activate", async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    await prisma.$transaction([
+      prisma.season.updateMany({ data: { isActive: false } }),
+      prisma.season.update({ where: { id: season.id }, data: { isActive: true } }),
+    ]);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/seasons/:id/clone-teams  { fromSeasonId }
+// Copies the teams of another season into this one as a starting point. New team
+// ids are suffixed with the target season number to keep them globally unique.
+router.post("/seasons/:id/clone-teams", async (req, res, next) => {
+  try {
+    const { fromSeasonId } = req.body || {};
+    const target = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!target) return res.status(404).json({ error: "Target season not found" });
+    if (!fromSeasonId) return res.status(400).json({ error: "fromSeasonId required" });
+    const sourceTeams = await prisma.team.findMany({ where: { seasonId: fromSeasonId } });
+    if (sourceTeams.length === 0) return res.status(400).json({ error: "Source season has no teams" });
+
+    let created = 0;
+    for (const t of sourceTeams) {
+      const newId = `${t.id}_s${target.number}`;
+      const exists = await prisma.team.findUnique({ where: { id: newId } });
+      if (exists) continue;
+      await prisma.team.create({
+        data: { id: newId, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl, seasonId: target.id },
+      });
+      created++;
+    }
+    res.json({ ok: true, created });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// TEAMS
+// ---------------------------------------------------------------------------
+// POST /api/admin/teams  { id, name, tier, color, seasonId? }
+router.post("/teams", async (req, res, next) => {
+  try {
+    const { id, name, tier, color, seasonId } = req.body || {};
+    if (!id || !name || tier === undefined || !color) {
+      return res.status(400).json({ error: "id, name, tier, color required" });
+    }
+    const targetSeasonId = seasonId || (await resolveSeasonId(prisma, undefined));
+    const team = await prisma.team.create({
+      data: { id, name, tier: Number(tier), color, seasonId: targetSeasonId },
+    });
+    res.status(201).json(team);
+  } catch (e) {
+    if (e.code === "P2002") return res.status(409).json({ error: "Team id already exists" });
+    next(e);
+  }
+});
+
+// PUT /api/admin/teams/:id  { name?, tier?, color?, logoUrl? }
+router.put("/teams/:id", async (req, res, next) => {
+  try {
+    const { name, tier, color, logoUrl } = req.body || {};
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (tier !== undefined) data.tier = Number(tier);
+    if (color !== undefined) data.color = color;
+    if (logoUrl !== undefined) data.logoUrl = logoUrl || null;
+    const team = await prisma.team.update({ where: { id: req.params.id }, data });
+    res.json(team);
+  } catch (e) {
+    if (e.code === "P2025") return res.status(404).json({ error: "Team not found" });
+    next(e);
+  }
+});
+
+// POST /api/admin/teams/:id/logo  (multipart: file=<image>)
+// Saves the image into the public teams folder and stores its path on the team.
+router.post("/teams/:id/logo", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = LOGO_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
+    const team = await prisma.team.findUnique({ where: { id: req.params.id } });
+    if (!team) return res.status(404).json({ error: "Team not found" });
+
+    mkdirSync(TEAMS_DIR, { recursive: true });
+    const filename = `${team.id}${ext}`;
+    writeFileSync(join(TEAMS_DIR, filename), req.file.buffer);
+    // Cache-bust the URL so an updated logo shows immediately.
+    const logoUrl = `/teams/${filename}?v=${Date.now()}`;
+    await prisma.team.update({ where: { id: team.id }, data: { logoUrl } });
+    res.json({ ok: true, logoUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/teams/:id -> remove a team (only if it has no drivers/results).
+router.delete("/teams/:id", async (req, res, next) => {
+  try {
+    const team = await prisma.team.findUnique({
+      where: { id: req.params.id },
+      include: { _count: { select: { drivers: true, results: true, constructorScores: true } } },
+    });
+    if (!team) return res.status(404).json({ error: "Team not found" });
+    if (team._count.drivers > 0 || team._count.results > 0 || team._count.constructorScores > 0) {
+      return res.status(409).json({ error: "Team still has drivers or results; reassign them first." });
+    }
+    await prisma.team.delete({ where: { id: team.id } });
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }

@@ -7,6 +7,7 @@ import driversRoutes from "./routes/drivers.js";
 import racesRoutes from "./routes/races.js";
 import eventsRoutes from "./routes/events.js";
 import teamsRoutes from "./routes/teams.js";
+import seasonsRoutes from "./routes/seasons.js";
 import authRoutes from "./routes/auth.js";
 import discordAuthRoutes from "./routes/discordAuth.js";
 import adminRoutes from "./routes/admin.js";
@@ -34,6 +35,7 @@ app.use("/api/drivers", driversRoutes);
 app.use("/api/races", racesRoutes);
 app.use("/api/events", eventsRoutes);
 app.use("/api/teams", teamsRoutes);
+app.use("/api/seasons", seasonsRoutes);
 app.use("/api/auth/discord", discordAuthRoutes);
 
 // Admin

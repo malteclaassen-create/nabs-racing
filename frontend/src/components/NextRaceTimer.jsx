@@ -12,7 +12,7 @@ function pad2(n) {
 // Compact, broadcast-style next-race countdown chip.
 export default function NextRaceTimer({ className = "" }) {
   const races = useApi(useCallback(() => api.races(), []));
-  const nextRace = (races.data || []).find((r) => !r.isCompleted);
+  const nextRace = (races.data || []).find((r) => !r.isCompleted && !r.isSpecialEvent && r.number != null);
 
   const nextDate = nextRace?.date ? new Date(nextRace.date) : null;
   // Races start at 18:00 GMT on the race date.

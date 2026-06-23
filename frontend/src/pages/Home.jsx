@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useSeason } from "../context/SeasonContext.jsx";
 import { Skeleton, TableSkeleton } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
@@ -24,15 +25,18 @@ function pad2(n) {
 }
 
 export default function Home() {
+  const { current: season } = useSeason();
   const drivers = useApi(useCallback(() => api.driverStandings(), []));
   const t1 = useApi(useCallback(() => api.t1Standings(), []));
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const [latest, setLatest] = useState(null);
 
-  const completedRaces = (races.data || []).filter((r) => r.isCompleted);
+  // Championship rounds only (special events have no round number / aren't scored).
+  const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
+  const completedRaces = champRaces.filter((r) => r.isCompleted);
   const lastRace = completedRaces[completedRaces.length - 1];
-  const nextRace = (races.data || []).find((r) => !r.isCompleted);
+  const nextRace = champRaces.find((r) => !r.isCompleted);
 
   useEffect(() => {
     if (lastRace?.id) api.raceResults(lastRace.id).then(setLatest).catch(() => {});
@@ -62,6 +66,8 @@ export default function Home() {
   const lastCircuit = circuitFor(lastRace?.track);
   const nextCircuit = circuitFor(nextRace?.track);
   const completedNumbers = completedRaces.map((r) => r.number).sort((a, b) => a - b);
+  // Championship rounds in this season (excludes non-scoring special events).
+  const totalRounds = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null).length;
 
   return (
     <div className="space-y-16">
@@ -69,13 +75,17 @@ export default function Home() {
       <div className="-mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">
           <span className="flex items-center gap-2 text-dark">
-            Season 7 · Live
+            {season ? `${season.name} · Live` : "Live"}
           </span>
-          <span className="hidden h-3 w-px bg-border sm:inline-block" />
-          <span className="hidden sm:inline">F1 2007 · Assetto Corsa</span>
+          {season?.game && (
+            <>
+              <span className="hidden h-3 w-px bg-border sm:inline-block" />
+              <span className="hidden sm:inline">{season.game}</span>
+            </>
+          )}
           <span className="hidden h-3 w-px bg-border sm:inline-block" />
           <span className="text-medium">
-            Round {pad2(roundNo)} <span className="text-faint">/ 12</span>
+            Round {pad2(roundNo)} <span className="text-faint">/ {totalRounds || "—"}</span>
           </span>
         </div>
         <NextRaceTimer className="w-fit" />
@@ -160,6 +170,7 @@ export default function Home() {
                         id={p.subForTeam.id}
                         name={`${p.subForTeam.name} (sub)`}
                         color={p.subForTeam.color}
+                        logoUrl={p.subForTeam.logoUrl}
                         size={16}
                         showName
                         className="mt-0.5"
@@ -170,6 +181,7 @@ export default function Home() {
                         id={p.team.id}
                         name={p.team.name}
                         color={p.team.color}
+                        logoUrl={p.team.logoUrl}
                         size={16}
                         showName
                         className="mt-0.5"
@@ -221,6 +233,7 @@ export default function Home() {
                   id={leader.team.id}
                   name={leader.team.name}
                   color={leader.team.color}
+                  logoUrl={leader.team.logoUrl}
                   size={18}
                   showName
                   className="mt-2"
@@ -253,6 +266,7 @@ export default function Home() {
                   id={winner.team.id}
                   name={winner.team.name}
                   color={winner.team.color}
+                  logoUrl={winner.team.logoUrl}
                   size={18}
                   showName
                   className="mt-2"
@@ -447,6 +461,7 @@ function DriversTable({ rows, leaderTotal }) {
                     id={d.team.id}
                     name={d.team.name}
                     color={d.team.color}
+                    logoUrl={d.team.logoUrl}
                     size={20}
                     showName
                     nameClassName="truncate text-[15px] text-medium"
@@ -490,7 +505,7 @@ function ConstructorTable({ rows }) {
                 </td>
                 <td className="py-4 pl-1">
                   <div className="flex items-center gap-3">
-                    <TeamLogo id={t.teamId} name={t.name} color={t.color} size={32} />
+                    <TeamLogo id={t.teamId} name={t.name} color={t.color} logoUrl={t.logoUrl} size={32} />
                     <div className="min-w-0">
                       <span className="block truncate font-display text-lg font-bold uppercase tracking-tight text-dark">
                         {t.name}

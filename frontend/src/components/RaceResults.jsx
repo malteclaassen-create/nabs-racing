@@ -200,6 +200,7 @@ export default function RaceResults({ race, results }) {
                           id={t.id}
                           name={t.name}
                           color={t.color}
+                          logoUrl={t.logoUrl}
                           size={20}
                           showName
                           nameClassName="truncate text-sm text-medium"

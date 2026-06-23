@@ -54,6 +54,7 @@ export async function getDriverStandings(prisma, seasonId) {
         name: driver.team.name,
         color: driver.team.color,
         tier: driver.team.tier,
+        logoUrl: driver.team.logoUrl,
       },
       perRace,
       total,
@@ -91,6 +92,7 @@ async function getConstructorStandings(prisma, tier, seasonId) {
       name: team.name,
       color: team.color,
       tier: team.tier,
+      logoUrl: team.logoUrl,
       perRace,
       total,
     };

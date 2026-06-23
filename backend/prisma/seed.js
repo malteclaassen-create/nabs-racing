@@ -60,6 +60,13 @@ const TEAMS = [
   { id: "reserve", name: "Reserve", tier: 0, color: "#888888" },
 ];
 
+// Teams with a logo image in frontend/public/teams/<id>.png (lotus & reserve have none).
+const TEAMS_WITH_LOGO = new Set([
+  "porsche", "mclaren", "ferrari", "williams", "honda", "renault", "super_aguri",
+  "spyker", "torro_rosso", "redbull", "toyota", "bmw", "jaguar", "fiat",
+  "lamborghini", "ncb_mugen",
+]);
+
 // --- DRIVERS (Tier 1) ------------------------------------------------------
 const T1_DRIVERS = [
   { id: "13bot", name: "13bot", discord: "13bot (Not a Bot)", teamId: "porsche", tier: 1 },
@@ -303,6 +310,13 @@ const UPCOMING_RACES = [10, 11, 12].map((n) => ({
   date: SCHEDULE[n].date,
 }));
 
+// Non-championship special events (shown on the calendar, not scored).
+const SPECIAL_EVENTS = [
+  { track: "Watkins Glen 2.5", date: "2026-04-25T18:00:00Z" },
+  { track: "NASCAR Oval", date: "2026-06-06T18:00:00Z" },
+  { track: "Le Mans 2.5", date: "2026-06-26T18:00:00Z" },
+];
+
 const STATUS_STRINGS = new Set(["DNS", "DNF", "DSQ"]);
 
 async function main() {
@@ -321,7 +335,11 @@ async function main() {
   const seasonId = SEASON.id;
 
   // Teams
-  for (const t of TEAMS) await prisma.team.create({ data: { ...t, seasonId } });
+  for (const t of TEAMS) {
+    await prisma.team.create({
+      data: { ...t, seasonId, logoUrl: TEAMS_WITH_LOGO.has(t.id) ? `/teams/${t.id}.png` : null },
+    });
+  }
 
   // Drivers
   const allDrivers = [...T1_DRIVERS, ...T2_DRIVERS, ...RESERVE_DRIVERS];
@@ -354,6 +372,20 @@ async function main() {
         track: up.track,
         date: up.date ? new Date(up.date) : null,
         isCompleted: false,
+        seasonId,
+      },
+    });
+  }
+
+  // Special events (no round number, not scored)
+  for (const se of SPECIAL_EVENTS) {
+    await prisma.race.create({
+      data: {
+        number: null,
+        track: se.track,
+        date: se.date ? new Date(se.date) : null,
+        isCompleted: false,
+        isSpecialEvent: true,
         seasonId,
       },
     });

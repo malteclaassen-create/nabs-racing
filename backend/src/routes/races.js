@@ -21,6 +21,7 @@ router.get("/", async (req, res, next) => {
         track: r.track,
         date: r.date,
         isCompleted: r.isCompleted,
+        isSpecialEvent: r.isSpecialEvent,
         resultCount: r._count.results,
       }))
     );
@@ -90,13 +91,14 @@ router.get("/:id/results", async (req, res, next) => {
             name: r.driver.team.name,
             color: r.driver.team.color,
             tier: r.driver.team.tier,
+            logoUrl: r.driver.team.logoUrl,
           },
           isSub: !!r.subForTeamId,
           subForTeam: r.subForTeam
-            ? { id: r.subForTeam.id, name: r.subForTeam.name, color: r.subForTeam.color }
+            ? { id: r.subForTeam.id, name: r.subForTeam.name, color: r.subForTeam.color, logoUrl: r.subForTeam.logoUrl }
             : null,
           effectiveTeam: effectiveTeam
-            ? { id: effectiveTeam.id, name: effectiveTeam.name, color: effectiveTeam.color, tier: effectiveTeam.tier }
+            ? { id: effectiveTeam.id, name: effectiveTeam.name, color: effectiveTeam.color, tier: effectiveTeam.tier, logoUrl: effectiveTeam.logoUrl }
             : null,
           t2: t2ReRank[r.driverId] || null,
         };

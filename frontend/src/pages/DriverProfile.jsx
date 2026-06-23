@@ -184,13 +184,13 @@ function HeadToHead({ me, meRow, standings }) {
           <div className="flex min-w-0 flex-1 flex-col items-center gap-2 text-center">
             <DriverAvatar name={me.driver.name} photoUrl={me.driver.photoUrl} color={meColor} size={60} />
             <div className="truncate font-display text-base font-extrabold uppercase tracking-tight text-dark">{me.driver.name}</div>
-            <TeamLogo id={me.driver.team.id} name={me.driver.team.name} color={me.driver.team.color} size={16} showName className="justify-center" nameClassName="truncate text-[11px] text-light" />
+            <TeamLogo id={me.driver.team.id} name={me.driver.team.name} color={me.driver.team.color} logoUrl={me.driver.team.logoUrl} size={16} showName className="justify-center" nameClassName="truncate text-[11px] text-light" />
           </div>
           <span className="shrink-0 font-display text-xl font-black text-faint">VS</span>
           <Link to={`/drivers/${opp.driverId}`} className="group flex min-w-0 flex-1 flex-col items-center gap-2 text-center">
             <DriverAvatar name={opp.name} photoUrl={opp.photoUrl} color={oppColor} size={60} />
             <div className="truncate font-display text-base font-extrabold uppercase tracking-tight text-dark group-hover:text-primary">{opp.name}</div>
-            <TeamLogo id={opp.team.id} name={opp.team.name} color={opp.team.color} size={16} showName className="justify-center" nameClassName="truncate text-[11px] text-light" />
+            <TeamLogo id={opp.team.id} name={opp.team.name} color={opp.team.color} logoUrl={opp.team.logoUrl} size={16} showName className="justify-center" nameClassName="truncate text-[11px] text-light" />
           </Link>
         </div>
 
@@ -230,7 +230,7 @@ function TeamPanel({ driver, standings }) {
       <div className="relative overflow-hidden p-5">
         <div className="absolute inset-0 opacity-[0.1]" style={{ background: `radial-gradient(circle at 85% 0%, ${c}, transparent 60%)` }} />
         <div className="relative flex items-center gap-3">
-          <TeamLogo id={driver.team.id} name={driver.team.name} color={c} size={48} />
+          <TeamLogo id={driver.team.id} name={driver.team.name} color={c} logoUrl={driver.team.logoUrl} size={48} />
           <div>
             <div className="font-display text-2xl font-black uppercase tracking-tight text-dark">{driver.team.name}</div>
             <div className="mt-0.5 flex items-center gap-2">
@@ -302,7 +302,7 @@ export default function DriverProfile() {
               <TierBadge tier={driver.tier} />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-white/70">
-              <TeamLogo id={driver.team.id} name={driver.team.name} color={color} size={22} />
+              <TeamLogo id={driver.team.id} name={driver.team.name} color={color} logoUrl={driver.team.logoUrl} size={22} />
               <span className="font-display text-base font-bold uppercase tracking-tight text-white/90">{driver.team.name}</span>
               <span className="text-white/30">·</span>
               <span className="text-sm">{driver.discordName}</span>

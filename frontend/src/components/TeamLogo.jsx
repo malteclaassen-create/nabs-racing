@@ -33,26 +33,32 @@ function monogram(id, name) {
 
 /**
  * Team mark. Renders the team logo image, falling back to a colour-tinted
- * monogram badge when no logo file exists (or the image fails to load).
+ * monogram badge when no logo exists (or the image fails to load).
  *
- * Props: id, name, color, size (px), showName, nameClassName, className.
+ * Prefers the `logoUrl` from the API (admin-managed, works for any season's
+ * teams); falls back to the bundled /teams/<id>.png for older data that
+ * predates stored logo paths.
+ *
+ * Props: id, name, color, size (px), logoUrl, showName, nameClassName, className.
  */
 export default function TeamLogo({
   id,
   name,
   color = "#888",
   size = 22,
+  logoUrl,
   showName = false,
   className = "",
   nameClassName = "",
 }) {
   const [errored, setErrored] = useState(false);
   const teamId = id || NAME_TO_ID[name];
-  const useImg = teamId && HAS_LOGO.has(teamId) && !errored;
+  const src = logoUrl || (teamId && HAS_LOGO.has(teamId) ? `/teams/${teamId}.png` : null);
+  const useImg = src && !errored;
 
   const mark = useImg ? (
     <img
-      src={`/teams/${teamId}.png`}
+      src={src}
       alt={name || teamId}
       title={name}
       onError={() => setErrored(true)}

@@ -33,6 +33,7 @@ function LeaderCard({ row, leaderTotal, rank }) {
               id={row.team.id}
               name={row.team.name}
               color={row.team.color}
+              logoUrl={row.team.logoUrl}
               size={18}
               showName
               nameClassName="truncate text-sm text-light"
@@ -78,6 +79,7 @@ function DriverRow({ d, leaderTotal }) {
           id={d.team.id}
           name={d.team.name}
           color={d.team.color}
+          logoUrl={d.team.logoUrl}
           size={16}
           showName
           nameClassName="truncate text-xs text-light sm:text-sm"
