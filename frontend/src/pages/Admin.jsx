@@ -701,56 +701,83 @@ function Teams() {
   return (
     <div>
       <SeasonScope />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <form onSubmit={create} className="card space-y-4 p-5">
+      {error && <div className="mb-4"><Notice kind="error">{error}</Notice></div>}
+      {msg && <div className="mb-4"><Notice kind="success">{msg}</Notice></div>}
+      <div className="grid items-start gap-6 lg:grid-cols-3">
+        {/* Add team */}
+        <form onSubmit={create} className="card space-y-4 p-5 lg:col-span-1">
           <CardHead eyebrow="Teams" title="Add team" />
-          <div className="grid grid-cols-2 gap-3">
-            <input className="input" placeholder="id (slug, e.g. ferrari_s8)" value={form.id}
-              onChange={(e) => setForm({ ...form, id: e.target.value })} required />
-            <input className="input" placeholder="Name" value={form.name}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wide text-light">Name</label>
+            <input className="input" placeholder="e.g. Mercedes" value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })} required />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wide text-light">ID (slug)</label>
+            <input className="input" placeholder="e.g. mercedes_s8" value={form.id}
+              onChange={(e) => setForm({ ...form, id: e.target.value })} required />
+            <p className="text-xs text-light">Unique across all seasons — a suffix like <code>_s8</code> helps.</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wide text-light">Tier</label>
             <select className="input" value={form.tier} onChange={(e) => setForm({ ...form, tier: e.target.value })}>
               <option value={1}>Tier 1</option>
               <option value={2}>Tier 2</option>
               <option value={0}>Reserve</option>
             </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wide text-light">Colour</label>
             <div className="flex items-center gap-2">
-              <input className="h-10 w-12 rounded border border-border" type="color" value={form.color}
+              <input className="h-10 w-12 shrink-0 cursor-pointer rounded border border-border bg-transparent" type="color"
+                value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} />
+              <input className="input font-mono" value={form.color}
                 onChange={(e) => setForm({ ...form, color: e.target.value })} />
-              <input className="input" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} />
             </div>
           </div>
-          <p className="text-xs text-light">Tip: keep the id unique across all seasons (a season suffix like <code>_s8</code> helps).</p>
-          {error && <Notice kind="error">{error}</Notice>}
-          {msg && <Notice kind="success">{msg}</Notice>}
           <button className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Create team"}</button>
+          <p className="text-xs text-light">Upload each team's logo from the list after creating it.</p>
         </form>
 
-        <div className="card max-h-[640px] overflow-y-auto p-5">
+        {/* Roster */}
+        <div className="card p-5 lg:col-span-2">
           <CardHead eyebrow="Roster" title={`Teams (${(teams || []).length})`} />
-          <ul className="divide-y divide-border">
+          <ul className="mt-1 divide-y divide-border">
             {(teams || []).map((t) => (
-              <li key={t.id} className="flex items-center gap-3 py-3">
-                <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={34} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold text-dark">{t.name}</div>
-                  <div className="text-xs text-light">{TIER_LABEL[t.tier]} · {t.drivers?.length || 0} drivers</div>
+              <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 py-3">
+                {/* identity */}
+                <div className="flex min-w-[12rem] flex-1 items-center gap-3">
+                  <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={38} />
+                  <div className="min-w-0">
+                    <div className="truncate font-display text-base font-bold tracking-tight text-dark">{t.name}</div>
+                    <div className="flex items-center gap-1.5 text-xs text-light">
+                      <span className="font-mono">{t.id}</span>
+                      <span>·</span>
+                      <span>{t.drivers?.length || 0} drivers</span>
+                    </div>
+                  </div>
                 </div>
-                <label className="cursor-pointer text-xs font-semibold text-primary hover:underline">
-                  Logo
-                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
-                    onChange={(e) => uploadLogo(t, e.target.files?.[0])} />
-                </label>
-                <select className="input py-1 text-xs" value={t.tier}
-                  onChange={(e) => saveTeam(t, { tier: Number(e.target.value) })}>
-                  <option value={1}>T1</option>
-                  <option value={2}>T2</option>
-                  <option value={0}>Res</option>
-                </select>
-                <button className="text-xs font-semibold text-rose-500 hover:underline" disabled={busy}
-                  onClick={() => remove(t)}>Delete</button>
+
+                {/* controls */}
+                <div className="flex items-center gap-2">
+                  <select className="input w-28 py-1.5 text-sm" value={t.tier} disabled={busy}
+                    onChange={(e) => saveTeam(t, { tier: Number(e.target.value) })}>
+                    <option value={1}>Tier 1</option>
+                    <option value={2}>Tier 2</option>
+                    <option value={0}>Reserve</option>
+                  </select>
+                  <label className="btn-secondary cursor-pointer whitespace-nowrap px-3 py-1.5 text-xs">
+                    {t.logoUrl ? "Change logo" : "Upload logo"}
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
+                      onChange={(e) => uploadLogo(t, e.target.files?.[0])} />
+                  </label>
+                  <button title="Delete team" disabled={busy} onClick={() => remove(t)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-light transition hover:bg-rose-500/10 hover:text-rose-500">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+                    </svg>
+                  </button>
+                </div>
               </li>
             ))}
             {(teams || []).length === 0 && <li className="py-3 text-sm text-light">No teams in this season yet.</li>}
