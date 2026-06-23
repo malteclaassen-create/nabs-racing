@@ -17,7 +17,7 @@ import Admin from "./pages/Admin.jsx";
 function AppRoutes() {
   const { season } = useSeason();
   return (
-    <main key={season ?? "loading"} className="container-page flex-1 py-10">
+    <main key={season ?? "loading"} className="container-page w-full flex-1 py-10">
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/drivers" element={<DriverStandings />} />
