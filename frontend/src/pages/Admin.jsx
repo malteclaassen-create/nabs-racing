@@ -66,13 +66,15 @@ export default function Admin() {
         ))}
       </div>
 
-      {tab === "seasons" && <Seasons />}
-      {tab === "teams" && <Teams />}
-      {tab === "import" && <AdminImport />}
-      {tab === "edit" && <EditResults />}
-      {tab === "discord" && <DiscordEvents />}
-      {tab === "drivers" && <Drivers />}
-      {tab === "pin" && <ChangePin />}
+      <div className="min-h-[70vh]">
+        {tab === "seasons" && <Seasons />}
+        {tab === "teams" && <Teams />}
+        {tab === "import" && <AdminImport />}
+        {tab === "edit" && <EditResults />}
+        {tab === "discord" && <DiscordEvents />}
+        {tab === "drivers" && <Drivers />}
+        {tab === "pin" && <ChangePin />}
+      </div>
     </div>
   );
 }

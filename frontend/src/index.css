@@ -33,6 +33,12 @@
   --c-page-glow: radial-gradient(1200px 560px at 50% -10%, rgba(244, 175, 198, 0.1), transparent 70%);
 }
 
+/* Always reserve space for the vertical scrollbar so the centered layout never
+   shifts sideways when switching between short and tall pages (e.g. admin tabs). */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   background: var(--c-bg);
