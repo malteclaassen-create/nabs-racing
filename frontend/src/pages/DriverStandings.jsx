@@ -4,6 +4,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
+import TeamLogo from "../components/TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
 
 function LeaderCard({ row, leaderTotal, rank }) {
@@ -28,7 +29,14 @@ function LeaderCard({ row, leaderTotal, rank }) {
               <Flag code={countryFor(row.driverId)} />
               <TierBadge tier={row.tier} />
             </div>
-            <div className="text-sm text-light">{row.team.name}</div>
+            <TeamLogo
+              id={row.team.id}
+              name={row.team.name}
+              color={row.team.color}
+              size={18}
+              showName
+              nameClassName="truncate text-sm text-light"
+            />
           </div>
         </div>
         <div className="text-right">
@@ -66,7 +74,14 @@ function DriverRow({ d, leaderTotal }) {
           <TierBadge tier={d.tier} />
           {!d.isActive && <span className="pill bg-surface2 text-light">inactive</span>}
         </div>
-        <div className="truncate text-xs text-light sm:text-sm">{d.team.name}</div>
+        <TeamLogo
+          id={d.team.id}
+          name={d.team.name}
+          color={d.team.color}
+          size={16}
+          showName
+          nameClassName="truncate text-xs text-light sm:text-sm"
+        />
       </div>
 
       {/* points bar */}

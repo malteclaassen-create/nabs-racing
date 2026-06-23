@@ -6,6 +6,7 @@ import {
   ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL,
 } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
+import TeamLogo from "../components/TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
 
 // Circuit -> flag (the nine Season-7 rounds, by the track name stored in the DB).
@@ -68,19 +69,26 @@ function Stat({ icon, label, value, sub, accent }) {
 function FormChart({ perRace, color }) {
   const W = 640, H = 150, padX = 22, padT = 16, padB = 16;
   const N = perRace.length;
-  const finishes = perRace.filter((r) => r.status === "FINISHED" && r.position != null);
-  const maxPos = Math.max(3, ...finishes.map((r) => r.position));
+  // Indexed finishes — these are the points the line actually passes through.
+  const finishes = [];
+  perRace.forEach((r, i) => {
+    if (r.status === "FINISHED" && r.position != null) finishes.push({ i, p: r.position });
+  });
+  const maxPos = Math.max(3, ...finishes.map((s) => s.p));
   const xFor = (i) => padX + (N > 1 ? (i / (N - 1)) * (W - 2 * padX) : 0);
   const yFor = (p) => padT + ((p - 1) / (maxPos - 1)) * (H - padT - padB);
+  const baseY = H - padB; // bottom = "did not finish" level
 
-  // split into connected segments (gaps at DNF/DNS rounds)
-  const segments = [];
-  let cur = [];
-  perRace.forEach((r, i) => {
-    if (r.status === "FINISHED" && r.position != null) cur.push({ i, p: r.position });
-    else { if (cur.length) segments.push(cur); cur = []; }
-  });
-  if (cur.length) segments.push(cur);
+  // One continuous line through every round: finishes sit at their position,
+  // missed/retired rounds dip down to the bottom so the line never breaks.
+  const linePts = perRace.map((r, i) => ({
+    x: xFor(i),
+    y: r.status === "FINISHED" && r.position != null ? yFor(r.position) : baseY,
+  }));
+  const d = linePts.map((pt, k) => `${k ? "L" : "M"}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(" ");
+  const area = linePts.length > 1
+    ? `${d} L${linePts[linePts.length - 1].x.toFixed(1)},${baseY} L${linePts[0].x.toFixed(1)},${baseY} Z`
+    : null;
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" xmlns="http://www.w3.org/2000/svg">
@@ -92,27 +100,29 @@ function FormChart({ perRace, color }) {
       </defs>
       {/* P1 guide line */}
       <line x1={padX} x2={W - padX} y1={yFor(1)} y2={yFor(1)} stroke="var(--c-border)" strokeWidth="1" strokeDasharray="3 4" />
-      {segments.map((seg, si) => {
-        const d = seg.map((pt, k) => `${k ? "L" : "M"}${xFor(pt.i).toFixed(1)},${yFor(pt.p).toFixed(1)}`).join(" ");
-        const area = seg.length > 1
-          ? `${d} L${xFor(seg[seg.length - 1].i).toFixed(1)},${H - padB} L${xFor(seg[0].i).toFixed(1)},${H - padB} Z`
-          : null;
-        return (
-          <g key={si}>
-            {area && <path d={area} fill="url(#formFill)" />}
-            <path d={d} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-          </g>
-        );
-      })}
+      {area && <path d={area} fill="url(#formFill)" />}
+      {finishes.length > 0 && (
+        <path d={d} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      )}
       {perRace.map((r, i) => {
-        const dnf = r.status !== "FINISHED" || r.position == null;
-        const medal = !dnf && r.position <= 3 ? MEDAL[r.position - 1] : null;
-        const cy = dnf ? H - padB : yFor(r.position);
+        const finished = r.status === "FINISHED" && r.position != null;
+        if (finished) {
+          const medal = r.position <= 3 ? MEDAL[r.position - 1] : null;
+          return (
+            <circle key={i} cx={xFor(i)} cy={yFor(r.position)} r={medal ? 5 : 4}
+              fill={medal || color} stroke="var(--c-card)" strokeWidth="1.5">
+              <title>{`R${r.number} ${r.track} — P${r.position}`}</title>
+            </circle>
+          );
+        }
+        // Missed / retired round: marker drops to the bottom; the line dips with it.
+        const dns = r.status === "DNS"; // sat the race out
         return (
-          <circle key={i} cx={xFor(i)} cy={cy} r={medal ? 5 : 4}
-            fill={dnf ? "var(--c-surface2)" : medal || color}
-            stroke={dnf ? "var(--c-text3)" : "var(--c-card)"} strokeWidth="1.5">
-            <title>{`R${r.number} ${r.track} — ${dnf ? r.status : "P" + r.position}`}</title>
+          <circle key={i} cx={xFor(i)} cy={baseY} r="4"
+            fill={dns ? "var(--c-card)" : "var(--c-text3)"}
+            stroke="var(--c-text3)" strokeWidth="1.5"
+            strokeDasharray={dns ? "2 2" : undefined}>
+            <title>{`R${r.number} ${r.track} — ${dns ? "Did not race" : r.status}`}</title>
           </circle>
         );
       })}
@@ -174,13 +184,13 @@ function HeadToHead({ me, meRow, standings }) {
           <div className="flex min-w-0 flex-1 flex-col items-center gap-2 text-center">
             <DriverAvatar name={me.driver.name} photoUrl={me.driver.photoUrl} color={meColor} size={60} />
             <div className="truncate font-display text-base font-extrabold uppercase tracking-tight text-dark">{me.driver.name}</div>
-            <div className="truncate text-[11px] text-light">{me.driver.team.name}</div>
+            <TeamLogo id={me.driver.team.id} name={me.driver.team.name} color={me.driver.team.color} size={16} showName className="justify-center" nameClassName="truncate text-[11px] text-light" />
           </div>
           <span className="shrink-0 font-display text-xl font-black text-faint">VS</span>
           <Link to={`/drivers/${opp.driverId}`} className="group flex min-w-0 flex-1 flex-col items-center gap-2 text-center">
             <DriverAvatar name={opp.name} photoUrl={opp.photoUrl} color={oppColor} size={60} />
             <div className="truncate font-display text-base font-extrabold uppercase tracking-tight text-dark group-hover:text-primary">{opp.name}</div>
-            <div className="truncate text-[11px] text-light">{opp.team.name}</div>
+            <TeamLogo id={opp.team.id} name={opp.team.name} color={opp.team.color} size={16} showName className="justify-center" nameClassName="truncate text-[11px] text-light" />
           </Link>
         </div>
 
@@ -220,7 +230,7 @@ function TeamPanel({ driver, standings }) {
       <div className="relative overflow-hidden p-5">
         <div className="absolute inset-0 opacity-[0.1]" style={{ background: `radial-gradient(circle at 85% 0%, ${c}, transparent 60%)` }} />
         <div className="relative flex items-center gap-3">
-          <span className="h-12 w-2 rounded-full" style={{ backgroundColor: c }} />
+          <TeamLogo id={driver.team.id} name={driver.team.name} color={c} size={48} />
           <div>
             <div className="font-display text-2xl font-black uppercase tracking-tight text-dark">{driver.team.name}</div>
             <div className="mt-0.5 flex items-center gap-2">
@@ -292,7 +302,7 @@ export default function DriverProfile() {
               <TierBadge tier={driver.tier} />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-white/70">
-              <span className="h-3.5 w-3.5 rounded-full ring-1 ring-white/20" style={{ backgroundColor: color }} />
+              <TeamLogo id={driver.team.id} name={driver.team.name} color={color} size={22} />
               <span className="font-display text-base font-bold uppercase tracking-tight text-white/90">{driver.team.name}</span>
               <span className="text-white/30">·</span>
               <span className="text-sm">{driver.discordName}</span>

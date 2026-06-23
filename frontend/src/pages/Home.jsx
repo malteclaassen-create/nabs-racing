@@ -6,6 +6,8 @@ import { Skeleton, TableSkeleton } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import PointsChart from "../components/PointsChart.jsx";
+import NextRaceTimer from "../components/NextRaceTimer.jsx";
+import TeamLogo from "../components/TeamLogo.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 
@@ -63,18 +65,20 @@ export default function Home() {
 
   return (
     <div className="space-y-16">
-      {/* ===================== SEASON TICKER ===================== */}
-      <div className="-mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">
-        <span className="flex items-center gap-2 text-dark">
-          <span className="live-dot inline-block h-2.5 w-2.5 rounded-full bg-brand" />
-          Season 7 · Live
-        </span>
-        <span className="hidden h-3 w-px bg-border sm:inline-block" />
-        <span className="hidden sm:inline">F1 2007 · Assetto Corsa</span>
-        <span className="hidden h-3 w-px bg-border sm:inline-block" />
-        <span className="text-medium">
-          Round {pad2(roundNo)} <span className="text-faint">/ 12</span>
-        </span>
+      {/* ===================== SEASON TICKER + COUNTDOWN ===================== */}
+      <div className="-mt-2 space-y-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">
+          <span className="flex items-center gap-2 text-dark">
+            Season 7 · Live
+          </span>
+          <span className="hidden h-3 w-px bg-border sm:inline-block" />
+          <span className="hidden sm:inline">F1 2007 · Assetto Corsa</span>
+          <span className="hidden h-3 w-px bg-border sm:inline-block" />
+          <span className="text-medium">
+            Round {pad2(roundNo)} <span className="text-faint">/ 12</span>
+          </span>
+        </div>
+        <NextRaceTimer className="w-fit" />
       </div>
 
       {/* ===================== LEAD FEATURE ===================== */}
@@ -151,9 +155,27 @@ export default function Home() {
                       <span className="truncate">{p.name}</span>
                       <Flag code={countryFor(p.driverId)} w={16} h={12} />
                     </span>
-                    <span className="block truncate text-[13px] leading-tight text-white/60">
-                      {p.isSub && p.subForTeam ? `${p.subForTeam.name} (sub)` : p.team.name}
-                    </span>
+                    {p.isSub && p.subForTeam ? (
+                      <TeamLogo
+                        id={p.subForTeam.id}
+                        name={`${p.subForTeam.name} (sub)`}
+                        color={p.subForTeam.color}
+                        size={16}
+                        showName
+                        className="mt-0.5"
+                        nameClassName="truncate text-[13px] leading-tight text-white/60"
+                      />
+                    ) : (
+                      <TeamLogo
+                        id={p.team.id}
+                        name={p.team.name}
+                        color={p.team.color}
+                        size={16}
+                        showName
+                        className="mt-0.5"
+                        nameClassName="truncate text-[13px] leading-tight text-white/60"
+                      />
+                    )}
                   </span>
                 </div>
               ))}
@@ -180,48 +202,93 @@ export default function Home() {
 
       {/* ===================== BROADCAST BAR ===================== */}
       <section
-        className="reveal card grid divide-y divide-border overflow-hidden md:grid-cols-3 md:divide-x md:divide-y-0"
+        className="reveal grid gap-4 sm:grid-cols-2 md:grid-cols-3"
         style={{ animationDelay: "0.08s" }}
       >
         {/* leader */}
-        <StatCell label="Championship Leader" accent={leader?.team?.color}>
+        <StatCard
+          label="Championship Leader"
+          accent={leader?.team?.color || "#EAB308"}
+          to={leader ? `/drivers/${leader.driverId}` : undefined}
+        >
           {leader && (
-            <div className="flex items-baseline justify-between gap-3">
+            <div className="flex items-end justify-between gap-3">
               <div className="min-w-0">
                 <div className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
                   {leader.name}
                 </div>
-                <div className="truncate text-[15px] text-light">{leader.team.name}</div>
+                <TeamLogo
+                  id={leader.team.id}
+                  name={leader.team.name}
+                  color={leader.team.color}
+                  size={18}
+                  showName
+                  className="mt-2"
+                  nameClassName="truncate text-sm text-light"
+                />
               </div>
-              <div className="text-right leading-none">
-                <span className="font-mono text-3xl font-bold tabular-nums text-dark">{leader.total}</span>
-                <span className="ml-1 text-sm font-semibold text-light">PTS</span>
+              <div className="shrink-0 text-right leading-none">
+                <div className="font-mono text-3xl font-black tabular-nums text-dark">{leader.total}</div>
+                <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-light">
+                  Points
+                </div>
               </div>
             </div>
           )}
-        </StatCell>
+        </StatCard>
 
         {/* last winner */}
-        <StatCell label="Last Race Winner" accent={winner?.team?.color}>
+        <StatCard
+          label="Last Race Winner"
+          accent={winner?.team?.color || "#94A3B8"}
+          to={winner ? `/drivers/${winner.driverId}` : undefined}
+        >
           {winner ? (
-            <div className="min-w-0">
-              <div className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
-                {winner.name}
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
+                  {winner.name}
+                </div>
+                <TeamLogo
+                  id={winner.team.id}
+                  name={winner.team.name}
+                  color={winner.team.color}
+                  size={18}
+                  showName
+                  className="mt-2"
+                  nameClassName="truncate text-sm text-light"
+                />
               </div>
-              <div className="flex items-center gap-2 truncate text-[15px] text-light">
-                {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} />}
-                {lastRace?.track}
+              <div className="shrink-0 text-right">
+                <div className="flex items-center justify-end gap-1.5">
+                  {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} />}
+                  <span className="max-w-[7rem] truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+                    {lastRace?.track}
+                  </span>
+                </div>
+                <div className="mt-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-light">
+                  Round {roundNo}
+                </div>
               </div>
             </div>
           ) : (
             <div className="text-[15px] text-light">No races yet</div>
           )}
-        </StatCell>
+        </StatCard>
 
         {/* next race */}
-        <StatCell label="Next Race" accent="#F4AFC6">
+        <StatCard label="Next Race" accent="#F4AFC6" to="/races">
           {nextRace ? (
-            <div className="flex items-center gap-4">
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
+                  {nextRace.track}
+                </div>
+                <div className="mt-2 flex items-center gap-1.5 text-sm text-light">
+                  {nextCircuit && <Flag code={nextCircuit.country} title={nextCircuit.countryName} />}
+                  <span className="truncate">Round {nextRace.number} · 18:00 GMT</span>
+                </div>
+              </div>
               {nextDate && (
                 <div className="flex shrink-0 flex-col items-center justify-center rounded-lg border border-border bg-surface2 px-3 py-1.5 leading-none">
                   <span className="font-mono text-2xl font-bold tabular-nums text-dark">{nextDate.getDate()}</span>
@@ -230,28 +297,11 @@ export default function Home() {
                   </span>
                 </div>
               )}
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  {nextCircuit && <Flag code={nextCircuit.country} title={nextCircuit.countryName} />}
-                  <span className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
-                    {nextRace.track}
-                  </span>
-                </div>
-                <div className="text-[15px] text-light">Round {nextRace.number} · 18:00 GMT</div>
-              </div>
-              {nextCircuit && (
-                <CircuitMap
-                  track={nextRace.track}
-                  stroke="var(--c-faint)"
-                  strokeWidth={3}
-                  className="ml-auto hidden h-12 w-20 shrink-0 sm:block"
-                />
-              )}
             </div>
           ) : (
             <div className="text-[15px] text-light">Season complete</div>
           )}
-        </StatCell>
+        </StatCard>
       </section>
 
       {/* ===================== DRIVERS' CHAMPIONSHIP ===================== */}
@@ -288,18 +338,36 @@ export default function Home() {
 
 /* ---------------------------------------------------------------- */
 
-function StatCell({ label, accent, children }) {
-  return (
-    <div className="relative p-6">
-      <span
-        className="absolute left-0 top-6 h-8 w-1 rounded-r"
-        style={{ backgroundColor: accent || "var(--c-border)" }}
-      />
-      <div className="mb-3 pl-3 font-mono text-xs font-bold uppercase tracking-[0.2em] text-light">
-        {label}
+function StatCard({ label, accent, to, children }) {
+  const cls =
+    "group relative flex min-h-[7.5rem] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-card transition duration-200 hover:-translate-y-0.5 hover:shadow-lg" +
+    (to ? " hover:border-brand/40" : "");
+  const body = (
+    <>
+      {/* accent rail */}
+      <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: accent }} />
+      <div className="flex flex-1 flex-col justify-between p-5 pl-6">
+        <div className="mb-3.5 flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: accent }} />
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-light">
+            {label}
+          </span>
+          {to && (
+            <span className="ml-auto text-light opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100">
+              →
+            </span>
+          )}
+        </div>
+        {children}
       </div>
-      <div className="pl-3">{children}</div>
-    </div>
+    </>
+  );
+  return to ? (
+    <Link to={to} className={cls}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 
@@ -374,7 +442,16 @@ function DriversTable({ rows, leaderTotal }) {
                     <Flag code={countryFor(d.driverId)} className="ml-0.5" />
                   </div>
                 </td>
-                <td className="hidden py-4 text-[15px] text-medium sm:table-cell">{d.team.name}</td>
+                <td className="hidden py-4 sm:table-cell">
+                  <TeamLogo
+                    id={d.team.id}
+                    name={d.team.name}
+                    color={d.team.color}
+                    size={20}
+                    showName
+                    nameClassName="truncate text-[15px] text-medium"
+                  />
+                </td>
                 <td className="py-4 pr-5 text-right">
                   <div className="flex flex-col items-end gap-1.5">
                     <span className="font-mono text-lg font-bold tabular-nums text-dark">{d.total}</span>
@@ -413,7 +490,7 @@ function ConstructorTable({ rows }) {
                 </td>
                 <td className="py-4 pl-1">
                   <div className="flex items-center gap-3">
-                    <span className="h-8 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: t.color }} />
+                    <TeamLogo id={t.teamId} name={t.name} color={t.color} size={32} />
                     <div className="min-w-0">
                       <span className="block truncate font-display text-lg font-bold uppercase tracking-tight text-dark">
                         {t.name}

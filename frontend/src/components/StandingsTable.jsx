@@ -1,4 +1,5 @@
 import { TierBadge, Rank } from "./ui.jsx";
+import TeamLogo from "./TeamLogo.jsx";
 
 // Per-race points cell with status colouring.
 function RaceCell({ cell }) {
@@ -80,10 +81,7 @@ export default function StandingsTable({ variant, raceNumbers, rows }) {
                   ) : (
                     <td className={`sticky left-14 z-10 px-3 py-3 ${stickyBg} group-hover:bg-surface2`}>
                       <div className="flex items-center gap-3">
-                        <span
-                          className="h-7 w-1.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: row.color }}
-                        />
+                        <TeamLogo id={row.teamId} name={row.name} color={row.color} size={28} />
                         <span className="font-display text-base font-bold uppercase tracking-tight text-dark">
                           {row.name}
                         </span>
@@ -95,7 +93,16 @@ export default function StandingsTable({ variant, raceNumbers, rows }) {
                     <td className="hidden px-3 py-3 text-sm text-light lg:table-cell">{row.discordName}</td>
                   )}
                   {isDriver && (
-                    <td className="hidden px-3 py-3 text-sm text-medium md:table-cell">{row.team.name}</td>
+                    <td className="hidden px-3 py-3 md:table-cell">
+                      <TeamLogo
+                        id={row.team.id}
+                        name={row.team.name}
+                        color={row.team.color}
+                        size={20}
+                        showName
+                        nameClassName="truncate text-sm text-medium"
+                      />
+                    </td>
                   )}
                   {isDriver && (
                     <td className="px-3 py-3 text-center">

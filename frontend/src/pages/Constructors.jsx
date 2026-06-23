@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton, Skeleton } from "../components/ui.jsx";
 import StandingsTable from "../components/StandingsTable.jsx";
 import PointsChart from "../components/PointsChart.jsx";
+import TeamLogo from "../components/TeamLogo.jsx";
 
 // Rounds that actually have scores recorded (for the progression chart).
 function completedRounds(data) {
@@ -36,8 +37,8 @@ function TeamCard({ team }) {
     <div className="card lift overflow-hidden">
       <div className="h-1.5 w-full" style={{ backgroundColor: team.color }} />
       <div className="p-5">
-        <div className="flex items-center gap-2.5">
-          <span className="h-4 w-4 rounded-full ring-1 ring-black/10" style={{ backgroundColor: team.color }} />
+        <div className="flex items-center gap-3">
+          <TeamLogo id={team.id} name={team.name} color={team.color} size={36} />
           <h4 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{team.name}</h4>
         </div>
         <ul className="mt-4 space-y-2.5">

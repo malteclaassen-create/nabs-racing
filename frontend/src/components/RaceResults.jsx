@@ -1,5 +1,6 @@
 import { StatusPill, Rank, TierBadge } from "./ui.jsx";
 import Flag from "./Flag.jsx";
+import TeamLogo from "./TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
 
 const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"]; // gold / silver / bronze
@@ -191,8 +192,20 @@ export default function RaceResults({ race, results }) {
                     </div>
                   </td>
 
-                  <td className="hidden px-3 py-3.5 text-sm text-medium sm:table-cell">
-                    {r.effectiveTeam ? r.effectiveTeam.name : r.team.name}
+                  <td className="hidden px-3 py-3.5 sm:table-cell">
+                    {(() => {
+                      const t = r.effectiveTeam || r.team;
+                      return (
+                        <TeamLogo
+                          id={t.id}
+                          name={t.name}
+                          color={t.color}
+                          size={20}
+                          showName
+                          nameClassName="truncate text-sm text-medium"
+                        />
+                      );
+                    })()}
                   </td>
 
                   {detailed && hasLaps && (
