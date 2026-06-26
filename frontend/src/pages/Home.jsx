@@ -11,6 +11,7 @@ import NextRaceTimer from "../components/NextRaceTimer.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
+import { fmtRaceTime } from "../utils/raceTime.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"]; // gold / silver / bronze
@@ -163,7 +164,7 @@ export default function Home() {
                   <span className="min-w-0">
                     <span className="flex items-center gap-1.5 text-base font-bold leading-tight text-white">
                       <span className="truncate">{p.name}</span>
-                      <Flag code={countryFor(p.driverId)} w={16} h={12} />
+                      <Flag code={countryFor(p.driverId, p.country)} w={16} h={12} />
                     </span>
                     {p.isSub && p.subForTeam ? (
                       <TeamLogo
@@ -300,7 +301,7 @@ export default function Home() {
                 </div>
                 <div className="mt-2 flex items-center gap-1.5 text-sm text-light">
                   {nextCircuit && <Flag code={nextCircuit.country} title={nextCircuit.countryName} />}
-                  <span className="truncate">Round {nextRace.number} · 18:00 GMT</span>
+                  <span className="truncate">Round {nextRace.number} · {fmtRaceTime(nextRace.date)}</span>
                 </div>
               </div>
               {nextDate && (
@@ -339,12 +340,12 @@ export default function Home() {
       {/* ===================== POINTS PROGRESSION ===================== */}
       <section className="reveal" style={{ animationDelay: "0.32s" }}>
         <Heading index="04" eyebrow="Tier 1" title="Points Progression" to="/constructors" />
-        <PointsChart standings={t1.data?.standings || []} completed={completedNumbers} />
+        <PointsChart standings={t1.data?.standings || []} completed={completedNumbers} allRounds={t1.data?.raceNumbers || []} />
       </section>
 
       <section className="reveal" style={{ animationDelay: "0.4s" }}>
         <Heading index="05" eyebrow="Tier 2" title="Points Progression" to="/constructors" />
-        <PointsChart standings={t2.data?.standings || []} completed={completedNumbers} />
+        <PointsChart standings={t2.data?.standings || []} completed={completedNumbers} allRounds={t2.data?.raceNumbers || []} />
       </section>
     </div>
   );
@@ -453,7 +454,7 @@ function DriversTable({ rows, leaderTotal }) {
                     <span className="font-display text-lg font-bold uppercase tracking-tight text-dark">
                       {d.name}
                     </span>
-                    <Flag code={countryFor(d.driverId)} className="ml-0.5" />
+                    <Flag code={countryFor(d.driverId, d.country)} className="ml-0.5" />
                   </div>
                 </td>
                 <td className="hidden py-4 sm:table-cell">

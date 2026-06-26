@@ -1,20 +1,20 @@
 // ---------------------------------------------------------------------------
 // NABS Racing League - Season 7 seed
-// Seeds teams, drivers, R1-R8 historical points, and R9 (Imola) full results.
+// Seeds teams, drivers, and the completed rounds R1-R10.
 //
-//   * R1-R8: per-driver POINTS stored directly; verified per-race constructor
-//            totals stored directly (subs make them non-derivable from the two
-//            listed tier drivers).
-//   * R9   : finishing POSITIONS stored; driver + constructor points computed
-//            by the points calculator (saveRaceResults).
+//   * Every completed round stores per-driver POINTS directly + verified
+//     per-team constructor totals directly, all taken from the official sheet
+//     (subs make constructor totals non-derivable from the two listed drivers).
+//   * R1-R8 live in the inline tables below; R9 + R10 live in
+//     season7/race9.json / race10.json and are written by writeStoredRace().
+//   * Finishing positions/grid/best lap only enrich driver profiles; they do
+//     not affect championship points.
 // ---------------------------------------------------------------------------
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import { saveRaceResults } from "../src/services/raceWriter.js";
-
 const prisma = new PrismaClient();
 
 // Real finishing-order metadata (position, grid, best lap) per race, resolved
@@ -24,6 +24,16 @@ const prisma = new PrismaClient();
 const __dir = dirname(fileURLToPath(import.meta.url));
 const RACE_POSITIONS = JSON.parse(
   readFileSync(join(__dir, "../season7/race-positions.json"), "utf8")
+);
+
+// R10 (Turkey) data taken from the official sheet: per-driver points + verified
+// per-team constructor totals, plus finishing positions for profiles. Built by
+// scripts/gen-r10.js (no AC JSON exists for R10). Stored like R1-R8.
+const RACE_10 = JSON.parse(
+  readFileSync(join(__dir, "../season7/race10.json"), "utf8")
+);
+const RACE_9 = JSON.parse(
+  readFileSync(join(__dir, "../season7/race9.json"), "utf8")
 );
 
 const DEFAULT_PIN = "nabs2026";
@@ -39,24 +49,29 @@ const SEASON = {
 };
 
 // --- TEAMS -----------------------------------------------------------------
+// Each team gets a visually distinct colour (used for the progression charts,
+// accent bars and standings). Several teams used to share #CC0000 / dark reds,
+// which made the charts unreadable; the palette below keeps the recognisable
+// liveries where possible but guarantees every team is distinguishable on both
+// the dark and light themes. Tweakable per-team from the Admin → Teams tab.
 const TEAMS = [
-  { id: "porsche", name: "Porsche Martini", tier: 1, color: "#8B0000" },
-  { id: "mclaren", name: "McLaren", tier: 1, color: "#FF8000" },
-  { id: "ferrari", name: "Ferrari", tier: 1, color: "#DC0000" },
-  { id: "williams", name: "Williams", tier: 1, color: "#005AFF" },
-  { id: "honda", name: "Honda", tier: 1, color: "#CC0000" },
-  { id: "renault", name: "Renault", tier: 2, color: "#E5C200" },
-  { id: "super_aguri", name: "Super Aguri", tier: 2, color: "#CC0000" },
-  { id: "spyker", name: "Spyker", tier: 2, color: "#CC6600" },
-  { id: "torro_rosso", name: "Torro Rosso", tier: 2, color: "#1B1B8F" },
-  { id: "redbull", name: "Red Bull", tier: 2, color: "#0A1851" },
-  { id: "toyota", name: "Toyota", tier: 2, color: "#CC0000" },
-  { id: "bmw", name: "BMW Sauber", tier: 2, color: "#5A5A5A" },
-  { id: "jaguar", name: "Jaguar", tier: 2, color: "#006B3E" },
-  { id: "fiat", name: "Fiat", tier: 2, color: "#DD0000" },
-  { id: "lamborghini", name: "Lamborghini", tier: 2, color: "#E58000" },
-  { id: "ncb_mugen", name: "NCB Mugen", tier: 2, color: "#CC0000" },
-  { id: "lotus", name: "Lotus", tier: 2, color: "#1A1A1A" },
+  { id: "porsche", name: "Porsche Martini", tier: 1, color: "#1AA39B" },
+  { id: "mclaren", name: "McLaren", tier: 1, color: "#F58220" },
+  { id: "ferrari", name: "Ferrari", tier: 1, color: "#E10600" },
+  { id: "williams", name: "Williams", tier: 1, color: "#0067C0" },
+  { id: "honda", name: "Honda", tier: 1, color: "#A33EA1" },
+  { id: "renault", name: "Renault", tier: 2, color: "#BFA900" },
+  { id: "super_aguri", name: "Super Aguri", tier: 2, color: "#D85E88" },
+  { id: "spyker", name: "Spyker", tier: 2, color: "#C2410C" },
+  { id: "torro_rosso", name: "Toro Rosso", tier: 2, color: "#3F6FB0" },
+  { id: "redbull", name: "Red Bull", tier: 2, color: "#5A4FC4" },
+  { id: "toyota", name: "Toyota", tier: 2, color: "#FF7A66" },
+  { id: "bmw", name: "BMW Sauber", tier: 2, color: "#6E7B8B" },
+  { id: "jaguar", name: "Jaguar", tier: 2, color: "#14935A" },
+  { id: "fiat", name: "Fiat", tier: 2, color: "#B3446C" },
+  { id: "lamborghini", name: "Lamborghini", tier: 2, color: "#8DB600" },
+  { id: "ncb_mugen", name: "NCB Mugen", tier: 2, color: "#2E9BD6" },
+  { id: "lotus", name: "Lotus", tier: 2, color: "#E6A700" },
   { id: "reserve", name: "Reserve", tier: 0, color: "#888888" },
 ];
 
@@ -121,6 +136,8 @@ const RESERVE_IDS = [
   // Newcomers seen only in the S7 race JSONs (added for the full position import).
   "marquez5", "mr_kettama", "oilver_ramsey", "ryotaro_takahashi", "wulffo", "xucc",
   "birmigam_sped_stars", "ghost",
+  // Newcomers seen only in R10 (official sheet).
+  "microlin", "waka",
 ];
 
 // Nicer display names for reserves where simple title-casing isn't ideal.
@@ -251,36 +268,6 @@ const T2_CONSTRUCTOR_POINTS = {
   fiat: [4, 11, 18, 5, 22, 18, 13, 3, 5],
 };
 
-// --- RACE 9 (Imola) finishing positions ------------------------------------
-const RACE_9_POSITIONS = [
-  { driverId: "thatdudeguest", pos: 1, subForTeamId: "mclaren" },
-  { driverId: "mtimmis", pos: 2 },
-  { driverId: "pizd", pos: 3 },
-  { driverId: "maltegoat", pos: 4 },
-  { driverId: "siggsta", pos: 5 },
-  { driverId: "steve", pos: 6 },
-  { driverId: "aleks", pos: 7 },
-  { driverId: "rashford", pos: 8 },
-  { driverId: "takoda", pos: 9 },
-  { driverId: "nottyler", pos: 10 },
-  { driverId: "goldginger", pos: 11 },
-  { driverId: "kowandoh_badu", pos: 12 },
-  { driverId: "aliveaxe", pos: 13 },
-  { driverId: "vibe_officer", pos: 14 },
-  { driverId: "dras", pos: 15 },
-  { driverId: "neesh", pos: 16 },
-  { driverId: "zohair_khan", pos: 17, subForTeamId: null },
-  { driverId: "justyn", pos: 18 },
-  { driverId: "flo", pos: 19 },
-  { driverId: "epygames", pos: 20, subForTeamId: null },
-  { driverId: "13bot", pos: 21 },
-  { driverId: "zero0n1k", pos: 22 },
-  { driverId: "endriu", pos: 23 },
-  { driverId: "urmagaeddon", pos: 24, subForTeamId: null },
-  { driverId: "zyklopus", pos: 25, subForTeamId: null },
-  { driverId: "tischler", pos: 26 },
-];
-
 // Official Season 7 calendar (championship rounds). Fridays 18:00 GMT.
 // Special events (Watkins Glen, NASCAR Oval, Le Mans) are not championship
 // rounds and are shown only on the Calendar page (not stored as races).
@@ -304,7 +291,7 @@ const RACE_TRACKS = Object.fromEntries(
 );
 
 // Upcoming rounds open for driver sign-up (RSVP).
-const UPCOMING_RACES = [10, 11, 12].map((n) => ({
+const UPCOMING_RACES = [11, 12].map((n) => ({
   number: n,
   track: SCHEDULE[n].track,
   date: SCHEDULE[n].date,
@@ -318,6 +305,35 @@ const SPECIAL_EVENTS = [
 ];
 
 const STATUS_STRINGS = new Set(["DNS", "DNF", "DSQ"]);
+
+// Writes a race whose driver points and constructor totals are taken directly
+// from the official sheet (data = { driverPoints, constructors, positions }).
+// driverPoints values are a number (finished, that many points) or a status
+// string (DNS/DNF/DSQ -> 0). Positions only enrich profiles. Pure no-shows
+// (DNS with no finishing position) get no row, to match how R1-R8 are stored.
+async function writeStoredRace(raceId, data, teamTier) {
+  for (const [driverId, v] of Object.entries(data.driverPoints)) {
+    const isStatus = STATUS_STRINGS.has(v);
+    const p = data.positions[driverId];
+    if (isStatus && v === "DNS" && !p) continue; // no-show -> skip
+    await prisma.raceResult.create({
+      data: {
+        raceId,
+        driverId,
+        status: isStatus ? v : "FINISHED",
+        points: isStatus ? 0 : Number(v),
+        subForTeamId: p?.subForTeamId ?? null,
+        position: p ? p.position : null,
+        grid: p ? p.grid : null,
+        bestLapMs: p ? p.bestLapMs : null,
+      },
+    });
+  }
+  const cScores = Object.entries(data.constructors).map(([teamId, points]) => ({
+    raceId, teamId, tier: teamTier.get(teamId), points,
+  }));
+  await prisma.constructorRaceScore.createMany({ data: cScores });
+}
 
 async function main() {
   console.log("Seeding NABS Racing League...");
@@ -350,9 +366,9 @@ async function main() {
   }
   console.log(`  ${TEAMS.length} teams, ${allDrivers.length} drivers`);
 
-  // Races 1..9 (completed)
+  // Races 1..10 (completed)
   const races = {};
-  for (let n = 1; n <= 9; n++) {
+  for (let n = 1; n <= 10; n++) {
     races[n] = await prisma.race.create({
       data: {
         number: n,
@@ -451,23 +467,16 @@ async function main() {
     await prisma.constructorRaceScore.createMany({ data: cScores });
   }
 
-  // ----- R9: store positions, compute driver + constructor points ----------
-  const r9meta = new Map((RACE_POSITIONS[9] || []).map((p) => [p.driverId, p]));
-  const r9Results = RACE_9_POSITIONS.map((r) => {
-    const p = r9meta.get(r.driverId);
-    return {
-      driverId: r.driverId,
-      position: r.pos,
-      status: "FINISHED",
-      subForTeamId: r.subForTeamId || null,
-      penaltyPositions: 0,
-      grid: p ? p.grid : null,
-      bestLapMs: p ? p.bestLapMs : null,
-    };
-  });
-  await saveRaceResults(prisma, races[9].id, r9Results);
+  // ----- R9 (Imola) & R10 (Turkey): stored from the official sheet -----------
+  // Same model as R1-R8: per-driver points and per-team constructor totals are
+  // taken straight from the sheet; finishing positions only enrich profiles.
+  // (R9's raw AC order differed from the sheet's final classification, so we
+  // store the sheet values rather than recomputing.)
+  const teamTier = new Map(TEAMS.map((t) => [t.id, t.tier]));
+  await writeStoredRace(races[9].id, RACE_9, teamTier);
+  await writeStoredRace(races[10].id, RACE_10, teamTier);
 
-  console.log("  R1-R9 results + constructor scores written");
+  console.log("  R1-R10 results + constructor scores written");
   console.log("Done.");
 }
 

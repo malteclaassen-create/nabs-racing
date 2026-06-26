@@ -1,0 +1,82 @@
+NABS RACING LEAGUE - FEATURES
+=============================
+
+A rundown of what the site does. Everything on the public side comes out of a
+database, nothing is typed in by hand on the pages, so when a race gets imported
+every table updates on its own.
+
+
+THE PUBLIC PAGES
+
+Home
+  The first thing you see. It shows the last race result (the podium and which
+  track it was), who is leading the championship, who won the last race, and
+  when the next race is with a live countdown. Under that you get the top of the
+  driver table, both constructor tables (Tier 1 and Tier 2), and the points
+  progression graphs.
+
+Drivers
+  The full driver standings, everyone sorted by total points. There is a filter
+  to switch between all drivers, only Tier 1, only Tier 2 or only reserves, and
+  a tick box to hide people who have not scored yet. Click a driver to open his
+  profile.
+
+Driver profile
+  A stats page for one driver - wins, podiums, best and average finish, poles,
+  places gained, a season form chart, a head to head against another driver,
+  and a race by race table.
+
+Constructors
+  The Tier 1 and Tier 2 tables, both with a round by round points breakdown. The
+  rounds that get dropped (see the rules file) are shown crossed out. Each tier
+  also has its points graph and the team line-ups.
+
+Races
+  The full calendar. Finished rounds can be clicked and show the complete result
+  - finishing order, the grid spot and how many places each driver won or lost,
+  the fastest lap, and for Tier 2 a separate column with the re-ranked Tier 2
+  position and points. Special events (like the Le Mans night) have their own
+  tab.
+
+Live timing
+  This connects straight to our Assetto Corsa server and shows live sectors,
+  best and last lap, gaps, tyres, pit stops and who is out on track right now.
+  If no session is running it just says it is waiting for the server.
+
+Sign up
+  This is our replacement for Apollo. People log in with their Discord account
+  and set themselves to Accepted, Declined or Tentative for each upcoming race.
+  Every answer also gets posted and updated automatically in the Discord
+  channel. While logged in a driver can also pick his own country here, and that
+  then shows as his flag everywhere on the site.
+
+Other things
+  - Dark mode and light mode (button in the top right).
+  - It can hold more than one season. Right now it is Season 7, but old seasons
+    stay readable through a season picker once there is more than one.
+
+
+THE ADMIN AREA
+
+This sits behind a PIN (top right, "Admin"). From there I can:
+  - Import a race. Either upload the result JSON from Content Manager or pull it
+    straight off the server. It matches the in-game names to our drivers by
+    itself and I just confirm them.
+  - Edit any race afterwards. There is a live preview that shows exactly how a
+    change moves the standings before I save it. This is also where I add
+    steward time penalties.
+  - Add and edit drivers and teams, including team colours and uploading team
+    logos.
+  - Manage seasons.
+  - Set the Discord webhook and create or announce upcoming races and events.
+  - Change the admin PIN.
+
+
+HOW IT IS BUILT (short version)
+
+The front end is React (Vite and Tailwind). The back end is Node and Express
+with a Prisma database. Right now it runs on SQLite, which needs no setup, and
+it can move to PostgreSQL when we put it on a real server. The sign-up login
+uses Discord, and there is a Discord webhook for posting the attendance. All the
+points and standings are worked out on the server, so the numbers are always the
+same no matter where you look.

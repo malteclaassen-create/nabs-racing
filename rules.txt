@@ -1,0 +1,77 @@
+NABS RACING LEAGUE - SCORING AND RULES
+======================================
+
+
+POINTS PER FINISHING POSITION
+
+  P1  - 35
+  P2  - 30
+  P3  - 25
+  P4  - 22
+  P5  - 20
+  P6  - 18
+  P7  - 16
+  P8  - 14
+  P9  - 12
+  P10 - 10
+  P11 - 8
+  P12 - 7
+  P13 - 6
+  P14 - 5
+  P15 - 4
+  P16 - 3
+  P17 - 2
+  P18 - 1
+  P19 and below - 0
+
+DNS, DNF and DSQ all score 0.
+
+
+TIERS
+
+We run two tiers, Tier 1 and Tier 2, plus reserves. A reserve can stand in for a
+team when one of the regulars cannot make a race.
+
+
+DRIVER STANDINGS
+
+Everyone (Tier 1, Tier 2 and reserves) is in one big table, sorted by total
+points. The points come straight from where the driver actually finished.
+
+
+TIER 1 CONSTRUCTORS
+
+For each team you just add up the real race points of its two Tier 1 drivers. If
+a reserve drives for a Tier 1 team that race, his points count for that team.
+Nothing gets re-ordered here, it is the real points.
+
+
+TIER 2 CONSTRUCTORS
+
+This one works a bit differently. For each race we keep only the drivers whose
+team is a Tier 2 team and drop everyone else. Tier 1 drivers, and reserves who
+are not driving for a Tier 2 team, are taken out completely - they do not hold a
+spot. Then we re-order just those Tier 2 cars by where they finished and give
+out points by that new order. So the Tier 2 points follow the Tier 2 finishing
+order, not the overall one. A reserve driving for a Tier 2 team scores for that
+team.
+
+
+DROP SCORES (BEST 9 OF 12)
+
+At the end, the three worst rounds of each driver and each team are dropped and
+do not count toward the total. In a 12 race season that means your best 9
+results count. A race you did not score in counts as a zero and is dropped
+first. Rounds that have not happened yet also count as zero, so nothing real
+gets dropped until late in the season. On the round by round tables the dropped
+rounds are shown crossed out.
+
+
+TIME PENALTIES
+
+A steward penalty is added as seconds onto the driver's total race time (for
+example 5 or 10 seconds), not as a number of positions. After the penalty the
+car drops behind everyone it now sits behind on time. A car that was a lap down
+or that retired is not affected, because it is not on the same time anyway. The
+penalty gets entered in the admin and the order and the points update by
+themselves.

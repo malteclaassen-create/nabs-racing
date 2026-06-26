@@ -1,0 +1,265 @@
+{
+ "driverPoints": {
+  "siggsta": 20,
+  "mtimmis": 30,
+  "takoda": 12,
+  "maltegoat": 22,
+  "pizd": 25,
+  "steve": 18,
+  "13bot": 0,
+  "jomilan": "DNS",
+  "tball": "DNS",
+  "thatdudeguest": 35,
+  "duck": "DNS",
+  "nottyler": 10,
+  "aleks": 16,
+  "kowandoh_badu": 7,
+  "spydermonkey": "DNS",
+  "rashford": 14,
+  "goldginger": 8,
+  "rayman": "DNS",
+  "dras": 5,
+  "j_yamanaka": "DNS",
+  "manro45gt": "DNS",
+  "neesh": 3,
+  "vibe_officer": 4,
+  "hedimak": "DNS",
+  "kalervo": "DNS",
+  "crans3": "DNS",
+  "airlineure": "DNS",
+  "vhp": "DNS",
+  "gabriele_grossi": "DNS",
+  "aliveaxe": 6,
+  "justyn": 2,
+  "flo": 1,
+  "zero0n1k": 0,
+  "laluch": "DNS",
+  "jacob_ordonez": "DNS",
+  "jadend": "DNS",
+  "zohair_khan": "DSQ",
+  "endriu": 0,
+  "dablosv5": "DNS",
+  "tj09": "DNS",
+  "naigouu": "DNS",
+  "wal_rider": "DNS",
+  "danielj": "DNS",
+  "anxo_gonzalez": "DNS",
+  "dylan": "DNS",
+  "jp_bekker": "DNS",
+  "zyklopus": 0,
+  "urmagaeddon": 0,
+  "tischler": 0,
+  "toni_t": "DNS",
+  "waka": "DNS",
+  "oshy": "DNS",
+  "damien": "DNS",
+  "jim_hulborn": "DNS",
+  "epygames": 0,
+  "jamal_bin_laden": "DNS",
+  "mora": "DNS",
+  "gaspaddle": "DNS",
+  "ryan_h": "DNS",
+  "jan_sikorski": "DNS",
+  "luka": "DNS",
+  "danbo": "DNS",
+  "juuso_salonen": "DNS",
+  "frusty": "DNS",
+  "rikkos": "DNS",
+  "mitch": "DNS",
+  "shinso": "DNS",
+  "armin": "DNS",
+  "phil_mccrack": "DNS",
+  "tomzee": "DNS",
+  "william_granberg": "DNS",
+  "svr": "DNS",
+  "cr": "DNS",
+  "jorge_caro": "DNS",
+  "bulat": "DNS",
+  "garfieldtruck99": "DNS",
+  "szymon_karwowski": "DNS",
+  "simaoav": "DNS",
+  "gallus": "DNS",
+  "kobac": "DNS",
+  "alex_lehoux": "DNS",
+  "qfasty": "DNS",
+  "payton_fricker": "DNS",
+  "freddson": "DNS"
+ },
+ "constructors": {
+  "porsche": 30,
+  "mclaren": 55,
+  "williams": 47,
+  "ferrari": 30,
+  "honda": 14,
+  "lotus": 14,
+  "redbull": 30,
+  "renault": 16,
+  "bmw": 37,
+  "toyota": 42,
+  "lamborghini": 6,
+  "spyker": 25,
+  "jaguar": 10,
+  "torro_rosso": 35,
+  "super_aguri": 0,
+  "fiat": 8,
+  "ncb_mugen": 0
+ },
+ "positions": {
+  "siggsta": {
+   "position": 5,
+   "grid": 8,
+   "bestLapMs": 80775,
+   "subForTeamId": null
+  },
+  "mtimmis": {
+   "position": 2,
+   "grid": 3,
+   "bestLapMs": 80418,
+   "subForTeamId": null
+  },
+  "takoda": {
+   "position": 9,
+   "grid": 24,
+   "bestLapMs": 78797,
+   "subForTeamId": null
+  },
+  "maltegoat": {
+   "position": 4,
+   "grid": 6,
+   "bestLapMs": 78827,
+   "subForTeamId": null
+  },
+  "pizd": {
+   "position": 3,
+   "grid": 4,
+   "bestLapMs": 80916,
+   "subForTeamId": null
+  },
+  "steve": {
+   "position": 6,
+   "grid": 12,
+   "bestLapMs": 80932,
+   "subForTeamId": null
+  },
+  "13bot": {
+   "position": 20,
+   "grid": 2,
+   "bestLapMs": 80014,
+   "subForTeamId": null
+  },
+  "thatdudeguest": {
+   "position": 1,
+   "grid": 1,
+   "bestLapMs": 80027,
+   "subForTeamId": "mclaren"
+  },
+  "nottyler": {
+   "position": 10,
+   "grid": 14,
+   "bestLapMs": 80392,
+   "subForTeamId": null
+  },
+  "aleks": {
+   "position": 7,
+   "grid": 5,
+   "bestLapMs": 80914,
+   "subForTeamId": null
+  },
+  "kowandoh_badu": {
+   "position": 12,
+   "grid": 25,
+   "bestLapMs": 999999999,
+   "subForTeamId": null
+  },
+  "rashford": {
+   "position": 8,
+   "grid": 7,
+   "bestLapMs": 79282,
+   "subForTeamId": null
+  },
+  "goldginger": {
+   "position": 11,
+   "grid": 21,
+   "bestLapMs": 999999999,
+   "subForTeamId": null
+  },
+  "dras": {
+   "position": 14,
+   "grid": 11,
+   "bestLapMs": 80451,
+   "subForTeamId": null
+  },
+  "neesh": {
+   "position": 16,
+   "grid": 13,
+   "bestLapMs": 80125,
+   "subForTeamId": null
+  },
+  "vibe_officer": {
+   "position": 15,
+   "grid": 9,
+   "bestLapMs": 80623,
+   "subForTeamId": null
+  },
+  "aliveaxe": {
+   "position": 13,
+   "grid": 10,
+   "bestLapMs": 81837,
+   "subForTeamId": null
+  },
+  "justyn": {
+   "position": 17,
+   "grid": 15,
+   "bestLapMs": 81238,
+   "subForTeamId": null
+  },
+  "flo": {
+   "position": 18,
+   "grid": 33,
+   "bestLapMs": 81712,
+   "subForTeamId": null
+  },
+  "zero0n1k": {
+   "position": 22,
+   "grid": 17,
+   "bestLapMs": 81804,
+   "subForTeamId": null
+  },
+  "zohair_khan": {
+   "position": 26,
+   "grid": 22,
+   "bestLapMs": 999999999,
+   "subForTeamId": null
+  },
+  "endriu": {
+   "position": 21,
+   "grid": 19,
+   "bestLapMs": 83314,
+   "subForTeamId": null
+  },
+  "zyklopus": {
+   "position": 24,
+   "grid": 20,
+   "bestLapMs": 85530,
+   "subForTeamId": null
+  },
+  "urmagaeddon": {
+   "position": 23,
+   "grid": 23,
+   "bestLapMs": 999999999,
+   "subForTeamId": null
+  },
+  "tischler": {
+   "position": 25,
+   "grid": 16,
+   "bestLapMs": 81778,
+   "subForTeamId": null
+  },
+  "epygames": {
+   "position": 19,
+   "grid": 18,
+   "bestLapMs": 82779,
+   "subForTeamId": null
+  }
+ }
+}

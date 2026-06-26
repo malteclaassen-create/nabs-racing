@@ -24,6 +24,7 @@ router.get("/", async (req, res, next) => {
           driverId: r.driverId,
           name: r.driver.name,
           discordName: r.driver.discordName,
+          country: r.driver.country || null,
           team: { name: r.driver.team.name, color: r.driver.team.color },
         });
       }

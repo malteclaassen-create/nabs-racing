@@ -26,7 +26,7 @@ function LeaderCard({ row, leaderTotal, rank }) {
               <span className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">
                 {row.name}
               </span>
-              <Flag code={countryFor(row.driverId)} />
+              <Flag code={countryFor(row.driverId, row.country)} />
               <TierBadge tier={row.tier} />
             </div>
             <TeamLogo
@@ -71,7 +71,7 @@ function DriverRow({ d, leaderTotal }) {
           <span className="truncate font-display text-base font-bold uppercase tracking-tight text-dark sm:text-lg">
             {d.name}
           </span>
-          <Flag code={countryFor(d.driverId)} />
+          <Flag code={countryFor(d.driverId, d.country)} />
           <TierBadge tier={d.tier} />
           {!d.isActive && <span className="pill bg-surface2 text-light">inactive</span>}
         </div>
@@ -103,9 +103,19 @@ function DriverRow({ d, leaderTotal }) {
   );
 }
 
+// Tier sub-views. "all" keeps the real championship order; picking a tier
+// re-ranks that group 1..n on its own (like a mini Tier-1 / Tier-2 table).
+const TIER_FILTERS = [
+  { id: "all", label: "All" },
+  { id: "1", label: "Tier 1" },
+  { id: "2", label: "Tier 2" },
+  { id: "0", label: "Reserves" },
+];
+
 export default function DriverStandings() {
   const { data, loading, error } = useApi(useCallback(() => api.driverStandings(), []));
-  const [onlyScoring, setOnlyScoring] = useState(false);
+  const [onlyScoring, setOnlyScoring] = useState(true);
+  const [tier, setTier] = useState("all");
 
   if (loading)
     return (
@@ -122,11 +132,21 @@ export default function DriverStandings() {
   if (error) return <ErrorBox message={error} />;
 
   const all = data.standings;
-  const leaderTotal = all[0]?.total ?? 0;
-  const top3 = all.slice(0, 3);
-  const withPoints = all.filter((r) => r.total > 0).length;
 
-  const rows = onlyScoring ? all.filter((r) => r.total > 0) : all;
+  // Filter by tier, then optionally hide point-less drivers, then re-rank the
+  // resulting view 1..n so a tier sub-table reads as its own standings.
+  let rows = tier === "all" ? all : all.filter((r) => String(r.tier) === tier);
+  if (onlyScoring) rows = rows.filter((r) => r.total > 0);
+  rows = rows.map((d, i) => ({ ...d, position: i + 1 }));
+
+  const leaderTotal = rows[0]?.total ?? 0;
+  const top3 = rows.slice(0, 3);
+  const scopeLabel = tier === "all" ? "drivers" : TIER_FILTERS.find((t) => t.id === tier).label;
+
+  const segCls = (active) =>
+    `rounded-lg px-3.5 py-2 text-sm font-bold transition ${
+      active ? "bg-brand text-ink shadow" : "text-light hover:text-dark"
+    }`;
 
   return (
     <div>
@@ -136,23 +156,21 @@ export default function DriverStandings() {
         subtitle="All drivers — Tier 1, Tier 2 and reserves — ranked by total points."
       />
 
-      <div className="reveal mb-8 grid gap-4 md:grid-cols-3">
-        {top3.map((row, i) => (
-          <LeaderCard key={row.driverId} row={row} leaderTotal={leaderTotal} rank={i} />
-        ))}
-      </div>
+      {top3.length > 0 && (
+        <div className="reveal mb-8 grid gap-4 md:grid-cols-3">
+          {top3.map((row, i) => (
+            <LeaderCard key={row.driverId} row={row} leaderTotal={leaderTotal} rank={i} />
+          ))}
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-6 text-sm">
-          <span className="text-light">
-            Drivers: <span className="font-mono font-bold tabular-nums text-dark">{all.length}</span>
-          </span>
-          <span className="text-light">
-            Scored points: <span className="font-mono font-bold tabular-nums text-dark">{withPoints}</span>
-          </span>
-          <span className="text-light">
-            Rounds: <span className="font-mono font-bold tabular-nums text-dark">{data.raceNumbers.length}</span>
-          </span>
+        <div className="inline-flex rounded-xl border border-border bg-card p-1">
+          {TIER_FILTERS.map((t) => (
+            <button key={t.id} type="button" onClick={() => setTier(t.id)} className={segCls(tier === t.id)}>
+              {t.label}
+            </button>
+          ))}
         </div>
         <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-medium">
           <input
@@ -165,11 +183,24 @@ export default function DriverStandings() {
         </label>
       </div>
 
-      <div className="reveal card divide-y divide-border overflow-hidden">
-        {rows.map((d) => (
-          <DriverRow key={d.driverId} d={d} leaderTotal={leaderTotal} />
-        ))}
+      <div className="mb-4 flex flex-wrap gap-6 text-sm">
+        <span className="text-light">
+          Showing: <span className="font-mono font-bold tabular-nums text-dark">{rows.length}</span> {scopeLabel}
+        </span>
+        <span className="text-light">
+          Rounds: <span className="font-mono font-bold tabular-nums text-dark">{data.raceNumbers.length}</span>
+        </span>
       </div>
+
+      {rows.length > 0 ? (
+        <div className="reveal card divide-y divide-border overflow-hidden">
+          {rows.map((d) => (
+            <DriverRow key={d.driverId} d={d} leaderTotal={leaderTotal} />
+          ))}
+        </div>
+      ) : (
+        <div className="card p-8 text-center text-medium">No drivers match this filter.</div>
+      )}
     </div>
   );
 }

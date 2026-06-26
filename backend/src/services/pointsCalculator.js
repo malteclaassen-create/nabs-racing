@@ -34,6 +34,88 @@ export function getPointsForPosition(position) {
   return POINTS_TABLE[position - 1] ?? 0;
 }
 
+// ---------------------------------------------------------------------------
+// TIME PENALTIES
+// ---------------------------------------------------------------------------
+// A penalty is added SECONDS, not places (the league's real rule): the steward
+// adds e.g. 5 s or 10 s to a car's total race time, and it drops behind the cars
+// it now trails — one place or several, depending on the gaps.
+//
+// CRUCIAL: total race time is only comparable BETWEEN CARS ON THE SAME LAP. A car
+// that retired / ran fewer laps has a much SMALLER total time, yet finished
+// behind. So we must NOT just re-sort the whole field by time (that would shoot
+// those low-time retirees to the front, ahead of the real winners). Instead, a
+// penalised car only bubbles DOWN past cars that genuinely finished behind it on
+// the road — i.e. cars with a *larger* total time. A lapped / retired car has a
+// smaller total time, so it is never jumped, and the laps-then-time order that
+// the AC result file already encodes (the stored positions) is preserved.
+//
+// We redistribute the *set* of finishing slots in the new order, so DNF/DNS gaps
+// are preserved exactly. A round with no penalty — or one whose finishers have no
+// stored total time (legacy rounds) — is a true no-op, leaving historical results
+// byte-for-byte unchanged.
+//
+// Returns a Map<driverId, effectivePosition> for the FINISHED results.
+export function classifyResults(raceResults) {
+  const finishers = raceResults
+    .filter((r) => (!r.status || r.status === "FINISHED") && r.position != null)
+    .sort((a, b) => a.position - b.position);
+  const slots = finishers.map((r) => r.position); // positions to redistribute
+  const out = new Map();
+
+  const anyPenalty = finishers.some((r) => (r.penaltySeconds || 0) > 0);
+  const haveAllTimes = finishers.every((r) => r.totalTimeMs > 0);
+
+  // No penalty, or no usable time data -> keep the stored finishing order.
+  if (!anyPenalty || !haveAllTimes) {
+    finishers.forEach((r) => out.set(r.driverId, r.position));
+    return out;
+  }
+
+  // Start from the real classification (stored finishing order) and let each
+  // penalised car sink within its own lap group. Adjacent swap to a fixpoint:
+  // swap a (currently ahead) with the car b just behind it only when
+  //   - b genuinely finished behind a on the road  (b.origTime >= a.origTime, so
+  //     b is same-lap-slower, never a fewer-laps car with a smaller time), AND
+  //   - a's penalised time now exceeds b's          (a.adjusted > b.adjusted).
+  // Adding seconds can only move a car down, never up.
+  const order = finishers.map((r) => ({
+    driverId: r.driverId,
+    origTime: r.totalTimeMs,
+    adjusted: r.totalTimeMs + (r.penaltySeconds || 0) * 1000,
+  }));
+  let swapped = true;
+  while (swapped) {
+    swapped = false;
+    for (let j = 0; j + 1 < order.length; j++) {
+      const a = order[j];
+      const b = order[j + 1];
+      if (b.origTime >= a.origTime && a.adjusted > b.adjusted) {
+        order[j] = b;
+        order[j + 1] = a;
+        swapped = true;
+      }
+    }
+  }
+  order.forEach((c, idx) => out.set(c.driverId, slots[idx]));
+  return out;
+}
+
+// Returns a copy of the results with each finisher's `position` set to its
+// classification. Only cars that actually moved are re-scored from their new
+// slot (their stale explicit points are dropped); everyone else is returned
+// untouched, keeping their exact points. The stored `position` stays raw, so
+// re-opening a round in the editor is idempotent.
+export function applyPenalties(raceResults) {
+  const classified = classifyResults(raceResults);
+  return raceResults.map((r) => {
+    if (!classified.has(r.driverId)) return r;
+    const position = classified.get(r.driverId);
+    if (position === r.position) return { ...r, position };
+    return { ...r, position, points: null };
+  });
+}
+
 // Points a single result actually scores in the driver standings.
 // DNS / DNF / DSQ always score 0. Otherwise: explicit `points` if provided
 // (historical R1-R8), else derived from finishing position.
@@ -81,24 +163,25 @@ export function calculateT1ConstructorPoints(raceResults, drivers, teams) {
 //   - A reserve substituting for a Tier-1 team is removed (effective Tier 1).
 //   - A reserve with no team is removed (effective Tier 0) — does not score and
 //     does not push anyone down.
-//   - A Tier-2 DNF/DSQ keeps its slot in the order but scores 0.
+//   - A Tier-2 non-finisher (DNS/DNF/DSQ) is removed entirely — it does NOT hold
+//     a slot, so the classified cars behind it bump up and score more.
 // ---------------------------------------------------------------------------
 export function calculateT2ConstructorPoints(raceResults, drivers, teams) {
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const teamById = new Map(teams.map((t) => [t.id, t]));
 
-  // Re-rank field: Tier-2-team results only, in finishing order. DNS excluded;
-  // results without a position can't be ranked.
+  // Re-rank field: classified Tier-2-team results only, in finishing order.
+  // Every non-finisher (DNS/DNF/DSQ) and any result without a position is
+  // excluded, so it does not occupy a slot in the re-rank.
   const ranked = raceResults
     .filter((r) => {
-      if (r.status === "DNS" || r.position == null) return false;
+      if (r.status !== "FINISHED" || r.position == null) return false;
       return teamById.get(effectiveTeamId(r, driverById))?.tier === 2;
     })
     .sort((a, b) => a.position - b.position);
 
   const constructorPoints = {};
   ranked.forEach((result, index) => {
-    if (result.status !== "FINISHED") return; // DNF/DSQ hold the slot, score 0
     const teamId = effectiveTeamId(result, driverById);
     constructorPoints[teamId] = (constructorPoints[teamId] || 0) + getPointsForPosition(index + 1);
   });

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -6,6 +6,8 @@ import { Spinner, ErrorBox, PageHeader, TeamDot } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
+import { COUNTRIES } from "../data/countries.js";
+import { fmtRaceTime } from "../utils/raceTime.js";
 
 const STATUS_UI = {
   ACCEPTED: { label: "✅ Accept", title: "Accepted", btn: "bg-green-600 hover:bg-green-700" },
@@ -15,8 +17,8 @@ const STATUS_UI = {
 
 function fmtDate(d) {
   if (!d) return "Date TBA";
-  return new Date(d).toLocaleString("en-GB", {
-    weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+  return new Date(d).toLocaleDateString("en-GB", {
+    weekday: "short", day: "2-digit", month: "short",
   });
 }
 
@@ -26,13 +28,38 @@ export default function RaceSignup() {
   const { user, isLoggedIn, logout } = useAuth();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [myCountry, setMyCountry] = useState("");
+  const [savingCountry, setSavingCountry] = useState(false);
 
   // Identity always comes from the logged-in Discord account.
   const driverId = isLoggedIn ? user?.driverId : null;
   const discordEnabled = discord.data?.enabled;
 
+  // Load the logged-in driver's own (self-set) country for the picker.
+  useEffect(() => {
+    if (!driverId) {
+      setMyCountry("");
+      return;
+    }
+    api.me().then((m) => setMyCountry(m.country || "")).catch(() => {});
+  }, [driverId]);
+
   function startDiscordLogin() {
     if (discord.data?.url) window.location.href = discord.data.url;
+  }
+
+  async function saveCountry(code) {
+    setMyCountry(code); // optimistic
+    setSavingCountry(true);
+    setError(null);
+    try {
+      await api.setMyCountry(code);
+      await events.reload(); // refresh so the flag in the lists updates
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSavingCountry(false);
+    }
   }
 
   async function setStatus(raceId, status) {
@@ -75,18 +102,43 @@ export default function RaceSignup() {
       {/* identity / login */}
       <div className="card mb-6 p-4">
         {isLoggedIn ? (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm">
-              Signed in as <span className="font-bold text-dark">{user.discordName}</span>
-              {user.driverName ? (
-                <span className="text-medium"> · Driver: <span className="font-semibold">{user.driverName}</span></span>
-              ) : (
-                <span className="ml-1 text-primary">
-                  · your Discord account isn't linked to a driver yet — please contact an admin.
-                </span>
-              )}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm">
+                Signed in as <span className="font-bold text-dark">{user.discordName}</span>
+                {user.driverName ? (
+                  <span className="text-medium"> · Driver: <span className="font-semibold">{user.driverName}</span></span>
+                ) : (
+                  <span className="ml-1 text-primary">
+                    · your Discord account isn't linked to a driver yet — please contact an admin.
+                  </span>
+                )}
+              </div>
+              <button className="btn-secondary" onClick={logout}>Sign out</button>
             </div>
-            <button className="btn-secondary" onClick={logout}>Sign out</button>
+            {driverId && (
+              <div className="flex flex-wrap items-center gap-2.5 border-t border-border pt-3">
+                <label htmlFor="country-picker" className="text-sm font-medium text-medium">
+                  Your country
+                </label>
+                <Flag code={myCountry} w={22} h={16} />
+                <select
+                  id="country-picker"
+                  value={myCountry}
+                  disabled={savingCountry}
+                  onChange={(e) => saveCountry(e.target.value)}
+                  className="input max-w-[16rem] py-1.5 text-sm disabled:opacity-60"
+                >
+                  <option value="">— not set —</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-light">Shown as your flag across the site.</span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-3">
@@ -128,7 +180,10 @@ export default function RaceSignup() {
                     )}
                     <span className="text-light">R{ev.number}</span> {ev.track}
                   </h2>
-                  <p className="mt-0.5 font-mono text-sm text-light">{fmtDate(ev.date)}</p>
+                  <p className="mt-0.5 font-mono text-sm text-light">
+                    {fmtDate(ev.date)}
+                    {ev.date && <span className="text-medium"> · {fmtRaceTime(ev.date)}</span>}
+                  </p>
                 </div>
                 {canSignUp ? (
                   <div className="flex flex-wrap gap-2">
@@ -176,7 +231,7 @@ export default function RaceSignup() {
                           <span className={r.driverId === driverId ? "font-bold text-dark" : "text-dark"}>
                             {r.name}
                           </span>
-                          <Flag code={countryFor(r.driverId)} w={16} h={12} />
+                          <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} />
                         </li>
                       ))}
                       {ev.rsvps[status].length === 0 && (

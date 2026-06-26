@@ -4,6 +4,8 @@ import {
   getDriverResultPoints,
   calculateT1ConstructorPoints,
   calculateT2ConstructorPoints,
+  classifyResults,
+  applyPenalties,
 } from "./pointsCalculator.js";
 
 // Shared fixtures ------------------------------------------------------------
@@ -80,6 +82,136 @@ describe("getDriverResultPoints", () => {
   });
 });
 
+// Helper to build a finished result with a total race time (ms).
+const fint = (driverId, position, totalTimeMs, extra = {}) =>
+  fin(driverId, position, { totalTimeMs, ...extra });
+
+describe("classifyResults / applyPenalties (time penalties)", () => {
+  it("is an exact no-op when no result has a penalty (historical rounds unchanged)", () => {
+    const results = [
+      fint("a1", 1, 100000),
+      fint("b1", 2, 101000),
+      fint("c1", 3, 103000),
+      fint("d1", 4, 110000),
+    ];
+    const map = classifyResults(results);
+    expect([...map.entries()]).toEqual([
+      ["a1", 1],
+      ["b1", 2],
+      ["c1", 3],
+      ["d1", 4],
+    ]);
+    // positions untouched
+    expect(applyPenalties(results).map((r) => r.position)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("is a no-op for legacy rounds with no stored total times, even with a penalty", () => {
+    // No totalTimeMs anywhere -> we can't time-sort, so the stored order stands.
+    const results = [fin("a1", 1, { penaltySeconds: 10 }), fin("b1", 2), fin("c1", 3)];
+    expect(applyPenalties(results).map((r) => r.position)).toEqual([1, 2, 3]);
+  });
+
+  it("preserves gapped finisher positions when there is no penalty", () => {
+    // P3 is a DNF that keeps its slot in the stored order; finishers are 1,2,4,5.
+    const results = [
+      fint("a1", 1, 100000),
+      fint("b1", 2, 101000),
+      fin("c1", 3, { status: "DNF" }),
+      fint("d1", 4, 103000),
+      fint("a2", 5, 104000),
+    ];
+    const applied = applyPenalties(results);
+    // finishers keep their exact stored positions -> points unchanged
+    expect(applied.find((r) => r.driverId === "d1").position).toBe(4);
+    expect(applied.find((r) => r.driverId === "a2").position).toBe(5);
+  });
+
+  it("drops the penalised car behind every car now ahead on adjusted time", () => {
+    // P1 +5s -> 105.0s, slots in behind b1(101s) and c1(103s) but ahead of d1(110s).
+    const results = [
+      fint("a1", 1, 100000, { penaltySeconds: 5 }),
+      fint("b1", 2, 101000),
+      fint("c1", 3, 103000),
+      fint("d1", 4, 110000),
+    ];
+    const map = classifyResults(results);
+    expect(map.get("b1")).toBe(1); // bumped up
+    expect(map.get("c1")).toBe(2); // bumped up
+    expect(map.get("a1")).toBe(3); // dropped two places by time
+    expect(map.get("d1")).toBe(4); // still slower even after the bump -> unchanged
+  });
+
+  it("does not move a car whose penalty is smaller than the gap behind", () => {
+    // a1 leads by 6s; a 5s penalty isn't enough to drop it behind b1.
+    const results = [
+      fint("a1", 1, 100000, { penaltySeconds: 5 }),
+      fint("b1", 2, 106000),
+      fint("c1", 3, 110000),
+    ];
+    const map = classifyResults(results);
+    expect(map.get("a1")).toBe(1); // 105.0s still ahead of 106.0s
+    expect(map.get("b1")).toBe(2);
+    expect(map.get("c1")).toBe(3);
+  });
+
+  it("re-scores the penalised car and the bumped cars, others kept as-is", () => {
+    const results = [
+      fint("a1", 1, 100000, { penaltySeconds: 5 }), // -> P3 -> 25
+      fint("b1", 2, 101000), // bumped -> P1 -> 35
+      fint("c1", 3, 103000), // bumped -> P2 -> 30
+      fint("d1", 4, 110000), // untouched -> P4 -> 22
+    ];
+    const applied = applyPenalties(results);
+    expect(getDriverResultPoints(applied.find((r) => r.driverId === "a1"))).toBe(25);
+    expect(getDriverResultPoints(applied.find((r) => r.driverId === "b1"))).toBe(35);
+    expect(getDriverResultPoints(applied.find((r) => r.driverId === "c1"))).toBe(30);
+    expect(getDriverResultPoints(applied.find((r) => r.driverId === "d1"))).toBe(22);
+  });
+
+  it("never lets a lapped / low-time car jump ahead when another car is penalised", () => {
+    // Regression: a retiree who ran few laps has a tiny total time but is
+    // classified LAST. Penalising the winner must drop them only among same-lap
+    // cars — the low-time retiree must NOT be shuffled to the front.
+    const results = [
+      fint("a1", 1, 600000, { penaltySeconds: 5 }), // winner +5s -> 605.0s
+      fint("b1", 2, 601000),
+      fint("c1", 3, 603000),
+      fint("lap", 4, 120000), // retired early: smallest total time, classified P4
+    ];
+    const map = classifyResults(results);
+    expect(map.get("lap")).toBe(4); // stays last despite the smallest time
+    expect(map.get("b1")).toBe(1); // bumped up
+    expect(map.get("c1")).toBe(2); // bumped up
+    expect(map.get("a1")).toBe(3); // only the penalised car moved
+  });
+
+  it("does not drop a penalised car across a lap boundary, however big the penalty", () => {
+    // A huge penalty on the leader still can't push it behind the lapped car.
+    const results = [
+      fint("a1", 1, 600000, { penaltySeconds: 600 }), // +10 min
+      fint("b1", 2, 601000),
+      fint("lap", 3, 90000), // lapped, tiny time
+    ];
+    const map = classifyResults(results);
+    expect(map.get("lap")).toBe(3); // never jumped
+    expect(map.get("b1")).toBe(1);
+    expect(map.get("a1")).toBe(2); // dropped behind b1 only
+  });
+
+  it("keeps non-finishers out of the redistributed slots", () => {
+    const results = [
+      fint("a1", 1, 100000, { penaltySeconds: 5 }), // -> 105.0s, drops behind c1
+      fin("b1", 2, { status: "DNF" }), // excluded — holds no slot
+      fint("c1", 3, 101000),
+    ];
+    const map = classifyResults(results);
+    // finishers a1(P1) & c1(P3); a1 +5s drops behind c1 -> they swap slots.
+    expect(map.get("c1")).toBe(1);
+    expect(map.get("a1")).toBe(3);
+    expect(map.has("b1")).toBe(false);
+  });
+});
+
 describe("calculateT1ConstructorPoints", () => {
   it("sums real race points of both Tier-1 drivers, no re-ranking", () => {
     const results = [
@@ -146,14 +278,15 @@ describe("calculateT2ConstructorPoints (re-ranking)", () => {
     expect(pts).toEqual({ charlie: 35, delta: 30 });
   });
 
-  it("keeps a Tier-2 DNF/DSQ in the order (holds its slot) but scores it 0", () => {
-    // c1 finishes ahead but DNFs -> holds rank 1 (scores 0); d1 is rank 2 -> 30.
+  it("removes a Tier-2 DNF/DSQ from the field (no slot held), bumping cars up", () => {
+    // c1 is ahead on the road but DNFs -> removed entirely; d1 bumps up to
+    // T2 rank 1 -> 35 (it must NOT stay at rank 2).
     const results = [
-      fin("c1", 1, { status: "DNF" }), // holds slot 1, scores 0
-      fin("d1", 2), // rank 2 -> 30
+      fin("c1", 1, { status: "DNF" }), // removed
+      fin("d1", 2), // T2 rank 1 -> 35
     ];
     const pts = calculateT2ConstructorPoints(results, drivers, teams);
-    expect(pts).toEqual({ delta: 30 });
+    expect(pts).toEqual({ delta: 35 });
   });
 
   it("sums both Tier-2 drivers of the same team", () => {
@@ -173,5 +306,78 @@ describe("calculateT2ConstructorPoints (re-ranking)", () => {
     ];
     const pts = calculateT2ConstructorPoints(results, drivers, teams);
     expect(pts).toEqual({ charlie: 35, delta: 30 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New regression cases for the DSQ/DNF re-ranking fix.
+// Field: one Tier-1 team `t1`, four Tier-2 teams A/B/C/D, one team-less reserve.
+// ---------------------------------------------------------------------------
+const t2teams = [
+  { id: "t1", name: "T1", tier: 1 },
+  { id: "A", name: "A", tier: 2 },
+  { id: "B", name: "B", tier: 2 },
+  { id: "C", name: "C", tier: 2 },
+  { id: "D", name: "D", tier: 2 },
+  { id: "res", name: "Reserve", tier: 0 },
+];
+
+const t2drivers = [
+  { id: "t1d", teamId: "t1", tier: 1 },
+  { id: "ad", teamId: "A", tier: 2 },
+  { id: "bd", teamId: "B", tier: 2 },
+  { id: "cd", teamId: "C", tier: 2 },
+  { id: "dd", teamId: "D", tier: 2 },
+  { id: "resd", teamId: "res", tier: 0 },
+];
+
+describe("calculateT2ConstructorPoints (DSQ/DNF removal fix)", () => {
+  // Case A: a non-finishing Tier-2 car must not hold a slot — the cars behind
+  // it bump up. Run once for DSQ and once for DNF (identical expectation).
+  it.each(["DSQ", "DNF"])(
+    "bumps Tier-2 cars up when a P3 car is %s (no slot held)",
+    (status) => {
+      const results = [
+        fin("t1d", 1), // Tier-1 -> removed
+        fin("ad", 2), // A -> T2 rank 1 -> 35
+        fin("bd", 3, { status }), // B non-finisher -> removed
+        fin("cd", 4), // C -> T2 rank 2 -> 30
+        fin("dd", 5), // D -> T2 rank 3 -> 25
+      ];
+      const pts = calculateT2ConstructorPoints(results, t2drivers, t2teams);
+      expect(pts).toEqual({ A: 35, C: 30, D: 25 });
+      expect(pts.B).toBeUndefined();
+    },
+  );
+
+  // Case B: a team-less reserve (effective tier 0) also does not occupy a slot.
+  it("removes a team-less reserve so Tier-2 cars keep their bumped-up ranks", () => {
+    const results = [
+      fin("t1d", 1), // Tier-1 -> removed
+      fin("ad", 2), // A -> T2 rank 1 -> 35
+      fin("resd", 3), // team-less reserve -> removed
+      fin("cd", 4), // C -> T2 rank 2 -> 30
+      fin("dd", 5), // D -> T2 rank 3 -> 25
+    ];
+    const pts = calculateT2ConstructorPoints(results, t2drivers, t2teams);
+    expect(pts).toEqual({ A: 35, C: 30, D: 25 });
+  });
+});
+
+// Case C: the fix must NOT leak into the driver or Tier-1 standings — those
+// never re-rank on a DSQ. Only the disqualified entry drops to 0.
+describe("DSQ does not re-rank driver or Tier-1 standings", () => {
+  it("scores a DSQ driver 0 and a real P3 driver 25 (no bump)", () => {
+    expect(getDriverResultPoints({ status: "DSQ", position: 3 })).toBe(0);
+    expect(getDriverResultPoints({ status: "FINISHED", position: 3 })).toBe(25);
+  });
+
+  it("keeps a Tier-1 P2 car at its real 30 when the P1 car is DSQ", () => {
+    const results = [
+      fin("a1", 1, { status: "DSQ" }), // alpha DSQ -> 0
+      fin("b1", 2), // bravo real P2 -> 30 (does NOT inherit P1)
+    ];
+    const pts = calculateT1ConstructorPoints(results, drivers, teams);
+    expect(pts).toEqual({ alpha: 0, bravo: 30 });
   });
 });

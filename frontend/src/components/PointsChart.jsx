@@ -14,7 +14,21 @@ function niceNum(v, round) {
   return nf * Math.pow(10, e);
 }
 
-export default function PointsChart({ standings = [], completed = [] }) {
+// Drop-worst-N rule, mirroring the backend (standingsService DROP_LOWEST_N).
+// Sum of a set of round scores after removing the N lowest. Rounds not yet run
+// count as 0 (and are dropped first), so mid-season the line equals the gross
+// sum until fewer than N rounds remain — exactly how the season total behaves.
+const DROP_N = 3;
+function championshipTotal(pointsByRound, roundNumbers, dropN = DROP_N) {
+  const pts = roundNumbers.map((n) => pointsByRound[n] ?? 0);
+  if (pts.length <= dropN) return pts.reduce((a, b) => a + b, 0);
+  return [...pts].sort((a, b) => a - b).slice(dropN).reduce((a, b) => a + b, 0);
+}
+
+// `completed` = rounds plotted on the x-axis (those with scores). `allRounds` =
+// the full season calendar (incl. not-yet-run rounds), needed so the drop rule
+// counts unrun rounds as droppable zeros just like the standings do.
+export default function PointsChart({ standings = [], completed = [], allRounds = [] }) {
   const [focus, setFocus] = useState(null); // hovered team
   const [pinned, setPinned] = useState(null); // clicked team
   const [hover, setHover] = useState(null); // { idx, x, w }
@@ -25,10 +39,19 @@ export default function PointsChart({ standings = [], completed = [] }) {
   }
 
   const N = completed.length;
+  const calendar = allRounds.length ? allRounds : completed;
   const series = standings.map((t) => {
-    let run = 0;
-    const pts = [0, ...completed.map((n) => (run += t.perRace?.[n] || 0))];
-    return { teamId: t.teamId, name: t.name, color: t.color, total: t.total, pts };
+    // Cumulative CHAMPIONSHIP total after each round: the drop-worst-3 rule
+    // applied to the rounds run so far. The line therefore ends exactly on the
+    // team's real season total (the number in the table) instead of the gross
+    // sum of every race.
+    const pts = [0];
+    for (const upto of completed) {
+      const pbr = {};
+      for (const n of calendar) pbr[n] = n <= upto ? t.perRace?.[n] || 0 : 0;
+      pts.push(championshipTotal(pbr, calendar));
+    }
+    return { teamId: t.teamId, name: t.name, color: t.color, total: t.total, perRace: t.perRace, pts };
   });
 
   const rawMax = Math.max(1, ...series.map((s) => s.pts[s.pts.length - 1]));
@@ -66,7 +89,9 @@ export default function PointsChart({ standings = [], completed = [] }) {
       teamId: s.teamId,
       name: s.name,
       color: s.color,
-      race: s.pts[idx] - (idx > 0 ? s.pts[idx - 1] : 0),
+      // raw points actually scored that round (the cumulative `cum` is the
+      // championship total, which may not move if this round is being dropped)
+      race: idx > 0 ? s.perRace?.[completed[idx - 1]] || 0 : 0,
       cum: s.pts[idx],
     }));
     if (active) rows = rows.filter((s) => s.teamId === active);
@@ -242,6 +267,11 @@ export default function PointsChart({ standings = [], completed = [] }) {
           );
         })}
       </div>
+
+      <p className="mt-3 text-xs text-light">
+        Cumulative championship points after each round — each team&rsquo;s 3 lowest rounds are dropped
+        (best&nbsp;9 of&nbsp;12), so the line ends on the same total as the standings table.
+      </p>
     </div>
   );
 }

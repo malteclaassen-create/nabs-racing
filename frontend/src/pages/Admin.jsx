@@ -5,6 +5,8 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { PageHeader, ErrorBox, Notice, CardHead } from "../components/ui.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
+import RacePreview from "../components/RacePreview.jsx";
+import { fmtTimeCell } from "../utils/raceDuration.js";
 
 const TABS = [
   { id: "seasons", label: "Seasons" },
@@ -31,9 +33,29 @@ function SeasonScope() {
 
 export default function Admin() {
   const [authed, setAuthed] = useState(!!getToken());
+  const [expired, setExpired] = useState(false);
   const [tab, setTab] = useState("seasons");
 
-  if (!authed) return <Login onSuccess={() => setAuthed(true)} />;
+  // If any admin request reports an expired/invalid token, bounce to the login.
+  useEffect(() => {
+    const onUnauth = () => {
+      setAuthed(false);
+      setExpired(true);
+    };
+    window.addEventListener("nabs-admin-unauthorized", onUnauth);
+    return () => window.removeEventListener("nabs-admin-unauthorized", onUnauth);
+  }, []);
+
+  if (!authed)
+    return (
+      <Login
+        expired={expired}
+        onSuccess={() => {
+          setExpired(false);
+          setAuthed(true);
+        }}
+      />
+    );
 
   return (
     <div>
@@ -80,7 +102,7 @@ export default function Admin() {
 }
 
 // --- LOGIN -----------------------------------------------------------------
-function Login({ onSuccess }) {
+function Login({ onSuccess, expired }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -104,6 +126,7 @@ function Login({ onSuccess }) {
     <div className="mx-auto max-w-sm">
       <PageHeader eyebrow="League Office" title="Admin Login" />
       <form onSubmit={submit} className="card space-y-4 p-6">
+        {expired && <Notice kind="info">Your session expired — please log in again.</Notice>}
         <div>
           <label className="mb-1 block text-sm font-semibold text-medium">Admin PIN</label>
           <input
@@ -144,15 +167,22 @@ function EditResults() {
       .raceResults(raceId)
       .then((d) => {
         setRows(
-          d.results.map((r) => ({
-            driverId: r.driverId,
-            name: r.name,
-            position: r.position ?? "",
-            status: r.status,
-            subForTeamId: r.subForTeam?.id || "",
-            penaltyPositions: r.penaltyPositions || 0,
-            canSub: r.driverTier === 0,
-          }))
+          d.results.map((r) => {
+            const raw = r.rawPosition ?? r.position ?? "";
+            return {
+              driverId: r.driverId,
+              name: r.name,
+              position: raw, // raw finishing position (penalty is separate)
+              status: r.status,
+              subForTeamId: r.subForTeam?.id || "",
+              penaltySeconds: r.penaltySeconds || 0,
+              totalTimeMs: r.totalTimeMs ?? null, // race time, needed to apply a time penalty
+              points: r.points, // official points, kept unless this row changes
+              origPos: String(raw),
+              origStatus: r.status,
+              canSub: r.driverTier === 0,
+            };
+          })
         );
       })
       .catch((e) => setError(e.message));
@@ -162,19 +192,32 @@ function EditResults() {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
 
+  // Normalised results for both the live preview and the save. A row keeps its
+  // official points only while its finish/status are untouched; once changed,
+  // points are derived from position (penalties are handled server-side).
+  const toResults = (rs) =>
+    rs.map((r) => ({
+      driverId: r.driverId,
+      position: r.position === "" ? null : Number(r.position),
+      status: r.status,
+      subForTeamId: r.subForTeamId || null,
+      penaltySeconds: Number(r.penaltySeconds) || 0,
+      totalTimeMs: r.totalTimeMs ?? null,
+      points:
+        String(r.position) !== r.origPos || r.status !== r.origStatus ? null : r.points ?? null,
+    }));
+
+  // Leader's race time (fastest finisher) -> drives the gap column. Null for
+  // legacy rounds with no stored times (the column then shows "–").
+  const finishTimes = rows.filter((r) => r.status === "FINISHED" && r.totalTimeMs > 0).map((r) => r.totalTimeMs);
+  const leaderMs = finishTimes.length ? Math.min(...finishTimes) : null;
+
   async function save() {
     setBusy(true);
     setError(null);
     setMsg(null);
     try {
-      const results = rows.map((r) => ({
-        driverId: r.driverId,
-        position: r.position === "" ? null : Number(r.position),
-        status: r.status,
-        subForTeamId: r.subForTeamId || null,
-        penaltyPositions: Number(r.penaltyPositions) || 0,
-      }));
-      await api.editResults(raceId, results);
+      await api.editResults(raceId, toResults(rows));
       setMsg("Results saved and standings recalculated.");
     } catch (e) {
       setError(e.message);
@@ -208,10 +251,16 @@ function EditResults() {
               <thead>
                 <tr className="border-b border-border bg-surface2 text-left text-light">
                   <th className="px-3 py-2">Driver</th>
-                  <th className="px-3 py-2 w-20 text-center">Pos</th>
+                  <th className="px-3 py-2 w-20 text-center" title="Raw finishing position from the race">Finish</th>
+                  <th className="px-3 py-2 text-center" title="Total race time (leader) or gap behind the leader">Time / Gap</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Team (this race)</th>
-                  <th className="px-3 py-2 text-center">Penalty +</th>
+                  <th
+                    className="px-3 py-2 text-center"
+                    title="Time penalty in seconds (e.g. 5 or 10), added to the driver's race time. The final order & points update live in the preview below."
+                  >
+                    Penalty (sec)
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -225,6 +274,7 @@ function EditResults() {
                         onChange={(e) => setRow(i, { position: e.target.value })}
                       />
                     </td>
+                    <td className="px-3 py-2 text-center font-mono text-xs text-light">{fmtTimeCell(r, leaderMs)}</td>
                     <td className="px-3 py-2">
                       <select className="input py-1" value={r.status} onChange={(e) => setRow(i, { status: e.target.value })}>
                         {STATUSES.map((s) => (
@@ -260,8 +310,9 @@ function EditResults() {
                         className="input w-16 py-1 text-center"
                         type="number"
                         min="0"
-                        value={r.penaltyPositions}
-                        onChange={(e) => setRow(i, { penaltyPositions: e.target.value })}
+                        step="5"
+                        value={r.penaltySeconds}
+                        onChange={(e) => setRow(i, { penaltySeconds: e.target.value })}
                       />
                     </td>
                   </tr>
@@ -269,13 +320,19 @@ function EditResults() {
               </tbody>
             </table>
           </div>
+          <p className="text-xs text-light">
+            Enter each driver&rsquo;s <span className="font-semibold text-medium">raw finishing position</span> in
+            &ldquo;Finish&rdquo;. <span className="font-semibold text-medium">Penalty (sec)</span> is a time penalty
+            in seconds — it&rsquo;s added to the driver&rsquo;s race time and the field is re-sorted, so they drop
+            behind everyone now ahead on time. (Needs imported race times; rounds without them can&rsquo;t be
+            re-sorted.) The final order, points and the championship update live below before you save.
+          </p>
+
+          <RacePreview request={{ raceId, results: toResults(rows) }} />
+
           <button className="btn-primary" onClick={save} disabled={busy}>
             {busy ? "Saving…" : "Save results"}
           </button>
-          <p className="text-xs text-light">
-            Note: editing replaces this round's stored results. Positions drive the points &amp; the
-            Tier-2 re-rank for this round.
-          </p>
         </>
       )}
     </div>
@@ -321,8 +378,13 @@ function Drivers() {
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
-  // Teams (sorted by tier, then name) with their drivers — the roster grouped by team.
-  const teamGroups = [...(teams || [])].sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
+  // Teams with their drivers — grouped by team, ordered Tier 1 → Tier 2 →
+  // Reserve. (Tier values are 1, 2, 0, so we rank them explicitly to keep
+  // Reserve last instead of first.)
+  const tierRank = (tier) => (tier === 1 ? 0 : tier === 2 ? 1 : 2);
+  const teamGroups = [...(teams || [])].sort(
+    (a, b) => tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name)
+  );
 
   return (
     <div>
@@ -331,10 +393,17 @@ function Drivers() {
       <form onSubmit={create} className="card space-y-4 p-5">
         <CardHead eyebrow="Drivers" title="Add driver" />
         <div className="grid grid-cols-2 gap-3">
-          <input className="input" placeholder="id (slug)" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} required />
+          <input className="input" placeholder="id, e.g. max_mustermann" title="Permanent, unique handle — lowercase, no spaces" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} required />
           <input className="input" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
         </div>
         <input className="input" placeholder="Discord name" value={form.discordName} onChange={(e) => setForm({ ...form, discordName: e.target.value })} />
+        <p className="text-xs leading-relaxed text-light">
+          <span className="font-semibold text-medium">id</span> is a permanent, unique handle — lowercase, no spaces
+          (e.g. <span className="font-mono">max_mustermann</span>). It can&rsquo;t easily be changed later.<br />
+          For race imports to auto-recognise a driver, make their <span className="font-semibold text-medium">Name</span>{" "}
+          or <span className="font-semibold text-medium">Discord name</span> match the in-game Assetto Corsa name as
+          closely as possible. (You can always pick the right driver by hand during import if the auto-match misses.)
+        </p>
         <div className="grid grid-cols-2 gap-3">
           <select className="input" value={form.teamId} onChange={(e) => setForm({ ...form, teamId: e.target.value })} required>
             <option value="">Team…</option>

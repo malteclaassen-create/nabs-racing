@@ -5,7 +5,9 @@ import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton } fro
 import RaceResults from "../components/RaceResults.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
+import EdgeFade from "../components/EdgeFade.jsx";
 import { circuitFor } from "../data/circuits.js";
+import { fmtRaceTime } from "../utils/raceTime.js";
 
 // The calendar is built entirely from the season's races (DB), so it stays in
 // sync with whatever the admin schedules. Championship rounds (number set) are
@@ -44,8 +46,9 @@ function Countdown({ date }) {
 // ---------------------------------------------------------------------------
 function RoundStrip({ races, selectedId, onSelect }) {
   return (
-    <div className="scrollbar-slim -mx-1 flex gap-2 overflow-x-auto px-1 pb-2">
-      {races.map((r) => {
+    <EdgeFade color="var(--c-bg)" innerClassName="scrollbar-slim -mx-1 px-1 pb-2">
+      <div className="flex gap-2">
+        {races.map((r) => {
         const c = circuitFor(r.track);
         const active = r.id === selectedId;
         const done = r.isCompleted;
@@ -78,9 +81,10 @@ function RoundStrip({ races, selectedId, onSelect }) {
               </span>
             </span>
           </button>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+    </EdgeFade>
   );
 }
 
@@ -149,7 +153,7 @@ function RaceCard({ r, isNext, selected, onSelect }) {
           <div className="flex items-end justify-between gap-2">
             <div>
               <div className="font-mono text-sm font-semibold tabular-nums text-medium">{fmtDate(e.date)}</div>
-              <div className="font-mono text-xs text-light">6:00 PM GMT</div>
+              <div className="font-mono text-xs text-light">{e.date ? fmtRaceTime(e.date) : "Time TBA"}</div>
             </div>
             {isNext && !done && <Countdown date={e.date} />}
           </div>

@@ -3,12 +3,16 @@
 // Used by both the AC import and the manual results editor.
 // ---------------------------------------------------------------------------
 import {
+  applyPenalties,
   calculateT1ConstructorPoints,
   calculateT2ConstructorPoints,
 } from "./pointsCalculator.js";
 
-// results: [{ driverId, position, status, subForTeamId, penaltyPositions }]
-// `position` is the FINAL position (after penalties already applied by caller).
+// results: [{ driverId, position, status, subForTeamId, penaltySeconds, totalTimeMs }]
+// `position` is the RAW finishing position; any time penalties are applied here
+// when computing scores (race time + penalty seconds, re-sorted). The raw
+// position is what gets stored, so re-opening the round in the editor and
+// re-saving is idempotent.
 export async function saveRaceResults(prisma, raceId, results) {
   const [drivers, teams] = await Promise.all([
     prisma.driver.findMany(),
@@ -26,20 +30,24 @@ export async function saveRaceResults(prisma, raceId, results) {
           raceId,
           driverId: r.driverId,
           position: r.status === "DNS" ? null : r.position ?? null,
-          // imported/edited races derive points from position+status
-          points: null,
+          // Preserve explicit points the caller kept (historical rounds keep
+          // their official points unless a result was actually changed); a null
+          // here means "derive from position+status".
+          points: r.points ?? null,
           status: r.status || "FINISHED",
           subForTeamId: r.subForTeamId || null,
-          penaltyPositions: r.penaltyPositions || 0,
+          penaltySeconds: r.penaltySeconds || 0,
           grid: r.grid ?? null,
           bestLapMs: r.bestLapMs ?? null,
+          totalTimeMs: r.totalTimeMs ?? null,
         },
       });
     }
 
-    // Recompute constructor scores from the freshly stored results.
-    const t1 = calculateT1ConstructorPoints(results, drivers, teams);
-    const t2 = calculateT2ConstructorPoints(results, drivers, teams);
+    // Recompute constructor scores from the penalty-adjusted classification.
+    const applied = applyPenalties(results);
+    const t1 = calculateT1ConstructorPoints(applied, drivers, teams);
+    const t2 = calculateT2ConstructorPoints(applied, drivers, teams);
 
     const teamById = new Map(teams.map((t) => [t.id, t]));
     const rows = [];

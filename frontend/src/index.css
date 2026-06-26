@@ -10,8 +10,8 @@
   --c-border: #dbe2ec;
   --c-text: #0f172a;
   --c-text2: #334155;
-  --c-text3: #64748b;
-  --c-faint: #c2ccda;
+  --c-text3: #586676;
+  --c-faint: #aab6c6;
   /* Card elevation — tuned per theme so widgets lift off the background. */
   --c-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 10px 26px -14px rgba(15, 23, 42, 0.28);
   --c-shadow-lift: 0 2px 6px rgba(15, 23, 42, 0.08), 0 18px 40px -16px rgba(15, 23, 42, 0.34);
@@ -26,8 +26,8 @@
   --c-border: #243248;
   --c-text: #e8eef7;
   --c-text2: #aebacd;
-  --c-text3: #8492a8;
-  --c-faint: #3a475f;
+  --c-text3: #9aa8be;
+  --c-faint: #58657b;
   --c-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 30px -16px rgba(0, 0, 0, 0.7);
   --c-shadow-lift: 0 2px 8px rgba(0, 0, 0, 0.5), 0 22px 48px -18px rgba(0, 0, 0, 0.8);
   --c-page-glow: radial-gradient(1200px 560px at 50% -10%, rgba(244, 175, 198, 0.1), transparent 70%);
@@ -37,6 +37,13 @@
    shifts sideways when switching between short and tall pages (e.g. admin tabs). */
 html {
   scrollbar-gutter: stable;
+}
+
+/* Sticky-nav backdrop: fade its bottom edge out over a short distance so the
+   blurred bar melts into the page instead of ending on a hard, visible line. */
+.nav-fade {
+  -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent);
+  mask-image: linear-gradient(to bottom, #000 82%, transparent);
 }
 
 body {
@@ -105,6 +112,15 @@ body {
   }
   .section-title {
     @apply text-xs font-bold uppercase tracking-[0.18em] text-light;
+  }
+  /* Frozen table columns must stay fully opaque, otherwise horizontally
+     scrolled cells bleed through them. They carry the same `transition` as the
+     row so their hover tint fades in sync with the scrolling cells. */
+  .sticky-cell {
+    background-color: var(--c-card);
+  }
+  .group:hover .sticky-cell {
+    background-color: var(--c-surface2);
   }
 }
 

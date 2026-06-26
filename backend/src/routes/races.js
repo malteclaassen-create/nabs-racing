@@ -1,6 +1,6 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
-import { getDriverResultPoints, getPointsForPosition } from "../services/pointsCalculator.js";
+import { getDriverResultPoints, getPointsForPosition, applyPenalties } from "../services/pointsCalculator.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 
 const router = Router();
@@ -47,8 +47,14 @@ router.get("/:id/results", async (req, res, next) => {
 
     const teamById = new Map(teams.map((t) => [t.id, t]));
 
+    // Apply position penalties so the displayed order, points and the Tier-2
+    // re-rank all use each car's final (post-penalty) position. `rawById` keeps
+    // the original finishing position so the UI can show "P2 → P5".
+    const applied = applyPenalties(results);
+    const rawById = new Map(results.map((r) => [r.driverId, r.position]));
+
     // Build T2 re-rank lookup for races that have positions (e.g. R9).
-    const hasPositions = results.some((r) => r.position != null);
+    const hasPositions = applied.some((r) => r.position != null);
     const t2ReRank = {};
     if (hasPositions) {
       const driverById = new Map(drivers.map((d) => [d.id, d]));
@@ -56,7 +62,7 @@ router.get("/:id/results", async (req, res, next) => {
         teamById.get(r.subForTeamId || driverById.get(r.driverId)?.teamId);
       // Only Tier-2-team results are classified; Tier-1 drivers and team-less
       // reserves are excluded entirely (they don't occupy a slot).
-      const remaining = results
+      const remaining = applied
         .filter((r) => r.status !== "DNS" && r.position != null && effTeam(r)?.tier === 2)
         .sort((a, b) => a.position - b.position);
       remaining.forEach((r, i) => {
@@ -70,7 +76,7 @@ router.get("/:id/results", async (req, res, next) => {
       });
     }
 
-    const rows = results
+    const rows = applied
       .map((r) => {
         const effectiveTeam = r.subForTeam
           ? teamById.get(r.subForTeam.id)
@@ -79,13 +85,16 @@ router.get("/:id/results", async (req, res, next) => {
           driverId: r.driverId,
           name: r.driver.name,
           discordName: r.driver.discordName,
+          country: r.driver.country || null,
           driverTier: r.driver.tier,
           position: r.position,
+          rawPosition: rawById.get(r.driverId) ?? null,
           status: r.status,
           points: getDriverResultPoints(r),
-          penaltyPositions: r.penaltyPositions,
+          penaltySeconds: r.penaltySeconds,
           grid: r.grid,
           bestLapMs: r.bestLapMs,
+          totalTimeMs: r.totalTimeMs,
           team: {
             id: r.driver.team.id,
             name: r.driver.team.name,

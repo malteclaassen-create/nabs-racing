@@ -282,6 +282,8 @@ export default function DriverProfile() {
   const { driver, championship, stats, perRace } = p;
   const color = driver.team.color;
   const meRow = standingsData.standings.find((s) => s.driverId === driver.id);
+  // Rounds dropped from this driver's total (3 lowest don't count).
+  const droppedRounds = new Set(meRow?.droppedRounds || []);
 
   return (
     <div className="space-y-6">
@@ -298,7 +300,7 @@ export default function DriverProfile() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="font-display text-4xl font-black uppercase tracking-tight sm:text-6xl">{driver.name}</h1>
-              <Flag code={countryFor(driver.id)} w={30} h={22} />
+              <Flag code={countryFor(driver.id, driver.country)} w={30} h={22} />
               <TierBadge tier={driver.tier} />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-white/70">
@@ -386,8 +388,13 @@ export default function DriverProfile() {
                   const finished = r.status === "FINISHED" && r.position != null;
                   const medal = finished && r.position <= 3 ? MEDAL[r.position - 1] : null;
                   const delta = finished && r.grid != null ? r.grid - r.position : null;
+                  const dropped = droppedRounds.has(r.number);
                   return (
-                    <tr key={r.number} className="transition hover:bg-surface2">
+                    <tr
+                      key={r.number}
+                      title={dropped ? "Dropped — one of the 3 lowest rounds, not counted toward the total" : undefined}
+                      className="transition hover:bg-surface2"
+                    >
                       <td className="px-5 py-3 font-mono font-bold tabular-nums text-light">{r.number}</td>
                       <td className="px-2 py-3">
                         <div className="flex items-center gap-2.5">
@@ -405,7 +412,13 @@ export default function DriverProfile() {
                           </span>
                         ) : <StatusPill status={r.status} />}
                       </td>
-                      <td className="px-2 py-3 text-right font-display text-base font-black tabular-nums text-dark">{r.points}</td>
+                      <td className="px-2 py-3 text-right font-display text-base font-black tabular-nums">
+                        {dropped ? (
+                          <span className="text-faint line-through decoration-2">{r.points}</span>
+                        ) : (
+                          <span className="text-dark">{r.points}</span>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-right font-mono text-sm font-bold tabular-nums">
                         {delta == null || delta === 0
                           ? <span className="text-faint">–</span>
@@ -417,6 +430,10 @@ export default function DriverProfile() {
               </tbody>
             </table>
           </div>
+          <p className="border-t border-border px-5 py-2.5 font-mono text-[11px] leading-relaxed text-light sm:px-6">
+            <span className="text-faint line-through decoration-2">Struck</span> points are dropped — a driver&rsquo;s 3
+            lowest-scoring rounds don&rsquo;t count toward the total (best 9 of 12).
+          </p>
         </div>
 
         <TeamPanel driver={driver} standings={standingsData.standings} />

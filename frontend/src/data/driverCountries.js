@@ -1,6 +1,10 @@
 // Nationality (flag) for each driver, by driver id (see backend/prisma/seed.js).
-// ISO 3166-1 alpha-2 country codes. Read from the Discord #teams roster.
+// ISO 3166-1 alpha-2 country codes. Confirmed against the Discord #teams roster.
 // "" = no flag shown.
+//
+// Drivers can also set their own country when signing up (Discord login →
+// country picker). That self-selected value lives in the DB and takes priority;
+// this map is the baseline/fallback. See `countryFor(driverId, dbCountry)`.
 
 export const DRIVER_COUNTRY = {
   // --- Tier 1 ---
@@ -8,40 +12,42 @@ export const DRIVER_COUNTRY = {
   mtimmis: "gb", // Timmy 'Bunker' Gilmore
   siggsta: "gb", // Siggidy
   jomilan: "it", // JoMilan
-  takoda: "hu", // Tafourthda
-  steve: "hu", // Steven P6. Cheese
+  takoda: "nl", // Tafourthda
+  steve: "nl", // Steven P8. Cheese
   maltegoat: "de", // Maltegoat
   pizd: "gb", // Pizd
-  rayman: "pl", // Rayman
+  rayman: "nl", // Rayman
   rashford: "pl", // Marcus Rashford
 
   // --- Tier 2 ---
   vibe_officer: "fi", // VIBE_OFFICER
   j_yamanaka: "jp", // J. Yamanaka (山中)
-  hedimak: "tr", // [FWE]hedimakk
-  jacob_ordonez: "es", // Jacob Ordoñez
-  goldginger: "de", // GoldGinger
+  hedimak: "tn", // [FWE]hedimakk
+  jacob_ordonez: "ph", // Jacob Ordoñez
+  goldginger: "id", // GoldGinger
   jadend: "gb", // Jaden D-Ankrah
   jp_bekker: "za", // JP Bekker
-  aleks: "ma", // aleks
+  aleks: "al", // aleks
   dras: "in", // DRAS
   justyn: "fi", // Justyn
   kowandoh_badu: "gb", // Kowandoh Badu
-  aliveaxe: "id", // aliveaxe  (red/white — Indonesia, please verify)
+  aliveaxe: "rs", // aliveaxe
   nottyler: "ie", // NotTyler
-  zero0n1k: "ar", // ZerOn1k
+  zero0n1k: "cz", // ZerOn1k
   vhp: "bg", // VugPuh
   flo: "de", // Flo
   laluch: "cz", // Laluch
-  endriu: "cz", // Endriu
+  endriu: "pl", // Endriu
   tischler: "de", // Tischler
   manro45gt: "es", // Menry | Duck Drivers
   naigouu: "fi", // Naigouu
   kalervo: "fi", // Kalervo77
-  neesh: "id", // Neesh  (red/white — Indonesia, please verify)
+  neesh: "ca", // Neesh
   duck: "se", // Duck
 };
 
-export function countryFor(driverId) {
-  return DRIVER_COUNTRY[driverId] || "";
+// A driver's own DB country (self-selected at sign-up) wins; otherwise fall back
+// to the roster baseline above.
+export function countryFor(driverId, dbCountry) {
+  return dbCountry || DRIVER_COUNTRY[driverId] || "";
 }

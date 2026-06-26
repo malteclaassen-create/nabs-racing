@@ -2,7 +2,9 @@ import { useCallback, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { Notice, CardHead } from "./ui.jsx";
+import RacePreview from "./RacePreview.jsx";
 import { canonicalTrack } from "../data/circuits.js";
+import { fmtTimeCell } from "../utils/raceDuration.js";
 
 const STATUSES = ["FINISHED", "DNS", "DNF", "DSQ"];
 
@@ -47,9 +49,10 @@ export default function AdminImport({ onCommitted }) {
         driverId: en.suggestedDriverId || "",
         status: en.disqualified ? "DSQ" : "FINISHED",
         subForTeamId: "",
-        penaltyPositions: 0,
+        penaltySeconds: 0,
         bestLapMs: en.bestLap || null,
         grid: en.grid ?? null,
+        totalTimeMs: en.totalTimeMs ?? null,
         suggestions: en.suggestions,
       }))
     );
@@ -102,10 +105,11 @@ export default function AdminImport({ onCommitted }) {
         position: r.position,
         status: r.status,
         subForTeamId: r.subForTeamId || null,
-        penaltyPositions: Number(r.penaltyPositions) || 0,
+        penaltySeconds: Number(r.penaltySeconds) || 0,
         // AC stores a huge sentinel for "no valid lap" — drop those.
         bestLapMs: r.bestLapMs > 0 && r.bestLapMs <= 1800000 ? r.bestLapMs : null,
         grid: r.grid ?? null,
+        totalTimeMs: r.totalTimeMs ?? null,
       }));
       const res = await api.commitRace({
         number: Number(meta.number),
@@ -124,6 +128,12 @@ export default function AdminImport({ onCommitted }) {
       setBusy(false);
     }
   }
+
+  // Leader's race time (fastest total among finishers) -> drives the gap column.
+  const leaderMs = useMemo(() => {
+    const t = rows.filter((r) => r.status === "FINISHED" && r.totalTimeMs > 0).map((r) => r.totalTimeMs);
+    return t.length ? Math.min(...t) : null;
+  }, [rows]);
 
   const remoteList = remote.data?.results || [];
   const filteredRemote = remoteQuery.trim()
@@ -257,12 +267,18 @@ export default function AdminImport({ onCommitted }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface2 text-left text-light">
-                    <th className="px-3 py-2 text-center">Pos</th>
+                    <th className="px-3 py-2 text-center" title="Finishing position from the race file">Finish</th>
+                    <th className="px-3 py-2 text-center" title="Total race time (leader) or gap behind the leader">Time / Gap</th>
                     <th className="px-3 py-2">AC Name</th>
                     <th className="px-3 py-2">Driver</th>
                     <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2">Team (this race)</th>
-                    <th className="px-3 py-2 text-center">Penalty +</th>
+                    <th
+                      className="px-3 py-2 text-center"
+                      title="Time penalty in seconds (e.g. 5 or 10). It's added to the driver's race time and the field is re-sorted. The preview below updates live."
+                    >
+                      Penalty (sec)
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -271,6 +287,7 @@ export default function AdminImport({ onCommitted }) {
                     return (
                       <tr key={i} className="border-b border-border last:border-0">
                         <td className="px-3 py-2 text-center font-mono">{r.position}</td>
+                        <td className="px-3 py-2 text-center font-mono text-xs text-light">{fmtTimeCell(r, leaderMs)}</td>
                         <td className="px-3 py-2 font-medium text-dark">{r.acDriverName}</td>
                         <td className="px-3 py-2">
                           <select
@@ -330,8 +347,9 @@ export default function AdminImport({ onCommitted }) {
                             className="input w-16 py-1 text-center"
                             type="number"
                             min="0"
-                            value={r.penaltyPositions}
-                            onChange={(e) => setRow(i, { penaltyPositions: e.target.value })}
+                            step="5"
+                            value={r.penaltySeconds}
+                            onChange={(e) => setRow(i, { penaltySeconds: e.target.value })}
                           />
                         </td>
                       </tr>
@@ -341,6 +359,8 @@ export default function AdminImport({ onCommitted }) {
               </table>
             </div>
           </div>
+
+          <RacePreview request={{ number: meta.number, results: rows }} />
 
           <div className="flex items-center gap-3">
             <button className="btn-primary" onClick={commit} disabled={busy}>

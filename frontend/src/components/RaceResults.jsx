@@ -45,7 +45,7 @@ function PodiumCard({ row, rank }) {
           <span className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark">
             {row.name}
           </span>
-          <Flag code={countryFor(row.driverId)} w={16} h={12} />
+          <Flag code={countryFor(row.driverId, row.country)} w={16} h={12} />
         </div>
         <div className="truncate text-xs text-light">
           {(row.effectiveTeam || row.team).name}
@@ -174,7 +174,7 @@ export default function RaceResults({ race, results }) {
                       <span className="font-display text-base font-bold uppercase tracking-tight text-dark">
                         {r.name}
                       </span>
-                      <Flag code={countryFor(r.driverId)} />
+                      <Flag code={countryFor(r.driverId, r.country)} />
                       {tier != null && <TierBadge tier={tier} />}
                       {isFastest && (
                         <span className="pill bg-purple-500/15 text-purple-500" title="Fastest lap of the race">
@@ -184,9 +184,9 @@ export default function RaceResults({ race, results }) {
                       {r.isSub && r.subForTeam && (
                         <span className="pill bg-amber-100 text-amber-700">sub · {r.subForTeam.name}</span>
                       )}
-                      {r.penaltyPositions > 0 && (
-                        <span className="pill bg-red-500/15 text-red-500" title="Grid/finish penalty positions applied">
-                          +{r.penaltyPositions} pen
+                      {r.penaltySeconds > 0 && (
+                        <span className="pill bg-red-500/15 text-red-500" title="Time penalty applied">
+                          +{r.penaltySeconds}s pen
                         </span>
                       )}
                     </div>

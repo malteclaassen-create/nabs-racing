@@ -74,6 +74,7 @@ export async function getDriverProfile(prisma, driverId) {
       discordName: driver.discordName,
       tier: driver.tier,
       isActive: driver.isActive,
+      country: driver.country || null,
       photoUrl: driver.photoUrl || driver.discordAvatar || null,
       team: { id: driver.team.id, name: driver.team.name, color: driver.team.color, tier: driver.team.tier, logoUrl: driver.team.logoUrl },
     },

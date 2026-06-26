@@ -9,6 +9,7 @@ import { requireAdmin } from "../middleware/auth.js";
 import { parseAcRaceJson } from "../services/acJsonParser.js";
 import { listRemoteResults, fetchRemoteResult } from "../services/emperorResults.js";
 import { saveRaceResults } from "../services/raceWriter.js";
+import { previewRaceImpact } from "../services/previewService.js";
 import { getWebhookUrl, setWebhookUrl, announce, syncRaceToDiscord } from "../services/discordService.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 
@@ -79,7 +80,7 @@ router.post("/results/remote/import", async (req, res, next) => {
 });
 
 // POST /api/admin/races/commit
-// Body: { number, track, date?, results: [{driverId, position, status, subForTeamId, penaltyPositions}] }
+// Body: { number, track, date?, results: [{driverId, position, status, subForTeamId, penaltySeconds, totalTimeMs}] }
 // Creates or updates the race, then stores results + recomputes constructor scores.
 router.post("/races/commit", async (req, res, next) => {
   try {
@@ -110,6 +111,27 @@ router.post("/races/commit", async (req, res, next) => {
 
     await saveRaceResults(prisma, race.id, results);
     res.json({ ok: true, raceId: race.id, number: race.number });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/races/preview
+// Body: { raceId? , number?, results: [...], seasonId? }
+// Computes the would-be round result + driver/constructor standings for the
+// given (unsaved) results. Nothing is persisted.
+router.post("/races/preview", async (req, res, next) => {
+  try {
+    const { raceId, number, results, season } = req.body || {};
+    if (!Array.isArray(results)) return res.status(400).json({ error: "results[] required" });
+    const seasonId = await resolveSeasonId(prisma, season);
+    const preview = await previewRaceImpact(prisma, {
+      seasonId,
+      raceId: raceId || null,
+      number: number ?? null,
+      results,
+    });
+    res.json(preview);
   } catch (e) {
     next(e);
   }

@@ -18,7 +18,7 @@ function TierBlock({ eyebrow, standings, teams, delay }) {
     <section className="reveal space-y-6" style={{ animationDelay: delay }}>
       <SectionHeading eyebrow={eyebrow} title="Constructors" />
       <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={standings.standings} />
-      <PointsChart standings={standings.standings} completed={completedRounds(standings)} />
+      <PointsChart standings={standings.standings} completed={completedRounds(standings)} allRounds={standings.raceNumbers} />
 
       <div className="space-y-3 pt-2">
         <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Line-ups</h3>

@@ -75,6 +75,10 @@ model Driver {
   // captured on first Discord login (see discordAuth.js).
   photoUrl      String?
   discordAvatar String?
+  // Self-selected nationality (ISO 3166-1 alpha-2, lowercase), set by the driver
+  // on the sign-up page after Discord login. Takes priority over the static
+  // roster baseline in the frontend's driverCountries.js.
+  country       String?
   results     RaceResult[]
   rsvps       RaceRsvp[]
   createdAt   DateTime @default(now())
@@ -129,11 +133,19 @@ model RaceResult {
   status           String  @default("FINISHED") // FINISHED/DNS/DNF/DSQ
   subForTeamId     String? // Reserve drives for this team
   subForTeam       Team?   @relation(fields: [subForTeamId], references: [id])
+  // DEPRECATED: the old "penalty in places" model. Replaced by penaltySeconds
+  // (time penalties). Kept as an unused column so the migration stays additive;
+  // nothing reads or writes it any more.
   penaltyPositions Int     @default(0)
+  // Steward time penalty in SECONDS (e.g. 5 or 10), added to totalTimeMs and the
+  // field re-sorted by adjusted total time. 0 = none. Needs totalTimeMs to apply.
+  penaltySeconds   Int     @default(0)
   // Real finishing-order metadata from the AC race JSON (for driver profiles).
-  // Does NOT affect championship points (those follow `points`/position+status).
+  // grid/bestLap only enrich profiles; totalTimeMs is also used to apply time
+  // penalties (re-sort the field by race time + penalty seconds).
   grid             Int? // starting grid position
   bestLapMs        Int? // best lap in milliseconds
+  totalTimeMs      Int? // total race time in milliseconds (from AC `TotalTime`)
 
   @@unique([raceId, driverId])
 }

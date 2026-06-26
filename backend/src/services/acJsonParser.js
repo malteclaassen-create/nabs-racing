@@ -81,6 +81,9 @@ export function parseAcRaceJson(json, drivers) {
         acDriverName: r.DriverName,
         carModel: r.CarModel,
         totalTime: r.TotalTime,
+        // Total race time in ms — used to apply time penalties (re-sort the
+        // field by race time + penalty seconds). null when AC has no valid time.
+        totalTimeMs: Number.isFinite(r.TotalTime) && r.TotalTime > 0 ? r.TotalTime : null,
         bestLap: r.BestLap,
         numLaps: r.NumLaps ?? null,
         grid: Number.isFinite(r.GridPosition) ? r.GridPosition : null,

@@ -48,6 +48,14 @@ async function request(path, { method = "GET", body, auth = false, userAuth = fa
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
+    // An expired/invalid admin token: drop it and let the admin UI bounce back
+    // to the login screen instead of pretending we're still signed in.
+    if (res.status === 401 && auth) {
+      setToken(null);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("nabs-admin-unauthorized"));
+      }
+    }
     const err = new Error((data && data.error) || `Request failed (${res.status})`);
     err.status = res.status;
     throw err;
@@ -73,6 +81,10 @@ export const api = {
   removeRsvp: (raceId, driverId) =>
     request(`/events/${raceId}/rsvp/${driverId}`, { method: "DELETE", userAuth: true }),
 
+  // logged-in driver self-service
+  me: () => request("/me", { userAuth: true }),
+  setMyCountry: (country) => request("/me/country", { method: "PUT", body: { country }, userAuth: true }),
+
   // discord login
   discordConfig: () => request("/auth/discord/config"),
   discordCallback: (code) => request("/auth/discord/callback", { method: "POST", body: { code } }),
@@ -90,6 +102,9 @@ export const api = {
   commitRace: (body) => request("/admin/races/commit", { method: "POST", body, auth: true }),
   editResults: (id, results) =>
     request(`/admin/races/${id}/results`, { method: "PUT", body: { results }, auth: true }),
+  // Live "what would change" preview for unsaved results (no DB writes).
+  previewRace: (body) =>
+    request("/admin/races/preview", { method: "POST", body: { ...body, season: getSelectedSeason() }, auth: true }),
   createDriver: (body) => request("/admin/drivers", { method: "POST", body, auth: true }),
   updateDriver: (id, body) => request(`/admin/drivers/${id}`, { method: "PUT", body, auth: true }),
   changePin: (newPin) =>
