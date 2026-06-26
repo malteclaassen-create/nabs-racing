@@ -9,6 +9,7 @@ import CircuitMap from "../components/CircuitMap.jsx";
 import PointsChart from "../components/PointsChart.jsx";
 import NextRaceTimer from "../components/NextRaceTimer.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
+import { useTheme } from "../hooks/useTheme.js";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
@@ -27,6 +28,7 @@ function pad2(n) {
 
 export default function Home() {
   const { current: season } = useSeason();
+  const { theme } = useTheme();
   const drivers = useApi(useCallback(() => api.driverStandings(), []));
   const t1 = useApi(useCallback(() => api.t1Standings(), []));
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
@@ -93,15 +95,15 @@ export default function Home() {
       </div>
 
       {/* ===================== LEAD FEATURE ===================== */}
-      <section className="reveal relative overflow-hidden rounded-[1.75rem] bg-ink shadow-card ring-1 ring-black/40">
+      <section className="reveal relative overflow-hidden rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/5 dark:shadow-card dark:ring-white/10">
         <img
           src="/hero.jpg"
           alt=""
           onError={(e) => (e.currentTarget.style.display = "none")}
           className="absolute inset-0 h-full w-full object-cover object-center"
         />
-        <div className="absolute inset-0 bg-gradient-to-tr from-ink via-ink/80 to-ink/10" />
-        <div className="absolute inset-0 bg-gradient-to-t from-ink/95 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-card via-card/80 to-card/0 dark:bg-gradient-to-tr dark:from-ink dark:via-ink/75 dark:to-ink/0" />
+        <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-transparent dark:from-ink/95" />
         <div
           className="speed-hatch absolute inset-y-0 right-0 w-[18%]"
           style={{
@@ -112,33 +114,35 @@ export default function Home() {
         {/* brand accent rail */}
         <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-brand via-brand/40 to-transparent" />
 
-        {/* circuit outline (or ghost round number as fallback) */}
-        {lastCircuit ? (
-          <CircuitMap
-            track={lastRace?.track}
-            stroke="rgba(255,255,255,0.55)"
-            strokeWidth={0.9}
-            animate
-            className="pointer-events-none absolute right-1 top-1/2 h-[74%] w-[44%] -translate-y-1/2 sm:right-4"
-          />
-        ) : (
-          <div className="ghost-numeral pointer-events-none absolute -right-4 -top-10 select-none text-[13rem] text-white/[0.06] sm:text-[20rem]">
-            {pad2(roundNo)}
-          </div>
-        )}
+        {/* circuit outline (or ghost round number as fallback) — dark mode only;
+            in light mode the photo carries the right side on its own */}
+        {theme === "dark" &&
+          (lastCircuit ? (
+            <CircuitMap
+              track={lastRace?.track}
+              stroke="rgba(255,255,255,0.55)"
+              strokeWidth={0.9}
+              animate
+              className="pointer-events-none absolute right-1 top-1/2 h-[74%] w-[44%] -translate-y-1/2 sm:right-4"
+            />
+          ) : (
+            <div className="ghost-numeral pointer-events-none absolute -right-4 -top-10 select-none text-[13rem] text-white/[0.06] sm:text-[20rem]">
+              {pad2(roundNo)}
+            </div>
+          ))}
 
         <div className="relative flex min-h-[460px] flex-col justify-end p-7 sm:p-12">
-          <div className="flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-brand">
+          <div className="flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-rose-600 dark:text-brand">
             {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
             <span>Latest Race</span>
-            <span className="h-px w-10 bg-brand/60" />
-            <span className="text-white/50">Round {roundNo}</span>
+            <span className="h-px w-10 bg-rose-500/50 dark:bg-brand/60" />
+            <span className="text-ink/40 dark:text-white/50">Round {roundNo}</span>
           </div>
 
-          <h1 className="mt-4 max-w-3xl font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-white sm:text-7xl">
+          <h1 className="mt-4 max-w-3xl font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl">
             {lastRace?.track || "Season opener"}
           </h1>
-          <p className="mt-3 font-mono text-sm uppercase tracking-wider text-white/65">
+          <p className="mt-3 font-mono text-sm uppercase tracking-wider text-ink/70 dark:text-white/65">
             {lastCircuit ? `${lastCircuit.circuit} · ` : ""}
             {fmtFull(lastRace?.date)}
           </p>
@@ -149,7 +153,7 @@ export default function Home() {
               {podium.map((p, i) => (
                 <div
                   key={p.driverId}
-                  className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-white/10 bg-white/[0.07] px-4 py-3 backdrop-blur-md"
+                  className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.07]"
                 >
                   <span
                     className="absolute left-0 top-0 h-full w-1"
@@ -162,7 +166,7 @@ export default function Home() {
                     P{p.position}
                   </span>
                   <span className="min-w-0">
-                    <span className="flex items-center gap-1.5 text-base font-bold leading-tight text-white">
+                    <span className="flex items-center gap-1.5 text-base font-bold leading-tight text-ink dark:text-white">
                       <span className="truncate">{p.name}</span>
                       <Flag code={countryFor(p.driverId, p.country)} w={16} h={12} />
                     </span>
@@ -175,7 +179,7 @@ export default function Home() {
                         size={16}
                         showName
                         className="mt-0.5"
-                        nameClassName="truncate text-[13px] leading-tight text-white/60"
+                        nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
                       />
                     ) : (
                       <TeamLogo
@@ -186,7 +190,7 @@ export default function Home() {
                         size={16}
                         showName
                         className="mt-0.5"
-                        nameClassName="truncate text-[13px] leading-tight text-white/60"
+                        nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
                       />
                     )}
                   </span>
@@ -205,7 +209,7 @@ export default function Home() {
             </Link>
             <Link
               to="/drivers"
-              className="inline-flex items-center rounded-lg border border-white/20 bg-white/5 px-6 py-3 text-sm font-bold uppercase tracking-wide text-white backdrop-blur-sm transition hover:bg-white/15"
+              className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
             >
               Standings
             </Link>
