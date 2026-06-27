@@ -81,34 +81,10 @@ export default function NavBar() {
   // Close the mobile menu whenever the route changes.
   useEffect(() => setOpen(false), [location.pathname]);
 
-  // Scroll-linked progress (0→1) that floats the next-race chip up from the
-  // inline home countdown into the bar. On inner pages it's simply parked (1).
+  // The next-race chip lives in the bar on every page except the home page,
+  // where the countdown instead lives inside the "Next Race" card.
   const isHome = location.pathname === "/";
-  const [p, setP] = useState(isHome ? 0 : 1);
-  useEffect(() => {
-    if (!isHome) {
-      setP(1);
-      return;
-    }
-    const START = 40;
-    const END = 180;
-    let raf = 0;
-    const update = () => {
-      raf = 0;
-      const t = (window.scrollY - START) / (END - START);
-      setP(Math.min(1, Math.max(0, t)));
-    };
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(update);
-    };
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [isHome]);
-  const showDocked = !isHome || p > 0.001;
+  const showDocked = !isHome;
 
   return (
     <header className="sticky top-0 z-30">
@@ -137,17 +113,10 @@ export default function NavBar() {
             </span>
           </NavLink>
 
-          {/* Next-race chip floats up into the bar as you scroll (p: 0→1);
-              on inner pages it just eases in once. */}
+          {/* Next-race chip — shown on inner pages only (the home page carries
+              the countdown in its own card). */}
           {showDocked && (
-            <div
-              className="ml-3 flex shrink-0 sm:ml-4"
-              style={{
-                opacity: p,
-                transform: `translateY(${(1 - p) * 24}px) scale(${0.92 + 0.08 * p})`,
-                transition: isHome ? undefined : "opacity .35s ease-out, transform .35s ease-out",
-              }}
-            >
+            <div className="ml-3 flex shrink-0 sm:ml-4">
               <NextRaceTimer compact className="shrink-0" />
             </div>
           )}
@@ -205,23 +174,29 @@ export default function NavBar() {
       </nav>
       </div>
 
-      {/* Mobile menu panel */}
-      {open && (
-        <div className="relative border-t border-border bg-card lg:hidden">
-          <div className="container-page flex flex-col gap-1 py-3">
-            {links.map((l) => (
-              <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
-                {l.live && <LiveDot />}
-                {l.label}
-              </NavLink>
-            ))}
-            <NavLink to="/admin" className={adminClass}>
-              Admin
+      {/* Mobile menu panel — absolutely positioned so it floats over the page
+          content instead of pushing it down when it opens. Always mounted so it
+          can slide/fade both in and out via transitions. */}
+      <div
+        className={`absolute inset-x-0 top-full z-20 origin-top border-t border-border bg-card shadow-lg transition-all duration-300 ease-out lg:hidden ${
+          open
+            ? "pointer-events-auto translate-y-0 opacity-100"
+            : "pointer-events-none -translate-y-2 opacity-0"
+        }`}
+      >
+        <div className="container-page flex flex-col gap-1 py-3">
+          {links.map((l) => (
+            <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
+              {l.live && <LiveDot />}
+              {l.label}
             </NavLink>
-            <SeasonSwitcher className="mt-1 w-full" />
-          </div>
+          ))}
+          <NavLink to="/admin" className={adminClass}>
+            Admin
+          </NavLink>
+          <SeasonSwitcher className="mt-1 w-full" />
         </div>
-      )}
+      </div>
     </header>
   );
 }

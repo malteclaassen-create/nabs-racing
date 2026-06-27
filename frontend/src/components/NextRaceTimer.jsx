@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useRaceCountdown } from "../hooks/useRaceCountdown.js";
 import Flag from "./Flag.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
@@ -15,35 +16,12 @@ function pad2(n) {
 export default function NextRaceTimer({ className = "", compact = false }) {
   const races = useApi(useCallback(() => api.races(), []));
   const nextRace = (races.data || []).find((r) => !r.isCompleted && !r.isSpecialEvent && r.number != null);
+  const cd = useRaceCountdown(nextRace?.date);
 
-  const nextDate = nextRace?.date ? new Date(nextRace.date) : null;
-  // The stored date is the real kickoff instant. Older/date-only entries land
-  // on UTC midnight, so fall back to the league's 18:00 GMT start for those.
-  const target = nextDate
-    ? nextDate.getUTCHours() === 0 && nextDate.getUTCMinutes() === 0
-      ? new Date(Date.UTC(nextDate.getUTCFullYear(), nextDate.getUTCMonth(), nextDate.getUTCDate(), 18, 0, 0))
-      : nextDate
-    : null;
-
-  const [remaining, setRemaining] = useState(() => (target ? target.getTime() - Date.now() : 0));
-
-  useEffect(() => {
-    if (!target) return;
-    setRemaining(target.getTime() - Date.now());
-    const id = setInterval(() => setRemaining(target.getTime() - Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [target?.getTime()]);
-
-  if (!nextRace) return null;
+  if (!nextRace || !cd) return null;
 
   const circuit = circuitFor(nextRace.track);
-  const live = remaining <= 0;
-
-  const total = Math.max(0, Math.floor(remaining / 1000));
-  const days = Math.floor(total / 86400);
-  const hours = Math.floor((total % 86400) / 3600);
-  const mins = Math.floor((total % 3600) / 60);
-  const secs = total % 60;
+  const { target, live, days, hours, mins, secs } = cd;
 
   const units = [
     { value: days, suffix: "d" },

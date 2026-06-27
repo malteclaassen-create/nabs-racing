@@ -7,9 +7,9 @@ import { Skeleton, TableSkeleton } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import PointsChart from "../components/PointsChart.jsx";
-import NextRaceTimer from "../components/NextRaceTimer.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { useTheme } from "../hooks/useTheme.js";
+import { useRaceCountdown } from "../hooks/useRaceCountdown.js";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
@@ -91,7 +91,6 @@ export default function Home() {
             Round {pad2(roundNo)} <span className="text-faint">/ {totalRounds || "—"}</span>
           </span>
         </div>
-        <NextRaceTimer className="w-fit" />
       </div>
 
       {/* ===================== LEAD FEATURE ===================== */}
@@ -298,24 +297,27 @@ export default function Home() {
         {/* next race */}
         <StatCard label="Next Race" accent="#F4AFC6" to="/races">
           {nextRace ? (
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
-                  {nextRace.track}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
+                    {nextRace.track}
+                  </div>
+                  <div className="mt-2 flex items-center gap-1.5 text-sm text-light">
+                    {nextCircuit && <Flag code={nextCircuit.country} title={nextCircuit.countryName} />}
+                    <span className="truncate">Round {nextRace.number} · {fmtRaceTime(nextRace.date)}</span>
+                  </div>
                 </div>
-                <div className="mt-2 flex items-center gap-1.5 text-sm text-light">
-                  {nextCircuit && <Flag code={nextCircuit.country} title={nextCircuit.countryName} />}
-                  <span className="truncate">Round {nextRace.number} · {fmtRaceTime(nextRace.date)}</span>
-                </div>
+                {nextDate && (
+                  <div className="flex shrink-0 flex-col items-center justify-center rounded-lg border border-border bg-surface2 px-3 py-1.5 leading-none">
+                    <span className="font-mono text-2xl font-bold tabular-nums text-dark">{nextDate.getDate()}</span>
+                    <span className="mt-0.5 font-mono text-[11px] font-bold tracking-wider text-light">
+                      {MONTHS[nextDate.getMonth()]}
+                    </span>
+                  </div>
+                )}
               </div>
-              {nextDate && (
-                <div className="flex shrink-0 flex-col items-center justify-center rounded-lg border border-border bg-surface2 px-3 py-1.5 leading-none">
-                  <span className="font-mono text-2xl font-bold tabular-nums text-dark">{nextDate.getDate()}</span>
-                  <span className="mt-0.5 font-mono text-[11px] font-bold tracking-wider text-light">
-                    {MONTHS[nextDate.getMonth()]}
-                  </span>
-                </div>
-              )}
+              <NextRaceCountdown date={nextRace.date} />
             </div>
           ) : (
             <div className="text-[15px] text-light">Season complete</div>
@@ -356,6 +358,44 @@ export default function Home() {
 }
 
 /* ---------------------------------------------------------------- */
+
+// Live d/h/m/s ticker that sits inside the "Next Race" card, so the countdown
+// lives with the race it belongs to instead of as a separate strip up top.
+function NextRaceCountdown({ date }) {
+  const cd = useRaceCountdown(date);
+  if (!cd) return null;
+
+  if (cd.live) {
+    return (
+      <div className="flex items-center gap-2 border-t border-border pt-3">
+        <span className="live-dot inline-block h-2 w-2 rounded-full bg-brand" />
+        <span className="font-mono text-sm font-bold uppercase tracking-[0.2em] text-brand">Lights out</span>
+      </div>
+    );
+  }
+
+  const units = [
+    { value: cd.days, label: "Days" },
+    { value: cd.hours, label: "Hrs" },
+    { value: cd.mins, label: "Min" },
+    { value: cd.secs, label: "Sec" },
+  ];
+  return (
+    <div className="grid grid-cols-4 gap-1.5 border-t border-border pt-3">
+      {units.map((u) => (
+        <div
+          key={u.label}
+          className="flex flex-col items-center rounded-lg border border-border bg-surface2 py-1.5 leading-none"
+        >
+          <span className="font-mono text-lg font-bold tabular-nums text-dark">{pad2(u.value)}</span>
+          <span className="mt-1 font-mono text-[9px] font-bold uppercase tracking-wider text-light">
+            {u.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function StatCard({ label, accent, to, children }) {
   const cls =
