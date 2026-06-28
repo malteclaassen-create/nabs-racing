@@ -49,12 +49,40 @@ html {
 body {
   margin: 0;
   background: var(--c-bg);
-  background-image: var(--c-page-glow);
-  background-attachment: fixed;
   color: var(--c-text);
   font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Living "aurora" backdrop — three soft brand-coloured blooms that drift slowly
+   behind the whole site. Fixed + below the app content (z-index -1), so it
+   shows through the gaps between cards and the page margins without ever
+   sitting on top of anything interactive. Kept faint, more so in light mode. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 42% at 18% 22%, rgba(244, 175, 198, 0.30), transparent 70%),
+    radial-gradient(42% 46% at 82% 14%, rgba(66, 81, 168, 0.22), transparent 70%),
+    radial-gradient(46% 48% at 72% 84%, rgba(56, 189, 248, 0.16), transparent 72%);
+  filter: blur(30px) saturate(1.05);
+  animation: aurora-drift 26s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+.dark body::before {
+  background:
+    radial-gradient(38% 42% at 16% 20%, rgba(244, 175, 198, 0.16), transparent 70%),
+    radial-gradient(44% 48% at 84% 12%, rgba(66, 81, 168, 0.26), transparent 70%),
+    radial-gradient(48% 50% at 74% 86%, rgba(56, 189, 248, 0.14), transparent 72%);
+}
+@keyframes aurora-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(2%, 1.5%, 0) scale(1.06); }
+  100% { transform: translate3d(-2%, -1%, 0) scale(1.03); }
 }
 
 @layer components {
@@ -242,6 +270,181 @@ body {
   100% { background-position: 250% 0; }
 }
 
+/* --- Staggered cascade --------------------------------------------- */
+/* A container whose direct children rise in one after another. Pair with the
+   scroll-reveal observer (.cascade gets .is-visible) and set each child's index
+   via an inline `--i` so they fan out. Used for standings rows, race cards,
+   line-up cards — anything that benefits from a "dealing the deck" entrance. */
+.cascade > * {
+  opacity: 0;
+}
+.cascade.is-visible > * {
+  animation: nabs-rise 0.5s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* --- Growing bars -------------------------------------------------- */
+/* Points/progress bars that sweep out from zero to their real width when their
+   section scrolls into view. The target width rides on an inline `--w`, so the
+   same element falls back to a static bar when motion is off or unrevealed. */
+@keyframes grow-x {
+  from { width: 0; }
+  to   { width: var(--w, 100%); }
+}
+.bar-fill {
+  width: var(--w, 0);
+}
+.reveal:not(.is-visible) .bar-fill,
+.cascade:not(.is-visible) .bar-fill {
+  width: 0;
+}
+.reveal.is-visible .bar-fill,
+.cascade.is-visible .bar-fill {
+  animation: grow-x 1.1s cubic-bezier(0.33, 0.1, 0.25, 1) both;
+}
+
+/* Vertical sibling of bar-fill — columns that rise from the baseline. Height
+   rides on `--h`, the left-to-right stagger on `--i`. */
+@keyframes grow-y {
+  from { height: 0; }
+  to   { height: var(--h, 100%); }
+}
+.bar-rise {
+  height: var(--h, 0);
+}
+.reveal:not(.is-visible) .bar-rise,
+.cascade:not(.is-visible) .bar-rise {
+  height: 0;
+}
+.reveal.is-visible .bar-rise,
+.cascade.is-visible .bar-rise {
+  animation: grow-y 0.85s cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  animation-delay: calc(var(--i, 0) * 35ms);
+}
+
+/* --- Shine sweep --------------------------------------------------- */
+/* A diagonal sliver of light that sweeps across on hover. Drop `.shine` on any
+   overflow-hidden surface (buttons, feature cards) for a premium glint. */
+.shine {
+  position: relative;
+  overflow: hidden;
+}
+.shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 32%, rgba(255, 255, 255, 0.38) 50%, transparent 68%);
+  transform: translateX(-130%);
+  transition: transform 0.75s cubic-bezier(0.4, 0.1, 0.2, 1);
+  pointer-events: none;
+}
+.dark .shine::after {
+  background: linear-gradient(115deg, transparent 36%, rgba(255, 255, 255, 0.16) 50%, transparent 64%);
+}
+.shine:hover::after,
+.group:hover .shine::after {
+  transform: translateX(130%);
+}
+
+/* --- Tilt (3D pointer) --------------------------------------------- */
+/* JS sets --rx/--ry from the pointer; the element leans toward the cursor and
+   pops up a touch. Smooth easing in keeps it from feeling twitchy. */
+.tilt {
+  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(0);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  transform-style: preserve-3d;
+}
+
+/* --- Hero entrance ------------------------------------------------- */
+/* Slightly bolder rise for the hero headline + its supporting lines, staggered
+   so the feature panel assembles itself rather than just appearing. */
+@keyframes hero-rise {
+  from { opacity: 0; transform: translateY(26px); }
+  to   { opacity: 1; transform: none; }
+}
+.hero-anim {
+  animation: hero-rise 0.7s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+}
+@keyframes hero-zoom {
+  from { transform: scale(1.12); }
+  to   { transform: scale(1); }
+}
+.hero-zoom {
+  animation: hero-zoom 7s ease-out both;
+}
+
+/* Animated brand gradient used for accent rails / glints. */
+@keyframes gradient-pan {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.gradient-anim {
+  background-size: 200% 200%;
+  animation: gradient-pan 6s linear infinite;
+}
+
+/* Soft glow pulse for "live"/featured accents. */
+@keyframes soft-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.glow-pulse { animation: soft-glow 2.4s ease-in-out infinite; }
+
+/* Floating bob for small decorative marks. */
+@keyframes float-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+.float-bob { animation: float-bob 4s ease-in-out infinite; }
+
+/* Bouncing scroll cue under the hero. */
+@keyframes scroll-cue {
+  0%, 100% { transform: translateY(0); opacity: 0.4; }
+  50% { transform: translateY(6px); opacity: 1; }
+}
+.scroll-cue { animation: scroll-cue 1.8s ease-in-out infinite; }
+
+/* --- Page transition ----------------------------------------------- */
+/* Each route fades + lifts in on navigation (keyed on the pathname). */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.page-in {
+  animation: page-in 0.4s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+}
+
+/* --- Animated nav underline ---------------------------------------- */
+/* A brand underline that wipes in from the left on hover and stays lit for the
+   active route. Layered under the existing pill styles in NavBar. */
+.nav-link {
+  position: relative;
+}
+.nav-link::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 5px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--c-brand, #f4afc6), #4251a8);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.28s cubic-bezier(0.4, 0.1, 0.2, 1);
+}
+.nav-link:hover::after {
+  transform: scaleX(1);
+}
+/* Active route already wears the brand pill, so suppress the hover underline
+   there to avoid doubling up the indicator. */
+.nav-link[aria-current="page"]::after {
+  display: none;
+}
+
+/* Count-up numbers shouldn't reflow as digits change width. */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
 @media (prefers-reduced-motion: reduce) {
   .reveal,
   .chart-line,
@@ -251,4 +454,13 @@ body {
   .reveal { opacity: 1; transform: none; }
   .chart-line { stroke-dashoffset: 0; }
   .lift:hover { transform: none; }
+
+  body::before { animation: none; }
+  .cascade > * { opacity: 1; animation: none !important; }
+  .bar-fill { width: var(--w, 0) !important; animation: none !important; }
+  .bar-rise { height: var(--h, 0) !important; animation: none !important; }
+  .hero-anim, .hero-zoom, .gradient-anim, .glow-pulse, .float-bob,
+  .scroll-cue, .page-in { animation: none !important; opacity: 1; transform: none; }
+  .shine::after { display: none; }
+  .tilt { transform: none !important; }
 }

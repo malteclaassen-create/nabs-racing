@@ -1,6 +1,50 @@
 // Small shared presentational helpers — the site-wide design kit.
 
+import { useEffect, useState } from "react";
+import { useInView } from "../hooks/motion.js";
+
 export const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"]; // gold / silver / bronze
+
+// Number that counts up from 0 to `end` the first time it scrolls into view.
+// Falls straight to the final value when motion is reduced. `prefix`/`suffix`
+// wrap the number (e.g. "+", "pts"); non-numeric stats should just render plain.
+export function CountUp({ end, prefix = "", suffix = "", duration = 1200, decimals = 0, className = "" }) {
+  const [ref, inView] = useInView();
+  const target = Number(end);
+  const [n, setN] = useState(0);
+
+  useEffect(() => {
+    if (!inView || !isFinite(target)) return;
+    const reduce =
+      window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      setN(target);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const tick = (t) => {
+      const p = Math.min(1, (t - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic — fast then settles
+      setN(target * eased);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [inView, target, duration]);
+
+  if (!isFinite(target)) {
+    return <span className={className}>{end}</span>;
+  }
+  const shown = decimals > 0 ? n.toFixed(decimals) : Math.round(n).toLocaleString("en-US");
+  return (
+    <span ref={ref} className={`tabular-nums ${className}`}>
+      {prefix}
+      {shown}
+      {suffix}
+    </span>
+  );
+}
 
 export function TierBadge({ tier }) {
   if (tier === 1)

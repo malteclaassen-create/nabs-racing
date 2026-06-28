@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton, Skeleton } from "../components/ui.jsx";
+import { useTilt } from "../hooks/motion.js";
 import StandingsTable from "../components/StandingsTable.jsx";
 import PointsChart from "../components/PointsChart.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -23,9 +24,9 @@ function TierBlock({ eyebrow, standings, teams, delay }) {
 
       <div className="space-y-3 pt-2">
         <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Line-ups</h3>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {teams.map((team) => (
-            <TeamCard key={team.id} team={team} />
+        <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {teams.map((team, i) => (
+            <TeamCard key={team.id} team={team} index={i} />
           ))}
         </div>
       </div>
@@ -33,9 +34,10 @@ function TierBlock({ eyebrow, standings, teams, delay }) {
   );
 }
 
-function TeamCard({ team }) {
+function TeamCard({ team, index = 0 }) {
+  const tiltRef = useTilt({ max: 5, lift: 5 });
   return (
-    <div className="card lift group overflow-hidden">
+    <div ref={tiltRef} className="card shine tilt group overflow-hidden hover:shadow-xl" style={{ "--i": index }}>
       <div className="h-1.5 w-full" style={{ backgroundColor: team.color }} />
       <div className="p-5">
         <Link to={`/teams/${team.id}`} className="flex items-center gap-3">

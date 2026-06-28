@@ -2,15 +2,22 @@ import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar } from "../components/ui.jsx";
+import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar, CountUp } from "../components/ui.jsx";
+import { useTilt } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
 
-function LeaderCard({ row, leaderTotal, rank }) {
+function LeaderCard({ row, leaderTotal, rank, index = 0 }) {
   const gap = leaderTotal - row.total;
+  const tiltRef = useTilt({ max: 5, lift: 5 });
   return (
-    <Link to={`/drivers/${row.driverId}`} className="card lift relative block overflow-hidden p-5">
+    <Link
+      ref={tiltRef}
+      to={`/drivers/${row.driverId}`}
+      className="card shine tilt relative block overflow-hidden p-5 hover:shadow-xl"
+      style={{ "--i": index }}
+    >
       <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: row.team.color }} />
       <div className="flex items-start justify-between gap-3 pl-2">
         <div className="flex items-center gap-3">
@@ -41,7 +48,9 @@ function LeaderCard({ row, leaderTotal, rank }) {
           </div>
         </div>
         <div className="text-right">
-          <div className="font-mono text-3xl font-bold leading-none tabular-nums text-dark">{row.total}</div>
+          <div className="font-mono text-3xl font-bold leading-none tabular-nums text-dark">
+            <CountUp end={row.total} />
+          </div>
           <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
             {gap === 0 ? "Leader" : `−${gap} pts`}
           </div>
@@ -51,13 +60,14 @@ function LeaderCard({ row, leaderTotal, rank }) {
   );
 }
 
-function DriverRow({ d, leaderTotal }) {
+function DriverRow({ d, leaderTotal, index = 0 }) {
   const isLeader = d.position === 1;
   const gap = leaderTotal - d.total;
   const pct = d.total > 0 && leaderTotal > 0 ? Math.max(4, (d.total / leaderTotal) * 100) : 0;
   return (
     <Link
       to={`/drivers/${d.driverId}`}
+      style={{ "--i": index }}
       className={`flex items-center gap-3 px-4 py-3 transition hover:bg-surface2 sm:gap-4 sm:px-5 ${
         isLeader ? "bg-brand/5" : ""
       }`}
@@ -89,7 +99,7 @@ function DriverRow({ d, leaderTotal }) {
       {/* points bar */}
       <div className="hidden w-28 shrink-0 md:block lg:w-40 xl:w-56">
         <div className="h-1.5 overflow-hidden rounded-full bg-border">
-          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: d.team.color }} />
+          <div className="bar-fill h-full rounded-full" style={{ "--w": `${pct}%`, backgroundColor: d.team.color }} />
         </div>
       </div>
 
@@ -157,9 +167,9 @@ export default function DriverStandings() {
       />
 
       {top3.length > 0 && (
-        <div className="reveal mb-8 grid gap-4 md:grid-cols-3">
+        <div className="cascade mb-8 grid gap-4 md:grid-cols-3">
           {top3.map((row, i) => (
-            <LeaderCard key={row.driverId} row={row} leaderTotal={leaderTotal} rank={i} />
+            <LeaderCard key={row.driverId} row={row} leaderTotal={leaderTotal} rank={i} index={i} />
           ))}
         </div>
       )}
@@ -193,9 +203,9 @@ export default function DriverStandings() {
       </div>
 
       {rows.length > 0 ? (
-        <div className="reveal card divide-y divide-border overflow-hidden">
-          {rows.map((d) => (
-            <DriverRow key={d.driverId} d={d} leaderTotal={leaderTotal} />
+        <div className="cascade card divide-y divide-border overflow-hidden">
+          {rows.map((d, i) => (
+            <DriverRow key={d.driverId} d={d} leaderTotal={leaderTotal} index={Math.min(i, 16)} />
           ))}
         </div>
       ) : (

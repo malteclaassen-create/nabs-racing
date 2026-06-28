@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { Skeleton, TableSkeleton } from "../components/ui.jsx";
+import { Skeleton, TableSkeleton, CountUp } from "../components/ui.jsx";
+import { useParallax, useTilt, useMagnetic } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import PointsChart from "../components/PointsChart.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
@@ -31,6 +32,10 @@ export default function Home() {
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const [latest, setLatest] = useState(null);
+
+  // Hero motion: the photo drifts slowly on scroll; the primary CTA is magnetic.
+  const heroImgRef = useParallax(0.08);
+  const ctaRef = useMagnetic({ strength: 0.25 });
 
   // Championship rounds only (special events have no round number / aren't scored).
   const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
@@ -97,12 +102,13 @@ export default function Home() {
       </div>
 
       {/* ===================== LEAD FEATURE ===================== */}
-      <section className="reveal relative overflow-hidden rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/5 dark:shadow-card dark:ring-white/10">
+      <section className="relative overflow-hidden rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/5 dark:shadow-card dark:ring-white/10">
         <img
+          ref={heroImgRef}
           src="/hero.jpg"
           alt=""
           onError={(e) => (e.currentTarget.style.display = "none")}
-          className="absolute inset-0 h-full w-full object-cover object-center"
+          className="absolute inset-0 h-full w-full scale-[1.12] object-cover object-center will-change-transform"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-card via-card/80 to-card/0 dark:bg-gradient-to-tr dark:from-ink dark:via-ink/75 dark:to-ink/0" />
         <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-transparent dark:from-ink/95" />
@@ -119,29 +125,29 @@ export default function Home() {
         <div className="relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
           {/* LEFT — latest race */}
           <div className="flex flex-1 flex-col justify-end">
-            <div className="flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-rose-600 dark:text-brand">
+            <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-rose-600 dark:text-brand" style={{ animationDelay: "0.05s" }}>
               {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
               <span>Latest Race</span>
               <span className="h-px w-10 bg-rose-500/50 dark:bg-brand/60" />
               <span className="text-ink/40 dark:text-white/50">Round {roundNo}</span>
             </div>
 
-            <h1 className="mt-4 max-w-3xl font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl">
+            <h1 className="hero-anim mt-4 max-w-3xl font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
               {lastRace?.track || "Season opener"}
             </h1>
-            <p className="mt-3 font-mono text-sm uppercase tracking-wider text-ink/70 dark:text-white/65">
+            <p className="hero-anim mt-3 font-mono text-sm uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
               {lastCircuit ? `${lastCircuit.circuit} · ` : ""}
               {fmtFull(lastRace?.date)}
             </p>
 
             {/* podium strip */}
             {podium.length > 0 && (
-              <div className="mt-8 grid max-w-2xl gap-2 sm:grid-cols-3">
+              <div className="hero-anim mt-8 grid max-w-2xl gap-2 sm:grid-cols-3" style={{ animationDelay: "0.28s" }}>
                 {podium.map((p, i) => (
                   <Link
                     key={p.driverId}
                     to={`/drivers/${p.driverId}`}
-                    className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md transition hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
+                    className="shine group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
                   >
                     <span
                       className="absolute left-0 top-0 h-full w-1"
@@ -187,10 +193,11 @@ export default function Home() {
               </div>
             )}
 
-            <div className="mt-9 flex flex-wrap gap-3">
+            <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
               <Link
+                ref={ctaRef}
                 to="/races"
-                className="group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
+                className="shine group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
               >
                 Full Results
                 <span className="transition group-hover:translate-x-0.5">→</span>
@@ -207,7 +214,7 @@ export default function Home() {
           {/* RIGHT — next race panel */}
           {nextRace && (
             <div className="flex shrink-0 flex-col justify-end lg:w-72">
-              <div className="rounded-2xl border border-black/10 bg-white/75 p-5 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.08]">
+              <div className="hero-anim rounded-2xl border border-black/10 bg-white/75 p-5 shadow-xl shadow-ink/10 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.08]" style={{ animationDelay: "0.22s" }}>
                 <div className="flex items-center gap-2 font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-sky-600 dark:text-sky-300">
                   {nextCircuit && <Flag code={nextCircuit.country} title={nextCircuit.countryName} w={22} h={16} />}
                   <span>Next Race</span>
@@ -237,7 +244,7 @@ export default function Home() {
 
                 <Link
                   to="/signup"
-                  className="group mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
+                  className="shine group mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
                 >
                   Sign Up
                   <span className="transition group-hover:translate-x-0.5">→</span>
@@ -249,19 +256,18 @@ export default function Home() {
       </section>
 
       {/* ===================== SEASON BY THE NUMBERS ===================== */}
-      <section
-        className="reveal grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
-        style={{ animationDelay: "0.08s" }}
-      >
+      <section className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <NumberTile
+          index={0}
           to="/races"
           label="Rounds Done"
           value={completedRaces.length}
           sub={`of ${totalRounds || "—"}`}
           accent="#f4afc6"
         />
-        <NumberTile to="/drivers" label="Drivers" value={driverCount} sub="on the grid" accent="#38bdf8" />
+        <NumberTile index={1} to="/drivers" label="Drivers" value={driverCount} sub="on the grid" accent="#38bdf8" />
         <NumberTile
+          index={2}
           to="/constructors"
           label="Constructors"
           value={constructorCount}
@@ -269,6 +275,7 @@ export default function Home() {
           accent="#a78bfa"
         />
         <NumberTile
+          index={3}
           to={leader ? `/drivers/${leader.driverId}` : undefined}
           label="Leader"
           value={leader?.total ?? "—"}
@@ -276,9 +283,11 @@ export default function Home() {
           accent={leader?.team?.color || "#EAB308"}
         />
         <NumberTile
+          index={4}
           to="/drivers"
           label="Title Gap"
-          value={titleGap > 0 ? `+${titleGap}` : "Level"}
+          value={titleGap > 0 ? titleGap : "Level"}
+          prefix={titleGap > 0 ? "+" : ""}
           sub="P1 to P2"
           accent="#fbbf24"
         />
@@ -342,10 +351,11 @@ function Heading({ index, eyebrow, title, to }) {
   );
 }
 
-function NumberTile({ label, value, sub, accent = "#f4afc6", to }) {
+function NumberTile({ label, value, sub, accent = "#f4afc6", to, index = 0, prefix = "" }) {
+  const tiltRef = useTilt({ max: 6, lift: 4 });
   const cls =
-    "group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-card transition duration-200" +
-    (to ? " hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg" : "");
+    "shine tilt group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-card" +
+    (to ? " hover:border-brand/40 hover:shadow-xl" : "");
   const body = (
     <>
       <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: accent }} />
@@ -357,7 +367,9 @@ function NumberTile({ label, value, sub, accent = "#f4afc6", to }) {
           </span>
         )}
       </div>
-      <div className="mt-3 pl-1 font-display text-4xl font-black leading-none tabular-nums text-dark">{value}</div>
+      <div className="mt-3 pl-1 font-display text-4xl font-black leading-none tabular-nums text-dark">
+        {typeof value === "number" ? <CountUp end={value} prefix={prefix} /> : value}
+      </div>
       {sub && (
         <div className="mt-1.5 truncate pl-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
           {sub}
@@ -366,11 +378,13 @@ function NumberTile({ label, value, sub, accent = "#f4afc6", to }) {
     </>
   );
   return to ? (
-    <Link to={to} className={cls}>
+    <Link ref={tiltRef} to={to} className={cls} style={{ "--i": index }}>
       {body}
     </Link>
   ) : (
-    <div className={cls}>{body}</div>
+    <div ref={tiltRef} className={cls} style={{ "--i": index }}>
+      {body}
+    </div>
   );
 }
 
@@ -442,8 +456,8 @@ function DriversTable({ rows, leaderTotal }) {
                     <span className="font-mono text-lg font-bold tabular-nums text-dark">{d.total}</span>
                     <span className="hidden h-1 w-20 overflow-hidden rounded-full bg-border sm:block">
                       <span
-                        className="block h-full rounded-full"
-                        style={{ width: `${pct}%`, backgroundColor: d.team.color }}
+                        className="bar-fill block h-full rounded-full"
+                        style={{ "--w": `${pct}%`, backgroundColor: d.team.color }}
                       />
                     </span>
                   </div>
@@ -482,8 +496,8 @@ function ConstructorTable({ rows }) {
                       </span>
                       <span className="mt-1.5 block h-1 w-24 overflow-hidden rounded-full bg-border">
                         <span
-                          className="block h-full rounded-full"
-                          style={{ width: `${pct}%`, backgroundColor: t.color }}
+                          className="bar-fill block h-full rounded-full"
+                          style={{ "--w": `${pct}%`, backgroundColor: t.color }}
                         />
                       </span>
                     </div>

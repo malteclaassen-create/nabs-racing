@@ -33,7 +33,7 @@ function fmtLap(ms) {
 
 function PodiumCard({ row, rank }) {
   return (
-    <div className="relative flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-3">
+    <div className="shine relative flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-3" style={{ "--i": rank }}>
       <span className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: row.team.color }} />
       <span
         className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-display text-base font-black text-ink"
@@ -82,14 +82,17 @@ export default function RaceResults({ race, results }) {
     <div className="card overflow-hidden">
       {/* Summary: podium + fastest lap */}
       {detailed && podium.length > 0 && (
-        <div className="grid gap-3 border-b border-border bg-surface2/40 p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="cascade grid gap-3 border-b border-border bg-surface2/40 p-4 sm:grid-cols-2 lg:grid-cols-4">
           {podium.map((row, i) => (
             <PodiumCard key={row.driverId} row={row} rank={i} />
           ))}
           {fastest && (
-            <div className="relative flex items-center gap-3 overflow-hidden rounded-xl border border-purple-500/40 bg-purple-500/[0.07] p-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-500/20 text-base">
-                ⏱️
+            <div className="shine relative flex items-center gap-3 overflow-hidden rounded-xl border border-purple-500/40 bg-purple-500/[0.07] p-3" style={{ "--i": 3 }}>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-500/20 text-purple-500">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="13" r="8" />
+                  <path d="M12 13V9M9 2h6M19.5 5.5l-1.5 1.5" />
+                </svg>
               </span>
               <div className="min-w-0">
                 <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-purple-500">

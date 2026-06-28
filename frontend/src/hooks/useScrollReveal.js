@@ -10,7 +10,7 @@ import { useEffect } from "react";
 // loads and SPA route changes via a MutationObserver.
 export function useScrollReveal() {
   useEffect(() => {
-    const SEL = ".reveal, .reveal-chart";
+    const SEL = ".reveal, .reveal-chart, .cascade";
     let ticking = false;
 
     const reveal = () => {

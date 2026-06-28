@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import {
-  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL,
+  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL, CountUp,
 } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -44,16 +44,16 @@ function statsFromRow(row) {
   };
 }
 
-function Stat({ icon, label, value, sub, accent }) {
+function Stat({ icon, label, value, sub, accent, index = 0 }) {
   return (
-    <div className="card p-4">
+    <div className="card shine p-4" style={{ "--i": index }}>
       <div className="flex items-center gap-2 text-light">
         <Icon name={icon} className="h-4 w-4" />
         <span className="font-mono text-[11px] font-semibold uppercase tracking-wider">{label}</span>
       </div>
       <div className="mt-2 font-display text-3xl font-black leading-none tabular-nums text-dark"
         style={accent ? { color: accent } : undefined}>
-        {value}
+        {typeof value === "number" ? <CountUp end={value} /> : value}
       </div>
       {sub && <div className="mt-1.5 text-xs font-medium text-light">{sub}</div>}
     </div>
@@ -397,11 +397,15 @@ export default function DriverProfile() {
           </div>
           <div className="flex gap-8 border-t border-white/10 pt-4 sm:flex-col sm:gap-3 sm:border-l sm:border-t-0 sm:pl-7 sm:pt-0 sm:text-right">
             <div>
-              <div className="font-display text-5xl font-black leading-none tabular-nums">P{championship.position}</div>
+              <div className="font-display text-5xl font-black leading-none tabular-nums">
+                <CountUp end={championship.position} prefix="P" />
+              </div>
               <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-white/50">of {championship.fieldSize}</div>
             </div>
             <div>
-              <div className="font-display text-4xl font-black leading-none tabular-nums" style={{ color }}>{championship.points}</div>
+              <div className="font-display text-4xl font-black leading-none tabular-nums" style={{ color }}>
+                <CountUp end={championship.points} />
+              </div>
               <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-white/50">points</div>
             </div>
           </div>
@@ -409,13 +413,13 @@ export default function DriverProfile() {
       </div>
 
       {/* Stat tiles */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Stat icon="trophy" label="Wins" value={stats.wins} sub={`${stats.winRate}% of starts`} accent={stats.wins ? MEDAL[0] : undefined} />
-        <Stat icon="podium" label="Podiums" value={stats.podiums} sub={`${stats.podiumRate}% of starts`} />
-        <Stat icon="flagChk" label="Best Finish" value={stats.bestFinish ? `P${stats.bestFinish}` : "–"} sub={`${stats.starts} starts`} />
-        <Stat icon="chart" label="Avg Finish" value={stats.avgFinish != null ? `P${stats.avgFinish}` : "–"} sub={`${stats.pointsFinishes} in the points`} />
-        <Stat icon="flag" label="Poles" value={stats.polePositions} sub={`best grid P${stats.bestGrid ?? "–"}`} />
-        <Stat icon="trend" label="Places Gained"
+      <div className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <Stat index={0} icon="trophy" label="Wins" value={stats.wins} sub={`${stats.winRate}% of starts`} accent={stats.wins ? MEDAL[0] : undefined} />
+        <Stat index={1} icon="podium" label="Podiums" value={stats.podiums} sub={`${stats.podiumRate}% of starts`} />
+        <Stat index={2} icon="flagChk" label="Best Finish" value={stats.bestFinish ? `P${stats.bestFinish}` : "–"} sub={`${stats.starts} starts`} />
+        <Stat index={3} icon="chart" label="Avg Finish" value={stats.avgFinish != null ? `P${stats.avgFinish}` : "–"} sub={`${stats.pointsFinishes} in the points`} />
+        <Stat index={4} icon="flag" label="Poles" value={stats.polePositions} sub={`best grid P${stats.bestGrid ?? "–"}`} />
+        <Stat index={5} icon="trend" label="Places Gained"
           value={stats.positionsGained > 0 ? `+${stats.positionsGained}` : stats.positionsGained}
           sub="start → finish"
           accent={stats.positionsGained > 0 ? "#16a34a" : stats.positionsGained < 0 ? "#dc2626" : undefined} />

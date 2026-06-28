@@ -94,7 +94,7 @@ function RoundRail({ races, selectedId, onSelect }) {
 const EMERALD = "#10b981";
 const BRAND = "#f4afc6"; // NABS pastel pink
 
-function RaceCard({ r, isNext, selected, onSelect }) {
+function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
   const e = { type: r.isSpecialEvent ? "se" : "round", number: r.number, track: r.track, date: r.date };
   const se = r.isSpecialEvent;
   const circuit = se ? null : circuitFor(r.track);
@@ -112,7 +112,7 @@ function RaceCard({ r, isNext, selected, onSelect }) {
 
   const inner = (
     <div
-      className={`relative h-44 overflow-hidden rounded-2xl border bg-card transition ${
+      className={`shine relative h-44 overflow-hidden rounded-2xl border bg-card transition ${
         selected ? "border-emerald-500 ring-2 ring-emerald-500/50" : isNext ? "border-brand/50" : "border-border"
       }`}
     >
@@ -162,12 +162,20 @@ function RaceCard({ r, isNext, selected, onSelect }) {
 
   if (clickable) {
     return (
-      <button type="button" onClick={() => onSelect(dbRace.id)} aria-pressed={selected} className="lift block w-full text-left">
+      <button
+        type="button"
+        onClick={() => onSelect(dbRace.id)}
+        aria-pressed={selected}
+        style={{ "--i": index }}
+        className="lift block w-full text-left"
+      >
         {inner}
       </button>
     );
   }
-  return inner;
+  return (
+    <div style={{ "--i": index }}>{inner}</div>
+  );
 }
 
 export default function Races() {
@@ -301,11 +309,12 @@ export default function Races() {
             </button>
           </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {shown.map((r) => (
+        <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {shown.map((r, i) => (
             <RaceCard
               key={r.id}
               r={r}
+              index={Math.min(i, 14)}
               isNext={nextEntry && r.id === nextEntry.id}
               selected={r.id === selectedId}
               onSelect={selectRace}

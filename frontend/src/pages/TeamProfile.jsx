@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, MEDAL, DriverAvatar } from "../components/ui.jsx";
+import { ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, MEDAL, DriverAvatar, CountUp } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import PointsChart from "../components/PointsChart.jsx";
@@ -29,16 +29,16 @@ function Icon({ name, className = "" }) {
   );
 }
 
-function Stat({ icon, label, value, sub, accent }) {
+function Stat({ icon, label, value, sub, accent, index = 0 }) {
   return (
-    <div className="card p-4">
+    <div className="card shine p-4" style={{ "--i": index }}>
       <div className="flex items-center gap-2 text-light">
         <Icon name={icon} className="h-4 w-4" />
         <span className="font-mono text-[11px] font-semibold uppercase tracking-wider">{label}</span>
       </div>
       <div className="mt-2 font-display text-3xl font-black leading-none tabular-nums text-dark"
         style={accent ? { color: accent } : undefined}>
-        {value}
+        {typeof value === "number" ? <CountUp end={value} /> : value}
       </div>
       {sub && <div className="mt-1.5 text-xs font-medium text-light">{sub}</div>}
     </div>
@@ -58,9 +58,9 @@ function RoundBars({ raceNumbers, perRace, droppedRounds, raceByNumber, color })
   );
 
   return (
-    <div className="overflow-x-auto">
+    <div className="reveal overflow-x-auto">
       <div className="flex min-w-[460px] items-end gap-2" style={{ height: 168 }}>
-        {raceNumbers.map((n) => {
+        {raceNumbers.map((n, i) => {
           const race = raceByNumber.get(n);
           const done = race?.isCompleted;
           const pts = perRace?.[n] ?? 0;
@@ -76,9 +76,10 @@ function RoundBars({ raceNumbers, perRace, droppedRounds, raceByNumber, color })
               <div className="flex w-full items-end justify-center" style={{ height: 120 }}>
                 {done ? (
                   <div
-                    className="w-full max-w-[26px] rounded-t-md transition-all"
+                    className="bar-rise w-full max-w-[26px] rounded-t-md"
                     style={{
-                      height: `${h}px`,
+                      "--h": `${h}px`,
+                      "--i": i,
                       backgroundColor: color,
                       opacity: isDropped ? 0.3 : 1,
                       outline: isBest ? "2px solid var(--c-text)" : undefined,
@@ -191,11 +192,15 @@ export default function TeamProfile() {
           {teamRow && (
             <div className="flex gap-8 border-t border-white/10 pt-4 sm:flex-col sm:gap-3 sm:border-l sm:border-t-0 sm:pl-7 sm:pt-0 sm:text-right">
               <div>
-                <div className="font-display text-5xl font-black leading-none tabular-nums">P{teamRow.position}</div>
+                <div className="font-display text-5xl font-black leading-none tabular-nums">
+                  <CountUp end={teamRow.position} prefix="P" />
+                </div>
                 <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-white/50">of {standingsSet.standings.length}</div>
               </div>
               <div>
-                <div className="font-display text-4xl font-black leading-none tabular-nums" style={{ color }}>{teamRow.total}</div>
+                <div className="font-display text-4xl font-black leading-none tabular-nums" style={{ color }}>
+                  <CountUp end={teamRow.total} />
+                </div>
                 <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-white/50">points</div>
               </div>
             </div>
@@ -205,13 +210,13 @@ export default function TeamProfile() {
 
       {/* Stat tiles */}
       {teamRow && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Stat icon="hash" label="Championship" value={`P${teamRow.position}`} sub={`of ${standingsSet.standings.length} teams`} />
-          <Stat icon="chart" label="Points" value={teamRow.total} sub={`${TIER_LABEL[team.tier]} table`} accent={color} />
-          <Stat icon="trophy" label="Race Wins" value={wins} sub="by team drivers" accent={wins ? MEDAL[0] : undefined} />
-          <Stat icon="podium" label="Podiums" value={podiums} sub="P1–P3 finishes" />
-          <Stat icon="flagChk" label="Best Round" value={bestRoundPts || "–"} sub="points in one race" />
-          <Stat icon="hash" label="Rounds Scored" value={roundsScored} sub={`of ${raceNumbers.length}`} />
+        <div className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Stat index={0} icon="hash" label="Championship" value={`P${teamRow.position}`} sub={`of ${standingsSet.standings.length} teams`} />
+          <Stat index={1} icon="chart" label="Points" value={teamRow.total} sub={`${TIER_LABEL[team.tier]} table`} accent={color} />
+          <Stat index={2} icon="trophy" label="Race Wins" value={wins} sub="by team drivers" accent={wins ? MEDAL[0] : undefined} />
+          <Stat index={3} icon="podium" label="Podiums" value={podiums} sub="P1–P3 finishes" />
+          <Stat index={4} icon="flagChk" label="Best Round" value={bestRoundPts || "–"} sub="points in one race" />
+          <Stat index={5} icon="hash" label="Rounds Scored" value={roundsScored} sub={`of ${raceNumbers.length}`} />
         </div>
       )}
 

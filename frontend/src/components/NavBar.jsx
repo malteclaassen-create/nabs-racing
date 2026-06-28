@@ -53,7 +53,7 @@ const links = [
 ];
 
 const linkClass = ({ isActive }) =>
-  `flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+  `nav-link flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${
     isActive ? "bg-brand/20 text-dark ring-1 ring-brand/50" : "text-medium hover:bg-surface2"
   }`;
 
