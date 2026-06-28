@@ -5,7 +5,6 @@ import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton } fro
 import RaceResults from "../components/RaceResults.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
-import EdgeFade from "../components/EdgeFade.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 
@@ -41,14 +40,14 @@ function Countdown({ date }) {
 }
 
 // ---------------------------------------------------------------------------
-// Quick round-picker strip — a horizontal scrollable row of the DB rounds, for
-// flipping between results fast without scrolling down to the calendar.
+// Round rail — the list of championship rounds for flipping between results.
+// Scrolls horizontally on phones; becomes a vertical sidebar next to the
+// results table from `lg` up.
 // ---------------------------------------------------------------------------
-function RoundStrip({ races, selectedId, onSelect }) {
+function RoundRail({ races, selectedId, onSelect }) {
   return (
-    <EdgeFade color="var(--c-bg)" innerClassName="scrollbar-slim -mx-1 px-1 pb-2">
-      <div className="flex gap-2">
-        {races.map((r) => {
+    <div className="scrollbar-slim flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0">
+      {races.map((r) => {
         const c = circuitFor(r.track);
         const active = r.id === selectedId;
         const done = r.isCompleted;
@@ -63,14 +62,14 @@ function RoundStrip({ races, selectedId, onSelect }) {
             type="button"
             onClick={() => onSelect(r.id)}
             aria-pressed={active}
-            className={`group flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition ${border}`}
+            className={`group flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition lg:w-full lg:shrink ${border}`}
           >
             <span className={`font-display text-lg font-black leading-none tabular-nums ${active ? "text-dark" : done ? "text-emerald-600" : "text-faint group-hover:text-light"}`}>
               {String(r.number).padStart(2, "0")}
             </span>
             {c && <Flag code={c.country} title={c.countryName} />}
-            <span className="flex flex-col leading-tight">
-              <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">{r.track}</span>
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{r.track}</span>
               <span className={`flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider ${done ? "text-emerald-600" : "text-light"}`}>
                 {done && (
                   <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor" aria-hidden="true">
@@ -81,10 +80,9 @@ function RoundStrip({ races, selectedId, onSelect }) {
               </span>
             </span>
           </button>
-          );
-        })}
-      </div>
-    </EdgeFade>
+        );
+      })}
+    </div>
   );
 }
 
@@ -245,34 +243,45 @@ export default function Races() {
         subtitle="The full season calendar. Pick a completed round to see its results; upcoming rounds and special events show the schedule."
       />
 
-      {/* Quick round picker */}
-      {hasAnyResults && <RoundStrip races={championRounds} selectedId={selectedId} onSelect={selectRace} />}
-
-      {/* Selected race results */}
+      {/* Results explorer: round list (left) + selected race results (right) */}
       <div ref={panelRef} className="scroll-mt-24">
-        {detailLoading && <TableSkeleton rows={10} />}
-        {detailError && <ErrorBox message={detailError} />}
-        {detail && !detailLoading && (
-          <div>
-            <div className="mb-4">
-              <div className="flex items-center gap-3">
-                {circuitFor(detail.race.track) && (
-                  <Flag code={circuitFor(detail.race.track).country} title={circuitFor(detail.race.track).countryName} w={26} h={19} />
-                )}
-                <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
-                  <span className="text-light">R{detail.race.number}</span> {detail.race.track}
-                </h2>
-              </div>
-              {!detail.race.hasPositions && (
-                <p className="mt-1 text-sm text-light">
-                  Historical round — points only (finishing positions not recorded).
-                </p>
+        {hasAnyResults ? (
+          <div className="grid gap-5 lg:grid-cols-[15rem_1fr] xl:grid-cols-[17rem_1fr]">
+            {/* round list — horizontal on phones, vertical sidebar from lg up */}
+            <aside className="lg:sticky lg:top-28 lg:self-start">
+              <h3 className="mb-2.5 hidden font-mono text-xs font-bold uppercase tracking-widest text-light lg:block">
+                Rounds
+              </h3>
+              <RoundRail races={championRounds} selectedId={selectedId} onSelect={selectRace} />
+            </aside>
+
+            {/* selected race results */}
+            <div className="min-w-0">
+              {detailLoading && <TableSkeleton rows={10} />}
+              {detailError && <ErrorBox message={detailError} />}
+              {detail && !detailLoading && (
+                <div>
+                  <div className="mb-4">
+                    <div className="flex items-center gap-3">
+                      {circuitFor(detail.race.track) && (
+                        <Flag code={circuitFor(detail.race.track).country} title={circuitFor(detail.race.track).countryName} w={26} h={19} />
+                      )}
+                      <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
+                        <span className="text-light">R{detail.race.number}</span> {detail.race.track}
+                      </h2>
+                    </div>
+                    {!detail.race.hasPositions && (
+                      <p className="mt-1 text-sm text-light">
+                        Historical round — points only (finishing positions not recorded).
+                      </p>
+                    )}
+                  </div>
+                  <RaceResults race={detail.race} results={detail.results} />
+                </div>
               )}
             </div>
-            <RaceResults race={detail.race} results={detail.results} />
           </div>
-        )}
-        {!detail && !detailLoading && !hasAnyResults && (
+        ) : (
           <div className="card p-8 text-center text-medium">No results yet — the season hasn't started.</div>
         )}
       </div>

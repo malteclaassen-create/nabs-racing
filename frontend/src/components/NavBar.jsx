@@ -4,6 +4,23 @@ import { useTheme } from "../hooks/useTheme.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import Logo from "./Logo.jsx";
 import NextRaceTimer from "./NextRaceTimer.jsx";
+import { useSocial, SocialIcon } from "./SocialLinks.jsx";
+
+// Blurple "Join Discord" call-to-action, shown when a Discord link is set.
+function JoinDiscord({ url, className = "" }) {
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#5865F2] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#4752c4] ${className}`}
+    >
+      <SocialIcon name="discord" className="h-4 w-4" />
+      Join Discord
+    </a>
+  );
+}
 
 // Dropdown to switch the viewed season (only shown when more than one exists).
 function SeasonSwitcher({ className = "" }) {
@@ -31,7 +48,7 @@ const links = [
   { to: "/drivers", label: "Drivers" },
   { to: "/constructors", label: "Constructors" },
   { to: "/races", label: "Races" },
-  { to: "/live", label: "Live", live: true },
+  { to: "/live", label: "Live Timing", live: true },
   { to: "/signup", label: "Sign Up" },
 ];
 
@@ -75,6 +92,7 @@ function MoonIcon() {
 export default function NavBar() {
   const { theme, toggle } = useTheme();
   const { current } = useSeason();
+  const social = useSocial();
   const [open, setOpen] = useState(false);
   const location = useLocation();
 
@@ -164,6 +182,7 @@ export default function NavBar() {
           <NavLink to="/admin" className={adminClass}>
             Admin
           </NavLink>
+          <JoinDiscord url={social.data?.discord} className="ml-1" />
           <SeasonSwitcher className="ml-1" />
           <button
             onClick={toggle}
@@ -209,6 +228,7 @@ export default function NavBar() {
       {open && (
         <div className="relative border-t border-border bg-card lg:hidden">
           <div className="container-page flex flex-col gap-1 py-3">
+            <JoinDiscord url={social.data?.discord} className="mb-1 w-full" />
             {links.map((l) => (
               <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
                 {l.live && <LiveDot />}

@@ -85,6 +85,26 @@ export const api = {
   me: () => request("/me", { userAuth: true }),
   setMyCountry: (country) => request("/me/country", { method: "PUT", body: { country }, userAuth: true }),
 
+  // driver market (identity from the Discord login)
+  market: () => request("/market", { userAuth: true }),
+  offerSeat: (raceId) => request("/market/offer", { method: "POST", body: { raceId }, userAuth: true }),
+  withdrawOffer: (offerId) => request(`/market/offer/${offerId}`, { method: "DELETE", userAuth: true }),
+  expressInterest: (offerId) =>
+    request(`/market/offer/${offerId}/interest`, { method: "POST", userAuth: true }),
+  withdrawInterest: (offerId) =>
+    request(`/market/offer/${offerId}/interest`, { method: "DELETE", userAuth: true }),
+  pickReplacement: (offerId, driverId) =>
+    request(`/market/offer/${offerId}/pick`, { method: "POST", body: { driverId }, userAuth: true }),
+  // admin override of the market
+  adminAssignSeat: (offerId, driverId) =>
+    request(`/admin/market/${offerId}/assign`, { method: "POST", body: { driverId }, auth: true }),
+  adminDeleteOffer: (offerId) => request(`/admin/market/${offerId}`, { method: "DELETE", auth: true }),
+
+  // social links (public read + admin manage)
+  socialLinks: () => request("/settings/social"),
+  getSocial: () => request("/admin/social", { auth: true }),
+  setSocial: (body) => request("/admin/social", { method: "PUT", body, auth: true }),
+
   // discord login
   discordConfig: () => request("/auth/discord/config"),
   discordCallback: (code) => request("/auth/discord/callback", { method: "POST", body: { code } }),

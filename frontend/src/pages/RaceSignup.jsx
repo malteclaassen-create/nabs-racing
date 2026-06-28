@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { Spinner, ErrorBox, PageHeader, TeamDot } from "../components/ui.jsx";
+import SeatMarket from "../components/SeatMarket.jsx";
 import Flag from "../components/Flag.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
@@ -25,7 +26,14 @@ function fmtDate(d) {
 export default function RaceSignup() {
   const events = useApi(useCallback(() => api.events(), []));
   const discord = useApi(useCallback(() => api.discordConfig(), []));
+  const market = useApi(useCallback(() => api.market(), []));
   const { user, isLoggedIn, logout } = useAuth();
+
+  // Market offers keyed by race id, so each race card can show its own seats.
+  const marketByRace = useMemo(
+    () => new Map((market.data?.races || []).map((r) => [r.id, r])),
+    [market.data]
+  );
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [myCountry, setMyCountry] = useState("");
@@ -96,7 +104,7 @@ export default function RaceSignup() {
       <PageHeader
         eyebrow="Race Sign-Up"
         title="Sign Up for Races"
-        subtitle="Sign in with Discord and set your attendance. Your response is posted automatically in the Discord server."
+        subtitle="Sign in with Discord and set your attendance. Can't make a race? Offer your seat in the Driver Market below each race, and reserves can step in."
       />
 
       {/* identity / login */}
@@ -241,6 +249,12 @@ export default function RaceSignup() {
                   </div>
                 ))}
               </div>
+
+              <SeatMarket
+                race={marketByRace.get(ev.id)}
+                me={market.data?.me}
+                reload={market.reload}
+              />
             </div>
           );
         })}

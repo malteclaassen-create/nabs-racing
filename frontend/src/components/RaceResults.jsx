@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { StatusPill, Rank, TierBadge } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
@@ -42,9 +43,12 @@ function PodiumCard({ row, rank }) {
       </span>
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark">
+          <Link
+            to={`/drivers/${row.driverId}`}
+            className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark transition hover:text-brand"
+          >
             {row.name}
-          </span>
+          </Link>
           <Flag code={countryFor(row.driverId, row.country)} w={16} h={12} />
         </div>
         <div className="truncate text-xs text-light">
@@ -171,9 +175,12 @@ export default function RaceResults({ race, results }) {
                         className="h-7 w-1.5 shrink-0 rounded-full"
                         style={{ backgroundColor: r.team.color }}
                       />
-                      <span className="font-display text-base font-bold uppercase tracking-tight text-dark">
+                      <Link
+                        to={`/drivers/${r.driverId}`}
+                        className="font-display text-base font-bold uppercase tracking-tight text-dark transition hover:text-brand"
+                      >
                         {r.name}
-                      </span>
+                      </Link>
                       <Flag code={countryFor(r.driverId, r.country)} />
                       {tier != null && <TierBadge tier={tier} />}
                       {isFastest && (
@@ -196,15 +203,17 @@ export default function RaceResults({ race, results }) {
                     {(() => {
                       const t = r.effectiveTeam || r.team;
                       return (
-                        <TeamLogo
-                          id={t.id}
-                          name={t.name}
-                          color={t.color}
-                          logoUrl={t.logoUrl}
-                          size={20}
-                          showName
-                          nameClassName="truncate text-sm text-medium"
-                        />
+                        <Link to={`/teams/${t.id}`} className="inline-flex transition hover:opacity-80">
+                          <TeamLogo
+                            id={t.id}
+                            name={t.name}
+                            color={t.color}
+                            logoUrl={t.logoUrl}
+                            size={20}
+                            showName
+                            nameClassName="truncate text-sm text-medium"
+                          />
+                        </Link>
                       );
                     })()}
                   </td>

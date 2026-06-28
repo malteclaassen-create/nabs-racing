@@ -37,24 +37,38 @@ export default function AdminImport({ onCommitted }) {
   // Shared: turn a parsed AC result (from upload or server) into the review form.
   function applyParsed(res) {
     setParsed(res);
+    const trackName = canonicalTrack(res.track) || "";
     setMeta((m) => ({
       ...m,
-      track: canonicalTrack(res.track) || "",
+      track: trackName,
       date: res.date ? String(res.date).slice(0, 10) : "",
     }));
+    // Driver Market: pre-fill the "team this race" column for reserves who were
+    // picked to sub. Prefer takeovers whose race matches this file's track; fall
+    // back to all confirmed takeovers when none match (the admin still confirms
+    // against who actually drove).
+    const takeovers = res.seatTakeovers || [];
+    const matching = takeovers.filter((t) => t.track && t.track === trackName);
+    const pool = matching.length ? matching : takeovers;
+    const takeoverByDriver = new Map(pool.map((t) => [t.reserveDriverId, t]));
     setRows(
-      res.entries.map((en) => ({
-        acDriverName: en.acDriverName,
-        position: en.position,
-        driverId: en.suggestedDriverId || "",
-        status: en.disqualified ? "DSQ" : "FINISHED",
-        subForTeamId: "",
-        penaltySeconds: 0,
-        bestLapMs: en.bestLap || null,
-        grid: en.grid ?? null,
-        totalTimeMs: en.totalTimeMs ?? null,
-        suggestions: en.suggestions,
-      }))
+      res.entries.map((en) => {
+        const driverId = en.suggestedDriverId || "";
+        const takeover = driverId ? takeoverByDriver.get(driverId) : null;
+        return {
+          acDriverName: en.acDriverName,
+          position: en.position,
+          driverId,
+          status: en.disqualified ? "DSQ" : "FINISHED",
+          subForTeamId: takeover ? takeover.teamId : "",
+          marketFor: takeover ? takeover.forName : null,
+          penaltySeconds: 0,
+          bestLapMs: en.bestLap || null,
+          grid: en.grid ?? null,
+          totalTimeMs: en.totalTimeMs ?? null,
+          suggestions: en.suggestions,
+        };
+      })
     );
   }
 
@@ -293,7 +307,7 @@ export default function AdminImport({ onCommitted }) {
                           <select
                             className="input py-1"
                             value={r.driverId}
-                            onChange={(e) => setRow(i, { driverId: e.target.value, subForTeamId: "" })}
+                            onChange={(e) => setRow(i, { driverId: e.target.value, subForTeamId: "", marketFor: null })}
                           >
                             <option value="">— skip —</option>
                             {drivers.map((d) => (
@@ -341,6 +355,11 @@ export default function AdminImport({ onCommitted }) {
                                 </option>
                               ))}
                           </select>
+                          {r.marketFor && r.subForTeamId && (
+                            <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-emerald-600">
+                              ↩ Driver Market · for {r.marketFor}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-center">
                           <input

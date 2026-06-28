@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { TierBadge, Rank } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 
@@ -113,27 +114,27 @@ export default function StandingsTable({ variant, raceNumbers, rows }) {
 
                   {isDriver ? (
                     <td className={`sticky left-14 z-10 px-3 py-3 transition sticky-cell ${leftShadow}`}>
-                      <div className="flex items-center gap-3">
+                      <Link to={`/drivers/${row.driverId}`} className="group/name flex items-center gap-3">
                         <span
                           className="h-7 w-1.5 shrink-0 rounded-full"
                           style={{ backgroundColor: row.team.color }}
                         />
-                        <span className="font-display text-base font-bold uppercase tracking-tight text-dark">
+                        <span className="font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand">
                           {row.name}
                         </span>
                         {!row.isActive && (
                           <span className="pill bg-surface2 text-light">inactive</span>
                         )}
-                      </div>
+                      </Link>
                     </td>
                   ) : (
                     <td className={`sticky left-14 z-10 px-3 py-3 transition sticky-cell ${leftShadow}`}>
-                      <div className="flex items-center gap-3">
+                      <Link to={`/teams/${row.teamId}`} className="group/name flex items-center gap-3">
                         <TeamLogo id={row.teamId} name={row.name} color={row.color} logoUrl={row.logoUrl} size={28} />
-                        <span className="font-display text-base font-bold uppercase tracking-tight text-dark">
+                        <span className="font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand">
                           {row.name}
                         </span>
-                      </div>
+                      </Link>
                     </td>
                   )}
 

@@ -2,10 +2,12 @@ import { Routes, Route } from "react-router-dom";
 import { useScrollReveal } from "./hooks/useScrollReveal.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
 import NavBar from "./components/NavBar.jsx";
+import SocialLinks, { useSocial } from "./components/SocialLinks.jsx";
 import Home from "./pages/Home.jsx";
 import DriverStandings from "./pages/DriverStandings.jsx";
 import DriverProfile from "./pages/DriverProfile.jsx";
 import Constructors from "./pages/Constructors.jsx";
+import TeamProfile from "./pages/TeamProfile.jsx";
 import Races from "./pages/Races.jsx";
 import Live from "./pages/Live.jsx";
 import RaceSignup from "./pages/RaceSignup.jsx";
@@ -23,13 +25,18 @@ function AppRoutes() {
         <Route path="/drivers" element={<DriverStandings />} />
         <Route path="/drivers/:id" element={<DriverProfile />} />
         <Route path="/constructors" element={<Constructors />} />
+        <Route path="/constructors/:id" element={<TeamProfile />} />
         <Route path="/teams" element={<Constructors />} />
+        <Route path="/teams/:id" element={<TeamProfile />} />
         <Route path="/races" element={<Races />} />
         <Route path="/results" element={<Races />} />
         <Route path="/calendar" element={<Races />} />
         <Route path="/live" element={<Live />} />
         <Route path="/signup" element={<RaceSignup />} />
         <Route path="/rennen" element={<RaceSignup />} />
+        {/* Driver Market now lives inside the Sign-Up page; keep old links working. */}
+        <Route path="/market" element={<RaceSignup />} />
+        <Route path="/driver-market" element={<RaceSignup />} />
         <Route path="/auth/discord/callback" element={<DiscordCallback />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<div className="card p-8 text-center text-medium">Page not found.</div>} />
@@ -40,13 +47,15 @@ function AppRoutes() {
 
 function Footer() {
   const { current } = useSeason();
+  const social = useSocial();
   const label = current
     ? `${current.name}${current.game ? ` · ${current.game}` : ""}`
     : "F1 on Assetto Corsa";
   return (
     <footer className="border-t border-border bg-card">
-      <div className="container-page flex flex-col items-center justify-between gap-2 py-6 text-sm text-light sm:flex-row">
+      <div className="container-page flex flex-col items-center gap-4 py-6 text-sm text-light sm:flex-row sm:justify-between">
         <span>NABS Racing League · {label}</span>
+        <SocialLinks links={social.data} />
         <span className="flex flex-col items-center gap-0.5 sm:items-end">
           <span>Built for the NABS Discord community</span>
           <span className="text-xs text-faint">

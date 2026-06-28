@@ -6,9 +6,11 @@ import standingsRoutes from "./routes/standings.js";
 import driversRoutes from "./routes/drivers.js";
 import racesRoutes from "./routes/races.js";
 import eventsRoutes from "./routes/events.js";
+import marketRoutes from "./routes/market.js";
 import meRoutes from "./routes/me.js";
 import teamsRoutes from "./routes/teams.js";
 import seasonsRoutes from "./routes/seasons.js";
+import settingsRoutes from "./routes/settings.js";
 import authRoutes from "./routes/auth.js";
 import discordAuthRoutes from "./routes/discordAuth.js";
 import adminRoutes from "./routes/admin.js";
@@ -35,9 +37,11 @@ app.use("/api/standings", standingsRoutes);
 app.use("/api/drivers", driversRoutes);
 app.use("/api/races", racesRoutes);
 app.use("/api/events", eventsRoutes);
+app.use("/api/market", marketRoutes);
 app.use("/api/me", meRoutes);
 app.use("/api/teams", teamsRoutes);
 app.use("/api/seasons", seasonsRoutes);
+app.use("/api/settings", settingsRoutes);
 app.use("/api/auth/discord", discordAuthRoutes);
 
 // Admin

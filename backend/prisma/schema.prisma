@@ -56,6 +56,7 @@ model Team {
   drivers          Driver[]
   results          RaceResult[]
   constructorScores ConstructorRaceScore[]
+  seatOffers       SeatOffer[]
 }
 
 model Driver {
@@ -81,6 +82,11 @@ model Driver {
   country       String?
   results     RaceResult[]
   rsvps       RaceRsvp[]
+  // Driver Market: seats this driver has offered, seats this (reserve) driver
+  // was chosen to fill, and the offers this (reserve) driver is interested in.
+  seatOffersOffered SeatOffer[]    @relation("SeatOfferedBy")
+  seatOffersFilled  SeatOffer[]    @relation("SeatFilledBy")
+  seatInterests     SeatInterest[]
   createdAt   DateTime @default(now())
 }
 
@@ -105,6 +111,7 @@ model Race {
   results     RaceResult[]
   constructorScores ConstructorRaceScore[]
   rsvps       RaceRsvp[]
+  seatOffers  SeatOffer[]
 
   @@unique([seasonId, number])
 }
@@ -120,6 +127,44 @@ model RaceRsvp {
   updatedAt DateTime @updatedAt
 
   @@unique([raceId, driverId])
+}
+
+// ---------------------------------------------------------------------------
+// Driver Market. A full-time driver who can't attend offers their seat for an
+// upcoming race; reserve drivers express interest; the offering driver (or an
+// admin) picks who fills it. The confirmed reserve pre-fills the result import
+// (subForTeam) and shows in the per-team race lineup. Interest stays open even
+// after a seat is filled, so an admin can swap in a different reserve later.
+model SeatOffer {
+  id         String   @id @default(cuid())
+  raceId     String
+  race       Race     @relation(fields: [raceId], references: [id], onDelete: Cascade)
+  // The full-time driver giving up their seat, and the team/seat on offer (the
+  // offering driver's own team at the time of the offer).
+  driverId   String
+  driver     Driver   @relation("SeatOfferedBy", fields: [driverId], references: [id])
+  teamId     String
+  team       Team     @relation(fields: [teamId], references: [id])
+  status     String   @default("OPEN") // OPEN / FILLED / CANCELLED
+  // The reserve chosen to fill the seat (null while OPEN / CANCELLED).
+  filledById String?
+  filledBy   Driver?  @relation("SeatFilledBy", fields: [filledById], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  interests  SeatInterest[]
+
+  @@unique([raceId, driverId])
+}
+
+model SeatInterest {
+  id        String    @id @default(cuid())
+  offerId   String
+  offer     SeatOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  driverId  String
+  driver    Driver    @relation(fields: [driverId], references: [id])
+  createdAt DateTime  @default(now())
+
+  @@unique([offerId, driverId])
 }
 
 model RaceResult {

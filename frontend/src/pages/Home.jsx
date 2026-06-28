@@ -5,11 +5,9 @@ import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { Skeleton, TableSkeleton } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
-import CircuitMap from "../components/CircuitMap.jsx";
 import PointsChart from "../components/PointsChart.jsx";
-import NextRaceTimer from "../components/NextRaceTimer.jsx";
+import RaceCountdown from "../components/RaceCountdown.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
-import { useTheme } from "../hooks/useTheme.js";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
@@ -28,7 +26,6 @@ function pad2(n) {
 
 export default function Home() {
   const { current: season } = useSeason();
-  const { theme } = useTheme();
   const drivers = useApi(useCallback(() => api.driverStandings(), []));
   const t1 = useApi(useCallback(() => api.t1Standings(), []));
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
@@ -63,7 +60,6 @@ export default function Home() {
     .filter((r) => r.position != null)
     .sort((a, b) => a.position - b.position)
     .slice(0, 3);
-  const winner = podium[0];
   const nextDate = nextRace?.date ? new Date(nextRace.date) : null;
   const roundNo = lastRace?.number ?? completedRaces.length;
   const lastCircuit = circuitFor(lastRace?.track);
@@ -71,6 +67,13 @@ export default function Home() {
   const completedNumbers = completedRaces.map((r) => r.number).sort((a, b) => a - b);
   // Championship rounds in this season (excludes non-scoring special events).
   const totalRounds = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null).length;
+
+  // Season "by the numbers" band.
+  const standings = drivers.data?.standings || [];
+  const driverCount = standings.length;
+  const constructorCount = (t1.data?.standings?.length || 0) + (t2.data?.standings?.length || 0);
+  const runnerUp = standings[1];
+  const titleGap = leader && runnerUp ? leader.total - runnerUp.total : 0;
 
   return (
     <div className="space-y-16">
@@ -91,7 +94,6 @@ export default function Home() {
             Round {pad2(roundNo)} <span className="text-faint">/ {totalRounds || "—"}</span>
           </span>
         </div>
-        <NextRaceTimer className="w-fit" />
       </div>
 
       {/* ===================== LEAD FEATURE ===================== */}
@@ -114,213 +116,172 @@ export default function Home() {
         {/* brand accent rail */}
         <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-brand via-brand/40 to-transparent" />
 
-        {/* circuit outline (or ghost round number as fallback) — dark mode only;
-            in light mode the photo carries the right side on its own */}
-        {theme === "dark" &&
-          (lastCircuit ? (
-            <CircuitMap
-              track={lastRace?.track}
-              stroke="rgba(255,255,255,0.55)"
-              strokeWidth={0.9}
-              animate
-              className="pointer-events-none absolute right-1 top-1/2 h-[74%] w-[44%] -translate-y-1/2 sm:right-4"
-            />
-          ) : (
-            <div className="ghost-numeral pointer-events-none absolute -right-4 -top-10 select-none text-[13rem] text-white/[0.06] sm:text-[20rem]">
-              {pad2(roundNo)}
+        <div className="relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
+          {/* LEFT — latest race */}
+          <div className="flex flex-1 flex-col justify-end">
+            <div className="flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-rose-600 dark:text-brand">
+              {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
+              <span>Latest Race</span>
+              <span className="h-px w-10 bg-rose-500/50 dark:bg-brand/60" />
+              <span className="text-ink/40 dark:text-white/50">Round {roundNo}</span>
             </div>
-          ))}
 
-        <div className="relative flex min-h-[460px] flex-col justify-end p-7 sm:p-12">
-          <div className="flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-rose-600 dark:text-brand">
-            {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
-            <span>Latest Race</span>
-            <span className="h-px w-10 bg-rose-500/50 dark:bg-brand/60" />
-            <span className="text-ink/40 dark:text-white/50">Round {roundNo}</span>
+            <h1 className="mt-4 max-w-3xl font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl">
+              {lastRace?.track || "Season opener"}
+            </h1>
+            <p className="mt-3 font-mono text-sm uppercase tracking-wider text-ink/70 dark:text-white/65">
+              {lastCircuit ? `${lastCircuit.circuit} · ` : ""}
+              {fmtFull(lastRace?.date)}
+            </p>
+
+            {/* podium strip */}
+            {podium.length > 0 && (
+              <div className="mt-8 grid max-w-2xl gap-2 sm:grid-cols-3">
+                {podium.map((p, i) => (
+                  <Link
+                    key={p.driverId}
+                    to={`/drivers/${p.driverId}`}
+                    className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md transition hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
+                  >
+                    <span
+                      className="absolute left-0 top-0 h-full w-1"
+                      style={{ backgroundColor: MEDAL[i] }}
+                    />
+                    <span
+                      className="font-display text-2xl font-black tabular-nums"
+                      style={{ color: MEDAL[i] }}
+                    >
+                      P{p.position}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-1.5 text-base font-bold leading-tight text-ink transition group-hover:text-brand dark:text-white">
+                        <span className="truncate">{p.name}</span>
+                        <Flag code={countryFor(p.driverId, p.country)} w={16} h={12} />
+                      </span>
+                      {p.isSub && p.subForTeam ? (
+                        <TeamLogo
+                          id={p.subForTeam.id}
+                          name={`${p.subForTeam.name} (sub)`}
+                          color={p.subForTeam.color}
+                          logoUrl={p.subForTeam.logoUrl}
+                          size={16}
+                          showName
+                          className="mt-0.5"
+                          nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
+                        />
+                      ) : (
+                        <TeamLogo
+                          id={p.team.id}
+                          name={p.team.name}
+                          color={p.team.color}
+                          logoUrl={p.team.logoUrl}
+                          size={16}
+                          showName
+                          className="mt-0.5"
+                          nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
+                        />
+                      )}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-9 flex flex-wrap gap-3">
+              <Link
+                to="/races"
+                className="group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
+              >
+                Full Results
+                <span className="transition group-hover:translate-x-0.5">→</span>
+              </Link>
+              <Link
+                to="/drivers"
+                className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
+              >
+                Standings
+              </Link>
+            </div>
           </div>
 
-          <h1 className="mt-4 max-w-3xl font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl">
-            {lastRace?.track || "Season opener"}
-          </h1>
-          <p className="mt-3 font-mono text-sm uppercase tracking-wider text-ink/70 dark:text-white/65">
-            {lastCircuit ? `${lastCircuit.circuit} · ` : ""}
-            {fmtFull(lastRace?.date)}
-          </p>
-
-          {/* podium strip */}
-          {podium.length > 0 && (
-            <div className="mt-8 grid max-w-2xl gap-2 sm:grid-cols-3">
-              {podium.map((p, i) => (
-                <div
-                  key={p.driverId}
-                  className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.07]"
-                >
-                  <span
-                    className="absolute left-0 top-0 h-full w-1"
-                    style={{ backgroundColor: MEDAL[i] }}
-                  />
-                  <span
-                    className="font-display text-2xl font-black tabular-nums"
-                    style={{ color: MEDAL[i] }}
-                  >
-                    P{p.position}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="flex items-center gap-1.5 text-base font-bold leading-tight text-ink dark:text-white">
-                      <span className="truncate">{p.name}</span>
-                      <Flag code={countryFor(p.driverId, p.country)} w={16} h={12} />
-                    </span>
-                    {p.isSub && p.subForTeam ? (
-                      <TeamLogo
-                        id={p.subForTeam.id}
-                        name={`${p.subForTeam.name} (sub)`}
-                        color={p.subForTeam.color}
-                        logoUrl={p.subForTeam.logoUrl}
-                        size={16}
-                        showName
-                        className="mt-0.5"
-                        nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
-                      />
-                    ) : (
-                      <TeamLogo
-                        id={p.team.id}
-                        name={p.team.name}
-                        color={p.team.color}
-                        logoUrl={p.team.logoUrl}
-                        size={16}
-                        showName
-                        className="mt-0.5"
-                        nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
-                      />
-                    )}
-                  </span>
+          {/* RIGHT — next race panel */}
+          {nextRace && (
+            <div className="flex shrink-0 flex-col justify-end lg:w-72">
+              <div className="rounded-2xl border border-black/10 bg-white/75 p-5 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.08]">
+                <div className="flex items-center gap-2 font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-sky-600 dark:text-sky-300">
+                  {nextCircuit && <Flag code={nextCircuit.country} title={nextCircuit.countryName} w={22} h={16} />}
+                  <span>Next Race</span>
+                  <span className="ml-auto text-ink/40 dark:text-white/50">Round {nextRace.number}</span>
                 </div>
-              ))}
+
+                <div className="mt-3 font-display text-3xl font-black uppercase leading-none tracking-tight text-ink dark:text-white sm:text-4xl">
+                  {nextRace.track}
+                </div>
+                {nextCircuit && (
+                  <div className="mt-2 font-mono text-xs uppercase tracking-wider text-ink/60 dark:text-white/65">
+                    {nextCircuit.circuit}
+                  </div>
+                )}
+
+                <RaceCountdown date={nextRace.date} className="mt-5" />
+
+                {nextDate && (
+                  <div className="mt-3 flex items-center justify-center gap-2 font-mono text-xs uppercase tracking-wider text-ink/65 dark:text-white/70">
+                    <span className="font-bold text-ink/80 dark:text-white/85">
+                      {nextDate.getDate()} {MONTHS[nextDate.getMonth()]}
+                    </span>
+                    <span className="h-3 w-px bg-ink/20 dark:bg-white/25" />
+                    <span>{fmtRaceTime(nextRace.date)}</span>
+                  </div>
+                )}
+
+                <Link
+                  to="/signup"
+                  className="group mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
+                >
+                  Sign Up
+                  <span className="transition group-hover:translate-x-0.5">→</span>
+                </Link>
+              </div>
             </div>
           )}
-
-          <div className="mt-9 flex flex-wrap gap-3">
-            <Link
-              to="/races"
-              className="group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
-            >
-              Full Results
-              <span className="transition group-hover:translate-x-0.5">→</span>
-            </Link>
-            <Link
-              to="/drivers"
-              className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
-            >
-              Standings
-            </Link>
-          </div>
         </div>
       </section>
 
-      {/* ===================== BROADCAST BAR ===================== */}
+      {/* ===================== SEASON BY THE NUMBERS ===================== */}
       <section
-        className="reveal grid gap-4 sm:grid-cols-2 md:grid-cols-3"
+        className="reveal grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
         style={{ animationDelay: "0.08s" }}
       >
-        {/* leader */}
-        <StatCard
-          label="Championship Leader"
-          accent={leader?.team?.color || "#EAB308"}
+        <NumberTile
+          to="/races"
+          label="Rounds Done"
+          value={completedRaces.length}
+          sub={`of ${totalRounds || "—"}`}
+          accent="#f4afc6"
+        />
+        <NumberTile to="/drivers" label="Drivers" value={driverCount} sub="on the grid" accent="#38bdf8" />
+        <NumberTile
+          to="/constructors"
+          label="Constructors"
+          value={constructorCount}
+          sub="teams scoring"
+          accent="#a78bfa"
+        />
+        <NumberTile
           to={leader ? `/drivers/${leader.driverId}` : undefined}
-        >
-          {leader && (
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
-                  {leader.name}
-                </div>
-                <TeamLogo
-                  id={leader.team.id}
-                  name={leader.team.name}
-                  color={leader.team.color}
-                  logoUrl={leader.team.logoUrl}
-                  size={18}
-                  showName
-                  className="mt-2"
-                  nameClassName="truncate text-sm text-light"
-                />
-              </div>
-              <div className="shrink-0 text-right leading-none">
-                <div className="font-mono text-3xl font-black tabular-nums text-dark">{leader.total}</div>
-                <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-light">
-                  Points
-                </div>
-              </div>
-            </div>
-          )}
-        </StatCard>
-
-        {/* last winner */}
-        <StatCard
-          label="Last Race Winner"
-          accent={winner?.team?.color || "#94A3B8"}
-          to={winner ? `/drivers/${winner.driverId}` : undefined}
-        >
-          {winner ? (
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
-                  {winner.name}
-                </div>
-                <TeamLogo
-                  id={winner.team.id}
-                  name={winner.team.name}
-                  color={winner.team.color}
-                  logoUrl={winner.team.logoUrl}
-                  size={18}
-                  showName
-                  className="mt-2"
-                  nameClassName="truncate text-sm text-light"
-                />
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="flex items-center justify-end gap-1.5">
-                  {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} />}
-                  <span className="max-w-[7rem] truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
-                    {lastRace?.track}
-                  </span>
-                </div>
-                <div className="mt-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-light">
-                  Round {roundNo}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-[15px] text-light">No races yet</div>
-          )}
-        </StatCard>
-
-        {/* next race */}
-        <StatCard label="Next Race" accent="#F4AFC6" to="/races">
-          {nextRace ? (
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
-                  {nextRace.track}
-                </div>
-                <div className="mt-2 flex items-center gap-1.5 text-sm text-light">
-                  {nextCircuit && <Flag code={nextCircuit.country} title={nextCircuit.countryName} />}
-                  <span className="truncate">Round {nextRace.number} · {fmtRaceTime(nextRace.date)}</span>
-                </div>
-              </div>
-              {nextDate && (
-                <div className="flex shrink-0 flex-col items-center justify-center rounded-lg border border-border bg-surface2 px-3 py-1.5 leading-none">
-                  <span className="font-mono text-2xl font-bold tabular-nums text-dark">{nextDate.getDate()}</span>
-                  <span className="mt-0.5 font-mono text-[11px] font-bold tracking-wider text-light">
-                    {MONTHS[nextDate.getMonth()]}
-                  </span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-[15px] text-light">Season complete</div>
-          )}
-        </StatCard>
+          label="Leader"
+          value={leader?.total ?? "—"}
+          sub={leader?.name || "TBA"}
+          accent={leader?.team?.color || "#EAB308"}
+        />
+        <NumberTile
+          to="/drivers"
+          label="Title Gap"
+          value={titleGap > 0 ? `+${titleGap}` : "Level"}
+          sub="P1 to P2"
+          accent="#fbbf24"
+        />
       </section>
 
       {/* ===================== DRIVERS' CHAMPIONSHIP ===================== */}
@@ -357,39 +318,6 @@ export default function Home() {
 
 /* ---------------------------------------------------------------- */
 
-function StatCard({ label, accent, to, children }) {
-  const cls =
-    "group relative flex min-h-[7.5rem] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-card transition duration-200 hover:-translate-y-0.5 hover:shadow-lg" +
-    (to ? " hover:border-brand/40" : "");
-  const body = (
-    <>
-      {/* accent rail */}
-      <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: accent }} />
-      <div className="flex flex-1 flex-col justify-between p-5 pl-6">
-        <div className="mb-3.5 flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: accent }} />
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-light">
-            {label}
-          </span>
-          {to && (
-            <span className="ml-auto text-light opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100">
-              →
-            </span>
-          )}
-        </div>
-        {children}
-      </div>
-    </>
-  );
-  return to ? (
-    <Link to={to} className={cls}>
-      {body}
-    </Link>
-  ) : (
-    <div className={cls}>{body}</div>
-  );
-}
-
 function Heading({ index, eyebrow, title, to }) {
   return (
     <div className="mb-6 flex items-end justify-between gap-4 border-b border-border pb-4">
@@ -411,6 +339,38 @@ function Heading({ index, eyebrow, title, to }) {
         </Link>
       )}
     </div>
+  );
+}
+
+function NumberTile({ label, value, sub, accent = "#f4afc6", to }) {
+  const cls =
+    "group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-card transition duration-200" +
+    (to ? " hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg" : "");
+  const body = (
+    <>
+      <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: accent }} />
+      <div className="flex items-center gap-2 pl-1">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-light">{label}</span>
+        {to && (
+          <span className="ml-auto text-light opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100">
+            →
+          </span>
+        )}
+      </div>
+      <div className="mt-3 pl-1 font-display text-4xl font-black leading-none tabular-nums text-dark">{value}</div>
+      {sub && (
+        <div className="mt-1.5 truncate pl-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+          {sub}
+        </div>
+      )}
+    </>
+  );
+  return to ? (
+    <Link to={to} className={cls}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 
@@ -455,22 +415,27 @@ function DriversTable({ rows, leaderTotal }) {
                 <td className="py-4 pl-2">
                   <div className="flex items-center gap-3">
                     <span className="h-7 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: d.team.color }} />
-                    <span className="font-display text-lg font-bold uppercase tracking-tight text-dark">
+                    <Link
+                      to={`/drivers/${d.driverId}`}
+                      className="font-display text-lg font-bold uppercase tracking-tight text-dark transition hover:text-brand"
+                    >
                       {d.name}
-                    </span>
+                    </Link>
                     <Flag code={countryFor(d.driverId, d.country)} className="ml-0.5" />
                   </div>
                 </td>
                 <td className="hidden py-4 sm:table-cell">
-                  <TeamLogo
-                    id={d.team.id}
-                    name={d.team.name}
-                    color={d.team.color}
-                    logoUrl={d.team.logoUrl}
-                    size={20}
-                    showName
-                    nameClassName="truncate text-[15px] text-medium"
-                  />
+                  <Link to={`/teams/${d.team.id}`} className="inline-flex transition hover:opacity-80">
+                    <TeamLogo
+                      id={d.team.id}
+                      name={d.team.name}
+                      color={d.team.color}
+                      logoUrl={d.team.logoUrl}
+                      size={20}
+                      showName
+                      nameClassName="truncate text-[15px] text-medium"
+                    />
+                  </Link>
                 </td>
                 <td className="py-4 pr-5 text-right">
                   <div className="flex flex-col items-end gap-1.5">
@@ -504,15 +469,15 @@ function ConstructorTable({ rows }) {
           {rows.map((t) => {
             const pct = top > 0 ? Math.max(6, (t.total / top) * 100) : 0;
             return (
-              <tr key={t.teamId} className="border-b border-border last:border-0 transition hover:bg-surface2">
+              <tr key={t.teamId} className="group border-b border-border last:border-0 transition hover:bg-surface2">
                 <td className="w-12 py-4 pl-5 text-center font-display text-lg font-black tabular-nums text-faint">
                   {t.position}
                 </td>
                 <td className="py-4 pl-1">
-                  <div className="flex items-center gap-3">
+                  <Link to={`/teams/${t.teamId}`} className="flex items-center gap-3">
                     <TeamLogo id={t.teamId} name={t.name} color={t.color} logoUrl={t.logoUrl} size={32} />
                     <div className="min-w-0">
-                      <span className="block truncate font-display text-lg font-bold uppercase tracking-tight text-dark">
+                      <span className="block truncate font-display text-lg font-bold uppercase tracking-tight text-dark transition group-hover:text-brand">
                         {t.name}
                       </span>
                       <span className="mt-1.5 block h-1 w-24 overflow-hidden rounded-full bg-border">
@@ -522,7 +487,7 @@ function ConstructorTable({ rows }) {
                         />
                       </span>
                     </div>
-                  </div>
+                  </Link>
                 </td>
                 <td className="py-4 pr-5 text-right">
                   <span className="font-mono text-xl font-bold tabular-nums text-dark">{t.total}</span>

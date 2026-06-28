@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton, Skeleton } from "../components/ui.jsx";
@@ -34,21 +35,28 @@ function TierBlock({ eyebrow, standings, teams, delay }) {
 
 function TeamCard({ team }) {
   return (
-    <div className="card lift overflow-hidden">
+    <div className="card lift group overflow-hidden">
       <div className="h-1.5 w-full" style={{ backgroundColor: team.color }} />
       <div className="p-5">
-        <div className="flex items-center gap-3">
+        <Link to={`/teams/${team.id}`} className="flex items-center gap-3">
           <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={36} />
-          <h4 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{team.name}</h4>
-        </div>
-        <ul className="mt-4 space-y-2.5">
+          <h4 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark transition group-hover:text-brand">
+            {team.name}
+          </h4>
+        </Link>
+        <ul className="mt-4 space-y-1">
           {team.drivers.map((d) => (
-            <li key={d.id} className="flex items-center justify-between gap-3 text-sm">
-              <span className="font-display font-bold uppercase tracking-tight text-dark">{d.name}</span>
-              <span className="truncate text-light">{d.discordName}</span>
+            <li key={d.id}>
+              <Link
+                to={`/drivers/${d.id}`}
+                className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm transition hover:bg-surface2"
+              >
+                <span className="font-display font-bold uppercase tracking-tight text-dark">{d.name}</span>
+                <span className="truncate text-light">{d.discordName}</span>
+              </Link>
             </li>
           ))}
-          {team.drivers.length === 0 && <li className="text-sm text-light">No drivers assigned.</li>}
+          {team.drivers.length === 0 && <li className="px-2 text-sm text-light">No drivers assigned.</li>}
         </ul>
       </div>
     </div>

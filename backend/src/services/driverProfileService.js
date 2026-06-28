@@ -23,31 +23,44 @@ export async function getDriverProfile(prisma, driverId) {
   const seasonId = driver.seasonId;
   const [standings, races, results] = await Promise.all([
     getDriverStandings(prisma, seasonId),
-    prisma.race.findMany({ where: { seasonId, isCompleted: true }, orderBy: { number: "asc" } }),
+    prisma.race.findMany({
+      where: { seasonId, isSpecialEvent: false, isCompleted: true },
+      orderBy: { number: "asc" },
+    }),
     prisma.raceResult.findMany({ where: { driverId } }),
   ]);
 
   const standingRow = standings.standings.find((r) => r.driverId === driverId);
-  const raceByNum = new Map(races.map((r) => [r.id, r]));
+  const resultByRaceId = new Map(results.map((r) => [r.raceId, r]));
 
-  // Per-race rows ordered by round number.
-  const perRace = results
-    .map((r) => {
-      const race = raceByNum.get(r.raceId);
-      if (!race) return null;
-      const official = standingRow?.perRace?.[race.number];
+  // One row per completed championship round, in calendar order. Rounds the
+  // driver wasn't entered in still appear (status "DNS", 0 points) so the season
+  // form and race-by-race show the whole campaign with the line simply carrying
+  // over the gap — instead of those rounds vanishing from the chart entirely.
+  const perRace = races.map((race) => {
+    const r = resultByRaceId.get(race.id);
+    const official = standingRow?.perRace?.[race.number];
+    if (!r) {
       return {
         number: race.number,
         track: race.track,
-        position: r.position,
-        grid: r.grid,
-        status: r.status,
+        position: null,
+        grid: null,
+        status: "DNS",
         points: official ? official.points : 0,
-        bestLapMs: r.bestLapMs,
+        bestLapMs: null,
       };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.number - b.number);
+    }
+    return {
+      number: race.number,
+      track: race.track,
+      position: r.position,
+      grid: r.grid,
+      status: r.status,
+      points: official ? official.points : 0,
+      bestLapMs: r.bestLapMs,
+    };
+  });
 
   const starts = perRace.filter((r) => r.status !== "DNS");
   const finishes = starts.filter((r) => r.status === "FINISHED" && r.position != null);

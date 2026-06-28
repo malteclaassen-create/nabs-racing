@@ -6,6 +6,7 @@ import { PageHeader, ErrorBox, Notice, CardHead } from "../components/ui.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
 import RacePreview from "../components/RacePreview.jsx";
+import { SOCIAL_META } from "../components/SocialLinks.jsx";
 import { fmtTimeCell } from "../utils/raceDuration.js";
 
 const TABS = [
@@ -14,7 +15,9 @@ const TABS = [
   { id: "import", label: "Import Race" },
   { id: "edit", label: "Edit Results" },
   { id: "discord", label: "Discord & Events" },
+  { id: "market", label: "Driver Market" },
   { id: "drivers", label: "Drivers" },
+  { id: "social", label: "Social Links" },
   { id: "pin", label: "Change PIN" },
 ];
 
@@ -94,9 +97,201 @@ export default function Admin() {
         {tab === "import" && <AdminImport />}
         {tab === "edit" && <EditResults />}
         {tab === "discord" && <DiscordEvents />}
+        {tab === "market" && <MarketAdmin />}
         {tab === "drivers" && <Drivers />}
+        {tab === "social" && <SocialAdmin />}
         {tab === "pin" && <ChangePin />}
       </div>
+    </div>
+  );
+}
+
+// --- DRIVER MARKET (admin override) ----------------------------------------
+function MarketAdmin() {
+  const market = useApi(useCallback(() => api.market(), []));
+  const { data: teams } = useApi(useCallback(() => api.teams(), []));
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState(null);
+
+  const reserves = (teams || [])
+    .filter((t) => t.tier === 0)
+    .flatMap((t) => t.drivers.map((d) => ({ id: d.id, name: d.name })));
+
+  async function act(key, fn) {
+    setError(null);
+    setBusy(key);
+    try {
+      await fn();
+      await market.reload();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (market.loading) return <div className="text-sm text-light">Loading…</div>;
+  if (market.error) return <ErrorBox message={market.error} />;
+
+  const races = (market.data?.races || []).filter((r) => r.offers.length > 0);
+
+  return (
+    <div className="space-y-5">
+      <div className="card p-5">
+        <CardHead eyebrow="Driver Market" title="Seat offers" />
+        <p className="text-sm text-light">
+          Override who fills an offered seat — e.g. keep a weak reserve out of a Tier-1 car. You can
+          assign any reserve, clear the pick, or remove an offer entirely.
+        </p>
+      </div>
+
+      {error && <Notice kind="error">{error}</Notice>}
+
+      {races.length === 0 && (
+        <div className="card p-8 text-center text-medium">No open seat offers right now.</div>
+      )}
+
+      {races.map((race) => (
+        <div key={race.id} className="card overflow-hidden">
+          <div className="border-b border-border bg-surface2 px-5 py-3 font-display text-lg font-extrabold uppercase tracking-tight text-dark">
+            R{race.number} · {race.track}
+          </div>
+          <div className="space-y-4 p-5">
+            {race.offers.map((offer) => (
+              <OfferAdminRow
+                key={offer.id}
+                offer={offer}
+                reserves={reserves}
+                busy={busy}
+                onAssign={(driverId) =>
+                  act(`assign:${offer.id}`, () => api.adminAssignSeat(offer.id, driverId))
+                }
+                onDelete={() => act(`del:${offer.id}`, () => api.adminDeleteOffer(offer.id))}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OfferAdminRow({ offer, reserves, busy, onAssign, onDelete }) {
+  const [sel, setSel] = useState(offer.filledBy?.driverId || "");
+  return (
+    <div className="rounded-xl border border-border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-semibold text-dark">
+          {offer.team.name}
+          <span className="ml-1 text-sm font-normal text-light">· seat of {offer.offeredBy.name}</span>
+        </div>
+        {offer.status === "FILLED" ? (
+          <span className="pill bg-emerald-500/15 text-emerald-600">Filled · {offer.filledBy.name}</span>
+        ) : (
+          <span className="pill bg-amber-500/15 text-amber-600">Open</span>
+        )}
+      </div>
+
+      {offer.interests.length > 0 && (
+        <div className="mt-2 text-sm text-medium">
+          Interested: {offer.interests.map((i) => i.name).join(", ")}
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <select
+          className="input max-w-[14rem] py-1.5 text-sm"
+          value={sel}
+          onChange={(e) => setSel(e.target.value)}
+        >
+          <option value="">— choose a reserve —</option>
+          {reserves.map((r) => (
+            <option key={r.id} value={r.id}>{r.name}</option>
+          ))}
+        </select>
+        <button
+          className="btn-primary"
+          disabled={!sel || busy === `assign:${offer.id}`}
+          onClick={() => onAssign(sel)}
+        >
+          Assign
+        </button>
+        {offer.status === "FILLED" && (
+          <button
+            className="btn-secondary"
+            disabled={busy === `assign:${offer.id}`}
+            onClick={() => onAssign(null)}
+          >
+            Clear pick
+          </button>
+        )}
+        <button
+          className="text-sm font-semibold text-primary hover:underline disabled:opacity-50"
+          disabled={busy === `del:${offer.id}`}
+          onClick={onDelete}
+        >
+          Remove offer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- SOCIAL LINKS ----------------------------------------------------------
+function SocialAdmin() {
+  const { data, loading, error } = useApi(useCallback(() => api.getSocial(), []));
+  const [form, setForm] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    if (data) setForm(data);
+  }, [data]);
+
+  if (loading || !form) return <div className="text-sm text-light">Loading…</div>;
+  if (error) return <ErrorBox message={error} />;
+
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    setSaved(false);
+    try {
+      const res = await api.setSocial(form);
+      setForm(res);
+      setSaved(true);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card space-y-5 p-5">
+      <CardHead eyebrow="Site" title="Social links" />
+      <p className="text-sm text-light">
+        Paste each profile or invite URL. Empty fields are simply hidden. The Discord link also
+        powers the “Join Discord” button in the top bar.
+      </p>
+      {err && <Notice kind="error">{err}</Notice>}
+      {saved && <Notice kind="success">Saved.</Notice>}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {SOCIAL_META.map((m) => (
+          <div key={m.key}>
+            <label className="mb-1 block text-sm font-semibold text-medium">{m.label}</label>
+            <input
+              className="input"
+              placeholder="https://…"
+              value={form[m.key] || ""}
+              onChange={(e) => setForm((f) => ({ ...f, [m.key]: e.target.value }))}
+            />
+          </div>
+        ))}
+      </div>
+      <button className="btn-primary" onClick={save} disabled={busy}>
+        {busy ? "Saving…" : "Save links"}
+      </button>
     </div>
   );
 }

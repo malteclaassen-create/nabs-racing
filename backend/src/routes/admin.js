@@ -12,6 +12,7 @@ import { saveRaceResults } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
 import { getWebhookUrl, setWebhookUrl, announce, syncRaceToDiscord } from "../services/discordService.js";
 import { resolveSeasonId } from "../services/seasonService.js";
+import { SOCIAL_KEYS, readSocialLinks } from "./settings.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -24,6 +25,25 @@ const LOGO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".we
 
 // All routes below require admin auth.
 router.use(requireAdmin);
+
+// Confirmed Driver-Market seat takeovers for races that haven't finished yet.
+// Returned alongside a parsed import so the review table can pre-fill the
+// "team this race" (subForTeam) column for reserves who were picked to sub.
+async function getSeatTakeovers(prismaClient) {
+  const offers = await prismaClient.seatOffer.findMany({
+    where: { status: "FILLED", filledById: { not: null }, race: { isCompleted: false } },
+    include: { team: true, filledBy: true, driver: true, race: true },
+  });
+  return offers.map((o) => ({
+    reserveDriverId: o.filledById,
+    reserveName: o.filledBy?.name || null,
+    teamId: o.teamId,
+    teamName: o.team?.name || null,
+    forName: o.driver?.name || null,
+    raceNumber: o.race?.number ?? null,
+    track: o.race?.track || null,
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // RACE IMPORT
@@ -44,7 +64,7 @@ router.post("/races/import", upload.single("file"), async (req, res, next) => {
 
     const drivers = await prisma.driver.findMany({ orderBy: { name: "asc" } });
     const parsed = parseAcRaceJson(json, drivers);
-    res.json(parsed);
+    res.json({ ...parsed, seatTakeovers: await getSeatTakeovers(prisma) });
   } catch (e) {
     if (e instanceof SyntaxError) return res.status(400).json({ error: "Invalid JSON file" });
     next(e);
@@ -72,7 +92,7 @@ router.post("/results/remote/import", async (req, res, next) => {
     const json = await fetchRemoteResult(id);
     const drivers = await prisma.driver.findMany({ orderBy: { name: "asc" } });
     const parsed = parseAcRaceJson(json, drivers);
-    res.json(parsed);
+    res.json({ ...parsed, seatTakeovers: await getSeatTakeovers(prisma) });
   } catch (e) {
     if (e.message && e.message.startsWith("Invalid AC")) return res.status(400).json({ error: e.message });
     next(e);
@@ -132,6 +152,86 @@ router.post("/races/preview", async (req, res, next) => {
       results,
     });
     res.json(preview);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DRIVER MARKET — admin override
+// Admins can swap in / remove the chosen reserve (e.g. a weak reserve shouldn't
+// take a Tier-1 seat) or cancel an offer outright. The driver-facing flow lives
+// in routes/market.js.
+// ---------------------------------------------------------------------------
+
+// POST /api/admin/market/:offerId/assign  { driverId | null }
+// Force the chosen reserve for an offer; null clears it (back to OPEN).
+router.post("/market/:offerId/assign", async (req, res, next) => {
+  try {
+    const offer = await prisma.seatOffer.findUnique({ where: { id: req.params.offerId } });
+    if (!offer) return res.status(404).json({ error: "Offer not found" });
+
+    const pickId = req.body?.driverId || null;
+    if (pickId) {
+      const reserve = await prisma.driver.findUnique({
+        where: { id: pickId },
+        include: { team: true },
+      });
+      if (!reserve) return res.status(404).json({ error: "Driver not found" });
+      if (reserve.team?.tier !== 0) {
+        return res.status(400).json({ error: "Only reserve drivers can fill a seat" });
+      }
+    }
+    await prisma.seatOffer.update({
+      where: { id: offer.id },
+      data: { filledById: pickId, status: pickId ? "FILLED" : "OPEN" },
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/market/:offerId -> remove any offer entirely.
+router.delete("/market/:offerId", async (req, res, next) => {
+  try {
+    const offer = await prisma.seatOffer.findUnique({ where: { id: req.params.offerId } });
+    if (!offer) return res.status(404).json({ error: "Offer not found" });
+    await prisma.seatOffer.delete({ where: { id: offer.id } });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// SOCIAL LINKS (footer icons + the "Join Discord" button)
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/social -> current social links for the editor.
+router.get("/social", async (req, res, next) => {
+  try {
+    res.json(await readSocialLinks(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/social  { discord, twitch, youtube, instagram, tiktok, x }
+// Empty value clears (hides) that platform. Bare values get https:// prefixed.
+router.put("/social", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    for (const k of SOCIAL_KEYS) {
+      let val = String(body[k] ?? "").trim();
+      if (val && !/^https?:\/\//i.test(val)) val = `https://${val}`;
+      await prisma.setting.upsert({
+        where: { key: `social_${k}` },
+        update: { value: val },
+        create: { key: `social_${k}`, value: val },
+      });
+    }
+    res.json(await readSocialLinks(prisma));
   } catch (e) {
     next(e);
   }
