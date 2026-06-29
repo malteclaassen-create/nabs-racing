@@ -1,10 +1,45 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { useTheme } from "../hooks/useTheme.js";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { useAuth } from "../hooks/useAuth.js";
 import Logo from "./Logo.jsx";
 import NextRaceTimer from "./NextRaceTimer.jsx";
+import SettingsButton from "./SettingsPanel.jsx";
+import { DriverAvatar } from "./ui.jsx";
 import { useSocial, SocialIcon } from "./SocialLinks.jsx";
+
+// Auth-aware control that replaces the old "Sign Up" nav item: a "Log in" button
+// when logged out, or the driver's avatar + name (linking to /profile) when in.
+function AuthControl({ mobile = false }) {
+  const { user, isLoggedIn } = useAuth();
+  if (isLoggedIn) {
+    const name = user.driverName || user.discordName || "Profile";
+    return (
+      <NavLink
+        to="/profile"
+        title="Your profile"
+        className={({ isActive }) =>
+          `flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold transition ${
+            mobile ? "w-full" : ""
+          } ${isActive ? "bg-brand/20 text-dark ring-1 ring-brand/50" : "text-medium hover:bg-surface2"}`
+        }
+      >
+        <DriverAvatar name={name} photoUrl={user.avatarUrl} color="#4251a8" size={26} />
+        <span className="max-w-[8rem] truncate">{name}</span>
+      </NavLink>
+    );
+  }
+  return (
+    <NavLink
+      to="/profile"
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-3.5 py-2 text-sm font-bold text-dark transition hover:bg-brand/20 ${
+        mobile ? "w-full" : ""
+      }`}
+    >
+      Log in
+    </NavLink>
+  );
+}
 
 // Blurple "Join Discord" call-to-action, shown when a Discord link is set.
 function JoinDiscord({ url, className = "" }) {
@@ -48,8 +83,7 @@ const links = [
   { to: "/drivers", label: "Drivers" },
   { to: "/constructors", label: "Constructors" },
   { to: "/races", label: "Races" },
-  { to: "/live", label: "Live Timing", live: true },
-  { to: "/signup", label: "Sign Up" },
+  { to: "/live", label: "Live Timing" },
 ];
 
 const linkClass = ({ isActive }) =>
@@ -57,42 +91,10 @@ const linkClass = ({ isActive }) =>
     isActive ? "bg-brand/20 text-dark ring-1 ring-brand/50" : "text-medium hover:bg-surface2"
   }`;
 
-const adminClass = ({ isActive }) =>
-  `rounded-lg px-3 py-2 text-sm font-semibold transition ${
-    isActive ? "bg-ink text-white" : "text-light hover:bg-surface2"
-  }`;
-
-function LiveDot() {
-  return (
-    <span className="relative flex h-2 w-2">
-      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-      <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-    </span>
-  );
-}
-
-// Clean line-style sun/moon for the theme toggle (instead of OS emoji glyphs, so
-// it matches the rest of the nav and inherits the current text colour).
-function SunIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-    </svg>
-  );
-}
-function MoonIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-    </svg>
-  );
-}
-
 export default function NavBar() {
-  const { theme, toggle } = useTheme();
   const { current } = useSeason();
   const social = useSocial();
+  const { isLoggedIn } = useAuth();
   const [open, setOpen] = useState(false);
   const location = useLocation();
 
@@ -175,35 +177,18 @@ export default function NavBar() {
         <div className="hidden items-center gap-1 lg:flex">
           {links.map((l) => (
             <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
-              {l.live && <LiveDot />}
               {l.label}
             </NavLink>
           ))}
-          <NavLink to="/admin" className={adminClass}>
-            Admin
-          </NavLink>
-          <JoinDiscord url={social.data?.discord} className="ml-1" />
+          <AuthControl />
+          {!isLoggedIn && <JoinDiscord url={social.data?.discord} className="ml-1" />}
           <SeasonSwitcher className="ml-1" />
-          <button
-            onClick={toggle}
-            aria-label="Toggle dark mode"
-            title={theme === "dark" ? "Light mode" : "Dark mode"}
-            className="ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-light transition hover:bg-surface2"
-          >
-            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-          </button>
+          <SettingsButton className="ml-1 h-9 w-9" />
         </div>
 
         {/* Mobile controls */}
         <div className="flex items-center gap-1 lg:hidden">
-          <button
-            onClick={toggle}
-            aria-label="Toggle dark mode"
-            title={theme === "dark" ? "Light mode" : "Dark mode"}
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-light transition hover:bg-surface2"
-          >
-            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-          </button>
+          <SettingsButton className="h-10 w-10" />
           <button
             onClick={() => setOpen((o) => !o)}
             aria-label={open ? "Close menu" : "Open menu"}
@@ -228,16 +213,13 @@ export default function NavBar() {
       {open && (
         <div className="relative border-t border-border bg-card lg:hidden">
           <div className="container-page flex flex-col gap-1 py-3">
-            <JoinDiscord url={social.data?.discord} className="mb-1 w-full" />
+            <AuthControl mobile />
+            {!isLoggedIn && <JoinDiscord url={social.data?.discord} className="mb-1 w-full" />}
             {links.map((l) => (
               <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
-                {l.live && <LiveDot />}
                 {l.label}
               </NavLink>
             ))}
-            <NavLink to="/admin" className={adminClass}>
-              Admin
-            </NavLink>
             <SeasonSwitcher className="mt-1 w-full" />
           </div>
         </div>

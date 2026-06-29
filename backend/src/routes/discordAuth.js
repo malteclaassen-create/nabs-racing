@@ -22,6 +22,18 @@ function enabled() {
   return !!(CLIENT_ID && CLIENT_SECRET);
 }
 
+// The OAuth redirect must come back to whatever host the user is actually on
+// (localhost during dev, the tunnel URL when sharing) so login works in both
+// without editing .env. The frontend sends its own callback URL; we only accept
+// a well-formed .../auth/discord/callback and otherwise fall back to the env
+// value. Discord still enforces its own redirect whitelist on top of this, so an
+// attacker can't point the code anywhere that isn't registered in the app.
+function pickRedirect(explicit) {
+  const val = String(explicit || "").trim();
+  if (/^https?:\/\/[^\s?#]+\/auth\/discord\/callback$/.test(val)) return val;
+  return REDIRECT_URI;
+}
+
 // normalize a name for matching (lowercase, strip accents/punctuation)
 function norm(s) {
   return (s || "")
@@ -31,12 +43,13 @@ function norm(s) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-// GET /api/auth/discord/config -> { enabled, url? }
+// GET /api/auth/discord/config?redirect=<origin>/auth/discord/callback -> { enabled, url? }
 router.get("/config", (req, res) => {
   if (!enabled()) return res.json({ enabled: false });
+  const redirectUri = pickRedirect(req.query.redirect);
   const url =
     `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(CLIENT_ID)}` +
-    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&response_type=code&scope=${encodeURIComponent(SCOPE)}`;
   res.json({ enabled: true, url });
 });
@@ -45,10 +58,11 @@ router.get("/config", (req, res) => {
 router.post("/callback", async (req, res, next) => {
   try {
     if (!enabled()) return res.status(400).json({ error: "Discord login is not configured" });
-    const { code } = req.body || {};
+    const { code, redirectUri } = req.body || {};
     if (!code) return res.status(400).json({ error: "Missing code" });
 
-    // 1. Exchange the code for an access token.
+    // 1. Exchange the code for an access token. The redirect_uri MUST match the
+    //    one used to start the flow (sent by the frontend, same as in /config).
     const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -57,7 +71,7 @@ router.post("/callback", async (req, res, next) => {
         client_secret: CLIENT_SECRET,
         grant_type: "authorization_code",
         code,
-        redirect_uri: REDIRECT_URI,
+        redirect_uri: pickRedirect(redirectUri),
       }),
     });
     if (!tokenRes.ok) {
@@ -107,6 +121,8 @@ router.post("/callback", async (req, res, next) => {
       discordName: displayName,
       driverId: driver?.id || null,
       driverName: driver?.name || null,
+      // Resolved avatar for the nav chip: custom upload wins, else Discord avatar.
+      avatarUrl: (driver && driver.photoUrl) || avatarUrl || null,
     };
     const token = signUserToken(profile);
     res.json({ token, user: profile, linked: !!driver });

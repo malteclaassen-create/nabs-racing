@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
 import { useScrollReveal } from "./hooks/useScrollReveal.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
 import NavBar from "./components/NavBar.jsx";
@@ -15,7 +15,7 @@ import Constructors from "./pages/Constructors.jsx";
 import TeamProfile from "./pages/TeamProfile.jsx";
 import Races from "./pages/Races.jsx";
 import Live from "./pages/Live.jsx";
-import RaceSignup from "./pages/RaceSignup.jsx";
+import Profile from "./pages/Profile.jsx";
 import DiscordCallback from "./pages/DiscordCallback.jsx";
 import Admin from "./pages/Admin.jsx";
 
@@ -50,11 +50,12 @@ function AppRoutes() {
         <Route path="/results" element={<Races />} />
         <Route path="/calendar" element={<Races />} />
         <Route path="/live" element={<Live />} />
-        <Route path="/signup" element={<RaceSignup />} />
-        <Route path="/rennen" element={<RaceSignup />} />
-        {/* Driver Market now lives inside the Sign-Up page; keep old links working. */}
-        <Route path="/market" element={<RaceSignup />} />
-        <Route path="/driver-market" element={<RaceSignup />} />
+        <Route path="/profile" element={<Profile />} />
+        {/* Sign-Up + Driver Market now live on the Races page; keep old links working. */}
+        <Route path="/signup" element={<Navigate to="/races" replace />} />
+        <Route path="/rennen" element={<Navigate to="/races" replace />} />
+        <Route path="/market" element={<Navigate to="/races" replace />} />
+        <Route path="/driver-market" element={<Navigate to="/races" replace />} />
         <Route path="/auth/discord/callback" element={<DiscordCallback />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<div className="card p-8 text-center text-medium">Page not found.</div>} />
@@ -79,6 +80,8 @@ function Footer() {
           <span>Built for the NABS Discord community</span>
           <span className="text-xs text-faint">
             Circuit outlines © OpenStreetMap contributors
+            <span className="px-1.5 text-border">·</span>
+            <Link to="/admin" className="transition hover:text-light">Admin</Link>
           </span>
         </span>
       </div>

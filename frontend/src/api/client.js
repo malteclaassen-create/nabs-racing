@@ -13,6 +13,13 @@ export function setToken(t) {
 
 const USER_TOKEN_KEY = "nabs_user_token";
 
+// Where Discord should send the user back after login — always the current host
+// (localhost in dev, the tunnel URL when shared). Must be registered in the
+// Discord app's OAuth2 redirects.
+function discordRedirectUri() {
+  return `${window.location.origin}/auth/discord/callback`;
+}
+
 // The season the public site is currently viewing (a round number), or null for
 // the active season. Set by the SeasonProvider; appended to season-scoped reads.
 let SELECTED_SEASON = null;
@@ -84,6 +91,13 @@ export const api = {
   // logged-in driver self-service
   me: () => request("/me", { userAuth: true }),
   setMyCountry: (country) => request("/me/country", { method: "PUT", body: { country }, userAuth: true }),
+  updateMyProfile: (body) => request("/me/profile", { method: "PUT", body, userAuth: true }),
+  uploadMyPhoto: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request("/me/photo", { method: "POST", body: fd, userAuth: true, form: true });
+  },
+  clearMyPhoto: () => request("/me/photo", { method: "DELETE", userAuth: true }),
 
   // driver market (identity from the Discord login)
   market: () => request("/market", { userAuth: true }),
@@ -105,9 +119,15 @@ export const api = {
   getSocial: () => request("/admin/social", { auth: true }),
   setSocial: (body) => request("/admin/social", { method: "PUT", body, auth: true }),
 
-  // discord login
-  discordConfig: () => request("/auth/discord/config"),
-  discordCallback: (code) => request("/auth/discord/callback", { method: "POST", body: { code } }),
+  // discord login. The redirect URI is derived from the current origin so login
+  // works on localhost and over a tunnel without changing the backend .env.
+  discordConfig: () =>
+    request(`/auth/discord/config?redirect=${encodeURIComponent(discordRedirectUri())}`),
+  discordCallback: (code) =>
+    request("/auth/discord/callback", {
+      method: "POST",
+      body: { code, redirectUri: discordRedirectUri() },
+    }),
 
   // admin
   login: (pin) => request("/admin/login", { method: "POST", body: { pin } }),

@@ -7,12 +7,10 @@ import { Skeleton, CountUp } from "../components/ui.jsx";
 import { useParallax, useTilt, useMagnetic } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
+import { useSocial } from "../components/SocialLinks.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
-
-// Replace with the real public Discord invite for the league.
-const DISCORD_INVITE = "https://discord.gg/nabs";
 
 const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"];
 
@@ -61,10 +59,13 @@ function SectionHead({ eyebrow, title, sub, center }) {
 
 function DiscordButton({ children = "Join the Discord", className = "", magnetic = false }) {
   const ref = useMagnetic({ strength: 0.25 });
+  // Use the same admin-configured invite as the nav bar (no hardcoded link).
+  const social = useSocial();
+  const href = social.data?.discord;
   return (
     <a
       ref={magnetic ? ref : undefined}
-      href={DISCORD_INVITE}
+      href={href || undefined}
       target="_blank"
       rel="noreferrer noopener"
       className={`shine group inline-flex items-center justify-center gap-2.5 rounded-xl bg-[#5865F2] px-6 py-3.5 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-[#5865F2]/30 transition hover:brightness-110 ${className}`}

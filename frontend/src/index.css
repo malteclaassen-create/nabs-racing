@@ -73,11 +73,10 @@ body::before {
   animation: aurora-drift 26s ease-in-out infinite alternate;
   will-change: transform, opacity;
 }
+/* Dark mode keeps a clean, solid background (no drifting blooms) — the aurora
+   stays in light mode only. */
 .dark body::before {
-  background:
-    radial-gradient(38% 42% at 16% 20%, rgba(244, 175, 198, 0.16), transparent 70%),
-    radial-gradient(44% 48% at 84% 12%, rgba(66, 81, 168, 0.26), transparent 70%),
-    radial-gradient(48% 50% at 74% 86%, rgba(56, 189, 248, 0.14), transparent 72%);
+  display: none;
 }
 @keyframes aurora-drift {
   0%   { transform: translate3d(0, 0, 0) scale(1); }
@@ -463,4 +462,41 @@ body::before {
   .scroll-cue, .page-in { animation: none !important; opacity: 1; transform: none; }
   .shine::after { display: none; }
   .tilt { transform: none !important; }
+}
+
+/* --- Lite graphics mode (Settings panel) --------------------------------- */
+/* Drops the GPU-heavy effects so the site stays smooth on weak machines or when
+   the browser's hardware acceleration is off. Removes blur (backdrop-filter) —
+   the single most expensive effect in software rendering — and all the entrance
+   animations, mirroring the reduced-motion fallbacks above so end states stay
+   visible. Toggled via the `fx-lite` class on <html> (see useGraphics.js). */
+.fx-lite *,
+.fx-lite *::before,
+.fx-lite *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.fx-lite body::before { display: none !important; }
+.fx-lite .reveal { animation: none !important; opacity: 1; transform: none; }
+.fx-lite .chart-line { animation: none !important; stroke-dashoffset: 0; }
+.fx-lite .pop-in { animation: none !important; }
+.fx-lite .cascade > * { opacity: 1 !important; animation: none !important; }
+.fx-lite .bar-fill { width: var(--w, 0) !important; animation: none !important; }
+.fx-lite .bar-rise { height: var(--h, 0) !important; animation: none !important; }
+.fx-lite .hero-anim, .fx-lite .hero-zoom, .fx-lite .gradient-anim,
+.fx-lite .glow-pulse, .fx-lite .float-bob, .fx-lite .scroll-cue,
+.fx-lite .page-in { animation: none !important; opacity: 1; transform: none; }
+.fx-lite .shine::after { display: none !important; }
+.fx-lite .tilt { transform: none !important; }
+.fx-lite .live-dot { animation: none !important; }
+.fx-lite .circuit-draw { animation: none !important; stroke-dashoffset: 0; }
+.fx-lite .circuit-trace { animation: none !important; opacity: 0; }
+.fx-lite .settings-anim { transition: none !important; }
+
+/* --- Settings drawer ----------------------------------------------------- */
+/* The drawer slides/fades both IN and OUT via a transform/opacity transition on
+   its `settings-anim` elements (driven by a `show` state in SettingsPanel, so it
+   stays mounted long enough to animate out). Disabled under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .settings-anim { transition: none !important; }
 }

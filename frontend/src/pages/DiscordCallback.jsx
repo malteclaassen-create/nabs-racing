@@ -23,7 +23,7 @@ export default function DiscordCallback() {
       .discordCallback(code)
       .then((res) => {
         saveUser(res.token, res.user);
-        navigate("/signup", { replace: true, state: { linked: res.linked } });
+        navigate("/profile", { replace: true, state: { linked: res.linked } });
       })
       .catch((e) => setError(e.message));
   }, [params, navigate]);
@@ -32,7 +32,7 @@ export default function DiscordCallback() {
     return (
       <div className="mx-auto max-w-md space-y-4">
         <ErrorBox message={`Discord login failed: ${error}`} />
-        <button className="btn-secondary" onClick={() => navigate("/signup")}>
+        <button className="btn-secondary" onClick={() => navigate("/profile")}>
           Back
         </button>
       </div>

@@ -55,11 +55,10 @@ export default function NextRaceTimer({ className = "", compact = false }) {
   if (compact) {
     return (
       <Link
-        to="/races"
+        to={`/races?race=${nextRace.id}`}
         title={`Next race: ${nextRace.track} · Round ${nextRace.number} · ${fmtRaceTime(target)}`}
         className={`group inline-flex items-center gap-2 rounded-lg border border-border bg-surface2/80 py-1.5 pl-2 pr-2.5 shadow-sm backdrop-blur transition hover:border-brand/50 ${className}`}
       >
-        <span className="live-dot inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
         {circuit && <Flag code={circuit.country} title={circuit.countryName} w={16} h={12} />}
         <span className="hidden max-w-[10rem] truncate font-display text-xs font-extrabold uppercase tracking-tight text-dark sm:inline">
           {nextRace.track}
@@ -88,7 +87,7 @@ export default function NextRaceTimer({ className = "", compact = false }) {
 
   return (
     <Link
-      to="/races"
+      to={`/races?race=${nextRace.id}`}
       title={`Next race: ${nextRace.track} · Round ${nextRace.number} · 18:00 GMT`}
       className={`group inline-flex items-stretch overflow-hidden rounded-xl border border-border bg-card/80 shadow-sm backdrop-blur transition hover:border-brand/50 hover:shadow-card ${className}`}
     >

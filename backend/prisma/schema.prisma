@@ -77,9 +77,13 @@ model Driver {
   photoUrl      String?
   discordAvatar String?
   // Self-selected nationality (ISO 3166-1 alpha-2, lowercase), set by the driver
-  // on the sign-up page after Discord login. Takes priority over the static
+  // on their profile page after Discord login. Takes priority over the static
   // roster baseline in the frontend's driverCountries.js.
   country       String?
+  // Self-service profile extras, edited by the driver on /profile after Discord
+  // login: a short "about me" blurb and an optional racing number (0-999).
+  bio           String?
+  number        Int?
   results     RaceResult[]
   rsvps       RaceRsvp[]
   // Driver Market: seats this driver has offered, seats this (reserve) driver

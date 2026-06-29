@@ -15,6 +15,9 @@ dist/
 *.db-journal
 backend/prisma/dev.db
 
+# User uploads (driver profile pictures, served at /api/uploads)
+backend/uploads/
+
 # Logs
 *.log
 npm-debug.log*

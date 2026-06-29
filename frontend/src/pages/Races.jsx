@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useAuth } from "../hooks/useAuth.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton } from "../components/ui.jsx";
 import RaceResults from "../components/RaceResults.jsx";
+import RaceSignupCard from "../components/RaceSignupCard.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
 import { circuitFor } from "../data/circuits.js";
@@ -55,7 +58,7 @@ function RoundRail({ races, selectedId, onSelect }) {
           ? "border-brand ring-1 ring-brand bg-brand/10"
           : done
           ? "border-emerald-500/40 bg-emerald-500/[0.06] hover:bg-emerald-500/10"
-          : "border-border bg-card hover:bg-surface2 opacity-70";
+          : "border-border bg-card hover:bg-surface2";
         return (
           <button
             key={r.id}
@@ -186,13 +189,72 @@ export default function Races() {
   const [detailError, setDetailError] = useState(null);
   const [tab, setTab] = useState("rounds"); // "rounds" | "se"
   const panelRef = useRef(null);
+  // Deep link: /races?race=<id> opens the explorer on a specific round (used by
+  // the "next race" sign-up links on the home card and the nav chip).
+  const [searchParams] = useSearchParams();
+  const wantRaceId = searchParams.get("race");
+
+  // Sign-Up + Driver Market for the upcoming rounds (moved here from the old
+  // Sign-Up page). Identity comes from the Discord login.
+  const { user, isLoggedIn } = useAuth();
+  const events = useApi(useCallback(() => api.events(), []));
+  const market = useApi(useCallback(() => api.market(), []));
+  const marketByRace = useMemo(
+    () => new Map((market.data?.races || []).map((r) => [r.id, r])),
+    [market.data]
+  );
+  const driverId = isLoggedIn ? user?.driverId : null;
+  const canSignUp = isLoggedIn && !!driverId;
+  const [signupBusy, setSignupBusy] = useState(null);
+  const [signupError, setSignupError] = useState(null);
+
+  async function setStatus(raceId, status) {
+    setSignupError(null);
+    setSignupBusy(`${raceId}:${status}`);
+    try {
+      await api.rsvp(raceId, driverId, status);
+      await events.reload();
+    } catch (e) {
+      setSignupError(e.message);
+    } finally {
+      setSignupBusy(null);
+    }
+  }
+
+  async function clearStatus(raceId) {
+    setSignupBusy(`${raceId}:clear`);
+    try {
+      await api.removeRsvp(raceId, driverId);
+      await events.reload();
+    } finally {
+      setSignupBusy(null);
+    }
+  }
+
+  // Explicit deep link (?race=<id>): always honour it and bring the explorer
+  // into view. Keyed only on the id/races so a later manual pick isn't reverted.
+  useEffect(() => {
+    if (!wantRaceId || !races) return;
+    const target = races.find((r) => r.id === wantRaceId);
+    if (target) {
+      setSelectedId(target.id);
+      requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }, [wantRaceId, races]);
 
   useEffect(() => {
     if (races && races.length && !selectedId) {
+      // A valid ?race=<id> is handled above; otherwise default to the most recent
+      // completed round, falling back to the next upcoming round before any
+      // results exist so its sign-up is shown.
+      const wanted = wantRaceId ? races.find((r) => r.id === wantRaceId) : null;
+      if (wanted) return;
       const last = [...races].reverse().find((r) => r.isCompleted && !r.isSpecialEvent);
-      if (last) setSelectedId(last.id);
+      const nextUp = races.find((r) => !r.isCompleted && !r.isSpecialEvent && r.number != null);
+      const target = last || nextUp;
+      if (target) setSelectedId(target.id);
     }
-  }, [races, selectedId]);
+  }, [races, selectedId, wantRaceId]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -232,7 +294,6 @@ export default function Races() {
     .sort((a, b) => a.number - b.number);
   const specials = races.filter((r) => r.isSpecialEvent).sort((a, b) => withDate(a) - withDate(b));
   const championRounds = rounds; // RoundStrip only flips between scored rounds
-  const hasAnyResults = races.some((r) => r.isCompleted && !r.isSpecialEvent);
 
   // "Next up" = earliest not-yet-completed entry with a future date.
   const nextEntry = [...races]
@@ -240,6 +301,10 @@ export default function Races() {
     .sort((a, b) => withDate(a) - withDate(b))[0];
 
   const shown = tab === "rounds" ? rounds : specials;
+  // The race currently open in the explorer, and its sign-up event (only
+  // upcoming rounds have one). Completed -> results; upcoming -> sign up + market.
+  const selectedRace = (races || []).find((r) => r.id === selectedId);
+  const selectedEvent = (events.data || []).find((e) => e.id === selectedId);
   const tabCls = (active) =>
     `rounded-lg px-4 py-2 text-sm font-bold transition ${active ? "bg-brand text-ink shadow" : "text-light hover:text-dark"}`;
 
@@ -248,12 +313,13 @@ export default function Races() {
       <PageHeader
         eyebrow="Schedule & Results"
         title="Races"
-        subtitle="The full season calendar. Pick a completed round to see its results; upcoming rounds and special events show the schedule."
+        subtitle="Pick a round to see its results, or sign up for one that hasn't run yet. The calendar below lists the whole season."
       />
 
-      {/* Results explorer: round list (left) + selected race results (right) */}
+      {/* Results explorer: round list (left), and on the right the selected
+          round's results (completed) or sign-up + driver market (upcoming). */}
       <div ref={panelRef} className="scroll-mt-24">
-        {hasAnyResults ? (
+        {championRounds.length > 0 ? (
           <div className="grid gap-5 lg:grid-cols-[15rem_1fr] xl:grid-cols-[17rem_1fr]">
             {/* round list — horizontal on phones, vertical sidebar from lg up */}
             <aside className="lg:sticky lg:top-28 lg:self-start">
@@ -263,34 +329,64 @@ export default function Races() {
               <RoundRail races={championRounds} selectedId={selectedId} onSelect={selectRace} />
             </aside>
 
-            {/* selected race results */}
+            {/* selected race: results for completed rounds, sign-up + driver
+                market for rounds that haven't been run yet. */}
             <div className="min-w-0">
-              {detailLoading && <TableSkeleton rows={10} />}
-              {detailError && <ErrorBox message={detailError} />}
-              {detail && !detailLoading && (
-                <div>
-                  <div className="mb-4">
-                    <div className="flex items-center gap-3">
-                      {circuitFor(detail.race.track) && (
-                        <Flag code={circuitFor(detail.race.track).country} title={circuitFor(detail.race.track).countryName} w={26} h={19} />
-                      )}
-                      <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
-                        <span className="text-light">R{detail.race.number}</span> {detail.race.track}
-                      </h2>
+              {selectedRace && !selectedRace.isCompleted ? (
+                <>
+                  {signupError && <div className="mb-4"><ErrorBox message={signupError} /></div>}
+                  {!selectedEvent ? (
+                    events.loading ? (
+                      <TableSkeleton rows={6} />
+                    ) : (
+                      <div className="card p-8 text-center text-medium">
+                        Sign-up opens once this round is scheduled.
+                      </div>
+                    )
+                  ) : (
+                    <RaceSignupCard
+                      ev={selectedEvent}
+                      marketRace={marketByRace.get(selectedEvent.id)}
+                      me={market.data?.me}
+                      reloadMarket={market.reload}
+                      driverId={driverId}
+                      canSignUp={canSignUp}
+                      busy={signupBusy}
+                      onSetStatus={setStatus}
+                      onClear={clearStatus}
+                    />
+                  )}
+                </>
+              ) : (
+                <>
+                  {detailLoading && <TableSkeleton rows={10} />}
+                  {detailError && <ErrorBox message={detailError} />}
+                  {detail && !detailLoading && (
+                    <div>
+                      <div className="mb-4">
+                        <div className="flex items-center gap-3">
+                          {circuitFor(detail.race.track) && (
+                            <Flag code={circuitFor(detail.race.track).country} title={circuitFor(detail.race.track).countryName} w={26} h={19} />
+                          )}
+                          <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
+                            <span className="text-light">R{detail.race.number}</span> {detail.race.track}
+                          </h2>
+                        </div>
+                        {!detail.race.hasPositions && (
+                          <p className="mt-1 text-sm text-light">
+                            Historical round — points only (finishing positions not recorded).
+                          </p>
+                        )}
+                      </div>
+                      <RaceResults race={detail.race} results={detail.results} />
                     </div>
-                    {!detail.race.hasPositions && (
-                      <p className="mt-1 text-sm text-light">
-                        Historical round — points only (finishing positions not recorded).
-                      </p>
-                    )}
-                  </div>
-                  <RaceResults race={detail.race} results={detail.results} />
-                </div>
+                  )}
+                </>
               )}
             </div>
           </div>
         ) : (
-          <div className="card p-8 text-center text-medium">No results yet — the season hasn't started.</div>
+          <div className="card p-8 text-center text-medium">No championship rounds scheduled yet.</div>
         )}
       </div>
 

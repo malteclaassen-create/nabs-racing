@@ -2,19 +2,32 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { Skeleton, TableSkeleton, CountUp } from "../components/ui.jsx";
-import { useParallax, useTilt, useMagnetic } from "../hooks/motion.js";
+import { useParallax, useMagnetic } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import PointsChart from "../components/PointsChart.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
+import CircuitMap from "../components/CircuitMap.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"]; // gold / silver / bronze
+
+// Line-icon paths (stroke = currentColor) for the "by the numbers" tiles.
+const TILE_ICONS = {
+  podium: "M4 21V11h5v10M9 21V5h6v16M15 21V9h5v12",
+  trophy: "M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3",
+  flag: "M5 21V4M5 4c3-1.5 6 1.5 9 0s4-1 4-1v9s-1 .5-4 1-6-1.5-9 0",
+  trend: "M3 17l6-6 4 4 7-7M14 8h6v6",
+  shield: "M12 3l7 3v5c0 4.6-3.1 7.3-7 9-3.9-1.7-7-4.4-7-9V6z",
+  users: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M22 21v-2a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8",
+  calendar: "M4 6a2 2 0 012-2h12a2 2 0 012 2v13a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 3v4M16 3v4",
+};
 
 function fmtFull(d) {
   if (!d) return "Date TBA";
@@ -27,11 +40,15 @@ function pad2(n) {
 
 export default function Home() {
   const { current: season } = useSeason();
+  const { user, isLoggedIn } = useAuth();
   const drivers = useApi(useCallback(() => api.driverStandings(), []));
   const t1 = useApi(useCallback(() => api.t1Standings(), []));
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const races = useApi(useCallback(() => api.races(), []));
+  const events = useApi(useCallback(() => api.events(), []));
   const [latest, setLatest] = useState(null);
+  // Personal widgets: rank within the whole field vs. within the driver's tier.
+  const [tierView, setTierView] = useState(false);
 
   // Hero motion: the photo drifts slowly on scroll; the primary CTA is magnetic.
   const heroImgRef = useParallax(0.08);
@@ -79,6 +96,37 @@ export default function Home() {
   const constructorCount = (t1.data?.standings?.length || 0) + (t2.data?.standings?.length || 0);
   const runnerUp = standings[1];
   const titleGap = leader && runnerUp ? leader.total - runnerUp.total : 0;
+
+  // Personal "by the numbers" — shown to a logged-in driver linked to a roster
+  // entry (Home is only reached when logged in). Unlinked logins / owner preview
+  // fall back to the season-wide tiles.
+  const myDriverId = isLoggedIn ? user?.driverId : null;
+  const myRow = myDriverId ? standings.find((s) => s.driverId === myDriverId) : null;
+  const myRounds = myRow ? Object.values(myRow.perRace || {}) : [];
+  const myFinishes = myRounds.filter((r) => r.status === "FINISHED" && r.position != null);
+  const myStarts = myRounds.filter((r) => r.status !== "DNS").length;
+  const myWins = myFinishes.filter((r) => r.position === 1).length;
+  const myPodiums = myFinishes.filter((r) => r.position <= 3).length;
+  const myAvg = myFinishes.length
+    ? Math.round((myFinishes.reduce((a, r) => a + r.position, 0) / myFinishes.length) * 10) / 10
+    : null;
+  // The driver's own constructor (Tier 1/2) standing — powers the Team tile.
+  const myTeam = myRow
+    ? [...(t1.data?.standings || []), ...(t2.data?.standings || [])].find((t) => t.teamId === myRow.team.id)
+    : null;
+  // Ranking within the driver's own tier (standings are already total-sorted),
+  // so a Tier 2 driver can see where they sit among Tier 2 rather than overall.
+  const myTier = myRow?.team?.tier ?? null;
+  const tierRows = myTier ? standings.filter((s) => s.team.tier === myTier) : [];
+  const myTierPos = myRow ? tierRows.findIndex((s) => s.driverId === myDriverId) + 1 : 0;
+  const showTierToggle = !!myRow && tierRows.length > 1;
+  const useTier = tierView && showTierToggle;
+  const nextEv = events.data?.[0];
+  const myStatus = nextEv
+    ? ["ACCEPTED", "TENTATIVE", "DECLINED"].find((s) => nextEv.rsvps[s].some((r) => r.driverId === myDriverId))
+    : null;
+  const STATUS_WORD = { ACCEPTED: "Signed up", TENTATIVE: "Tentative", DECLINED: "Declined" };
+  const nextStatusWord = events.loading ? "…" : myStatus ? STATUS_WORD[myStatus] : nextEv ? "Not responded" : "—";
 
   return (
     <div className="space-y-16">
@@ -243,7 +291,7 @@ export default function Home() {
                 )}
 
                 <Link
-                  to="/signup"
+                  to={`/races?race=${nextRace.id}`}
                   className="shine group mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
                 >
                   Sign Up
@@ -255,43 +303,131 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ===================== SEASON BY THE NUMBERS ===================== */}
-      <section className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <NumberTile
-          index={0}
-          to="/races"
-          label="Rounds Done"
-          value={completedRaces.length}
-          sub={`of ${totalRounds || "—"}`}
-          accent="#f4afc6"
-        />
-        <NumberTile index={1} to="/drivers" label="Drivers" value={driverCount} sub="on the grid" accent="#38bdf8" />
-        <NumberTile
-          index={2}
-          to="/constructors"
-          label="Constructors"
-          value={constructorCount}
-          sub="teams scoring"
-          accent="#a78bfa"
-        />
-        <NumberTile
-          index={3}
-          to={leader ? `/drivers/${leader.driverId}` : undefined}
-          label="Leader"
-          value={leader?.total ?? "—"}
-          sub={leader?.name || "TBA"}
-          accent={leader?.team?.color || "#EAB308"}
-        />
-        <NumberTile
-          index={4}
-          to="/drivers"
-          label="Title Gap"
-          value={titleGap > 0 ? titleGap : "Level"}
-          prefix={titleGap > 0 ? "+" : ""}
-          sub="P1 to P2"
-          accent="#fbbf24"
-        />
-      </section>
+      {/* ===================== BY THE NUMBERS (personal when linked) ========= */}
+      {myRow ? (
+        <div>
+          {showTierToggle && (
+            <div className="mb-3 flex items-center justify-end gap-2">
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Ranking</span>
+              <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setTierView(false)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-bold transition ${!useTier ? "bg-brand text-ink" : "text-light hover:text-dark"}`}
+                >
+                  Overall
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTierView(true)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-bold transition ${useTier ? "bg-brand text-ink" : "text-light hover:text-dark"}`}
+                >
+                  Tier {myTier}
+                </button>
+              </div>
+            </div>
+          )}
+          <section className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <NumberTile
+              index={0}
+              to={`/drivers/${myDriverId}`}
+              label={useTier ? `Tier ${myTier}` : "Championship"}
+              value={useTier ? (myTierPos ? `P${myTierPos}` : "—") : myRow.position ? `P${myRow.position}` : "—"}
+              sub={useTier ? `of ${tierRows.length} in tier` : `${myRow.total} pts`}
+              icon="podium"
+              accent={myRow.team.color}
+            />
+            <NumberTile
+              index={1}
+              to={`/teams/${myRow.team.id}`}
+              label="Team"
+              value={myTeam ? myTeam.total : "—"}
+              sub={myTeam ? `${myRow.team.name} · P${myTeam.position}` : myRow.team.name}
+              media={
+                <TeamLogo id={myRow.team.id} name={myRow.team.name} color={myRow.team.color} logoUrl={myRow.team.logoUrl} size={26} />
+              }
+              icon="shield"
+              accent={myRow.team.color}
+            />
+            <NumberTile
+              index={2}
+              compact
+              to={nextEv ? `/races?race=${nextEv.id}` : "/races"}
+              label="Next Race"
+              value={nextEv ? nextEv.track : "TBA"}
+              sub={nextStatusWord}
+              icon="flag"
+              accent="#0ea5e9"
+              watermark={
+                nextEv && circuitFor(nextEv.track) ? (
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex w-3/4 items-center justify-end pr-2 text-sky-500 opacity-[0.16] transition-transform duration-300 group-hover:scale-105">
+                    <CircuitMap track={nextEv.track} className="h-[5.5rem] w-full" stroke="currentColor" strokeWidth={2} />
+                  </div>
+                ) : undefined
+              }
+            />
+            <NumberTile
+              index={3}
+              to={`/drivers/${myDriverId}`}
+              label="Wins"
+              value={myWins}
+              sub={`${myPodiums} podiums`}
+              icon="trophy"
+              accent="#d97706"
+            />
+            <NumberTile
+              index={4}
+              to={`/drivers/${myDriverId}`}
+              label="Avg Finish"
+              value={myAvg != null ? `P${myAvg}` : "—"}
+              sub={`${myStarts} starts`}
+              icon="trend"
+              accent="#7c3aed"
+            />
+          </section>
+        </div>
+      ) : (
+        <section className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <NumberTile
+            index={0}
+            to="/races"
+            label="Rounds Done"
+            value={completedRaces.length}
+            sub={`of ${totalRounds || "—"}`}
+            icon="calendar"
+            accent="#0ea5e9"
+          />
+          <NumberTile index={1} to="/drivers" label="Drivers" value={driverCount} sub="on the grid" icon="users" accent="#7c3aed" />
+          <NumberTile
+            index={2}
+            to="/constructors"
+            label="Constructors"
+            value={constructorCount}
+            sub="teams scoring"
+            icon="shield"
+            accent="#0d9488"
+          />
+          <NumberTile
+            index={3}
+            to={leader ? `/drivers/${leader.driverId}` : undefined}
+            label="Leader"
+            value={leader?.total ?? "—"}
+            sub={leader?.name || "TBA"}
+            icon="trophy"
+            accent={leader?.team?.color || "#d97706"}
+          />
+          <NumberTile
+            index={4}
+            to="/drivers"
+            label="Title Gap"
+            value={titleGap > 0 ? titleGap : "Level"}
+            prefix={titleGap > 0 ? "+" : ""}
+            sub="P1 to P2"
+            icon="trend"
+            accent="#d97706"
+          />
+        </section>
+      )}
 
       {/* ===================== DRIVERS' CHAMPIONSHIP ===================== */}
       <section className="reveal" style={{ animationDelay: "0.16s" }}>
@@ -312,12 +448,14 @@ export default function Home() {
       </section>
 
       {/* ===================== POINTS PROGRESSION ===================== */}
-      <section className="reveal" style={{ animationDelay: "0.32s" }}>
+      {/* Hidden on phones (the dense line charts don't read well there); shown
+          from md up. */}
+      <section className="reveal hidden md:block" style={{ animationDelay: "0.32s" }}>
         <Heading index="04" eyebrow="Tier 1" title="Points Progression" to="/constructors" />
         <PointsChart standings={t1.data?.standings || []} completed={completedNumbers} allRounds={t1.data?.raceNumbers || []} />
       </section>
 
-      <section className="reveal" style={{ animationDelay: "0.4s" }}>
+      <section className="reveal hidden md:block" style={{ animationDelay: "0.4s" }}>
         <Heading index="05" eyebrow="Tier 2" title="Points Progression" to="/constructors" />
         <PointsChart standings={t2.data?.standings || []} completed={completedNumbers} allRounds={t2.data?.raceNumbers || []} />
       </section>
@@ -351,15 +489,48 @@ function Heading({ index, eyebrow, title, to }) {
   );
 }
 
-function NumberTile({ label, value, sub, accent = "#f4afc6", to, index = 0, prefix = "" }) {
-  const tiltRef = useTilt({ max: 6, lift: 4 });
+function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = false, icon, accent = "#64748b", media, watermark }) {
   const cls =
-    "shine tilt group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-card" +
-    (to ? " hover:border-brand/40 hover:shadow-xl" : "");
+    "group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-card transition" +
+    (to ? " hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg" : "");
+  const valueCls = compact
+    ? "relative mt-3.5 truncate font-display text-2xl font-black uppercase leading-tight tracking-tight text-dark"
+    : "relative mt-3.5 font-display text-4xl font-black leading-none tabular-nums text-dark";
+  const iconPath = icon ? TILE_ICONS[icon] : null;
   const body = (
     <>
-      <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: accent }} />
-      <div className="flex items-center gap-2 pl-1">
+      {/* Background flourish: a caller-supplied watermark (e.g. circuit outline)
+          or, by default, a faint oversized version of the tile's icon. */}
+      {watermark
+        ? watermark
+        : iconPath && (
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              className="pointer-events-none absolute -bottom-4 -right-4 h-24 w-24 opacity-[0.06] transition-transform duration-300 group-hover:scale-110"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ color: accent }}
+            >
+              <path d={iconPath} />
+            </svg>
+          )}
+      <div className="relative flex items-center gap-2.5">
+        {media ? (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center">{media}</span>
+        ) : iconPath ? (
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+            style={{ backgroundColor: `${accent}1f`, color: accent }}
+          >
+            <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d={iconPath} />
+            </svg>
+          </span>
+        ) : null}
         <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-light">{label}</span>
         {to && (
           <span className="ml-auto text-light opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100">
@@ -367,22 +538,22 @@ function NumberTile({ label, value, sub, accent = "#f4afc6", to, index = 0, pref
           </span>
         )}
       </div>
-      <div className="mt-3 pl-1 font-display text-4xl font-black leading-none tabular-nums text-dark">
+      <div className={valueCls}>
         {typeof value === "number" ? <CountUp end={value} prefix={prefix} /> : value}
       </div>
       {sub && (
-        <div className="mt-1.5 truncate pl-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+        <div className="relative mt-1.5 truncate font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
           {sub}
         </div>
       )}
     </>
   );
   return to ? (
-    <Link ref={tiltRef} to={to} className={cls} style={{ "--i": index }}>
+    <Link to={to} className={cls} style={{ "--i": index }}>
       {body}
     </Link>
   ) : (
-    <div ref={tiltRef} className={cls} style={{ "--i": index }}>
+    <div className={cls} style={{ "--i": index }}>
       {body}
     </div>
   );

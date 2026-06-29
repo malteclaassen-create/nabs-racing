@@ -1,6 +1,8 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 
 import standingsRoutes from "./routes/standings.js";
 import driversRoutes from "./routes/drivers.js";
@@ -27,6 +29,12 @@ app.use(cors({ origin: origins }));
 app.use(express.json({ limit: "12mb" }));
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
+
+// User-uploaded files (e.g. driver profile pictures from /api/me/photo). Served
+// under /api/* on purpose so they go through the Vite proxy in both dev and the
+// shared preview build — see the comment in routes/me.js.
+const __dir = dirname(fileURLToPath(import.meta.url));
+app.use("/api/uploads", express.static(join(__dir, "../uploads")));
 
 // Live timing (Assetto Corsa Server Manager relay). REST snapshot for fallback/
 // debugging; the live stream is the WebSocket at /api/live/ws (set up below).
