@@ -15,6 +15,7 @@ import Constructors from "./pages/Constructors.jsx";
 import TeamProfile from "./pages/TeamProfile.jsx";
 import Races from "./pages/Races.jsx";
 import Live from "./pages/Live.jsx";
+import Downloads from "./pages/Downloads.jsx";
 import Profile from "./pages/Profile.jsx";
 import DiscordCallback from "./pages/DiscordCallback.jsx";
 import Admin from "./pages/Admin.jsx";
@@ -50,6 +51,7 @@ function AppRoutes() {
         <Route path="/results" element={<Races />} />
         <Route path="/calendar" element={<Races />} />
         <Route path="/live" element={<Live />} />
+        <Route path="/downloads" element={<Downloads />} />
         <Route path="/profile" element={<Profile />} />
         {/* Sign-Up + Driver Market now live on the Races page; keep old links working. */}
         <Route path="/signup" element={<Navigate to="/races" replace />} />

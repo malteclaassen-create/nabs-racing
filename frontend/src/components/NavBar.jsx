@@ -84,6 +84,7 @@ const links = [
   { to: "/constructors", label: "Constructors" },
   { to: "/races", label: "Races" },
   { to: "/live", label: "Live Timing" },
+  { to: "/downloads", label: "Downloads" },
 ];
 
 const linkClass = ({ isActive }) =>

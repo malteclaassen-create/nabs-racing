@@ -18,6 +18,10 @@ backend/prisma/dev.db
 # User uploads (driver profile pictures, served at /api/uploads)
 backend/uploads/
 
+# Self-hosted downloads (large AC files placed on the server by the admin)
+backend/downloads/*
+!backend/downloads/.gitkeep
+
 # Logs
 *.log
 npm-debug.log*

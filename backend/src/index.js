@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { existsSync } from "fs";
 
 import standingsRoutes from "./routes/standings.js";
 import driversRoutes from "./routes/drivers.js";
@@ -15,6 +16,7 @@ import seasonsRoutes from "./routes/seasons.js";
 import settingsRoutes from "./routes/settings.js";
 import authRoutes from "./routes/auth.js";
 import discordAuthRoutes from "./routes/discordAuth.js";
+import downloadsRoutes from "./routes/downloads.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard } from "./services/liveTiming.js";
 
@@ -51,10 +53,28 @@ app.use("/api/teams", teamsRoutes);
 app.use("/api/seasons", seasonsRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/auth/discord", discordAuthRoutes);
+app.use("/api/downloads", downloadsRoutes);
 
 // Admin
 app.use("/api/admin", authRoutes); // /api/admin/login
 app.use("/api/admin", adminRoutes); // everything else (auth-guarded)
+
+// Optionally serve the built frontend from this same process, so the whole site
+// (website + API + downloads) runs as ONE program under ONE origin — no separate
+// web server needed. Only kicks in when a production build exists
+// (frontend/dist); local dev has no dist, so nothing changes there (the Vite dev
+// server keeps serving the site and proxying /api here).
+const DIST_DIR = join(__dir, "../../frontend/dist");
+if (existsSync(join(DIST_DIR, "index.html"))) {
+  app.use(express.static(DIST_DIR));
+  // SPA fallback: any non-API GET returns index.html so client-side routes work
+  // on refresh / deep links (e.g. /downloads). API paths fall through to the 404.
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api")) return next();
+    res.sendFile(join(DIST_DIR, "index.html"));
+  });
+  console.log("Serving built frontend from", DIST_DIR);
+}
 
 // 404
 app.use((req, res) => res.status(404).json({ error: "Not found" }));

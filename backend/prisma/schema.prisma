@@ -233,3 +233,23 @@ model Setting {
   key   String @id
   value String
 }
+
+// Member-only download catalogue (self-hosted Assetto Corsa resources: tracks,
+// safety car, CSP, Real Penalty, the F1 car, replays…). The large binaries live
+// on the host's disk under backend/downloads/; this row only holds the metadata
+// and the on-disk file name (or an external link). Currently created/managed via
+// raw SQL (the running dev server locks the generated Prisma client on Windows),
+// so this model is kept in sync by hand — see backend/src/lib/downloads.js.
+model Download {
+  id          String   @id @default(cuid())
+  title       String
+  category    String
+  description String?
+  version     String?
+  installNote String?
+  fileName    String?
+  externalUrl String?
+  sortOrder   Int      @default(0)
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
