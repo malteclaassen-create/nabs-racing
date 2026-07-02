@@ -6,6 +6,7 @@
 // the per-result metadata stored at import/seed time.
 // ---------------------------------------------------------------------------
 import { getDriverStandings } from "./standingsService.js";
+import { parseSocials } from "../lib/socials.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -88,7 +89,9 @@ export async function getDriverProfile(prisma, driverId) {
       tier: driver.tier,
       isActive: driver.isActive,
       country: driver.country || null,
+      number: driver.number ?? null,
       photoUrl: driver.photoUrl || driver.discordAvatar || null,
+      socials: parseSocials(driver.socials),
       team: { id: driver.team.id, name: driver.team.name, color: driver.team.color, tier: driver.team.tier, logoUrl: driver.team.logoUrl },
     },
     championship: {

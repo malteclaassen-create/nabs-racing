@@ -198,6 +198,10 @@ model RaceResult {
   grid             Int? // starting grid position
   bestLapMs        Int? // best lap in milliseconds
   totalTimeMs      Int? // total race time in milliseconds (from AC `TotalTime`)
+  // Car-to-car contacts this driver's car registered in the race (from the AC
+  // result `Events`, COLLISION_WITH_CAR above a minimum impact speed). Feeds the
+  // "Awareness/cleanliness" driver rating. null = not yet imported for this round.
+  contacts         Int?
 
   @@unique([raceId, driverId])
 }

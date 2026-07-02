@@ -19,6 +19,16 @@ export async function saveRaceResults(prisma, raceId, results) {
     prisma.team.findMany(),
   ]);
 
+  // Snapshot the car-to-car contact counts stored for this round, so a manual
+  // results edit (which doesn't carry contact data) preserves what the AC import
+  // captured instead of wiping it. Read raw so it works whether or not the
+  // generated client exposes the column yet.
+  const existing = await prisma.$queryRawUnsafe(
+    `SELECT "driverId", "contacts" FROM "RaceResult" WHERE "raceId" = ?`,
+    raceId
+  );
+  const prevContacts = new Map(existing.map((r) => [r.driverId, r.contacts]));
+
   await prisma.$transaction(async (tx) => {
     // Replace this race's results.
     await tx.raceResult.deleteMany({ where: { raceId } });
@@ -42,6 +52,18 @@ export async function saveRaceResults(prisma, raceId, results) {
           totalTimeMs: r.totalTimeMs ?? null,
         },
       });
+      // Contacts: use the value the import supplied, else preserve the previous
+      // one. Written via raw SQL (rather than the create above) so it persists
+      // even before the generated client is refreshed for the column.
+      const contacts = r.contacts ?? prevContacts.get(r.driverId) ?? null;
+      if (contacts != null) {
+        await tx.$executeRawUnsafe(
+          `UPDATE "RaceResult" SET "contacts" = ? WHERE "raceId" = ? AND "driverId" = ?`,
+          contacts,
+          raceId,
+          r.driverId
+        );
+      }
     }
 
     // Recompute constructor scores from the penalty-adjusted classification.

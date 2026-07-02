@@ -51,12 +51,59 @@ function similarity(acName, driver) {
   return best;
 }
 
+// Default tuning for contact counting (shared by the live import and backfill).
+export const CONTACT_DEFAULTS = { impactThreshold: 10, mergeWindowMs: 3000 };
+
+// Count car-to-car contact INCIDENTS per driver Steam-Guid from the AC result
+// `Events`. AC logs sustained contact (scraping along another car) as many rapid
+// events, so we collapse repeated hits between the same pair within
+// `mergeWindowMs` into one incident, and ignore light taps below
+// `impactThreshold` (km/h). Counted on the reporting (`Driver`) side only, so a
+// driver who merely gets hit by someone else is not blamed for it.
+// Returns Map<guid, incidentCount>.
+export function countCarContacts(events, opts = {}) {
+  const { impactThreshold, mergeWindowMs } = { ...CONTACT_DEFAULTS, ...opts };
+  const collisions = (events || [])
+    .filter(
+      (e) =>
+        e.Type === "COLLISION_WITH_CAR" &&
+        (e.ImpactSpeed || 0) >= impactThreshold &&
+        e.Driver &&
+        e.Driver.Guid != null
+    )
+    .map((e) => ({
+      guid: e.Driver.Guid,
+      other: e.OtherCarId ?? -1,
+      // AC stamps events in Unix SECONDS; normalise to ms so the merge window is
+      // in real milliseconds. (Guard: values already in ms are left as-is.)
+      t: Number.isFinite(e.Timestamp) ? (e.Timestamp < 1e11 ? e.Timestamp * 1000 : e.Timestamp) : null,
+    }))
+    .sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+
+  const lastByPair = new Map(); // `${guid}|${other}` -> last incident timestamp
+  const counts = new Map();
+  for (const c of collisions) {
+    const key = `${c.guid}|${c.other}`;
+    const last = lastByPair.get(key);
+    // No timestamps -> can't merge, count each; otherwise a hit is a fresh
+    // incident only once the merge window since the last one has elapsed.
+    const fresh = c.t == null || last == null || c.t - last > mergeWindowMs;
+    if (fresh) counts.set(c.guid, (counts.get(c.guid) || 0) + 1);
+    lastByPair.set(key, c.t ?? last ?? 0);
+  }
+  return counts;
+}
+
 // Parse the AC JSON and return a structured, matchable result set.
 // `drivers` = all registered drivers (with team) for fuzzy matching.
 export function parseAcRaceJson(json, drivers) {
   if (!json || json.Type !== "RACE" || !Array.isArray(json.Result)) {
     throw new Error("Invalid AC race JSON: expected Type=RACE with Result[]");
   }
+
+  // Car-to-car contact incidents per Steam-Guid, attached to each entry below so
+  // the admin import carries cleanliness data through to the stored result.
+  const contactsByGuid = countCarContacts(json.Events);
 
   const entries = json.Result
     // AC includes spectators / non-finishers with 0 laps & huge time; we keep
@@ -79,6 +126,12 @@ export function parseAcRaceJson(json, drivers) {
       return {
         position: index + 1,
         acDriverName: r.DriverName,
+        // Steam id — stable identity, used to attribute contacts (and a far more
+        // reliable key than the display name).
+        driverGuid: r.DriverGuid ?? null,
+        // Car-to-car contact incidents for this driver in the race (0 when none;
+        // null when the entry has no Guid to attribute by).
+        contacts: r.DriverGuid != null ? contactsByGuid.get(r.DriverGuid) ?? 0 : null,
         carModel: r.CarModel,
         totalTime: r.TotalTime,
         // Total race time in ms — used to apply time penalties (re-sort the

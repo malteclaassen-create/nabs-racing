@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseAcRaceJson, levenshtein, similarity, normalize } from "./acJsonParser.js";
+import { parseAcRaceJson, levenshtein, similarity, normalize, countCarContacts } from "./acJsonParser.js";
 
 const drivers = [
   { id: "lewis", name: "Lewis Hamilton", discordName: "lewis_h", teamId: "alpha", tier: 1 },
@@ -98,5 +98,49 @@ describe("parseAcRaceJson", () => {
     // sorted descending by score
     const scores = suggestions.map((s) => s.score);
     expect([...scores].sort((a, b) => b - a)).toEqual(scores);
+  });
+});
+
+describe("countCarContacts", () => {
+  const ev = (guid, other, ImpactSpeed, Timestamp) => ({
+    Type: "COLLISION_WITH_CAR",
+    Driver: { Guid: guid },
+    OtherCarId: other,
+    ImpactSpeed,
+    Timestamp,
+  });
+
+  it("counts car contacts on the reporting (Driver) side only", () => {
+    const counts = countCarContacts([ev("a", 2, 20, 100), ev("b", 1, 20, 100)]);
+    expect(counts.get("a")).toBe(1);
+    expect(counts.get("b")).toBe(1);
+  });
+
+  it("ignores light taps below the impact threshold and non-car events", () => {
+    const counts = countCarContacts([
+      ev("a", 2, 5, 100), // below default threshold of 10
+      { Type: "COLLISION_WITH_ENV", Driver: { Guid: "a" }, ImpactSpeed: 50, Timestamp: 100 },
+    ]);
+    expect(counts.get("a")).toBeUndefined();
+  });
+
+  it("merges repeated hits on the same pair within the time window into one incident", () => {
+    // Timestamps are Unix SECONDS: 100 & 101 are 1s apart (merged), 110 is 9s
+    // later (a fresh incident). A different pair is always its own incident.
+    const counts = countCarContacts([
+      ev("a", 2, 20, 100),
+      ev("a", 2, 20, 101),
+      ev("a", 2, 20, 110),
+      ev("a", 3, 20, 100),
+    ]);
+    expect(counts.get("a")).toBe(3); // 2 vs car#2 (merged + later) + 1 vs car#3
+  });
+
+  it("respects custom threshold and window options", () => {
+    const events = [ev("a", 2, 12, 100), ev("a", 2, 12, 105)];
+    expect(countCarContacts(events, { impactThreshold: 15 }).get("a")).toBeUndefined();
+    // 5s apart: merged under a 10s window, separate under a 2s window.
+    expect(countCarContacts(events, { mergeWindowMs: 10000 }).get("a")).toBe(1);
+    expect(countCarContacts(events, { mergeWindowMs: 2000 }).get("a")).toBe(2);
   });
 });

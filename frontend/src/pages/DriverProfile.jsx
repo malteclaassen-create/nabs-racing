@@ -7,10 +7,20 @@ import {
 } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
+import SocialLinks from "../components/SocialLinks.jsx";
+import RatingCard from "../components/RatingCard.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { circuitFor } from "../data/circuits.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
+
+// Public driver page layout switch:
+//   "card"    → the rating-card–led design (no dark hero banner, no rating
+//               breakdown); the card is the centrepiece of a coherent top block.
+//   "classic" → the original design: dark hero banner + rating card + breakdown.
+// The classic layout is kept fully intact below as a fallback — flip this back
+// to "classic" to restore it.
+const LAYOUT = "card";
 
 // --- tiny inline icons (stroke = currentColor) ---------------------------
 const I = {
@@ -28,6 +38,62 @@ function Icon({ name, className = "" }) {
       <path d={I[name]} />
     </svg>
   );
+}
+
+// --- colour helpers -------------------------------------------------------
+// Team colours drive the head-to-head bars. Teammates (and the odd pair of
+// teams with near-identical brand colours) would otherwise render as two
+// indistinguishable bars — so we pull one side to a clearly different shade of
+// the same hue, keeping it coherent while making "who is who" obvious.
+function hexToHsl(hex) {
+  let c = (hex || "").replace("#", "");
+  if (c.length === 3) c = c.split("").map((x) => x + x).join("");
+  const r = parseInt(c.slice(0, 2), 16) / 255;
+  const g = parseInt(c.slice(2, 4), 16) / 255;
+  const b = parseInt(c.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0; const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h /= 6;
+  }
+  return { h: h * 360, s: s * 100, l: l * 100 };
+}
+function hslToHex(h, s, l) {
+  h /= 360; s /= 100; l /= 100;
+  const f = (n) => {
+    const k = (n + h * 12) % 12;
+    const a = s * Math.min(l, 1 - l);
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  const to = (x) => Math.round(x * 255).toString(16).padStart(2, "0");
+  return `#${to(f(0))}${to(f(8))}${to(f(4))}`;
+}
+// True when two hex colours are close enough to read as "the same" at a glance.
+function closeColors(a, b) {
+  const rgb = (hex) => {
+    let c = (hex || "").replace("#", "");
+    if (c.length === 3) c = c.split("").map((x) => x + x).join("");
+    return [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16));
+  };
+  const [r1, g1, b1] = rgb(a), [r2, g2, b2] = rgb(b);
+  return Math.hypot(r1 - r2, g1 - g2, b1 - b2) < 46;
+}
+// A clearly different shade of the same hue for the second head-to-head side.
+// We darken by default (keeps white bar text readable) and only lighten colours
+// that are already very dark, so the two sides never blur together.
+function shadeApart(hex) {
+  const { h, s, l } = hexToHsl(hex);
+  const nl = l > 30 ? Math.max(15, l - 26) : Math.min(82, l + 40);
+  return hslToHex(h, s, nl);
+}
+// Pick black or white text for legibility on a solid colour fill.
+function readableText(hex) {
+  return hexToHsl(hex).l > 62 ? "#0b1020" : "#ffffff";
 }
 
 // Career stats derived from a standings row — keeps focal driver and any
@@ -56,6 +122,63 @@ function Stat({ icon, label, value, sub, accent, index = 0 }) {
         {typeof value === "number" ? <CountUp end={value} /> : value}
       </div>
       {sub && <div className="mt-1.5 text-xs font-medium text-light">{sub}</div>}
+    </div>
+  );
+}
+
+// The six headline season stats. Shared by both layouts; `className` sets the
+// grid so the same tiles read as a wide strip (classic) or a compact block
+// packed in beside the rating card (card layout).
+function StatTiles({ stats, className = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" }) {
+  return (
+    <div className={`cascade grid gap-3 ${className}`}>
+      <Stat index={0} icon="trophy" label="Wins" value={stats.wins} sub={`${stats.winRate}% of starts`} accent={stats.wins ? MEDAL[0] : undefined} />
+      <Stat index={1} icon="podium" label="Podiums" value={stats.podiums} sub={`${stats.podiumRate}% of starts`} />
+      <Stat index={2} icon="flagChk" label="Best Finish" value={stats.bestFinish ? `P${stats.bestFinish}` : "–"} sub={`${stats.starts} starts`} />
+      <Stat index={3} icon="chart" label="Avg Finish" value={stats.avgFinish != null ? `P${stats.avgFinish}` : "–"} sub={`${stats.pointsFinishes} in the points`} />
+      <Stat index={4} icon="flag" label="Poles" value={stats.polePositions} sub={`best grid P${stats.bestGrid ?? "–"}`} />
+      <Stat index={5} icon="trend" label="Places Gained"
+        value={stats.positionsGained > 0 ? `+${stats.positionsGained}` : stats.positionsGained}
+        sub="start → finish"
+        accent={stats.positionsGained > 0 ? "#16a34a" : stats.positionsGained < 0 ? "#dc2626" : undefined} />
+    </div>
+  );
+}
+
+// Companion panel beside the rating card: the four sub-ratings as labelled bars,
+// each backed by the real season stat that drives it.
+function RatingBreakdown({ rating, stats, color }) {
+  const g = rating.ratings;
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const dnf = Math.max(0, (rating.starts ?? 0) - (rating.finishes ?? 0));
+  const rows = [
+    { k: "exp", label: "Experience", note: plural(rating.starts ?? 0, "start") },
+    { k: "rac", label: "Racecraft", note: `${plural(rating.wins ?? 0, "win")} · ${plural(rating.podiums ?? 0, "podium")}` },
+    { k: "aha", label: "Awareness", note: `${plural(rating.contacts ?? 0, "contact")} · ${plural(dnf, "DNF")}` },
+    { k: "pac", label: "Pace", note: stats?.bestGrid ? `best grid P${stats.bestGrid}` : stats?.avgGrid != null ? `avg grid P${stats.avgGrid}` : "—" },
+  ];
+  return (
+    <div className="card p-5 sm:p-6">
+      <h2 className="mb-4 border-b border-border pb-3 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
+        Rating Breakdown
+      </h2>
+      <div className="space-y-4">
+        {rows.map((r) => (
+          <div key={r.k}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">
+                {r.label}
+                <span className="ml-1.5 font-mono text-[10px] font-semibold text-light">{r.k.toUpperCase()}</span>
+              </span>
+              <span className="font-display text-xl font-black tabular-nums" style={{ color }}>{g[r.k]}</span>
+            </div>
+            <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-surface2">
+              <div className="h-full rounded-full" style={{ width: `${g[r.k]}%`, backgroundColor: color }} />
+            </div>
+            <div className="mt-1 font-mono text-[11px] uppercase tracking-wide text-light">{r.note}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -89,30 +212,35 @@ function FormChart({ perRace, color }) {
   // The line passes through finished rounds only (skips DNS/DNF -> the gap).
   const linePts = finishes.map((f) => ({ x: f.i + 0.5, y: yPct(f.p) }));
   const d = linePts.map((pt, k) => `${k ? "L" : "M"}${pt.x.toFixed(2)},${pt.y.toFixed(2)}`).join(" ");
-
-  const CHART_H = 184;
+  // Soft area under the trend line, closed down to the chart floor.
+  const areaD = linePts.length > 1
+    ? `${d} L${linePts[linePts.length - 1].x.toFixed(2)},100 L${linePts[0].x.toFixed(2)},100 Z`
+    : null;
+  const gradId = `form-grad-${color.replace(/[^a-z0-9]/gi, "")}`;
+  const minW = Math.max(360, N * 46);
 
   return (
-    <div className="flex items-start gap-2">
-      {/* y-axis: finishing positions */}
-      <div className="relative w-7 shrink-0" style={{ height: CHART_H }}>
-        {ticks.map((p) => (
-          <span
-            key={p}
-            className="absolute right-0 -translate-y-1/2 font-mono text-[10px] font-bold tabular-nums text-faint"
-            style={{ top: `${yPct(p)}%` }}
-          >
-            P{p}
-          </span>
-        ))}
-      </div>
+    // Fills the card height: the plot region grows, the chips sit on a fixed
+    // row beneath it, left-padded to line up under the plot (past the y-axis).
+    <div className="flex h-full min-h-[240px] w-full flex-col">
+      {/* plot region — y-axis (pinned) + plot, both share this row's height so
+          the position ticks line up exactly with the dots */}
+      <div className="flex min-h-0 flex-1 items-stretch gap-2">
+        {/* y-axis: finishing positions */}
+        <div className="relative w-7 shrink-0">
+          {ticks.map((p) => (
+            <span
+              key={p}
+              className="absolute right-0 -translate-y-1/2 font-mono text-[10px] font-bold tabular-nums text-faint"
+              style={{ top: `${yPct(p)}%` }}
+            >
+              P{p}
+            </span>
+          ))}
+        </div>
 
-      {/* plot + chips share one horizontally-scrollable column model so the
-          chips line up exactly under their round on the line */}
-      <div className="min-w-0 flex-1 overflow-x-auto">
-        <div style={{ minWidth: Math.max(360, N * 46) }}>
-          {/* plot */}
-          <div className="relative" style={{ height: CHART_H }}>
+        <div className="min-w-0 flex-1 overflow-x-auto">
+          <div className="relative h-full" style={{ minWidth: minW }}>
             {/* gridlines */}
             {ticks.map((p) => (
               <span
@@ -121,13 +249,20 @@ function FormChart({ perRace, color }) {
                 style={{ top: `${yPct(p)}%` }}
               />
             ))}
-            {/* connecting line (stretched to fill; stroke kept crisp) */}
+            {/* trend area + connecting line (stretched to fill; stroke crisp) */}
             <svg
               viewBox={`0 0 ${N} 100`}
               preserveAspectRatio="none"
               className="absolute inset-0 h-full w-full overflow-visible"
               aria-hidden="true"
             >
+              <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={color} stopOpacity="0.22" />
+                  <stop offset="100%" stopColor={color} stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {areaD && <path d={areaD} fill={`url(#${gradId})`} stroke="none" />}
               {finishes.length > 1 && (
                 <path
                   d={d}
@@ -167,10 +302,14 @@ function FormChart({ perRace, color }) {
               })}
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* per-round result chips (moved here from above), aligned to columns */}
-          <div className="mt-3 flex">
-            {perRace.map((r) => {
+      {/* per-round result chips, aligned under the plot columns (pl matches the
+          y-axis width + gap so chips sit under their dot) */}
+      <div className="mt-3 overflow-x-auto pl-9">
+        <div className="flex" style={{ minWidth: minW }}>
+          {perRace.map((r) => {
               const finished = r.status === "FINISHED" && r.position != null;
               const medal = finished && r.position <= 3 ? MEDAL[r.position - 1] : null;
               const isBest = finished && r.position === best;
@@ -207,7 +346,6 @@ function FormChart({ perRace, color }) {
           </div>
         </div>
       </div>
-    </div>
   );
 }
 
@@ -240,14 +378,19 @@ function HeadToHead({ me, meRow, standings }) {
   const mePct = decided ? Math.round((meAhead / decided) * 100) : 50;
   const oppPct = 100 - mePct;
   const meColor = me.driver.team.color;
-  const oppColor = opp.team.color;
+  // Teammates (and near-identical brand colours) share a colour — pull the
+  // opponent to a clearly different shade so the two sides never blur together.
+  const oppRaw = opp.team.color;
+  const oppColor = closeColors(meColor, oppRaw) ? shadeApart(oppRaw) : oppRaw;
 
+  // cmp > 0 -> the focal driver leads this stat, < 0 -> the opponent, 0 -> tie.
+  const sign = (n) => (n > 0 ? 1 : n < 0 ? -1 : 0);
   const rows = [
-    { label: "Points", a: meStats.points, b: oppStats.points, aWin: meStats.points > oppStats.points },
-    { label: "Wins", a: meStats.wins, b: oppStats.wins, aWin: meStats.wins > oppStats.wins },
-    { label: "Podiums", a: meStats.podiums, b: oppStats.podiums, aWin: meStats.podiums > oppStats.podiums },
-    { label: "Best finish", a: meStats.bestFinish ? `P${meStats.bestFinish}` : "–", b: oppStats.bestFinish ? `P${oppStats.bestFinish}` : "–", aWin: (meStats.bestFinish ?? 99) < (oppStats.bestFinish ?? 99) },
-    { label: "Avg finish", a: meStats.avgFinish ?? "–", b: oppStats.avgFinish ?? "–", aWin: (meStats.avgFinish ?? 99) < (oppStats.avgFinish ?? 99) },
+    { label: "Points", a: meStats.points, b: oppStats.points, cmp: sign(meStats.points - oppStats.points) },
+    { label: "Wins", a: meStats.wins, b: oppStats.wins, cmp: sign(meStats.wins - oppStats.wins) },
+    { label: "Podiums", a: meStats.podiums, b: oppStats.podiums, cmp: sign(meStats.podiums - oppStats.podiums) },
+    { label: "Best finish", a: meStats.bestFinish ? `P${meStats.bestFinish}` : "–", b: oppStats.bestFinish ? `P${oppStats.bestFinish}` : "–", cmp: sign((oppStats.bestFinish ?? 99) - (meStats.bestFinish ?? 99)) },
+    { label: "Avg finish", a: meStats.avgFinish ?? "–", b: oppStats.avgFinish ?? "–", cmp: sign((oppStats.avgFinish ?? 99) - (meStats.avgFinish ?? 99)) },
   ];
 
   return (
@@ -275,25 +418,50 @@ function HeadToHead({ me, meRow, standings }) {
           </Link>
         </div>
 
-        {/* race-wins bar */}
-        <div className="mb-1.5 flex h-7 overflow-hidden rounded-lg text-xs font-black text-white">
-          <div className="flex items-center justify-start px-2.5 tabular-nums" style={{ width: `${mePct}%`, backgroundColor: meColor }}>{mePct}%</div>
-          <div className="flex flex-1 items-center justify-end px-2.5 tabular-nums" style={{ backgroundColor: oppColor }}>{oppPct}%</div>
+        {/* head-to-head record: who finished ahead more often, as a split bar
+            with the raw counts either side. Each side keeps a min width so a
+            0% side still shows its colour and label. */}
+        <div className="mb-2 flex items-center justify-between font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+          <span>Finished ahead</span>
+          <span>{shared} shared {shared === 1 ? "race" : "races"}</span>
         </div>
-        <div className="mb-5 grid grid-cols-3 items-center text-center">
-          <span className="font-display text-xl font-black tabular-nums" style={{ color: meColor }}>{meAhead}</span>
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-light">{shared} shared races</span>
-          <span className="font-display text-xl font-black tabular-nums" style={{ color: oppColor }}>{oppAhead}</span>
+        <div className="flex h-8 overflow-hidden rounded-lg text-xs font-black ring-1 ring-black/5">
+          <div className="flex min-w-[2.75rem] items-center justify-start gap-1.5 px-2.5 tabular-nums" style={{ width: `${mePct}%`, backgroundColor: meColor, color: readableText(meColor) }}>
+            <span className="font-display text-sm">{meAhead}</span>
+            <span className="opacity-80">{mePct}%</span>
+          </div>
+          <div className="flex min-w-[2.75rem] flex-1 items-center justify-end gap-1.5 px-2.5 tabular-nums" style={{ backgroundColor: oppColor, color: readableText(oppColor) }}>
+            <span className="opacity-80">{oppPct}%</span>
+            <span className="font-display text-sm">{oppAhead}</span>
+          </div>
+        </div>
+        <div className="mb-5 mt-1.5 flex justify-between px-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider">
+          <span className="truncate" style={{ color: meColor }}>{me.driver.name}</span>
+          <span className="truncate text-right" style={{ color: oppColor }}>{opp.name}</span>
         </div>
 
-        <div className="divide-y divide-border rounded-xl bg-surface2/60">
-          {rows.map((r) => (
-            <div key={r.label} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2">
-              <span className="text-left font-display text-base font-black tabular-nums" style={{ color: r.aWin ? meColor : "var(--c-text3)" }}>{r.a}</span>
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-medium">{r.label}</span>
-              <span className="text-right font-display text-base font-black tabular-nums" style={{ color: !r.aWin ? oppColor : "var(--c-text3)" }}>{r.b}</span>
-            </div>
-          ))}
+        <div className="divide-y divide-border overflow-hidden rounded-xl bg-surface2/60">
+          {rows.map((r) => {
+            const aWin = r.cmp > 0, bWin = r.cmp < 0;
+            const cell = (val, win, color, align) =>
+              win ? (
+                <span
+                  className={`inline-block rounded-md px-2 py-0.5 font-display text-base font-black tabular-nums ${align}`}
+                  style={{ backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
+                >
+                  {val}
+                </span>
+              ) : (
+                <span className={`font-display text-base font-black tabular-nums text-medium ${align}`}>{val}</span>
+              );
+            return (
+              <div key={r.label} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2.5">
+                <span className="flex justify-start">{cell(r.a, aWin, meColor, "text-left")}</span>
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-medium">{r.label}</span>
+                <span className="flex justify-end">{cell(r.b, bWin, oppColor, "text-right")}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -343,10 +511,124 @@ function TeamPanel({ driver, standings }) {
   );
 }
 
+// --- Classic top: the original dark "speed" hero banner. Kept as a fallback
+// (rendered only when LAYOUT === "classic").
+function ClassicHero({ driver, championship, color }) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl bg-ink text-white shadow-lg">
+      <span className="absolute inset-x-0 top-0 z-10 h-1.5" style={{ backgroundColor: color }} />
+      {/* layered "speed" backdrop */}
+      <div className="absolute inset-0" style={{ background: `radial-gradient(120% 140% at 88% 10%, ${color}55, transparent 55%)` }} />
+      <div className="absolute inset-y-0 right-0 w-2/3" style={{ background: `repeating-linear-gradient(115deg, transparent 0 22px, ${color}14 22px 25px)` }} />
+      <div className="absolute inset-0 bg-gradient-to-r from-ink via-ink/85 to-transparent" />
+
+      <div className="relative flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:gap-7 sm:p-8">
+        <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={112} className="text-4xl ring-4 ring-white/10" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-display text-4xl font-black uppercase tracking-tight sm:text-6xl">{driver.name}</h1>
+            <Flag code={countryFor(driver.id, driver.country)} w={30} h={22} />
+            <TierBadge tier={driver.tier} />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-white/70">
+            <Link to={`/teams/${driver.team.id}`} className="group flex items-center gap-2">
+              <TeamLogo id={driver.team.id} name={driver.team.name} color={color} logoUrl={driver.team.logoUrl} size={22} />
+              <span className="font-display text-base font-bold uppercase tracking-tight text-white/90 transition group-hover:text-white">{driver.team.name}</span>
+            </Link>
+            <span className="text-white/30">·</span>
+            <span className="text-sm">{driver.discordName}</span>
+          </div>
+          <SocialLinks links={driver.socials} baseClass="text-white/55" className="mt-3.5" />
+        </div>
+        <div className="flex gap-8 border-t border-white/10 pt-4 sm:flex-col sm:gap-3 sm:border-l sm:border-t-0 sm:pl-7 sm:pt-0 sm:text-right">
+          <div>
+            <div className="font-display text-5xl font-black leading-none tabular-nums">
+              <CountUp end={championship.position} prefix="P" />
+            </div>
+            <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-white/50">of {championship.fieldSize}</div>
+          </div>
+          <div>
+            <div className="font-display text-4xl font-black leading-none tabular-nums" style={{ color }}>
+              <CountUp end={championship.points} />
+            </div>
+            <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-white/50">points</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Card-led top: the rating card is the centrepiece; the driver's identity,
+// championship standing and the six headline stats are packed in beside it on a
+// light panel that echoes the card's team-colour frame and fills its full
+// height, so nothing reads as empty. No dark hero, no rating breakdown.
+function CardHeader({ driver, rating, championship, color, stats }) {
+  return (
+    <div className="card relative overflow-hidden p-5 sm:p-6">
+      {/* team-colour top strip + faint wash tie the panel to the card frame */}
+      <span className="absolute inset-x-0 top-0 h-1.5" style={{ backgroundColor: color }} />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.07]"
+        style={{ background: `radial-gradient(130% 120% at 6% 0%, ${color}, transparent 55%)` }} />
+
+      <div className="relative grid gap-6 lg:grid-cols-[auto_1fr] lg:items-stretch">
+        {/* rating card */}
+        <div className="flex justify-center">
+          {rating ? (
+            <RatingCard driver={driver} rating={rating} />
+          ) : (
+            <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={160} className="text-6xl" />
+          )}
+        </div>
+
+        {/* identity + championship + stats fill the height beside the card */}
+        <div className="flex min-w-0 flex-col">
+          <div className="text-center lg:text-left">
+            <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+              <h1 className="font-display text-4xl font-black uppercase tracking-tight text-dark sm:text-5xl">{driver.name}</h1>
+              <Flag code={countryFor(driver.id, driver.country)} w={30} h={22} />
+              <TierBadge tier={driver.tier} />
+            </div>
+            <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2 text-light lg:justify-start">
+              <Link to={`/teams/${driver.team.id}`} className="group flex items-center gap-2">
+                <TeamLogo id={driver.team.id} name={driver.team.name} color={color} logoUrl={driver.team.logoUrl} size={22} />
+                <span className="font-display text-base font-bold uppercase tracking-tight text-medium transition group-hover:text-dark">{driver.team.name}</span>
+              </Link>
+              <span className="text-faint">·</span>
+              <span className="text-sm">{driver.discordName}</span>
+            </div>
+            <SocialLinks links={driver.socials} baseClass="text-light" className="mt-3.5 justify-center lg:justify-start" />
+          </div>
+
+          {/* championship standing */}
+          <div className="mt-5 flex items-center justify-center gap-5 rounded-xl bg-surface2/70 px-4 py-3 lg:justify-start lg:gap-8">
+            <div className="text-center lg:text-left">
+              <div className="font-display text-4xl font-black leading-none tabular-nums text-dark sm:text-5xl">
+                <CountUp end={championship.position} prefix="P" />
+              </div>
+              <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">of {championship.fieldSize}</div>
+            </div>
+            <div className="h-11 w-px bg-border" />
+            <div className="text-center lg:text-left">
+              <div className="font-display text-4xl font-black leading-none tabular-nums sm:text-5xl" style={{ color }}>
+                <CountUp end={championship.points} />
+              </div>
+              <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">points</div>
+            </div>
+          </div>
+
+          {/* headline stats — bottom-anchored so they fill the space beside the card */}
+          <StatTiles stats={stats} className="mt-5 grid-cols-2 sm:grid-cols-3 lg:mt-auto lg:pt-5" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DriverProfile() {
   const { id } = useParams();
   const { data, loading, error } = useApi(
-    useCallback(() => Promise.all([api.driverProfile(id), api.driverStandings()]), [id])
+    useCallback(() => Promise.all([api.driverProfile(id), api.driverStandings(), api.driverRating(id)]), [id])
   );
 
   if (loading)
@@ -361,7 +643,7 @@ export default function DriverProfile() {
     );
   if (error) return <ErrorBox message={error} />;
 
-  const [p, standingsData] = data;
+  const [p, standingsData, rating] = data;
   const { driver, championship, stats, perRace } = p;
   const color = driver.team.color;
   const meRow = standingsData.standings.find((s) => s.driverId === driver.id);
@@ -370,64 +652,34 @@ export default function DriverProfile() {
 
   return (
     <div className="space-y-6">
-      {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-ink text-white shadow-lg">
-        <span className="absolute inset-x-0 top-0 z-10 h-1.5" style={{ backgroundColor: color }} />
-        {/* layered "speed" backdrop */}
-        <div className="absolute inset-0" style={{ background: `radial-gradient(120% 140% at 88% 10%, ${color}55, transparent 55%)` }} />
-        <div className="absolute inset-y-0 right-0 w-2/3" style={{ background: `repeating-linear-gradient(115deg, transparent 0 22px, ${color}14 22px 25px)` }} />
-        <div className="absolute inset-0 bg-gradient-to-r from-ink via-ink/85 to-transparent" />
+      {LAYOUT === "classic" ? (
+        <>
+          {/* Classic hero banner */}
+          <ClassicHero driver={driver} championship={championship} color={color} />
 
-        <div className="relative flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:gap-7 sm:p-8">
-          <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={112} className="text-4xl ring-4 ring-white/10" />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="font-display text-4xl font-black uppercase tracking-tight sm:text-6xl">{driver.name}</h1>
-              <Flag code={countryFor(driver.id, driver.country)} w={30} h={22} />
-              <TierBadge tier={driver.tier} />
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-white/70">
-              <Link to={`/teams/${driver.team.id}`} className="group flex items-center gap-2">
-                <TeamLogo id={driver.team.id} name={driver.team.name} color={color} logoUrl={driver.team.logoUrl} size={22} />
-                <span className="font-display text-base font-bold uppercase tracking-tight text-white/90 transition group-hover:text-white">{driver.team.name}</span>
-              </Link>
-              <span className="text-white/30">·</span>
-              <span className="text-sm">{driver.discordName}</span>
-            </div>
-          </div>
-          <div className="flex gap-8 border-t border-white/10 pt-4 sm:flex-col sm:gap-3 sm:border-l sm:border-t-0 sm:pl-7 sm:pt-0 sm:text-right">
+          {/* Official rating card (FIFA/EA-style) + breakdown */}
+          {rating && (
             <div>
-              <div className="font-display text-5xl font-black leading-none tabular-nums">
-                <CountUp end={championship.position} prefix="P" />
+              <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-light">
+                Official Driver Rating
               </div>
-              <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-white/50">of {championship.fieldSize}</div>
-            </div>
-            <div>
-              <div className="font-display text-4xl font-black leading-none tabular-nums" style={{ color }}>
-                <CountUp end={championship.points} />
+              <div className="grid items-start gap-6 lg:grid-cols-[auto_1fr]">
+                <RatingCard driver={driver} rating={rating} />
+                <RatingBreakdown rating={rating} stats={stats} color={color} />
               </div>
-              <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-white/50">points</div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Stat tiles */}
-      <div className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Stat index={0} icon="trophy" label="Wins" value={stats.wins} sub={`${stats.winRate}% of starts`} accent={stats.wins ? MEDAL[0] : undefined} />
-        <Stat index={1} icon="podium" label="Podiums" value={stats.podiums} sub={`${stats.podiumRate}% of starts`} />
-        <Stat index={2} icon="flagChk" label="Best Finish" value={stats.bestFinish ? `P${stats.bestFinish}` : "–"} sub={`${stats.starts} starts`} />
-        <Stat index={3} icon="chart" label="Avg Finish" value={stats.avgFinish != null ? `P${stats.avgFinish}` : "–"} sub={`${stats.pointsFinishes} in the points`} />
-        <Stat index={4} icon="flag" label="Poles" value={stats.polePositions} sub={`best grid P${stats.bestGrid ?? "–"}`} />
-        <Stat index={5} icon="trend" label="Places Gained"
-          value={stats.positionsGained > 0 ? `+${stats.positionsGained}` : stats.positionsGained}
-          sub="start → finish"
-          accent={stats.positionsGained > 0 ? "#16a34a" : stats.positionsGained < 0 ? "#dc2626" : undefined} />
-      </div>
+          )}
+          <StatTiles stats={stats} />
+        </>
+      ) : (
+        /* Card-led top: rating card is the centrepiece; identity, championship
+           and the headline stats fill the space beside it (no dark hero, no breakdown) */
+        <CardHeader driver={driver} rating={rating} championship={championship} color={color} stats={stats} />
+      )}
 
       {/* Season form + Head to head */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="card overflow-hidden lg:col-span-2">
+      <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">
+        <div className="card flex flex-col overflow-hidden lg:col-span-2">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-5 py-4 sm:px-6">
             <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Season Form</h2>
             <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">finishing position by round</span>
@@ -444,7 +696,7 @@ export default function DriverProfile() {
               </span>
             )}
           </div>
-          <div className="p-5 sm:p-6">
+          <div className="flex-1 p-5 sm:p-6">
             <FormChart perRace={perRace} color={color} />
           </div>
         </div>
