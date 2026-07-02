@@ -119,8 +119,37 @@ export default function Home() {
   const myTier = myRow?.team?.tier ?? null;
   const tierRows = myTier ? standings.filter((s) => s.team.tier === myTier) : [];
   const myTierPos = myRow ? tierRows.findIndex((s) => s.driverId === myDriverId) + 1 : 0;
-  const showTierToggle = !!myRow && tierRows.length > 1;
+  // The Overall ⇄ Tier toggle only earns its place for Tier 2 drivers: their
+  // tier rank differs meaningfully from their overall rank. A Tier 1 driver's
+  // overall and Tier 1 positions are effectively the same view, so we hide it
+  // and always show the championship (overall) numbers for them.
+  const showTierToggle = !!myRow && myTier === 2 && tierRows.length > 1;
   const useTier = tierView && showTierToggle;
+
+  // Tier-relative form: rank the driver among only their own tier's finishers in
+  // each round, so a Tier 2 driver can see the wins / podiums / average finish
+  // they'd have if the championship were scored within Tier 2 alone. (A "win"
+  // here means being the best-placed Tier 2 car that round.)
+  const tierRankInRound = (roundNum) => {
+    const mine = myRow?.perRace?.[roundNum];
+    if (!mine || mine.status !== "FINISHED" || mine.position == null) return null;
+    let rank = 1;
+    for (const row of tierRows) {
+      if (row.driverId === myDriverId) continue;
+      const r = row.perRace?.[roundNum];
+      if (r && r.status === "FINISHED" && r.position != null && r.position < mine.position) rank++;
+    }
+    return rank;
+  };
+  const myTierRanks = myRow
+    ? Object.keys(myRow.perRace || {}).map(tierRankInRound).filter((r) => r != null)
+    : [];
+  const myTierWins = myTierRanks.filter((r) => r === 1).length;
+  const myTierPodiums = myTierRanks.filter((r) => r <= 3).length;
+  const myTierAvg = myTierRanks.length
+    ? Math.round((myTierRanks.reduce((a, r) => a + r, 0) / myTierRanks.length) * 10) / 10
+    : null;
+
   const nextEv = events.data?.[0];
   const myStatus = nextEv
     ? ["ACCEPTED", "TENTATIVE", "DECLINED"].find((s) => nextEv.rsvps[s].some((r) => r.driverId === myDriverId))
@@ -343,11 +372,11 @@ export default function Home() {
               label="Team"
               value={myTeam ? myTeam.total : "—"}
               sub={myTeam ? `${myRow.team.name} · P${myTeam.position}` : myRow.team.name}
-              media={
-                <TeamLogo id={myRow.team.id} name={myRow.team.name} color={myRow.team.color} logoUrl={myRow.team.logoUrl} size={26} />
-              }
               icon="shield"
               accent={myRow.team.color}
+              mark={
+                <TeamLogo id={myRow.team.id} name={myRow.team.name} color={myRow.team.color} logoUrl={myRow.team.logoUrl} size={76} />
+              }
             />
             <NumberTile
               index={2}
@@ -358,20 +387,18 @@ export default function Home() {
               sub={nextStatusWord}
               icon="flag"
               accent="#0ea5e9"
-              watermark={
+              mark={
                 nextEv && circuitFor(nextEv.track) ? (
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex w-3/4 items-center justify-end pr-2 text-sky-500 opacity-[0.16] transition-transform duration-300 group-hover:scale-105">
-                    <CircuitMap track={nextEv.track} className="h-[5.5rem] w-full" stroke="currentColor" strokeWidth={2} />
-                  </div>
+                  <CircuitMap track={nextEv.track} className="h-full w-full" stroke="currentColor" strokeWidth={2} />
                 ) : undefined
               }
             />
             <NumberTile
               index={3}
               to={`/drivers/${myDriverId}`}
-              label="Wins"
-              value={myWins}
-              sub={`${myPodiums} podiums`}
+              label={useTier ? "Tier 2 Wins" : "Wins"}
+              value={useTier ? myTierWins : myWins}
+              sub={`${useTier ? myTierPodiums : myPodiums} podiums`}
               icon="trophy"
               accent="#d97706"
             />
@@ -379,8 +406,8 @@ export default function Home() {
               index={4}
               to={`/drivers/${myDriverId}`}
               label="Avg Finish"
-              value={myAvg != null ? `P${myAvg}` : "—"}
-              sub={`${myStarts} starts`}
+              value={(useTier ? myTierAvg : myAvg) != null ? `P${useTier ? myTierAvg : myAvg}` : "—"}
+              sub={useTier ? `${myStarts} starts · in tier` : `${myStarts} starts`}
               icon="trend"
               accent="#7c3aed"
             />
@@ -489,7 +516,7 @@ function Heading({ index, eyebrow, title, to }) {
   );
 }
 
-function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = false, icon, accent = "#64748b", media, watermark }) {
+function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = false, icon, accent = "#64748b", mark }) {
   const cls =
     "group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-card transition" +
     (to ? " hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg" : "");
@@ -499,29 +526,35 @@ function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = f
   const iconPath = icon ? TILE_ICONS[icon] : null;
   const body = (
     <>
-      {/* Background flourish: a caller-supplied watermark (e.g. circuit outline)
-          or, by default, a faint oversized version of the tile's icon. */}
-      {watermark
-        ? watermark
-        : iconPath && (
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-              className="pointer-events-none absolute -bottom-4 -right-4 h-24 w-24 opacity-[0.06] transition-transform duration-300 group-hover:scale-110"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ color: accent }}
-            >
-              <path d={iconPath} />
-            </svg>
-          )}
+      {/* Bottom-right flourish — the single element that makes every tile read as
+          one family. A caller graphic (team logo / circuit outline) when given,
+          otherwise a faint oversized copy of the tile's own icon. Both sit in the
+          same corner slot at low opacity. */}
+      {mark ? (
+        <div
+          className="pointer-events-none absolute bottom-0 right-0 flex h-[5.5rem] w-3/5 items-end justify-end p-2 opacity-[0.14] transition-transform duration-300 group-hover:scale-105"
+          style={{ color: accent }}
+          aria-hidden="true"
+        >
+          {mark}
+        </div>
+      ) : iconPath ? (
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-4 -right-4 h-24 w-24 opacity-[0.06] transition-transform duration-300 group-hover:scale-110"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ color: accent }}
+        >
+          <path d={iconPath} />
+        </svg>
+      ) : null}
       <div className="relative flex items-center gap-2.5">
-        {media ? (
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center">{media}</span>
-        ) : iconPath ? (
+        {iconPath ? (
           <span
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
             style={{ backgroundColor: `${accent}1f`, color: accent }}

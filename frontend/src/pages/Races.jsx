@@ -320,7 +320,9 @@ export default function Races() {
           round's results (completed) or sign-up + driver market (upcoming). */}
       <div ref={panelRef} className="scroll-mt-24">
         {championRounds.length > 0 ? (
-          <div className="grid gap-5 lg:grid-cols-[15rem_1fr] xl:grid-cols-[17rem_1fr]">
+          // minmax(0,…) keeps the wide results table from stretching the
+          // column (and the whole page) past the viewport on phones
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]">
             {/* round list — horizontal on phones, vertical sidebar from lg up */}
             <aside className="lg:sticky lg:top-28 lg:self-start">
               <h3 className="mb-2.5 hidden font-mono text-xs font-bold uppercase tracking-widest text-light lg:block">

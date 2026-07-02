@@ -20,21 +20,27 @@ function LeaderCard({ row, leaderTotal, rank, index = 0 }) {
     >
       <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: row.team.color }} />
       <div className="flex items-start justify-between gap-3 pl-2">
-        <div className="flex items-center gap-3">
+        {/* min-w-0 + truncate let a long name give way instead of pushing
+            the points total off the card edge on phones */}
+        <div className="flex min-w-0 items-center gap-3">
           <span
-            className="flex h-11 w-11 items-center justify-center rounded-xl font-display text-lg font-black text-ink"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-display text-lg font-black text-ink"
             style={{ backgroundColor: MEDAL[rank] }}
           >
             {row.position}
           </span>
           <DriverAvatar name={row.name} photoUrl={row.photoUrl} color={row.team.color} size={40} />
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">
+              <span className="truncate font-display text-base font-extrabold uppercase tracking-tight text-dark sm:text-lg">
                 {row.name}
               </span>
               <Flag code={countryFor(row.driverId, row.country)} />
-              <TierBadge tier={row.tier} />
+              {/* the tier pill costs name space on 375px screens; the table
+                  below shows it anyway */}
+              <span className="hidden sm:inline-flex">
+                <TierBadge tier={row.tier} />
+              </span>
             </div>
             <TeamLogo
               id={row.team.id}
@@ -47,8 +53,8 @@ function LeaderCard({ row, leaderTotal, rank, index = 0 }) {
             />
           </div>
         </div>
-        <div className="text-right">
-          <div className="font-mono text-3xl font-bold leading-none tabular-nums text-dark">
+        <div className="shrink-0 text-right">
+          <div className="font-mono text-2xl font-bold leading-none tabular-nums text-dark sm:text-3xl">
             <CountUp end={row.total} />
           </div>
           <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">

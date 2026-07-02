@@ -4,7 +4,7 @@ import { useState } from "react";
 const HAS_LOGO = new Set([
   "porsche", "mclaren", "ferrari", "williams", "honda", "renault", "super_aguri",
   "spyker", "torro_rosso", "redbull", "toyota", "bmw", "jaguar", "fiat",
-  "lamborghini", "ncb_mugen",
+  "lamborghini", "ncb_mugen", "lotus",
 ]);
 
 // Short monogram for teams without a logo file (fallback badge).

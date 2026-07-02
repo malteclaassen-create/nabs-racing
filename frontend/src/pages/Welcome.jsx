@@ -184,7 +184,9 @@ export default function Welcome() {
             <span>{season ? season.name : "NABS Racing League"}{season?.game ? ` · ${season.game}` : ""}</span>
           </div>
 
-          <h1 className="hero-anim font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
+          {/* fluid size below sm so "wheel-to-wheel" (one unbreakable word)
+              never gets clipped on narrow phones */}
+          <h1 className="hero-anim font-display text-[clamp(1.5rem,7.6vw,3rem)] font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
             Race wheel&#8209;to&#8209;wheel<br />
             <span className="text-brand">on the NABS grid</span>
           </h1>

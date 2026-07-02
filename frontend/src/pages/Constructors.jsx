@@ -13,14 +13,29 @@ function completedRounds(data) {
   return data.raceNumbers.filter((n) => data.standings.some((t) => t.perRace[n] != null));
 }
 
-// One tier shown as a unit: championship table + progression chart + the
+// One tier shown as a unit: championship table, progression chart and the
 // line-ups of every team in that tier.
-function TierBlock({ eyebrow, standings, teams, delay }) {
+function TierBlock({ id, tier, standings, teams, delay }) {
+  const rows = standings.standings;
+  const done = completedRounds(standings);
+  const lastRound = done[done.length - 1];
+
   return (
-    <section className="reveal space-y-6" style={{ animationDelay: delay }}>
-      <SectionHeading eyebrow={eyebrow} title="Constructors" />
-      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={standings.standings} />
-      <PointsChart standings={standings.standings} completed={completedRounds(standings)} allRounds={standings.raceNumbers} />
+    <section id={id} className="reveal scroll-mt-28 space-y-6" style={{ animationDelay: delay }}>
+      <SectionHeading
+        eyebrow="Constructors' Championship"
+        title={`Tier ${tier}`}
+        right={
+          lastRound != null && (
+            <span className="hidden shrink-0 font-mono text-xs font-bold uppercase tracking-wider text-light sm:block">
+              After R{lastRound} of {standings.raceNumbers.length}
+            </span>
+          )
+        }
+      />
+
+      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={rows} />
+      <PointsChart standings={rows} completed={done} allRounds={standings.raceNumbers} />
 
       <div className="space-y-3 pt-2">
         <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Line-ups</h3>
@@ -65,6 +80,23 @@ function TeamCard({ team, index = 0 }) {
   );
 }
 
+// Quick anchor pills in the page header so Tier 2 is one tap away instead of a
+// long scroll past the whole Tier-1 block.
+function TierJump({ className = "" }) {
+  const cls =
+    "rounded-lg border border-border bg-card px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark";
+  return (
+    <div className={`gap-2 ${className}`}>
+      <a href="#tier-1" className={cls}>
+        Tier 1
+      </a>
+      <a href="#tier-2" className={cls}>
+        Tier 2
+      </a>
+    </div>
+  );
+}
+
 export default function Constructors() {
   const t1 = useApi(useCallback(() => api.t1Standings(), []));
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
@@ -89,14 +121,15 @@ export default function Constructors() {
 
   return (
     <div className="space-y-16">
-      <PageHeader
-        eyebrow="Championship"
-        title="Constructors"
-        subtitle="Standings and line-ups. Tier 1 uses real finishing points; Tier 2 re-ranks the field after Tier-1 drivers are removed."
-      />
+      <div>
+        {/* pills sit beside the title on desktop, on their own row on phones —
+            side by side they push the header past the viewport */}
+        <PageHeader eyebrow="Championship" title="Constructors" right={<TierJump className="hidden shrink-0 sm:flex" />} />
+        <TierJump className="-mt-2 flex sm:hidden" />
+      </div>
 
-      <TierBlock eyebrow="Tier 1" standings={t1.data} teams={t1Teams} delay="0.05s" />
-      <TierBlock eyebrow="Tier 2" standings={t2.data} teams={t2Teams} delay="0.13s" />
+      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} delay="0.05s" />
+      <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} delay="0.13s" />
     </div>
   );
 }
