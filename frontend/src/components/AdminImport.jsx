@@ -66,6 +66,9 @@ export default function AdminImport({ onCommitted }) {
           bestLapMs: en.bestLap || null,
           grid: en.grid ?? null,
           totalTimeMs: en.totalTimeMs ?? null,
+          // Car-to-car contacts parsed from the AC telemetry; carried through to
+          // the saved result so the cleanliness rating updates automatically.
+          contacts: en.contacts ?? null,
           suggestions: en.suggestions,
         };
       })
@@ -124,6 +127,7 @@ export default function AdminImport({ onCommitted }) {
         bestLapMs: r.bestLapMs > 0 && r.bestLapMs <= 1800000 ? r.bestLapMs : null,
         grid: r.grid ?? null,
         totalTimeMs: r.totalTimeMs ?? null,
+        contacts: r.contacts ?? null,
       }));
       const res = await api.commitRace({
         number: Number(meta.number),

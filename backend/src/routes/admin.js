@@ -10,9 +10,14 @@ import { parseAcRaceJson } from "../services/acJsonParser.js";
 import { listRemoteResults, fetchRemoteResult } from "../services/emperorResults.js";
 import { saveRaceResults } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
+import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
 import { getWebhookUrl, setWebhookUrl, announce, syncRaceToDiscord } from "../services/discordService.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { SOCIAL_KEYS, readSocialLinks } from "./settings.js";
+import {
+  dbListDownloads, dbGetDownload, dbCreateDownload, dbUpdateDownload, dbDeleteDownload,
+  listDiskFiles, statFile, fmtSize, shapeDownload,
+} from "../lib/downloads.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -152,6 +157,22 @@ router.post("/races/preview", async (req, res, next) => {
       results,
     });
     res.json(preview);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/ratings/preview
+// Body: { weights?: { band, fullXpShare, rtg, pac, rac, aha }, season? }
+// Returns the driver ratings computed with the supplied weights (or the defaults
+// when omitted), plus the defaults so the tuning panel can initialise itself.
+// Read-only — nothing is persisted.
+router.post("/ratings/preview", async (req, res, next) => {
+  try {
+    const { weights, season } = req.body || {};
+    const seasonId = await resolveSeasonId(prisma, season);
+    const ratings = seasonId ? await getDriverRatings(prisma, seasonId, weights || {}) : [];
+    res.json({ defaults: RATING_DEFAULTS, ratings });
   } catch (e) {
     next(e);
   }
@@ -586,6 +607,69 @@ router.delete("/teams/:id", async (req, res, next) => {
       return res.status(409).json({ error: "Team still has drivers or results; reassign them first." });
     }
     await prisma.team.delete({ where: { id: team.id } });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Downloads (self-hosted AC resources) ---------------------------------
+// The admin drops big files into backend/downloads/ on the server, then
+// registers each here with its metadata. `diskFiles` surfaces what's actually
+// on disk (registered or not) so the admin can pick a file and spot orphans.
+
+// GET /api/admin/downloads -> { downloads: [...], diskFiles: [...] }
+router.get("/downloads", async (req, res, next) => {
+  try {
+    const rows = await dbListDownloads(prisma);
+    const downloads = rows.map((r) => {
+      const st = statFile(r.fileName);
+      return {
+        ...shapeDownload(r),
+        fileExists: r.externalUrl ? true : st.exists,
+        size: st.size,
+        sizeText: fmtSize(st.size),
+      };
+    });
+    const registered = new Set(downloads.map((d) => d.fileName).filter(Boolean));
+    const diskFiles = listDiskFiles().map((f) => ({ ...f, registered: registered.has(f.fileName) }));
+    res.json({ downloads, diskFiles });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/downloads -> create a catalogue entry.
+router.post("/downloads", async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    if (!b.title || !b.category) return res.status(400).json({ error: "Title and category are required" });
+    if (!b.fileName && !b.externalUrl) return res.status(400).json({ error: "Pick a file or give an external link" });
+    const created = await dbCreateDownload(prisma, b);
+    res.json({ ok: true, download: shapeDownload(created) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PATCH /api/admin/downloads/:id -> update (merges over the existing row).
+router.patch("/downloads/:id", async (req, res, next) => {
+  try {
+    const existing = await dbGetDownload(prisma, req.params.id);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    const merged = { ...shapeDownload(existing), ...(req.body || {}) };
+    const updated = await dbUpdateDownload(prisma, req.params.id, merged);
+    res.json({ ok: true, download: shapeDownload(updated) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/downloads/:id -> remove the catalogue entry (leaves the
+// file on disk untouched, so this is non-destructive to data).
+router.delete("/downloads/:id", async (req, res, next) => {
+  try {
+    await dbDeleteDownload(prisma, req.params.id);
     res.json({ ok: true });
   } catch (e) {
     next(e);

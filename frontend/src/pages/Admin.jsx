@@ -5,6 +5,8 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { PageHeader, ErrorBox, Notice, CardHead } from "../components/ui.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
+import AdminRatings from "../components/AdminRatings.jsx";
+import AdminDownloads from "../components/AdminDownloads.jsx";
 import RacePreview from "../components/RacePreview.jsx";
 import { SOCIAL_META } from "../components/SocialLinks.jsx";
 import { fmtTimeCell } from "../utils/raceDuration.js";
@@ -14,10 +16,12 @@ const TABS = [
   { id: "teams", label: "Teams" },
   { id: "import", label: "Import Race" },
   { id: "edit", label: "Edit Results" },
+  { id: "ratings", label: "Ratings" },
   { id: "discord", label: "Discord & Events" },
   { id: "market", label: "Driver Market" },
   { id: "drivers", label: "Drivers" },
   { id: "social", label: "Social Links" },
+  { id: "downloads", label: "Downloads" },
   { id: "pin", label: "Change PIN" },
 ];
 
@@ -96,10 +100,12 @@ export default function Admin() {
         {tab === "teams" && <Teams />}
         {tab === "import" && <AdminImport />}
         {tab === "edit" && <EditResults />}
+        {tab === "ratings" && <AdminRatings />}
         {tab === "discord" && <DiscordEvents />}
         {tab === "market" && <MarketAdmin />}
         {tab === "drivers" && <Drivers />}
         {tab === "social" && <SocialAdmin />}
+        {tab === "downloads" && <AdminDownloads />}
         {tab === "pin" && <ChangePin />}
       </div>
     </div>

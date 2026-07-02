@@ -11,6 +11,15 @@ export function setToken(t) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+// Absolute URL for an API path, honouring VITE_API_BASE. Needed for direct
+// browser navigations (e.g. file downloads) where a bare "/api/..." path would
+// otherwise resolve against the frontend origin — fine when the frontend and API
+// share an origin (the default: Vite proxy / reverse proxy), but wrong if the API
+// is hosted on a separate origin.
+export function withApiBase(path) {
+  return `${BASE}${path}`;
+}
+
 const USER_TOKEN_KEY = "nabs_user_token";
 
 // Where Discord should send the user back after login — always the current host
@@ -74,6 +83,7 @@ export const api = {
   // public (season-scoped reads honour the selected season)
   driverStandings: () => request(`/standings/drivers${seasonQ()}`),
   driverProfile: (id) => request(`/drivers/${id}/profile`),
+  driverRating: (id) => request(`/drivers/${id}/rating`),
   t1Standings: () => request(`/standings/constructors/t1${seasonQ()}`),
   t2Standings: () => request(`/standings/constructors/t2${seasonQ()}`),
   races: () => request(`/races${seasonQ()}`),
@@ -145,6 +155,9 @@ export const api = {
   // Live "what would change" preview for unsaved results (no DB writes).
   previewRace: (body) =>
     request("/admin/races/preview", { method: "POST", body: { ...body, season: getSelectedSeason() }, auth: true }),
+  // Driver ratings with tunable weights — powers the admin ratings panel.
+  ratingsPreview: (weights) =>
+    request("/admin/ratings/preview", { method: "POST", body: { weights, season: getSelectedSeason() }, auth: true }),
   createDriver: (body) => request("/admin/drivers", { method: "POST", body, auth: true }),
   updateDriver: (id, body) => request(`/admin/drivers/${id}`, { method: "PUT", body, auth: true }),
   changePin: (newPin) =>
@@ -173,6 +186,18 @@ export const api = {
     fd.append("file", file);
     return request(`/admin/teams/${id}/logo`, { method: "POST", body: fd, auth: true, form: true });
   },
+
+  // downloads — member-only catalogue (self-hosted AC files)
+  downloads: () => request("/downloads", { userAuth: true }),
+  // Exchange the session for a short-lived download URL, then let the browser
+  // fetch the file directly (so big files stream with resume support).
+  downloadTicket: (id) => request(`/downloads/${id}/ticket`, { method: "POST", userAuth: true }),
+
+  // downloads (admin)
+  adminDownloads: () => request("/admin/downloads", { auth: true }),
+  createDownload: (body) => request("/admin/downloads", { method: "POST", body, auth: true }),
+  updateDownload: (id, body) => request(`/admin/downloads/${id}`, { method: "PATCH", body, auth: true }),
+  deleteDownload: (id) => request(`/admin/downloads/${id}`, { method: "DELETE", auth: true }),
 
   // season-scoped reads by explicit season number (used by the admin editor)
   teamsForSeason: (n) => request(`/teams?season=${n}`),
