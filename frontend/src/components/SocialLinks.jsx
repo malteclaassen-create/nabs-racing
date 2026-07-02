@@ -37,13 +37,28 @@ export function SocialIcon({ name, className = "h-5 w-5" }) {
   );
 }
 
-// Fetch the configured social links once (cached by the consuming page).
+// Fetch the configured social links once per page load. Half a dozen widgets
+// (nav, footer, hero, sign-up cards) all want these, so share one in-flight
+// promise instead of firing one request per component instance.
+let socialPromise = null;
 export function useSocial() {
-  return useApi(useCallback(() => api.socialLinks(), []));
+  return useApi(
+    useCallback(() => {
+      if (!socialPromise) {
+        socialPromise = api.socialLinks().catch((e) => {
+          socialPromise = null; // let a later mount retry after a failure
+          throw e;
+        });
+      }
+      return socialPromise;
+    }, [])
+  );
 }
 
 // A row of icon links for whichever platforms are configured (others hidden).
-export default function SocialLinks({ links, className = "" }) {
+// `baseClass` sets the resting icon colour so the same component reads well on
+// both light cards (default) and dark hero panels (e.g. "text-white/60").
+export default function SocialLinks({ links, className = "", baseClass = "text-light" }) {
   if (!links) return null;
   const present = SOCIAL_META.filter((m) => links[m.key]);
   if (present.length === 0) return null;
@@ -57,7 +72,7 @@ export default function SocialLinks({ links, className = "" }) {
           rel="noopener noreferrer"
           aria-label={m.label}
           title={m.label}
-          className={`text-light transition ${m.hover}`}
+          className={`${baseClass} transition ${m.hover}`}
         >
           <SocialIcon name={m.key} />
         </a>

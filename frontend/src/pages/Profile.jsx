@@ -7,7 +7,30 @@ import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CountUp } from 
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { COUNTRIES } from "../data/countries.js";
-import { SocialIcon } from "../components/SocialLinks.jsx";
+import SocialLinks, { SocialIcon, SOCIAL_META } from "../components/SocialLinks.jsx";
+
+// The platforms a driver can self-link (Discord is their login identity, not a
+// link). Pulled from the shared SOCIAL_META so icons/labels stay in sync.
+const SOCIAL_FIELDS = SOCIAL_META.filter((m) => m.key !== "discord");
+const SOCIAL_PLACEHOLDER = {
+  twitch: "https://twitch.tv/yourname",
+  youtube: "https://youtube.com/@yourname",
+  instagram: "https://instagram.com/yourname",
+  tiktok: "https://tiktok.com/@yourname",
+  x: "https://x.com/yourname",
+};
+
+// Tidy a { platform: value } map into full URLs: drop blanks, and prefix a bare
+// host (e.g. "twitch.tv/foo") with https:// so the backend accepts it.
+function normalizeSocials(map) {
+  const out = {};
+  for (const [k, raw] of Object.entries(map)) {
+    const v = (raw || "").trim();
+    if (!v) continue;
+    out[k] = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // /profile — login when logged out, the driver's own editable profile when in.
@@ -88,6 +111,7 @@ function ProfileEditor({ me, onSaved }) {
   const [number, setNumber] = useState(me.number ?? "");
   const [country, setCountry] = useState(me.country || "");
   const [bio, setBio] = useState(me.bio || "");
+  const [socials, setSocials] = useState(me.socials || {});
 
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -131,7 +155,8 @@ function ProfileEditor({ me, onSaved }) {
     setError(null);
     setSaving(true);
     try {
-      await api.updateMyProfile({ name: name.trim(), number, bio });
+      const cleanedSocials = normalizeSocials(socials);
+      await api.updateMyProfile({ name: name.trim(), number, bio, socials: cleanedSocials });
       await api.setMyCountry(country);
       // Keep the nav chip / stored identity in sync with the new display name.
       const token = getUserToken();
@@ -140,7 +165,7 @@ function ProfileEditor({ me, onSaved }) {
       })();
       if (token && stored) saveUser(token, { ...stored, driverName: name.trim(), avatarUrl: photoUrl });
       setSavedAt(Date.now());
-      onSaved?.({ name: name.trim(), photoUrl });
+      onSaved?.({ name: name.trim(), photoUrl, socials: cleanedSocials });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -225,6 +250,35 @@ function ProfileEditor({ me, onSaved }) {
           </Field>
         </div>
 
+        {/* Social links — optional, shown on the public driver profile. */}
+        <div className="border-t border-border pt-5">
+          <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Social links</span>
+            <span className="text-xs text-light">Optional · shown on your public profile.</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {SOCIAL_FIELDS.map((m) => (
+              <label key={m.key} className="flex items-center gap-2.5">
+                <span
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface2 text-medium ring-1 ring-border"
+                  title={m.label}
+                >
+                  <SocialIcon name={m.key} className="h-[18px] w-[18px]" />
+                </span>
+                <input
+                  className="input"
+                  type="url"
+                  inputMode="url"
+                  value={socials[m.key] || ""}
+                  onChange={(e) => setSocials((s) => ({ ...s, [m.key]: e.target.value }))}
+                  placeholder={SOCIAL_PLACEHOLDER[m.key]}
+                  aria-label={`${m.label} link`}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
           <button type="button" onClick={save} disabled={saving} className="btn-primary">
             {saving ? "Saving…" : "Save changes"}
@@ -293,7 +347,7 @@ function ProfileStats({ driverId }) {
             <span className="text-light">No upcoming races scheduled.</span>
           )}
         </div>
-        <Link to="/races" className="btn-secondary">
+        <Link to={next ? `/races?race=${next.id}` : "/races"} className="btn-secondary">
           {next ? "Set attendance" : "Race calendar"}
         </Link>
       </div>
@@ -301,10 +355,46 @@ function ProfileStats({ driverId }) {
   );
 }
 
+// Small "share my profile" button — copies the public profile URL to the
+// clipboard and flips to a confirmation for a moment.
+function CopyProfileLink({ driverId }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    const url = `${window.location.origin}/drivers/${driverId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt("Copy your profile link:", url);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/5 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
+    >
+      {copied ? (
+        <>
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg>
+          Copied
+        </>
+      ) : (
+        <>
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 007.07 0l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.07 0l-3 3a5 5 0 007.07 7.07l1.71-1.71" /></svg>
+          Copy link
+        </>
+      )}
+    </button>
+  );
+}
+
 function MyProfile() {
   const { user, logout } = useAuth();
   const me = useApi(useCallback(() => api.me(), []));
   const [displayName, setDisplayName] = useState(null);
+  const [liveSocials, setLiveSocials] = useState(null);
 
   if (me.loading) return <Spinner label="Loading your profile…" />;
   if (me.error) return <ErrorBox message={me.error} />;
@@ -330,6 +420,7 @@ function MyProfile() {
   const d = me.data;
   const color = d.team?.color || "#888";
   const name = displayName || d.name;
+  const socials = liveSocials || d.socials || {};
 
   return (
     <div className="space-y-6">
@@ -338,7 +429,9 @@ function MyProfile() {
       {/* Hero */}
       <div className="relative overflow-hidden rounded-2xl bg-ink text-white shadow-lg">
         <span className="absolute inset-x-0 top-0 z-10 h-1.5" style={{ backgroundColor: color }} />
+        {/* layered "speed" backdrop — matches the public driver profile hero */}
         <div className="absolute inset-0" style={{ background: `radial-gradient(120% 140% at 88% 10%, ${color}55, transparent 55%)` }} />
+        <div className="absolute inset-y-0 right-0 w-2/3" style={{ background: `repeating-linear-gradient(115deg, transparent 0 22px, ${color}14 22px 25px)` }} />
         <div className="absolute inset-0 bg-gradient-to-r from-ink via-ink/85 to-transparent" />
         <div className="relative flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:gap-7 sm:p-8">
           <DriverAvatar name={name} photoUrl={d.photoUrl} color={color} size={104} className="text-3xl ring-4 ring-white/10" />
@@ -364,17 +457,25 @@ function MyProfile() {
               <span className="text-sm">{d.discordName}</span>
             </div>
             {d.bio && <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/80">{d.bio}</p>}
+            <SocialLinks links={socials} baseClass="text-white/55" className="mt-3.5" />
           </div>
-          <div className="shrink-0 sm:self-start">
+          <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col sm:self-start">
             <Link to={`/drivers/${d.driverId}`} className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/5 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-white/15">
               Public profile →
             </Link>
+            <CopyProfileLink driverId={d.driverId} />
           </div>
         </div>
       </div>
 
       <ProfileStats driverId={d.driverId} />
-      <ProfileEditor me={d} onSaved={({ name: n }) => setDisplayName(n)} />
+      <ProfileEditor
+        me={d}
+        onSaved={({ name: n, socials: sc }) => {
+          setDisplayName(n);
+          setLiveSocials(sc);
+        }}
+      />
     </div>
   );
 }

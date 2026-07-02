@@ -84,6 +84,9 @@ model Driver {
   // login: a short "about me" blurb and an optional racing number (0-999).
   bio           String?
   number        Int?
+  // Per-driver social links, edited on /profile. JSON object keyed by platform
+  // (twitch/youtube/instagram/tiktok/x) -> full URL; null/absent when unset.
+  socials       String?
   results     RaceResult[]
   rsvps       RaceRsvp[]
   // Driver Market: seats this driver has offered, seats this (reserve) driver

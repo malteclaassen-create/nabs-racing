@@ -8,6 +8,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
 import { optionalUser } from "../middleware/auth.js";
+import { parseSocials, serializeSocials } from "../lib/socials.js";
 
 const router = Router();
 router.use(optionalUser);
@@ -54,6 +55,7 @@ router.get("/", async (req, res, next) => {
       country: driver.country || "",
       bio: driver.bio || "",
       number: driver.number ?? null,
+      socials: parseSocials(driver.socials),
       tier: driver.tier,
       // Custom upload wins over the Discord avatar; hasCustomPhoto drives the
       // "reset to Discord picture" button on the profile page.
@@ -72,8 +74,9 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-// PUT /api/me/profile { name?, bio?, number? } -> edit own display fields.
-// `name` is the driver's display name shown across the whole site.
+// PUT /api/me/profile { name?, bio?, number?, socials? } -> edit own display
+// fields. `name` is the driver's display name shown across the whole site;
+// `socials` is a { platform: url } object (see lib/socials.js).
 router.put("/profile", async (req, res, next) => {
   try {
     const driverId = requireDriver(req, res);
@@ -103,12 +106,19 @@ router.put("/profile", async (req, res, next) => {
         data.number = n;
       }
     }
+    if (req.body?.socials !== undefined) {
+      try {
+        data.socials = serializeSocials(req.body.socials);
+      } catch (err) {
+        return res.status(400).json({ error: err.message });
+      }
+    }
     const driver = await prisma.driver.update({
       where: { id: driverId },
       data,
-      select: { id: true, name: true, bio: true, number: true },
+      select: { id: true, name: true, bio: true, number: true, socials: true },
     });
-    res.json({ ok: true, ...driver, bio: driver.bio || "" });
+    res.json({ ok: true, ...driver, bio: driver.bio || "", socials: parseSocials(driver.socials) });
   } catch (e) {
     next(e);
   }
