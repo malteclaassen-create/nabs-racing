@@ -7,10 +7,19 @@ import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 
 const STATUS_UI = {
-  ACCEPTED: { label: "✅ Accept", title: "Accepted", btn: "bg-green-600 hover:bg-green-700" },
-  DECLINED: { label: "❌ Decline", title: "Declined", btn: "bg-red-600 hover:bg-red-700" },
-  TENTATIVE: { label: "❓ Tentative", title: "Tentative", btn: "bg-amber-500 hover:bg-amber-600" },
+  ACCEPTED: { label: "Accept", title: "Accepted", btn: "bg-green-600 hover:bg-green-700", icon: "M4.5 12.5l5 5L19.5 7" },
+  DECLINED: { label: "Decline", title: "Declined", btn: "bg-red-600 hover:bg-red-700", icon: "M6 6l12 12M18 6L6 18" },
+  TENTATIVE: { label: "Tentative", title: "Tentative", btn: "bg-amber-500 hover:bg-amber-600", icon: "M9 9.2a3 3 0 115.4 1.8c-.8 1-2.4 1.5-2.4 3M12 17.5h.01" },
 };
+
+function StatusIcon({ d }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
 
 function fmtDate(d) {
   if (!d) return "Date TBA";
@@ -57,10 +66,11 @@ export default function RaceSignupCard({
                 key={status}
                 onClick={() => onSetStatus(ev.id, status)}
                 disabled={busy === `${ev.id}:${status}`}
-                className={`rounded-lg px-3 py-2 text-sm font-semibold text-white transition disabled:opacity-50 ${ui.btn} ${
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-white transition disabled:opacity-50 ${ui.btn} ${
                   myStatus === status ? "ring-2 ring-offset-2 ring-dark" : ""
                 }`}
               >
+                <StatusIcon d={ui.icon} />
                 {ui.label}
               </button>
             ))}

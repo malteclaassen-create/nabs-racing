@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, MEDAL, DriverAvatar, CountUp } from "../components/ui.jsx";
+import { ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, MEDAL_TEXT, DriverAvatar, CountUp } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import PointsChart from "../components/PointsChart.jsx";
@@ -45,11 +45,11 @@ function Stat({ icon, label, value, sub, accent, index = 0 }) {
   );
 }
 
-// Per-round points as vertical bars in the team colour. Dropped rounds (one of
-// the 3 lowest, not counted) are faded + struck; the best-scoring round is
-// ringed. Upcoming rounds show an empty stub.
-function RoundBars({ raceNumbers, perRace, droppedRounds, raceByNumber, color }) {
-  const dropped = new Set(droppedRounds || []);
+// Per-round points as vertical bars in the team colour. Points scored in a
+// driver's own dropped rounds don't count for the team: that share is the
+// faded top of the bar (a fully dropped round is all faded + struck label).
+// The best-scoring round is ringed. Upcoming rounds show an empty stub.
+function RoundBars({ raceNumbers, perRace, droppedPerRace, raceByNumber, color }) {
   const scored = raceNumbers.map((n) => perRace?.[n] ?? 0);
   const maxPts = Math.max(1, ...scored);
   const bestRound = raceNumbers.reduce(
@@ -64,14 +64,22 @@ function RoundBars({ raceNumbers, perRace, droppedRounds, raceByNumber, color })
           const race = raceByNumber.get(n);
           const done = race?.isCompleted;
           const pts = perRace?.[n] ?? 0;
-          const isDropped = dropped.has(n);
+          const droppedPts = Math.min(pts, droppedPerRace?.[n] || 0);
+          const counted = pts - droppedPts;
+          const allDropped = pts > 0 && counted === 0;
           const isBest = n === bestRound && pts > 0;
           const circ = race ? circuitFor(race.track) : null;
           const h = done ? Math.max(4, Math.round((pts / maxPts) * 120)) : 0;
+          // Counting share solid, dropped share faded (hard-stop gradient from
+          // the bottom, so the faded part sits on top of the bar).
+          const countedPct = pts > 0 ? Math.round((counted / pts) * 100) : 100;
           return (
             <div key={n} className="flex flex-1 flex-col items-center justify-end gap-1.5">
-              <span className={`font-mono text-[11px] font-bold tabular-nums ${isDropped ? "text-faint line-through" : "text-dark"}`}>
-                {done ? pts : ""}
+              <span className={`font-mono text-[11px] font-bold tabular-nums ${allDropped ? "text-faint line-through" : "text-dark"}`}>
+                {done ? (allDropped ? pts : counted) : ""}
+                {done && droppedPts > 0 && !allDropped ? (
+                  <span className="ml-0.5 text-[9px] font-semibold text-faint line-through">{pts}</span>
+                ) : null}
               </span>
               <div className="flex w-full items-end justify-center" style={{ height: 120 }}>
                 {done ? (
@@ -80,18 +88,23 @@ function RoundBars({ raceNumbers, perRace, droppedRounds, raceByNumber, color })
                     style={{
                       "--h": `${h}px`,
                       "--i": i,
-                      backgroundColor: color,
-                      opacity: isDropped ? 0.3 : 1,
+                      background:
+                        droppedPts > 0 && !allDropped
+                          ? `linear-gradient(to top, ${color} ${countedPct}%, ${color}4D ${countedPct}%)`
+                          : color,
+                      opacity: allDropped ? 0.3 : 1,
                       outline: isBest ? "2px solid var(--c-text)" : undefined,
                       outlineOffset: isBest ? "1px" : undefined,
                     }}
-                    title={`R${n} ${race?.track || ""} — ${pts} pts${isDropped ? " (dropped)" : ""}`}
+                    title={`R${n} ${race?.track || ""} · ${pts} pts${
+                      droppedPts > 0 ? ` (${droppedPts} dropped with a driver's lowest rounds, ${counted} count)` : ""
+                    }`}
                   />
                 ) : (
                   <div
                     className="w-full max-w-[26px] rounded-t-md border border-dashed border-border"
                     style={{ height: 12 }}
-                    title={`R${n} ${race?.track || ""} — upcoming`}
+                    title={`R${n} ${race?.track || ""} · upcoming`}
                   />
                 )}
               </div>
@@ -138,6 +151,7 @@ export default function TeamProfile() {
   const standingsSet = team.tier === 1 ? t1 : team.tier === 2 ? t2 : null;
   const teamRow = standingsSet?.standings.find((r) => r.teamId === id) || null;
   const raceNumbers = standingsSet?.raceNumbers || [];
+  const dropWorst = standingsSet?.dropWorst ?? 3;
   const raceByNumber = new Map(
     races.filter((r) => !r.isSpecialEvent && r.number != null).map((r) => [r.number, r])
   );
@@ -213,7 +227,7 @@ export default function TeamProfile() {
         <div className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Stat index={0} icon="hash" label="Championship" value={`P${teamRow.position}`} sub={`of ${standingsSet.standings.length} teams`} />
           <Stat index={1} icon="chart" label="Points" value={teamRow.total} sub={`${TIER_LABEL[team.tier]} table`} accent={color} />
-          <Stat index={2} icon="trophy" label="Race Wins" value={wins} sub="by team drivers" accent={wins ? MEDAL[0] : undefined} />
+          <Stat index={2} icon="trophy" label="Race Wins" value={wins} sub="by team drivers" accent={wins ? MEDAL_TEXT[0] : undefined} />
           <Stat index={3} icon="podium" label="Podiums" value={podiums} sub="P1–P3 finishes" />
           <Stat index={4} icon="flagChk" label="Best Round" value={bestRoundPts || "–"} sub="points in one race" />
           <Stat index={5} icon="hash" label="Rounds Scored" value={roundsScored} sub={`of ${raceNumbers.length}`} />
@@ -258,17 +272,20 @@ export default function TeamProfile() {
               <RoundBars
                 raceNumbers={raceNumbers}
                 perRace={teamRow.perRace}
-                droppedRounds={teamRow.droppedRounds}
+                droppedPerRace={teamRow.droppedPerRace}
                 raceByNumber={raceByNumber}
                 color={color}
               />
             ) : (
               <div className="py-6 text-sm text-light">No scored rounds yet.</div>
             )}
-            <p className="mt-4 border-t border-border pt-3 font-mono text-[11px] leading-relaxed text-light">
-              <span className="text-faint line-through decoration-2">Faded</span> bars are dropped rounds — each
-              team&rsquo;s 3 lowest don&rsquo;t count toward the total (best 9 of 12).
-            </p>
+            {dropWorst > 0 && raceNumbers.length > 0 && (
+              <p className="mt-4 border-t border-border pt-3 font-mono text-[11px] leading-relaxed text-light">
+                <span className="text-faint line-through decoration-2">Faded</span> bar segments are dropped: each
+                driver&rsquo;s {dropWorst} lowest-scoring round{dropWorst === 1 ? " doesn't" : "s don't"} count for the
+                team they drove for that round, so a round can count partially.
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -279,7 +296,7 @@ export default function TeamProfile() {
           <h2 className="mb-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
             Championship Progression
           </h2>
-          <PointsChart standings={[teamRow]} completed={completedNumbers} allRounds={raceNumbers} />
+          <PointsChart standings={[teamRow]} completed={completedNumbers} allRounds={raceNumbers} dropWorst={dropWorst} />
         </div>
       )}
 

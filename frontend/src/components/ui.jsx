@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { useInView } from "../hooks/motion.js";
 
-export const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"]; // gold / silver / bronze
+export const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"]; // gold / silver / bronze (filled chips)
+// Medal tones for text/borders on the card background — theme-aware (deeper in
+// light mode so gold/silver stay readable on white; see --medal-* in index.css).
+export const MEDAL_TEXT = ["var(--medal-1)", "var(--medal-2)", "var(--medal-3)"];
 
 // Number that counts up from 0 to `end` the first time it scrolls into view.
 // Falls straight to the final value when motion is reduced. `prefix`/`suffix`
@@ -216,7 +219,7 @@ export function CardHead({ eyebrow, title, children }) {
     <div className="mb-4 flex items-start justify-between gap-3">
       <div>
         {eyebrow && (
-          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-brand">{eyebrow}</div>
+          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">{eyebrow}</div>
         )}
         <h3 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{title}</h3>
       </div>
@@ -237,7 +240,7 @@ export function PageHeader({ index, eyebrow, title, subtitle, right }) {
           )}
           <div>
             {eyebrow && (
-              <div className="font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-brand">
+              <div className="font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow">
                 {eyebrow}
               </div>
             )}
@@ -259,7 +262,7 @@ export function SectionHeading({ eyebrow, title, right }) {
     <div className="mb-4 flex items-end justify-between gap-4">
       <div>
         {eyebrow && (
-          <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-brand">
+          <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">
             {eyebrow}
           </div>
         )}

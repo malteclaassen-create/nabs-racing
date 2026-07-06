@@ -31,14 +31,18 @@ function useScrollEdges() {
 }
 
 // Per-race points cell with status colouring.
-// `dropped` = this round is one of the competitor's 3 lowest and doesn't count
-// toward the total -> shown struck through and dimmed.
-function RaceCell({ cell, dropped }) {
+// `dropped` = this round is one of the driver's lowest and doesn't count
+// toward the total (season drop rule) -> shown struck through and dimmed.
+// `droppedPts` (constructor rows) = the share of the round's points scored in
+// one of a driver's own dropped rounds; it doesn't count for the team.
+function RaceCell({ cell, dropped, droppedPts = 0 }) {
   const base = "px-2.5 py-3 text-center font-mono";
   if (cell == null) return <td className={`${base} text-sm text-faint`}>·</td>;
 
-  // A dropped round renders the same way whatever its content: struck + dim.
-  if (dropped) {
+  // A fully dropped round renders the same way whatever its content: struck +
+  // dim. For a team that's the case when every point that round came from a
+  // driver's dropped round.
+  if (dropped || (typeof cell === "number" && cell > 0 && droppedPts >= cell)) {
     const label =
       typeof cell === "number"
         ? cell
@@ -47,7 +51,7 @@ function RaceCell({ cell, dropped }) {
           : cell.points;
     return (
       <td
-        title="Dropped — one of the 3 lowest rounds, not counted toward the total"
+        title="Dropped: scored in the lowest rounds, not counted toward the total"
         className={`${base} text-sm text-faint line-through decoration-2`}
       >
         {label || 0}
@@ -57,6 +61,20 @@ function RaceCell({ cell, dropped }) {
 
   // driver standings: cell = { points, status }; constructor: cell = number
   if (typeof cell === "number") {
+    // Partially dropped team round: one driver's points were scored in one of
+    // that driver's dropped rounds -> only the teammate's share counts. Show
+    // the counting share big, the full round haul small + struck.
+    if (droppedPts > 0 && droppedPts < cell) {
+      return (
+        <td
+          title={`${cell} scored: ${droppedPts} fell in a driver's dropped rounds, ${cell - droppedPts} count`}
+          className={`${base} whitespace-nowrap text-sm text-medium`}
+        >
+          {cell - droppedPts}
+          <span className="ml-1 align-middle text-[10px] text-faint line-through decoration-2">{cell}</span>
+        </td>
+      );
+    }
     return <td className={`${base} text-sm text-medium`}>{cell || <span className="text-faint">0</span>}</td>;
   }
 
@@ -68,9 +86,13 @@ function RaceCell({ cell, dropped }) {
   return <td className={`${base} text-sm text-medium`}>{points || <span className="text-faint">0</span>}</td>;
 }
 
-export default function StandingsTable({ variant, raceNumbers, rows }) {
+export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false }) {
   const isDriver = variant === "driver";
   const [scrollRef, edge] = useScrollEdges();
+  // Archive seasons: totals are the league's official final sheet, while the
+  // round columns are reconstructed from the era's result posts — the two can
+  // legitimately differ (penalties, bonus points, gaps in the old data).
+  const showOfficialNote = officialTotals && raceNumbers.length > 0;
 
   // Shadows on the frozen columns, only while there's hidden content to that
   // side — doubles as the "there's more to scroll" hint for the round matrix.
@@ -100,12 +122,15 @@ export default function StandingsTable({ variant, raceNumbers, rows }) {
               </th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((row) => {
+          {/* cascade: rows rise in one after another, top to bottom, exactly
+              like the driver standings list. --i drives the per-row stagger. */}
+          <tbody className="cascade">
+            {rows.map((row, i) => {
               const droppedSet = new Set(row.droppedRounds || []);
               return (
                 <tr
                   key={row.driverId || row.teamId}
+                  style={{ "--i": Math.min(i, 16) }}
                   className="group border-b border-border last:border-0 transition hover:bg-surface2"
                 >
                   <td className="sticky left-0 z-10 px-3 py-3 text-center transition sticky-cell">
@@ -119,7 +144,7 @@ export default function StandingsTable({ variant, raceNumbers, rows }) {
                           className="h-7 w-1.5 shrink-0 rounded-full"
                           style={{ backgroundColor: row.team.color }}
                         />
-                        <span className="font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand">
+                        <span className="font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
                           {row.name}
                         </span>
                         {!row.isActive && (
@@ -131,7 +156,7 @@ export default function StandingsTable({ variant, raceNumbers, rows }) {
                     <td className={`sticky left-14 z-10 px-3 py-3 transition sticky-cell ${leftShadow}`}>
                       <Link to={`/teams/${row.teamId}`} className="group/name flex items-center gap-3">
                         <TeamLogo id={row.teamId} name={row.name} color={row.color} logoUrl={row.logoUrl} size={28} />
-                        <span className="font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand">
+                        <span className="font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
                           {row.name}
                         </span>
                       </Link>
@@ -161,10 +186,15 @@ export default function StandingsTable({ variant, raceNumbers, rows }) {
                   )}
 
                   {raceNumbers.map((n) => (
-                    <RaceCell key={n} cell={row.perRace[n] ?? null} dropped={droppedSet.has(n)} />
+                    <RaceCell
+                      key={n}
+                      cell={row.perRace[n] ?? null}
+                      dropped={droppedSet.has(n)}
+                      droppedPts={row.droppedPerRace?.[n] || 0}
+                    />
                   ))}
 
-                  <td className={`sticky right-0 z-10 border-l border-border px-4 py-3 text-right font-mono text-base font-bold tabular-nums text-dark transition sticky-cell ${rightShadow}`}>
+                  <td className={`sticky right-0 z-10 border-l border-border px-4 py-3 text-right font-mono text-lg font-bold tabular-nums text-dark transition sticky-cell sm:text-xl ${rightShadow}`}>
                     {row.total}
                   </td>
                 </tr>
@@ -173,10 +203,34 @@ export default function StandingsTable({ variant, raceNumbers, rows }) {
           </tbody>
         </table>
       </div>
-      <p className="border-t border-border px-4 py-2.5 font-mono text-[11px] leading-relaxed text-light">
-        <span className="text-faint line-through decoration-2">Struck-through</span> rounds are dropped — each{" "}
-        {isDriver ? "driver" : "team"}&rsquo;s 3 lowest-scoring rounds don&rsquo;t count toward the total (best 9 of 12).
-      </p>
+      {(showOfficialNote || (dropWorst > 0 && raceNumbers.length > 0)) && (
+        <div className="space-y-1 border-t border-border px-4 py-2.5 font-mono text-[11px] leading-relaxed text-light">
+          {dropWorst > 0 && raceNumbers.length > 0 && (
+            <p>
+              {isDriver ? (
+                <>
+                  <span className="text-faint line-through decoration-2">Struck-through</span> rounds are dropped: each
+                  driver&rsquo;s {dropWorst} lowest-scoring round{dropWorst === 1 ? " doesn't" : "s don't"} count toward the
+                  total{raceNumbers.length > dropWorst && <> (best {raceNumbers.length - dropWorst} of {raceNumbers.length})</>}.
+                </>
+              ) : (
+                <>
+                  <span className="text-faint line-through decoration-2">Struck-through</span> points are dropped: each
+                  driver&rsquo;s {dropWorst} lowest-scoring round{dropWorst === 1 ? " doesn't" : "s don't"} count for the team
+                  they drove for that round, so a round can count partially (the teammate&rsquo;s share still scores).
+                </>
+              )}
+            </p>
+          )}
+          {showOfficialNote && (
+            <p>
+              <span className="font-bold uppercase text-medium">Pts = official final standings.</span> The round columns
+              are reconstructed from the era&rsquo;s result posts. Penalties, bonus points and gaps in the old records
+              mean they may not add up to the official totals exactly.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

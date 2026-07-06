@@ -33,6 +33,20 @@ model Season {
   name      String // display label, e.g. "Season 7"
   game      String? // e.g. "F1 2007 · Assetto Corsa"
   isActive  Boolean  @default(false)
+  // Scoring rules, admin-editable per season (migration season_scoring):
+  //   dropWorst   = how many of a competitor's lowest-scoring rounds are dropped
+  //                 from season totals (0 = every round counts).
+  //   pointsTable = JSON array of points for P1..Pn (e.g. "[35,30,25,...]");
+  //                 null = the league default table in pointsCalculator.js.
+  dropWorst   Int     @default(3)
+  pointsTable String?
+  // Official final standings for archived seasons, imported straight from the
+  // old league sheets/Discord posts (migration season_final_standings). JSON:
+  //   { "drivers":[{driverId,points}], "teams":[{teamId,points}] }
+  // When set, these totals & their array order are AUTHORITATIVE: the standings
+  // service uses them verbatim instead of the values it would compute from the
+  // race results (per-race data, if any, still renders). null = compute as usual.
+  finalStandings String?
   createdAt DateTime @default(now())
 
   teams   Team[]
@@ -234,6 +248,25 @@ model Setting {
   value String
 }
 
+// One row per Discord account that has ever logged in on the site — including
+// people the name-matcher could NOT link to a Driver. Powers the admin
+// "Members" tab: see who's registered, link them to a roster driver by hand,
+// and ban accounts (a banned account can't log in and existing sessions stop
+// working). Like Download, this table is managed via raw SQL (the running dev
+// server locks the generated Prisma client on Windows) — see
+// backend/src/lib/members.js, which must be kept in sync with this model.
+model MemberAccount {
+  discordId    String   @id
+  username     String // discord username (login name)
+  displayName  String? // discord global display name
+  avatarUrl    String?
+  banned       Boolean  @default(false)
+  banReason    String?
+  firstLoginAt DateTime @default(now())
+  lastLoginAt  DateTime @default(now())
+  loginCount   Int      @default(1)
+}
+
 // Member-only download catalogue (self-hosted Assetto Corsa resources: tracks,
 // safety car, CSP, Real Penalty, the F1 car, replays…). The large binaries live
 // on the host's disk under backend/downloads/; this row only holds the metadata
@@ -244,6 +277,7 @@ model Download {
   id          String   @id @default(cuid())
   title       String
   category    String
+  folderId    String?
   description String?
   version     String?
   installNote String?
@@ -252,4 +286,15 @@ model Download {
   sortOrder   Int      @default(0)
   published   Boolean  @default(true)
   createdAt   DateTime @default(now())
+}
+
+// Admin-created folders that group the downloads on the public page (e.g.
+// "Tracks", "Cars", one folder per event...). Managed via raw SQL like the
+// Download table itself (see ensureDownloadTables in lib/downloads.js);
+// deleting a folder unfiles its downloads instead of deleting them.
+model DownloadFolder {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  sortOrder   Int     @default(0)
 }

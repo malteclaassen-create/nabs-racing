@@ -8,6 +8,8 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "seed": "node prisma/seed.js",
+    "import:archive": "node scripts/import-archive-season.mjs",
+    "archive:inventory": "node scripts/archive-emperor-inventory.mjs",
     "migrate": "prisma migrate dev --name init",
     "generate": "prisma generate",
     "db:reset": "prisma migrate reset --force",

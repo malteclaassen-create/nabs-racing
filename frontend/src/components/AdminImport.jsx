@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useSeason } from "../context/SeasonContext.jsx";
 import { Notice, CardHead } from "./ui.jsx";
 import RacePreview from "./RacePreview.jsx";
 import { canonicalTrack } from "../data/circuits.js";
@@ -17,6 +18,7 @@ function fmtRemote(r) {
 }
 
 export default function AdminImport({ onCommitted }) {
+  const { current: currentSeason } = useSeason();
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const remote = useApi(useCallback(() => api.remoteResults("RACE"), []));
   const drivers = useMemo(
@@ -129,12 +131,32 @@ export default function AdminImport({ onCommitted }) {
         totalTimeMs: r.totalTimeMs ?? null,
         contacts: r.contacts ?? null,
       }));
-      const res = await api.commitRace({
+      const body = {
         number: Number(meta.number),
         track: meta.track,
         date: meta.date || null,
+        // Save into the season the admin is editing (the season switcher),
+        // matching the "Editing season: …" banner above the form.
+        seasonId: currentSeason?.id,
         results,
-      });
+      };
+      let res;
+      try {
+        res = await api.commitRace(body);
+      } catch (err) {
+        // Overwrite guard: the round already has stored results. Ask, then
+        // commit again with the explicit overwrite flag (a DB backup is taken
+        // automatically right before the save).
+        if (err.status === 409 && err.data?.needsConfirm) {
+          if (!window.confirm(`${err.message}\n\nOverwrite the stored results?`)) {
+            setBusy(false);
+            return;
+          }
+          res = await api.commitRace({ ...body, overwrite: true });
+        } else {
+          throw err;
+        }
+      }
       setDone(`Round ${res.number} saved. Standings recalculated.`);
       setParsed(null);
       setRows([]);
@@ -174,7 +196,7 @@ export default function AdminImport({ onCommitted }) {
             <span className="pill bg-emerald-500/15 text-emerald-600">recommended · penalty-corrected</span>
           </div>
           <p className="mt-1 text-sm text-light">
-            Pull any finished race — current or past rounds — straight from NABS Server 1, no file
+            Pull any finished race, current or past rounds, straight from NABS Server 1. No file
             export needed.
           </p>
           {remote.error ? (
@@ -313,7 +335,7 @@ export default function AdminImport({ onCommitted }) {
                             value={r.driverId}
                             onChange={(e) => setRow(i, { driverId: e.target.value, subForTeamId: "", marketFor: null })}
                           >
-                            <option value="">— skip —</option>
+                            <option value="">Skip this row</option>
                             {drivers.map((d) => (
                               <option key={d.id} value={d.id}>
                                 {d.name} ({d.team.name})
@@ -342,7 +364,7 @@ export default function AdminImport({ onCommitted }) {
                             onChange={(e) => setRow(i, { subForTeamId: e.target.value })}
                           >
                             <option value="">
-                              {driver ? `Default · ${driver.team.name}` : "— map a driver first —"}
+                              {driver ? `Default · ${driver.team.name}` : "Map a driver first"}
                             </option>
                             {(teams || [])
                               .filter((t) => t.tier === 1 || t.tier === 2)

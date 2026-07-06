@@ -1,0 +1,26 @@
+{
+  "number": 0,
+  "name": "Season 0 (Vorlage)",
+  "game": "F1 20xx · Assetto Corsa",
+  "dropWorst": 0,
+  "pointsTable": null,
+  "teams": [
+    { "id": "team-a", "name": "Team A", "tier": 1, "color": "#E10600" },
+    { "id": "team-b", "name": "Team B", "tier": 1, "color": "#0090FF" }
+  ],
+  "drivers": [
+    { "id": "fahrer-eins", "name": "Fahrer Eins", "discord": "FahrerEins", "teamId": "team-a", "tier": 1 },
+    { "id": "fahrer-zwei", "name": "Fahrer Zwei", "discord": "FahrerZwei", "teamId": "team-b", "tier": 1 }
+  ],
+  "nameMap": {},
+  "finalStandings": {
+    "drivers": [
+      { "id": "fahrer-eins", "points": 120 },
+      { "id": "fahrer-zwei", "points": 95 }
+    ],
+    "teams": [
+      { "id": "team-a", "points": 120 },
+      { "id": "team-b", "points": 95 }
+    ]
+  }
+}

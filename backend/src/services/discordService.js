@@ -57,7 +57,7 @@ function buildEmbed(race, rsvps) {
   desc.push("Sign up on the NABS Racing website.");
 
   return {
-    title: `🏁 Round ${race.number} — ${race.track}`,
+    title: `🏁 Round ${race.number} · ${race.track}`,
     description: desc.join("\n"),
     color: 0xb91c1c,
     fields,

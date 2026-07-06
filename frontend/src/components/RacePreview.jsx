@@ -20,7 +20,7 @@ function TierTag({ tier }) {
     1: ["T1", "bg-sky-500/15 text-sky-600", "Scores in the Tier 1 constructors' table"],
     2: ["T2", "bg-violet-500/15 text-violet-600", "Scores in the Tier 2 table (re-ranked among Tier-2 cars)"],
   };
-  const [label, cls, title] = map[tier] || ["Res", "bg-slate-400/20 text-slate-500", "Reserve — scores only for the team it subs for"];
+  const [label, cls, title] = map[tier] || ["Res", "bg-slate-400/20 text-slate-500", "Reserve: scores only for the team it subs for"];
   return <span className={`pill ${cls}`} title={title}>{label}</span>;
 }
 
@@ -159,7 +159,7 @@ export default function RacePreview({ request }) {
           {/* This round's classification */}
           <div>
             <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
-              This round — final result {anyPenalty && <span className="text-brand">· time penalties applied</span>}
+              This round&rsquo;s final result {anyPenalty && <span className="text-brand">· time penalties applied</span>}
             </div>
             <div className="overflow-hidden rounded-lg border border-border">
               <table className="w-full text-sm">
@@ -206,7 +206,7 @@ export default function RacePreview({ request }) {
               </table>
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-light">
-              Final positions already include your time penalties — the field is re-sorted by race time + penalty
+              Final positions already include your time penalties. The field is re-sorted by race time + penalty
               seconds, so a penalised car drops behind everyone now ahead of it on time. Drivers score by final
               position. <span className="font-semibold text-medium">T1 / T2</span> = which constructors&rsquo; table the
               car scores in (Tier-2 cars are re-ranked among themselves). <span className="font-semibold text-medium">Res</span>{" "}
@@ -237,7 +237,7 @@ export default function RacePreview({ request }) {
               Championship after this round <span className="text-light">(▲▼ = change vs now)</span>
             </div>
             <p className="mb-2 text-[11px] leading-relaxed text-light">
-              Provisional season totals if you save this round, with each competitor&rsquo;s 3 worst rounds dropped.
+              Provisional season totals if you save this round, with the season&rsquo;s dropped-rounds rule applied.
             </p>
             <div className="grid gap-4 lg:grid-cols-3">
               <div className="lg:col-span-1">

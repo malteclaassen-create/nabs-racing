@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import bcrypt from "bcryptjs";
-import { writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync } from "fs";
 import { dirname, join, extname } from "path";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
@@ -13,30 +13,110 @@ import { previewRaceImpact } from "../services/previewService.js";
 import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
 import { getWebhookUrl, setWebhookUrl, announce, syncRaceToDiscord } from "../services/discordService.js";
 import { resolveSeasonId } from "../services/seasonService.js";
+import { checkSeasonIntegrity } from "../services/integrityService.js";
+import { createBackup, tryCreateBackup, listBackups } from "../services/backupService.js";
 import { SOCIAL_KEYS, readSocialLinks } from "./settings.js";
 import {
   dbListDownloads, dbGetDownload, dbCreateDownload, dbUpdateDownload, dbDeleteDownload,
+  dbListFolders, dbGetFolder, dbCreateFolder, dbUpdateFolder, dbDeleteFolder,
   listDiskFiles, statFile, fmtSize, shapeDownload,
 } from "../lib/downloads.js";
+import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
+import { dbListMembers, dbGetMember, dbSetBanned, shapeMember } from "../lib/members.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-// Team logos are written into the frontend's public/teams folder so they are
-// served at /teams/<file> (same place the seeded logos live).
+// Uploaded team logos live under backend/uploads (served at /api/uploads/...),
+// NOT in frontend/public: a production build serves a baked dist/, so files
+// written into public/ at runtime would only appear after a rebuild. The
+// seeded logos keep living at /teams/<id>.png inside the frontend bundle.
 const __dir = dirname(fileURLToPath(import.meta.url));
-const TEAMS_DIR = join(__dir, "../../../frontend/public/teams");
+const TEAMS_DIR = join(__dir, "../../uploads/teams");
 const LOGO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg" };
 
 // All routes below require admin auth.
 router.use(requireAdmin);
 
+// ---------------------------------------------------------------------------
+// ACTIVITY LOG
+// Every successful admin change is appended to a JSON-lines file, so there is
+// always an answer to "what was changed, and when?". File-based on purpose:
+// no schema migration needed, trivially greppable, survives DB restores.
+// ---------------------------------------------------------------------------
+const LOGS_DIR = join(__dir, "../../logs");
+const ACTIVITY_LOG = join(LOGS_DIR, "admin-activity.log");
+
+router.use((req, res, next) => {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+  res.on("finish", () => {
+    if (res.statusCode >= 300) return; // only log successful changes
+    try {
+      mkdirSync(LOGS_DIR, { recursive: true });
+      appendFileSync(
+        ACTIVITY_LOG,
+        JSON.stringify({ t: new Date().toISOString(), method: req.method, path: req.originalUrl.replace(/^\/api\/admin/, "") }) + "\n"
+      );
+    } catch {
+      /* logging must never break the request */
+    }
+  });
+  next();
+});
+
+// GET /api/admin/activity -> the latest admin actions, newest first.
+router.get("/activity", (req, res) => {
+  try {
+    if (!existsSync(ACTIVITY_LOG)) return res.json({ entries: [] });
+    const lines = readFileSync(ACTIVITY_LOG, "utf-8").trim().split("\n");
+    const entries = lines.slice(-150).reverse().map((l) => {
+      try { return JSON.parse(l); } catch { return null; }
+    }).filter(Boolean);
+    res.json({ entries });
+  } catch {
+    res.json({ entries: [] });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// HEALTH: INTEGRITY CHECK + BACKUPS
+// ---------------------------------------------------------------------------
+// GET /api/admin/integrity?season=<number|id> -> full season consistency report.
+router.get("/integrity", async (req, res, next) => {
+  try {
+    const seasonId = await resolveSeasonId(prisma, req.query.season);
+    if (!seasonId) return res.status(404).json({ error: "Season not found" });
+    res.json(await checkSeasonIntegrity(prisma, seasonId));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/backups -> list of snapshot files (newest first).
+router.get("/backups", (req, res) => {
+  res.json({ backups: listBackups() });
+});
+
+// POST /api/admin/backups -> create a manual snapshot now.
+router.post("/backups", async (req, res, next) => {
+  try {
+    const backup = await createBackup(prisma, "manual");
+    res.json({ ok: true, backup });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Confirmed Driver-Market seat takeovers for races that haven't finished yet.
 // Returned alongside a parsed import so the review table can pre-fill the
 // "team this race" (subForTeam) column for reserves who were picked to sub.
-async function getSeatTakeovers(prismaClient) {
+async function getSeatTakeovers(prismaClient, seasonId) {
   const offers = await prismaClient.seatOffer.findMany({
-    where: { status: "FILLED", filledById: { not: null }, race: { isCompleted: false } },
+    where: {
+      status: "FILLED",
+      filledById: { not: null },
+      race: { isCompleted: false, ...(seasonId ? { seasonId } : {}) },
+    },
     include: { team: true, filledBy: true, driver: true, race: true },
   });
   return offers.map((o) => ({
@@ -67,9 +147,12 @@ router.post("/races/import", upload.single("file"), async (req, res, next) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const drivers = await prisma.driver.findMany({ orderBy: { name: "asc" } });
+    // Match only against the target season's roster — with several seasons in
+    // the DB, same-named drivers of old seasons must never be suggested.
+    const seasonId = await resolveSeasonId(prisma, req.query.season);
+    const drivers = await prisma.driver.findMany({ where: { seasonId }, orderBy: { name: "asc" } });
     const parsed = parseAcRaceJson(json, drivers);
-    res.json({ ...parsed, seatTakeovers: await getSeatTakeovers(prisma) });
+    res.json({ ...parsed, seatTakeovers: await getSeatTakeovers(prisma, seasonId) });
   } catch (e) {
     if (e instanceof SyntaxError) return res.status(400).json({ error: "Invalid JSON file" });
     next(e);
@@ -92,12 +175,13 @@ router.get("/results/remote", async (req, res, next) => {
 // fuzzy-matched mapping as a manual file upload (nothing persisted yet).
 router.post("/results/remote/import", async (req, res, next) => {
   try {
-    const { id } = req.body || {};
+    const { id, season } = req.body || {};
     if (!id || !/^[A-Za-z0-9_]+$/.test(id)) return res.status(400).json({ error: "Valid result id required" });
     const json = await fetchRemoteResult(id);
-    const drivers = await prisma.driver.findMany({ orderBy: { name: "asc" } });
+    const seasonId = await resolveSeasonId(prisma, season);
+    const drivers = await prisma.driver.findMany({ where: { seasonId }, orderBy: { name: "asc" } });
     const parsed = parseAcRaceJson(json, drivers);
-    res.json({ ...parsed, seatTakeovers: await getSeatTakeovers(prisma) });
+    res.json({ ...parsed, seatTakeovers: await getSeatTakeovers(prisma, seasonId) });
   } catch (e) {
     if (e.message && e.message.startsWith("Invalid AC")) return res.status(400).json({ error: e.message });
     next(e);
@@ -117,7 +201,18 @@ router.post("/races/commit", async (req, res, next) => {
     const targetSeasonId = seasonId || (await resolveSeasonId(prisma, undefined));
     let race = await prisma.race.findFirst({
       where: { number: Number(number), seasonId: targetSeasonId },
+      include: { _count: { select: { results: true } } },
     });
+
+    // Overwrite guard: committing over a round that already has stored results
+    // replaces them entirely. Require an explicit confirmation from the UI.
+    if (race && race._count.results > 0 && !req.body.overwrite) {
+      return res.status(409).json({
+        error: `Round ${race.number} already has ${race._count.results} stored results. Confirm to overwrite them.`,
+        needsConfirm: true,
+      });
+    }
+
     if (!race) {
       race = await prisma.race.create({
         data: {
@@ -134,6 +229,8 @@ router.post("/races/commit", async (req, res, next) => {
       });
     }
 
+    // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
+    await tryCreateBackup(prisma, `before-import-r${race.number}`);
     await saveRaceResults(prisma, race.id, results);
     res.json({ ok: true, raceId: race.id, number: race.number });
   } catch (e) {
@@ -268,6 +365,8 @@ router.put("/races/:id/results", async (req, res, next) => {
     if (!race) return res.status(404).json({ error: "Race not found" });
     const { results } = req.body || {};
     if (!Array.isArray(results)) return res.status(400).json({ error: "results[] required" });
+    // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
+    await tryCreateBackup(prisma, `before-edit-r${race.number ?? "x"}`);
     await saveRaceResults(prisma, race.id, results);
     res.json({ ok: true });
   } catch (e) {
@@ -278,12 +377,25 @@ router.put("/races/:id/results", async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // DRIVERS
 // ---------------------------------------------------------------------------
+// Driver ids are permanent technical handles — generated from the name (slug,
+// uniquified with a numeric suffix) so the admin never has to invent one.
+async function uniqueDriverId(name) {
+  const base =
+    String(name).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") ||
+    "driver";
+  let id = base;
+  for (let i = 2; await prisma.driver.findUnique({ where: { id } }); i++) id = `${base}_${i}`;
+  return id;
+}
+
 router.post("/drivers", async (req, res, next) => {
   try {
     const { id, name, discordName, teamId, tier, isActive, seasonId } = req.body || {};
-    if (!id || !name || !teamId || tier === undefined) {
-      return res.status(400).json({ error: "id, name, teamId, tier required" });
+    if (!name || !teamId || tier === undefined) {
+      return res.status(400).json({ error: "name, teamId, tier required" });
     }
+    // Explicit id still wins (scripted imports); otherwise derive from the name.
+    const driverId = String(id || "").trim() || (await uniqueDriverId(name));
     // Default to the season the chosen team belongs to (or the active season).
     let resolvedSeasonId = seasonId;
     if (!resolvedSeasonId) {
@@ -292,7 +404,7 @@ router.post("/drivers", async (req, res, next) => {
     }
     const driver = await prisma.driver.create({
       data: {
-        id,
+        id: driverId,
         name,
         discordName: discordName || name,
         teamId,
@@ -327,8 +439,167 @@ router.put("/drivers/:id", async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// MEMBERS (Discord login accounts)
+// Every Discord account that has ever logged in — linked to a roster driver or
+// not. The admin can link/unlink accounts by hand and ban accounts entirely.
+// ---------------------------------------------------------------------------
+// GET /api/admin/members -> { members: [...], unclaimed: [...] }
+//   members   = all login accounts, each with the driver row it's linked to
+//               (the ACTIVE season's row when one exists, else the newest).
+//   unclaimed = active-season drivers nobody has logged in as yet.
+router.get("/members", async (req, res, next) => {
+  try {
+    const [rows, drivers, activeSeason] = await Promise.all([
+      dbListMembers(prisma),
+      prisma.driver.findMany({ include: { team: true, season: true } }),
+      prisma.season.findFirst({ where: { isActive: true } }),
+    ]);
+    const shapeDriver = (d) =>
+      d && {
+        id: d.id,
+        name: d.name,
+        discordName: d.discordName,
+        tier: d.tier,
+        team: d.team ? { id: d.team.id, name: d.team.name, color: d.team.color } : null,
+        seasonId: d.seasonId,
+        seasonName: d.season?.name || null,
+        isActiveSeason: !!activeSeason && d.seasonId === activeSeason.id,
+      };
+    const members = rows.map((r) => {
+      const m = shapeMember(r);
+      const linked = drivers.filter((d) => d.discordUserId === m.discordId);
+      // Prefer the active season's row; else the most recent season's.
+      const driver =
+        linked.find((d) => activeSeason && d.seasonId === activeSeason.id) ||
+        linked.sort((a, b) => (b.season?.number ?? 0) - (a.season?.number ?? 0))[0] ||
+        null;
+      return { ...m, driver: shapeDriver(driver) };
+    });
+    const unclaimed = drivers
+      .filter((d) => activeSeason && d.seasonId === activeSeason.id && !d.discordUserId)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(shapeDriver);
+    res.json({ members, unclaimed });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/members/:discordId/ban { banned, reason? }
+router.post("/members/:discordId/ban", async (req, res, next) => {
+  try {
+    const { banned, reason } = req.body || {};
+    const existing = await dbGetMember(prisma, req.params.discordId);
+    if (!existing) return res.status(404).json({ error: "Account not found" });
+    const row = await dbSetBanned(prisma, req.params.discordId, !!banned, reason || null);
+    res.json({ ok: true, member: shapeMember(row) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/members/:discordId/link { driverId }
+// Hand-links an account to a roster driver (e.g. when the name matcher failed).
+// The unique discordUserId moves: any other driver row holding it is cleared.
+router.post("/members/:discordId/link", async (req, res, next) => {
+  try {
+    const { driverId } = req.body || {};
+    if (!driverId) return res.status(400).json({ error: "driverId required" });
+    const [account, driver] = await Promise.all([
+      dbGetMember(prisma, req.params.discordId),
+      prisma.driver.findUnique({ where: { id: driverId } }),
+    ]);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
+    await prisma.$transaction([
+      prisma.driver.updateMany({
+        where: { discordUserId: req.params.discordId },
+        data: { discordUserId: null },
+      }),
+      prisma.driver.update({
+        where: { id: driverId },
+        data: { discordUserId: req.params.discordId, discordAvatar: account.avatarUrl ?? undefined },
+      }),
+    ]);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/members/:discordId/create-driver { name?, teamId }
+// One-step onboarding for someone who logged in but isn't on the roster at all:
+// creates a new driver on the chosen team (tier + season follow the team) and
+// links the account to it in the same go. Name defaults to the Discord display
+// name; the driver id is a slug of the name (uniquified if taken).
+router.post("/members/:discordId/create-driver", async (req, res, next) => {
+  try {
+    const account = await dbGetMember(prisma, req.params.discordId);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+    const { teamId } = req.body || {};
+    if (!teamId) return res.status(400).json({ error: "teamId required" });
+    const team = await prisma.team.findUnique({ where: { id: teamId } });
+    if (!team) return res.status(404).json({ error: "Team not found" });
+
+    const name = String(req.body?.name || account.displayName || account.username).trim();
+    if (!name) return res.status(400).json({ error: "name required" });
+    const id = await uniqueDriverId(name);
+
+    const [, driver] = await prisma.$transaction([
+      // discordUserId is unique — clear any row that still holds it.
+      prisma.driver.updateMany({
+        where: { discordUserId: req.params.discordId },
+        data: { discordUserId: null },
+      }),
+      prisma.driver.create({
+        data: {
+          id,
+          name,
+          discordName: account.username,
+          teamId: team.id,
+          tier: team.tier,
+          seasonId: team.seasonId,
+          discordUserId: req.params.discordId,
+          discordAvatar: account.avatarUrl ?? null,
+        },
+      }),
+    ]);
+    res.status(201).json({ ok: true, driver });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/members/:discordId/unlink
+router.post("/members/:discordId/unlink", async (req, res, next) => {
+  try {
+    await prisma.driver.updateMany({
+      where: { discordUserId: req.params.discordId },
+      data: { discordUserId: null },
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // SETTINGS
 // ---------------------------------------------------------------------------
+// GET /api/admin/security -> launch-checklist check: are the shipped dev
+// defaults (seed PIN "nabs2026", fallback JWT secret) still in use? The admin
+// UI shows a red banner until both are changed.
+router.get("/security", async (req, res, next) => {
+  try {
+    const setting = await prisma.setting.findUnique({ where: { key: "admin_pin_hash" } });
+    const pinIsDefault = setting ? await bcrypt.compare("nabs2026", setting.value) : false;
+    const jwtIsDefault = !process.env.JWT_SECRET || process.env.JWT_SECRET === "dev-secret-change-me";
+    res.json({ pinIsDefault, jwtIsDefault });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // PUT /api/admin/settings/pin  { newPin }
 router.put("/settings/pin", async (req, res, next) => {
   try {
@@ -413,6 +684,28 @@ router.post("/events", async (req, res, next) => {
   }
 });
 
+// PUT /api/admin/events/:id  { track?, date? }
+// Edit a race's details AFTER the fact — e.g. rename the raw AC track id
+// ("acu_cota_2021") to a display name ("COTA") once the round is imported.
+// Works for completed rounds too; results and scoring are untouched.
+router.put("/events/:id", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    const { track, date } = req.body || {};
+    const data = {};
+    if (track !== undefined) {
+      if (!String(track).trim()) return res.status(400).json({ error: "Track name cannot be empty" });
+      data.track = String(track).trim();
+    }
+    if (date !== undefined) data.date = date ? new Date(date) : null;
+    const updated = await prisma.race.update({ where: { id: race.id }, data });
+    res.json({ ok: true, race: { id: updated.id, number: updated.number, track: updated.track, date: updated.date } });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /api/admin/events/:id/announce -> (re)post the event message to Discord
 router.post("/events/:id/announce", async (req, res, next) => {
   try {
@@ -460,14 +753,46 @@ router.get("/seasons", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/seasons  { number, name, game? }
+// Validate the admin-supplied scoring fields and add them to `data`.
+// dropWorst: integer 0..10 (0 = every round counts).
+// pointsTable: array of non-negative integers for P1..Pn (max 40 entries),
+//              or null / [] to fall back to the league default table.
+// Returns an error string, or null when everything checked out.
+function applyScoringInput(body, data) {
+  if (body.dropWorst !== undefined) {
+    const n = Number(body.dropWorst);
+    if (!Number.isInteger(n) || n < 0 || n > 10) {
+      return "dropWorst must be a whole number between 0 and 10";
+    }
+    data.dropWorst = n;
+  }
+  if (body.pointsTable !== undefined) {
+    const raw = body.pointsTable;
+    if (raw === null || (Array.isArray(raw) && raw.length === 0)) {
+      data.pointsTable = null; // back to the league default
+    } else {
+      if (!Array.isArray(raw) || raw.length > 40) {
+        return "pointsTable must be a list of up to 40 point values";
+      }
+      const nums = raw.map(Number);
+      if (nums.some((v) => !Number.isInteger(v) || v < 0 || v > 1000)) {
+        return "pointsTable may only contain whole numbers from 0 to 1000";
+      }
+      data.pointsTable = JSON.stringify(nums);
+    }
+  }
+  return null;
+}
+
+// POST /api/admin/seasons  { number, name, game?, dropWorst?, pointsTable? }
 router.post("/seasons", async (req, res, next) => {
   try {
     const { number, name, game } = req.body || {};
     if (number === undefined || !name) return res.status(400).json({ error: "number and name required" });
-    const season = await prisma.season.create({
-      data: { number: Number(number), name, game: game || null },
-    });
+    const data = { number: Number(number), name, game: game || null };
+    const scoringError = applyScoringInput(req.body || {}, data);
+    if (scoringError) return res.status(400).json({ error: scoringError });
+    const season = await prisma.season.create({ data });
     res.status(201).json(season);
   } catch (e) {
     if (e.code === "P2002") return res.status(409).json({ error: "A season with that number already exists" });
@@ -475,7 +800,7 @@ router.post("/seasons", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/seasons/:id  { number?, name?, game? }
+// PUT /api/admin/seasons/:id  { number?, name?, game?, dropWorst?, pointsTable? }
 router.put("/seasons/:id", async (req, res, next) => {
   try {
     const { number, name, game } = req.body || {};
@@ -483,11 +808,57 @@ router.put("/seasons/:id", async (req, res, next) => {
     if (number !== undefined) data.number = Number(number);
     if (name !== undefined) data.name = name;
     if (game !== undefined) data.game = game || null;
+    const scoringError = applyScoringInput(req.body || {}, data);
+    if (scoringError) return res.status(400).json({ error: scoringError });
     const season = await prisma.season.update({ where: { id: req.params.id }, data });
     res.json(season);
   } catch (e) {
     if (e.code === "P2002") return res.status(409).json({ error: "A season with that number already exists" });
     if (e.code === "P2025") return res.status(404).json({ error: "Season not found" });
+    next(e);
+  }
+});
+
+// DELETE /api/admin/seasons/:id[?force=1] -> remove a season.
+// The ACTIVE season can never be deleted. An empty season is removed straight
+// away. A season that still holds teams/drivers/races requires the explicit
+// force flag (the UI asks the admin to type the season's name first) — then
+// everything belonging to it is removed, right after an automatic DB backup.
+// If the backup fails, the deletion is aborted.
+router.delete("/seasons/:id", async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({
+      where: { id: req.params.id },
+      include: { _count: { select: { teams: true, drivers: true, races: true } } },
+    });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    if (season.isActive) return res.status(409).json({ error: "The active season cannot be deleted" });
+
+    const { teams, drivers, races } = season._count;
+    const hasContent = teams > 0 || drivers > 0 || races > 0;
+    if (hasContent && !req.query.force) {
+      return res.status(409).json({
+        error: `${season.name} still holds ${teams} team(s), ${drivers} driver(s) and ${races} race(s) — deleting removes ALL of it.`,
+        needsConfirm: true,
+      });
+    }
+
+    if (hasContent) {
+      // Safety net first: this wipes real data.
+      await createBackup(prisma, `before-delete-${season.name}`);
+      await prisma.$transaction([
+        // Races first: results, constructor scores, RSVPs and seat offers
+        // (with their interests) cascade off them.
+        prisma.race.deleteMany({ where: { seasonId: season.id } }),
+        prisma.driver.deleteMany({ where: { seasonId: season.id } }),
+        prisma.team.deleteMany({ where: { seasonId: season.id } }),
+        prisma.season.delete({ where: { id: season.id } }),
+      ]);
+    } else {
+      await prisma.season.delete({ where: { id: season.id } });
+    }
+    res.json({ ok: true, deleted: { teams, drivers, races } });
+  } catch (e) {
     next(e);
   }
 });
@@ -530,6 +901,71 @@ router.post("/seasons/:id/clone-teams", async (req, res, next) => {
       created++;
     }
     res.json({ ok: true, created });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/seasons/:id/clone-roster  { fromSeasonId }
+// Copies teams AND drivers of another season into this one — the one-click
+// starting point for a new season. Ids get a season suffix to stay globally
+// unique; drivers keep name/discord/country/photo but start with a clean
+// season (no results). Safe to re-run: existing ids are skipped.
+router.post("/seasons/:id/clone-roster", async (req, res, next) => {
+  try {
+    const { fromSeasonId } = req.body || {};
+    const target = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!target) return res.status(404).json({ error: "Target season not found" });
+    if (!fromSeasonId) return res.status(400).json({ error: "fromSeasonId required" });
+    if (fromSeasonId === target.id) return res.status(400).json({ error: "Source and target season are the same" });
+    const [sourceTeams, sourceDrivers] = await Promise.all([
+      prisma.team.findMany({ where: { seasonId: fromSeasonId } }),
+      prisma.driver.findMany({ where: { seasonId: fromSeasonId } }),
+    ]);
+    if (sourceTeams.length === 0) return res.status(400).json({ error: "Source season has no teams" });
+
+    const suffix = `_s${target.number}`;
+    let teamsCreated = 0;
+    const teamIdMap = new Map(); // old id -> new id
+    for (const t of sourceTeams) {
+      const newId = `${t.id}${suffix}`;
+      teamIdMap.set(t.id, newId);
+      const exists = await prisma.team.findUnique({ where: { id: newId } });
+      if (exists) continue;
+      await prisma.team.create({
+        data: { id: newId, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl, seasonId: target.id },
+      });
+      teamsCreated++;
+    }
+
+    let driversCreated = 0;
+    for (const d of sourceDrivers) {
+      const newId = `${d.id}${suffix}`;
+      const newTeamId = teamIdMap.get(d.teamId);
+      if (!newTeamId) continue; // driver of a team that wasn't cloned
+      const exists = await prisma.driver.findUnique({ where: { id: newId } });
+      if (exists) continue;
+      await prisma.driver.create({
+        data: {
+          id: newId,
+          name: d.name,
+          discordName: d.discordName,
+          teamId: newTeamId,
+          tier: d.tier,
+          isActive: d.isActive,
+          seasonId: target.id,
+          // Identity travels with the person; per-season stats start fresh.
+          country: d.country,
+          photoUrl: d.photoUrl,
+          discordAvatar: d.discordAvatar,
+          bio: d.bio,
+          number: d.number,
+          socials: d.socials,
+        },
+      });
+      driversCreated++;
+    }
+    res.json({ ok: true, teamsCreated, driversCreated });
   } catch (e) {
     next(e);
   }
@@ -587,7 +1023,7 @@ router.post("/teams/:id/logo", upload.single("file"), async (req, res, next) => 
     const filename = `${team.id}${ext}`;
     writeFileSync(join(TEAMS_DIR, filename), req.file.buffer);
     // Cache-bust the URL so an updated logo shows immediately.
-    const logoUrl = `/teams/${filename}?v=${Date.now()}`;
+    const logoUrl = `/api/uploads/teams/${filename}?v=${Date.now()}`;
     await prisma.team.update({ where: { id: team.id }, data: { logoUrl } });
     res.json({ ok: true, logoUrl });
   } catch (e) {
@@ -618,7 +1054,7 @@ router.delete("/teams/:id", async (req, res, next) => {
 // registers each here with its metadata. `diskFiles` surfaces what's actually
 // on disk (registered or not) so the admin can pick a file and spot orphans.
 
-// GET /api/admin/downloads -> { downloads: [...], diskFiles: [...] }
+// GET /api/admin/downloads -> { downloads: [...], folders: [...], diskFiles: [...] }
 router.get("/downloads", async (req, res, next) => {
   try {
     const rows = await dbListDownloads(prisma);
@@ -633,7 +1069,7 @@ router.get("/downloads", async (req, res, next) => {
     });
     const registered = new Set(downloads.map((d) => d.fileName).filter(Boolean));
     const diskFiles = listDiskFiles().map((f) => ({ ...f, registered: registered.has(f.fileName) }));
-    res.json({ downloads, diskFiles });
+    res.json({ downloads, folders: await dbListFolders(prisma), diskFiles });
   } catch (e) {
     next(e);
   }
@@ -643,8 +1079,11 @@ router.get("/downloads", async (req, res, next) => {
 router.post("/downloads", async (req, res, next) => {
   try {
     const b = req.body || {};
-    if (!b.title || !b.category) return res.status(400).json({ error: "Title and category are required" });
+    if (!b.title) return res.status(400).json({ error: "Title is required" });
     if (!b.fileName && !b.externalUrl) return res.status(400).json({ error: "Pick a file or give an external link" });
+    if (b.folderId && !(await dbGetFolder(prisma, b.folderId))) {
+      return res.status(400).json({ error: "That folder no longer exists" });
+    }
     const created = await dbCreateDownload(prisma, b);
     res.json({ ok: true, download: shapeDownload(created) });
   } catch (e) {
@@ -671,6 +1110,70 @@ router.delete("/downloads/:id", async (req, res, next) => {
   try {
     await dbDeleteDownload(prisma, req.params.id);
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Download folders -------------------------------------------------------
+// Folders group the catalogue on the public page (Tracks, Cars, one folder per
+// event...). Deleting a folder unfiles its downloads; it never deletes files.
+
+router.post("/download-folders", async (req, res, next) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Folder name is required" });
+    const folder = await dbCreateFolder(prisma, {
+      name,
+      description: String(req.body?.description || "").trim() || null,
+      sortOrder: Number(req.body?.sortOrder) || 0,
+    });
+    res.json({ ok: true, folder });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch("/download-folders/:id", async (req, res, next) => {
+  try {
+    const existing = await dbGetFolder(prisma, req.params.id);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    const merged = { ...existing, ...(req.body || {}) };
+    merged.name = String(merged.name || "").trim();
+    if (!merged.name) return res.status(400).json({ error: "Folder name is required" });
+    merged.description = String(merged.description || "").trim() || null;
+    res.json({ ok: true, folder: await dbUpdateFolder(prisma, req.params.id, merged) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/download-folders/:id", async (req, res, next) => {
+  try {
+    await dbDeleteFolder(prisma, req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Race Info page content -------------------------------------------------
+// The public Race Info page (rule cards, sporting regulations, footnotes) is
+// editable here; while nothing is saved the frontend shows its built-in
+// defaults. PUT { content: null } clears the override.
+
+router.get("/race-info", async (req, res, next) => {
+  try {
+    res.json({ content: await readRaceInfo(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/race-info", async (req, res, next) => {
+  try {
+    const content = await writeRaceInfo(prisma, req.body?.content ?? null);
+    res.json({ ok: true, content });
   } catch (e) {
     next(e);
   }

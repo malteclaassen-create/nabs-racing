@@ -1,0 +1,4691 @@
+{
+  "number": 6,
+  "name": "Season 6",
+  "game": "F1 2013 · Assetto Corsa",
+  "dropWorst": 3,
+  "pointsTable": null,
+  "teams": [
+    {
+      "id": "mclaren",
+      "name": "Mclaren",
+      "tier": 1,
+      "color": "#C0C0C0"
+    },
+    {
+      "id": "redbull",
+      "name": "Redbull",
+      "tier": 1,
+      "color": "#1E41FF"
+    },
+    {
+      "id": "brawn_gp",
+      "name": "Brawn GP",
+      "tier": 1,
+      "color": "#B6FF00"
+    },
+    {
+      "id": "porsche",
+      "name": "Porsche",
+      "tier": 1,
+      "color": "#1AA39B"
+    },
+    {
+      "id": "aston_martin",
+      "name": "Aston Martin",
+      "tier": 1,
+      "color": "#00594F"
+    },
+    {
+      "id": "ferrari",
+      "name": "Ferrari",
+      "tier": 1,
+      "color": "#E10600"
+    },
+    {
+      "id": "force_india",
+      "name": "Force India",
+      "tier": 1,
+      "color": "#FF80C7"
+    },
+    {
+      "id": "mercedes",
+      "name": "Mercedes",
+      "tier": 1,
+      "color": "#00D2BE"
+    },
+    {
+      "id": "audi",
+      "name": "Audi",
+      "tier": 1,
+      "color": "#BB0A30"
+    },
+    {
+      "id": "leaper_f1",
+      "name": "Leaper F1",
+      "tier": 1,
+      "color": "#8A2BE2"
+    },
+    {
+      "id": "bmw",
+      "name": "BMW",
+      "tier": 2,
+      "color": "#0066B1"
+    },
+    {
+      "id": "alfa_romeo",
+      "name": "Alfa Romeo",
+      "tier": 2,
+      "color": "#9B0000"
+    },
+    {
+      "id": "toyota",
+      "name": "Toyota",
+      "tier": 2,
+      "color": "#EB0A1E"
+    },
+    {
+      "id": "caterham",
+      "name": "Caterham",
+      "tier": 2,
+      "color": "#0B573F"
+    },
+    {
+      "id": "renault",
+      "name": "Renault",
+      "tier": 2,
+      "color": "#FFD800"
+    },
+    {
+      "id": "torro_rosso",
+      "name": "Toro Rosso",
+      "tier": 2,
+      "color": "#1634A0"
+    },
+    {
+      "id": "williams",
+      "name": "Williams",
+      "tier": 2,
+      "color": "#00A3E0"
+    },
+    {
+      "id": "lotus",
+      "name": "Lotus",
+      "tier": 2,
+      "color": "#1A1A1A"
+    },
+    {
+      "id": "volvo",
+      "name": "Volvo",
+      "tier": 2,
+      "color": "#003057"
+    },
+    {
+      "id": "honda",
+      "name": "Honda",
+      "tier": 2,
+      "color": "#CC0000"
+    },
+    {
+      "id": "reserve",
+      "name": "Reserve",
+      "tier": 0,
+      "color": "#475569"
+    }
+  ],
+  "drivers": [
+    {
+      "id": "13bot",
+      "name": "13bot",
+      "discord": "13bot",
+      "teamId": "brawn_gp",
+      "tier": 1
+    },
+    {
+      "id": "siggsta",
+      "name": "Siggsta",
+      "discord": "Siggsta",
+      "teamId": "mclaren",
+      "tier": 1
+    },
+    {
+      "id": "tball",
+      "name": "Tball",
+      "discord": "Tball",
+      "teamId": "redbull",
+      "tier": 1
+    },
+    {
+      "id": "rayman",
+      "name": "Rayman",
+      "discord": "Rayman",
+      "teamId": "brawn_gp",
+      "tier": 1
+    },
+    {
+      "id": "mtimmis",
+      "name": "Mtimmis",
+      "discord": "Mtimmis",
+      "teamId": "mclaren",
+      "tier": 1
+    },
+    {
+      "id": "takoda",
+      "name": "Takoda",
+      "discord": "Takoda",
+      "teamId": "porsche",
+      "tier": 1
+    },
+    {
+      "id": "thatdudeguest",
+      "name": "Thatdudeguest",
+      "discord": "Thatdudeguest",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "rashford",
+      "name": "Rashford",
+      "discord": "Rashford",
+      "teamId": "porsche",
+      "tier": 1
+    },
+    {
+      "id": "maltegoat",
+      "name": "Maltegoat",
+      "discord": "Maltegoat",
+      "teamId": "aston_martin",
+      "tier": 1
+    },
+    {
+      "id": "pizd",
+      "name": "Pizd",
+      "discord": "Pizd",
+      "teamId": "caterham",
+      "tier": 2
+    },
+    {
+      "id": "kalervo",
+      "name": "Kalervo",
+      "discord": "Kalervo",
+      "teamId": "alfa_romeo",
+      "tier": 2
+    },
+    {
+      "id": "crans3",
+      "name": "Crans3",
+      "discord": "Crans3",
+      "teamId": "toyota",
+      "tier": 2
+    },
+    {
+      "id": "danielj",
+      "name": "DanielJ",
+      "discord": "DanielJ",
+      "teamId": "bmw",
+      "tier": 2
+    },
+    {
+      "id": "mitch",
+      "name": "Mitch",
+      "discord": "Mitch",
+      "teamId": "force_india",
+      "tier": 1
+    },
+    {
+      "id": "steve",
+      "name": "Steve",
+      "discord": "Steve",
+      "teamId": "redbull",
+      "tier": 1
+    },
+    {
+      "id": "neesh",
+      "name": "Neesh",
+      "discord": "Neesh",
+      "teamId": "ferrari",
+      "tier": 1
+    },
+    {
+      "id": "duck",
+      "name": "Duck",
+      "discord": "Duck",
+      "teamId": "ferrari",
+      "tier": 1
+    },
+    {
+      "id": "aleks",
+      "name": "Aleks",
+      "discord": "Aleks",
+      "teamId": "torro_rosso",
+      "tier": 2
+    },
+    {
+      "id": "nottyler",
+      "name": "NotTyler",
+      "discord": "NotTyler",
+      "teamId": "bmw",
+      "tier": 2
+    },
+    {
+      "id": "dras",
+      "name": "DRAS",
+      "discord": "DRAS",
+      "teamId": "torro_rosso",
+      "tier": 2
+    },
+    {
+      "id": "jacob_ordonez",
+      "name": "Jacob Ordonez",
+      "discord": "Jacob Ordonez",
+      "teamId": "renault",
+      "tier": 2
+    },
+    {
+      "id": "jadendmotorports",
+      "name": "JadenDMotorports",
+      "discord": "JadenDMotorports",
+      "teamId": "lotus",
+      "tier": 2
+    },
+    {
+      "id": "manro45gt",
+      "name": "Manro45GT",
+      "discord": "Manro45GT",
+      "teamId": "toyota",
+      "tier": 2
+    },
+    {
+      "id": "aliveaxe",
+      "name": "Aliveaxe",
+      "discord": "Aliveaxe",
+      "teamId": "williams",
+      "tier": 2
+    },
+    {
+      "id": "anxo_gonzalez",
+      "name": "Anxo Gonzalez",
+      "discord": "Anxo Gonzalez",
+      "teamId": "lotus",
+      "tier": 2
+    },
+    {
+      "id": "gallus",
+      "name": "Gallus",
+      "discord": "Gallus",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "jorge_caro",
+      "name": "Jorge Caro",
+      "discord": "Jorge Caro",
+      "teamId": "aston_martin",
+      "tier": 1
+    },
+    {
+      "id": "damien",
+      "name": "Damien",
+      "discord": "Damien",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "shinso",
+      "name": "Shinso",
+      "discord": "Shinso",
+      "teamId": "audi",
+      "tier": 1
+    },
+    {
+      "id": "phil_mccrack",
+      "name": "Phil McCrack",
+      "discord": "Phil McCrack",
+      "teamId": "mercedes",
+      "tier": 1
+    },
+    {
+      "id": "naigouu",
+      "name": "Naigouu",
+      "discord": "Naigouu",
+      "teamId": "alfa_romeo",
+      "tier": 2
+    },
+    {
+      "id": "vibe_officer",
+      "name": "Vibe Officer",
+      "discord": "Vibe Officer",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "alex_lehoux",
+      "name": "Alex Lehoux",
+      "discord": "Alex Lehoux",
+      "teamId": "force_india",
+      "tier": 1
+    },
+    {
+      "id": "william_granberg",
+      "name": "William Granberg",
+      "discord": "William Granberg",
+      "teamId": "leaper_f1",
+      "tier": 1
+    },
+    {
+      "id": "vhp",
+      "name": "VHP",
+      "discord": "VHP",
+      "teamId": "volvo",
+      "tier": 2
+    },
+    {
+      "id": "airlineure",
+      "name": "AirLineure",
+      "discord": "AirLineure",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "wal_rider",
+      "name": "Wal_Rider",
+      "discord": "Wal_Rider",
+      "teamId": "williams",
+      "tier": 2
+    },
+    {
+      "id": "spydermonkey",
+      "name": "SpyderMonkey",
+      "discord": "SpyderMonkey",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "woozy",
+      "name": "Woozy",
+      "discord": "Woozy",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "wulffo",
+      "name": "Wulffo",
+      "discord": "Wulffo",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "dablosv5",
+      "name": "DabloSV5",
+      "discord": "DabloSV5",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "payton_fricker",
+      "name": "Payton Fricker",
+      "discord": "Payton Fricker",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "laluch",
+      "name": "Laluch",
+      "discord": "Laluch",
+      "teamId": "volvo",
+      "tier": 2
+    },
+    {
+      "id": "abdo",
+      "name": "Abdo",
+      "discord": "Abdo",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "ryan_h",
+      "name": "Ryan H",
+      "discord": "Ryan H",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "freddson",
+      "name": "Freddson",
+      "discord": "Freddson",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "rikkos",
+      "name": "Rikkos",
+      "discord": "Rikkos",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "jan_sikorski",
+      "name": "Jan.sikorski",
+      "discord": "Jan.sikorski",
+      "teamId": "honda",
+      "tier": 2
+    },
+    {
+      "id": "simaoav",
+      "name": "SimaoAV",
+      "discord": "SimaoAV",
+      "teamId": "honda",
+      "tier": 2
+    },
+    {
+      "id": "tomzee",
+      "name": "Tomzee",
+      "discord": "Tomzee",
+      "teamId": "leaper_f1",
+      "tier": 1
+    },
+    {
+      "id": "svr",
+      "name": "SVR",
+      "discord": "SVR",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "cr",
+      "name": "CR",
+      "discord": "CR",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "semie",
+      "name": "Semie",
+      "discord": "Semie",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "bulat",
+      "name": "Bulat",
+      "discord": "Bulat",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "ismael_martinez",
+      "name": "Ismael Martinez",
+      "discord": "Ismael Martinez",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "toni_t_turpeinen",
+      "name": "Toni T. Turpeinen",
+      "discord": "Toni T. Turpeinen",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "garfieldtruck99",
+      "name": "GarfieldTruck99",
+      "discord": "GarfieldTruck99",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "amrito",
+      "name": "Amrito",
+      "discord": "Amrito",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "kobac",
+      "name": "Kobac",
+      "discord": "Kobac",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "qfasty",
+      "name": "qFasty",
+      "discord": "qFasty",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "endrui",
+      "name": "Endrui",
+      "discord": "Endrui",
+      "teamId": "caterham",
+      "tier": 2
+    },
+    {
+      "id": "justyn",
+      "name": "Justyn",
+      "discord": "Justyn",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "armin",
+      "name": "Armin",
+      "discord": "Armin",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "kamidzun",
+      "name": "KamidzuN",
+      "discord": "KamidzuN",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "m_wasik",
+      "name": "M. Wasik",
+      "discord": "M. Wasik",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "waelzidane",
+      "name": "WaelZidane",
+      "discord": "WaelZidane",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "szymon_karwowski",
+      "name": "Szymon Karwowski",
+      "discord": "Szymon Karwowski",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "norsca",
+      "name": "Norsca",
+      "discord": "Norsca",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "meme_ruler",
+      "name": "Meme Ruler",
+      "discord": "Meme Ruler",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "sucena",
+      "name": "sucena.",
+      "discord": "sucena.",
+      "teamId": "reserve",
+      "tier": 0
+    }
+  ],
+  "rounds": [
+    {
+      "round": 1
+    },
+    {
+      "round": 2
+    },
+    {
+      "round": 3
+    },
+    {
+      "round": 4
+    },
+    {
+      "round": 5
+    },
+    {
+      "round": 6
+    },
+    {
+      "round": 7
+    },
+    {
+      "round": 8
+    },
+    {
+      "round": 9
+    },
+    {
+      "round": 10
+    },
+    {
+      "round": 11
+    },
+    {
+      "round": 12
+    }
+  ],
+  "driverRaceResults": {
+    "13bot": [
+      {
+        "points": 35,
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "points": 36,
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "points": 26,
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "points": 35,
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "points": 12,
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "points": 35,
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      }
+    ],
+    "siggsta": [
+      {
+        "points": 25,
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "points": 36,
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "points": 35,
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "points": 25,
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "points": 26,
+        "position": 3,
+        "status": "FINISHED"
+      }
+    ],
+    "tball": [
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "points": 26,
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "points": 36,
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 26,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "points": 35,
+        "position": 1,
+        "status": "FINISHED"
+      }
+    ],
+    "rayman": [
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 12,
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 12,
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "points": 12,
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "points": 35,
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      }
+    ],
+    "mtimmis": [
+      {
+        "points": 3,
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "points": 26,
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "points": 25,
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 22,
+        "status": "FINISHED"
+      },
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      }
+    ],
+    "takoda": [
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "points": 25,
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 28,
+        "status": "FINISHED"
+      },
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "points": 35,
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      }
+    ],
+    "thatdudeguest": [
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 25,
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "points": 25,
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "rashford": [
+      {
+        "points": 0,
+        "position": 27,
+        "status": "FINISHED"
+      },
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "points": 26,
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "points": 2,
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 19,
+        "status": "FINISHED"
+      }
+    ],
+    "maltegoat": [
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 12,
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 25,
+        "status": "FINISHED"
+      },
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      }
+    ],
+    "pizd": [
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "points": 12,
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 19,
+        "status": "FINISHED"
+      },
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 21,
+        "status": "FINISHED"
+      },
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "kalervo": [
+      {
+        "points": 6,
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "points": 26,
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "crans3": [
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "points": 2,
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 19,
+        "status": "FINISHED"
+      },
+      {
+        "points": 12,
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "points": 2,
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "points": 5,
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "points": 12,
+        "position": 9,
+        "status": "FINISHED"
+      }
+    ],
+    "danielj": [
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "points": 5,
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 22,
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      }
+    ],
+    "mitch": [
+      {
+        "points": 0,
+        "position": 26,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 26,
+        "status": "FINISHED"
+      },
+      {
+        "points": 30,
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "points": 35,
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 21,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "steve": [
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      }
+    ],
+    "neesh": [
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "points": 5,
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 24,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 19,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "points": 5,
+        "position": 14,
+        "status": "FINISHED"
+      }
+    ],
+    "duck": [
+      {
+        "points": 20,
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 19,
+        "status": "FINISHED"
+      },
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 2,
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "aleks": [
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 20,
+        "status": "FINISHED"
+      },
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 35,
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 5,
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "nottyler": [
+      null,
+      null,
+      null,
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      },
+      {
+        "points": 12,
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      }
+    ],
+    "dras": [
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      },
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 21,
+        "status": "FINISHED"
+      },
+      {
+        "points": 2,
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 23,
+        "status": "FINISHED"
+      },
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      },
+      {
+        "points": 2,
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      },
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      }
+    ],
+    "jacob_ordonez": [
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 20,
+        "status": "FINISHED"
+      },
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 26,
+        "status": "FINISHED"
+      },
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 19,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "jadendmotorports": [
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "points": 5,
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 26,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "manro45gt": [
+      null,
+      null,
+      null,
+      null,
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 22,
+        "status": "FINISHED"
+      },
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "points": 12,
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      }
+    ],
+    "aliveaxe": [
+      {
+        "points": 0,
+        "position": 24,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 22,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 30,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 23,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 24,
+        "status": "FINISHED"
+      },
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "points": 5,
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 2,
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      }
+    ],
+    "anxo_gonzalez": [
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "gallus": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "jorge_caro": [
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "points": 5,
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "damien": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 19,
+        "status": "FINISHED"
+      },
+      {
+        "points": 8,
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      }
+    ],
+    "shinso": [
+      {
+        "points": 0,
+        "position": 21,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 18,
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "phil_mccrack": [
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 30,
+        "status": "FINISHED"
+      },
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "naigouu": [
+      {
+        "points": 0,
+        "position": 20,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 21,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 23,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 20,
+        "status": "FINISHED"
+      },
+      {
+        "points": 5,
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 27,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 2,
+        "position": 17,
+        "status": "FINISHED"
+      }
+    ],
+    "vibe_officer": [
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 23,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 16,
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "alex_lehoux": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 14,
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "william_granberg": [
+      {
+        "points": 12,
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "vhp": [
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 26,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 21,
+        "status": "FINISHED"
+      },
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 5,
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "airlineure": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 10,
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "wal_rider": [
+      {
+        "points": 0,
+        "position": 19,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 20,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 20,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "spydermonkey": [
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "woozy": [
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 25,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      }
+    ],
+    "wulffo": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 7,
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "dablosv5": [
+      null,
+      null,
+      null,
+      {
+        "points": 6,
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 21,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "payton_fricker": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 5,
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "laluch": [
+      {
+        "points": 0,
+        "position": 22,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 25,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 22,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 22,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 22,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 22,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 20,
+        "status": "FINISHED"
+      },
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 21,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 20,
+        "status": "FINISHED"
+      }
+    ],
+    "abdo": [
+      {
+        "points": 0,
+        "position": 25,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 23,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 24,
+        "status": "FINISHED"
+      },
+      {
+        "points": 2,
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 23,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "points": 3,
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "ryan_h": [
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 4,
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "freddson": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 2,
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      }
+    ],
+    "rikkos": [
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 2,
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "jan_sikorski": [
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 23,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      }
+    ],
+    "simaoav": [
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 0,
+        "position": 20,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 25,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 1,
+        "position": 18,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 21,
+        "status": "FINISHED"
+      }
+    ],
+    "tomzee": [
+      {
+        "points": 0,
+        "position": 23,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "svr": [
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 28,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 25,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "cr": [
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 27,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 24,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      }
+    ],
+    "semie": [
+      null,
+      {
+        "points": 0,
+        "position": 24,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "bulat": [
+      null,
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 24,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "ismael_martinez": [
+      null,
+      null,
+      {
+        "points": 0,
+        "position": 21,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "toni_t_turpeinen": [
+      null,
+      null,
+      {
+        "points": 0,
+        "position": 29,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "garfieldtruck99": [
+      null,
+      null,
+      {
+        "points": 0,
+        "position": 31,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 21,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 24,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "amrito": [
+      null,
+      null,
+      null,
+      {
+        "points": 0,
+        "position": 25,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 19,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "kobac": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 0,
+        "position": 25,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "qfasty": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 0,
+        "position": 19,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "endrui": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "points": 0,
+        "position": 20,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 23,
+        "status": "FINISHED"
+      },
+      {
+        "points": 0,
+        "position": 22,
+        "status": "FINISHED"
+      }
+    ],
+    "justyn": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "points": 0,
+        "position": 22,
+        "status": "FINISHED"
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "armin": [
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "kamidzun": [
+      null,
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "m_wasik": [
+      null,
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "waelzidane": [
+      null,
+      null,
+      null,
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DSQ",
+        "position": null
+      }
+    ],
+    "szymon_karwowski": [
+      null,
+      null,
+      null,
+      null,
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "norsca": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "meme_ruler": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "status": "DNF",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ],
+    "sucena": [
+      null,
+      null,
+      {
+        "status": "DSQ",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      },
+      {
+        "status": "DNS",
+        "position": null
+      }
+    ]
+  },
+  "finalStandings": {
+    "drivers": [
+      {
+        "id": "13bot",
+        "points": 265
+      },
+      {
+        "id": "siggsta",
+        "points": 259
+      },
+      {
+        "id": "tball",
+        "points": 191
+      },
+      {
+        "id": "rayman",
+        "points": 171
+      },
+      {
+        "id": "mtimmis",
+        "points": 171
+      },
+      {
+        "id": "takoda",
+        "points": 169
+      },
+      {
+        "id": "thatdudeguest",
+        "points": 152
+      },
+      {
+        "id": "rashford",
+        "points": 148
+      },
+      {
+        "id": "maltegoat",
+        "points": 112
+      },
+      {
+        "id": "pizd",
+        "points": 108
+      },
+      {
+        "id": "kalervo",
+        "points": 97
+      },
+      {
+        "id": "crans3",
+        "points": 82
+      },
+      {
+        "id": "danielj",
+        "points": 77
+      },
+      {
+        "id": "mitch",
+        "points": 71
+      },
+      {
+        "id": "steve",
+        "points": 70
+      },
+      {
+        "id": "neesh",
+        "points": 62
+      },
+      {
+        "id": "duck",
+        "points": 49
+      },
+      {
+        "id": "aleks",
+        "points": 47
+      },
+      {
+        "id": "nottyler",
+        "points": 43
+      },
+      {
+        "id": "dras",
+        "points": 38
+      },
+      {
+        "id": "jacob_ordonez",
+        "points": 31
+      },
+      {
+        "id": "jadendmotorports",
+        "points": 29
+      },
+      {
+        "id": "manro45gt",
+        "points": 27
+      },
+      {
+        "id": "aliveaxe",
+        "points": 21
+      },
+      {
+        "id": "anxo_gonzalez",
+        "points": 20
+      },
+      {
+        "id": "gallus",
+        "points": 20
+      },
+      {
+        "id": "jorge_caro",
+        "points": 19
+      },
+      {
+        "id": "damien",
+        "points": 19
+      },
+      {
+        "id": "shinso",
+        "points": 18
+      },
+      {
+        "id": "phil_mccrack",
+        "points": 18
+      },
+      {
+        "id": "naigouu",
+        "points": 17
+      },
+      {
+        "id": "vibe_officer",
+        "points": 16
+      },
+      {
+        "id": "alex_lehoux",
+        "points": 14
+      },
+      {
+        "id": "william_granberg",
+        "points": 12
+      },
+      {
+        "id": "vhp",
+        "points": 11
+      },
+      {
+        "id": "airlineure",
+        "points": 10
+      },
+      {
+        "id": "wal_rider",
+        "points": 10
+      },
+      {
+        "id": "spydermonkey",
+        "points": 9
+      },
+      {
+        "id": "woozy",
+        "points": 7
+      },
+      {
+        "id": "wulffo",
+        "points": 7
+      },
+      {
+        "id": "dablosv5",
+        "points": 6
+      },
+      {
+        "id": "payton_fricker",
+        "points": 5
+      },
+      {
+        "id": "laluch",
+        "points": 5
+      },
+      {
+        "id": "abdo",
+        "points": 5
+      },
+      {
+        "id": "ryan_h",
+        "points": 4
+      },
+      {
+        "id": "freddson",
+        "points": 3
+      },
+      {
+        "id": "rikkos",
+        "points": 2
+      },
+      {
+        "id": "jan_sikorski",
+        "points": 1
+      },
+      {
+        "id": "simaoav",
+        "points": 1
+      },
+      {
+        "id": "tomzee",
+        "points": 0
+      },
+      {
+        "id": "svr",
+        "points": 0
+      },
+      {
+        "id": "cr",
+        "points": 0
+      },
+      {
+        "id": "semie",
+        "points": 0
+      },
+      {
+        "id": "bulat",
+        "points": 0
+      },
+      {
+        "id": "ismael_martinez",
+        "points": 0
+      },
+      {
+        "id": "toni_t_turpeinen",
+        "points": 0
+      },
+      {
+        "id": "garfieldtruck99",
+        "points": 0
+      },
+      {
+        "id": "amrito",
+        "points": 0
+      },
+      {
+        "id": "kobac",
+        "points": 0
+      },
+      {
+        "id": "qfasty",
+        "points": 0
+      },
+      {
+        "id": "endrui",
+        "points": 0
+      },
+      {
+        "id": "justyn",
+        "points": 0
+      },
+      {
+        "id": "armin",
+        "points": 0
+      },
+      {
+        "id": "kamidzun",
+        "points": 0
+      },
+      {
+        "id": "m_wasik",
+        "points": 0
+      },
+      {
+        "id": "waelzidane",
+        "points": 0
+      },
+      {
+        "id": "szymon_karwowski",
+        "points": 0
+      },
+      {
+        "id": "norsca",
+        "points": 0
+      },
+      {
+        "id": "meme_ruler",
+        "points": 0
+      },
+      {
+        "id": "sucena",
+        "points": 0
+      }
+    ],
+    "teams": [
+      {
+        "id": "mclaren",
+        "points": 410
+      },
+      {
+        "id": "redbull",
+        "points": 392
+      },
+      {
+        "id": "brawn_gp",
+        "points": 390
+      },
+      {
+        "id": "porsche",
+        "points": 297
+      },
+      {
+        "id": "aston_martin",
+        "points": 131
+      },
+      {
+        "id": "ferrari",
+        "points": 103
+      },
+      {
+        "id": "force_india",
+        "points": 81
+      },
+      {
+        "id": "mercedes",
+        "points": 52
+      },
+      {
+        "id": "audi",
+        "points": 39
+      },
+      {
+        "id": "leaper_f1",
+        "points": 12
+      },
+      {
+        "id": "bmw",
+        "points": 328
+      },
+      {
+        "id": "alfa_romeo",
+        "points": 328
+      },
+      {
+        "id": "toyota",
+        "points": 325
+      },
+      {
+        "id": "caterham",
+        "points": 311
+      },
+      {
+        "id": "renault",
+        "points": 248
+      },
+      {
+        "id": "torro_rosso",
+        "points": 233
+      },
+      {
+        "id": "williams",
+        "points": 193
+      },
+      {
+        "id": "lotus",
+        "points": 168
+      },
+      {
+        "id": "volvo",
+        "points": 166
+      },
+      {
+        "id": "honda",
+        "points": 114
+      }
+    ],
+    "teamPerRace": {
+      "mclaren": {
+        "1": 21,
+        "2": 38,
+        "3": 40,
+        "4": 0,
+        "5": 14,
+        "6": 56,
+        "7": 61,
+        "8": 35,
+        "9": 43,
+        "10": 50,
+        "11": 52,
+        "12": 35
+      },
+      "redbull": {
+        "1": 55,
+        "2": 56,
+        "3": 56,
+        "4": 42,
+        "5": 50,
+        "6": 22,
+        "7": 0,
+        "8": 0,
+        "9": 0,
+        "10": 30,
+        "11": 30,
+        "12": 51
+      },
+      "brawn_gp": {
+        "1": 36,
+        "2": 42,
+        "3": 17,
+        "4": 26,
+        "5": 24,
+        "6": 35,
+        "7": 38,
+        "8": 34,
+        "9": 46,
+        "10": 47,
+        "11": 60,
+        "12": 52
+      },
+      "porsche": {
+        "1": 6,
+        "2": 29,
+        "3": 39,
+        "4": 26,
+        "5": 19,
+        "6": 39,
+        "7": 16,
+        "8": 45,
+        "9": 37,
+        "10": 30,
+        "11": 32,
+        "12": 20
+      },
+      "aston_martin": {
+        "1": 0,
+        "2": 21,
+        "3": 0,
+        "4": 12,
+        "5": 14,
+        "6": 14,
+        "7": 22,
+        "8": 30,
+        "9": 0,
+        "10": 0,
+        "11": 0,
+        "12": 18
+      },
+      "ferrari": {
+        "1": 28,
+        "2": 14,
+        "3": 8,
+        "4": 15,
+        "5": 0,
+        "6": 2,
+        "7": 7,
+        "8": 8,
+        "9": 3,
+        "10": 14,
+        "11": 6,
+        "12": 0
+      },
+      "force_india": {
+        "1": 0,
+        "2": 2,
+        "3": 30,
+        "4": 35,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 14,
+        "9": 0,
+        "10": 0,
+        "11": 0,
+        "12": 0
+      },
+      "mercedes": {
+        "1": 18,
+        "2": 0,
+        "3": 16,
+        "4": 18,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0,
+        "10": 0,
+        "11": 0,
+        "12": 0
+      },
+      "audi": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 18,
+        "6": 0,
+        "7": 20,
+        "8": 0,
+        "9": 1,
+        "10": 0,
+        "11": 0,
+        "12": 0
+      },
+      "leaper_f1": {
+        "1": 12,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0,
+        "10": 0,
+        "11": 0,
+        "12": 0
+      },
+      "bmw": {
+        "1": 0,
+        "2": 0,
+        "3": 36,
+        "4": 40,
+        "5": 0,
+        "6": 49,
+        "7": 60,
+        "8": 25,
+        "9": 35,
+        "10": 20,
+        "11": 16,
+        "12": 47
+      },
+      "alfa_romeo": {
+        "1": 39,
+        "2": 32,
+        "3": 12,
+        "4": 41,
+        "5": 49,
+        "6": 20,
+        "7": 5,
+        "8": 35,
+        "9": 50,
+        "10": 40,
+        "11": 0,
+        "12": 22
+      },
+      "toyota": {
+        "1": 0,
+        "2": 20,
+        "3": 28,
+        "4": 18,
+        "5": 25,
+        "6": 38,
+        "7": 26,
+        "8": 36,
+        "9": 22,
+        "10": 51,
+        "11": 49,
+        "12": 50
+      },
+      "caterham": {
+        "1": 55,
+        "2": 35,
+        "3": 40,
+        "4": 35,
+        "5": 20,
+        "6": 25,
+        "7": 30,
+        "8": 40,
+        "9": 25,
+        "10": 15,
+        "11": 26,
+        "12": 24
+      },
+      "renault": {
+        "1": 25,
+        "2": 25,
+        "3": 26,
+        "4": 42,
+        "5": 14,
+        "6": 22,
+        "7": 38,
+        "8": 40,
+        "9": 0,
+        "10": 16,
+        "11": 8,
+        "12": 0
+      },
+      "torro_rosso": {
+        "1": 0,
+        "2": 16,
+        "3": 30,
+        "4": 8,
+        "5": 35,
+        "6": 0,
+        "7": 10,
+        "8": 14,
+        "9": 0,
+        "10": 43,
+        "11": 28,
+        "12": 49
+      },
+      "williams": {
+        "1": 30,
+        "2": 12,
+        "3": 4,
+        "4": 12,
+        "5": 23,
+        "6": 28,
+        "7": 26,
+        "8": 0,
+        "9": 34,
+        "10": 0,
+        "11": 12,
+        "12": 16
+      },
+      "lotus": {
+        "1": 30,
+        "2": 52,
+        "3": 35,
+        "4": 0,
+        "5": 22,
+        "6": 18,
+        "7": 6,
+        "8": 0,
+        "9": 0,
+        "10": 0,
+        "11": 5,
+        "12": 0
+      },
+      "volvo": {
+        "1": 14,
+        "2": 10,
+        "3": 21,
+        "4": 14,
+        "5": 10,
+        "6": 10,
+        "7": 27,
+        "8": 8,
+        "9": 26,
+        "10": 34,
+        "11": 6,
+        "12": 8
+      },
+      "honda": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 26,
+        "6": 7,
+        "7": 0,
+        "8": 19,
+        "9": 0,
+        "10": 0,
+        "11": 55,
+        "12": 7
+      }
+    }
+  }
+}

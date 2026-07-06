@@ -32,3 +32,6 @@ Thumbs.db
 .vscode/
 .idea/
 
+
+# Raw source material (screenshots etc.) for rebuilding archive seasons - not site code
+archive-material/

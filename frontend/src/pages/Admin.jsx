@@ -7,6 +7,9 @@ import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
 import AdminRatings from "../components/AdminRatings.jsx";
 import AdminDownloads from "../components/AdminDownloads.jsx";
+import AdminRaceInfo from "../components/AdminRaceInfo.jsx";
+import AdminHealth from "../components/AdminHealth.jsx";
+import AdminMembers from "../components/AdminMembers.jsx";
 import RacePreview from "../components/RacePreview.jsx";
 import { SOCIAL_META } from "../components/SocialLinks.jsx";
 import { fmtTimeCell } from "../utils/raceDuration.js";
@@ -17,23 +20,91 @@ const TABS = [
   { id: "import", label: "Import Race" },
   { id: "edit", label: "Edit Results" },
   { id: "ratings", label: "Ratings" },
-  { id: "discord", label: "Discord & Events" },
+  { id: "discord", label: "Races & Events" },
   { id: "market", label: "Driver Market" },
   { id: "drivers", label: "Drivers" },
+  { id: "members", label: "Members" },
   { id: "social", label: "Social Links" },
+  { id: "raceinfo", label: "Race Info" },
   { id: "downloads", label: "Downloads" },
+  { id: "health", label: "Health" },
   { id: "pin", label: "Change PIN" },
 ];
 
-// Small banner telling the admin which season their edits apply to.
-function SeasonScope() {
-  const { current } = useSeason();
-  if (!current) return null;
+// Prominent bar at the top of the admin: shows WHICH season every season-scoped
+// edit below applies to, and lets the admin switch it right here (no hunting for
+// the nav selector). Switching remounts the page (App keys on the season), so we
+// stash the current tab first — the admin stays where they were.
+function AdminSeasonBar({ tab }) {
+  const { seasons, season, setSeason, current } = useSeason();
+  if (!seasons?.length) return null;
+  const isActive = current?.isActive;
+  const ordered = [...seasons].sort((a, b) => b.number - a.number);
   return (
-    <div className="mb-4 rounded-lg border border-border bg-surface2 px-4 py-2 text-sm text-medium">
-      Editing season: <span className="font-bold text-dark">{current.name}</span>
-      {!current.isActive && <span className="ml-2 text-light">(not the active/public season)</span>}
-      <span className="ml-2 text-light">— switch seasons from the top-right selector.</span>
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
+      <div className="flex items-center gap-3 border-l-4 pl-3" style={{ borderColor: isActive ? "#10b981" : "#f59e0b" }}>
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v13a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 3v4M16 3v4" />
+          </svg>
+        </span>
+        <div>
+          <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Currently editing</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-display text-lg font-extrabold uppercase leading-none tracking-tight text-dark">
+              {current?.name || "—"}
+            </span>
+            {isActive ? (
+              <span className="pill bg-emerald-500/15 text-emerald-600">active · public</span>
+            ) : (
+              <span className="pill bg-amber-500/15 text-amber-600">archive · not public</span>
+            )}
+          </div>
+          {current?.game && <div className="mt-0.5 text-xs text-light">{current.game}</div>}
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <span className="font-semibold text-medium">Switch season</span>
+        <select
+          className="input py-1.5"
+          value={season ?? ""}
+          onChange={(e) => {
+            sessionStorage.setItem("nabs_admin_tab", tab); // survive the remount
+            setSeason(Number(e.target.value));
+          }}
+        >
+          {ordered.map((s) => (
+            <option key={s.id} value={s.number}>
+              {s.name}
+              {s.isActive ? " (active)" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+// Red launch-checklist banner while the shipped dev defaults are still in use.
+// Disappears on its own once the PIN is changed / a real JWT secret is set.
+function SecurityBanner() {
+  const { data } = useApi(useCallback(() => api.adminSecurity(), []));
+  if (!data || (!data.pinIsDefault && !data.jwtIsDefault)) return null;
+  return (
+    <div className="mb-4 space-y-2">
+      {data.pinIsDefault && (
+        <Notice kind="error">
+          The admin PIN is still the built-in default (<span className="font-mono">nabs2026</span>), so anyone who has
+          seen the project files can log in here. Change it in the <b>Change PIN</b> tab before sharing the site.
+        </Notice>
+      )}
+      {data.jwtIsDefault && (
+        <Notice kind="error">
+          <span className="font-mono">JWT_SECRET</span> is not set, so sessions are signed with a publicly known default.
+          Set a long random <span className="font-mono">JWT_SECRET</span> in <span className="font-mono">backend/.env</span>{" "}
+          and restart the backend.
+        </Notice>
+      )}
     </div>
   );
 }
@@ -41,7 +112,16 @@ function SeasonScope() {
 export default function Admin() {
   const [authed, setAuthed] = useState(!!getToken());
   const [expired, setExpired] = useState(false);
-  const [tab, setTab] = useState("seasons");
+  // Changing the season remounts the whole page (App keys on it), which would
+  // reset the tab — so a deliberate tab hand-off (e.g. "Schedule races" jumping
+  // to Races & Events) survives via sessionStorage.
+  // (Read-only initializer: React may run it twice in dev StrictMode, so the
+  // clean-up happens in the effect below, not here.)
+  const [tab, setTab] = useState(() => sessionStorage.getItem("nabs_admin_tab") || "seasons");
+  useEffect(() => {
+    sessionStorage.removeItem("nabs_admin_tab");
+  }, []);
+  const { setSeason } = useSeason();
 
   // If any admin request reports an expired/invalid token, bounce to the login.
   useEffect(() => {
@@ -79,6 +159,10 @@ export default function Admin() {
         </button>
       </div>
 
+      <SecurityBanner />
+
+      <AdminSeasonBar tab={tab} />
+
       <div className="mb-6 flex flex-wrap gap-1 border-b border-border">
         {TABS.map((t) => (
           <button
@@ -96,7 +180,16 @@ export default function Admin() {
       </div>
 
       <div className="min-h-[70vh]">
-        {tab === "seasons" && <Seasons />}
+        {tab === "seasons" && (
+          <Seasons
+            // One click from a season row to its race calendar: select that
+            // season in the global switcher, then jump to the Races tab.
+            gotoRaces={(s) => {
+              sessionStorage.setItem("nabs_admin_tab", "discord");
+              setSeason(s.number); // remounts the page; the tab survives above
+            }}
+          />
+        )}
         {tab === "teams" && <Teams />}
         {tab === "import" && <AdminImport />}
         {tab === "edit" && <EditResults />}
@@ -104,8 +197,11 @@ export default function Admin() {
         {tab === "discord" && <DiscordEvents />}
         {tab === "market" && <MarketAdmin />}
         {tab === "drivers" && <Drivers />}
+        {tab === "members" && <AdminMembers />}
         {tab === "social" && <SocialAdmin />}
+        {tab === "raceinfo" && <AdminRaceInfo />}
         {tab === "downloads" && <AdminDownloads />}
+        {tab === "health" && <AdminHealth />}
         {tab === "pin" && <ChangePin />}
       </div>
     </div>
@@ -146,7 +242,7 @@ function MarketAdmin() {
       <div className="card p-5">
         <CardHead eyebrow="Driver Market" title="Seat offers" />
         <p className="text-sm text-light">
-          Override who fills an offered seat — e.g. keep a weak reserve out of a Tier-1 car. You can
+          Override who fills an offered seat, e.g. to keep a weak reserve out of a Tier-1 car. You can
           assign any reserve, clear the pick, or remove an offer entirely.
         </p>
       </div>
@@ -210,7 +306,7 @@ function OfferAdminRow({ offer, reserves, busy, onAssign, onDelete }) {
           value={sel}
           onChange={(e) => setSel(e.target.value)}
         >
-          <option value="">— choose a reserve —</option>
+          <option value="">Choose a reserve…</option>
           {reserves.map((r) => (
             <option key={r.id} value={r.id}>{r.name}</option>
           ))}
@@ -327,7 +423,7 @@ function Login({ onSuccess, expired }) {
     <div className="mx-auto max-w-sm">
       <PageHeader eyebrow="League Office" title="Admin Login" />
       <form onSubmit={submit} className="card space-y-4 p-6">
-        {expired && <Notice kind="info">Your session expired — please log in again.</Notice>}
+        {expired && <Notice kind="info">Your session expired. Please log in again.</Notice>}
         <div>
           <label className="mb-1 block text-sm font-semibold text-medium">Admin PIN</label>
           <input
@@ -351,11 +447,20 @@ function Login({ onSuccess, expired }) {
 // --- EDIT RESULTS ----------------------------------------------------------
 const STATUSES = ["FINISHED", "DNS", "DNF", "DSQ"];
 
+// Date -> value for a <input type="datetime-local"> in the admin's local time.
+function toLocalInput(date) {
+  if (!date) return "";
+  const d = new Date(date);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function EditResults() {
-  const { data: races } = useApi(useCallback(() => api.races(), []));
+  const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [raceId, setRaceId] = useState("");
   const [rows, setRows] = useState([]);
+  const [meta, setMeta] = useState({ track: "", date: "" }); // race details editor
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
@@ -367,6 +472,7 @@ function EditResults() {
     api
       .raceResults(raceId)
       .then((d) => {
+        setMeta({ track: d.race?.track || "", date: toLocalInput(d.race?.date) });
         setRows(
           d.results.map((r) => {
             const raw = r.rawPosition ?? r.position ?? "";
@@ -378,7 +484,9 @@ function EditResults() {
               subForTeamId: r.subForTeam?.id || "",
               penaltySeconds: r.penaltySeconds || 0,
               totalTimeMs: r.totalTimeMs ?? null, // race time, needed to apply a time penalty
-              points: r.points, // official points, kept unless this row changes
+              // The STORED points (null = derived from position). Never round-trip
+              // the computed display points — that would freeze them as official.
+              points: r.storedPoints ?? null,
               origPos: String(raw),
               origStatus: r.status,
               canSub: r.driverTier === 0,
@@ -427,16 +535,31 @@ function EditResults() {
     }
   }
 
+  // Rename the round / fix its date — independent of the results below.
+  async function saveDetails() {
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      await api.updateEvent(raceId, { track: meta.track, date: meta.date || null });
+      setMsg("Race details saved.");
+      reloadRaces(); // the round selector shows the new name
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <SeasonScope />
       <div className="flex flex-wrap items-center gap-3">
         <label className="text-sm font-semibold text-medium">Race</label>
         <select className="input max-w-xs" value={raceId} onChange={(e) => setRaceId(e.target.value)}>
           <option value="">Select a round…</option>
           {(races || []).filter((r) => !r.isSpecialEvent).map((r) => (
             <option key={r.id} value={r.id}>
-              Round {r.number} — {r.track}
+              Round {r.number} · {r.track}
             </option>
           ))}
         </select>
@@ -444,6 +567,26 @@ function EditResults() {
 
       {error && <ErrorBox message={error} />}
       {msg && <Notice kind="success">{msg}</Notice>}
+
+      {raceId && (
+        <div className="card flex flex-wrap items-end gap-3 p-4">
+          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+            Track name
+            <input className="input min-w-56" value={meta.track}
+              onChange={(e) => setMeta({ ...meta, track: e.target.value })}
+              placeholder="e.g. COTA" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+            Date &amp; time
+            <input className="input" type="datetime-local" value={meta.date}
+              onChange={(e) => setMeta({ ...meta, date: e.target.value })} />
+          </label>
+          <button className="btn-secondary" disabled={busy || !meta.track.trim()} onClick={saveDetails}>
+            Save details
+          </button>
+          <span className="pb-2 text-xs text-light">Renames the round everywhere. Results stay untouched.</span>
+        </div>
+      )}
 
       {rows.length > 0 && (
         <>
@@ -489,7 +632,7 @@ function EditResults() {
                         value={r.subForTeamId}
                         onChange={(e) => setRow(i, { subForTeamId: e.target.value })}
                       >
-                        <option value="">— driver’s team —</option>
+                        <option value="">Driver’s own team</option>
                         {(teams || [])
                           .filter((t) => t.tier === 1 || t.tier === 2)
                           .map((t) => (
@@ -524,7 +667,7 @@ function EditResults() {
           <p className="text-xs text-light">
             Enter each driver&rsquo;s <span className="font-semibold text-medium">raw finishing position</span> in
             &ldquo;Finish&rdquo;. <span className="font-semibold text-medium">Penalty (sec)</span> is a time penalty
-            in seconds — it&rsquo;s added to the driver&rsquo;s race time and the field is re-sorted, so they drop
+            in seconds. It&rsquo;s added to the driver&rsquo;s race time and the field is re-sorted, so they drop
             behind everyone now ahead on time. (Needs imported race times; rounds without them can&rsquo;t be
             re-sorted.) The final order, points and the championship update live below before you save.
           </p>
@@ -543,7 +686,7 @@ function EditResults() {
 // --- DRIVERS ---------------------------------------------------------------
 function Drivers() {
   const { data: teams, reload } = useApi(useCallback(() => api.teams(), []));
-  const [form, setForm] = useState({ id: "", name: "", discordName: "", teamId: "", tier: 2 });
+  const [form, setForm] = useState({ name: "", discordName: "", teamId: "", tier: 2 });
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -556,15 +699,15 @@ function Drivers() {
     setError(null);
     setMsg(null);
     try {
+      // The permanent technical id is generated server-side from the name.
       await api.createDriver({
-        id: form.id.trim(),
         name: form.name.trim(),
         discordName: form.discordName.trim() || form.name.trim(),
         teamId: form.teamId,
         tier: Number(form.tier),
       });
       setMsg(`Driver ${form.name} created.`);
-      setForm({ id: "", name: "", discordName: "", teamId: "", tier: 2 });
+      setForm({ name: "", discordName: "", teamId: "", tier: 2 });
       reload();
     } catch (err) {
       setError(err.message);
@@ -589,21 +732,17 @@ function Drivers() {
 
   return (
     <div>
-    <SeasonScope />
     <div className="grid gap-6 lg:grid-cols-2">
       <form onSubmit={create} className="card space-y-4 p-5">
         <CardHead eyebrow="Drivers" title="Add driver" />
         <div className="grid grid-cols-2 gap-3">
-          <input className="input" placeholder="id, e.g. max_mustermann" title="Permanent, unique handle — lowercase, no spaces" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} required />
           <input className="input" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          <input className="input" placeholder="Discord name" value={form.discordName} onChange={(e) => setForm({ ...form, discordName: e.target.value })} />
         </div>
-        <input className="input" placeholder="Discord name" value={form.discordName} onChange={(e) => setForm({ ...form, discordName: e.target.value })} />
         <p className="text-xs leading-relaxed text-light">
-          <span className="font-semibold text-medium">id</span> is a permanent, unique handle — lowercase, no spaces
-          (e.g. <span className="font-mono">max_mustermann</span>). It can&rsquo;t easily be changed later.<br />
           For race imports to auto-recognise a driver, make their <span className="font-semibold text-medium">Name</span>{" "}
-          or <span className="font-semibold text-medium">Discord name</span> match the in-game Assetto Corsa name as
-          closely as possible. (You can always pick the right driver by hand during import if the auto-match misses.)
+          or <span className="font-semibold text-medium">Discord name</span> match their in-game name (as it
+          appears in the results file) as closely as possible. (You can always pick the right driver by hand during import if the auto-match misses.)
         </p>
         <div className="grid grid-cols-2 gap-3">
           <select className="input" value={form.teamId} onChange={(e) => setForm({ ...form, teamId: e.target.value })} required>
@@ -699,7 +838,7 @@ function DiscordEvents() {
     setBusy(true); setError(null); setMsg(null);
     try {
       await api.testWebhook();
-      setMsg("Test message sent — check your Discord channel!");
+      setMsg("Test message sent. Check your Discord channel!");
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
@@ -739,10 +878,9 @@ function DiscordEvents() {
 
   return (
     <div>
-    <SeasonScope />
     <div className="grid gap-6 lg:grid-cols-2">
-      {/* Webhook */}
-      <form onSubmit={saveWebhook} className="card space-y-4 p-5">
+      {/* Webhook (second on purpose: scheduling races is the everyday task) */}
+      <form onSubmit={saveWebhook} className="card space-y-4 p-5 order-2">
         <CardHead eyebrow="Integration" title="Discord Webhook" />
         <p className="text-sm text-light">
           Discord channel → Edit Channel → Integrations → Webhooks → "New Webhook" →
@@ -773,7 +911,7 @@ function DiscordEvents() {
       </form>
 
       {/* Create event + announce */}
-      <div className="space-y-6">
+      <div className="space-y-6 order-1">
         <form onSubmit={createEvent} className="card space-y-3 p-5">
           <CardHead eyebrow="Schedule" title="Create race / event" />
           <label className="flex items-center gap-2 text-sm text-medium">
@@ -800,7 +938,7 @@ function DiscordEvents() {
             {upcoming.map((r) => (
               <li key={r.id} className="flex items-center justify-between py-2 text-sm">
                 <span className="font-semibold text-dark">
-                  {r.isSpecialEvent ? "SE" : `Round ${r.number}`} — {r.track}
+                  {r.isSpecialEvent ? "SE" : `Round ${r.number}`} · {r.track}
                 </span>
                 <span className="flex items-center gap-3">
                   {!r.isSpecialEvent && (
@@ -826,9 +964,72 @@ function DiscordEvents() {
 }
 
 // --- SEASONS ---------------------------------------------------------------
-function Seasons() {
+
+// The league default points table, mirrored from the backend — shown as the
+// placeholder so the admin can see what "default" means.
+const DEFAULT_POINTS_HINT = "35, 30, 25, 22, 20, 18, 16, 14, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1";
+
+// Turn the comma-separated points input into an array (or null for "default").
+// Returns { ok, value | error }.
+function parsePointsInput(text) {
+  const t = String(text || "").trim();
+  if (!t) return { ok: true, value: null };
+  const parts = t.split(/[\s,;]+/).filter(Boolean).map(Number);
+  if (parts.length === 0) return { ok: true, value: null };
+  if (parts.length > 40 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 1000)) {
+    return { ok: false, error: "Points must be whole numbers (0 to 1000), separated by commas, e.g. 25, 18, 15" };
+  }
+  return { ok: true, value: parts };
+}
+
+// Per-season scoring editor: how many worst rounds are dropped (0 = none) and
+// the points-per-position table (empty = league default).
+function SeasonScoring({ season, onSaved, onError }) {
+  const stored = season.pointsTable ? JSON.parse(season.pointsTable).join(", ") : "";
+  const [drop, setDrop] = useState(String(season.dropWorst ?? 3));
+  const [points, setPoints] = useState(stored);
+  const [saving, setSaving] = useState(false);
+  const dirty = drop !== String(season.dropWorst ?? 3) || points.trim() !== stored;
+
+  async function save() {
+    const n = Number(drop);
+    if (!Number.isInteger(n) || n < 0 || n > 10) return onError("Dropped rounds must be a whole number between 0 and 10.");
+    const parsed = parsePointsInput(points);
+    if (!parsed.ok) return onError(parsed.error);
+    setSaving(true); onError(null);
+    try {
+      await api.updateSeason(season.id, { dropWorst: n, pointsTable: parsed.value });
+      onSaved(`Scoring for ${season.name} saved.`);
+    } catch (err) { onError(err.message); } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="space-y-1.5 rounded-lg bg-surface2/60 p-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1.5 text-xs text-light">
+          Dropped rounds
+          <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="10"
+            value={drop} onChange={(e) => setDrop(e.target.value)} title="How many of each driver's/team's lowest-scoring rounds don't count (0 = every round counts)" />
+        </label>
+        <input className="input min-w-40 flex-1 py-1 font-mono text-xs" placeholder={`Points P1, P2, … (default: ${DEFAULT_POINTS_HINT})`}
+          value={points} onChange={(e) => setPoints(e.target.value)} title="Points per finishing position, starting at P1. Leave empty for the league default." />
+        <button className="btn-secondary px-3 py-1 text-xs" disabled={saving || !dirty} onClick={save}>
+          {saving ? "Saving…" : "Save scoring"}
+        </button>
+      </div>
+      <p className="text-[11px] leading-relaxed text-light">
+        {Number(drop) > 0
+          ? `Season totals drop each driver's & team's ${drop} lowest round${Number(drop) === 1 ? "" : "s"}.`
+          : "Every round counts (no dropped rounds)."}{" "}
+        {points.trim() ? "Custom points table." : "League default points table."}
+      </p>
+    </div>
+  );
+}
+
+function Seasons({ gotoRaces }) {
   const { data: seasons, reload } = useApi(useCallback(() => api.adminSeasons(), []));
-  const [form, setForm] = useState({ number: "", name: "", game: "" });
+  const [form, setForm] = useState({ number: "", name: "", game: "", dropWorst: "3", points: "" });
   const [cloneFrom, setCloneFrom] = useState({}); // seasonId -> sourceSeasonId
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
@@ -838,9 +1039,17 @@ function Seasons() {
     e.preventDefault();
     setBusy(true); setError(null); setMsg(null);
     try {
-      await api.createSeason({ number: Number(form.number), name: form.name.trim(), game: form.game.trim() || null });
-      setMsg(`Season ${form.name} created. It is not public yet — activate it when ready.`);
-      setForm({ number: "", name: "", game: "" });
+      const parsed = parsePointsInput(form.points);
+      if (!parsed.ok) throw new Error(parsed.error);
+      await api.createSeason({
+        number: Number(form.number),
+        name: form.name.trim(),
+        game: form.game.trim() || null,
+        dropWorst: Number(form.dropWorst) || 0,
+        pointsTable: parsed.value,
+      });
+      setMsg(`Season ${form.name} created. It is not public yet. Activate it when ready.`);
+      setForm({ number: "", name: "", game: "", dropWorst: "3", points: "" });
       reload();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -851,13 +1060,48 @@ function Seasons() {
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
-  async function clone(targetId) {
+  async function clone(targetId, withDrivers) {
     const fromId = cloneFrom[targetId];
     if (!fromId) return;
     setBusy(true); setError(null); setMsg(null);
     try {
-      const r = await api.cloneTeams(targetId, fromId);
-      setMsg(`Copied ${r.created} team(s) into this season. Edit them under the Teams tab.`);
+      if (withDrivers) {
+        const r = await api.cloneRoster(targetId, fromId);
+        setMsg(`Copied ${r.teamsCreated} team(s) and ${r.driversCreated} driver(s) into this season. Adjust them under Teams / Drivers.`);
+      } else {
+        const r = await api.cloneTeams(targetId, fromId);
+        setMsg(`Copied ${r.created} team(s) into this season. Edit them under the Teams tab.`);
+      }
+      reload();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  async function remove(s) {
+    const { teams, drivers, races } = s._count;
+    const hasContent = teams > 0 || drivers > 0 || races > 0;
+
+    if (!hasContent) {
+      if (!window.confirm(`Delete ${s.name}?`)) return;
+    } else {
+      // Deleting a filled season wipes its teams, drivers and races. Make the
+      // admin type the season's name so this can't happen on a stray click.
+      // (A DB backup is created automatically right before the delete.)
+      const typed = window.prompt(
+        `${s.name} still holds ${teams} team(s), ${drivers} driver(s) and ${races} race(s).\n` +
+        `Deleting removes ALL of it (a database backup is made first).\n\n` +
+        `Type the season's name (${s.name}) to confirm:`
+      );
+      if (typed === null) return;
+      if (typed.trim() !== s.name) {
+        setError(`Not deleted. The typed name didn't match "${s.name}".`);
+        return;
+      }
+    }
+
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.deleteSeason(s.id, hasContent);
+      setMsg(`${s.name} deleted${hasContent ? " (backup created first, see the Health tab)" : ""}.`);
       reload();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -867,8 +1111,10 @@ function Seasons() {
       <form onSubmit={create} className="card space-y-4 p-5">
         <CardHead eyebrow="Seasons" title="Create a season" />
         <p className="text-sm text-light">
-          A new season starts empty. Create it, copy or add teams &amp; drivers, schedule its races,
-          then activate it to make it the public default. Old seasons stay available in the switcher.
+          A new season starts empty. Create it, copy or add teams &amp; drivers, schedule its races
+          in the <span className="font-semibold text-medium">Races &amp; Events</span> tab (or via
+          &ldquo;Schedule races&rdquo; below), then activate it to make it the public default. Old
+          seasons stay available in the switcher.
         </p>
         <div className="grid grid-cols-2 gap-3">
           <input className="input" type="number" placeholder="Number (e.g. 8)" value={form.number}
@@ -878,6 +1124,19 @@ function Seasons() {
         </div>
         <input className="input" placeholder="Game / subtitle (e.g. F1 2010 · Assetto Corsa)" value={form.game}
           onChange={(e) => setForm({ ...form, game: e.target.value })} />
+        {/* scoring rules — editable again later on each season in the list */}
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-light">
+            Dropped rounds
+            <input className="input w-14 py-1.5 text-center text-xs" type="number" min="0" max="10" value={form.dropWorst}
+              onChange={(e) => setForm({ ...form, dropWorst: e.target.value })}
+              title="How many of each driver's/team's lowest-scoring rounds don't count (0 = every round counts)" />
+          </label>
+          <input className="input min-w-40 flex-1 py-1.5 font-mono text-xs" value={form.points}
+            onChange={(e) => setForm({ ...form, points: e.target.value })}
+            placeholder="Points P1, P2, … (empty = league default)"
+            title={`Points per finishing position, starting at P1. Default: ${DEFAULT_POINTS_HINT}`} />
+        </div>
         {error && <Notice kind="error">{error}</Notice>}
         {msg && <Notice kind="success">{msg}</Notice>}
         <button className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Create season"}</button>
@@ -896,23 +1155,41 @@ function Seasons() {
                     {s.game || "—"} · {s._count.teams} teams · {s._count.drivers} drivers · {s._count.races} races
                   </div>
                 </div>
-                {!s.isActive && (
+                <div className="flex items-center gap-3">
                   <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
-                    onClick={() => activate(s.id)}>Make active</button>
-                )}
+                    onClick={() => gotoRaces?.(s)}
+                    title="Switch to this season and open the race calendar">
+                    Schedule races →
+                  </button>
+                  {!s.isActive && (
+                    <>
+                      <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                        onClick={() => activate(s.id)}>Make active</button>
+                      {/* any non-active season is deletable; a filled one requires
+                          typing its name and is backed up first (server-enforced) */}
+                      <button className="text-xs font-semibold text-light transition hover:text-primary" disabled={busy}
+                        onClick={() => remove(s)}>Delete</button>
+                    </>
+                  )}
+                </div>
               </div>
-              {/* clone teams from another season */}
+              <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.pointsTable || ""}`} season={s}
+                onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+              {/* clone teams (or the full roster) from another season */}
               {(seasons || []).length > 1 && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <select className="input py-1 text-xs" value={cloneFrom[s.id] || ""}
                     onChange={(e) => setCloneFrom({ ...cloneFrom, [s.id]: e.target.value })}>
-                    <option value="">Copy teams from…</option>
+                    <option value="">Copy from…</option>
                     {(seasons || []).filter((o) => o.id !== s.id && o._count.teams > 0).map((o) => (
-                      <option key={o.id} value={o.id}>{o.name} ({o._count.teams})</option>
+                      <option key={o.id} value={o.id}>{o.name} ({o._count.teams} teams, {o._count.drivers} drivers)</option>
                     ))}
                   </select>
                   <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
-                    onClick={() => clone(s.id)}>Copy</button>
+                    onClick={() => clone(s.id, false)}>Teams only</button>
+                  <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
+                    onClick={() => clone(s.id, true)} title="Copies teams AND drivers as the new season's starting roster">
+                    Teams + drivers</button>
                 </div>
               )}
             </li>
@@ -970,7 +1247,6 @@ function Teams() {
 
   return (
     <div>
-      <SeasonScope />
       {error && <div className="mb-4"><Notice kind="error">{error}</Notice></div>}
       {msg && <div className="mb-4"><Notice kind="success">{msg}</Notice></div>}
       <div className="grid items-start gap-6 lg:grid-cols-3">
@@ -986,7 +1262,7 @@ function Teams() {
             <label className="text-xs font-semibold uppercase tracking-wide text-light">ID (slug)</label>
             <input className="input" placeholder="e.g. mercedes_s8" value={form.id}
               onChange={(e) => setForm({ ...form, id: e.target.value })} required />
-            <p className="text-xs text-light">Unique across all seasons — a suffix like <code>_s8</code> helps.</p>
+            <p className="text-xs text-light">Unique across all seasons. A suffix like <code>_s8</code> helps.</p>
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold uppercase tracking-wide text-light">Tier</label>

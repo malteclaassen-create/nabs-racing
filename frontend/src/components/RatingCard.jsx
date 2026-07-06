@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
+import { useSeason } from "../context/SeasonContext.jsx";
 
 const TIER = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
@@ -43,8 +44,12 @@ function useFitName(name, max = 40, min = 15) {
 // colour drives the whole card via the --team / --team2 custom properties; all
 // the visual layering lives in index.css (.rcard-*).
 export default function RatingCard({ driver, rating }) {
-  // Hook runs unconditionally (rules of hooks); harmless when we render null.
+  // Hooks run unconditionally (rules of hooks); harmless when we render null.
   const { ref: nameRef, size: nameSize } = useFitName(driver?.name || "");
+  const { current: season } = useSeason();
+  // Card footer brand line, e.g. "NABS RACING · SEASON 7" — follows the season
+  // being viewed instead of a hardcoded label.
+  const seasonLabel = (season?.name || "").toUpperCase() || "LEAGUE";
   if (!rating?.ratings) return null;
   const g = rating.ratings;
   const color = driver.team?.color || "#3b4254";
@@ -97,7 +102,7 @@ export default function RatingCard({ driver, rating }) {
           <div className="rcard-stat"><span>PAC</span><b>{g.pac}</b></div>
         </div>
 
-        <div className="rcard-brand"><span>NABS</span> RACING<i />SEASON 7</div>
+        <div className="rcard-brand"><span>NABS</span> RACING<i />{seasonLabel}</div>
       </div>
     </div>
   );

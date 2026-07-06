@@ -338,15 +338,33 @@ async function writeStoredRace(raceId, data, teamTier) {
 async function main() {
   console.log("Seeding NABS Racing League...");
 
-  // Wipe (idempotent reseed)
-  await prisma.constructorRaceScore.deleteMany();
-  await prisma.raceResult.deleteMany();
-  await prisma.race.deleteMany();
-  await prisma.driver.deleteMany();
-  await prisma.team.deleteMany();
-  await prisma.season.deleteMany();
+  // Wipe (idempotent reseed) — SCOPED to Season 7, the only season this seed
+  // creates. Archive seasons 1-6 (imported via `npm run import:archive`) and
+  // any future seasons created in the admin stay untouched, so a reseed no
+  // longer destroys them. RSVPs / seat offers / interests that reference S7
+  // drivers are removed explicitly first (they don't cascade off a driver).
+  const SID = SEASON.id;
+  await prisma.raceRsvp.deleteMany({
+    where: { OR: [{ driver: { seasonId: SID } }, { race: { seasonId: SID } }] },
+  });
+  await prisma.seatInterest.deleteMany({
+    where: { OR: [{ driver: { seasonId: SID } }, { offer: { race: { seasonId: SID } } }] },
+  });
+  await prisma.seatOffer.deleteMany({
+    where: { OR: [{ race: { seasonId: SID } }, { driver: { seasonId: SID } }, { filledBy: { seasonId: SID } }] },
+  });
+  await prisma.constructorRaceScore.deleteMany({ where: { race: { seasonId: SID } } });
+  await prisma.raceResult.deleteMany({
+    where: { OR: [{ race: { seasonId: SID } }, { driver: { seasonId: SID } }] },
+  });
+  await prisma.race.deleteMany({ where: { seasonId: SID } });
+  await prisma.driver.deleteMany({ where: { seasonId: SID } });
+  await prisma.team.deleteMany({ where: { seasonId: SID } });
+  await prisma.season.deleteMany({ where: { id: SID } });
 
-  // Season 7 (the only seeded season; the active one)
+  // Season 7 (the seeded season) becomes THE active season — exactly one
+  // season may be active, so anything else active is switched off first.
+  await prisma.season.updateMany({ where: { isActive: true }, data: { isActive: false } });
   await prisma.season.create({ data: { ...SEASON, isActive: true } });
   const seasonId = SEASON.id;
 
@@ -408,6 +426,49 @@ async function main() {
   }
 
   // ----- R1..R8: store driver points + verified constructor scores ---------
+  // Who actually drove for which team each round (lineups changed constantly:
+  // reserves subbing in, regulars helping other teams, third cars scoring for
+  // nobody). Reconstructed 2026-07-02/03 from the official sheet's per-round
+  // constructor scores and confirmed against the team icons in the Discord
+  // result posts (R1-R10): with these assignments every round's recomputed
+  // Tier-1 AND Tier-2 scores match the official numbers exactly. "reserve" =
+  // drove that round without team credit (tier-0 team, excluded from
+  // scoring). Details: backend/prisma/SEASON7-DATA-NOTES.md
+  const SUB_ASSIGNMENTS = {
+    1: {
+      tball: "mclaren", jomilan: "williams", spydermonkey: "honda", pizd: "jaguar",
+      crans3: "lamborghini", wulffo: "super_aguri", airlineure: "jaguar",
+      wal_rider: "toyota", danielj: "bmw", epygames: "lotus",
+      kowandoh_badu: "reserve", zero0n1k: "reserve",
+    },
+    2: {
+      tball: "mclaren", spydermonkey: "williams", kowandoh_badu: "honda",
+      pizd: "jaguar", damien: "spyker", jp_bekker: "toyota",
+      jacob_ordonez: "reserve", zero0n1k: "reserve",
+    },
+    3: { tball: "mclaren", spydermonkey: "redbull", zero0n1k: "super_aguri", flo: "toyota" },
+    4: {
+      tj09: "ferrari", gabriele_grossi: "bmw", jadend: "super_aguri",
+      zero0n1k: "redbull", tischler: "redbull", oshy: "toyota", jp_bekker: "renault",
+    },
+    5: {
+      jomilan: "porsche", crans3: "mclaren", airlineure: "spyker", zero0n1k: "jaguar",
+      tischler: "ncb_mugen", jp_bekker: "toyota", gabriele_grossi: "torro_rosso",
+    },
+    6: {
+      jomilan: "porsche", tball: "mclaren", gabriele_grossi: "ncb_mugen",
+      zero0n1k: "lotus", urmagaeddon: "lamborghini",
+    },
+    7: {
+      spydermonkey: "williams", jomilan: "honda", thatdudeguest: "mclaren",
+      zohair_khan: "jaguar", oshy: "bmw",
+    },
+    8: {
+      thatdudeguest: "honda", dablosv5: "super_aguri", toni_t: "spyker",
+      zohair_khan: "redbull", oshy: "lamborghini",
+    },
+  };
+
   for (let n = 1; n <= 8; n++) {
     const raceId = races[n].id;
     const idx = n - 1;
@@ -428,6 +489,7 @@ async function main() {
         position: p ? p.position : null,
         grid: p ? p.grid : null,
         bestLapMs: p ? p.bestLapMs : null,
+        subForTeamId: SUB_ASSIGNMENTS[n]?.[driverId] ?? null,
       };
       const isStatus = STATUS_STRINGS.has(v);
       await prisma.raceResult.create({
@@ -455,6 +517,7 @@ async function main() {
           position: p.position,
           grid: p.grid,
           bestLapMs: p.bestLapMs,
+          subForTeamId: SUB_ASSIGNMENTS[n]?.[p.driverId] ?? null,
         },
       });
     }

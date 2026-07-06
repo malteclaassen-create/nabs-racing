@@ -57,26 +57,7 @@ function JoinDiscord({ url, className = "" }) {
   );
 }
 
-// Dropdown to switch the viewed season (only shown when more than one exists).
-function SeasonSwitcher({ className = "" }) {
-  const { seasons, season, setSeason } = useSeason();
-  if (seasons.length <= 1) return null;
-  return (
-    <select
-      aria-label="Season"
-      value={season ?? ""}
-      onChange={(e) => setSeason(Number(e.target.value))}
-      className={`rounded-lg border border-border bg-surface2 px-2.5 py-2 text-sm font-semibold text-medium transition hover:text-dark focus:outline-none focus:ring-2 focus:ring-brand/40 ${className}`}
-    >
-      {seasons.map((s) => (
-        <option key={s.id} value={s.number}>
-          {s.name}
-          {s.isActive ? " (current)" : ""}
-        </option>
-      ))}
-    </select>
-  );
-}
+// The season switcher now lives on the Home page (SeasonTimeline), not the bar.
 
 const links = [
   { to: "/", label: "Home", end: true },
@@ -84,7 +65,7 @@ const links = [
   { to: "/constructors", label: "Constructors" },
   { to: "/races", label: "Races" },
   { to: "/live", label: "Live Timing" },
-  { to: "/downloads", label: "Downloads" },
+  { to: "/downloads", label: "Race Info" },
 ];
 
 const linkClass = ({ isActive }) =>
@@ -183,7 +164,6 @@ export default function NavBar() {
           ))}
           <AuthControl />
           {!isLoggedIn && <JoinDiscord url={social.data?.discord} className="ml-1" />}
-          <SeasonSwitcher className="ml-1" />
           <SettingsButton className="ml-1 h-9 w-9" />
         </div>
 
@@ -221,7 +201,6 @@ export default function NavBar() {
                 {l.label}
               </NavLink>
             ))}
-            <SeasonSwitcher className="mt-1 w-full" />
           </div>
         </div>
       )}

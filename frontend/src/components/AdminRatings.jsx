@@ -131,12 +131,12 @@ export default function AdminRatings() {
   return (
     <div className="space-y-5">
       <div className="card p-5">
-        <CardHead eyebrow="Driver Ratings" title="Rating weights — live tuning" />
+        <CardHead eyebrow="Driver Ratings" title="Live rating-weight tuning" />
         <p className="text-sm text-light">
-          Every driver gets four sub-ratings — <b>EXP</b> (experience), <b>PAC</b> (pace),
-          <b> RAC</b> (racecraft), <b>AHA</b> (awareness/cleanliness) — blended into the overall <b>RTG</b>.
+          Every driver gets four sub-ratings: <b>EXP</b> (experience), <b>PAC</b> (pace),
+          <b> RAC</b> (racecraft) and <b>AHA</b> (awareness/cleanliness), blended into the overall <b>RTG</b>.
           Each value is ranked across the field and mapped onto the spread below. Drag the sliders to
-          re-weight; the table updates live. <i>Nothing is saved — this is a sandbox.</i>
+          re-weight; the table updates live. <i>Nothing is saved. This is a sandbox.</i>
         </p>
       </div>
 

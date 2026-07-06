@@ -4,7 +4,7 @@ import { api, setSelectedSeason } from "../api/client.js";
 // Holds the season the public site is viewing. Defaults to the active season;
 // the NavBar switcher changes it. Season-scoped API reads pick it up via the
 // api client, and App remounts the page subtree on change so data refetches.
-const SeasonCtx = createContext({ seasons: [], season: null, setSeason: () => {}, current: null });
+const SeasonCtx = createContext({ seasons: [], season: null, setSeason: () => {}, current: null, active: null });
 
 export function useSeason() {
   return useContext(SeasonCtx);
@@ -33,9 +33,12 @@ export function SeasonProvider({ children }) {
   setSelectedSeason(season);
 
   const current = seasons.find((s) => s.number === season) || null;
+  // The running season, independent of what the switcher is viewing. The
+  // newcomer/Welcome page always speaks about this one.
+  const active = seasons.find((s) => s.isActive) || null;
 
   return (
-    <SeasonCtx.Provider value={{ seasons, season, setSeason, current }}>
+    <SeasonCtx.Provider value={{ seasons, season, setSeason, current, active }}>
       {children}
     </SeasonCtx.Provider>
   );

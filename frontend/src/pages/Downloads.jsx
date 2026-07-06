@@ -2,25 +2,31 @@ import { useCallback, useMemo, useState } from "react";
 import { api, withApiBase } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
-import { PageHeader, ErrorBox, Skeleton } from "../components/ui.jsx";
+import { useSeason } from "../context/SeasonContext.jsx";
+import { seasonGameParts } from "../utils/seasonGame.js";
+import { PageHeader, SectionHeading, ErrorBox, Skeleton, MEDAL } from "../components/ui.jsx";
 import { SocialIcon } from "../components/SocialLinks.jsx";
+import Icon from "../components/InfoIcon.jsx";
+import { RACE_INFO_DEFAULTS } from "../data/raceInfoDefaults.js";
 
-// --- tiny inline icons (stroke = currentColor) ---------------------------
-const I = {
-  download: "M12 3v12m0 0l-4-4m4 4l4-4M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4",
-  lock: "M6 10V8a6 6 0 1112 0v2M5 10h14a1 1 0 011 1v9a1 1 0 01-1 1H5a1 1 0 01-1-1v-9a1 1 0 011-1z",
-  info: "M12 8h.01M11 12h1v4h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
-  box: "M21 8l-9-5-9 5m18 0l-9 5m9-5v8l-9 5m0-13L3 8m9 5v8m0-8L3 8m0 0v8l9 5",
-  external: "M14 5h5v5M19 5l-8 8M12 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-5",
-};
-function Icon({ name, className = "h-4 w-4" }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d={I[name]} />
-    </svg>
+// League default points. Fallback only; seasons can override via pointsTable.
+const DEFAULT_POINTS = [35, 30, 25, 22, 20, 18, 16, 14, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1];
+
+// The page text is admin-editable (Admin -> Race Info) and stored as plain
+// strings. Two tiny render helpers turn those strings into JSX:
+//   fill(...)  resolves {rounds}/{platform}/... placeholders,
+//   rich(...)  turns **spans** into the bold highlight.
+function fill(s, tokens) {
+  return String(s ?? "").replace(/\{(\w+)\}/g, (m, k) => (tokens[k] != null && tokens[k] !== "" ? String(tokens[k]) : m));
+}
+function rich(s) {
+  const parts = String(s ?? "").split(/\*\*(.+?)\*\*/g);
+  if (parts.length === 1) return s;
+  return parts.map((p, i) =>
+    i % 2 ? <span key={i} className="font-semibold text-dark">{p}</span> : p
   );
 }
+const text = (s, tokens) => rich(fill(s, tokens));
 
 // Members-only gate: same Discord sign-in flow as the profile page.
 function LoginGate() {
@@ -122,23 +128,54 @@ function DownloadCard({ item }) {
   );
 }
 
+// One collapsible folder of downloads (folders are created in the admin, e.g.
+// Tracks / Cars / one folder per event). Same accordion pattern as the rulebook.
+function FolderSection({ name, description, items, index = 0, defaultOpen = false }) {
+  return (
+    <details className="group card overflow-hidden" open={defaultOpen} style={{ "--i": index }}>
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition hover:bg-surface2">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-eyebrow">
+          <Icon name="folder" className="h-[18px] w-[18px]" />
+        </span>
+        <span className="flex-1 font-display text-base font-bold uppercase tracking-tight text-dark">
+          {name}
+        </span>
+        <span className="font-mono text-[11px] font-semibold text-faint">
+          {items.length} {items.length === 1 ? "file" : "files"}
+        </span>
+        <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-eyebrow transition-transform duration-300 group-open:rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </summary>
+      <div className="border-t border-border bg-bg/50 p-4">
+        {description && <p className="mb-3 text-sm leading-relaxed text-medium">{description}</p>}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((it) => <DownloadCard key={it.id} item={it} />)}
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function Catalogue() {
   const { data, loading, error } = useApi(useCallback(() => api.downloads(), []));
 
   const groups = useMemo(() => {
     const items = data?.downloads || [];
-    const by = new Map();
-    for (const it of items) {
-      if (!by.has(it.category)) by.set(it.category, []);
-      by.get(it.category).push(it);
-    }
-    return [...by.entries()];
+    const folders = data?.folders || [];
+    const known = new Set(folders.map((f) => f.id));
+    const out = folders
+      .map((f) => ({ key: f.id, name: f.name, description: f.description, items: items.filter((i) => i.folderId === f.id) }))
+      .filter((g) => g.items.length > 0);
+    const loose = items.filter((i) => !i.folderId || !known.has(i.folderId));
+    if (loose.length) out.push({ key: "loose", name: "More files", description: null, items: loose });
+    return out;
   }, [data]);
 
   if (loading)
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
+      <div className="space-y-3">
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}
       </div>
     );
   if (error) return <ErrorBox message={error} />;
@@ -152,32 +189,195 @@ function Catalogue() {
     );
 
   return (
-    <div className="space-y-9">
-      {groups.map(([category, list]) => (
-        <section key={category}>
-          <h2 className="mb-3 flex items-center gap-2 font-display text-sm font-bold uppercase tracking-[0.16em] text-light">
-            {category}
-            <span className="font-mono text-[11px] font-semibold text-faint">{list.length}</span>
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {list.map((it) => <DownloadCard key={it.id} item={it} />)}
-          </div>
-        </section>
+    <div className="cascade space-y-3">
+      {groups.map((g, i) => (
+        <FolderSection
+          key={g.key}
+          name={g.name}
+          description={g.description}
+          items={g.items}
+          index={Math.min(i, 8)}
+          defaultOpen={i === 0}
+        />
       ))}
+    </div>
+  );
+}
+
+// One collapsible subject in the rulebook (same accordion pattern as the
+// Welcome-page FAQ, so the two read as one design family).
+function RuleGroup({ icon, subject, rules, defaultOpen = false, index = 0 }) {
+  return (
+    <details className="group card overflow-hidden" open={defaultOpen} style={{ "--i": index }}>
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition hover:bg-surface2">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-eyebrow">
+          <Icon name={icon} className="h-[18px] w-[18px]" />
+        </span>
+        <span className="flex-1 font-display text-base font-bold uppercase tracking-tight text-dark">
+          {subject}
+        </span>
+        <span className="font-mono text-[11px] font-semibold text-faint">
+          {rules.length} {rules.length === 1 ? "rule" : "rules"}
+        </span>
+        <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-eyebrow transition-transform duration-300 group-open:rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </summary>
+      <ul className="space-y-2.5 border-t border-border px-5 py-4">
+        {rules.map((r, i) => (
+          <li key={i} className="flex items-start gap-2.5 text-sm leading-relaxed text-medium">
+            <span className="mt-[0.55em] h-px w-3.5 shrink-0 bg-accent/60" aria-hidden="true" />
+            <span>{rich(r)}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+// One rule card in the "how it works" grid.
+function RuleCard({ icon, title, children }) {
+  return (
+    <div className="card p-5">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-eyebrow">
+          <Icon name={icon} className="h-[18px] w-[18px]" />
+        </span>
+        <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">{title}</h3>
+      </div>
+      <div className="mt-3 space-y-2 text-sm leading-relaxed text-medium">{children}</div>
+    </div>
+  );
+}
+
+// The league rulebook. All wording comes from `content` (admin-edited, or the
+// built-in defaults); the numbers behind the {placeholders} and the points
+// table come live from the season, so scoring changes need no text edits.
+function Rules({ content, tokens }) {
+  const { current: season } = useSeason();
+  const pointsTable =
+    Array.isArray(season?.pointsTable) && season.pointsTable.length ? season.pointsTable : DEFAULT_POINTS;
+
+  return (
+    <div className="space-y-10">
+      {/* ------------------- the championship format ------------------- */}
+      <section className="reveal space-y-4">
+        <SectionHeading eyebrow="The rules" title="How the championship works" />
+        <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {content.cards.map((c, i) => (
+            <div key={i} style={{ "--i": Math.min(i, 8) }}>
+              <RuleCard icon={c.icon} title={fill(c.title, tokens)}>
+                <p>{text(c.text, tokens)}</p>
+              </RuleCard>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ------------------------- points table ------------------------- */}
+      <section className="reveal space-y-4">
+        <SectionHeading
+          eyebrow="Scoring"
+          title="Points per finish"
+          right={
+            <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+              P{pointsTable.length + 1}+ &amp; DNF = 0
+            </span>
+          }
+        />
+        <div className="card overflow-hidden">
+          <div className="grid grid-cols-3 gap-px bg-border sm:grid-cols-6 lg:grid-cols-9">
+            {pointsTable.map((pts, i) => {
+              const medal = i < 3 ? MEDAL[i] : null;
+              return (
+                <div key={i} className="flex flex-col items-center justify-center bg-card py-3">
+                  <span
+                    className="flex h-6 min-w-6 items-center justify-center rounded px-1 font-display text-xs font-black"
+                    style={{ backgroundColor: medal || "transparent", color: medal ? "#0F172A" : "var(--c-text3)" }}
+                  >
+                    P{i + 1}
+                  </span>
+                  <span className="mt-1 font-mono text-lg font-bold tabular-nums text-dark">{pts}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {content.pointsFootnote && (
+          <p className="text-xs leading-relaxed text-light">{text(content.pointsFootnote, tokens)}</p>
+        )}
+      </section>
+
+      {/* ------------------------- the rulebook ------------------------- */}
+      <section className="reveal space-y-4">
+        <SectionHeading
+          eyebrow="On track"
+          title="Sporting Regulations"
+          right={
+            <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+              {content.rulebook.reduce((n, g) => n + g.rules.length, 0)} rules
+            </span>
+          }
+        />
+        <div className="cascade space-y-3">
+          {content.rulebook.map((g, i) => (
+            <RuleGroup key={i} icon={g.icon} subject={g.subject} rules={g.rules} index={Math.min(i, 8)} />
+          ))}
+        </div>
+        {content.rulebookFootnote && (
+          <p className="text-xs leading-relaxed text-light">{text(content.rulebookFootnote, tokens)}</p>
+        )}
+      </section>
     </div>
   );
 }
 
 export default function Downloads() {
   const { isLoggedIn } = useAuth();
+  const { current: season } = useSeason();
+  const races = useApi(useCallback(() => api.races(), []));
+  const info = useApi(useCallback(() => api.raceInfo(), []));
+
+  // Admin-saved content wins; the built-in defaults cover a fresh site.
+  const content = info.data?.content || RACE_INFO_DEFAULTS;
+
+  // Live numbers the text placeholders can reference.
+  const { era, platform } = seasonGameParts(season);
+  const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
+  const totalRounds = champRaces.length;
+  const dropWorst = season?.dropWorst ?? 3;
+  const counted = dropWorst > 0 && totalRounds > dropWorst ? totalRounds - dropWorst : totalRounds;
+  const tokens = {
+    rounds: totalRounds || "",
+    counted: counted || "",
+    drop: dropWorst || "",
+    platform: platform || "Assetto Corsa",
+    era: era || "Formula 1",
+  };
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-12">
       <PageHeader
-        eyebrow="Members"
-        title="Downloads"
-        subtitle="Everything you need for our Assetto Corsa server — tracks, safety car, Custom Shaders Patch, Real Penalty and the car pack, all in one place."
+        eyebrow="Drivers' handbook"
+        title="Race Info"
+        subtitle={fill(content.subtitle, tokens)}
       />
-      {isLoggedIn ? <Catalogue /> : <LoginGate />}
+
+      <Rules content={content} tokens={tokens} />
+
+      {/* ------------------------- downloads ------------------------- */}
+      <section className="reveal space-y-4">
+        <SectionHeading
+          eyebrow="Members"
+          title="Downloads"
+          right={
+            <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+              Tracks · Mods · Car pack
+            </span>
+          }
+        />
+        {isLoggedIn ? <Catalogue /> : <LoginGate />}
+      </section>
     </div>
   );
 }

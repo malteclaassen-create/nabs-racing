@@ -16,6 +16,19 @@
   --c-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 10px 26px -14px rgba(15, 23, 42, 0.28);
   --c-shadow-lift: 0 2px 6px rgba(15, 23, 42, 0.08), 0 18px 40px -16px rgba(15, 23, 42, 0.34);
   --c-page-glow: radial-gradient(1200px 540px at 50% -10%, rgba(244, 175, 198, 0.16), transparent 70%);
+  /* Medal tones for TEXT/borders sitting on the card background. The bright
+     gold/silver used for filled chips (MEDAL in ui.jsx) wash out as text on
+     white, so light mode uses deeper tones; dark mode keeps the bright ones. */
+  --medal-1: #b45309;
+  --medal-2: #64748b;
+  --medal-3: #c2410c;
+  /* Eyebrow/mono-label colour (`text-eyebrow`): brand pink is too pale on the
+     light theme, so light mode deepens it to a strong pink (NOT rose/red — it
+     must still read as pink); dark mode keeps brand pink. */
+  --c-eyebrow: #db2777;
+  /* Same idea with alpha support (`accent` in tailwind.config): raw RGB triple
+     for borders/fills like accent/40 that must stay visible on white. */
+  --c-accent: 219 39 119;
 }
 
 .dark {
@@ -31,6 +44,11 @@
   --c-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 30px -16px rgba(0, 0, 0, 0.7);
   --c-shadow-lift: 0 2px 8px rgba(0, 0, 0, 0.5), 0 22px 48px -18px rgba(0, 0, 0, 0.8);
   --c-page-glow: radial-gradient(1200px 560px at 50% -10%, rgba(244, 175, 198, 0.1), transparent 70%);
+  --medal-1: #eab308;
+  --medal-2: #94a3b8;
+  --medal-3: #c2410c;
+  --c-eyebrow: #f4afc6;
+  --c-accent: 244 175 198;
 }
 
 /* Always reserve space for the vertical scrollbar so the centered layout never
@@ -237,6 +255,9 @@ body::before {
 }
 .reveal.is-visible {
   animation: nabs-rise 0.55s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+  /* --reveal-delay is handed out per element by useScrollReveal, sorted by
+     vertical position, so a page builds itself top-to-bottom on load. */
+  animation-delay: var(--reveal-delay, 0s);
 }
 
 /* Chart lines draw themselves in. Needs pathLength="1" on the path. */
@@ -252,6 +273,7 @@ body::before {
 }
 .reveal-chart.is-visible .chart-line {
   animation: nabs-line-draw 1.5s cubic-bezier(0.33, 0.1, 0.25, 1) forwards;
+  animation-delay: var(--reveal-delay, 0s);
 }
 
 /* Fade/scale-in for tooltips and popovers. */
@@ -279,7 +301,8 @@ body::before {
 }
 .cascade.is-visible > * {
   animation: nabs-rise 0.5s cubic-bezier(0.22, 0.61, 0.24, 1) both;
-  animation-delay: calc(var(--i, 0) * 45ms);
+  /* children inherit --reveal-delay from the container, then fan out on --i */
+  animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 45ms);
 }
 
 /* --- Growing bars -------------------------------------------------- */
@@ -300,6 +323,7 @@ body::before {
 .reveal.is-visible .bar-fill,
 .cascade.is-visible .bar-fill {
   animation: grow-x 1.1s cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  animation-delay: var(--reveal-delay, 0s);
 }
 
 /* Vertical sibling of bar-fill — columns that rise from the baseline. Height
@@ -318,7 +342,7 @@ body::before {
 .reveal.is-visible .bar-rise,
 .cascade.is-visible .bar-rise {
   animation: grow-y 0.85s cubic-bezier(0.33, 0.1, 0.25, 1) both;
-  animation-delay: calc(var(--i, 0) * 35ms);
+  animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms);
 }
 
 /* --- Shine sweep --------------------------------------------------- */

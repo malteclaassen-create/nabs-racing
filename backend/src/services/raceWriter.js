@@ -6,7 +6,60 @@ import {
   applyPenalties,
   calculateT1ConstructorPoints,
   calculateT2ConstructorPoints,
+  DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
+import { getSeasonScoring } from "./seasonService.js";
+
+// Rejects obviously broken input BEFORE anything is written, with messages an
+// admin can act on. Throws a 400-flagged error (the express error handler
+// turns err.status into the response code).
+function validateResults(results, drivers, teams) {
+  const problems = [];
+  const driverIds = new Set(drivers.map((d) => d.id));
+  const teamIds = new Set(teams.map((t) => t.id));
+  const nameOf = new Map(drivers.map((d) => [d.id, d.name]));
+
+  const seenDrivers = new Set();
+  const seenPositions = new Map();
+  for (const r of results) {
+    if (!r.driverId || !driverIds.has(r.driverId)) {
+      problems.push(`Unknown driver: ${r.driverId || "(empty)"} (not part of this season)`);
+      continue;
+    }
+    if (seenDrivers.has(r.driverId)) {
+      problems.push(`${nameOf.get(r.driverId)} appears twice in the results`);
+    }
+    seenDrivers.add(r.driverId);
+
+    if (r.subForTeamId && !teamIds.has(r.subForTeamId)) {
+      problems.push(`${nameOf.get(r.driverId)}: "drove for" team ${r.subForTeamId} doesn't exist in this season`);
+    }
+    const status = r.status || "FINISHED";
+    if (!["FINISHED", "DNS", "DNF", "DSQ"].includes(status)) {
+      problems.push(`${nameOf.get(r.driverId)}: unknown status "${status}"`);
+    }
+    if (r.penaltySeconds != null && (!Number.isFinite(Number(r.penaltySeconds)) || Number(r.penaltySeconds) < 0)) {
+      problems.push(`${nameOf.get(r.driverId)}: penalty seconds must be 0 or greater`);
+    }
+    if (r.position != null) {
+      if (!Number.isInteger(Number(r.position)) || Number(r.position) < 1) {
+        problems.push(`${nameOf.get(r.driverId)}: invalid position ${r.position}`);
+      } else if (status !== "DNS") {
+        const pos = Number(r.position);
+        if (seenPositions.has(pos)) {
+          problems.push(`Position P${pos} is assigned twice (${nameOf.get(seenPositions.get(pos))} and ${nameOf.get(r.driverId)})`);
+        }
+        seenPositions.set(pos, r.driverId);
+      }
+    }
+  }
+
+  if (problems.length) {
+    const err = new Error(`Results not saved: ${problems.join(" · ")}`);
+    err.status = 400;
+    throw err;
+  }
+}
 
 // results: [{ driverId, position, status, subForTeamId, penaltySeconds, totalTimeMs }]
 // `position` is the RAW finishing position; any time penalties are applied here
@@ -14,10 +67,20 @@ import {
 // position is what gets stored, so re-opening the round in the editor and
 // re-saving is idempotent.
 export async function saveRaceResults(prisma, raceId, results) {
-  const [drivers, teams] = await Promise.all([
-    prisma.driver.findMany(),
-    prisma.team.findMany(),
+  // Constructor scoring must only ever see the race's own season: with several
+  // seasons in the DB, an unscoped list would score points to same-named teams
+  // of other seasons and pad every other season's teams with zero rows.
+  const race = await prisma.race.findUnique({ where: { id: raceId } });
+  const seasonWhere = race?.seasonId ? { seasonId: race.seasonId } : {};
+  const [drivers, teams, scoring] = await Promise.all([
+    prisma.driver.findMany({ where: seasonWhere }),
+    prisma.team.findMany({ where: seasonWhere }),
+    getSeasonScoring(prisma, race?.seasonId ?? null),
   ]);
+  const table = scoring.pointsTable || DEFAULT_POINTS_TABLE;
+
+  // Reject broken input before touching the database.
+  validateResults(results, drivers, teams);
 
   // Snapshot the car-to-car contact counts stored for this round, so a manual
   // results edit (which doesn't carry contact data) preserves what the AC import
@@ -66,10 +129,11 @@ export async function saveRaceResults(prisma, raceId, results) {
       }
     }
 
-    // Recompute constructor scores from the penalty-adjusted classification.
+    // Recompute constructor scores from the penalty-adjusted classification,
+    // using this season's points table.
     const applied = applyPenalties(results);
-    const t1 = calculateT1ConstructorPoints(applied, drivers, teams);
-    const t2 = calculateT2ConstructorPoints(applied, drivers, teams);
+    const t1 = calculateT1ConstructorPoints(applied, drivers, teams, table);
+    const t2 = calculateT2ConstructorPoints(applied, drivers, teams, table);
 
     const teamById = new Map(teams.map((t) => [t.id, t]));
     const rows = [];

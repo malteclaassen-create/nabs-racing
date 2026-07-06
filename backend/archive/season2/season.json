@@ -1,0 +1,1681 @@
+{
+  "number": 2,
+  "name": "Season 2",
+  "game": "F1 2005 · Assetto Corsa",
+  "dropWorst": 0,
+  "pointsTable": [
+    25,
+    18,
+    15,
+    12,
+    10,
+    8,
+    6,
+    5,
+    4,
+    3,
+    2,
+    1
+  ],
+  "teams": [
+    {
+      "id": "caterham",
+      "name": "Caterham",
+      "tier": 1,
+      "color": "#0B573F"
+    },
+    {
+      "id": "renault",
+      "name": "Renault",
+      "tier": 1,
+      "color": "#FFD800"
+    },
+    {
+      "id": "ferrari",
+      "name": "Ferrari",
+      "tier": 1,
+      "color": "#E10600"
+    },
+    {
+      "id": "toyota",
+      "name": "Toyota",
+      "tier": 1,
+      "color": "#EB0A1E"
+    },
+    {
+      "id": "lotus",
+      "name": "Lotus",
+      "tier": 1,
+      "color": "#1A1A1A"
+    },
+    {
+      "id": "irc",
+      "name": "IRC",
+      "tier": 1,
+      "color": "#6A0DAD"
+    },
+    {
+      "id": "mclaren",
+      "name": "McLaren",
+      "tier": 1,
+      "color": "#FF8000"
+    },
+    {
+      "id": "williams",
+      "name": "Williams",
+      "tier": 1,
+      "color": "#00A3E0"
+    },
+    {
+      "id": "sauber",
+      "name": "Sauber",
+      "tier": 1,
+      "color": "#9B0000"
+    },
+    {
+      "id": "minardi",
+      "name": "Minardi",
+      "tier": 1,
+      "color": "#3A3A3A"
+    },
+    {
+      "id": "bar",
+      "name": "BAR",
+      "tier": 1,
+      "color": "#B0B0B0"
+    },
+    {
+      "id": "jordan",
+      "name": "Jordan",
+      "tier": 1,
+      "color": "#FFD500"
+    },
+    {
+      "id": "reserve",
+      "name": "Reserve",
+      "tier": 0,
+      "color": "#475569"
+    }
+  ],
+  "drivers": [
+    {
+      "id": "tafourthda",
+      "name": "Tafourthda",
+      "discord": "Tafourthda",
+      "teamId": "caterham",
+      "tier": 1
+    },
+    {
+      "id": "rikkosk",
+      "name": "RikkoSK",
+      "discord": "RikkoSK",
+      "teamId": "renault",
+      "tier": 1
+    },
+    {
+      "id": "13bot",
+      "name": "13bot",
+      "discord": "13bot",
+      "teamId": "ferrari",
+      "tier": 1
+    },
+    {
+      "id": "onion_h_fornite",
+      "name": "Onion H. Fornite",
+      "discord": "Onion H. Fornite",
+      "teamId": "toyota",
+      "tier": 1
+    },
+    {
+      "id": "garfieldtruck99",
+      "name": "garfieldtruck99",
+      "discord": "garfieldtruck99",
+      "teamId": "lotus",
+      "tier": 1
+    },
+    {
+      "id": "spyder_monkay",
+      "name": "Spyder Monkay",
+      "discord": "Spyder Monkay",
+      "teamId": "irc",
+      "tier": 1
+    },
+    {
+      "id": "shinso",
+      "name": "Shinso",
+      "discord": "Shinso",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "dras",
+      "name": "DRAS",
+      "discord": "DRAS",
+      "teamId": "ferrari",
+      "tier": 1
+    },
+    {
+      "id": "steves_old_account",
+      "name": "steves old account",
+      "discord": "steves old account",
+      "teamId": "caterham",
+      "tier": 1
+    },
+    {
+      "id": "philip_mccrack",
+      "name": "Philip McCrack",
+      "discord": "Philip McCrack",
+      "teamId": "mclaren",
+      "tier": 1
+    },
+    {
+      "id": "valtsy",
+      "name": "Valtsy",
+      "discord": "Valtsy",
+      "teamId": "toyota",
+      "tier": 1
+    },
+    {
+      "id": "armin",
+      "name": "Armin",
+      "discord": "Armin",
+      "teamId": "williams",
+      "tier": 1
+    },
+    {
+      "id": "mr_inconsistency_duck_drivers",
+      "name": "Mr. Inconsistency | Duck Drivers",
+      "discord": "Mr. Inconsistency | Duck Drivers",
+      "teamId": "renault",
+      "tier": 1
+    },
+    {
+      "id": "jomilan",
+      "name": "JoMilan",
+      "discord": "JoMilan",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "rayz",
+      "name": "RAYZ",
+      "discord": "RAYZ",
+      "teamId": "lotus",
+      "tier": 1
+    },
+    {
+      "id": "oddish",
+      "name": "Oddish",
+      "discord": "Oddish",
+      "teamId": "sauber",
+      "tier": 1
+    },
+    {
+      "id": "ferrox",
+      "name": "ferrox",
+      "discord": "ferrox",
+      "teamId": "minardi",
+      "tier": 1
+    },
+    {
+      "id": "oshy",
+      "name": "Oshy",
+      "discord": "Oshy",
+      "teamId": "minardi",
+      "tier": 1
+    },
+    {
+      "id": "wooli",
+      "name": "WOOLI",
+      "discord": "WOOLI",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "manu",
+      "name": "manu",
+      "discord": "manu",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "laluch",
+      "name": "Laluch",
+      "discord": "Laluch",
+      "teamId": "sauber",
+      "tier": 1
+    },
+    {
+      "id": "aleks",
+      "name": "aleks",
+      "discord": "aleks",
+      "teamId": "bar",
+      "tier": 1
+    },
+    {
+      "id": "freddson",
+      "name": "Freddson",
+      "discord": "Freddson",
+      "teamId": "williams",
+      "tier": 1
+    },
+    {
+      "id": "danielj_mr_setup",
+      "name": "DanielJ-MR setup",
+      "discord": "DanielJ-MR setup",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "cathay",
+      "name": "Cathay",
+      "discord": "Cathay",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "vugpuh",
+      "name": "VugPuh",
+      "discord": "VugPuh",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "scromptompulous",
+      "name": "Scromptompulous",
+      "discord": "Scromptompulous",
+      "teamId": "jordan",
+      "tier": 1
+    },
+    {
+      "id": "svr",
+      "name": "SVR",
+      "discord": "SVR",
+      "teamId": "bar",
+      "tier": 1
+    },
+    {
+      "id": "tj09",
+      "name": "TJ09",
+      "discord": "TJ09",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "tryniqx",
+      "name": "Tryniqx",
+      "discord": "Tryniqx",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "melon",
+      "name": "Melon",
+      "discord": "Melon",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "samiforkknife",
+      "name": "SamiForkKnife",
+      "discord": "SamiForkKnife",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "stripper_dave",
+      "name": "Stripper_Dave",
+      "discord": "Stripper_Dave",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "nedaj",
+      "name": "nedaj",
+      "discord": "nedaj",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "neesh",
+      "name": "Neesh",
+      "discord": "Neesh",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "remedy",
+      "name": "remedy",
+      "discord": "remedy",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "twossday_2_0",
+      "name": "twossday 2.0",
+      "discord": "twossday 2.0",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "ryan_h",
+      "name": "Ryan H",
+      "discord": "Ryan H",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "dredgen",
+      "name": "Dredgen",
+      "discord": "Dredgen",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "lex_nogueira",
+      "name": "Lex Nogueira",
+      "discord": "Lex Nogueira",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "meme_ruler",
+      "name": "Meme Ruler",
+      "discord": "Meme Ruler",
+      "teamId": "reserve",
+      "tier": 0
+    },
+    {
+      "id": "dablosv5",
+      "name": "DabloSV5",
+      "discord": "DabloSV5",
+      "teamId": "reserve",
+      "tier": 0
+    }
+  ],
+  "finalStandings": {
+    "drivers": [
+      {
+        "id": "tafourthda",
+        "points": 200
+      },
+      {
+        "id": "rikkosk",
+        "points": 183
+      },
+      {
+        "id": "13bot",
+        "points": 118
+      },
+      {
+        "id": "onion_h_fornite",
+        "points": 83
+      },
+      {
+        "id": "garfieldtruck99",
+        "points": 76
+      },
+      {
+        "id": "spyder_monkay",
+        "points": 75
+      },
+      {
+        "id": "shinso",
+        "points": 55
+      },
+      {
+        "id": "dras",
+        "points": 52
+      },
+      {
+        "id": "steves_old_account",
+        "points": 52
+      },
+      {
+        "id": "philip_mccrack",
+        "points": 44
+      },
+      {
+        "id": "valtsy",
+        "points": 43
+      },
+      {
+        "id": "armin",
+        "points": 26
+      },
+      {
+        "id": "mr_inconsistency_duck_drivers",
+        "points": 24
+      },
+      {
+        "id": "jomilan",
+        "points": 20
+      },
+      {
+        "id": "rayz",
+        "points": 18
+      },
+      {
+        "id": "oddish",
+        "points": 16
+      },
+      {
+        "id": "ferrox",
+        "points": 12
+      },
+      {
+        "id": "oshy",
+        "points": 7
+      },
+      {
+        "id": "wooli",
+        "points": 6
+      },
+      {
+        "id": "manu",
+        "points": 4
+      },
+      {
+        "id": "laluch",
+        "points": 4
+      },
+      {
+        "id": "aleks",
+        "points": 2
+      },
+      {
+        "id": "freddson",
+        "points": 1
+      },
+      {
+        "id": "danielj_mr_setup",
+        "points": 1
+      },
+      {
+        "id": "cathay",
+        "points": 1
+      },
+      {
+        "id": "vugpuh",
+        "points": 1
+      },
+      {
+        "id": "scromptompulous",
+        "points": 0
+      },
+      {
+        "id": "svr",
+        "points": 0
+      }
+    ],
+    "teams": [
+      {
+        "id": "caterham",
+        "points": 252
+      },
+      {
+        "id": "renault",
+        "points": 207
+      },
+      {
+        "id": "ferrari",
+        "points": 170
+      },
+      {
+        "id": "toyota",
+        "points": 126
+      },
+      {
+        "id": "lotus",
+        "points": 94
+      },
+      {
+        "id": "irc",
+        "points": 75
+      },
+      {
+        "id": "mclaren",
+        "points": 44
+      },
+      {
+        "id": "williams",
+        "points": 27
+      },
+      {
+        "id": "sauber",
+        "points": 20
+      },
+      {
+        "id": "minardi",
+        "points": 19
+      },
+      {
+        "id": "bar",
+        "points": 2
+      },
+      {
+        "id": "jordan",
+        "points": 0
+      }
+    ]
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "track": null
+    },
+    {
+      "round": 2,
+      "track": "BAKU"
+    },
+    {
+      "round": 3,
+      "track": "IMOLA"
+    },
+    {
+      "round": 4,
+      "track": "Zolder"
+    },
+    {
+      "round": 5,
+      "track": "Zandvoort"
+    },
+    {
+      "round": 6,
+      "track": "SPA"
+    },
+    {
+      "round": 7,
+      "track": "AUSTRIA"
+    },
+    {
+      "round": 8,
+      "track": "LE MANS"
+    },
+    {
+      "round": 9,
+      "track": "MUGELLO"
+    },
+    {
+      "round": 10,
+      "track": "CANADA"
+    },
+    {
+      "round": 11,
+      "track": "BRAZIL"
+    }
+  ],
+  "driverRaceResults": {
+    "tafourthda": [
+      {
+        "position": 1,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "position": 1,
+        "status": "FINISHED"
+      }
+    ],
+    "garfieldtruck99": [
+      {
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      {
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "position": 11,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "position": 9,
+        "status": "FINISHED"
+      }
+    ],
+    "shinso": [
+      {
+        "position": 3,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "position": 8,
+        "status": "FINISHED"
+      },
+      null
+    ],
+    "ferrox": [
+      {
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "position": 12,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      null,
+      null,
+      null
+    ],
+    "mr_inconsistency_duck_drivers": [
+      {
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "position": 9,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      {
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "position": 10,
+        "status": "FINISHED"
+      }
+    ],
+    "armin": [
+      {
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      {
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      null,
+      {
+        "position": 7,
+        "status": "FINISHED"
+      }
+    ],
+    "onion_h_fornite": [
+      {
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "position": 7,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "position": null,
+        "status": "DNF"
+      }
+    ],
+    "rayz": [
+      {
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "position": 5,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 8,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      null
+    ],
+    "oddish": [
+      {
+        "position": 9,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 8,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      {
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "position": 7,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      {
+        "position": 11,
+        "status": "FINISHED"
+      },
+      null
+    ],
+    "philip_mccrack": [
+      {
+        "position": 10,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "position": 5,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 3,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 10,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      {
+        "position": 6,
+        "status": "FINISHED"
+      }
+    ],
+    "tj09": [
+      {
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "position": 13,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "dras": [
+      {
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "position": 6,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      {
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "position": 3,
+        "status": "FINISHED"
+      }
+    ],
+    "oshy": [
+      {
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "position": 10,
+        "status": "FINISHED"
+      },
+      {
+        "position": 9,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      {
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "position": 8,
+        "status": "FINISHED"
+      },
+      {
+        "position": 15,
+        "status": "FINISHED"
+      },
+      null
+    ],
+    "spyder_monkay": [
+      {
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "position": 10,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 7,
+        "status": "FINISHED"
+      },
+      {
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "position": 4,
+        "status": "FINISHED"
+      }
+    ],
+    "tryniqx": [
+      {
+        "position": 15,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 16,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      null
+    ],
+    "13bot": [
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      {
+        "position": 2,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      {
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "position": 2,
+        "status": "FINISHED"
+      },
+      {
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "position": 2,
+        "status": "FINISHED"
+      },
+      null
+    ],
+    "rikkosk": [
+      null,
+      {
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "position": 1,
+        "status": "FINISHED"
+      },
+      {
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "position": 2,
+        "status": "FINISHED"
+      }
+    ],
+    "valtsy": [
+      null,
+      {
+        "position": 6,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 4,
+        "status": "FINISHED"
+      },
+      {
+        "position": 3,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      {
+        "position": 8,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      {
+        "position": 13,
+        "status": "FINISHED"
+      }
+    ],
+    "freddson": [
+      null,
+      {
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "position": 10,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      {
+        "position": 12,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 13,
+        "status": "FINISHED"
+      },
+      {
+        "position": 22,
+        "status": "FINISHED"
+      },
+      null
+    ],
+    "laluch": [
+      null,
+      {
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "position": 11,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "position": 15,
+        "status": "FINISHED"
+      },
+      {
+        "position": 17,
+        "status": "FINISHED"
+      },
+      {
+        "position": 15,
+        "status": "FINISHED"
+      }
+    ],
+    "melon": [
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "manu": [
+      null,
+      null,
+      null,
+      {
+        "position": 8,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "steves_old_account": [
+      null,
+      null,
+      null,
+      {
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "position": 6,
+        "status": "FINISHED"
+      },
+      {
+        "position": 4,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 5,
+        "status": "FINISHED"
+      },
+      {
+        "position": 5,
+        "status": "FINISHED"
+      }
+    ],
+    "samiforkknife": [
+      null,
+      null,
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      {
+        "position": 13,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "wooli": [
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 7,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      null,
+      null,
+      {
+        "position": 12,
+        "status": "FINISHED"
+      }
+    ],
+    "danielj_mr_setup": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 10,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "stripper_dave": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "nedaj": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "cathay": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 10,
+        "status": "FINISHED"
+      },
+      null,
+      null,
+      null,
+      null
+    ],
+    "vugpuh": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 13,
+        "status": "FINISHED"
+      },
+      null,
+      {
+        "position": 10,
+        "status": "FINISHED"
+      },
+      null,
+      null
+    ],
+    "aleks": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "position": 9,
+        "status": "FINISHED"
+      },
+      {
+        "position": 14,
+        "status": "FINISHED"
+      },
+      null
+    ],
+    "neesh": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 12,
+        "status": "FINISHED"
+      },
+      {
+        "position": 11,
+        "status": "FINISHED"
+      },
+      {
+        "position": 19,
+        "status": "FINISHED"
+      },
+      {
+        "position": 11,
+        "status": "FINISHED"
+      }
+    ],
+    "svr": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      {
+        "position": 16,
+        "status": "FINISHED"
+      },
+      {
+        "position": 13,
+        "status": "FINISHED"
+      },
+      null
+    ],
+    "remedy": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      null,
+      null
+    ],
+    "twossday_2_0": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null,
+      null,
+      null
+    ],
+    "ryan_h": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 14,
+        "status": "FINISHED"
+      },
+      {
+        "position": 18,
+        "status": "FINISHED"
+      },
+      null
+    ],
+    "dredgen": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null
+    ],
+    "jomilan": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 3,
+        "status": "FINISHED"
+      },
+      {
+        "position": 8,
+        "status": "FINISHED"
+      }
+    ],
+    "scromptompulous": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 16,
+        "status": "FINISHED"
+      },
+      null
+    ],
+    "lex_nogueira": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 20,
+        "status": "FINISHED"
+      },
+      null
+    ],
+    "meme_ruler": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": null,
+        "status": "DNF"
+      },
+      null
+    ],
+    "dablosv5": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "position": 14,
+        "status": "FINISHED"
+      }
+    ]
+  }
+}

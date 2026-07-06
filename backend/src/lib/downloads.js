@@ -65,6 +65,7 @@ export function shapeDownload(r) {
     id: r.id,
     title: r.title,
     category: r.category,
+    folderId: r.folderId ?? null,
     description: r.description ?? null,
     version: r.version ?? null,
     installNote: r.installNote ?? null,
@@ -75,11 +76,82 @@ export function shapeDownload(r) {
   };
 }
 
+export function shapeFolder(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description ?? null,
+    sortOrder: Number(r.sortOrder) || 0,
+  };
+}
+
+// --- schema upkeep (raw SQL, same reasoning as the Download table itself) ---
+// Runs once at server boot: creates the folder table, adds Download.folderId,
+// and turns any legacy free-text categories into real folders so nothing that
+// was already registered disappears from the page.
+export async function ensureDownloadTables(prisma) {
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "DownloadFolder" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0
+  )`);
+  const cols = await prisma.$queryRawUnsafe(`PRAGMA table_info("Download")`);
+  if (!cols.some((c) => c.name === "folderId")) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Download" ADD COLUMN "folderId" TEXT`);
+  }
+  // One-time migration: category -> folder (only for rows not yet in a folder).
+  const orphans = await prisma.$queryRawUnsafe(
+    `SELECT DISTINCT "category" FROM "Download" WHERE "folderId" IS NULL AND "category" IS NOT NULL AND "category" != ''`
+  );
+  for (const { category } of orphans) {
+    let folder = (await prisma.$queryRaw`SELECT * FROM "DownloadFolder" WHERE "name" = ${category} LIMIT 1`)[0];
+    if (!folder) folder = await dbCreateFolder(prisma, { name: category });
+    await prisma.$executeRaw`UPDATE "Download" SET "folderId" = ${folder.id} WHERE "folderId" IS NULL AND "category" = ${category}`;
+  }
+}
+
+// --- folder data access ------------------------------------------------------
+export async function dbListFolders(prisma) {
+  return (await prisma.$queryRaw`SELECT * FROM "DownloadFolder" ORDER BY "sortOrder" ASC, "name" ASC`)
+    .map(shapeFolder);
+}
+
+export async function dbGetFolder(prisma, id) {
+  const rows = await prisma.$queryRaw`SELECT * FROM "DownloadFolder" WHERE "id" = ${id} LIMIT 1`;
+  return shapeFolder(rows[0]);
+}
+
+export async function dbCreateFolder(prisma, f) {
+  const id = randomUUID();
+  await prisma.$executeRaw`
+    INSERT INTO "DownloadFolder" ("id","name","description","sortOrder")
+    VALUES (${id}, ${f.name}, ${f.description ?? null}, ${Number(f.sortOrder) || 0})`;
+  return dbGetFolder(prisma, id);
+}
+
+export async function dbUpdateFolder(prisma, id, f) {
+  await prisma.$executeRaw`
+    UPDATE "DownloadFolder" SET
+      "name" = ${f.name},
+      "description" = ${f.description ?? null},
+      "sortOrder" = ${Number(f.sortOrder) || 0}
+    WHERE "id" = ${id}`;
+  return dbGetFolder(prisma, id);
+}
+
+// Deleting a folder never deletes its downloads; they just become unfiled.
+export async function dbDeleteFolder(prisma, id) {
+  await prisma.$executeRaw`UPDATE "Download" SET "folderId" = NULL WHERE "folderId" = ${id}`;
+  await prisma.$executeRaw`DELETE FROM "DownloadFolder" WHERE "id" = ${id}`;
+}
+
 // --- raw-SQL data access ---------------------------------------------------
 export async function dbListDownloads(prisma, { publishedOnly = false } = {}) {
   return publishedOnly
-    ? prisma.$queryRaw`SELECT * FROM "Download" WHERE "published" = 1 ORDER BY "category" ASC, "sortOrder" ASC, "title" ASC`
-    : prisma.$queryRaw`SELECT * FROM "Download" ORDER BY "category" ASC, "sortOrder" ASC, "title" ASC`;
+    ? prisma.$queryRaw`SELECT * FROM "Download" WHERE "published" = 1 ORDER BY "sortOrder" ASC, "title" ASC`
+    : prisma.$queryRaw`SELECT * FROM "Download" ORDER BY "sortOrder" ASC, "title" ASC`;
 }
 
 export async function dbGetDownload(prisma, id) {
@@ -91,9 +163,9 @@ export async function dbCreateDownload(prisma, d) {
   const id = randomUUID();
   await prisma.$executeRaw`
     INSERT INTO "Download"
-      ("id","title","category","description","version","installNote","fileName","externalUrl","sortOrder","published")
+      ("id","title","category","folderId","description","version","installNote","fileName","externalUrl","sortOrder","published")
     VALUES
-      (${id}, ${d.title}, ${d.category}, ${d.description ?? null}, ${d.version ?? null}, ${d.installNote ?? null},
+      (${id}, ${d.title}, ${d.category ?? ""}, ${d.folderId ?? null}, ${d.description ?? null}, ${d.version ?? null}, ${d.installNote ?? null},
        ${d.fileName ?? null}, ${d.externalUrl ?? null}, ${Number(d.sortOrder) || 0}, ${d.published ? 1 : 0})`;
   return dbGetDownload(prisma, id);
 }
@@ -102,7 +174,8 @@ export async function dbUpdateDownload(prisma, id, d) {
   await prisma.$executeRaw`
     UPDATE "Download" SET
       "title" = ${d.title},
-      "category" = ${d.category},
+      "category" = ${d.category ?? ""},
+      "folderId" = ${d.folderId ?? null},
       "description" = ${d.description ?? null},
       "version" = ${d.version ?? null},
       "installNote" = ${d.installNote ?? null},

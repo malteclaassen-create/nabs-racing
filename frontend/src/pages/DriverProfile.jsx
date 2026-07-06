@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import {
-  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL, CountUp,
+  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp,
 } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -132,7 +132,7 @@ function Stat({ icon, label, value, sub, accent, index = 0 }) {
 function StatTiles({ stats, className = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" }) {
   return (
     <div className={`cascade grid gap-3 ${className}`}>
-      <Stat index={0} icon="trophy" label="Wins" value={stats.wins} sub={`${stats.winRate}% of starts`} accent={stats.wins ? MEDAL[0] : undefined} />
+      <Stat index={0} icon="trophy" label="Wins" value={stats.wins} sub={`${stats.winRate}% of starts`} accent={stats.wins ? MEDAL_TEXT[0] : undefined} />
       <Stat index={1} icon="podium" label="Podiums" value={stats.podiums} sub={`${stats.podiumRate}% of starts`} />
       <Stat index={2} icon="flagChk" label="Best Finish" value={stats.bestFinish ? `P${stats.bestFinish}` : "–"} sub={`${stats.starts} starts`} />
       <Stat index={3} icon="chart" label="Avg Finish" value={stats.avgFinish != null ? `P${stats.avgFinish}` : "–"} sub={`${stats.pointsFinishes} in the points`} />
@@ -295,7 +295,7 @@ function FormChart({ perRace, color }) {
                     <span
                       className="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card"
                       style={{ left: "50%", top, backgroundColor: medal || color }}
-                      title={`R${r.number} ${r.track} — P${r.position}`}
+                      title={`R${r.number} ${r.track} · P${r.position}`}
                     />
                   </div>
                 );
@@ -325,7 +325,7 @@ function FormChart({ perRace, color }) {
                 <div
                   key={r.number}
                   className="flex flex-1 flex-col items-center gap-1.5"
-                  title={`R${r.number} ${r.track} — ${finished ? "P" + r.position : r.status}`}
+                  title={`R${r.number} ${r.track} · ${finished ? "P" + r.position : r.status}`}
                 >
                   <span
                     className={`flex h-9 w-9 items-center justify-center rounded-lg font-display font-black tabular-nums ${
@@ -647,8 +647,10 @@ export default function DriverProfile() {
   const { driver, championship, stats, perRace } = p;
   const color = driver.team.color;
   const meRow = standingsData.standings.find((s) => s.driverId === driver.id);
-  // Rounds dropped from this driver's total (3 lowest don't count).
+  // Rounds dropped from this driver's total (the season's drop rule).
   const droppedRounds = new Set(meRow?.droppedRounds || []);
+  const dropWorst = standingsData.dropWorst ?? 3;
+  const totalRounds = standingsData.raceNumbers?.length || 0;
 
   return (
     <div className="space-y-6">
@@ -729,7 +731,7 @@ export default function DriverProfile() {
                   return (
                     <tr
                       key={r.number}
-                      title={dropped ? "Dropped — one of the 3 lowest rounds, not counted toward the total" : undefined}
+                      title={dropped ? "Dropped: one of the lowest-scoring rounds, not counted toward the total" : undefined}
                       className="transition hover:bg-surface2"
                     >
                       <td className="px-5 py-3 font-mono font-bold tabular-nums text-light">{r.number}</td>
@@ -767,10 +769,13 @@ export default function DriverProfile() {
               </tbody>
             </table>
           </div>
-          <p className="border-t border-border px-5 py-2.5 font-mono text-[11px] leading-relaxed text-light sm:px-6">
-            <span className="text-faint line-through decoration-2">Struck</span> points are dropped — a driver&rsquo;s 3
-            lowest-scoring rounds don&rsquo;t count toward the total (best 9 of 12).
-          </p>
+          {dropWorst > 0 && (
+            <p className="border-t border-border px-5 py-2.5 font-mono text-[11px] leading-relaxed text-light sm:px-6">
+              <span className="text-faint line-through decoration-2">Struck</span> points are dropped: a driver&rsquo;s {dropWorst}
+              {" "}lowest-scoring round{dropWorst === 1 ? " doesn't" : "s don't"} count toward the total
+              {totalRounds > dropWorst && <> (best {totalRounds - dropWorst} of {totalRounds})</>}.
+            </p>
+          )}
         </div>
 
         <TeamPanel driver={driver} standings={standingsData.standings} />

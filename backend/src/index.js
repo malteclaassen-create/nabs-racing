@@ -19,6 +19,12 @@ import discordAuthRoutes from "./routes/discordAuth.js";
 import downloadsRoutes from "./routes/downloads.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard } from "./services/liveTiming.js";
+import prisma from "./lib/prisma.js";
+import { ensureDownloadTables } from "./lib/downloads.js";
+
+// Schema upkeep that runs outside `prisma migrate` (raw SQL — see the comment
+// in lib/downloads.js). Idempotent, so it's safe on every boot.
+ensureDownloadTables(prisma).catch((e) => console.error("download tables:", e));
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -34,9 +40,13 @@ app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 // User-uploaded files (e.g. driver profile pictures from /api/me/photo). Served
 // under /api/* on purpose so they go through the Vite proxy in both dev and the
-// shared preview build — see the comment in routes/me.js.
+// shared preview build — see the comment in routes/me.js. Long cache is safe:
+// the stored URLs carry a ?v=<timestamp> that changes on every re-upload.
 const __dir = dirname(fileURLToPath(import.meta.url));
-app.use("/api/uploads", express.static(join(__dir, "../uploads")));
+app.use("/api/uploads", express.static(join(__dir, "../uploads"), {
+  maxAge: "30d",
+  immutable: true,
+}));
 
 // Live timing (Assetto Corsa Server Manager relay). REST snapshot for fallback/
 // debugging; the live stream is the WebSocket at /api/live/ws (set up below).
@@ -66,7 +76,23 @@ app.use("/api/admin", adminRoutes); // everything else (auth-guarded)
 // server keeps serving the site and proxying /api here).
 const DIST_DIR = join(__dir, "../../frontend/dist");
 if (existsSync(join(DIST_DIR, "index.html"))) {
-  app.use(express.static(DIST_DIR));
+  app.use(express.static(DIST_DIR, {
+    // Tell browsers to keep static files instead of re-asking on every page
+    // switch (matters a lot over a tunnel, where each request costs ~0.5s).
+    setHeaders(res, filePath) {
+      if (/[\\/]assets[\\/]/.test(filePath)) {
+        // Vite build output has a content hash in the file name -> can never
+        // go stale, cache "forever".
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else if (/\.(png|jpe?g|webp|svg|gif|ico|woff2?)$/i.test(filePath)) {
+        // Flags, team logos, fonts, hero images: stable files, 7 days.
+        res.setHeader("Cache-Control", "public, max-age=604800");
+      } else {
+        // index.html and friends: always revalidate so a new build shows up.
+        res.setHeader("Cache-Control", "no-cache");
+      }
+    },
+  }));
   // SPA fallback: any non-API GET returns index.html so client-side routes work
   // on refresh / deep links (e.g. /downloads). API paths fall through to the 404.
   app.get("*", (req, res, next) => {
@@ -79,10 +105,11 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
 // 404
 app.use((req, res) => res.status(404).json({ error: "Not found" }));
 
-// Error handler
+// Error handler. Errors may carry an explicit HTTP status (e.g. validation
+// failures throw with err.status = 400); everything else is a 500.
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).json({ error: err.message || "Internal server error" });
+  res.status(err.status || 500).json({ error: err.message || "Internal server error" });
 });
 
 const server = app.listen(PORT, () => {

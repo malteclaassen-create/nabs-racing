@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { Skeleton, CountUp } from "../components/ui.jsx";
+import { Skeleton, CountUp, MEDAL } from "../components/ui.jsx";
 import { useParallax, useTilt, useMagnetic } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
@@ -11,15 +11,13 @@ import { useSocial } from "../components/SocialLinks.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
+import { seasonGameParts } from "../utils/seasonGame.js";
+import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 
-const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"];
-
-// Points awarded per finishing position (see rules.txt).
-const POINTS = [
-  ["1", 35], ["2", 30], ["3", 25], ["4", 22], ["5", 20], ["6", 18],
-  ["7", 16], ["8", 14], ["9", 12], ["10", 10], ["11", 8], ["12", 7],
-  ["13", 6], ["14", 5], ["15", 4], ["16", 3], ["17", 2], ["18", 1],
-];
+// League default points per finishing position — only the fallback: seasons
+// can override the table (Season.pointsTable), which /api/seasons delivers and
+// the page prefers, so the copy below always matches the season being shown.
+const DEFAULT_POINTS = [35, 30, 25, 22, 20, 18, 16, 14, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1];
 
 function DiscordIcon({ className = "" }) {
   return (
@@ -50,7 +48,7 @@ function Icon({ name, className = "" }) {
 function SectionHead({ eyebrow, title, sub, center }) {
   return (
     <div className={`mb-8 ${center ? "mx-auto max-w-2xl text-center" : ""}`}>
-      <div className="font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-brand">{eyebrow}</div>
+      <div className="font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow">{eyebrow}</div>
       <h2 className="mt-2 font-display text-3xl font-black uppercase tracking-tight text-dark sm:text-4xl">{title}</h2>
       {sub && <p className={`mt-3 text-[15px] leading-relaxed text-light ${center ? "" : "max-w-2xl"}`}>{sub}</p>}
     </div>
@@ -126,11 +124,15 @@ function FaqItem({ q, children }) {
 // Newcomer landing page (the "what is NABS / how to join" experience). Shown on
 // the home route to logged-out visitors; logged-in members get the normal Home.
 export default function Welcome() {
-  const { current: season } = useSeason();
-  const drivers = useApi(useCallback(() => api.driverStandings(), []));
-  const t1 = useApi(useCallback(() => api.t1Standings(), []));
-  const t2 = useApi(useCallback(() => api.t2Standings(), []));
-  const races = useApi(useCallback(() => api.races(), []));
+  // The newcomer landing always speaks about the RUNNING season, never an
+  // archive one the switcher might be pointing at — so it reads the active
+  // season explicitly instead of following the selected season.
+  const { seasons, active: season } = useSeason();
+  const activeNum = season?.number;
+  const drivers = useApi(useCallback(() => api.driverStandings(activeNum), [activeNum]));
+  const t1 = useApi(useCallback(() => api.t1Standings(activeNum), [activeNum]));
+  const t2 = useApi(useCallback(() => api.t2Standings(activeNum), [activeNum]));
+  const races = useApi(useCallback(() => api.races(activeNum), [activeNum]));
 
   const heroImgRef = useParallax(0.08);
 
@@ -143,6 +145,24 @@ export default function Welcome() {
   const driverCount = standings.length;
   const teamCount = (t1.data?.standings?.length || 0) + (t2.data?.standings?.length || 0);
   const nextCircuit = circuitFor(nextRace?.track);
+
+  // Season-aware copy: everything below adapts to the season being shown, so
+  // the page needs no edits when a new season (new game, new rules) starts.
+  const { era, platform } = seasonGameParts(season);
+  const carsLabel = era || "Formula 1";
+  // League-wide facts. Seasons are numbered from 1, so the RUNNING season's
+  // number is how many seasons NABS has raced. Counting the highest number
+  // instead would inflate this as soon as the next season is created in the
+  // admin (a not-yet-started "Season 8" isn't a raced season).
+  const activeNumber =
+    seasons.find((s) => s.isActive)?.number ?? seasons.reduce((max, s) => Math.max(max, s.number), 0);
+  const seasonCount = activeNumber;
+  const timeline = [...seasons].sort((a, b) => a.number - b.number);
+  const dropWorst = drivers.data?.dropWorst ?? season?.dropWorst ?? 3;
+  const counted = dropWorst > 0 && totalRounds > dropWorst ? totalRounds - dropWorst : null;
+  const pointsTable =
+    Array.isArray(season?.pointsTable) && season.pointsTable.length ? season.pointsTable : DEFAULT_POINTS;
+  const pointsPairs = pointsTable.map((pts, i) => [String(i + 1), pts]);
 
   const loading = drivers.loading || t1.loading || t2.loading || races.loading;
 
@@ -179,7 +199,7 @@ export default function Welcome() {
         <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-brand via-brand/40 to-transparent" />
 
         <div className="relative flex min-h-[520px] flex-col justify-center gap-6 p-7 sm:p-12 lg:max-w-3xl">
-          <div className="hero-anim flex items-center gap-3 font-mono text-[12px] font-bold uppercase tracking-[0.25em] text-brand" style={{ animationDelay: "0.05s" }}>
+          <div className="hero-anim flex items-center gap-3 font-mono text-[12px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
             <span className="live-dot inline-block h-2 w-2 rounded-full bg-brand" />
             <span>{season ? season.name : "NABS Racing League"}{season?.game ? ` · ${season.game}` : ""}</span>
           </div>
@@ -192,9 +212,11 @@ export default function Welcome() {
           </h1>
 
           <p className="hero-anim max-w-xl text-lg leading-relaxed text-ink/70 dark:text-white/80" style={{ animationDelay: "0.2s" }}>
-            A Discord community racing classic <span className="font-semibold text-ink dark:text-white">F1 2007</span> cars on
-            Assetto&nbsp;Corsa. Two tiers, a full championship, and a friendly grid that welcomes new
-            drivers every season — whether you&rsquo;re chasing wins or just learning the lines.
+            A community-run racing league on Discord{seasonCount > 1 ? `, ${seasonCount} seasons and counting` : ""}.
+            Every season we race a new era of motorsport; right now the grid runs{" "}
+            <span className="font-semibold text-ink dark:text-white">{carsLabel}</span> cars on {platform}. Two
+            tiers, a full championship, and a friendly grid that welcomes new drivers every season, whether
+            you&rsquo;re chasing wins or just learning the lines.
           </p>
 
           <div className="hero-anim flex flex-wrap items-center gap-3" style={{ animationDelay: "0.3s" }}>
@@ -220,9 +242,10 @@ export default function Welcome() {
       </section>
 
       {/* ====================== BY THE NUMBERS ====================== */}
-      <section className="cascade -mt-10 grid grid-cols-3 gap-3 sm:gap-4">
+      <section className="cascade -mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         {[
-          { label: "Drivers on the grid", value: driverCount },
+          { label: "Seasons of racing", value: seasonCount || 1 },
+          { label: "Drivers this season", value: driverCount },
           { label: "Constructors", value: teamCount },
           { label: "Rounds this season", value: totalRounds },
         ].map((s, i) => (
@@ -235,6 +258,9 @@ export default function Welcome() {
         ))}
       </section>
 
+      {/* =============== NEXT SEASON (transition period only) =============== */}
+      <NextSeasonTeaser />
+
       {/* ====================== WHAT IS NABS ======================= */}
       <section>
         <SectionHead
@@ -244,24 +270,86 @@ export default function Welcome() {
           sub="A community-run online championship for sim racers. Here's the short version."
         />
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <FeatureCard index={0} icon="wheel" title="F1 2007 on AC" accent="#f4afc6">
-            We race a grid of historic 2007-spec Formula 1 cars inside Assetto Corsa — proper downforce,
-            proper tyre wear, no driver aids holding your hand.
+          <FeatureCard index={0} icon="wheel" title="A new era every season" accent="#f4afc6">
+            Each season we race a fresh grid of equally matched cars, right now {carsLabel} on {platform},
+            with proper physics and no driver aids holding your hand.
           </FeatureCard>
           <FeatureCard index={1} icon="layers" title="Two tiers + reserves" accent="#38bdf8">
             Tier 1 and Tier 2 keep the racing close to your level. Reserves can step in for any team when a
-            regular can&rsquo;t make a round — a perfect way to get your first start.
+            regular can&rsquo;t make a round. It&rsquo;s a perfect way to get your first start.
           </FeatureCard>
           <FeatureCard index={2} icon="calendar" title="A real season" accent="#a78bfa">
-            Twelve rounds on iconic circuits, run roughly weekly. Your best nine results count toward the
-            title, so one bad night never ends your championship.
+            {totalRounds > 0 ? `${totalRounds} rounds` : "A full season of rounds"} on iconic circuits, run
+            roughly weekly.{" "}
+            {dropWorst > 0
+              ? counted
+                ? `Your best ${counted} results count toward the title, so one bad night never ends your championship.`
+                : `Your ${dropWorst} weakest rounds are dropped, so one bad night never ends your championship.`
+              : "Every round counts, so consistency is everything."}
           </FeatureCard>
           <FeatureCard index={3} icon="community" title="Built on Discord" accent="#34d399">
-            Everything happens in our Discord — sign-ups, banter, stewarding and results. This site is just
+            Everything happens in our Discord: sign-ups, banter, stewarding and results. This site is just
             the scoreboard that updates itself after every race.
           </FeatureCard>
         </div>
       </section>
+
+      {/* ====================== SEASON TIMELINE ======================= */}
+      {/* League history straight from the DB: appears per season entered by the
+          admin, so it grows on its own. Hidden while only one season exists. */}
+      {timeline.length > 1 && (
+        <section>
+          <SectionHead
+            center
+            eyebrow="Since day one"
+            title="One league, many eras"
+            sub="Same community, same rivalries. But every season NABS reinvents itself with a new car era."
+          />
+          {/* Centered flex (not a grid): looks right with the 2 seasons in the DB
+              today and still wraps into tidy rows once all 8 are entered. */}
+          <div className="cascade flex flex-wrap justify-center gap-3">
+            {timeline.map((s, i) => {
+              const status = s.isActive ? "live" : s.number > activeNumber ? "next" : "done";
+              return (
+                <div key={s.id} className="card shine relative w-full overflow-hidden p-5 sm:w-64" style={{ "--i": i }}>
+                  <span
+                    className={`absolute inset-x-0 top-0 h-1 ${
+                      status === "live" ? "bg-brand" : status === "next" ? "bg-sky-400" : "bg-border"
+                    }`}
+                  />
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-display text-3xl font-black leading-none text-faint">
+                      S{s.number}
+                    </span>
+                    {status === "live" && (
+                      <span className="flex items-center gap-1.5 rounded-md bg-brand px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-ink">
+                        <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-ink/70" />
+                        Live now
+                      </span>
+                    )}
+                    {status === "next" && (
+                      <span className="rounded-md bg-sky-400/15 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-sky-500 dark:text-sky-300">
+                        Coming up
+                      </span>
+                    )}
+                    {status === "done" && (
+                      <span className="rounded-md border border-border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+                        Completed
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3 font-display text-lg font-extrabold uppercase tracking-tight text-dark">
+                    {/^\d+$/.test(String(s.name).trim()) ? `Season ${s.name}` : s.name}
+                  </div>
+                  <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+                    {s.game || "Era to be announced"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* ====================== HOW IT WORKS ======================= */}
       <section id="how-it-works" className="scroll-mt-24">
@@ -276,10 +364,10 @@ export default function Welcome() {
             <div className="flex items-center gap-2 border-b border-border px-5 py-4">
               <Icon name="trophy" className="h-4 w-4 text-brand" />
               <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Points per finish</h3>
-              <span className="ml-auto font-mono text-[11px] uppercase tracking-wider text-light">P19+ &amp; DNF = 0</span>
+              <span className="ml-auto font-mono text-[11px] uppercase tracking-wider text-light">P{pointsPairs.length + 1}+ &amp; DNF = 0</span>
             </div>
             <div className="grid grid-cols-3 gap-px bg-border sm:grid-cols-6">
-              {POINTS.map(([pos, pts], i) => {
+              {pointsPairs.map(([pos, pts], i) => {
                 const medal = i < 3 ? MEDAL[i] : null;
                 return (
                   <div key={pos} className="flex flex-col items-center justify-center bg-card py-3">
@@ -297,20 +385,32 @@ export default function Welcome() {
           </div>
 
           {/* tier explainer */}
-          <div className="reveal space-y-4 lg:col-span-2" style={{ animationDelay: "0.1s" }}>
+          <div className="reveal space-y-4 lg:col-span-2">
             <div className="card p-5">
               <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Two championships</h3>
               <ul className="mt-3 space-y-3 text-sm leading-relaxed text-light">
-                <li><span className="font-bold text-dark">Drivers</span> — everyone, T1, T2 and reserves, in one table ranked by points scored.</li>
-                <li><span className="font-bold text-dark">Constructors T1</span> — a team&rsquo;s two Tier-1 drivers&rsquo; points added together.</li>
-                <li><span className="font-bold text-dark">Constructors T2</span> — only the Tier-2 cars are re-ranked among themselves, then scored.</li>
+                <li><span className="font-bold text-dark">Drivers:</span> everyone, T1, T2 and reserves, in one table ranked by points scored.</li>
+                <li><span className="font-bold text-dark">Constructors T1:</span> a team&rsquo;s two Tier-1 drivers&rsquo; points added together.</li>
+                <li><span className="font-bold text-dark">Constructors T2:</span> only the Tier-2 cars are re-ranked among themselves, then scored.</li>
               </ul>
             </div>
             <div className="card flex items-start gap-3 p-5">
               <Icon name="flag" className="mt-0.5 h-5 w-5 shrink-0 text-brand" />
               <p className="text-sm leading-relaxed text-light">
-                <span className="font-bold text-dark">Best 9 of 12.</span> Each driver and team drops their three
-                worst rounds, so consistency wins titles — not luck.
+                {dropWorst > 0 ? (
+                  <>
+                    <span className="font-bold text-dark">
+                      {counted ? `Best ${counted} of ${totalRounds}.` : `Your worst ${dropWorst} don't count.`}
+                    </span>{" "}
+                    Every driver&rsquo;s {dropWorst} lowest-scoring rounds are dropped, from the team standings
+                    too, so consistency wins titles, not luck.
+                  </>
+                ) : (
+                  <>
+                    <span className="font-bold text-dark">Every round counts.</span> No dropped results this
+                    season, so bring your A-game to every race.
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -330,10 +430,11 @@ export default function Welcome() {
               That&rsquo;s the home base. Hop in, say hello in the intro channel and let us know you&rsquo;d like to race.
             </Step>
             <Step n="2" title="Get set up">
-              Grab Assetto Corsa and the F1 2007 mod, and run a few laps. We&rsquo;ll point you to everything you need.
+              Install the season&rsquo;s game and car mod (right now that&rsquo;s {carsLabel} on {platform})
+              and run a few laps. Everything you need is linked in the Discord and on the Race Info page.
             </Step>
             <Step n="3" title="Sign up for a round">
-              Each race you mark yourself Accepted, Tentative or Declined — right here on the site or in Discord.
+              Each race you mark yourself Accepted, Tentative or Declined, right here on the site or in Discord.
             </Step>
             <Step n="4" title="Go racing" last>
               Line up on the grid, race fair, and watch your name climb the standings after every round.
@@ -348,7 +449,7 @@ export default function Welcome() {
             <div className="card relative overflow-hidden p-6">
               <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand to-primary" />
               <div className="flex items-center justify-between gap-3">
-                <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-brand">Next race in</div>
+                <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Next race in</div>
                 <Link to="/races" className="font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:text-dark">
                   Calendar →
                 </Link>
@@ -399,21 +500,34 @@ export default function Welcome() {
             similar pace. Clean, consistent racing matters far more than raw speed.
           </FaqItem>
           <FaqItem q="What do I need to race?">
-            A copy of Assetto Corsa on PC, the F1 2007 car mod, and a stable connection. A wheel helps but
-            isn&rsquo;t required. Everything else — server details, setup help — is in the Discord.
+            A PC copy of the season&rsquo;s game ({platform} right now), the current car mod, and a stable
+            connection. A wheel helps but isn&rsquo;t required. Everything else (mods, server details, setup
+            help) is in the Discord and on the Race Info page.
           </FaqItem>
+          {seasonCount > 1 && (
+            <FaqItem q="How long has NABS been around?">
+              We&rsquo;re {seasonCount} seasons in. Each season brings a new car era, a fresh calendar and a
+              reshuffled grid. The community and the rivalries carry over.
+            </FaqItem>
+          )}
           <FaqItem q="How often do you race?">
-            Roughly one round a week across a twelve-race season, plus the occasional special event like an
-            endurance night. You sign up for each round, so you&rsquo;re never locked in.
+            Roughly one round a week{totalRounds > 0 ? ` across a ${totalRounds}-race season` : ""}, plus the
+            occasional special event like an endurance night. You sign up for each round, so you&rsquo;re
+            never locked in.
           </FaqItem>
           <FaqItem q="What if I can't make a race?">
-            Just mark yourself Declined for that round — no penalty. Teams can call on a reserve to fill the
+            Just mark yourself Declined for that round, no penalty. Teams can call on a reserve to fill the
             seat, which is often how new drivers get their first start.
           </FaqItem>
           <FaqItem q="How do the standings work?">
-            You score points for your finishing position every round (P1 is 35 down to P18 is 1). Your best
-            nine results of twelve count toward the championship. It&rsquo;s all calculated automatically and
-            shown live on this site.
+            You score points for your finishing position every round (P1 is {pointsPairs[0][1]} down to P
+            {pointsPairs.length} is {pointsPairs[pointsPairs.length - 1][1]}).{" "}
+            {dropWorst > 0
+              ? counted
+                ? `Your best ${counted} results of ${totalRounds} count toward the championship.`
+                : `Your ${dropWorst} lowest-scoring rounds are dropped, so only your best races count.`
+              : "Every round counts toward the championship."}{" "}
+            It&rsquo;s all calculated automatically and shown live on this site.
           </FaqItem>
         </div>
       </section>

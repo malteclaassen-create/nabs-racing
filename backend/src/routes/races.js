@@ -1,7 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
-import { getDriverResultPoints, getPointsForPosition, applyPenalties } from "../services/pointsCalculator.js";
-import { resolveSeasonId } from "../services/seasonService.js";
+import { getDriverResultPoints, getPointsForPosition, applyPenalties, DEFAULT_POINTS_TABLE } from "../services/pointsCalculator.js";
+import { resolveSeasonId, getSeasonScoring } from "../services/seasonService.js";
 
 const router = Router();
 
@@ -36,14 +36,16 @@ router.get("/:id/results", async (req, res, next) => {
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
     if (!race) return res.status(404).json({ error: "Race not found" });
 
-    const [results, drivers, teams] = await Promise.all([
+    const [results, drivers, teams, scoring] = await Promise.all([
       prisma.raceResult.findMany({
         where: { raceId: race.id },
         include: { driver: { include: { team: true } }, subForTeam: true },
       }),
       prisma.driver.findMany({ where: { seasonId: race.seasonId } }),
       prisma.team.findMany({ where: { seasonId: race.seasonId } }),
+      getSeasonScoring(prisma, race.seasonId),
     ]);
+    const table = scoring.pointsTable || DEFAULT_POINTS_TABLE;
 
     const teamById = new Map(teams.map((t) => [t.id, t]));
 
@@ -52,6 +54,11 @@ router.get("/:id/results", async (req, res, next) => {
     // the original finishing position so the UI can show "P2 → P5".
     const applied = applyPenalties(results);
     const rawById = new Map(results.map((r) => [r.driverId, r.position]));
+    // The points column as STORED in the DB (explicit official points, or null
+    // when they derive from the position). The admin editor round-trips this
+    // raw value — sending back the computed display points would freeze
+    // derived points into fake "official" ones.
+    const rawPointsById = new Map(results.map((r) => [r.driverId, r.points]));
 
     // Build T2 re-rank lookup for races that have positions (e.g. R9).
     const hasPositions = applied.some((r) => r.position != null);
@@ -62,16 +69,18 @@ router.get("/:id/results", async (req, res, next) => {
         teamById.get(r.subForTeamId || driverById.get(r.driverId)?.teamId);
       // Only Tier-2-team results are classified; Tier-1 drivers and team-less
       // reserves are excluded entirely (they don't occupy a slot).
+      // FINISHED only, matching the scoring: a DNF/DSQ holds no slot in the
+      // re-rank, so this display always mirrors what the teams actually score.
       const remaining = applied
-        .filter((r) => r.status !== "DNS" && r.position != null && effTeam(r)?.tier === 2)
+        .filter((r) => r.status === "FINISHED" && r.position != null && effTeam(r)?.tier === 2)
         .sort((a, b) => a.position - b.position);
       remaining.forEach((r, i) => {
         const rank = i + 1;
         const team = effTeam(r);
         t2ReRank[r.driverId] = {
           rank,
-          points: getPointsForPosition(rank),
-          scoresForTeam: r.status === "FINISHED" ? team.id : null,
+          points: getPointsForPosition(rank, table),
+          scoresForTeam: team.id,
         };
       });
     }
@@ -90,7 +99,8 @@ router.get("/:id/results", async (req, res, next) => {
           position: r.position,
           rawPosition: rawById.get(r.driverId) ?? null,
           status: r.status,
-          points: getDriverResultPoints(r),
+          points: getDriverResultPoints(r, table),
+          storedPoints: rawPointsById.get(r.driverId) ?? null,
           penaltySeconds: r.penaltySeconds,
           grid: r.grid,
           bestLapMs: r.bestLapMs,
@@ -113,11 +123,13 @@ router.get("/:id/results", async (req, res, next) => {
         };
       })
       .sort((a, b) => {
-        // finished first by position, then everything else
-        if (a.position == null && b.position == null) return 0;
-        if (a.position == null) return 1;
-        if (b.position == null) return -1;
-        return a.position - b.position;
+        // classified finishers first (by position), then the non-finishers —
+        // like the official result posts (DNF/DNS/DSQ listed at the bottom).
+        const af = a.status === "FINISHED" && a.position != null;
+        const bf = b.status === "FINISHED" && b.position != null;
+        if (af && bf) return a.position - b.position;
+        if (af !== bf) return af ? -1 : 1;
+        return (a.position ?? 999) - (b.position ?? 999);
       });
 
     res.json({

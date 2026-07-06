@@ -67,7 +67,7 @@ export default function SeatMarket({ race, me, reload }) {
 
       {offers.length === 0 ? (
         <p className="text-sm text-faint">
-          No open seats yet — offer yours above if you can't make it.
+          No open seats yet. Offer yours above if you can't make it.
         </p>
       ) : (
         <div className="space-y-3">
@@ -168,7 +168,7 @@ export default function SeatMarket({ race, me, reload }) {
                           </button>
                           {iAmPicked && (
                             <span className="text-sm font-semibold text-emerald-600">
-                              You've been picked for this seat 🎉
+                              You've been picked for this seat!
                             </span>
                           )}
                         </>

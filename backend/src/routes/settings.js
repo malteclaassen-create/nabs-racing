@@ -3,6 +3,7 @@
 // Setting table under `social_<platform>` keys.
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
+import { readRaceInfo } from "../lib/raceInfo.js";
 
 const router = Router();
 
@@ -23,6 +24,16 @@ export async function readSocialLinks(prismaClient) {
 router.get("/social", async (req, res, next) => {
   try {
     res.json(await readSocialLinks(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/settings/race-info -> the admin-edited Race Info page content, or
+// { content: null } while nothing has been saved (frontend uses its defaults).
+router.get("/race-info", async (req, res, next) => {
+  try {
+    res.json({ content: await readRaceInfo(prisma) });
   } catch (e) {
     next(e);
   }

@@ -230,7 +230,7 @@ function ProfileEditor({ me, onSaved }) {
             <div className="flex items-center gap-2.5">
               <Flag code={country} w={22} h={16} />
               <select className="input" value={country} onChange={(e) => setCountry(e.target.value)}>
-                <option value="">— not set —</option>
+                <option value="">Not set</option>
                 {COUNTRIES.map((c) => (
                   <option key={c.code} value={c.code}>
                     {c.name}
@@ -307,7 +307,7 @@ function ProfileStats({ driverId }) {
   const myStatus = next
     ? ["ACCEPTED", "TENTATIVE", "DECLINED"].find((s) => next.rsvps[s].some((r) => r.driverId === driverId))
     : null;
-  const STATUS_LABEL = { ACCEPTED: "Accepted ✅", TENTATIVE: "Tentative ❓", DECLINED: "Declined ❌" };
+  const STATUS_LABEL = { ACCEPTED: "Accepted", TENTATIVE: "Tentative", DECLINED: "Declined" };
 
   const tiles = [
     { label: "Championship", value: championship.position ? `P${championship.position}` : "—", sub: `of ${championship.fieldSize}` },
@@ -336,7 +336,7 @@ function ProfileStats({ driverId }) {
             <>
               <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Next race · </span>
               <span className="font-semibold text-dark">R{next.number} {next.track}</span>
-              {" — "}
+              {": "}
               {myStatus ? (
                 <span className="font-semibold text-dark">{STATUS_LABEL[myStatus]}</span>
               ) : (

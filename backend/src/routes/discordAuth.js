@@ -10,6 +10,8 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { signUserToken } from "../middleware/auth.js";
+import { getActiveSeason } from "../services/seasonService.js";
+import { dbRecordLogin, dbGetMember } from "../lib/members.js";
 
 const router = Router();
 
@@ -91,14 +93,66 @@ router.post("/callback", async (req, res, next) => {
       ? `https://cdn.discordapp.com/avatars/${me.id}/${me.avatar}.${me.avatar.startsWith("a_") ? "gif" : "png"}?size=256`
       : null;
 
+    // Banned accounts stop right here — no session, no login record update.
+    const account = await dbGetMember(prisma, me.id).catch(() => null);
+    if (account && Number(account.banned)) {
+      return res.status(403).json({ error: "This account has been suspended by the league admins." });
+    }
+    // Record the login so the admin Members tab can see every account that has
+    // ever signed in — including ones that never match a roster driver.
+    await dbRecordLogin(prisma, {
+      discordId: me.id,
+      username: me.username,
+      displayName: me.global_name || null,
+      avatarUrl,
+    }).catch(() => {});
+
     // 3. Find / link a driver.
     let driver = await prisma.driver.findUnique({ where: { discordUserId: me.id } });
+    const activeSeason = await getActiveSeason(prisma);
+
+    // Season handover: drivers are per-season rows, so after a new season
+    // starts the stored link still points at the previous season's entry.
+    // On login, move the link to the matching driver on the ACTIVE roster
+    // (matched by name / Discord name) and carry the self-service profile
+    // fields over, so members keep their identity without any admin work.
+    if (driver && activeSeason && driver.seasonId !== activeSeason.id) {
+      const roster = await prisma.driver.findMany({ where: { seasonId: activeSeason.id } });
+      const keys = [norm(me.username), norm(me.global_name), norm(driver.discordName), norm(driver.name)].filter(Boolean);
+      const successor = roster.find(
+        (d) => !d.discordUserId && [norm(d.discordName), norm(d.name)].some((k) => keys.includes(k))
+      );
+      if (successor) {
+        const old = driver;
+        // discordUserId is unique -> clear the old row before setting the new one.
+        [, driver] = await prisma.$transaction([
+          prisma.driver.update({ where: { id: old.id }, data: { discordUserId: null } }),
+          prisma.driver.update({
+            where: { id: successor.id },
+            data: {
+              discordUserId: me.id,
+              // Keep anything already set on the new row; otherwise inherit.
+              country: successor.country ?? old.country,
+              bio: successor.bio ?? old.bio,
+              number: successor.number ?? old.number,
+              socials: successor.socials ?? old.socials,
+              photoUrl: successor.photoUrl ?? old.photoUrl,
+              discordAvatar: successor.discordAvatar ?? old.discordAvatar,
+            },
+          }),
+        ]);
+      }
+    }
 
     if (!driver) {
-      // Try to match by Discord name against existing drivers.
+      // Try to match by Discord name against existing drivers. Prefer the
+      // active season's roster; fall back to older seasons (archive profiles).
       const candidates = [norm(me.username), norm(me.global_name)].filter(Boolean);
       const all = await prisma.driver.findMany();
-      const match = all.find((d) => {
+      const pool = activeSeason
+        ? [...all.filter((d) => d.seasonId === activeSeason.id), ...all.filter((d) => d.seasonId !== activeSeason.id)]
+        : all;
+      const match = pool.find((d) => {
         const opts = [norm(d.discordName), norm(d.name)];
         return candidates.some((c) => opts.includes(c)) && !d.discordUserId;
       });

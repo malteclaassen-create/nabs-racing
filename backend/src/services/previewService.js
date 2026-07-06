@@ -9,12 +9,14 @@ import {
   getPointsForPosition,
   calculateT1ConstructorPoints,
   calculateT2ConstructorPoints,
+  DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
-import { applyDropScores } from "./standingsService.js";
+import { applyDropScores, buildConstructorRows } from "./standingsService.js";
+import { getSeasonScoring } from "./seasonService.js";
 
 // The classified, points-bearing view of one proposed round (for the result
 // preview table): final order, points, and the Tier-2 re-rank.
-function buildRoundPreview(proposed, drivers, teams) {
+function buildRoundPreview(proposed, drivers, teams, table = DEFAULT_POINTS_TABLE) {
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const teamById = new Map(teams.map((t) => [t.id, t]));
   const applied = applyPenalties(proposed);
@@ -27,7 +29,7 @@ function buildRoundPreview(proposed, drivers, teams) {
   applied
     .filter((r) => r.status === "FINISHED" && r.position != null && effTeam(r)?.tier === 2)
     .sort((a, b) => a.position - b.position)
-    .forEach((r, i) => (t2[r.driverId] = getPointsForPosition(i + 1)));
+    .forEach((r, i) => (t2[r.driverId] = getPointsForPosition(i + 1, table)));
 
   const rows = applied.map((r) => {
     const d = driverById.get(r.driverId);
@@ -41,11 +43,13 @@ function buildRoundPreview(proposed, drivers, teams) {
     return {
       driverId: r.driverId,
       name: d?.name || r.driverId,
-      finalPosition: r.position,
+      // Non-finishers are not classified — no final position, they sort to the
+      // bottom of the preview like in the official result posts.
+      finalPosition: r.status === "FINISHED" ? r.position : null,
       rawPosition: rawById.get(r.driverId) ?? null,
       penalty,
       status: r.status,
-      points: getDriverResultPoints(r),
+      points: getDriverResultPoints(r, table),
       t2Points: t2[r.driverId] ?? null,
       // Effective team + tier so the preview can show who scores as T1 / T2 /
       // Reserve, and whether this is a reserve subbing for a team.
@@ -89,13 +93,14 @@ function rankWithDelta(rows, currentPosById, idKey) {
 }
 
 export async function previewRaceImpact(prisma, { seasonId, raceId, number, results }) {
-  const [drivers, teams, races, dbResults, dbScores] = await Promise.all([
+  const [drivers, teams, races, dbResults, scoring] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.team.findMany({ where: { seasonId } }),
     prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
     prisma.raceResult.findMany({ where: { race: { seasonId } } }),
-    prisma.constructorRaceScore.findMany({ where: { race: { seasonId } } }),
+    getSeasonScoring(prisma, seasonId),
   ]);
+  const table = scoring.pointsTable || DEFAULT_POINTS_TABLE;
 
   // Which round are we previewing? An existing round (edit) or a new number
   // (import of a round not yet in the calendar).
@@ -122,44 +127,40 @@ export async function previewRaceImpact(prisma, { seasonId, raceId, number, resu
     if (!dbByNum.has(n)) dbByNum.set(n, []);
     dbByNum.get(n).push(r);
   }
-  // Constructor scores already stored per round/team (used for every round
-  // except the target — both baseline and proposal use them, so they cancel).
-  const dbScoreByKey = new Map(); // `${num}|${teamId}` -> points
-  for (const s of dbScores) dbScoreByKey.set(`${numById.get(s.raceId)}|${s.teamId}`, s.points);
-
   // Compute the full standings for ONE choice of the target round's results.
   // We run it twice — once with the proposal, once with what's currently stored
   // for that round (the "baseline") — and diff the two. Computing both the same
   // way means quirks of the historical/seed data cancel out, so the deltas show
   // only what the admin's edit actually changes.
   const computeStandings = (targetApplied) => {
-    const resultsByNum = (n) => (n === targetNumber ? targetApplied : applyPenalties(dbByNum.get(n) || []));
+    const resultsByRound = new Map();
+    for (const n of raceNumbers) {
+      const rs = n === targetNumber ? targetApplied : applyPenalties(dbByNum.get(n) || []);
+      if (rs.length) resultsByRound.set(n, rs);
+    }
 
     const driverRows = drivers.map((d) => {
       const pointsByRound = {};
       for (const n of raceNumbers) {
-        const mine = resultsByNum(n).find((r) => r.driverId === d.id);
-        if (mine) pointsByRound[n] = getDriverResultPoints(mine);
+        const mine = (resultsByRound.get(n) || []).find((r) => r.driverId === d.id);
+        if (mine) pointsByRound[n] = getDriverResultPoints(mine, table);
       }
-      const { total } = applyDropScores(pointsByRound, raceNumbers);
+      const { total } = applyDropScores(pointsByRound, raceNumbers, scoring.dropWorst);
       return { driverId: d.id, name: d.name, total, team: { name: d.team.name, color: d.team.color } };
     });
 
-    const constructorRows = (tier) => {
-      const calc = tier === 1 ? calculateT1ConstructorPoints : calculateT2ConstructorPoints;
-      const targetScores = targetNumber != null ? calc(targetApplied, drivers, teams) : {};
-      return teams
-        .filter((t) => t.tier === tier)
-        .map((t) => {
-          const perRound = {};
-          for (const n of raceNumbers) {
-            perRound[n] =
-              n === targetNumber ? targetScores[t.id] || 0 : dbScoreByKey.get(`${n}|${t.id}`) || 0;
-          }
-          const { total } = applyDropScores(perRound, raceNumbers);
-          return { teamId: t.id, name: t.name, color: t.color, total };
-        });
-    };
+    // Same per-driver drop rule as the live constructor standings: each
+    // driver's dropped rounds don't count for the team they drove for.
+    const constructorRows = (tier) =>
+      buildConstructorRows({
+        tier,
+        teams,
+        drivers,
+        raceNumbers,
+        resultsByRound,
+        dropN: scoring.dropWorst,
+        table,
+      }).map(({ team, total }) => ({ teamId: team.id, name: team.name, color: team.color, total }));
 
     return { drivers: driverRows, t1: constructorRows(1), t2: constructorRows(2) };
   };
@@ -175,8 +176,8 @@ export async function previewRaceImpact(prisma, { seasonId, raceId, number, resu
       .filter((t) => t.points > 0)
       .sort((a, b) => b.points - a.points);
   const roundTeams = {
-    t1: teamRoundPoints(calculateT1ConstructorPoints(proposedApplied, drivers, teams), 1),
-    t2: teamRoundPoints(calculateT2ConstructorPoints(proposedApplied, drivers, teams), 2),
+    t1: teamRoundPoints(calculateT1ConstructorPoints(proposedApplied, drivers, teams, table), 1),
+    t2: teamRoundPoints(calculateT2ConstructorPoints(proposedApplied, drivers, teams, table), 2),
   };
   // Baseline = the round exactly as stored now (or absent, for a brand-new
   // import round). Both sides share every other round, so the diff is the edit.
@@ -195,7 +196,7 @@ export async function previewRaceImpact(prisma, { seasonId, raceId, number, resu
 
   return {
     targetNumber,
-    round: buildRoundPreview(proposed, drivers, teams),
+    round: buildRoundPreview(proposed, drivers, teams, table),
     roundTeams,
     drivers: rankWithDelta(proposedStandings.drivers, baseD, "driverId"),
     t1: rankWithDelta(proposedStandings.t1, baseT1, "teamId"),

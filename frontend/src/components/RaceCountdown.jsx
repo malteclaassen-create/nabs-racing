@@ -56,7 +56,7 @@ export default function RaceCountdown({ date, className = "" }) {
         >
           <span
             className={`font-mono text-2xl font-black leading-none tabular-nums sm:text-[1.7rem] ${
-              u.live ? "text-rose-600 dark:text-brand" : "text-ink dark:text-white"
+              u.live ? "text-eyebrow" : "text-ink dark:text-white"
             }`}
           >
             {pad2(u.value)}

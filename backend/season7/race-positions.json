@@ -1759,7 +1759,7 @@
   {
    "driverId": "goldginger",
    "acName": "GoldGinger",
-   "position": 17,
+   "position": 18,
    "grid": 10,
    "bestLapMs": 93201,
    "dsq": false
@@ -1767,7 +1767,7 @@
   {
    "driverId": "vibe_officer",
    "acName": "Vibe_Officer",
-   "position": 18,
+   "position": 17,
    "grid": 11,
    "bestLapMs": 93720,
    "dsq": false

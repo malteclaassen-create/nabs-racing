@@ -1,13 +1,15 @@
-// Self-service endpoints for the logged-in (Discord) driver. Identity always
-// comes from the user JWT (optionalUser -> req.user.driverId); there is no way
-// to act as anyone else.
+// Self-service endpoints for the logged-in (Discord) driver. Identity comes
+// from the user JWT (optionalUser -> req.user), but the ACTING driver is
+// re-resolved from the DB on every request (resolveDriverId) so an admin
+// unlink/relink in the Members tab takes effect immediately — the driverId
+// baked into the 30-day token is only a login-time snapshot.
 import { Router } from "express";
 import multer from "multer";
 import { writeFileSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
-import { optionalUser } from "../middleware/auth.js";
+import { optionalUser, resolveDriverId } from "../middleware/auth.js";
 import { parseSocials, serializeSocials } from "../lib/socials.js";
 
 const router = Router();
@@ -24,9 +26,10 @@ const AVATAR_DIR = join(__dir, "../../uploads/avatars");
 const IMG_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif" };
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 
-// Resolve the logged-in driver id or send a 401. Returns null when not allowed.
-function requireDriver(req, res) {
-  const driverId = req.user?.driverId;
+// Resolve the logged-in driver id (fresh from the DB) or send a 401.
+// Returns null when not allowed.
+async function requireDriver(req, res) {
+  const driverId = await resolveDriverId(prisma, req.user);
   if (!driverId) {
     res.status(401).json({ error: "Sign in with Discord first" });
     return null;
@@ -38,12 +41,13 @@ function requireDriver(req, res) {
 router.get("/", async (req, res, next) => {
   try {
     if (!req.user) return res.status(401).json({ error: "Sign in with Discord first" });
-    // Logged in via Discord but not yet matched to a roster driver.
-    if (!req.user.driverId) {
+    // Logged in via Discord but not (or no longer) matched to a roster driver.
+    const driverId = await resolveDriverId(prisma, req.user);
+    if (!driverId) {
       return res.json({ isLinked: false, discordName: req.user.discordName || null });
     }
     const driver = await prisma.driver.findUnique({
-      where: { id: req.user.driverId },
+      where: { id: driverId },
       include: { team: true },
     });
     if (!driver) return res.status(404).json({ error: "Driver not found" });
@@ -79,7 +83,7 @@ router.get("/", async (req, res, next) => {
 // `socials` is a { platform: url } object (see lib/socials.js).
 router.put("/profile", async (req, res, next) => {
   try {
-    const driverId = requireDriver(req, res);
+    const driverId = await requireDriver(req, res);
     if (!driverId) return;
     const data = {};
     if (req.body?.name !== undefined) {
@@ -129,7 +133,7 @@ router.put("/profile", async (req, res, next) => {
 const CODE = /^[a-z]{2}$/;
 router.put("/country", async (req, res, next) => {
   try {
-    const driverId = requireDriver(req, res);
+    const driverId = await requireDriver(req, res);
     if (!driverId) return;
     const country = String(req.body?.country || "").trim().toLowerCase();
     if (country && !CODE.test(country)) {
@@ -149,7 +153,7 @@ router.put("/country", async (req, res, next) => {
 // POST /api/me/photo  (multipart: file=<image>) -> set a custom profile picture.
 router.post("/photo", upload.single("file"), async (req, res, next) => {
   try {
-    const driverId = requireDriver(req, res);
+    const driverId = await requireDriver(req, res);
     if (!driverId) return;
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = IMG_EXT[req.file.mimetype];
@@ -171,7 +175,7 @@ router.post("/photo", upload.single("file"), async (req, res, next) => {
 // avatar (captured on login). Returns the URL that now applies, if any.
 router.delete("/photo", async (req, res, next) => {
   try {
-    const driverId = requireDriver(req, res);
+    const driverId = await requireDriver(req, res);
     if (!driverId) return;
     const driver = await prisma.driver.update({
       where: { id: driverId },

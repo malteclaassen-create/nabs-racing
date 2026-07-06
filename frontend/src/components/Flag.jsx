@@ -1,13 +1,14 @@
-// Real flag image (flagcdn.com) — works on Windows, unlike emoji flags.
-// `code` is an ISO 3166-1 alpha-2 code (e.g. "de"). Renders nothing if empty
-// or if the image fails to load.
+// Real flag image — works on Windows, unlike emoji flags. The PNGs are
+// self-hosted in public/flags (mirrored from flagcdn.com), so no third-party
+// server is contacted. `code` is an ISO 3166-1 alpha-2 code (e.g. "de").
+// Renders nothing if empty or if the image fails to load.
 export default function Flag({ code, title, className = "", w = 20, h = 15 }) {
   if (!code) return null;
   const c = String(code).toLowerCase();
   return (
     <img
-      src={`https://flagcdn.com/w40/${c}.png`}
-      srcSet={`https://flagcdn.com/w80/${c}.png 2x`}
+      src={`/flags/w40/${c}.png`}
+      srcSet={`/flags/w80/${c}.png 2x`}
       width={w}
       height={h}
       alt={title || c.toUpperCase()}

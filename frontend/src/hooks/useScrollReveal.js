@@ -18,9 +18,20 @@ export function useScrollReveal() {
       // Reveal once the element's top reaches the bottom 10% of the viewport,
       // so it animates in just before it's fully on screen.
       const trigger = window.innerHeight * 0.9;
+      const due = [];
       document.querySelectorAll(SEL).forEach((el) => {
         if (el.classList.contains("is-visible")) return;
-        if (el.getBoundingClientRect().top < trigger) el.classList.add("is-visible");
+        const top = el.getBoundingClientRect().top;
+        if (top < trigger) due.push({ el, top });
+      });
+      // Everything revealed in the same pass (typically the initial page load)
+      // fans in top-to-bottom: sort by vertical position and hand each element
+      // an increasing delay via --reveal-delay (read by .reveal/.cascade CSS).
+      // Scroll-triggered reveals usually arrive one at a time and get 0ms.
+      due.sort((a, b) => a.top - b.top);
+      due.forEach(({ el }, i) => {
+        el.style.setProperty("--reveal-delay", `${Math.min(i, 8) * 110}ms`);
+        el.classList.add("is-visible");
       });
     };
 

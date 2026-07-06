@@ -59,6 +59,26 @@ describe("getPointsForPosition", () => {
     expect(getPointsForPosition(undefined)).toBe(0);
     expect(getPointsForPosition(-3)).toBe(0);
   });
+
+  // A season can override the points table (Season.pointsTable).
+  it("honours a custom per-season points table", () => {
+    const custom = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]; // classic F1 top-10
+    expect(getPointsForPosition(1, custom)).toBe(25);
+    expect(getPointsForPosition(10, custom)).toBe(1);
+    expect(getPointsForPosition(11, custom)).toBe(0); // past the table = 0
+    expect(getDriverResultPoints(fin("a1", 2), custom)).toBe(18);
+    // Explicit stored points still win over the table.
+    expect(getDriverResultPoints(fin("a1", 2, { points: 99 }), custom)).toBe(99);
+  });
+
+  it("passes the custom table through the constructor calculators", () => {
+    const custom = [10, 5];
+    const results = [fin("a1", 1), fin("c1", 2), fin("d1", 3)];
+    // T1: a1 wins -> alpha 10 (custom P1).
+    expect(calculateT1ConstructorPoints(results, drivers, teams, custom)).toEqual({ alpha: 10 });
+    // T2 re-rank: c1 is best T2 (P1 -> 10), d1 second (P2 -> 5).
+    expect(calculateT2ConstructorPoints(results, drivers, teams, custom)).toEqual({ charlie: 10, delta: 5 });
+  });
 });
 
 describe("getDriverResultPoints", () => {
@@ -111,8 +131,8 @@ describe("classifyResults / applyPenalties (time penalties)", () => {
     expect(applyPenalties(results).map((r) => r.position)).toEqual([1, 2, 3]);
   });
 
-  it("preserves gapped finisher positions when there is no penalty", () => {
-    // P3 is a DNF that keeps its slot in the stored order; finishers are 1,2,4,5.
+  it("closes the gap left by a DNF: finishers behind it move up (league rule 2026-07-04)", () => {
+    // P3 is a DNF — it holds NO slot, so the stored 1,2,4,5 classify as 1,2,3,4.
     const results = [
       fint("a1", 1, 100000),
       fint("b1", 2, 101000),
@@ -121,9 +141,35 @@ describe("classifyResults / applyPenalties (time penalties)", () => {
       fint("a2", 5, 104000),
     ];
     const applied = applyPenalties(results);
-    // finishers keep their exact stored positions -> points unchanged
-    expect(applied.find((r) => r.driverId === "d1").position).toBe(4);
-    expect(applied.find((r) => r.driverId === "a2").position).toBe(5);
+    expect(applied.find((r) => r.driverId === "d1").position).toBe(3);
+    expect(applied.find((r) => r.driverId === "a2").position).toBe(4);
+    // the DNF itself is untouched (unclassified, scores 0 anyway)
+    expect(applied.find((r) => r.driverId === "c1").position).toBe(3);
+    expect(getDriverResultPoints(applied.find((r) => r.driverId === "c1"))).toBe(0);
+  });
+
+  it("keeps explicit (official) points when a car only moved up through a DNF gap", () => {
+    // Historical rows carry official points; closing a gap must not rewrite them.
+    const results = [
+      fin("a1", 1, { points: 35 }),
+      fin("c1", 2, { status: "DNF", points: 0 }),
+      fin("d1", 3, { points: 25 }),
+    ];
+    const applied = applyPenalties(results);
+    const d1 = applied.find((r) => r.driverId === "d1");
+    expect(d1.position).toBe(2); // classified P2 now
+    expect(getDriverResultPoints(d1)).toBe(25); // official points preserved
+  });
+
+  it("re-derives points from the closed-up position when none are stored (fresh imports)", () => {
+    const results = [
+      fin("a1", 1, { status: "DNF" }),
+      fin("b1", 2), // no explicit points -> derives from the new P1
+    ];
+    const applied = applyPenalties(results);
+    const b1 = applied.find((r) => r.driverId === "b1");
+    expect(b1.position).toBe(1);
+    expect(getDriverResultPoints(b1)).toBe(35);
   });
 
   it("drops the penalised car behind every car now ahead on adjusted time", () => {
@@ -205,9 +251,9 @@ describe("classifyResults / applyPenalties (time penalties)", () => {
       fint("c1", 3, 101000),
     ];
     const map = classifyResults(results);
-    // finishers a1(P1) & c1(P3); a1 +5s drops behind c1 -> they swap slots.
+    // finishers a1 & c1 classify contiguously (1,2); a1 +5s drops behind c1.
     expect(map.get("c1")).toBe(1);
-    expect(map.get("a1")).toBe(3);
+    expect(map.get("a1")).toBe(2);
     expect(map.has("b1")).toBe(false);
   });
 });
@@ -364,20 +410,22 @@ describe("calculateT2ConstructorPoints (DSQ/DNF removal fix)", () => {
   });
 });
 
-// Case C: the fix must NOT leak into the driver or Tier-1 standings — those
-// never re-rank on a DSQ. Only the disqualified entry drops to 0.
-describe("DSQ does not re-rank driver or Tier-1 standings", () => {
-  it("scores a DSQ driver 0 and a real P3 driver 25 (no bump)", () => {
+// Case C (league rule since 2026-07-04): a DSQ/DNF holds no classified slot
+// ANYWHERE — the scoring pipeline runs applyPenalties first, which closes the
+// gap, so the car behind inherits the position in the driver AND Tier-1
+// standings too. The DSQ itself always scores 0.
+describe("DSQ/DNF releases its slot in driver and Tier-1 standings", () => {
+  it("scores a DSQ driver 0 regardless of its stored position", () => {
     expect(getDriverResultPoints({ status: "DSQ", position: 3 })).toBe(0);
     expect(getDriverResultPoints({ status: "FINISHED", position: 3 })).toBe(25);
   });
 
-  it("keeps a Tier-1 P2 car at its real 30 when the P1 car is DSQ", () => {
-    const results = [
-      fin("a1", 1, { status: "DSQ" }), // alpha DSQ -> 0
-      fin("b1", 2), // bravo real P2 -> 30 (does NOT inherit P1)
-    ];
+  it("promotes the Tier-1 P2 car to P1 points when the P1 car is DSQ", () => {
+    const results = applyPenalties([
+      fin("a1", 1, { status: "DSQ" }), // alpha DSQ -> 0, holds no slot
+      fin("b1", 2), // bravo inherits P1 -> 35
+    ]);
     const pts = calculateT1ConstructorPoints(results, drivers, teams);
-    expect(pts).toEqual({ alpha: 0, bravo: 30 });
+    expect(pts).toEqual({ alpha: 0, bravo: 35 });
   });
 });

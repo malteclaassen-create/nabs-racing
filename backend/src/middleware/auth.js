@@ -1,4 +1,6 @@
 import jwt from "jsonwebtoken";
+import prisma from "../lib/prisma.js";
+import { isBanned } from "../lib/members.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 
@@ -13,13 +15,17 @@ export function signUserToken(payload) {
 }
 
 // Reads & verifies a user token if present; sets req.user. Never blocks.
-export function optionalUser(req, res, next) {
+// Sessions are stateless JWTs, so a ban must be checked here too — a banned
+// account's still-valid token is simply treated as logged out.
+export async function optionalUser(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (token) {
     try {
       const payload = jwt.verify(token, JWT_SECRET);
-      if (payload.role === "user") req.user = payload;
+      if (payload.role === "user" && !(await isBanned(prisma, payload.discordId))) {
+        req.user = payload;
+      }
     } catch {
       /* ignore invalid token */
     }
@@ -28,19 +34,45 @@ export function optionalUser(req, res, next) {
 }
 
 // Express middleware: requires a logged-in (Discord) member. Blocks otherwise.
-// Used to gate member-only areas such as the downloads catalogue.
-export function requireUser(req, res, next) {
+// Used to gate member-only areas such as the downloads catalogue. Banned
+// accounts are rejected even while their JWT is still technically valid.
+export async function requireUser(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: "Sign in with Discord first" });
+  let payload;
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    payload = jwt.verify(token, JWT_SECRET);
     if (payload.role !== "user") throw new Error("not a member");
-    req.user = payload;
-    next();
   } catch {
     return res.status(401).json({ error: "Invalid or expired session" });
   }
+  try {
+    if (await isBanned(prisma, payload.discordId)) {
+      return res.status(403).json({ error: "This account has been suspended by the league admins." });
+    }
+  } catch {
+    /* ban check must never take the site down */
+  }
+  req.user = payload;
+  next();
+}
+
+// The driverId inside a user JWT is a SNAPSHOT from login time. The admin can
+// unlink/relink accounts at any moment (Members tab), so anything that acts as
+// a driver must re-read the CURRENT link from the DB by Discord id — otherwise
+// an unlinked session could keep editing "its" old driver for up to 30 days.
+// Falls back to the token's driverId only for tokens without a discordId.
+export async function resolveDriverId(prismaClient, user) {
+  if (!user) return null;
+  if (user.discordId) {
+    const d = await prismaClient.driver.findUnique({
+      where: { discordUserId: user.discordId },
+      select: { id: true },
+    });
+    return d?.id || null;
+  }
+  return user.driverId || null;
 }
 
 // A short-lived, single-purpose ticket that authorises ONE file download. A

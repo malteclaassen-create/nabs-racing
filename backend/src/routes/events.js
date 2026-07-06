@@ -1,16 +1,19 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { syncRaceToDiscord } from "../services/discordService.js";
-import { optionalUser } from "../middleware/auth.js";
+import { optionalUser, resolveDriverId } from "../middleware/auth.js";
+import { resolveSeasonId } from "../services/seasonService.js";
 
 const router = Router();
 const VALID = ["ACCEPTED", "DECLINED", "TENTATIVE"];
 
-// GET /api/events -> upcoming races (not completed) with RSVP lists
+// GET /api/events -> upcoming races (not completed) with RSVP lists.
+// Season-scoped (default: the active season) so events never mix seasons.
 router.get("/", async (req, res, next) => {
   try {
+    const seasonId = await resolveSeasonId(prisma, req.query.season);
     const races = await prisma.race.findMany({
-      where: { isCompleted: false, isSpecialEvent: false },
+      where: { isCompleted: false, isSpecialEvent: false, seasonId },
       orderBy: { number: "asc" },
       include: {
         rsvps: { include: { driver: { include: { team: true } } } },
@@ -55,8 +58,9 @@ router.get("/", async (req, res, next) => {
 router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
   try {
     const { status } = req.body || {};
-    // Identity must come from a Discord login (forgery-proof). No anonymous RSVP.
-    const driverId = req.user?.driverId;
+    // Identity must come from a Discord login (forgery-proof). No anonymous
+    // RSVP. Resolved fresh from the DB so an admin unlink applies immediately.
+    const driverId = await resolveDriverId(prisma, req.user);
     if (!driverId) return res.status(401).json({ error: "Sign in with Discord to respond" });
     if (!VALID.includes(status)) return res.status(400).json({ error: "Invalid status" });
 
@@ -84,7 +88,7 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
 // DELETE /api/events/:id/rsvp/:driverId  -> remove a driver's RSVP
 router.delete("/:id/rsvp/:driverId", optionalUser, async (req, res, next) => {
   try {
-    const driverId = req.user?.driverId;
+    const driverId = await resolveDriverId(prisma, req.user);
     if (!driverId) return res.status(401).json({ error: "Sign in with Discord to respond" });
     await prisma.raceRsvp.deleteMany({
       where: { raceId: req.params.id, driverId },

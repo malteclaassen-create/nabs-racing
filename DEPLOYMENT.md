@@ -173,6 +173,9 @@ pm2 restart nabs-api      # Caddy liefert das neue dist/ automatisch aus
 - [ ] HTTPS davor (Caddy `reverse_proxy localhost:4000` **oder** Cloudflare)
 - [ ] Discord-Redirect-URL im Entwickler-Portal eingetragen
 - [ ] Backend via pm2 als Dauerdienst + Autostart
+- [ ] Link-Vorschau: in `frontend/index.html` bei den beiden `og:image` /
+      `twitter:image`-Zeilen `https://nabs-racing.example` durch die echte
+      Domain ersetzen (sonst zeigt Discord kein Vorschaubild)
 
 > **Nur 3 Dinge liegen bewusst außerhalb von git** und müssen auf dem Server
 > selbst angelegt werden: `backend/.env`, die Datenbankdatei `backend/prisma/dev.db`

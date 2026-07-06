@@ -6,9 +6,11 @@
 // both at seed time and during AC race import.
 // ---------------------------------------------------------------------------
 
-// P1..P18 -> points. P19+ = 0.
-// index 0 == position 1.
-const POINTS_TABLE = [
+// The league DEFAULT points table — P1..P18 -> points, P19+ = 0 (index 0 ==
+// position 1). A season can override it (Season.pointsTable, admin-editable);
+// every function below takes the effective table as an optional last argument
+// and falls back to this default, so existing callers/data are unaffected.
+export const DEFAULT_POINTS_TABLE = [
   35, // P1
   30, // P2
   25, // P3
@@ -29,9 +31,9 @@ const POINTS_TABLE = [
   1, // P18
 ];
 
-export function getPointsForPosition(position) {
+export function getPointsForPosition(position, table = DEFAULT_POINTS_TABLE) {
   if (!position || position < 1) return 0;
-  return POINTS_TABLE[position - 1] ?? 0;
+  return table[position - 1] ?? 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,25 +52,29 @@ export function getPointsForPosition(position) {
 // smaller total time, so it is never jumped, and the laps-then-time order that
 // the AC result file already encodes (the stored positions) is preserved.
 //
-// We redistribute the *set* of finishing slots in the new order, so DNF/DNS gaps
-// are preserved exactly. A round with no penalty — or one whose finishers have no
-// stored total time (legacy rounds) — is a true no-op, leaving historical results
-// byte-for-byte unchanged.
+// CLASSIFICATION (league rule, confirmed 2026-07-04): only FINISHED cars are
+// classified, and they are classified contiguously — P1..Pn in road order. A
+// DNS/DNF/DSQ car holds NO slot, so everyone behind it moves up (exactly like
+// the official result posts, which list the classified field 1..n and the
+// non-finishers separately). Historical rounds keep their official points
+// (explicit `points` win over a shifted position), and their real gaps only
+// sit beyond P18 where every slot is worth 0 — so past standings don't move.
 //
 // Returns a Map<driverId, effectivePosition> for the FINISHED results.
 export function classifyResults(raceResults) {
   const finishers = raceResults
     .filter((r) => (!r.status || r.status === "FINISHED") && r.position != null)
     .sort((a, b) => a.position - b.position);
-  const slots = finishers.map((r) => r.position); // positions to redistribute
+  const slots = finishers.map((_, i) => i + 1); // contiguous classified slots
   const out = new Map();
 
   const anyPenalty = finishers.some((r) => (r.penaltySeconds || 0) > 0);
   const haveAllTimes = finishers.every((r) => r.totalTimeMs > 0);
 
-  // No penalty, or no usable time data -> keep the stored finishing order.
+  // No penalty, or no usable time data -> keep the stored finishing ORDER,
+  // but still classify contiguously (non-finishers hold no slot).
   if (!anyPenalty || !haveAllTimes) {
-    finishers.forEach((r) => out.set(r.driverId, r.position));
+    finishers.forEach((r, i) => out.set(r.driverId, slots[i]));
     return out;
   }
 
@@ -102,27 +108,30 @@ export function classifyResults(raceResults) {
 }
 
 // Returns a copy of the results with each finisher's `position` set to its
-// classification. Only cars that actually moved are re-scored from their new
-// slot (their stale explicit points are dropped); everyone else is returned
-// untouched, keeping their exact points. The stored `position` stays raw, so
-// re-opening a round in the editor is idempotent.
+// classification. A car moved by a TIME PENALTY is re-scored from its new slot
+// (its stale explicit points are dropped). A car that merely moved up because
+// a non-finisher released its slot keeps explicit points when it has them
+// (historical rounds stay official) and is re-scored from the new slot when it
+// doesn't (fresh imports). The stored `position` stays raw, so re-opening a
+// round in the editor is idempotent.
 export function applyPenalties(raceResults) {
   const classified = classifyResults(raceResults);
+  const anyPenalty = raceResults.some((r) => (r.penaltySeconds || 0) > 0);
   return raceResults.map((r) => {
     if (!classified.has(r.driverId)) return r;
     const position = classified.get(r.driverId);
     if (position === r.position) return { ...r, position };
-    return { ...r, position, points: null };
+    return { ...r, position, points: anyPenalty ? null : r.points ?? null };
   });
 }
 
 // Points a single result actually scores in the driver standings.
 // DNS / DNF / DSQ always score 0. Otherwise: explicit `points` if provided
 // (historical R1-R8), else derived from finishing position.
-export function getDriverResultPoints(result) {
+export function getDriverResultPoints(result, table = DEFAULT_POINTS_TABLE) {
   if (result.status && result.status !== "FINISHED") return 0;
   if (result.points !== null && result.points !== undefined) return result.points;
-  return getPointsForPosition(result.position);
+  return getPointsForPosition(result.position, table);
 }
 
 // Resolve the team a result counts towards: a reserve substituting for a team
@@ -136,18 +145,29 @@ function effectiveTeamId(result, driverById) {
 // TIER 1 CONSTRUCTORS
 // Sum of the actual race points of every result whose effective team is a
 // Tier-1 team. No re-ranking - real finishing points are used.
+// The *Contributions variant keeps the per-driver breakdown so the standings
+// can apply the per-driver drop rule (each DRIVER's worst rounds don't count
+// for the team they drove for in those rounds).
 // ---------------------------------------------------------------------------
-export function calculateT1ConstructorPoints(raceResults, drivers, teams) {
+export function calculateT1ConstructorContributions(raceResults, drivers, teams, table = DEFAULT_POINTS_TABLE) {
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const teamById = new Map(teams.map((t) => [t.id, t]));
-  const points = {};
+  const contributions = [];
 
   for (const result of raceResults) {
     if (result.status === "DNS") continue;
     const teamId = effectiveTeamId(result, driverById);
     const team = teamById.get(teamId);
     if (team?.tier !== 1) continue;
-    points[teamId] = (points[teamId] || 0) + getDriverResultPoints(result);
+    contributions.push({ driverId: result.driverId, teamId, points: getDriverResultPoints(result, table) });
+  }
+  return contributions;
+}
+
+export function calculateT1ConstructorPoints(raceResults, drivers, teams, table = DEFAULT_POINTS_TABLE) {
+  const points = {};
+  for (const c of calculateT1ConstructorContributions(raceResults, drivers, teams, table)) {
+    points[c.teamId] = (points[c.teamId] || 0) + c.points;
   }
   return points;
 }
@@ -166,7 +186,7 @@ export function calculateT1ConstructorPoints(raceResults, drivers, teams) {
 //   - A Tier-2 non-finisher (DNS/DNF/DSQ) is removed entirely — it does NOT hold
 //     a slot, so the classified cars behind it bump up and score more.
 // ---------------------------------------------------------------------------
-export function calculateT2ConstructorPoints(raceResults, drivers, teams) {
+export function calculateT2ConstructorContributions(raceResults, drivers, teams, table = DEFAULT_POINTS_TABLE) {
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const teamById = new Map(teams.map((t) => [t.id, t]));
 
@@ -180,11 +200,17 @@ export function calculateT2ConstructorPoints(raceResults, drivers, teams) {
     })
     .sort((a, b) => a.position - b.position);
 
-  const constructorPoints = {};
-  ranked.forEach((result, index) => {
-    const teamId = effectiveTeamId(result, driverById);
-    constructorPoints[teamId] = (constructorPoints[teamId] || 0) + getPointsForPosition(index + 1);
-  });
+  return ranked.map((result, index) => ({
+    driverId: result.driverId,
+    teamId: effectiveTeamId(result, driverById),
+    points: getPointsForPosition(index + 1, table),
+  }));
+}
 
-  return constructorPoints;
+export function calculateT2ConstructorPoints(raceResults, drivers, teams, table = DEFAULT_POINTS_TABLE) {
+  const points = {};
+  for (const c of calculateT2ConstructorContributions(raceResults, drivers, teams, table)) {
+    points[c.teamId] = (points[c.teamId] || 0) + c.points;
+  }
+  return points;
 }

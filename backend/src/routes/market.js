@@ -8,14 +8,17 @@
 // ---------------------------------------------------------------------------
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
-import { optionalUser } from "../middleware/auth.js";
+import { optionalUser, resolveDriverId } from "../middleware/auth.js";
+import { resolveSeasonId } from "../services/seasonService.js";
 
 const router = Router();
 router.use(optionalUser);
 
 // Resolve the logged-in driver (with team) or send a 401. Returns null on fail.
+// The driver is re-resolved from the DB (not the token snapshot), so admin
+// unlink/relink in the Members tab applies to running sessions immediately.
 async function requireDriver(req, res) {
-  const driverId = req.user?.driverId;
+  const driverId = await resolveDriverId(prisma, req.user);
   if (!driverId) {
     res.status(401).json({ error: "Sign in with Discord first" });
     return null;
@@ -67,8 +70,10 @@ const offerInclude = {
 // interest" / "pick a reserve").
 router.get("/", async (req, res, next) => {
   try {
+    // The market only deals in upcoming races, i.e. the active season.
+    const seasonId = await resolveSeasonId(prisma, req.query.season);
     const races = await prisma.race.findMany({
-      where: { isCompleted: false, isSpecialEvent: false },
+      where: { isCompleted: false, isSpecialEvent: false, seasonId },
       orderBy: { number: "asc" },
       include: {
         seatOffers: {
@@ -80,9 +85,10 @@ router.get("/", async (req, res, next) => {
     });
 
     let me = null;
-    if (req.user?.driverId) {
+    const myDriverId = await resolveDriverId(prisma, req.user);
+    if (myDriverId) {
       const d = await prisma.driver.findUnique({
-        where: { id: req.user.driverId },
+        where: { id: myDriverId },
         include: { team: true },
       });
       if (d) {

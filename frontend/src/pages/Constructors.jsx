@@ -15,16 +15,16 @@ function completedRounds(data) {
 
 // One tier shown as a unit: championship table, progression chart and the
 // line-ups of every team in that tier.
-function TierBlock({ id, tier, standings, teams, delay }) {
+function TierBlock({ id, tier, standings, teams, title }) {
   const rows = standings.standings;
   const done = completedRounds(standings);
   const lastRound = done[done.length - 1];
 
   return (
-    <section id={id} className="reveal scroll-mt-28 space-y-6" style={{ animationDelay: delay }}>
+    <section id={id} className="reveal scroll-mt-28 space-y-6">
       <SectionHeading
         eyebrow="Constructors' Championship"
-        title={`Tier ${tier}`}
+        title={title || `Tier ${tier}`}
         right={
           lastRound != null && (
             <span className="hidden shrink-0 font-mono text-xs font-bold uppercase tracking-wider text-light sm:block">
@@ -34,8 +34,11 @@ function TierBlock({ id, tier, standings, teams, delay }) {
         }
       />
 
-      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={rows} />
-      <PointsChart standings={rows} completed={done} allRounds={standings.raceNumbers} />
+      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} />
+      {/* Archived seasons with no per-race data have nothing to plot. */}
+      {done.length > 0 && (
+        <PointsChart standings={rows} completed={done} allRounds={standings.raceNumbers} dropWorst={standings.dropWorst} />
+      )}
 
       <div className="space-y-3 pt-2">
         <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Line-ups</h3>
@@ -57,7 +60,7 @@ function TeamCard({ team, index = 0 }) {
       <div className="p-5">
         <Link to={`/teams/${team.id}`} className="flex items-center gap-3">
           <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={36} />
-          <h4 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark transition group-hover:text-brand">
+          <h4 className="font-display text-base font-extrabold uppercase tracking-tight text-dark transition group-hover:text-brand sm:text-lg">
             {team.name}
           </h4>
         </Link>
@@ -118,18 +121,25 @@ export default function Constructors() {
 
   const t1Teams = teams.data.filter((t) => t.tier === 1);
   const t2Teams = teams.data.filter((t) => t.tier === 2);
+  // Single-class seasons (archived S1–S5) have no Tier 2 at all: hide the split
+  // and the jump pills, and title the one block plainly "Constructors".
+  const hasT2 = t2.data.standings.length > 0 || t2Teams.length > 0;
 
   return (
     <div className="space-y-16">
       <div>
         {/* pills sit beside the title on desktop, on their own row on phones —
             side by side they push the header past the viewport */}
-        <PageHeader eyebrow="Championship" title="Constructors" right={<TierJump className="hidden shrink-0 sm:flex" />} />
-        <TierJump className="-mt-2 flex sm:hidden" />
+        <PageHeader
+          eyebrow="Championship"
+          title="Constructors"
+          right={hasT2 ? <TierJump className="hidden shrink-0 sm:flex" /> : null}
+        />
+        {hasT2 && <TierJump className="-mt-2 flex sm:hidden" />}
       </div>
 
-      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} delay="0.05s" />
-      <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} delay="0.13s" />
+      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} title={hasT2 ? undefined : "Constructors"} />
+      {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} />}
     </div>
   );
 }

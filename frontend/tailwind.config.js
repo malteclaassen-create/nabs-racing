@@ -21,6 +21,12 @@ export default {
         silver: "#94A3B8",
         bronze: "#C2410C",
         brand: "#F4AFC6", // NABS pink (from the logo)
+        // Eyebrow/mono-label text: readable rose in light mode, brand pink in
+        // dark mode (see --c-eyebrow in index.css).
+        eyebrow: "var(--c-eyebrow)",
+        // Same theme-aware pink but with alpha support (accent/40 etc.) for
+        // borders and fills that wash out on white (see --c-accent).
+        accent: "rgb(var(--c-accent) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],

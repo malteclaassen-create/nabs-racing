@@ -65,7 +65,7 @@ export default function NextRaceTimer({ className = "", compact = false }) {
         </span>
         <span className="hidden h-4 w-px bg-border sm:inline-block" />
         {live ? (
-          <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-brand">Live</span>
+          <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">Live</span>
         ) : (
           <span className="flex items-baseline gap-1 tabular-nums">
             {/* Calmer than the inline chip: drop seconds, and hide minutes on
@@ -99,7 +99,7 @@ export default function NextRaceTimer({ className = "", compact = false }) {
         <span className="flex items-center gap-2">
           <span className="live-dot inline-block h-2 w-2 shrink-0 rounded-full bg-brand" />
           <span className="flex flex-col leading-none">
-            <span className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-brand">
+            <span className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-eyebrow">
               Next Race
             </span>
             <span className="mt-1 flex items-center gap-1.5">
@@ -115,7 +115,7 @@ export default function NextRaceTimer({ className = "", compact = false }) {
 
         {/* countdown */}
         {live ? (
-          <span className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-brand">
+          <span className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-eyebrow">
             Lights out
           </span>
         ) : (

@@ -318,7 +318,7 @@ export default function Races() {
 
       {/* Results explorer: round list (left), and on the right the selected
           round's results (completed) or sign-up + driver market (upcoming). */}
-      <div ref={panelRef} className="scroll-mt-24">
+      <div ref={panelRef} className="reveal scroll-mt-24">
         {championRounds.length > 0 ? (
           // minmax(0,…) keeps the wide results table from stretching the
           // column (and the whole page) past the viewport on phones
@@ -376,7 +376,7 @@ export default function Races() {
                         </div>
                         {!detail.race.hasPositions && (
                           <p className="mt-1 text-sm text-light">
-                            Historical round — points only (finishing positions not recorded).
+                            Historical round: points only, the finishing positions were not recorded.
                           </p>
                         )}
                       </div>
@@ -393,7 +393,7 @@ export default function Races() {
       </div>
 
       {/* Full calendar */}
-      <div className="space-y-5">
+      <div className="reveal space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="section-title">Calendar</h3>
           <div className="inline-flex rounded-xl border border-border bg-card p-1">

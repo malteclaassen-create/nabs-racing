@@ -8,7 +8,7 @@ import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
 
-function LeaderCard({ row, leaderTotal, rank, index = 0 }) {
+function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true }) {
   const gap = leaderTotal - row.total;
   const tiltRef = useTilt({ max: 5, lift: 5 });
   return (
@@ -38,9 +38,11 @@ function LeaderCard({ row, leaderTotal, rank, index = 0 }) {
               <Flag code={countryFor(row.driverId, row.country)} />
               {/* the tier pill costs name space on 375px screens; the table
                   below shows it anyway */}
-              <span className="hidden sm:inline-flex">
-                <TierBadge tier={row.tier} />
-              </span>
+              {showTier && (
+                <span className="hidden sm:inline-flex">
+                  <TierBadge tier={row.tier} />
+                </span>
+              )}
             </div>
             <TeamLogo
               id={row.team.id}
@@ -66,7 +68,7 @@ function LeaderCard({ row, leaderTotal, rank, index = 0 }) {
   );
 }
 
-function DriverRow({ d, leaderTotal, index = 0 }) {
+function DriverRow({ d, leaderTotal, index = 0, showTier = true }) {
   const isLeader = d.position === 1;
   const gap = leaderTotal - d.total;
   const pct = d.total > 0 && leaderTotal > 0 ? Math.max(4, (d.total / leaderTotal) * 100) : 0;
@@ -88,7 +90,7 @@ function DriverRow({ d, leaderTotal, index = 0 }) {
             {d.name}
           </span>
           <Flag code={countryFor(d.driverId, d.country)} />
-          <TierBadge tier={d.tier} />
+          {showTier && <TierBadge tier={d.tier} />}
           {!d.isActive && <span className="pill bg-surface2 text-light">inactive</span>}
         </div>
         <TeamLogo
@@ -148,16 +150,27 @@ export default function DriverStandings() {
   if (error) return <ErrorBox message={error} />;
 
   const all = data.standings;
+  // Archived single-class seasons (S1–S5) have only one tier: hide the tier
+  // filter + per-row tier badges. Totals-only seasons (no races) swap the
+  // "Rounds" stat for a "Final standings" label.
+  const presentTiers = new Set(all.map((r) => r.tier));
+  // "Multi-tier" means a real Tier-1/Tier-2 split (S6/S7). Reserves (tier 0) are
+  // a separate axis, so a single-class season with reserves is NOT multi-tier.
+  const multiTier = presentTiers.has(2);
+  const tierFilters = TIER_FILTERS.filter((t) => t.id === "all" || presentTiers.has(Number(t.id)));
+  const hasRounds = data.raceNumbers.length > 0;
+  // A tier that no longer exists can't stay selected.
+  const activeTier = multiTier && tierFilters.some((t) => t.id === tier) ? tier : "all";
 
   // Filter by tier, then optionally hide point-less drivers, then re-rank the
   // resulting view 1..n so a tier sub-table reads as its own standings.
-  let rows = tier === "all" ? all : all.filter((r) => String(r.tier) === tier);
+  let rows = activeTier === "all" ? all : all.filter((r) => String(r.tier) === activeTier);
   if (onlyScoring) rows = rows.filter((r) => r.total > 0);
   rows = rows.map((d, i) => ({ ...d, position: i + 1 }));
 
   const leaderTotal = rows[0]?.total ?? 0;
   const top3 = rows.slice(0, 3);
-  const scopeLabel = tier === "all" ? "drivers" : TIER_FILTERS.find((t) => t.id === tier).label;
+  const scopeLabel = activeTier === "all" ? "drivers" : TIER_FILTERS.find((t) => t.id === activeTier).label;
 
   const segCls = (active) =>
     `rounded-lg px-3.5 py-2 text-sm font-bold transition ${
@@ -169,25 +182,33 @@ export default function DriverStandings() {
       <PageHeader
         eyebrow="Championship"
         title="Driver Standings"
-        subtitle="All drivers — Tier 1, Tier 2 and reserves — ranked by total points."
+        subtitle={
+          multiTier
+            ? "All drivers, from Tier 1 and Tier 2 to the reserves, ranked by total points."
+            : "All drivers ranked by total points."
+        }
       />
 
       {top3.length > 0 && (
         <div className="cascade mb-8 grid gap-4 md:grid-cols-3">
           {top3.map((row, i) => (
-            <LeaderCard key={row.driverId} row={row} leaderTotal={leaderTotal} rank={i} index={i} />
+            <LeaderCard key={row.driverId} row={row} leaderTotal={leaderTotal} rank={i} index={i} showTier={multiTier} />
           ))}
         </div>
       )}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-xl border border-border bg-card p-1">
-          {TIER_FILTERS.map((t) => (
-            <button key={t.id} type="button" onClick={() => setTier(t.id)} className={segCls(tier === t.id)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {multiTier ? (
+          <div className="inline-flex rounded-xl border border-border bg-card p-1">
+            {tierFilters.map((t) => (
+              <button key={t.id} type="button" onClick={() => setTier(t.id)} className={segCls(activeTier === t.id)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span />
+        )}
         <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-medium">
           <input
             type="checkbox"
@@ -204,14 +225,18 @@ export default function DriverStandings() {
           Showing: <span className="font-mono font-bold tabular-nums text-dark">{rows.length}</span> {scopeLabel}
         </span>
         <span className="text-light">
-          Rounds: <span className="font-mono font-bold tabular-nums text-dark">{data.raceNumbers.length}</span>
+          {hasRounds ? (
+            <>Rounds: <span className="font-mono font-bold tabular-nums text-dark">{data.raceNumbers.length}</span></>
+          ) : (
+            <span className="font-mono font-bold uppercase tracking-wider text-dark">Final standings</span>
+          )}
         </span>
       </div>
 
       {rows.length > 0 ? (
         <div className="cascade card divide-y divide-border overflow-hidden">
           {rows.map((d, i) => (
-            <DriverRow key={d.driverId} d={d} leaderTotal={leaderTotal} index={Math.min(i, 16)} />
+            <DriverRow key={d.driverId} d={d} leaderTotal={leaderTotal} index={Math.min(i, 16)} showTier={multiTier} />
           ))}
         </div>
       ) : (

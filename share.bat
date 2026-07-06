@@ -29,7 +29,9 @@ echo        https://irgendwas.trycloudflare.com
 echo    Diesen Link kopieren und dem Server-Admin schicken.
 echo    Dieses Fenster MUSS offen bleiben, solange er draufschaut.
 echo.
-cloudflared tunnel --url http://localhost:4173
+REM --protocol http2 = Tunnel ueber TCP statt UDP/QUIC: stabiler an
+REM Heimanschluessen, weniger "Seite friert 10 Sekunden ein".
+cloudflared tunnel --url http://localhost:4173 --protocol http2
 
 echo.
 echo Tunnel beendet. Zum Schliessen Taste druecken.

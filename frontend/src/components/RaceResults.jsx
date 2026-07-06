@@ -1,10 +1,8 @@
 import { Link } from "react-router-dom";
-import { StatusPill, Rank, TierBadge } from "./ui.jsx";
+import { StatusPill, Rank, TierBadge, MEDAL } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
-
-const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"]; // gold / silver / bronze
 
 // Small "?" help marker with a hover tooltip (native title).
 function Help({ text }) {
@@ -131,14 +129,16 @@ export default function RaceResults({ race, results }) {
               <th className="px-4 py-3 text-right">Pts</th>
             </tr>
           </thead>
-          <tbody>
-            {results.map((r) => {
+          {/* cascade: rows rise in one after another, like the standings tables */}
+          <tbody className="cascade">
+            {results.map((r, i) => {
               const tier = r.tier ?? r.team?.tier;
               const isFastest = r.driverId === fastestDriverId;
               const gridDelta = r.grid != null && r.position != null ? r.grid - r.position : null;
               return (
                 <tr
                   key={r.driverId}
+                  style={{ "--i": Math.min(i, 16) }}
                   className="border-b border-border transition odd:bg-surface2/30 last:border-0 hover:bg-surface2"
                 >
                   {detailed && (

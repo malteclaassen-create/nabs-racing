@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
+import { useSeason } from "../context/SeasonContext.jsx";
+import { seasonGameParts } from "../utils/seasonGame.js";
 import { PageHeader, SectionHeading } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import {
@@ -70,7 +72,7 @@ function SessionHeader({ session, receivedAt }) {
       <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-amber-500 to-sky-600" />
       <div className="grid gap-5 p-6 sm:grid-cols-2 lg:grid-cols-6">
         <div className="lg:col-span-2">
-          <div className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.2em] text-brand">
+          <div className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.2em] text-eyebrow">
             <span>{session.type}</span>
             {session.sessionCount > 1 && (
               <span className="text-faint">
@@ -158,6 +160,14 @@ function CurrentLap({ lastLapAt, inPits }) {
   return <span className="font-mono font-bold tabular-nums text-dark">{formatRunning(ms)}</span>;
 }
 
+// Guests aren't on the NABS roster, so their second line falls back to the AC
+// car. Strip the mod pack's "F1 2007 - " style prefix so it reads like a car,
+// not a filename ("F1 2007 - Honda RA107 SPEC2" → "Honda RA107 SPEC2").
+function carLabel(carName) {
+  if (!carName) return null;
+  return carName.replace(/^f1\s*\d{4}\s*[-–—]\s*/i, "").trim() || null;
+}
+
 // Shared driver identity cell (team colour bar, flag, name, team).
 function DriverCell({ e, match, showLiveDot }) {
   const name = match?.nabsName || e.name;
@@ -179,7 +189,7 @@ function DriverCell({ e, match, showLiveDot }) {
         <span className="block truncate font-display text-base font-bold uppercase tracking-tight text-dark" title={e.name}>
           {name}
         </span>
-        <span className="block truncate text-xs text-light">{match?.teamName || e.carName || "—"}</span>
+        <span className="block truncate text-xs text-light">{match?.teamName || carLabel(e.carName) || "—"}</span>
       </span>
       {e.raceNumber != null && (
         <span className="ml-1 hidden font-mono text-xs font-bold text-faint xl:inline">#{e.raceNumber}</span>
@@ -189,10 +199,10 @@ function DriverCell({ e, match, showLiveDot }) {
 }
 
 // A row in the "On Track Now" table — live current lap + delta to personal best.
-function OnTrackRow({ e, match }) {
+function OnTrackRow({ e, match, index = 0 }) {
   const deltaCls = e.deltaSelfMs == null ? "text-light" : e.deltaSelfMs < 0 ? "text-emerald-600" : "text-amber-600";
   return (
-    <tr className="border-b border-border last:border-0 transition hover:bg-surface2">
+    <tr style={{ "--i": Math.min(index, 16) }} className="border-b border-border last:border-0 transition hover:bg-surface2">
       <td className="py-3 pl-5 pr-2 text-center">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums text-medium">
           {e.position}
@@ -249,10 +259,11 @@ const ONTRACK_COLS = [
   { label: "", cls: "py-3 pr-5" },
 ];
 
-function Row({ e, match }) {
+function Row({ e, match, index = 0 }) {
   const isP1 = e.position === 1;
   return (
     <tr
+      style={{ "--i": Math.min(index, 16) }}
       className={`group border-b border-border last:border-0 transition hover:bg-surface2 ${
         isP1 ? "bg-brand/5" : ""
       }`}
@@ -278,7 +289,7 @@ function Row({ e, match }) {
         </div>
       </td>
       <td className="py-3 pr-4 text-right">
-        <span className={`font-mono text-base font-bold tabular-nums ${isP1 ? "text-brand" : "text-dark"}`}>
+        <span className={`font-mono text-base font-bold tabular-nums ${isP1 ? "text-eyebrow" : "text-dark"}`}>
           {formatLap(e.bestLapMs)}
         </span>
       </td>
@@ -336,6 +347,8 @@ const COLS = [
 
 export default function Live() {
   const { board, socketState } = useLiveTiming();
+  const { current: season } = useSeason();
+  const { platform } = seasonGameParts(season);
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const match = useMemo(() => makeDriverMatcher(teams), [teams]);
 
@@ -350,7 +363,7 @@ export default function Live() {
       <PageHeader
         eyebrow="Real-time"
         title="Live Timing"
-        subtitle="Direct from the NABS Assetto Corsa server — sectors, potential lap, gaps and pit data, updating live."
+        subtitle={`Direct from the NABS ${platform} server: sectors, potential lap, gaps and pit data, updating live.`}
         right={<LiveBadge live={connected} />}
       />
 
@@ -367,7 +380,7 @@ export default function Live() {
 
           {/* ===== On track now — live current lap, separate from the table ===== */}
           {onTrack.length > 0 && (
-            <section className="space-y-4">
+            <section className="reveal space-y-4">
               <SectionHeading
                 eyebrow="Out on track"
                 title="Driving Now"
@@ -393,9 +406,10 @@ export default function Live() {
                         ))}
                       </tr>
                     </thead>
-                    <tbody>
-                      {onTrack.map((e) => (
-                        <OnTrackRow key={e.guid} e={e} match={match(e.name)} />
+                    {/* cascade: rows rise in one after another, like the standings tables */}
+                    <tbody className="cascade">
+                      {onTrack.map((e, i) => (
+                        <OnTrackRow key={e.guid} e={e} match={match(e.name)} index={i} />
                       ))}
                     </tbody>
                   </table>
@@ -405,14 +419,14 @@ export default function Live() {
           )}
 
           {/* ===== Full session-best leaderboard (all drivers) ===== */}
-          <section className="space-y-4">
+          <section className="reveal space-y-4">
             <SectionHeading eyebrow="Classification" title="Session Best Times" />
             {entries.length === 0 ? (
               <div className="card py-16 text-center text-light">
-                Session is live — no times set yet.
+                Session is live, no times set yet.
               </div>
             ) : (
-              <div className="reveal card overflow-hidden">
+              <div className="card overflow-hidden">
                 <div className="scrollbar-slim overflow-x-auto">
                   <table className="w-full min-w-[680px]">
                     <thead>
@@ -424,9 +438,10 @@ export default function Live() {
                         ))}
                       </tr>
                     </thead>
-                    <tbody>
-                      {entries.map((e) => (
-                        <Row key={e.guid} e={e} match={match(e.name)} />
+                    {/* cascade: rows rise in one after another, like the standings tables */}
+                    <tbody className="cascade">
+                      {entries.map((e, i) => (
+                        <Row key={e.guid} e={e} match={match(e.name)} index={i} />
                       ))}
                     </tbody>
                   </table>
@@ -436,7 +451,7 @@ export default function Live() {
           </section>
 
           {/* legend */}
-          <div className="flex flex-wrap items-center gap-4 px-1 font-mono text-[11px] uppercase tracking-wider text-light">
+          <div className="reveal flex flex-wrap items-center gap-4 px-1 font-mono text-[11px] uppercase tracking-wider text-light">
             <span className="flex items-center gap-1.5">
               <span className="h-3 w-3 rounded bg-violet-500/40" /> Fastest sector
             </span>
@@ -451,7 +466,7 @@ export default function Live() {
 
           {!connected && (
             <p className="text-center font-mono text-xs uppercase tracking-wider text-amber-600">
-              Connection lost — showing last known data, reconnecting…
+              Connection lost. Showing last known data, reconnecting…
             </p>
           )}
         </div>

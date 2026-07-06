@@ -8,7 +8,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { requireUser, signDownloadTicket, verifyDownloadTicket } from "../middleware/auth.js";
 import {
-  dbListDownloads, dbGetDownload, statFile, resolveDownloadPath, fmtSize,
+  dbListDownloads, dbGetDownload, dbListFolders, statFile, resolveDownloadPath, fmtSize,
 } from "../lib/downloads.js";
 
 const router = Router();
@@ -23,7 +23,7 @@ router.get("/", requireUser, async (req, res, next) => {
       return {
         id: r.id,
         title: r.title,
-        category: r.category,
+        folderId: r.folderId ?? null,
         description: r.description ?? null,
         version: r.version ?? null,
         installNote: r.installNote ?? null,
@@ -33,7 +33,7 @@ router.get("/", requireUser, async (req, res, next) => {
         sizeText: external ? null : fmtSize(st.size),
       };
     });
-    res.json({ downloads });
+    res.json({ downloads, folders: await dbListFolders(prisma) });
   } catch (e) { next(e); }
 });
 

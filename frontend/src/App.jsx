@@ -19,6 +19,17 @@ import Downloads from "./pages/Downloads.jsx";
 import Profile from "./pages/Profile.jsx";
 import DiscordCallback from "./pages/DiscordCallback.jsx";
 import Admin from "./pages/Admin.jsx";
+import NotFound from "./pages/NotFound.jsx";
+
+// Keeps the browser-tab title in sync with the season being viewed (the static
+// title in index.html is just the pre-load fallback).
+function TitleSync() {
+  const { current } = useSeason();
+  useEffect(() => {
+    document.title = current ? `NABS Racing League · ${current.name}` : "NABS Racing League";
+  }, [current?.name]);
+  return null;
+}
 
 // Home route switches on login: logged-out visitors (newcomers we know nothing
 // about) get the Welcome landing ("what is NABS / how to join"); logged-in
@@ -53,6 +64,9 @@ function AppRoutes() {
         <Route path="/live" element={<Live />} />
         <Route path="/downloads" element={<Downloads />} />
         <Route path="/profile" element={<Profile />} />
+        {/* Rules + downloads live together on the Race Info page. */}
+        <Route path="/rules" element={<Navigate to="/downloads" replace />} />
+        <Route path="/info" element={<Navigate to="/downloads" replace />} />
         {/* Sign-Up + Driver Market now live on the Races page; keep old links working. */}
         <Route path="/signup" element={<Navigate to="/races" replace />} />
         <Route path="/rennen" element={<Navigate to="/races" replace />} />
@@ -60,7 +74,7 @@ function AppRoutes() {
         <Route path="/driver-market" element={<Navigate to="/races" replace />} />
         <Route path="/auth/discord/callback" element={<DiscordCallback />} />
         <Route path="/admin" element={<Admin />} />
-        <Route path="*" element={<div className="card p-8 text-center text-medium">Page not found.</div>} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
       </div>
     </main>
@@ -71,12 +85,12 @@ function Footer() {
   const { current } = useSeason();
   const social = useSocial();
   const label = current
-    ? `${current.name}${current.game ? ` · ${current.game}` : ""}`
-    : "F1 on Assetto Corsa";
+    ? ` · ${current.name}${current.game ? ` · ${current.game}` : ""}`
+    : "";
   return (
     <footer className="border-t border-border bg-card">
       <div className="container-page flex flex-col items-center gap-4 py-6 text-sm text-light sm:flex-row sm:justify-between">
-        <span>NABS Racing League · {label}</span>
+        <span>NABS Racing League{label}</span>
         <SocialLinks links={social.data} />
         <span className="flex flex-col items-center gap-0.5 sm:items-end">
           <span>Built for the NABS Discord community</span>
@@ -96,6 +110,7 @@ export default function App() {
   useEffect(() => applyPreviewFromUrl(), []);
   return (
     <SeasonProvider>
+      <TitleSync />
       <div className="flex min-h-screen flex-col">
         <NavBar />
         <AppRoutes />

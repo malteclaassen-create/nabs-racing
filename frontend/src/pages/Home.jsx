@@ -4,19 +4,22 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { Skeleton, TableSkeleton, CountUp } from "../components/ui.jsx";
+import { Skeleton, TableSkeleton, CountUp, Rank, MEDAL_TEXT } from "../components/ui.jsx";
 import { useParallax, useMagnetic } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import PointsChart from "../components/PointsChart.jsx";
+import Podium from "../components/Podium.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
+import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
+import SeasonPicker from "../components/SeasonPicker.jsx";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"]; // gold / silver / bronze
+const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
 
 // Line-icon paths (stroke = currentColor) for the "by the numbers" tiles.
 const TILE_ICONS = {
@@ -39,7 +42,7 @@ function pad2(n) {
 }
 
 export default function Home() {
-  const { current: season } = useSeason();
+  const { current: season, active } = useSeason();
   const { user, isLoggedIn } = useAuth();
   const drivers = useApi(useCallback(() => api.driverStandings(), []));
   const t1 = useApi(useCallback(() => api.t1Standings(), []));
@@ -94,14 +97,37 @@ export default function Home() {
   const standings = drivers.data?.standings || [];
   const driverCount = standings.length;
   const constructorCount = (t1.data?.standings?.length || 0) + (t2.data?.standings?.length || 0);
+  // Single-class seasons (archived S1–S5) have no Tier 2: collapse the split.
+  const hasT2 = (t2.data?.standings?.length || 0) > 0;
   const runnerUp = standings[1];
   const titleGap = leader && runnerUp ? leader.total - runnerUp.total : 0;
 
-  // Personal "by the numbers" — shown to a logged-in driver linked to a roster
-  // entry (Home is only reached when logged in). Unlinked logins / owner preview
-  // fall back to the season-wide tiles.
-  const myDriverId = isLoggedIn ? user?.driverId : null;
-  const myRow = myDriverId ? standings.find((s) => s.driverId === myDriverId) : null;
+  // Past (archive) seasons get a results-only Home: no personal tiles, no
+  // "next race" / "coming up next season" widgets, and the hero celebrates the
+  // champion instead of a (non-existent) upcoming race. The ACTIVE season keeps
+  // the full live experience; a not-yet-active future season also stays "live"
+  // (it just shows empty states until it starts).
+  const isPast = !!season && !!active && season.number < active.number;
+  const champ = standings[0] || null;
+  const heroPodium = isPast
+    ? standings.slice(0, 3).map((d, i) => ({ driverId: d.driverId, position: i + 1, name: d.name, country: d.country, team: d.team, total: d.total, photoUrl: d.photoUrl }))
+    : podium;
+
+  // Personal "by the numbers" — shown to a logged-in driver who appears in the
+  // SELECTED season: by their linked id in the active season, else by name /
+  // discord in an archive season they raced in. If they didn't drive this season
+  // (no match), the general season-wide tiles show instead. myDriverId then points
+  // at THAT season's row id, so every link/stat below targets the right season.
+  const norm = (v) => (v || "").trim().toLowerCase();
+  const myRow = isLoggedIn
+    ? standings.find(
+        (s) =>
+          (user?.driverId && s.driverId === user.driverId) ||
+          (user?.driverName && norm(s.name) === norm(user.driverName)) ||
+          (user?.discordName && norm(s.discordName) === norm(user.discordName))
+      ) || null
+    : null;
+  const myDriverId = myRow?.driverId || (isLoggedIn ? user?.driverId : null);
   const myRounds = myRow ? Object.values(myRow.perRace || {}) : [];
   const myFinishes = myRounds.filter((r) => r.status === "FINISHED" && r.position != null);
   const myStarts = myRounds.filter((r) => r.status !== "DNS").length;
@@ -159,12 +185,10 @@ export default function Home() {
 
   return (
     <div className="space-y-16">
-      {/* ===================== SEASON TICKER + COUNTDOWN ===================== */}
+      {/* ===================== SEASON TICKER ===================== */}
       <div className="-mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">
-          <span className="flex items-center gap-2 text-dark">
-            {season ? `${season.name} · Live` : "Live"}
-          </span>
+          <SeasonPicker />
           {season?.game && (
             <>
               <span className="hidden h-3 w-px bg-border sm:inline-block" />
@@ -172,14 +196,25 @@ export default function Home() {
             </>
           )}
           <span className="hidden h-3 w-px bg-border sm:inline-block" />
-          <span className="text-medium">
-            Round {pad2(roundNo)} <span className="text-faint">/ {totalRounds || "—"}</span>
-          </span>
+          {isPast ? (
+            <span className="text-medium">{totalRounds ? `${totalRounds} rounds` : "Final standings"}</span>
+          ) : (
+            <span className="text-medium">
+              Round {pad2(roundNo)} <span className="text-faint">/ {totalRounds || "—"}</span>
+            </span>
+          )}
         </div>
       </div>
 
       {/* ===================== LEAD FEATURE ===================== */}
-      <section className="relative overflow-hidden rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/5 dark:shadow-card dark:ring-white/10">
+      {/* `reveal` (without an inline delay) makes the hero the first stop of the
+          top-to-bottom page build; the hero-anim children then stagger inside. */}
+      {/* The hero is ALWAYS the dark card, on both themes: a translucent white
+          scrim over the dark photo turns to grey mush in light mode, so instead
+          of a light variant the section carries its own `dark` class — every
+          dark: style inside applies regardless of the site theme (darkMode is
+          class-based), and light mode gets the exact card it looks best as. */}
+      <section className="dark reveal relative overflow-hidden rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-white/10">
         <img
           ref={heroImgRef}
           src="/hero.jpg"
@@ -187,8 +222,18 @@ export default function Home() {
           onError={(e) => (e.currentTarget.style.display = "none")}
           className="absolute inset-0 h-full w-full scale-[1.12] object-cover object-center will-change-transform"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-card via-card/80 to-card/0 dark:bg-gradient-to-tr dark:from-ink dark:via-ink/75 dark:to-ink/0" />
-        <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-transparent dark:from-ink/95" />
+        {/* Backdrop scrim — dark in both themes. The archive scrim reaches
+            further across so the centred podium sits on solid ground. */}
+        <div
+          className={`absolute inset-0 bg-gradient-to-tr ${
+            isPast ? "from-ink via-ink/80 to-ink/10" : "from-ink via-ink/75 to-ink/0"
+          }`}
+        />
+        <div
+          className={`absolute inset-0 bg-gradient-to-t from-ink/95 to-transparent ${
+            isPast ? "via-ink/20" : "via-transparent"
+          }`}
+        />
         <div
           className="speed-hatch absolute inset-y-0 right-0 w-[18%]"
           style={{
@@ -200,12 +245,41 @@ export default function Home() {
         <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-brand via-brand/40 to-transparent" />
 
         <div className="relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
+          {isPast ? (
+            /* ARCHIVE — the season's final championship podium, front and centre */
+            <div className="flex flex-1 flex-col justify-center gap-7">
+              <div className="hero-anim flex flex-wrap items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
+                <span>{season?.name} · Final Podium</span>
+                <span className="h-px w-10 bg-accent/50" />
+                <span className="text-medium dark:text-white/50">{season?.game || "Champions"}</span>
+              </div>
+              <div className="hero-anim" style={{ animationDelay: "0.16s" }}>
+                <Podium entries={heroPodium} />
+              </div>
+              <div className="hero-anim flex flex-wrap justify-center gap-3" style={{ animationDelay: "0.34s" }}>
+                <Link
+                  to="/drivers"
+                  className="shine group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
+                >
+                  Final Standings
+                  <span className="transition group-hover:translate-x-0.5">→</span>
+                </Link>
+                <Link
+                  to="/constructors"
+                  className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
+                >
+                  Constructors
+                </Link>
+              </div>
+            </div>
+          ) : (
+          <>
           {/* LEFT — latest race */}
           <div className="flex flex-1 flex-col justify-end">
-            <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-rose-600 dark:text-brand" style={{ animationDelay: "0.05s" }}>
+            <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
               {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
               <span>Latest Race</span>
-              <span className="h-px w-10 bg-rose-500/50 dark:bg-brand/60" />
+              <span className="h-px w-10 bg-accent/50" />
               <span className="text-ink/40 dark:text-white/50">Round {roundNo}</span>
             </div>
 
@@ -217,10 +291,10 @@ export default function Home() {
               {fmtFull(lastRace?.date)}
             </p>
 
-            {/* podium strip */}
-            {podium.length > 0 && (
+            {/* podium strip — latest-race top 3 */}
+            {heroPodium.length > 0 && (
               <div className="hero-anim mt-8 grid max-w-2xl gap-2 sm:grid-cols-3" style={{ animationDelay: "0.28s" }}>
-                {podium.map((p, i) => (
+                {heroPodium.map((p, i) => (
                   <Link
                     key={p.driverId}
                     to={`/drivers/${p.driverId}`}
@@ -329,11 +403,14 @@ export default function Home() {
               </div>
             </div>
           )}
+          </>
+          )}
         </div>
       </section>
 
       {/* ===================== BY THE NUMBERS (personal when linked) ========= */}
-      {myRow ? (
+      {/* Archive seasons show only the general season stats — no personal band. */}
+      {!isPast && myRow ? (
         <div>
           {showTierToggle && (
             <div className="mb-3 flex items-center justify-end gap-2">
@@ -456,36 +533,54 @@ export default function Home() {
         </section>
       )}
 
+      {/* =============== NEXT SEASON (active season, transition only) ======== */}
+      {/* Sits under the numbers band: the running season teases the next one while
+          it's being set up. On an archive season this renders nothing. */}
+      {season?.isActive && <NextSeasonTeaser />}
+
       {/* ===================== DRIVERS' CHAMPIONSHIP ===================== */}
-      <section className="reveal" style={{ animationDelay: "0.16s" }}>
+      <section className="reveal">
         <Heading index="01" eyebrow="Championship" title="Drivers' Standings" to="/drivers" />
         <DriversTable rows={(drivers.data?.standings || []).slice(0, 10)} leaderTotal={leader?.total ?? 0} />
       </section>
 
       {/* ===================== CONSTRUCTORS ===================== */}
-      <section className="reveal grid gap-10 lg:grid-cols-2" style={{ animationDelay: "0.24s" }}>
-        <div>
-          <Heading index="02" eyebrow="Constructors" title="Tier 1" to="/constructors" />
+      {hasT2 ? (
+        <section className="reveal grid gap-10 lg:grid-cols-2">
+          <div>
+            <Heading index="02" eyebrow="Constructors" title="Tier 1" to="/constructors" />
+            <ConstructorTable rows={(t1.data?.standings || []).slice(0, 5)} />
+          </div>
+          <div>
+            <Heading index="03" eyebrow="Constructors" title="Tier 2" to="/constructors" />
+            <ConstructorTable rows={(t2.data?.standings || []).slice(0, 5)} />
+          </div>
+        </section>
+      ) : (
+        <section className="reveal">
+          <Heading index="02" eyebrow="Championship" title="Constructors" to="/constructors" />
           <ConstructorTable rows={(t1.data?.standings || []).slice(0, 5)} />
-        </div>
-        <div>
-          <Heading index="03" eyebrow="Constructors" title="Tier 2" to="/constructors" />
-          <ConstructorTable rows={(t2.data?.standings || []).slice(0, 5)} />
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ===================== POINTS PROGRESSION ===================== */}
       {/* Hidden on phones (the dense line charts don't read well there); shown
-          from md up. */}
-      <section className="reveal hidden md:block" style={{ animationDelay: "0.32s" }}>
-        <Heading index="04" eyebrow="Tier 1" title="Points Progression" to="/constructors" />
-        <PointsChart standings={t1.data?.standings || []} completed={completedNumbers} allRounds={t1.data?.raceNumbers || []} />
-      </section>
+          from md up. Skipped entirely for archived seasons with no per-race data. */}
+      {completedNumbers.length > 0 && (
+        <>
+          <section className="reveal hidden md:block">
+            <Heading index="04" eyebrow={hasT2 ? "Tier 1" : "Constructors"} title="Points Progression" to="/constructors" />
+            <PointsChart standings={t1.data?.standings || []} completed={completedNumbers} allRounds={t1.data?.raceNumbers || []} dropWorst={t1.data?.dropWorst} />
+          </section>
 
-      <section className="reveal hidden md:block" style={{ animationDelay: "0.4s" }}>
-        <Heading index="05" eyebrow="Tier 2" title="Points Progression" to="/constructors" />
-        <PointsChart standings={t2.data?.standings || []} completed={completedNumbers} allRounds={t2.data?.raceNumbers || []} />
-      </section>
+          {hasT2 && (
+            <section className="reveal hidden md:block">
+              <Heading index="05" eyebrow="Tier 2" title="Points Progression" to="/constructors" />
+              <PointsChart standings={t2.data?.standings || []} completed={completedNumbers} allRounds={t2.data?.raceNumbers || []} dropWorst={t2.data?.dropWorst} />
+            </section>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -498,7 +593,7 @@ function Heading({ index, eyebrow, title, to }) {
       <div className="flex items-end gap-4">
         <span className="font-display text-3xl font-black leading-none text-faint">{index}</span>
         <div>
-          <div className="font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-brand">{eyebrow}</div>
+          <div className="font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow">{eyebrow}</div>
           <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-3xl">
             {title}
           </h2>
@@ -542,7 +637,7 @@ function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = f
         <svg
           viewBox="0 0 24 24"
           aria-hidden="true"
-          className="pointer-events-none absolute -bottom-4 -right-4 h-24 w-24 opacity-[0.06] transition-transform duration-300 group-hover:scale-110"
+          className="pointer-events-none absolute -bottom-4 -right-4 h-24 w-24 opacity-[0.07] transition-transform duration-300 group-hover:scale-110 dark:opacity-[0.06]"
           fill="none"
           stroke="currentColor"
           strokeWidth="1.5"
@@ -617,25 +712,14 @@ function DriversTable({ rows, leaderTotal }) {
                 }`}
               >
                 <td className="py-4 pl-5 text-center">
-                  <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums ${
-                      d.position <= 3 ? "text-ink" : "text-medium"
-                    }`}
-                    style={
-                      d.position <= 3
-                        ? { backgroundColor: MEDAL[d.position - 1] }
-                        : undefined
-                    }
-                  >
-                    {d.position}
-                  </span>
+                  <Rank position={d.position} />
                 </td>
                 <td className="py-4 pl-2">
                   <div className="flex items-center gap-3">
                     <span className="h-7 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: d.team.color }} />
                     <Link
                       to={`/drivers/${d.driverId}`}
-                      className="font-display text-lg font-bold uppercase tracking-tight text-dark transition hover:text-brand"
+                      className="font-display text-base font-bold uppercase tracking-tight text-dark transition hover:text-brand sm:text-lg"
                     >
                       {d.name}
                     </Link>
@@ -657,7 +741,7 @@ function DriversTable({ rows, leaderTotal }) {
                 </td>
                 <td className="py-4 pr-5 text-right">
                   <div className="flex flex-col items-end gap-1.5">
-                    <span className="font-mono text-lg font-bold tabular-nums text-dark">{d.total}</span>
+                    <span className="font-mono text-lg font-bold tabular-nums text-dark sm:text-xl">{d.total}</span>
                     <span className="hidden h-1 w-20 overflow-hidden rounded-full bg-border sm:block">
                       <span
                         className="bar-fill block h-full rounded-full"
@@ -688,14 +772,14 @@ function ConstructorTable({ rows }) {
             const pct = top > 0 ? Math.max(6, (t.total / top) * 100) : 0;
             return (
               <tr key={t.teamId} className="group border-b border-border last:border-0 transition hover:bg-surface2">
-                <td className="w-12 py-4 pl-5 text-center font-display text-lg font-black tabular-nums text-faint">
-                  {t.position}
+                <td className="w-14 py-4 pl-5 text-center">
+                  <Rank position={t.position} />
                 </td>
                 <td className="py-4 pl-1">
                   <Link to={`/teams/${t.teamId}`} className="flex items-center gap-3">
                     <TeamLogo id={t.teamId} name={t.name} color={t.color} logoUrl={t.logoUrl} size={32} />
                     <div className="min-w-0">
-                      <span className="block truncate font-display text-lg font-bold uppercase tracking-tight text-dark transition group-hover:text-brand">
+                      <span className="block truncate font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover:text-brand sm:text-lg">
                         {t.name}
                       </span>
                       <span className="mt-1.5 block h-1 w-24 overflow-hidden rounded-full bg-border">
@@ -708,7 +792,7 @@ function ConstructorTable({ rows }) {
                   </Link>
                 </td>
                 <td className="py-4 pr-5 text-right">
-                  <span className="font-mono text-xl font-bold tabular-nums text-dark">{t.total}</span>
+                  <span className="font-mono text-lg font-bold tabular-nums text-dark sm:text-xl">{t.total}</span>
                   <span className="ml-1 text-xs font-semibold text-light">PTS</span>
                 </td>
               </tr>
