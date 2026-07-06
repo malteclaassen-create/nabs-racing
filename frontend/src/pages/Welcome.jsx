@@ -11,6 +11,7 @@ import { useSocial } from "../components/SocialLinks.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
+import { heroFor, heroOnError } from "../utils/heroImage.js";
 import { seasonGameParts } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 
@@ -177,14 +178,15 @@ export default function Welcome() {
     );
 
   return (
-    <div className="space-y-24">
+    <div className="content-in space-y-24">
       {/* ============================ HERO ============================ */}
       <section className="relative overflow-hidden rounded-[1.75rem] bg-card shadow-xl shadow-ink/20 ring-1 ring-black/5 dark:bg-ink dark:shadow-card dark:ring-white/10">
         <img
           ref={heroImgRef}
-          src="/hero.jpg"
+          key={heroFor(season)}
+          src={heroFor(season)}
           alt=""
-          onError={(e) => (e.currentTarget.style.display = "none")}
+          onError={heroOnError}
           className="absolute inset-0 h-full w-full scale-[1.12] object-cover object-center opacity-[0.55] will-change-transform dark:opacity-90"
         />
         {/* Light mode: white wash from the left so the copy sits on a clean card

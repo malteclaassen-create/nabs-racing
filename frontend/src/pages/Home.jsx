@@ -15,6 +15,7 @@ import CircuitMap from "../components/CircuitMap.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
+import { heroFor, heroOnError } from "../utils/heroImage.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
 
@@ -184,7 +185,7 @@ export default function Home() {
   const nextStatusWord = events.loading ? "…" : myStatus ? STATUS_WORD[myStatus] : nextEv ? "Not responded" : "—";
 
   return (
-    <div className="space-y-16">
+    <div className="content-in space-y-16">
       {/* ===================== SEASON TICKER ===================== */}
       <div className="-mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">
@@ -217,9 +218,10 @@ export default function Home() {
       <section className="dark reveal relative overflow-hidden rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-white/10">
         <img
           ref={heroImgRef}
-          src="/hero.jpg"
+          key={heroFor(season)}
+          src={heroFor(season)}
           alt=""
-          onError={(e) => (e.currentTarget.style.display = "none")}
+          onError={heroOnError}
           className="absolute inset-0 h-full w-full scale-[1.12] object-cover object-center will-change-transform"
         />
         {/* Backdrop scrim — dark in both themes. The archive scrim reaches

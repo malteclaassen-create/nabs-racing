@@ -49,6 +49,33 @@ export function CountUp({ end, prefix = "", suffix = "", duration = 1200, decima
   );
 }
 
+// Odometer number: each digit slides to its value so counters roll instead of
+// hard-swapping (used by the race countdown). `value` is a number; `digits`
+// pads to a minimum width (2 for a clock field). Styling (size/colour/font)
+// comes from the parent — 1em drives the digit height, so it just works.
+function RollDigit({ digit }) {
+  return (
+    <span className="roll-digit">
+      <span className="roll-col" style={{ transform: `translateY(${digit * -10}%)` }}>
+        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+          <span key={n} className="roll-cell">{n}</span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+export function RollingNumber({ value, digits = 2, className = "" }) {
+  const str = String(Math.max(0, Math.floor(Number(value) || 0))).padStart(digits, "0");
+  return (
+    <span className={`inline-flex tabular-nums ${className}`} aria-label={str} role="text">
+      {str.split("").map((d, i) => (
+        <RollDigit key={i} digit={Number(d)} />
+      ))}
+    </span>
+  );
+}
+
 export function TierBadge({ tier }) {
   if (tier === 1)
     return <span className="pill bg-brand/20 text-dark">T1</span>;

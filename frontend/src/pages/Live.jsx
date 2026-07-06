@@ -375,7 +375,7 @@ export default function Live() {
           </p>
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="content-in space-y-8">
           <SessionHeader session={session} receivedAt={receivedAt} />
 
           {/* ===== On track now — live current lap, separate from the table ===== */}

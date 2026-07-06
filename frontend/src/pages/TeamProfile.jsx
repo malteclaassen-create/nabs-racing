@@ -178,7 +178,7 @@ export default function TeamProfile() {
   const completedNumbers = raceNumbers.filter((n) => teamRow?.perRace?.[n] != null);
 
   return (
-    <div className="space-y-6">
+    <div className="content-in space-y-6">
       {/* Hero */}
       <div className="relative overflow-hidden rounded-2xl bg-ink text-white shadow-lg">
         <span className="absolute inset-x-0 top-0 z-10 h-1.5" style={{ backgroundColor: color }} />

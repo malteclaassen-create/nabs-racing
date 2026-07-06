@@ -3,7 +3,8 @@ import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
 import { useScrollReveal } from "./hooks/useScrollReveal.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
 import NavBar from "./components/NavBar.jsx";
-import SocialLinks, { useSocial } from "./components/SocialLinks.jsx";
+import Logo from "./components/Logo.jsx";
+import SocialLinks, { useSocial, SocialIcon } from "./components/SocialLinks.jsx";
 import { useAuth } from "./hooks/useAuth.js";
 import PreviewToggle from "./components/PreviewToggle.jsx";
 import { usePreviewMode, applyPreviewFromUrl } from "./preview.js";
@@ -81,25 +82,94 @@ function AppRoutes() {
   );
 }
 
+const FOOTER_LINKS = [
+  { to: "/", label: "Home" },
+  { to: "/drivers", label: "Drivers" },
+  { to: "/constructors", label: "Constructors" },
+  { to: "/races", label: "Races" },
+  { to: "/live", label: "Live Timing" },
+  { to: "/downloads", label: "Race Info" },
+];
+
 function Footer() {
   const { current } = useSeason();
   const social = useSocial();
-  const label = current
-    ? ` · ${current.name}${current.game ? ` · ${current.game}` : ""}`
-    : "";
+  const discord = social.data?.discord;
+  const year = new Date().getFullYear();
+
   return (
-    <footer className="border-t border-border bg-card">
-      <div className="container-page flex flex-col items-center gap-4 py-6 text-sm text-light sm:flex-row sm:justify-between">
-        <span>NABS Racing League{label}</span>
-        <SocialLinks links={social.data} />
-        <span className="flex flex-col items-center gap-0.5 sm:items-end">
-          <span>Built for the NABS Discord community</span>
-          <span className="text-xs text-faint">
+    <footer className="mt-16 border-t border-border bg-card">
+      <div className="container-page grid gap-10 py-12 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1.2fr]">
+        {/* brand + claim + socials */}
+        <div className="space-y-4">
+          <Link to="/" className="inline-flex items-center gap-3">
+            <Logo size={40} />
+            <span className="flex flex-col leading-none">
+              <span className="font-display text-lg font-black uppercase tracking-tight text-dark">
+                NABS Racing
+              </span>
+              <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+                Racing League
+              </span>
+            </span>
+          </Link>
+          <p className="max-w-xs text-sm leading-relaxed text-light">
+            A community-run sim racing championship on Assetto Corsa. Results, standings and live timing,
+            updated after every round.
+          </p>
+          <SocialLinks links={social.data} />
+        </div>
+
+        {/* quick links */}
+        <nav className="space-y-3">
+          <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Explore</h3>
+          <ul className="space-y-2 text-sm">
+            {FOOTER_LINKS.map((l) => (
+              <li key={l.to}>
+                <Link to={l.to} className="text-medium transition hover:text-dark">
+                  {l.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        {/* join CTA */}
+        <div className="space-y-3">
+          <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+            Get on the grid
+          </h3>
+          <p className="max-w-xs text-sm leading-relaxed text-light">
+            Everything happens in our Discord — sign-ups, stewarding and banter. New drivers welcome every
+            season.
+          </p>
+          {discord && (
+            <a
+              href={discord}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#5865F2] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#4752c4]"
+            >
+              <SocialIcon name="discord" className="h-5 w-5" />
+              Join the Discord
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* bottom bar */}
+      <div className="border-t border-border">
+        <div className="container-page flex flex-col items-center gap-2 py-5 text-xs text-faint sm:flex-row sm:justify-between">
+          <span>
+            © {year} NABS Racing League
+            {current ? ` · ${current.name}${current.game ? ` · ${current.game}` : ""}` : ""}
+          </span>
+          <span className="flex items-center gap-1.5">
             Circuit outlines © OpenStreetMap contributors
-            <span className="px-1.5 text-border">·</span>
+            <span className="text-border">·</span>
             <Link to="/admin" className="transition hover:text-light">Admin</Link>
           </span>
-        </span>
+        </div>
       </div>
     </footer>
   );

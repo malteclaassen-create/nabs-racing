@@ -653,7 +653,7 @@ export default function DriverProfile() {
   const totalRounds = standingsData.raceNumbers?.length || 0;
 
   return (
-    <div className="space-y-6">
+    <div className="content-in space-y-6">
       {LAYOUT === "classic" ? (
         <>
           {/* Classic hero banner */}

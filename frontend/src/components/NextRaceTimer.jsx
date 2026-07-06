@@ -3,12 +3,9 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import Flag from "./Flag.jsx";
+import { RollingNumber } from "./ui.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
-
-function pad2(n) {
-  return String(n ?? 0).padStart(2, "0");
-}
 
 // Compact, broadcast-style next-race countdown chip.
 // `compact` renders a slimmer single-line version for the nav bar.
@@ -75,7 +72,7 @@ export default function NextRaceTimer({ className = "", compact = false }) {
                 key={u.suffix}
                 className={`font-mono leading-none ${i === 2 ? "hidden sm:inline" : ""}`}
               >
-                <span className="text-xs font-bold text-dark">{pad2(u.value)}</span>
+                <RollingNumber value={u.value} digits={2} className="text-xs font-bold text-dark" />
                 <span className="text-[9px] font-semibold text-light">{u.suffix}</span>
               </span>
             ))}
@@ -122,7 +119,7 @@ export default function NextRaceTimer({ className = "", compact = false }) {
           <span className="flex items-baseline gap-1.5 tabular-nums">
             {units.map((u) => (
               <span key={u.suffix} className="font-mono leading-none">
-                <span className="text-base font-bold text-dark">{pad2(u.value)}</span>
+                <RollingNumber value={u.value} digits={2} className="text-base font-bold text-dark" />
                 <span className="ml-px text-[11px] font-semibold text-light">{u.suffix}</span>
               </span>
             ))}

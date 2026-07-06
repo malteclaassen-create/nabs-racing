@@ -178,7 +178,7 @@ export default function DriverStandings() {
     }`;
 
   return (
-    <div>
+    <div className="content-in">
       <PageHeader
         eyebrow="Championship"
         title="Driver Standings"

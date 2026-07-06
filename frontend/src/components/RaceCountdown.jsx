@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-
-function pad2(n) {
-  return String(n ?? 0).padStart(2, "0");
-}
+import { RollingNumber } from "./ui.jsx";
 
 // Big, broadcast-style live countdown to the next race.
 // Renders four numerals (Days / Hrs / Min / Sec) and flips to a pulsing
@@ -59,7 +56,7 @@ export default function RaceCountdown({ date, className = "" }) {
               u.live ? "text-eyebrow" : "text-ink dark:text-white"
             }`}
           >
-            {pad2(u.value)}
+            <RollingNumber value={u.value} digits={2} />
           </span>
           <span className="mt-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-ink/45 dark:text-white/55">
             {u.label}

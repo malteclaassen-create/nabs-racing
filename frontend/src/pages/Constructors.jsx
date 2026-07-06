@@ -126,7 +126,7 @@ export default function Constructors() {
   const hasT2 = t2.data.standings.length > 0 || t2Teams.length > 0;
 
   return (
-    <div className="space-y-16">
+    <div className="content-in space-y-16">
       <div>
         {/* pills sit beside the title on desktop, on their own row on phones —
             side by side they push the header past the viewport */}

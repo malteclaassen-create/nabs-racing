@@ -437,6 +437,34 @@ body::before {
   animation: page-in 0.4s cubic-bezier(0.22, 0.61, 0.24, 1) both;
 }
 
+/* Content that replaces a loading skeleton fades in, so data arriving doesn't
+   pop. Opacity only (no transform) so it never fights the reveal/cascade
+   entrances inside it. */
+@keyframes content-in { from { opacity: 0; } to { opacity: 1; } }
+.content-in { animation: content-in 0.3s ease both; }
+
+/* --- Odometer digits ----------------------------------------------- */
+/* Countdown numerals roll to their value instead of hard-swapping (RollingNumber
+   in ui.jsx). Each digit is a clipped 1em window over a 0–9 column that slides. */
+.roll-digit {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+  line-height: 1;
+  vertical-align: top;
+}
+.roll-col {
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.55s cubic-bezier(0.22, 0.61, 0.24, 1);
+  will-change: transform;
+}
+.roll-cell {
+  height: 1em;
+  line-height: 1;
+  text-align: center;
+}
+
 /* --- Animated nav underline ---------------------------------------- */
 /* A brand underline that wipes in from the left on hover and stays lit for the
    active route. Layered under the existing pill styles in NavBar. */
@@ -483,9 +511,10 @@ body::before {
   .bar-fill { width: var(--w, 0) !important; animation: none !important; }
   .bar-rise { height: var(--h, 0) !important; animation: none !important; }
   .hero-anim, .hero-zoom, .gradient-anim, .glow-pulse, .float-bob,
-  .scroll-cue, .page-in { animation: none !important; opacity: 1; transform: none; }
+  .scroll-cue, .page-in, .content-in { animation: none !important; opacity: 1; transform: none; }
   .shine::after { display: none; }
   .tilt { transform: none !important; }
+  .roll-col { transition: none !important; }
 }
 
 /* --- Lite graphics mode (Settings panel) --------------------------------- */
@@ -509,7 +538,8 @@ body::before {
 .fx-lite .bar-rise { height: var(--h, 0) !important; animation: none !important; }
 .fx-lite .hero-anim, .fx-lite .hero-zoom, .fx-lite .gradient-anim,
 .fx-lite .glow-pulse, .fx-lite .float-bob, .fx-lite .scroll-cue,
-.fx-lite .page-in { animation: none !important; opacity: 1; transform: none; }
+.fx-lite .page-in, .fx-lite .content-in { animation: none !important; opacity: 1; transform: none; }
+.fx-lite .roll-col { transition: none !important; }
 .fx-lite .shine::after { display: none !important; }
 .fx-lite .tilt { transform: none !important; }
 .fx-lite .live-dot { animation: none !important; }
