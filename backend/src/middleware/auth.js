@@ -4,6 +4,25 @@ import { isBanned } from "../lib/members.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 
+// Every token on the site is signed with JWT_SECRET, so anyone who knows it
+// can forge an admin session. The dev fallback above and the placeholder
+// values from .env.example / DEPLOYMENT.md are public knowledge (the source
+// has been shared). On a real deployment that is fatal — so if the server is
+// evidently NOT running as a local dev setup (production mode, or CORS opened
+// for an https domain as DEPLOYMENT.md step 2 does), refuse to start until a
+// real secret is configured. Local development is unaffected.
+const secretIsPlaceholder = !process.env.JWT_SECRET || /change-me|<hier/i.test(process.env.JWT_SECRET);
+const looksDeployed =
+  process.env.NODE_ENV === "production" || /https:\/\//i.test(process.env.CORS_ORIGIN || "");
+if (secretIsPlaceholder && looksDeployed) {
+  throw new Error(
+    "JWT_SECRET in backend/.env ist noch der Platzhalter. Ohne eigenen, zufälligen " +
+      "Schlüssel könnte jeder Admin-Zugriffe fälschen. Einen erzeugen mit: " +
+      'node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))" ' +
+      "— dann in backend/.env als JWT_SECRET eintragen und neu starten. (Siehe DEPLOYMENT.md, Schritt 2.)"
+  );
+}
+
 // Sign a short admin token.
 export function signAdminToken() {
   return jwt.sign({ role: "admin" }, JWT_SECRET, { expiresIn: "12h" });

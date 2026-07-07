@@ -71,6 +71,7 @@ export default function AdminHealth() {
   const [error, setError] = useState(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupDone, setBackupDone] = useState(null);
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   const backups = useApi(useCallback(() => api.backups(), [backupDone]));
   const activity = useApi(useCallback(() => api.activity(), []));
@@ -84,6 +85,27 @@ export default function AdminHealth() {
       setError(e.message);
     } finally {
       setChecking(false);
+    }
+  }
+
+  // Fetches the full-backup zip (DB + uploaded images) and hands it to the
+  // browser as a normal file download.
+  async function downloadBackup() {
+    setError(null);
+    setDownloadBusy(true);
+    try {
+      const { blob, name } = await api.downloadBackupZip();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+      setBackupDone(name); // the zip also leaves a fresh snapshot in the list
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDownloadBusy(false);
     }
   }
 
@@ -155,15 +177,26 @@ export default function AdminHealth() {
       {/* --- Backups ---------------------------------------------------------- */}
       <section className="card p-5">
         <CardHead title="Database backups">
-          <button className="btn-secondary" onClick={makeBackup} disabled={backupBusy}>
-            {backupBusy ? "Backing up…" : "Create backup now"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-primary" onClick={downloadBackup} disabled={downloadBusy}>
+              {downloadBusy ? "Preparing zip…" : "Download full backup"}
+            </button>
+            <button className="btn-secondary" onClick={makeBackup} disabled={backupBusy}>
+              {backupBusy ? "Backing up…" : "Create backup now"}
+            </button>
+          </div>
         </CardHead>
         <p className="-mt-2 mb-4 text-sm text-light">
           A backup is created automatically before race results are saved. To restore: stop the server,
           copy the backup file from <span className="font-mono">backend/backups/</span> over{" "}
           <span className="font-mono">backend/prisma/dev.db</span>, then start the server again.
         </p>
+        <Notice kind="info">
+          The snapshots below live on the same disk as the live database. Use{" "}
+          <strong>Download full backup</strong> (database + all uploaded images as one zip) regularly
+          and keep the file somewhere else: another computer, a USB stick or a cloud drive. If this
+          machine ever dies, that zip is the whole league.
+        </Notice>
         <div className="mt-4">
           {(backups.data?.backups || []).length === 0 ? (
             <p className="text-sm text-light">No backups yet.</p>

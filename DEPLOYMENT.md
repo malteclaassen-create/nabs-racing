@@ -47,6 +47,10 @@ Jetzt `backend/.env` bearbeiten:
 ```ini
 DATABASE_URL="file:./dev.db"
 JWT_SECRET="<hier eine lange, zufällige Zeichenkette einsetzen>"
+# Einen sicheren Wert erzeugt dieser Befehl (Ausgabe hier einfügen):
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# Wichtig: Bleibt der Platzhalter stehen, startet der Server absichtlich NICHT,
+# denn mit einem bekannten Schlüssel könnte jeder Admin-Zugriffe fälschen.
 PORT=4000
 CORS_ORIGIN="https://nabs.example.com"
 
@@ -150,6 +154,17 @@ pm2 startup        # zeigt einen Befehl an -> einmal ausführen (Autostart)
 2. Auf der Website: **Admin** (PIN) → Tab **Downloads** → die Datei erscheint dort
    automatisch → **Register** klicken und Titel/Kategorie/Hinweis ergänzen.
 3. Mitglieder sehen und laden sie sofort unter **Downloads**.
+
+## Backups (wichtigster Handgriff im Betrieb)
+
+Der Server sichert die Datenbank automatisch vor jedem Ergebnis-Import — aber
+diese Sicherungen liegen auf **derselben Festplatte** wie die Datenbank selbst.
+Deshalb regelmäßig (z. B. nach jedem Rennen): **Admin → Health →
+„Download full backup“**. Das lädt Datenbank + alle hochgeladenen Bilder als
+eine Zip-Datei herunter. Die Datei auf dem eigenen Rechner, einem USB-Stick
+oder in einer Cloud ablegen. Geht der Server verloren, reicht diese Zip:
+`dev.db` nach `backend/prisma/dev.db`, den Ordner `uploads` nach
+`backend/uploads` kopieren, fertig.
 
 ## Später aktualisieren
 

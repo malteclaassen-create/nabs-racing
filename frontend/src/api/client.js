@@ -202,6 +202,16 @@ export const api = {
   integrity: () => request(`/admin/integrity${seasonQ()}`, { auth: true }),
   backups: () => request("/admin/backups", { auth: true }),
   createBackup: () => request("/admin/backups", { method: "POST", auth: true }),
+  // Full backup (DB + uploads) as a zip blob. Fetched with the auth header and
+  // saved by the caller — a plain <a href> couldn't send the admin token.
+  downloadBackupZip: async () => {
+    const res = await fetch(`${BASE}/api/admin/backups/download`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(`Backup download failed (${res.status})`);
+    const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "")?.[1];
+    return { blob: await res.blob(), name: name || "nabs-full-backup.zip" };
+  },
   activity: () => request("/admin/activity", { auth: true }),
   createTeam: (body) => request("/admin/teams", { method: "POST", body, auth: true }),
   updateTeam: (id, body) => request(`/admin/teams/${id}`, { method: "PUT", body, auth: true }),

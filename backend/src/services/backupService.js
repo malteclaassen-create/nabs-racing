@@ -7,12 +7,14 @@
 // save), so any mistake is one file-copy away from being undone: stop the
 // server, copy the backup file over prisma/dev.db, start again.
 // ---------------------------------------------------------------------------
-import { mkdirSync, readdirSync, statSync, unlinkSync } from "fs";
+import { mkdirSync, readdirSync, statSync, unlinkSync, existsSync } from "fs";
 import { dirname, join, basename } from "path";
 import { fileURLToPath } from "url";
+import AdmZip from "adm-zip";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 export const BACKUP_DIR = join(__dir, "../../backups");
+const UPLOADS_DIR = join(__dir, "../../uploads");
 
 const KEEP_N = 40;
 
@@ -46,6 +48,21 @@ export async function tryCreateBackup(prisma, label) {
     console.error(`Automatic backup failed (continuing with the save):`, e.message);
     return null;
   }
+}
+
+// Full backup as one zip, meant to be DOWNLOADED and stored away from this
+// machine: a fresh consistent DB snapshot plus everything under uploads/
+// (team logos, avatars, hero images). The big AC files in downloads/ are
+// deliberately excluded — they are gigabytes and can be restored from the
+// original mod archives; the DB and uploads cannot.
+export async function createFullBackupZip(prisma) {
+  const snap = await createBackup(prisma, "full-download");
+  const zip = new AdmZip();
+  // Store the snapshot under the name the server expects on restore.
+  zip.addLocalFile(join(BACKUP_DIR, snap.file), "", "dev.db");
+  if (existsSync(UPLOADS_DIR)) zip.addLocalFolder(UPLOADS_DIR, "uploads");
+  const stamp = snap.file.replace(/^nabs-/, "").replace(/-full-download\.db$/, "");
+  return { name: `nabs-full-backup-${stamp}.zip`, buffer: zip.toBuffer() };
 }
 
 export function listBackups() {

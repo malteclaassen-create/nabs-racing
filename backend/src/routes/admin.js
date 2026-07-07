@@ -14,7 +14,7 @@ import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsServ
 import { getWebhookUrl, setWebhookUrl, announce, syncRaceToDiscord } from "../services/discordService.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
-import { createBackup, tryCreateBackup, listBackups } from "../services/backupService.js";
+import { createBackup, tryCreateBackup, listBackups, createFullBackupZip } from "../services/backupService.js";
 import { SOCIAL_KEYS, readSocialLinks } from "./settings.js";
 import {
   dbListDownloads, dbGetDownload, dbCreateDownload, dbUpdateDownload, dbDeleteDownload,
@@ -102,6 +102,20 @@ router.post("/backups", async (req, res, next) => {
   try {
     const backup = await createBackup(prisma, "manual");
     res.json({ ok: true, backup });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/backups/download -> full backup (DB snapshot + uploads) as a
+// zip. This is the copy that belongs on ANOTHER machine — everything else in
+// backend/backups/ lives on the same disk as the live database.
+router.get("/backups/download", async (req, res, next) => {
+  try {
+    const { name, buffer } = await createFullBackupZip(prisma);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+    res.send(buffer);
   } catch (e) {
     next(e);
   }
