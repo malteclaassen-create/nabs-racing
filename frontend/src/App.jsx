@@ -15,6 +15,7 @@ import DriverProfile from "./pages/DriverProfile.jsx";
 import Constructors from "./pages/Constructors.jsx";
 import TeamProfile from "./pages/TeamProfile.jsx";
 import Races from "./pages/Races.jsx";
+import Attendance from "./pages/Attendance.jsx";
 import Live from "./pages/Live.jsx";
 import Downloads from "./pages/Downloads.jsx";
 import Profile from "./pages/Profile.jsx";
@@ -62,6 +63,7 @@ function AppRoutes() {
         <Route path="/races" element={<Races />} />
         <Route path="/results" element={<Races />} />
         <Route path="/calendar" element={<Races />} />
+        <Route path="/attendance" element={<Attendance />} />
         <Route path="/live" element={<Live />} />
         <Route path="/downloads" element={<Downloads />} />
         <Route path="/profile" element={<Profile />} />
@@ -87,6 +89,7 @@ const FOOTER_LINKS = [
   { to: "/drivers", label: "Drivers" },
   { to: "/constructors", label: "Constructors" },
   { to: "/races", label: "Races" },
+  { to: "/attendance", label: "Attendance" },
   { to: "/live", label: "Live Timing" },
   { to: "/downloads", label: "Race Info" },
 ];

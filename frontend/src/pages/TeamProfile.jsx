@@ -59,7 +59,10 @@ function RoundBars({ raceNumbers, perRace, droppedPerRace, raceByNumber, color }
 
   return (
     <div className="reveal overflow-x-auto">
-      <div className="flex min-w-[460px] items-end gap-2" style={{ height: 168 }}>
+      {/* Taller than the 120px bar box on purpose: the points label sits ABOVE
+          each bar, so the row needs headroom for it (and the flag + round label
+          below) or the number gets clipped off the top. */}
+      <div className="flex min-w-[460px] items-end gap-2" style={{ height: 200 }}>
         {raceNumbers.map((n, i) => {
           const race = raceByNumber.get(n);
           const done = race?.isCompleted;
@@ -290,9 +293,11 @@ export default function TeamProfile() {
         </div>
       </div>
 
-      {/* Cumulative progression (reuses the championship chart for this team) */}
+      {/* Cumulative progression (reuses the championship chart for this team).
+          Hidden on phones — the dense line chart doesn't read well there, same
+          as on the home page. */}
       {teamRow && completedNumbers.length > 0 && (
-        <div>
+        <div className="hidden md:block">
           <h2 className="mb-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
             Championship Progression
           </h2>

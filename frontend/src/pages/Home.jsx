@@ -18,6 +18,7 @@ import { fmtRaceTime } from "../utils/raceTime.js";
 import { heroFor, heroOnError } from "../utils/heroImage.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
+import { useSocial } from "../components/SocialLinks.jsx";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
@@ -43,14 +44,18 @@ function pad2(n) {
 }
 
 export default function Home() {
-  const { current: season, active } = useSeason();
+  const { current: season, active, seasons, setSeason } = useSeason();
   const { user, isLoggedIn } = useAuth();
+  const social = useSocial();
   const drivers = useApi(useCallback(() => api.driverStandings(), []));
   const t1 = useApi(useCallback(() => api.t1Standings(), []));
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const events = useApi(useCallback(() => api.events(), []));
   const [latest, setLatest] = useState(null);
+  // Previous season's final standings — shown in the hero while the selected
+  // season hasn't run its opener yet (so the "latest race" side isn't empty).
+  const [prevChamps, setPrevChamps] = useState(null);
   // Personal widgets: rank within the whole field vs. within the driver's tier.
   const [tierView, setTierView] = useState(false);
 
@@ -64,9 +69,32 @@ export default function Home() {
   const lastRace = completedRaces[completedRaces.length - 1];
   const nextRace = champRaces.find((r) => !r.isCompleted);
 
+  // Is the season being viewed an archived (past) one? Computed up here because
+  // the hero needs it before the data-loading guard below.
+  const isPast = !!season && !!active && season.number < active.number;
+  // The season immediately before the one being viewed (highest number below it).
+  const prevSeason = season
+    ? seasons.filter((s) => s.number < season.number).sort((a, b) => b.number - a.number)[0] || null
+    : null;
+  // A live (not archived) season whose opener hasn't been run yet: the "latest
+  // race" hero would be blank, so fall back to last season's champions.
+  const awaitingOpener = !isPast && !!races.data && completedRaces.length === 0;
+  // A FUTURE season being viewed (higher number than the running one): it hasn't
+  // started, so the hero shows a "Coming soon" card (with a reserved slot for a
+  // future car reveal) instead of the previous champion.
+  const isUpcomingSeason = !!season && !!active && season.number > active.number;
+
   useEffect(() => {
     if (lastRace?.id) api.raceResults(lastRace.id).then(setLatest).catch(() => {});
   }, [lastRace?.id]);
+
+  useEffect(() => {
+    if (awaitingOpener && prevSeason?.number != null) {
+      api.driverStandings(prevSeason.number).then(setPrevChamps).catch(() => setPrevChamps(null));
+    } else {
+      setPrevChamps(null);
+    }
+  }, [awaitingOpener, prevSeason?.number]);
 
   if (drivers.loading || t1.loading || t2.loading || races.loading)
     return (
@@ -108,11 +136,21 @@ export default function Home() {
   // champion instead of a (non-existent) upcoming race. The ACTIVE season keeps
   // the full live experience; a not-yet-active future season also stays "live"
   // (it just shows empty states until it starts).
-  const isPast = !!season && !!active && season.number < active.number;
-  const champ = standings[0] || null;
+  const champ = standings[0] || null; // season champion (archive hero)
   const heroPodium = isPast
     ? standings.slice(0, 3).map((d, i) => ({ driverId: d.driverId, position: i + 1, name: d.name, country: d.country, team: d.team, total: d.total, photoUrl: d.photoUrl }))
     : podium;
+
+  // Last season's champions, shown on the hero's left while this season waits
+  // for its opener. Only when we actually have the previous standings loaded.
+  const prevChampsRows = prevChamps?.standings || [];
+  const showPrevChamps = awaitingOpener && prevChampsRows.length > 0;
+  const prevChampion = showPrevChamps ? prevChampsRows[0] : null;
+  const prevPodium = showPrevChamps
+    ? prevChampsRows.slice(0, 3).map((d, i) => ({ driverId: d.driverId, position: i + 1, name: d.name, country: d.country, team: d.team, total: d.total, photoUrl: d.photoUrl }))
+    : [];
+  // The podium strip in the hero's left column uses whichever set applies.
+  const leftPodium = showPrevChamps ? prevPodium : heroPodium;
 
   // Personal "by the numbers" — shown to a logged-in driver who appears in the
   // SELECTED season: by their linked id in the active season, else by name /
@@ -274,32 +312,91 @@ export default function Home() {
                 </Link>
               </div>
             </div>
+          ) : isUpcomingSeason ? (
+            /* COMING SOON — a future season previewed before it has started. No
+               champion/last-season content; a reserved slot holds the eventual
+               3D car reveal (a real model mounts there later). */
+            <div className="flex flex-1 flex-col justify-center gap-7 lg:flex-row lg:items-center lg:gap-10">
+              <div className="flex flex-1 flex-col gap-5">
+                <div className="hero-anim flex items-center gap-2.5 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
+                  <span className="live-dot inline-block h-2 w-2 rounded-full bg-brand" />
+                  Coming soon
+                </div>
+                <h1 className="hero-anim font-display text-4xl font-black uppercase leading-[0.95] tracking-tight text-white sm:text-6xl" style={{ animationDelay: "0.12s" }}>
+                  {season?.name}
+                </h1>
+                {season?.game && (
+                  <div className="hero-anim font-mono text-sm font-bold uppercase tracking-wider text-white/60" style={{ animationDelay: "0.16s" }}>
+                    {season.game}
+                  </div>
+                )}
+                <p className="hero-anim max-w-lg text-base leading-relaxed text-white/75" style={{ animationDelay: "0.2s" }}>
+                  The next NABS season is taking shape. Teams, cars and the calendar are being prepared right now. Jump into the Discord to be there from round one.
+                </p>
+                <div className="hero-anim flex flex-wrap items-center gap-3" style={{ animationDelay: "0.3s" }}>
+                  {nextRace?.date && (
+                    <span className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-white/85">
+                      Round 1 · {new Date(nextRace.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · {fmtRaceTime(nextRace.date)}
+                    </span>
+                  )}
+                  {social.data?.discord && (
+                    <a href={social.data.discord} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-2 rounded-xl bg-[#5865F2] px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-[#5865F2]/30 transition hover:brightness-110">
+                      Join the Discord <span aria-hidden="true">→</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+              {/* Reserved area for the season's car reveal — a real 3D model of the
+                  mod mounts here later. Clean "coming soon" panel for now, no
+                  placeholder graphic. */}
+              <div className="hero-car-slot hero-anim relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/12 bg-white/[0.04] lg:w-[42%]" style={{ animationDelay: "0.24s" }}>
+                <div className="speed-hatch absolute inset-0 opacity-20" />
+                <div className="relative text-center">
+                  <div className="font-display text-2xl font-black uppercase tracking-tight text-white/70">Car reveal</div>
+                  <div className="mt-1 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-white/40">Coming soon</div>
+                </div>
+                {/* 3D car model mounts here later */}
+              </div>
+            </div>
           ) : (
           <>
-          {/* LEFT — latest race */}
+          {/* LEFT — latest race, or (before the opener) last season's champions */}
           <div className="flex flex-1 flex-col justify-end">
-            <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
-              {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
-              <span>Latest Race</span>
-              <span className="h-px w-10 bg-accent/50" />
-              <span className="text-ink/40 dark:text-white/50">Round {roundNo}</span>
-            </div>
+            {showPrevChamps ? (
+              <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
+                <Flag code={countryFor(prevChampion.driverId, prevChampion.country)} w={26} h={19} />
+                <span>Last Season</span>
+                <span className="h-px w-10 bg-accent/50" />
+                <span className="text-ink/40 dark:text-white/50">{prevSeason?.name}</span>
+              </div>
+            ) : (
+              <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
+                {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
+                <span>Latest Race</span>
+                <span className="h-px w-10 bg-accent/50" />
+                <span className="text-ink/40 dark:text-white/50">Round {roundNo}</span>
+              </div>
+            )}
 
-            <h1 className="hero-anim mt-4 max-w-3xl font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
-              {lastRace?.track || "Season opener"}
+            <h1 className="hero-anim mt-4 max-w-3xl break-words font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
+              {showPrevChamps ? prevChampion.name : lastRace?.track || "Season opener"}
             </h1>
             <p className="hero-anim mt-3 font-mono text-sm uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
-              {lastCircuit ? `${lastCircuit.circuit} · ` : ""}
-              {fmtFull(lastRace?.date)}
+              {showPrevChamps
+                ? `${prevSeason?.name} Champion · ${prevChampion.total} pts`
+                : `${lastCircuit ? `${lastCircuit.circuit} · ` : ""}${fmtFull(lastRace?.date)}`}
             </p>
 
-            {/* podium strip — latest-race top 3 */}
-            {heroPodium.length > 0 && (
+            {/* podium strip — latest-race (or last-season) top 3 */}
+            {leftPodium.length > 0 && (
               <div className="hero-anim mt-8 grid max-w-2xl gap-2 sm:grid-cols-3" style={{ animationDelay: "0.28s" }}>
-                {heroPodium.map((p, i) => (
+                {leftPodium.map((p, i) => (
                   <Link
                     key={p.driverId}
                     to={`/drivers/${p.driverId}`}
+                    // In "last season" mode these are previous-season drivers, so
+                    // drop the whole site down to that season as we open them.
+                    onClick={showPrevChamps && prevSeason ? () => setSeason(prevSeason.number) : undefined}
                     className="shine group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
                   >
                     <span
@@ -346,22 +443,43 @@ export default function Home() {
               </div>
             )}
 
-            <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
-              <Link
-                ref={ctaRef}
-                to="/races"
-                className="shine group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
-              >
-                Full Results
-                <span className="transition group-hover:translate-x-0.5">→</span>
-              </Link>
-              <Link
-                to="/drivers"
-                className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
-              >
-                Standings
-              </Link>
-            </div>
+            {showPrevChamps ? (
+              <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
+                <Link
+                  ref={ctaRef}
+                  to="/drivers"
+                  onClick={() => prevSeason && setSeason(prevSeason.number)}
+                  className="shine group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
+                >
+                  {prevSeason?.name} Standings
+                  <span className="transition group-hover:translate-x-0.5">→</span>
+                </Link>
+                <Link
+                  to="/constructors"
+                  onClick={() => prevSeason && setSeason(prevSeason.number)}
+                  className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
+                >
+                  Constructors
+                </Link>
+              </div>
+            ) : (
+              <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
+                <Link
+                  ref={ctaRef}
+                  to="/races"
+                  className="shine group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
+                >
+                  Full Results
+                  <span className="transition group-hover:translate-x-0.5">→</span>
+                </Link>
+                <Link
+                  to="/drivers"
+                  className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
+                >
+                  Standings
+                </Link>
+              </div>
+            )}
           </div>
 
           {/* RIGHT — next race panel */}
@@ -374,7 +492,7 @@ export default function Home() {
                   <span className="ml-auto text-ink/40 dark:text-white/50">Round {nextRace.number}</span>
                 </div>
 
-                <div className="mt-3 font-display text-3xl font-black uppercase leading-none tracking-tight text-ink dark:text-white sm:text-4xl">
+                <div className="mt-3 break-words font-display text-2xl font-black uppercase leading-[1.05] tracking-tight text-ink dark:text-white sm:text-3xl">
                   {nextRace.track}
                 </div>
                 {nextCircuit && (
@@ -396,7 +514,7 @@ export default function Home() {
                 )}
 
                 <Link
-                  to={`/races?race=${nextRace.id}`}
+                  to={`/attendance?race=${nextRace.id}`}
                   className="shine group mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
                 >
                   Sign Up
@@ -571,13 +689,13 @@ export default function Home() {
       {completedNumbers.length > 0 && (
         <>
           <section className="reveal hidden md:block">
-            <Heading index="04" eyebrow={hasT2 ? "Tier 1" : "Constructors"} title="Points Progression" to="/constructors" />
+            <Heading index="04" eyebrow="Points Progression" title={hasT2 ? "Tier 1" : "Constructors"} to="/constructors" />
             <PointsChart standings={t1.data?.standings || []} completed={completedNumbers} allRounds={t1.data?.raceNumbers || []} dropWorst={t1.data?.dropWorst} />
           </section>
 
           {hasT2 && (
             <section className="reveal hidden md:block">
-              <Heading index="05" eyebrow="Tier 2" title="Points Progression" to="/constructors" />
+              <Heading index="05" eyebrow="Points Progression" title="Tier 2" to="/constructors" />
               <PointsChart standings={t2.data?.standings || []} completed={completedNumbers} allRounds={t2.data?.raceNumbers || []} dropWorst={t2.data?.dropWorst} />
             </section>
           )}

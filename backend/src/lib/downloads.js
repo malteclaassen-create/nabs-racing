@@ -9,14 +9,12 @@
 // (raw SQL), matching this project's existing pattern where the running dev
 // server locks the client engine on Windows.
 // ---------------------------------------------------------------------------
-import { dirname, join, basename } from "path";
-import { fileURLToPath } from "url";
+import { join, basename } from "path";
 import { existsSync, mkdirSync, statSync, readdirSync } from "fs";
 import { randomUUID } from "crypto";
+import { DOWNLOADS_DIR } from "./dataDirs.js";
 
-const __dir = dirname(fileURLToPath(import.meta.url));
-// backend/lib -> backend/downloads
-export const DOWNLOADS_DIR = join(__dir, "../../downloads");
+export { DOWNLOADS_DIR };
 
 export function ensureDownloadsDir() {
   if (!existsSync(DOWNLOADS_DIR)) mkdirSync(DOWNLOADS_DIR, { recursive: true });

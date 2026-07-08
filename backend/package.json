@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
+    "start:prod": "prisma migrate deploy && node src/index.js",
+    "postinstall": "prisma generate",
     "seed": "node prisma/seed.js",
     "import:archive": "node scripts/import-archive-season.mjs",
     "archive:inventory": "node scripts/archive-emperor-inventory.mjs",
@@ -18,6 +20,9 @@
   },
   "prisma": {
     "seed": "node prisma/seed.js"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

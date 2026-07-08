@@ -6,11 +6,11 @@
 import { Router } from "express";
 import multer from "multer";
 import { writeFileSync, mkdirSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import prisma from "../lib/prisma.js";
 import { optionalUser, resolveDriverId } from "../middleware/auth.js";
 import { parseSocials, serializeSocials } from "../lib/socials.js";
+import { UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const router = Router();
 router.use(optionalUser);
@@ -21,8 +21,7 @@ router.use(optionalUser);
 // serves dist/, so anything written into frontend/public at runtime wouldn't
 // show until a rebuild — but /api/* is proxied to the backend in both dev and
 // preview, so /api/uploads serves freshly uploaded avatars live over the tunnel.
-const __dir = dirname(fileURLToPath(import.meta.url));
-const AVATAR_DIR = join(__dir, "../../uploads/avatars");
+const AVATAR_DIR = join(UPLOADS_DIR, "avatars");
 const IMG_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif" };
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 

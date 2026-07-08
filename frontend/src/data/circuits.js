@@ -445,3 +445,11 @@ export function canonicalTrack(track) {
   }
   return track;
 }
+
+// Stable grouping key for a track, matching the backend's groupKeyFor: a
+// canonical CIRCUITS key when known, else the normalized string. Used to address
+// per-track admin settings (fun facts / map image).
+export function trackKey(track) {
+  const c = canonicalTrack(track);
+  return CIRCUITS[c] ? c : normKey(track);
+}

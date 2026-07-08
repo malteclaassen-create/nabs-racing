@@ -68,9 +68,20 @@ export default function AdminImport({ onCommitted }) {
           bestLapMs: en.bestLap || null,
           grid: en.grid ?? null,
           totalTimeMs: en.totalTimeMs ?? null,
-          // Car-to-car contacts parsed from the AC telemetry; carried through to
-          // the saved result so the cleanliness rating updates automatically.
+          // The safety car appears in the result file as a normal entrant; the
+          // backend flags it so we can dim it and leave it unmapped.
+          isSafetyCar: !!en.isSafetyCar,
+          // Telemetry parsed from the AC file; carried through to the saved
+          // result so ratings/race facts update automatically.
           contacts: en.contacts ?? null,
+          envContacts: en.envContacts ?? null,
+          cuts: en.cuts ?? null,
+          overtakes: en.overtakes ?? null,
+          laps: en.laps ?? null,
+          cleanLaps: en.cleanLaps ?? null,
+          consistencyMs: en.consistencyMs ?? null,
+          gamePenalties: en.gamePenalties ?? null,
+          gamePenaltySeconds: en.gamePenaltySeconds ?? null,
           suggestions: en.suggestions,
         };
       })
@@ -130,6 +141,14 @@ export default function AdminImport({ onCommitted }) {
         grid: r.grid ?? null,
         totalTimeMs: r.totalTimeMs ?? null,
         contacts: r.contacts ?? null,
+        envContacts: r.envContacts ?? null,
+        cuts: r.cuts ?? null,
+        overtakes: r.overtakes ?? null,
+        laps: r.laps ?? null,
+        cleanLaps: r.cleanLaps ?? null,
+        consistencyMs: r.consistencyMs ?? null,
+        gamePenalties: r.gamePenalties ?? null,
+        gamePenaltySeconds: r.gamePenaltySeconds ?? null,
       }));
       const body = {
         number: Number(meta.number),
@@ -138,6 +157,8 @@ export default function AdminImport({ onCommitted }) {
         // Save into the season the admin is editing (the season switcher),
         // matching the "Editing season: …" banner above the form.
         seasonId: currentSeason?.id,
+        // Lets the server file the raw JSON under the right round on commit.
+        archiveKey: parsed?.archiveKey || null,
         results,
       };
       let res;
@@ -325,10 +346,18 @@ export default function AdminImport({ onCommitted }) {
                   {rows.map((r, i) => {
                     const driver = driverById.get(r.driverId);
                     return (
-                      <tr key={i} className="border-b border-border last:border-0">
+                      <tr
+                        key={i}
+                        className={`border-b border-border last:border-0 ${r.isSafetyCar ? "opacity-45" : ""}`}
+                      >
                         <td className="px-3 py-2 text-center font-mono">{r.position}</td>
                         <td className="px-3 py-2 text-center font-mono text-xs text-light">{fmtTimeCell(r, leaderMs)}</td>
-                        <td className="px-3 py-2 font-medium text-dark">{r.acDriverName}</td>
+                        <td className="px-3 py-2 font-medium text-dark">
+                          {r.acDriverName}
+                          {r.isSafetyCar && (
+                            <span className="ml-2 pill bg-surface2 text-light">safety car</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           <select
                             className="input py-1"

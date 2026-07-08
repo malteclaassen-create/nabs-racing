@@ -8,6 +8,7 @@ import { existsSync } from "fs";
 import standingsRoutes from "./routes/standings.js";
 import driversRoutes from "./routes/drivers.js";
 import racesRoutes from "./routes/races.js";
+import tracksRoutes from "./routes/tracks.js";
 import eventsRoutes from "./routes/events.js";
 import marketRoutes from "./routes/market.js";
 import meRoutes from "./routes/me.js";
@@ -21,13 +22,25 @@ import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard } from "./services/liveTiming.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
+import { ensureAppSchema } from "./lib/ensureSchema.js";
+import { UPLOADS_DIR } from "./lib/dataDirs.js";
 
 // Schema upkeep that runs outside `prisma migrate` (raw SQL — see the comment
-// in lib/downloads.js). Idempotent, so it's safe on every boot.
-ensureDownloadTables(prisma).catch((e) => console.error("download tables:", e));
+// in lib/downloads.js). Idempotent, so it's safe on every boot. Chained so the
+// app-wide columns/tables exist before the download tables' backfill runs.
+ensureAppSchema(prisma)
+  .then(() => ensureDownloadTables(prisma))
+  .catch((e) => console.error("schema upkeep:", e));
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// In production a reverse proxy / hosting edge (Railway, Cloudflare, Caddy, a
+// dev tunnel) sits in front, so the direct peer is the proxy. Trust its
+// X-Forwarded-* headers so req.ip is the real visitor — otherwise the admin
+// login limiter would count ALL visitors as one IP and lock everyone out
+// together after a few failed attempts.
+app.set("trust proxy", 1);
 
 const origins = (process.env.CORS_ORIGIN || "http://localhost:5173")
   .split(",")
@@ -43,7 +56,7 @@ app.get("/api/health", (req, res) => res.json({ ok: true }));
 // shared preview build — see the comment in routes/me.js. Long cache is safe:
 // the stored URLs carry a ?v=<timestamp> that changes on every re-upload.
 const __dir = dirname(fileURLToPath(import.meta.url));
-app.use("/api/uploads", express.static(join(__dir, "../uploads"), {
+app.use("/api/uploads", express.static(UPLOADS_DIR, {
   maxAge: "30d",
   immutable: true,
 }));
@@ -56,6 +69,7 @@ app.get("/api/live/timing", (req, res) => res.json(getBoard()));
 app.use("/api/standings", standingsRoutes);
 app.use("/api/drivers", driversRoutes);
 app.use("/api/races", racesRoutes);
+app.use("/api/tracks", tracksRoutes);
 app.use("/api/events", eventsRoutes);
 app.use("/api/market", marketRoutes);
 app.use("/api/me", meRoutes);

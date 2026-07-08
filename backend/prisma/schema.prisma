@@ -47,6 +47,15 @@ model Season {
   // service uses them verbatim instead of the values it would compute from the
   // race results (per-race data, if any, still renders). null = compute as usual.
   finalStandings String?
+  // Team-level drop rule (migration team_drop_worst). null = legacy behaviour
+  // (teams inherit each driver's own dropped rounds); 0 = no team drop; N = drop
+  // the N lowest single-driver round contributions from each team's total.
+  // Managed via raw SQL (ensureAppSchema) so it's writable with the dev server up.
+  teamDropWorst Int?
+  // Season visibility (migration season_privacy). Existing rows default public;
+  // new seasons are created private and hidden from every public read until the
+  // admin publishes them. An active season is always forced public.
+  isPublic  Boolean  @default(true)
   createdAt DateTime @default(now())
 
   teams   Team[]
@@ -127,6 +136,10 @@ model Race {
   isCompleted Boolean      @default(false)
   capacity    Int          @default(40) // grid size (Apollo "Accepted (n/40)")
   info        String? // optional event details (sessions, streamer, …)
+  // Admin-picked "Driver of the Day" for this race (a driver id). Shown as a
+  // fan-favourite fact on the results view. null = not chosen. Managed via raw
+  // SQL (ensureAppSchema) so it's writable while the dev server holds the client.
+  driverOfTheDayId String?
   // Discord webhook message id for the live RSVP/event post (Apollo-style).
   discordMessageId String?
   results     RaceResult[]
@@ -216,6 +229,18 @@ model RaceResult {
   // result `Events`, COLLISION_WITH_CAR above a minimum impact speed). Feeds the
   // "Awareness/cleanliness" driver rating. null = not yet imported for this round.
   contacts         Int?
+  // Extra telemetry distilled from the AC race JSON at import/backfill time (see
+  // services/telemetryExtractor.js). All nullable; null = not imported yet.
+  // These are written via raw SQL (like `contacts`) so they survive even before
+  // the generated client is refreshed — kept in sync with lib/ensureSchema.js.
+  envContacts        Int?  // wall / off-track collisions ("crashes")
+  cuts               Int?  // sum of per-lap track cuts / off-tracks
+  overtakes          Int?  // estimated on-track passes (heuristic)
+  laps               Int?  // laps completed
+  cleanLaps          Int?  // laps within 10s of the driver's own best that race
+  consistencyMs      Float? // stdev of clean lap times, ms (null under 3 clean laps)
+  gamePenalties      Int?  // count of in-game (AC) penalties issued
+  gamePenaltySeconds Float? // total in-game penalty seconds
 
   @@unique([raceId, driverId])
 }
@@ -297,4 +322,18 @@ model DownloadFolder {
   name        String
   description String?
   sortOrder   Int     @default(0)
+}
+
+// Cross-season identity. Driver rows are per-season (a person racing in three
+// seasons has three Driver rows); this table groups those rows under one shared
+// personId so career stats aggregate and archive tables can show the person's
+// current name with a "raced as <old name>" note. Managed via raw SQL (the
+// running dev server locks the generated client on Windows) — see
+// backend/src/lib/persons.js, which must be kept in sync with this model.
+model PersonLink {
+  driverId  String   @id
+  personId  String
+  createdAt DateTime @default(now())
+
+  @@index([personId])
 }

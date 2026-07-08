@@ -30,6 +30,10 @@ const I = {
   chart: "M4 19h16M7 15l3-4 3 3 4-6",
   flag: "M5 21V4M5 4c3-1.5 6 1.5 9 0s4-1 4-1v9s-1 .5-4 1-6-1.5-9 0",
   trend: "M3 17l6-6 4 4 7-7M14 8h6v6",
+  swap: "M4 8h13l-3-3M20 16H7l3 3",
+  gauge: "M12 13l3.5-3.5M6.5 19a8 8 0 1111 0",
+  alert: "M10.3 4.3l-7.4 12.8A1.5 1.5 0 004.2 19.4h15.6a1.5 1.5 0 001.3-2.3L13.7 4.3a1.5 1.5 0 00-2.6 0zM12 9v4M12 16.5h.01",
+  spark: "M13 2L4.5 13H11l-1 9 8.5-11H12l1-9z",
 };
 function Icon({ name, className = "" }) {
   return (
@@ -145,6 +149,115 @@ function StatTiles({ stats, className = "grid-cols-2 sm:grid-cols-3 lg:grid-cols
   );
 }
 
+// AC telemetry tiles (overtakes, consistency, contacts, penalties). Rendered
+// only when the season actually has telemetry, so position-only archive seasons
+// stay clean. Overtakes are an estimate (lap-granularity), so we say so.
+function fmtSpread(ms) {
+  return `±${(ms / 1000).toFixed(2)}s`;
+}
+function TelemetryTiles({ stats }) {
+  const has =
+    stats.overtakes != null || stats.avgConsistencyMs != null || stats.contacts != null || stats.gamePenalties != null;
+  if (!has) return null;
+  const tiles = [];
+  if (stats.overtakes != null)
+    tiles.push({ icon: "swap", label: "Overtakes", value: stats.overtakes, sub: "on-track passes (estimated)" });
+  if (stats.avgConsistencyMs != null)
+    tiles.push({ icon: "gauge", label: "Consistency", value: fmtSpread(stats.avgConsistencyMs), sub: "clean-lap time spread" });
+  if (stats.contacts != null)
+    tiles.push({
+      icon: "spark",
+      label: "Contacts",
+      value: stats.contacts,
+      sub: stats.envContacts != null ? `${stats.envContacts} off-track hits` : "car to car",
+    });
+  if (stats.gamePenalties != null || stats.stewardPenaltySeconds)
+    tiles.push({
+      icon: "alert",
+      label: "Penalties",
+      value: stats.gamePenalties ?? 0,
+      sub: stats.stewardPenaltySeconds ? `${stats.stewardPenaltySeconds}s from stewards` : "in-game",
+    });
+  return (
+    <div>
+      <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-light">
+        Telemetry
+      </div>
+      <div className="cascade grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {tiles.map((t, i) => (
+          <Stat key={t.label} index={i} icon={t.icon} label={t.label} value={t.value} sub={t.sub} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Cross-season career: one row per linked season, current name resolved. Only
+// rendered when the driver is linked to more than one season.
+function CareerBlock({ career }) {
+  if (!career || (career.seasons?.length ?? 0) < 2) return null;
+  const { seasons, totals } = career;
+  return (
+    <div className="card overflow-hidden">
+      <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:px-6 sm:text-xl">
+        Career across seasons
+      </h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+              <th className="px-5 py-2.5">Season</th>
+              <th className="px-2 py-2.5">Team</th>
+              <th className="px-2 py-2.5 text-center">Pos</th>
+              <th className="px-2 py-2.5 text-center">Starts</th>
+              <th className="px-2 py-2.5 text-center">Wins</th>
+              <th className="px-2 py-2.5 text-center">Podiums</th>
+              <th className="px-5 py-2.5 text-right">Pts</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {seasons.map((s) => (
+              <tr key={s.driverId} className="transition hover:bg-surface2">
+                <td className="px-5 py-3">
+                  <Link
+                    to={`/drivers/${s.driverId}`}
+                    className="font-display font-bold uppercase tracking-tight text-dark hover:text-brand"
+                  >
+                    {s.seasonName || `Season ${s.seasonNumber}`}
+                  </Link>
+                  {s.isCurrent && <span className="ml-2 pill bg-surface2 text-light">this one</span>}
+                </td>
+                <td className="px-2 py-3">
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-1.5 rounded-full" style={{ backgroundColor: s.teamColor || "#64748b" }} />
+                    <span className="text-medium">{s.teamName || "—"}</span>
+                  </span>
+                </td>
+                <td className="px-2 py-3 text-center font-mono tabular-nums text-medium">{s.position ? `P${s.position}` : "–"}</td>
+                <td className="px-2 py-3 text-center tabular-nums text-medium">{s.starts}</td>
+                <td className="px-2 py-3 text-center tabular-nums text-dark">{s.wins}</td>
+                <td className="px-2 py-3 text-center tabular-nums text-dark">{s.podiums}</td>
+                <td className="px-5 py-3 text-right font-display font-black tabular-nums text-dark">{s.points}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-border font-mono text-[11px] uppercase tracking-wider text-light">
+              <td className="px-5 py-2.5">{totals.seasons} seasons</td>
+              <td className="px-2 py-2.5" />
+              <td className="px-2 py-2.5" />
+              <td className="px-2 py-2.5 text-center tabular-nums text-medium">{totals.starts}</td>
+              <td className="px-2 py-2.5 text-center tabular-nums text-dark">{totals.wins}</td>
+              <td className="px-2 py-2.5 text-center tabular-nums text-dark">{totals.podiums}</td>
+              <td className="px-5 py-2.5 text-right font-display font-black tabular-nums text-dark">{totals.points}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // Companion panel beside the rating card: the four sub-ratings as labelled bars,
 // each backed by the real season stat that drives it.
 function RatingBreakdown({ rating, stats, color }) {
@@ -220,14 +333,18 @@ function FormChart({ perRace, color }) {
   const minW = Math.max(360, N * 46);
 
   return (
-    // Fills the card height: the plot region grows, the chips sit on a fixed
-    // row beneath it, left-padded to line up under the plot (past the y-axis).
-    <div className="flex h-full min-h-[240px] w-full flex-col">
-      {/* plot region — y-axis (pinned) + plot, both share this row's height so
+    // A SINGLE horizontal scroll wraps the plot and the per-round chips, with a
+    // sticky y-axis pinned to the left. On a phone this means the trend line and
+    // the result chips beneath it always scroll together and stay aligned —
+    // before, they were two separate scroll strips that could drift apart.
+    <div className="scrollbar-slim h-full min-h-[240px] w-full overflow-x-auto">
+      <div className="flex h-full flex-col" style={{ minWidth: minW + 36 }}>
+      {/* plot region — pinned y-axis + plot, both share this row's height so
           the position ticks line up exactly with the dots */}
       <div className="flex min-h-0 flex-1 items-stretch gap-2">
-        {/* y-axis: finishing positions */}
-        <div className="relative w-7 shrink-0">
+        {/* y-axis: finishing positions, stays put while the plot scrolls */}
+        <div className="sticky left-0 z-10 w-7 shrink-0 bg-card">
+          <div className="relative h-full">
           {ticks.map((p) => (
             <span
               key={p}
@@ -237,10 +354,11 @@ function FormChart({ perRace, color }) {
               P{p}
             </span>
           ))}
+          </div>
         </div>
 
-        <div className="min-w-0 flex-1 overflow-x-auto">
-          <div className="relative h-full" style={{ minWidth: minW }}>
+        <div className="relative flex-1">
+          <div className="relative h-full">
             {/* gridlines */}
             {ticks.map((p) => (
               <span
@@ -305,10 +423,11 @@ function FormChart({ perRace, color }) {
         </div>
       </div>
 
-      {/* per-round result chips, aligned under the plot columns (pl matches the
-          y-axis width + gap so chips sit under their dot) */}
-      <div className="mt-3 overflow-x-auto pl-9">
-        <div className="flex" style={{ minWidth: minW }}>
+      {/* per-round result chips — a spacer matching the pinned y-axis keeps
+          each chip directly under its dot */}
+      <div className="mt-3 flex shrink-0 gap-2">
+        <div className="sticky left-0 z-10 w-7 shrink-0 bg-card" />
+        <div className="flex flex-1">
           {perRace.map((r) => {
               const finished = r.status === "FINISHED" && r.position != null;
               const medal = finished && r.position <= 3 ? MEDAL[r.position - 1] : null;
@@ -343,9 +462,10 @@ function FormChart({ perRace, color }) {
                 </div>
               );
             })}
-          </div>
         </div>
       </div>
+      </div>
+    </div>
   );
 }
 
@@ -357,12 +477,14 @@ function HeadToHead({ me, meRow, standings }) {
   const defaultOpp = useMemo(() => {
     const mate = others.find((o) => o.team.id === me.driver.team.id);
     if (mate) return mate.driverId;
-    return others.sort((a, b) => Math.abs(a.position - meRow.position) - Math.abs(b.position - meRow.position))[0]?.driverId;
+    return others.sort((a, b) => Math.abs(a.position - (meRow?.position ?? 0)) - Math.abs(b.position - (meRow?.position ?? 0)))[0]?.driverId;
   }, [others, meRow, me.driver]);
 
   const [oppId, setOppId] = useState(defaultOpp);
   const opp = standings.find((s) => s.driverId === oppId) || others[0];
-  if (!opp) return null;
+  // Without the focal driver's row (or no one to compare against) there's no
+  // head-to-head to show — hide the panel instead of crashing the page.
+  if (!meRow || !opp) return null;
 
   const meStats = statsFromRow(meRow);
   const oppStats = statsFromRow(opp);
@@ -597,6 +719,11 @@ function CardHeader({ driver, rating, championship, color, stats }) {
               <span className="text-faint">·</span>
               <span className="text-sm">{driver.discordName}</span>
             </div>
+            {driver.formerName && (
+              <div className="mt-1.5 font-mono text-[11px] uppercase tracking-wider text-light">
+                raced as {driver.formerName}
+              </div>
+            )}
             <SocialLinks links={driver.socials} baseClass="text-light" className="mt-3.5 justify-center lg:justify-start" />
           </div>
 
@@ -628,7 +755,7 @@ function CardHeader({ driver, rating, championship, color, stats }) {
 export default function DriverProfile() {
   const { id } = useParams();
   const { data, loading, error } = useApi(
-    useCallback(() => Promise.all([api.driverProfile(id), api.driverStandings(), api.driverRating(id)]), [id])
+    useCallback(() => Promise.all([api.driverProfile(id), api.driverRating(id)]), [id])
   );
 
   if (loading)
@@ -643,7 +770,10 @@ export default function DriverProfile() {
     );
   if (error) return <ErrorBox message={error} />;
 
-  const [p, standingsData, rating] = data;
+  const [p, rating] = data;
+  // The driver's OWN season standings (sent with the profile), so a driver
+  // opened from an archived season still resolves against the right field.
+  const standingsData = p.season;
   const { driver, championship, stats, perRace } = p;
   const color = driver.team.color;
   const meRow = standingsData.standings.find((s) => s.driverId === driver.id);
@@ -678,6 +808,9 @@ export default function DriverProfile() {
            and the headline stats fill the space beside it (no dark hero, no breakdown) */
         <CardHeader driver={driver} rating={rating} championship={championship} color={color} stats={stats} />
       )}
+
+      {/* AC telemetry (only when the season has it) */}
+      <TelemetryTiles stats={stats} />
 
       {/* Season form + Head to head */}
       <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">
@@ -719,7 +852,7 @@ export default function DriverProfile() {
                   <th className="px-2 py-2.5 text-center">Grid</th>
                   <th className="px-2 py-2.5 text-center">Race</th>
                   <th className="px-2 py-2.5 text-right">Pts</th>
-                  <th className="px-5 py-2.5 text-right">+/−</th>
+                  <th className="hidden px-5 py-2.5 text-right sm:table-cell">+/−</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -758,7 +891,7 @@ export default function DriverProfile() {
                           <span className="text-dark">{r.points}</span>
                         )}
                       </td>
-                      <td className="px-5 py-3 text-right font-mono text-sm font-bold tabular-nums">
+                      <td className="hidden px-5 py-3 text-right font-mono text-sm font-bold tabular-nums sm:table-cell">
                         {delta == null || delta === 0
                           ? <span className="text-faint">–</span>
                           : <span style={{ color: delta > 0 ? "#16a34a" : "#dc2626" }}>{delta > 0 ? `▲${delta}` : `▼${-delta}`}</span>}
@@ -780,6 +913,9 @@ export default function DriverProfile() {
 
         <TeamPanel driver={driver} standings={standingsData.standings} />
       </div>
+
+      {/* Career across linked seasons (only when this driver spans more than one) */}
+      <CareerBlock career={p.career} />
 
       <div>
         <Link to="/drivers" className="text-sm font-semibold text-primary hover:underline">← All drivers</Link>

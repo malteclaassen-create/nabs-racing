@@ -347,10 +347,13 @@ export default function Downloads() {
   const totalRounds = champRaces.length;
   const dropWorst = season?.dropWorst ?? 3;
   const counted = dropWorst > 0 && totalRounds > dropWorst ? totalRounds - dropWorst : totalRounds;
+  const teamDrop = season?.teamDropWorst ?? null;
   const tokens = {
     rounds: totalRounds || "",
     counted: counted || "",
     drop: dropWorst || "",
+    // Team-level drop count when the season uses it, else blank.
+    teamDrop: teamDrop != null && teamDrop > 0 ? teamDrop : "",
     platform: platform || "Assetto Corsa",
     era: era || "Formula 1",
   };

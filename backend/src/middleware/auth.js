@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma.js";
 import { isBanned } from "../lib/members.js";
+import { isDiscordAdmin } from "../lib/adminUsers.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 
@@ -110,17 +111,51 @@ export function verifyDownloadTicket(token, id) {
   }
 }
 
-// Express middleware: requires a valid admin JWT in the Authorization header.
-export function requireAdmin(req, res, next) {
+// Non-blocking admin check for otherwise-public routes: true when the request
+// carries a valid admin JWT (PIN login) OR a Discord user token flagged isAdmin
+// at login. Lets a public endpoint reveal private seasons (or their deep links)
+// to a signed-in admin without gating the endpoint itself. (The flag is baked at
+// login; the actual admin WRITE gate — requireAdmin — re-checks live.)
+export function isAdminRequest(req) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) return false;
+  try {
+    const p = jwt.verify(token, JWT_SECRET);
+    return p.role === "admin" || (p.role === "user" && !!p.isAdmin);
+  } catch {
+    return false;
+  }
+}
+
+// Express middleware: requires admin access. Two ways in:
+//   * the PIN admin token (role "admin"), or
+//   * a Discord user token whose account is a currently-designated admin
+//     (lib/adminUsers.js) — re-checked live so granting/revoking is immediate.
+export async function requireAdmin(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: "Missing token" });
+  let payload;
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    if (payload.role !== "admin") throw new Error("not admin");
-    req.admin = payload;
-    next();
+    payload = jwt.verify(token, JWT_SECRET);
   } catch {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
+  if (payload.role === "admin") {
+    req.admin = payload;
+    return next();
+  }
+  if (payload.role === "user" && payload.discordId) {
+    try {
+      if (!(await isBanned(prisma, payload.discordId)) && (await isDiscordAdmin(prisma, payload.discordId))) {
+        req.admin = payload;
+        req.user = payload;
+        return next();
+      }
+    } catch {
+      /* fall through to 401 */
+    }
+  }
+  return res.status(401).json({ error: "Invalid or expired token" });
 }

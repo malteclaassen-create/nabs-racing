@@ -33,7 +33,7 @@ export const RACE_INFO_DEFAULTS = {
     {
       icon: "scale",
       title: "Best {counted} of {rounds}",
-      text: "Every driver's {drop} lowest-scoring rounds are dropped, and the team standings inherit those drops. One bad night (or a missed round) never ends your championship.",
+      text: "Every driver's {drop} lowest-scoring rounds are dropped from the drivers' table. One bad night (or a missed round) never ends your championship.",
     },
     {
       icon: "flag",

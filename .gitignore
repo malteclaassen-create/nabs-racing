@@ -22,6 +22,10 @@ backend/uploads/
 backend/downloads/*
 !backend/downloads/.gitkeep
 
+# Archived raw AC result JSONs (kept so telemetry can be recomputed later).
+# Runtime data under DATA_DIR — regeneratable from imports/backfill, not source.
+backend/results-archive/
+
 # Logs
 *.log
 npm-debug.log*

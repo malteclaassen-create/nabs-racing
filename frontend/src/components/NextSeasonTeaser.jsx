@@ -15,7 +15,9 @@ export default function NextSeasonTeaser() {
   const social = useSocial();
 
   const next = (seasons || [])
-    .filter((s) => current && !s.isActive && s.number > current.number)
+    // Only public upcoming seasons announce themselves; a private (unpublished)
+    // season stays fully hidden even when an admin is logged in.
+    .filter((s) => current && !s.isActive && s.number > current.number && s.isPublic !== false)
     .sort((a, b) => a.number - b.number)[0];
 
   const races = useApi(

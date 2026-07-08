@@ -15,17 +15,24 @@ export function SeasonProvider({ children }) {
   const [season, setSeason] = useState(null); // selected round number (null until loaded)
 
   useEffect(() => {
-    api
-      .seasons()
-      .then((list) => {
-        setSeasons(list);
-        setSeason((cur) => {
-          if (cur != null) return cur;
-          const active = list.find((s) => s.isActive) || list[0];
-          return active ? active.number : null;
-        });
-      })
-      .catch(() => setSeasons([]));
+    const load = () =>
+      api
+        .seasons()
+        .then((list) => {
+          setSeasons(list);
+          setSeason((cur) => {
+            if (cur != null) return cur;
+            const active = list.find((s) => s.isActive) || list[0];
+            return active ? active.number : null;
+          });
+        })
+        .catch(() => setSeasons([]));
+    load();
+    // Refetch when auth changes (admin login/logout, Discord login): the list
+    // includes private seasons only for admins, so the admin switcher must
+    // update without a manual reload.
+    window.addEventListener("nabs-auth", load);
+    return () => window.removeEventListener("nabs-auth", load);
   }, []);
 
   // Keep the api client in sync synchronously, so reads in children that fire

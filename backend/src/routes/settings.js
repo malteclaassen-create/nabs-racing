@@ -4,6 +4,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { readRaceInfo } from "../lib/raceInfo.js";
+import { readWelcomeFaq } from "../lib/welcomeFaq.js";
 
 const router = Router();
 
@@ -34,6 +35,16 @@ router.get("/social", async (req, res, next) => {
 router.get("/race-info", async (req, res, next) => {
   try {
     res.json({ content: await readRaceInfo(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/settings/welcome-faq -> the admin-edited Welcome-page FAQ, or
+// { content: null } while nothing is saved (frontend uses its defaults).
+router.get("/welcome-faq", async (req, res, next) => {
+  try {
+    res.json({ content: await readWelcomeFaq(prisma) });
   } catch (e) {
     next(e);
   }

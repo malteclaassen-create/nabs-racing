@@ -40,8 +40,13 @@ export default function SeasonPicker() {
   const isPast = current && active && current.number < active.number;
   const label = current ? nameOf(current) : "Season";
 
+  // Private (unpublished) seasons never appear in the PUBLIC switcher, even when
+  // an admin is logged in (the season context carries them so the admin season
+  // bar can still reach them, but the public control must not offer them).
+  const visible = (seasons || []).filter((s) => s.isPublic !== false);
+
   // Just a status word when there's nothing to switch between.
-  if (!seasons || seasons.length <= 1) {
+  if (visible.length <= 1) {
     return (
       <span className="flex items-center gap-2 text-dark">
         {label} · {isPast ? "Complete" : "Live"}
@@ -49,7 +54,7 @@ export default function SeasonPicker() {
     );
   }
 
-  const byNewest = [...seasons].sort((a, b) => b.number - a.number);
+  const byNewest = [...visible].sort((a, b) => b.number - a.number);
   const pick = (n) => {
     setSeason(n);
     setOpen(false);

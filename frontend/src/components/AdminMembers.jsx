@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { ErrorBox, DriverAvatar } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
+import AdminPersons from "./AdminPersons.jsx";
 
 // Admin "Members" tab: every Discord account that has ever logged in on the
 // site. The name matcher links most accounts to their roster driver on first
@@ -20,6 +21,11 @@ function fmtDate(v) {
 function StatusPills({ m }) {
   return (
     <span className="flex flex-wrap items-center gap-1.5">
+      {m.isAdmin && (
+        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary" title="Has full admin access on Discord login">
+          admin
+        </span>
+      )}
       {m.banned && (
         <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-600" title={m.banReason || undefined}>
           banned{m.banReason ? ` · ${m.banReason}` : ""}
@@ -98,6 +104,16 @@ export default function AdminMembers() {
   function unlink(m) {
     if (!window.confirm(`Unlink "${m.displayName || m.username}" from ${m.driver?.name}?\nThey stay logged in but lose their driver identity (RSVP, profile editing).`)) return;
     act(m.discordId, () => api.unlinkMember(m.discordId));
+  }
+
+  function toggleAdmin(m) {
+    const next = !m.isAdmin;
+    const name = m.displayName || m.username;
+    const ok = next
+      ? window.confirm(`Give "${name}" full admin access?\n\nThey reach the whole admin area straight after logging in with Discord — no PIN needed. Only do this for people you fully trust.`)
+      : window.confirm(`Remove admin access from "${name}"? This takes effect immediately.`);
+    if (!ok) return;
+    act(m.discordId, () => api.setMemberAdmin(m.discordId, next));
   }
 
   function openCreate(m) {
@@ -272,6 +288,14 @@ export default function AdminMembers() {
                 )}
                 <StatusPills m={m} />
                 <span className="flex items-center gap-2">
+                  <button
+                    className={`py-1.5 text-sm font-semibold ${m.isAdmin ? "text-light hover:text-primary" : "text-primary hover:underline"}`}
+                    disabled={busy === m.discordId}
+                    onClick={() => toggleAdmin(m)}
+                    title={m.isAdmin ? "Revoke admin access" : "Grant full admin access on Discord login"}
+                  >
+                    {m.isAdmin ? "Remove admin" : "Make admin"}
+                  </button>
                   {m.driver && (
                     <button className="btn-secondary py-1.5 text-sm" disabled={busy === m.discordId} onClick={() => unlink(m)}>
                       Unlink
@@ -319,6 +343,9 @@ export default function AdminMembers() {
           </ul>
         )}
       </div>
+
+      {/* --- cross-season person links --------------------------------------- */}
+      <AdminPersons />
     </div>
   );
 }

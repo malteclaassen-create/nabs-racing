@@ -125,6 +125,7 @@ export default function AdminDownloads() {
   const [editingId, setEditingId] = useState(null);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [upload, setUpload] = useState(null); // { name, pct } while uploading
 
   const downloads = data?.downloads || [];
   const folders = data?.folders || [];
@@ -162,6 +163,27 @@ export default function AdminDownloads() {
     }
   }
 
+  async function uploadFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file later
+    if (!file) return;
+    setMsg(null);
+    setUpload({ name: file.name, pct: 0 });
+    try {
+      const res = await api.uploadDownloadFile(file, (pct) => setUpload({ name: file.name, pct }));
+      setMsg({ ok: true, text: `Uploaded "${res.fileName}" (${res.sizeText}). Now register it below.` });
+      // Jump straight into registering the freshly uploaded file.
+      startNew();
+      set("fileName", res.fileName);
+      set("title", res.fileName.replace(/\.[^.]+$/, ""));
+      reload();
+    } catch (err) {
+      setMsg({ ok: false, text: err.message });
+    } finally {
+      setUpload(null);
+    }
+  }
+
   async function remove(d) {
     if (!window.confirm(`Remove "${d.title}" from the catalogue?\nThe file on disk is NOT deleted.`)) return;
     try {
@@ -178,9 +200,10 @@ export default function AdminDownloads() {
   return (
     <div className="space-y-6">
       <div className="rounded-lg bg-surface2/60 px-4 py-3 text-sm text-medium">
-        Put the actual files into <code className="rounded bg-card px-1.5 py-0.5 text-xs">backend/downloads/</code> on
-        the server (big files won&rsquo;t upload through the browser), then register each one below and sort it into a
-        folder. Members download them from the <b>Race Info</b> page. File sizes are read live from disk.
+        Add files either by <b>uploading them below</b> or by copying them into{" "}
+        <code className="rounded bg-card px-1.5 py-0.5 text-xs">backend/downloads/</code> on the server. Then register
+        each one and sort it into a folder. Members download them from the <b>Race Info</b> page. File sizes are read
+        live from disk.
       </div>
 
       {/* Folder management */}
@@ -188,7 +211,27 @@ export default function AdminDownloads() {
 
       {/* Files detected on disk */}
       <div className="card p-5">
-        <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Files on the server</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Files on the server</h3>
+          <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white transition hover:bg-primary/90 ${upload ? "pointer-events-none opacity-50" : ""}`}>
+            <Icon name="upload" className="h-4 w-4" />
+            {upload ? "Uploading…" : "Upload file"}
+            <input type="file" className="hidden" onChange={uploadFile} disabled={!!upload} />
+          </label>
+        </div>
+
+        {upload && (
+          <div className="mt-3">
+            <div className="mb-1 flex items-center justify-between font-mono text-[11px] text-light">
+              <span className="min-w-0 truncate">{upload.name}</span>
+              <span className="shrink-0 pl-2">{upload.pct}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-surface2">
+              <div className="h-full rounded-full bg-primary transition-[width] duration-200" style={{ width: `${upload.pct}%` }} />
+            </div>
+          </div>
+        )}
+
         {diskFiles.length === 0 ? (
           <p className="mt-2 text-sm text-light">No files in <code>backend/downloads/</code> yet.</p>
         ) : (

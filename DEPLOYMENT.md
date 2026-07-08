@@ -148,6 +148,48 @@ pm2 startup        # zeigt einen Befehl an -> einmal ausführen (Autostart)
 
 ---
 
+## Variante: Railway (statt eigenem Server)
+
+Das Projekt ist dafür vorbereitet: `railway.json` und das Wurzel-`package.json`
+sagen Railway, wie gebaut und gestartet wird (Website bauen → Backend starten →
+Datenbank-Tabellen automatisch anlegen). Schritte 1–6 oben entfallen dann fast
+komplett — kein Caddy, kein pm2, kein eigener Server.
+
+1. Auf [railway.app](https://railway.app) ein Projekt anlegen und das
+   GitHub-Repo verbinden. Railway baut ab jetzt bei jedem `git push` neu.
+2. Dem Service ein **Volume** geben, eingehängt unter `/data`.
+   **Ohne Volume ist die Festplatte nach jedem Deploy leer** — Datenbank,
+   Bilder und Downloads wären weg.
+3. Unter *Variables* setzen:
+
+   ```ini
+   DATA_DIR=/data
+   DATABASE_URL=file:/data/dev.db
+   JWT_SECRET=<lange, zufällige Zeichenkette — Befehl siehe Schritt 2 oben>
+   CORS_ORIGIN=https://<deine-domain>
+   DISCORD_CLIENT_ID=<deine Client-ID>
+   DISCORD_CLIENT_SECRET=<dein Client-Secret>
+   DISCORD_REDIRECT_URI=https://<deine-domain>/auth/discord/callback
+   ```
+
+   `PORT` setzt Railway von selbst.
+4. Domain unter *Settings → Networking* verbinden. HTTPS macht Railway
+   automatisch. Danach wie in Schritt 5 oben die Redirect-URL im
+   Discord-Entwicklerportal eintragen.
+5. **Erste Daten:** Beim allerersten Start entstehen nur leere Tabellen.
+   Entweder die bestehende `dev.db` vom Entwicklungs-Rechner per Railway-CLI
+   auf das Volume kopieren (nach `/data/dev.db`), oder einmalig seeden.
+   Die großen Download-Dateien ebenfalls aufs Volume legen
+   (`/data/downloads/`).
+
+> **Kosten im Blick behalten:** Railway berechnet Speicherplatz **und**
+> ausgehenden Datenverkehr. Wenn viele Mitglieder die großen AC-Dateien
+> (mehrere GB) herunterladen, kann das teurer werden als ein fester VPS.
+> Alternative für die dicken Dateien: ein externer Speicher wie Cloudflare R2
+> (Traffic kostenlos), im Download-Katalog als externer Link eingetragen.
+
+---
+
 ## Downloads befüllen (der laufende Betrieb)
 
 1. Datei per SFTP/Kopie nach `backend/downloads/` auf den Server legen.

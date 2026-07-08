@@ -6,6 +6,7 @@ import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, Tier
 import { useTilt } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
+import StandingsTable from "../components/StandingsTable.jsx";
 import { countryFor } from "../data/driverCountries.js";
 
 function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true }) {
@@ -134,6 +135,10 @@ export default function DriverStandings() {
   const { data, loading, error } = useApi(useCallback(() => api.driverStandings(), []));
   const [onlyScoring, setOnlyScoring] = useState(true);
   const [tier, setTier] = useState("all");
+  // "list" = the ranked cards/rows; "grid" = the per-round points matrix (same
+  // table the Constructors page uses), so you can read each driver's haul at
+  // every race. Only offered when the season actually has rounds.
+  const [view, setView] = useState("list");
 
   if (loading)
     return (
@@ -171,6 +176,9 @@ export default function DriverStandings() {
   const leaderTotal = rows[0]?.total ?? 0;
   const top3 = rows.slice(0, 3);
   const scopeLabel = activeTier === "all" ? "drivers" : TIER_FILTERS.find((t) => t.id === activeTier).label;
+  // The per-round matrix needs actual rounds; archived totals-only seasons fall
+  // back to the list regardless of what's selected.
+  const activeView = hasRounds ? view : "list";
 
   const segCls = (active) =>
     `rounded-lg px-3.5 py-2 text-sm font-bold transition ${
@@ -209,15 +217,27 @@ export default function DriverStandings() {
         ) : (
           <span />
         )}
-        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-medium">
-          <input
-            type="checkbox"
-            checked={onlyScoring}
-            onChange={(e) => setOnlyScoring(e.target.checked)}
-            className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
-          />
-          Only drivers with points
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          {hasRounds && (
+            <div className="inline-flex rounded-xl border border-border bg-card p-1">
+              <button type="button" onClick={() => setView("list")} className={segCls(activeView === "list")}>
+                List
+              </button>
+              <button type="button" onClick={() => setView("grid")} className={segCls(activeView === "grid")}>
+                By round
+              </button>
+            </div>
+          )}
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-medium">
+            <input
+              type="checkbox"
+              checked={onlyScoring}
+              onChange={(e) => setOnlyScoring(e.target.checked)}
+              className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
+            />
+            Only drivers with points
+          </label>
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-6 text-sm">
@@ -233,14 +253,22 @@ export default function DriverStandings() {
         </span>
       </div>
 
-      {rows.length > 0 ? (
+      {rows.length === 0 ? (
+        <div className="card p-8 text-center text-medium">No drivers match this filter.</div>
+      ) : activeView === "grid" ? (
+        <StandingsTable
+          variant="driver"
+          raceNumbers={data.raceNumbers}
+          rows={rows}
+          dropWorst={data.dropWorst}
+          officialTotals={data.officialTotals}
+        />
+      ) : (
         <div className="cascade card divide-y divide-border overflow-hidden">
           {rows.map((d, i) => (
             <DriverRow key={d.driverId} d={d} leaderTotal={leaderTotal} index={Math.min(i, 16)} showTier={multiTier} />
           ))}
         </div>
-      ) : (
-        <div className="card p-8 text-center text-medium">No drivers match this filter.</div>
       )}
     </div>
   );

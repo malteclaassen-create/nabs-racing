@@ -22,6 +22,21 @@ function prettyWeather(w) {
   return w.replace(/^\d+_/, "").replace(/_/g, " ");
 }
 
+// True on phone-width screens (<640px). Used to keep the long leaderboard to a
+// single screenful on mobile, with a button to reveal the rest.
+function useIsNarrow() {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return narrow;
+}
+
 function LiveBadge({ live }) {
   const color = live ? "#22c55e" : "#f59e0b";
   return (
@@ -67,11 +82,15 @@ function Stat({ label, children }) {
 function SessionHeader({ session, receivedAt }) {
   const code = countryCodeFromName(session.country);
   const weather = prettyWeather(session.weather);
+  // On phones the card compresses to the track + the two numbers that matter
+  // during a session (best lap, time left); Drivers/Conditions tuck behind a
+  // "More" toggle. From sm up everything is always shown.
+  const [showMore, setShowMore] = useState(false);
   return (
     <div className="reveal card relative overflow-hidden">
       <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-amber-500 to-sky-600" />
-      <div className="grid gap-5 p-6 sm:grid-cols-2 lg:grid-cols-6">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-2 gap-4 p-4 sm:gap-5 sm:p-6 lg:grid-cols-6">
+        <div className="col-span-2 lg:col-span-2">
           <div className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.2em] text-eyebrow">
             <span>{session.type}</span>
             {session.sessionCount > 1 && (
@@ -92,40 +111,58 @@ function SessionHeader({ session, receivedAt }) {
         </div>
 
         <Stat label="Session Best">
-          <span className="font-mono text-2xl font-bold tabular-nums text-dark">
+          <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
             {formatLap(session.bestLapMs)}
           </span>
         </Stat>
 
         <Stat label="Time Left">
-          <span className="text-2xl font-bold">
+          <span className="text-xl font-bold sm:text-2xl">
             <Countdown baseMs={session.remainingMs} receivedAt={receivedAt} />
           </span>
         </Stat>
 
-        <Stat label="Drivers">
-          <span className="font-mono text-2xl font-bold tabular-nums text-dark">
-            {session.driverCount}
-          </span>
-          <span className="ml-2 font-mono text-xs text-light">{session.onTrackCount} on track</span>
-        </Stat>
+        {/* Secondary stats — hidden on phones until expanded, always shown from sm up. */}
+        <div className={`${showMore ? "" : "hidden"} sm:block`}>
+          <Stat label="Drivers">
+            <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
+              {session.driverCount}
+            </span>
+            <span className="ml-2 font-mono text-xs text-light">{session.onTrackCount} on track</span>
+          </Stat>
+        </div>
 
-        <Stat label="Conditions">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-            {session.ambientTemp != null && (
-              <span className="text-medium">
-                Air <span className="font-mono font-bold text-dark">{session.ambientTemp}°</span>
-              </span>
-            )}
-            {session.roadTemp != null && (
-              <span className="text-medium">
-                Track <span className="font-mono font-bold text-dark">{session.roadTemp}°</span>
-              </span>
-            )}
-            {weather && <span className="capitalize text-light">{weather}</span>}
-          </div>
-        </Stat>
+        <div className={`${showMore ? "" : "hidden"} sm:block`}>
+          <Stat label="Conditions">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+              {session.ambientTemp != null && (
+                <span className="text-medium">
+                  Air <span className="font-mono font-bold text-dark">{session.ambientTemp}°</span>
+                </span>
+              )}
+              {session.roadTemp != null && (
+                <span className="text-medium">
+                  Track <span className="font-mono font-bold text-dark">{session.roadTemp}°</span>
+                </span>
+              )}
+              {weather && <span className="capitalize text-light">{weather}</span>}
+            </div>
+          </Stat>
+        </div>
       </div>
+
+      {/* Mobile-only expand toggle for the secondary stats. */}
+      <button
+        type="button"
+        onClick={() => setShowMore((v) => !v)}
+        className="flex w-full items-center justify-center gap-1.5 border-t border-border py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 sm:hidden"
+        aria-expanded={showMore}
+      >
+        {showMore ? "Show less" : "Drivers & conditions"}
+        <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition-transform ${showMore ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
     </div>
   );
 }
@@ -358,6 +395,13 @@ export default function Live() {
   const onTrack = entries.filter((e) => e.onTrack);
   const receivedAt = useMemo(() => Date.now(), [board?.updatedAt]);
 
+  // Mobile: keep the classification to a single screenful, expandable on tap.
+  const narrow = useIsNarrow();
+  const [showAllTimes, setShowAllTimes] = useState(false);
+  const TIMES_LIMIT = 10;
+  const collapseTimes = narrow && !showAllTimes && entries.length > TIMES_LIMIT;
+  const shownEntries = collapseTimes ? entries.slice(0, TIMES_LIMIT) : entries;
+
   return (
     <div>
       <PageHeader
@@ -440,12 +484,24 @@ export default function Live() {
                     </thead>
                     {/* cascade: rows rise in one after another, like the standings tables */}
                     <tbody className="cascade">
-                      {entries.map((e, i) => (
+                      {shownEntries.map((e, i) => (
                         <Row key={e.guid} e={e} match={match(e.name)} index={i} />
                       ))}
                     </tbody>
                   </table>
                 </div>
+                {collapseTimes && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllTimes(true)}
+                    className="flex w-full items-center justify-center gap-1.5 border-t border-border py-3 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 sm:hidden"
+                  >
+                    Show all {entries.length} drivers
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                )}
               </div>
             )}
           </section>

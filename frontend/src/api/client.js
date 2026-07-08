@@ -9,6 +9,10 @@ export function getToken() {
 export function setToken(t) {
   if (t) localStorage.setItem(TOKEN_KEY, t);
   else localStorage.removeItem(TOKEN_KEY);
+  // Auth changed: let listeners (e.g. the season list, which shows private
+  // seasons only to admins) refetch so admin-only data appears/disappears
+  // without a manual page reload.
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("nabs-auth"));
 }
 
 // Absolute URL for an API path, honouring VITE_API_BASE. Needed for direct
@@ -55,7 +59,10 @@ async function request(path, { method = "GET", body, auth = false, userAuth = fa
   const headers = {};
   if (!form) headers["Content-Type"] = "application/json";
   if (auth) {
-    const token = getToken();
+    // The PIN admin token wins; a designated Discord admin has no admin token,
+    // so fall back to their user token (the backend accepts it for admin routes
+    // when the account is a live-designated admin).
+    const token = getToken() || localStorage.getItem(USER_TOKEN_KEY);
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
   if (userAuth) {
@@ -99,9 +106,13 @@ export const api = {
   t1Standings: (season) => request(`/standings/constructors/t1${seasonParam(season)}`),
   t2Standings: (season) => request(`/standings/constructors/t2${seasonParam(season)}`),
   races: (season) => request(`/races${seasonParam(season)}`),
+  // auth:true attaches the admin token when present (harmless for the public),
+  // so the admin season switcher can also reach private/unpublished seasons.
   raceResults: (id) => request(`/races/${id}/results`),
+  // Track history across all seasons (userAuth so a member gets their own record).
+  trackHistory: (track) => request(`/tracks/history?track=${encodeURIComponent(track)}`, { userAuth: true }),
   teams: () => request(`/teams${seasonQ()}`),
-  seasons: () => request("/seasons"),
+  seasons: () => request("/seasons", { auth: true }),
 
   // events / RSVP (public; scoped to the viewed season, default active)
   events: () => request(`/events${seasonQ()}`),
@@ -165,12 +176,17 @@ export const api = {
   commitRace: (body) => request("/admin/races/commit", { method: "POST", body, auth: true }),
   editResults: (id, results) =>
     request(`/admin/races/${id}/results`, { method: "PUT", body: { results }, auth: true }),
+  setDriverOfTheDay: (raceId, driverId) =>
+    request(`/admin/races/${raceId}/driver-of-the-day`, { method: "PUT", body: { driverId }, auth: true }),
   // Live "what would change" preview for unsaved results (no DB writes).
   previewRace: (body) =>
     request("/admin/races/preview", { method: "POST", body: { ...body, season: getSelectedSeason() }, auth: true }),
   // Driver ratings with tunable weights — powers the admin ratings panel.
   ratingsPreview: (weights) =>
     request("/admin/ratings/preview", { method: "POST", body: { weights, season: getSelectedSeason() }, auth: true }),
+  ratingsWeights: () => request("/admin/ratings/weights", { auth: true }),
+  saveRatingsWeights: (weights) =>
+    request("/admin/ratings/weights", { method: "PUT", body: { weights }, auth: true }),
   createDriver: (body) => request("/admin/drivers", { method: "POST", body, auth: true }),
   updateDriver: (id, body) => request(`/admin/drivers/${id}`, { method: "PUT", body, auth: true }),
   changePin: (newPin) =>
@@ -235,11 +251,42 @@ export const api = {
   linkMember: (discordId, driverId) =>
     request(`/admin/members/${discordId}/link`, { method: "POST", body: { driverId }, auth: true }),
   unlinkMember: (discordId) => request(`/admin/members/${discordId}/unlink`, { method: "POST", auth: true }),
+  setMemberAdmin: (discordId, isAdmin) =>
+    request(`/admin/members/${discordId}/admin`, { method: "POST", body: { isAdmin }, auth: true }),
   createDriverFromMember: (discordId, body) =>
     request(`/admin/members/${discordId}/create-driver`, { method: "POST", body, auth: true }),
 
+  // cross-season person links (admin) — group a person's per-season driver rows
+  adminPersons: () => request("/admin/persons", { auth: true }),
+  linkPersons: (driverIds) => request("/admin/persons/link", { method: "POST", body: { driverIds }, auth: true }),
+  unlinkPerson: (driverId) => request("/admin/persons/unlink", { method: "POST", body: { driverId }, auth: true }),
+
   // downloads (admin)
   adminDownloads: () => request("/admin/downloads", { auth: true }),
+  // Streams a (potentially huge) file into backend/downloads/. Uses XHR rather
+  // than fetch so the UI can show real upload progress. onProgress(percent 0-100).
+  uploadDownloadFile: (file, onProgress) =>
+    new Promise((resolve, reject) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${BASE}/api/admin/downloads/upload`);
+      const token = getToken();
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        let data = null;
+        try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { /* non-JSON */ }
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+        const err = new Error((data && data.error) || `Upload failed (${xhr.status})`);
+        err.status = xhr.status;
+        reject(err);
+      };
+      xhr.onerror = () => reject(new Error("Upload failed (network error)"));
+      xhr.send(fd);
+    }),
   createDownload: (body) => request("/admin/downloads", { method: "POST", body, auth: true }),
   updateDownload: (id, body) => request(`/admin/downloads/${id}`, { method: "PATCH", body, auth: true }),
   deleteDownload: (id) => request(`/admin/downloads/${id}`, { method: "DELETE", auth: true }),
@@ -249,10 +296,25 @@ export const api = {
   updateDownloadFolder: (id, body) => request(`/admin/download-folders/${id}`, { method: "PATCH", body, auth: true }),
   deleteDownloadFolder: (id) => request(`/admin/download-folders/${id}`, { method: "DELETE", auth: true }),
 
+  // Track info (admin): fun facts + custom map image per circuit
+  adminTrackInfo: (key) => request(`/admin/tracks/${key}/info`, { auth: true }),
+  saveTrackInfo: (key, content) => request(`/admin/tracks/${key}/info`, { method: "PUT", body: { content }, auth: true }),
+  uploadTrackMap: (key, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/tracks/${key}/map`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  clearTrackMap: (key) => request(`/admin/tracks/${key}/map`, { method: "DELETE", auth: true }),
+
   // Race Info page content (public read + admin edit)
   raceInfo: () => request("/settings/race-info"),
   adminRaceInfo: () => request("/admin/race-info", { auth: true }),
   saveRaceInfo: (content) => request("/admin/race-info", { method: "PUT", body: { content }, auth: true }),
+
+  // Welcome-page FAQ (public read + admin edit)
+  welcomeFaq: () => request("/settings/welcome-faq"),
+  adminWelcomeFaq: () => request("/admin/welcome-faq", { auth: true }),
+  saveWelcomeFaq: (content) => request("/admin/welcome-faq", { method: "PUT", body: { content }, auth: true }),
 
   // season-scoped reads by explicit season number (used by the admin editor)
   teamsForSeason: (n) => request(`/teams?season=${n}`),

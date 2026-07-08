@@ -19,28 +19,34 @@ const GROUPS = {
   rac: {
     title: "RAC · Racecraft",
     help: "Race result.",
-    parts: [["finish", "Finishing position"], ["gained", "Places gained"], ["podium", "Podium rate"]],
+    parts: [["finish", "Finishing position"], ["gained", "Places gained"], ["overtakes", "On-track overtakes"], ["podium", "Podium rate"]],
   },
   aha: {
     title: "AHA · Awareness",
-    help: "Cleanliness & consistency.",
+    help: "Cleanliness, consistency & discipline.",
     parts: [
-      ["finishRate", "Finish rate"], ["contacts", "Few contacts"],
-      ["dnf", "Few DNFs"], ["consistency", "Consistency"],
+      ["finishRate", "Finish rate"], ["dnf", "Few DNFs"],
+      ["consistency", "Consistency"], ["contacts", "Few contacts"],
+      ["env", "Few off-track hits"], ["penalties", "Few penalties"], ["cuts", "Few cuts"],
     ],
   },
 };
 
 // Defaults (fractions) -> slider state (whole-number weights the backend then
-// normalises; the band stays as-is).
-function toState(defaults) {
-  const grp = (g) => Object.fromEntries(Object.entries(g).map(([k, v]) => [k, Math.round(v * 100)]));
+// normalises; band/dominance stay as-is). `saved` overrides the defaults so the
+// panel opens on the persisted curve.
+function toState(defaults, saved) {
+  const grp = (key) => {
+    const base = Object.fromEntries(Object.entries(defaults[key]).map(([k, v]) => [k, Math.round(v * 100)]));
+    return saved?.[key] ? { ...base, ...saved[key] } : base;
+  };
   return {
-    band: { ...defaults.band },
-    rtg: grp(defaults.rtg),
-    pac: grp(defaults.pac),
-    rac: grp(defaults.rac),
-    aha: grp(defaults.aha),
+    band: { ...defaults.band, ...(saved?.band || {}) },
+    dominance: { ...defaults.dominance, ...(saved?.dominance || {}) },
+    rtg: grp("rtg"),
+    pac: grp("pac"),
+    rac: grp("rac"),
+    aha: grp("aha"),
   };
 }
 
@@ -81,8 +87,11 @@ export default function AdminRatings() {
   const [error, setError] = useState(null);
   const [showProv, setShowProv] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedNote, setSavedNote] = useState(null);
+  const [hasSaved, setHasSaved] = useState(false);
 
-  // Initial load: pull defaults + the baseline ratings.
+  // Initial load: pull defaults + any persisted weights + the baseline ratings.
   useEffect(() => {
     let alive = true;
     api
@@ -90,7 +99,8 @@ export default function AdminRatings() {
       .then((d) => {
         if (!alive) return;
         setDefaults(d.defaults);
-        setWeights(toState(d.defaults));
+        setWeights(toState(d.defaults, d.saved));
+        setHasSaved(!!d.saved);
         setRatings(d.ratings);
       })
       .catch((e) => alive && setError(e.message))
@@ -118,7 +128,38 @@ export default function AdminRatings() {
   const setBand = useCallback((key, value) => {
     setWeights((w) => ({ ...w, band: { ...w.band, [key]: value } }));
   }, []);
+  const setDominance = useCallback((key, value) => {
+    setWeights((w) => ({ ...w, dominance: { ...w.dominance, [key]: value } }));
+  }, []);
   const reset = useCallback(() => defaults && setWeights(toState(defaults)), [defaults]);
+
+  async function saveWeights() {
+    setSaving(true);
+    setSavedNote(null);
+    try {
+      await api.saveRatingsWeights(weights);
+      setHasSaved(true);
+      setSavedNote({ ok: true, text: "Saved. The public ratings now use these weights." });
+    } catch (e) {
+      setSavedNote({ ok: false, text: e.message });
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function clearWeights() {
+    setSaving(true);
+    setSavedNote(null);
+    try {
+      await api.saveRatingsWeights(null);
+      setHasSaved(false);
+      if (defaults) setWeights(toState(defaults));
+      setSavedNote({ ok: true, text: "Cleared. The public ratings are back on the defaults." });
+    } catch (e) {
+      setSavedNote({ ok: false, text: e.message });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const shown = useMemo(
     () => (showProv ? ratings : ratings.filter((r) => !r.provisional)),
@@ -136,11 +177,15 @@ export default function AdminRatings() {
           Every driver gets four sub-ratings: <b>EXP</b> (experience), <b>PAC</b> (pace),
           <b> RAC</b> (racecraft) and <b>AHA</b> (awareness/cleanliness), blended into the overall <b>RTG</b>.
           Each value is ranked across the field and mapped onto the spread below. Drag the sliders to
-          re-weight; the table updates live. <i>Nothing is saved. This is a sandbox.</i>
+          re-weight; the table updates live. Hit <b>Save</b> to make the public ratings use these weights,
+          or leave it unsaved to just experiment. {hasSaved
+            ? "The public site is currently using your saved weights."
+            : "The public site is currently using the defaults."}
         </p>
       </div>
 
       {error && <Notice kind="error">{error}</Notice>}
+      {savedNote && <Notice kind={savedNote.ok ? "success" : "error"}>{savedNote.text}</Notice>}
 
       <div className="grid gap-5 lg:grid-cols-2">
         {/* Controls */}
@@ -169,6 +214,28 @@ export default function AdminRatings() {
             </div>
           </div>
 
+          {/* Dominance boost */}
+          <div className="rounded-xl border border-border bg-surface2/40 p-4">
+            <div className="mb-1 font-display text-sm font-bold uppercase tracking-tight text-dark">Dominance boost</div>
+            <p className="mb-3 text-xs text-light">
+              Extra points on the overall for a runaway leader, so a driver who wins most rounds reads near 99.
+            </p>
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2 text-sm text-medium">
+                Max boost
+                <input type="number" min="0" max="20" value={weights.dominance.max}
+                  onChange={(e) => setDominance("max", Number(e.target.value))}
+                  className="input w-20 py-1 text-center" />
+              </label>
+              <label className="flex items-center gap-2 text-sm text-medium">
+                Full at win share
+                <input type="number" min="0.1" max="1" step="0.05" value={weights.dominance.fullAt}
+                  onChange={(e) => setDominance("fullAt", Number(e.target.value))}
+                  className="input w-20 py-1 text-center" />
+              </label>
+            </div>
+          </div>
+
           <button
             className="text-sm font-semibold text-primary hover:underline"
             onClick={() => setAdvanced((a) => !a)}
@@ -183,7 +250,17 @@ export default function AdminRatings() {
             </div>
           )}
 
-          <button className="btn-secondary" onClick={reset}>Reset to defaults</button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="btn-primary disabled:opacity-50" onClick={saveWeights} disabled={saving}>
+              {saving ? "Saving…" : "Save weights"}
+            </button>
+            <button className="btn-secondary" onClick={reset} disabled={saving}>Reset sliders</button>
+            {hasSaved && (
+              <button className="text-sm font-semibold text-red-600 hover:underline" onClick={clearWeights} disabled={saving}>
+                Clear saved (back to defaults)
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Live result table */}
@@ -204,7 +281,10 @@ export default function AdminRatings() {
                   <th className="px-2 py-2 text-center">#</th>
                   <th className="px-2 py-2">Driver</th>
                   <th className="px-1 py-2 text-center" title="Starts">St</th>
+                  <th className="px-1 py-2 text-center" title="Overtakes (estimated)">Ov</th>
                   <th className="px-1 py-2 text-center" title="Car-to-car contacts">Ct</th>
+                  <th className="px-1 py-2 text-center" title="Off-track / env hits">Env</th>
+                  <th className="px-1 py-2 text-center" title="In-game penalties">Pen</th>
                   <th className="px-2 py-2 text-center font-bold text-dark">RTG</th>
                   <th className="px-1 py-2 text-center">EXP</th>
                   <th className="px-1 py-2 text-center">RAC</th>
@@ -222,7 +302,10 @@ export default function AdminRatings() {
                       {r.provisional && <span className="ml-1 text-[10px] text-amber-500">·prov</span>}
                     </td>
                     <td className="px-1 py-1.5 text-center font-mono text-xs text-light">{r.starts}</td>
+                    <td className="px-1 py-1.5 text-center font-mono text-xs text-light">{r.overtakes ?? "–"}</td>
                     <td className="px-1 py-1.5 text-center font-mono text-xs text-light">{r.contacts ?? "–"}</td>
+                    <td className="px-1 py-1.5 text-center font-mono text-xs text-light">{r.envContacts ?? "–"}</td>
+                    <td className="px-1 py-1.5 text-center font-mono text-xs text-light">{r.gamePenalties ?? "–"}</td>
                     <td className="px-2 py-1.5 text-center font-display text-base font-black tabular-nums text-dark">{r.ratings.overall}</td>
                     <td className="px-1 py-1.5 text-center tabular-nums text-medium">{r.ratings.exp}</td>
                     <td className="px-1 py-1.5 text-center tabular-nums text-medium">{r.ratings.rac}</td>
@@ -231,7 +314,7 @@ export default function AdminRatings() {
                   </tr>
                 ))}
                 {shown.length === 0 && (
-                  <tr><td colSpan={9} className="px-3 py-6 text-center text-light">No drivers to show.</td></tr>
+                  <tr><td colSpan={12} className="px-3 py-6 text-center text-light">No drivers to show.</td></tr>
                 )}
               </tbody>
             </table>

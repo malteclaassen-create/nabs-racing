@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { useAuth } from "../hooks/useAuth.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton } from "../components/ui.jsx";
 import RaceResults from "../components/RaceResults.jsx";
-import RaceSignupCard from "../components/RaceSignupCard.jsx";
+import RaceFacts from "../components/RaceFacts.jsx";
+import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
 import { circuitFor } from "../data/circuits.js";
@@ -48,8 +48,29 @@ function Countdown({ date }) {
 // results table from `lg` up.
 // ---------------------------------------------------------------------------
 function RoundRail({ races, selectedId, onSelect }) {
+  const scrollerRef = useRef(null);
+  const activeRef = useRef(null);
+
+  // On phones the rail is a horizontal strip. Centre the selected round so the
+  // latest races are in view straight away, instead of forcing a long scroll
+  // from round 1. No-op when the rail is the vertical sidebar (lg+), where the
+  // strip doesn't overflow horizontally.
+  useEffect(() => {
+    const c = scrollerRef.current;
+    const a = activeRef.current;
+    if (!c || !a) return;
+    if (c.scrollWidth <= c.clientWidth) return; // vertical sidebar / fits
+    const cRect = c.getBoundingClientRect();
+    const aRect = a.getBoundingClientRect();
+    const delta = aRect.left - cRect.left - (c.clientWidth / 2 - a.clientWidth / 2);
+    c.scrollTo({ left: c.scrollLeft + delta, behavior: "auto" });
+  }, [selectedId, races]);
+
   return (
-    <div className="scrollbar-slim flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0">
+    <div
+      ref={scrollerRef}
+      className="scrollbar-slim flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0"
+    >
       {races.map((r) => {
         const c = circuitFor(r.track);
         const active = r.id === selectedId;
@@ -62,6 +83,7 @@ function RoundRail({ races, selectedId, onSelect }) {
         return (
           <button
             key={r.id}
+            ref={active ? activeRef : undefined}
             type="button"
             onClick={() => onSelect(r.id)}
             aria-pressed={active}
@@ -194,42 +216,8 @@ export default function Races() {
   const [searchParams] = useSearchParams();
   const wantRaceId = searchParams.get("race");
 
-  // Sign-Up + Driver Market for the upcoming rounds (moved here from the old
-  // Sign-Up page). Identity comes from the Discord login.
-  const { user, isLoggedIn } = useAuth();
-  const events = useApi(useCallback(() => api.events(), []));
-  const market = useApi(useCallback(() => api.market(), []));
-  const marketByRace = useMemo(
-    () => new Map((market.data?.races || []).map((r) => [r.id, r])),
-    [market.data]
-  );
-  const driverId = isLoggedIn ? user?.driverId : null;
-  const canSignUp = isLoggedIn && !!driverId;
-  const [signupBusy, setSignupBusy] = useState(null);
-  const [signupError, setSignupError] = useState(null);
-
-  async function setStatus(raceId, status) {
-    setSignupError(null);
-    setSignupBusy(`${raceId}:${status}`);
-    try {
-      await api.rsvp(raceId, driverId, status);
-      await events.reload();
-    } catch (e) {
-      setSignupError(e.message);
-    } finally {
-      setSignupBusy(null);
-    }
-  }
-
-  async function clearStatus(raceId) {
-    setSignupBusy(`${raceId}:clear`);
-    try {
-      await api.removeRsvp(raceId, driverId);
-      await events.reload();
-    } finally {
-      setSignupBusy(null);
-    }
-  }
+  // Sign-up + attendance for upcoming rounds now lives on the /attendance page;
+  // the Races page shows the UpcomingRacePanel (countdown, circuit, track record).
 
   // Explicit deep link (?race=<id>): always honour it and bring the explorer
   // into view. Keyed only on the id/races so a later manual pick isn't reverted.
@@ -301,10 +289,9 @@ export default function Races() {
     .sort((a, b) => withDate(a) - withDate(b))[0];
 
   const shown = tab === "rounds" ? rounds : specials;
-  // The race currently open in the explorer, and its sign-up event (only
-  // upcoming rounds have one). Completed -> results; upcoming -> sign up + market.
+  // The race currently open in the explorer. Completed -> results table;
+  // upcoming -> the UpcomingRacePanel (countdown, circuit map, track record).
   const selectedRace = (races || []).find((r) => r.id === selectedId);
-  const selectedEvent = (events.data || []).find((e) => e.id === selectedId);
   const tabCls = (active) =>
     `rounded-lg px-4 py-2 text-sm font-bold transition ${active ? "bg-brand text-ink shadow" : "text-light hover:text-dark"}`;
 
@@ -335,30 +322,7 @@ export default function Races() {
                 market for rounds that haven't been run yet. */}
             <div className="min-w-0">
               {selectedRace && !selectedRace.isCompleted ? (
-                <>
-                  {signupError && <div className="mb-4"><ErrorBox message={signupError} /></div>}
-                  {!selectedEvent ? (
-                    events.loading ? (
-                      <TableSkeleton rows={6} />
-                    ) : (
-                      <div className="card p-8 text-center text-medium">
-                        Sign-up opens once this round is scheduled.
-                      </div>
-                    )
-                  ) : (
-                    <RaceSignupCard
-                      ev={selectedEvent}
-                      marketRace={marketByRace.get(selectedEvent.id)}
-                      me={market.data?.me}
-                      reloadMarket={market.reload}
-                      driverId={driverId}
-                      canSignUp={canSignUp}
-                      busy={signupBusy}
-                      onSetStatus={setStatus}
-                      onClear={clearStatus}
-                    />
-                  )}
-                </>
+                <UpcomingRacePanel race={selectedRace} />
               ) : (
                 <>
                   {detailLoading && <TableSkeleton rows={10} />}
@@ -380,6 +344,7 @@ export default function Races() {
                           </p>
                         )}
                       </div>
+                      {detail.race.hasPositions && <RaceFacts race={detail.race} results={detail.results} />}
                       <RaceResults race={detail.race} results={detail.results} />
                     </div>
                   )}

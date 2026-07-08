@@ -1,8 +1,13 @@
 // ---------------------------------------------------------------------------
 // Assetto Corsa race-result JSON parser + fuzzy driver matching.
 // Parses Content Manager / AC Server "RACE" result files. The order of the
-// Result[] array is the finishing order.
+// Result[] array is the finishing order. Per-driver telemetry (contacts, cuts,
+// overtakes, consistency, penalties) is distilled by telemetryExtractor.js.
 // ---------------------------------------------------------------------------
+import { extractTelemetry, countCarContacts, CONTACT_DEFAULTS } from "./telemetryExtractor.js";
+
+// Re-exported for callers/tests that historically imported them from here.
+export { countCarContacts, CONTACT_DEFAULTS };
 
 // Levenshtein distance (iterative, O(n*m)).
 function levenshtein(a, b) {
@@ -51,49 +56,6 @@ function similarity(acName, driver) {
   return best;
 }
 
-// Default tuning for contact counting (shared by the live import and backfill).
-export const CONTACT_DEFAULTS = { impactThreshold: 10, mergeWindowMs: 3000 };
-
-// Count car-to-car contact INCIDENTS per driver Steam-Guid from the AC result
-// `Events`. AC logs sustained contact (scraping along another car) as many rapid
-// events, so we collapse repeated hits between the same pair within
-// `mergeWindowMs` into one incident, and ignore light taps below
-// `impactThreshold` (km/h). Counted on the reporting (`Driver`) side only, so a
-// driver who merely gets hit by someone else is not blamed for it.
-// Returns Map<guid, incidentCount>.
-export function countCarContacts(events, opts = {}) {
-  const { impactThreshold, mergeWindowMs } = { ...CONTACT_DEFAULTS, ...opts };
-  const collisions = (events || [])
-    .filter(
-      (e) =>
-        e.Type === "COLLISION_WITH_CAR" &&
-        (e.ImpactSpeed || 0) >= impactThreshold &&
-        e.Driver &&
-        e.Driver.Guid != null
-    )
-    .map((e) => ({
-      guid: e.Driver.Guid,
-      other: e.OtherCarId ?? -1,
-      // AC stamps events in Unix SECONDS; normalise to ms so the merge window is
-      // in real milliseconds. (Guard: values already in ms are left as-is.)
-      t: Number.isFinite(e.Timestamp) ? (e.Timestamp < 1e11 ? e.Timestamp * 1000 : e.Timestamp) : null,
-    }))
-    .sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
-
-  const lastByPair = new Map(); // `${guid}|${other}` -> last incident timestamp
-  const counts = new Map();
-  for (const c of collisions) {
-    const key = `${c.guid}|${c.other}`;
-    const last = lastByPair.get(key);
-    // No timestamps -> can't merge, count each; otherwise a hit is a fresh
-    // incident only once the merge window since the last one has elapsed.
-    const fresh = c.t == null || last == null || c.t - last > mergeWindowMs;
-    if (fresh) counts.set(c.guid, (counts.get(c.guid) || 0) + 1);
-    lastByPair.set(key, c.t ?? last ?? 0);
-  }
-  return counts;
-}
-
 // Parse the AC JSON and return a structured, matchable result set.
 // `drivers` = all registered drivers (with team) for fuzzy matching.
 export function parseAcRaceJson(json, drivers) {
@@ -101,9 +63,10 @@ export function parseAcRaceJson(json, drivers) {
     throw new Error("Invalid AC race JSON: expected Type=RACE with Result[]");
   }
 
-  // Car-to-car contact incidents per Steam-Guid, attached to each entry below so
-  // the admin import carries cleanliness data through to the stored result.
-  const contactsByGuid = countCarContacts(json.Events);
+  // Full per-driver telemetry keyed by Steam GUID, attached to each entry below
+  // so the admin import carries cleanliness/pace data through to the stored
+  // result. safetyCarGuids lets the review UI flag and deprioritise the SC.
+  const { byGuid, safetyCarGuids } = extractTelemetry(json);
 
   const entries = json.Result
     // AC includes spectators / non-finishers with 0 laps & huge time; we keep
@@ -123,15 +86,30 @@ export function parseAcRaceJson(json, drivers) {
         }));
 
       const best = suggestions[0];
+      const guid = r.DriverGuid ?? null;
+      const isSafetyCar = guid != null && safetyCarGuids.has(guid);
+      // Telemetry distilled from the whole file (laps + events), keyed by GUID.
+      const tel = guid != null ? byGuid.get(guid) : null;
       return {
         position: index + 1,
         acDriverName: r.DriverName,
-        // Steam id — stable identity, used to attribute contacts (and a far more
-        // reliable key than the display name).
-        driverGuid: r.DriverGuid ?? null,
-        // Car-to-car contact incidents for this driver in the race (0 when none;
-        // null when the entry has no Guid to attribute by).
-        contacts: r.DriverGuid != null ? contactsByGuid.get(r.DriverGuid) ?? 0 : null,
+        // Steam id — stable identity, used to attribute telemetry (and a far
+        // more reliable key than the display name).
+        driverGuid: guid,
+        // The safety car shows up in Result[] as a normal entrant; flag it so
+        // the admin review can dim it and never auto-map it to a real driver.
+        isSafetyCar,
+        // Car-to-car contact incidents (0 when none; null when no Guid).
+        contacts: tel ? tel.contacts : null,
+        // Extra AC telemetry (null when the entry has no Guid / no laps).
+        envContacts: tel ? tel.envContacts : null,
+        cuts: tel ? tel.cuts : null,
+        overtakes: tel ? tel.overtakes : null,
+        laps: tel ? tel.laps : null,
+        cleanLaps: tel ? tel.cleanLaps : null,
+        consistencyMs: tel ? tel.consistencyMs : null,
+        gamePenalties: tel ? tel.gamePenalties : null,
+        gamePenaltySeconds: tel ? tel.gamePenaltySeconds : null,
         carModel: r.CarModel,
         totalTime: r.TotalTime,
         // Total race time in ms — used to apply time penalties (re-sort the
@@ -143,8 +121,9 @@ export function parseAcRaceJson(json, drivers) {
         disqualified: !!r.Disqualified,
         hasPenalty: !!r.HasPenalty,
         lapPenalty: r.LapPenalty ?? 0,
-        // suggested mapping (auto-filled, admin can override)
-        suggestedDriverId: best && best.score >= 0.55 ? best.driverId : null,
+        // suggested mapping (auto-filled, admin can override). Never auto-map
+        // the safety car.
+        suggestedDriverId: !isSafetyCar && best && best.score >= 0.55 ? best.driverId : null,
         suggestions,
       };
     });

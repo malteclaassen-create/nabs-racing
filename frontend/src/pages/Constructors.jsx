@@ -5,7 +5,6 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton, Skeleton } from "../components/ui.jsx";
 import { useTilt } from "../hooks/motion.js";
 import StandingsTable from "../components/StandingsTable.jsx";
-import PointsChart from "../components/PointsChart.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 
 // Rounds that actually have scores recorded (for the progression chart).
@@ -34,11 +33,7 @@ function TierBlock({ id, tier, standings, teams, title }) {
         }
       />
 
-      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} />
-      {/* Archived seasons with no per-race data have nothing to plot. */}
-      {done.length > 0 && (
-        <PointsChart standings={rows} completed={done} allRounds={standings.raceNumbers} dropWorst={standings.dropWorst} />
-      )}
+      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} dropMode={standings.dropMode} teamDropWorst={standings.teamDropWorst} />
 
       <div className="space-y-3 pt-2">
         <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Line-ups</h3>

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { StatusPill, Rank, TierBadge, MEDAL } from "./ui.jsx";
+import { StatusPill, Rank, TierBadge } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
@@ -29,38 +29,6 @@ function fmtLap(ms) {
   return `${m}:${String(s).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
 }
 
-function PodiumCard({ row, rank }) {
-  return (
-    <div className="shine relative flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-3" style={{ "--i": rank }}>
-      <span className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: row.team.color }} />
-      <span
-        className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-display text-base font-black text-ink"
-        style={{ backgroundColor: MEDAL[rank] }}
-      >
-        {rank + 1}
-      </span>
-      <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
-          <Link
-            to={`/drivers/${row.driverId}`}
-            className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark transition hover:text-brand"
-          >
-            {row.name}
-          </Link>
-          <Flag code={countryFor(row.driverId, row.country)} w={16} h={12} />
-        </div>
-        <div className="truncate text-xs text-light">
-          {(row.effectiveTeam || row.team).name}
-        </div>
-      </div>
-      <div className="ml-auto pr-1 text-right">
-        <div className="font-mono text-lg font-bold leading-none tabular-nums text-dark">{row.points}</div>
-        <div className="font-mono text-[10px] uppercase tracking-wider text-light">pts</div>
-      </div>
-    </div>
-  );
-}
-
 export default function RaceResults({ race, results }) {
   const detailed = race.hasPositions;
 
@@ -69,45 +37,10 @@ export default function RaceResults({ race, results }) {
   const hasGrid = results.some((r) => r.grid != null);
   const fastestMs = hasLaps ? Math.min(...lapRows.map((r) => r.bestLapMs)) : null;
   const fastestDriverId = hasLaps ? lapRows.find((r) => r.bestLapMs === fastestMs)?.driverId : null;
-  const fastest = fastestDriverId ? results.find((r) => r.driverId === fastestDriverId) : null;
-
-  const podium = detailed
-    ? results.filter((r) => r.position != null && (!r.status || r.status === "FINISHED")).slice(0, 3)
-    : [];
-  const finishers = results.filter((r) => (!r.status || r.status === "FINISHED") && r.position != null).length;
+  const dotdId = race.driverOfTheDay?.driverId || null;
 
   return (
     <div className="card overflow-hidden">
-      {/* Summary: podium + fastest lap */}
-      {detailed && podium.length > 0 && (
-        <div className="cascade grid gap-3 border-b border-border bg-surface2/40 p-4 sm:grid-cols-2 lg:grid-cols-4">
-          {podium.map((row, i) => (
-            <PodiumCard key={row.driverId} row={row} rank={i} />
-          ))}
-          {fastest && (
-            <div className="shine relative flex items-center gap-3 overflow-hidden rounded-xl border border-purple-500/40 bg-purple-500/[0.07] p-3" style={{ "--i": 3 }}>
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-500/20 text-purple-500">
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="13" r="8" />
-                  <path d="M12 13V9M9 2h6M19.5 5.5l-1.5 1.5" />
-                </svg>
-              </span>
-              <div className="min-w-0">
-                <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-purple-500">
-                  Fastest Lap
-                </div>
-                <div className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark">
-                  {fastest.name}
-                </div>
-              </div>
-              <div className="ml-auto pr-1 font-mono text-base font-bold tabular-nums text-purple-500">
-                {fmtLap(fastestMs)}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -181,11 +114,17 @@ export default function RaceResults({ race, results }) {
                       <Link
                         to={`/drivers/${r.driverId}`}
                         className="font-display text-base font-bold uppercase tracking-tight text-dark transition hover:text-brand"
+                        title={r.formerName ? `Raced as ${r.formerName}` : undefined}
                       >
                         {r.name}
                       </Link>
                       <Flag code={countryFor(r.driverId, r.country)} />
                       {tier != null && <TierBadge tier={tier} />}
+                      {r.driverId === dotdId && (
+                        <span className="pill bg-brand/20 text-brand" title="Driver of the Day">
+                          ★ DOTD
+                        </span>
+                      )}
                       {isFastest && (
                         <span className="pill bg-purple-500/15 text-purple-500" title="Fastest lap of the race">
                           FL

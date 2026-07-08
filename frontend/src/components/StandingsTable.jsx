@@ -86,8 +86,16 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
   return <td className={`${base} text-sm text-medium`}>{points || <span className="text-faint">0</span>}</td>;
 }
 
-export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false }) {
+export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null }) {
   const isDriver = variant === "driver";
+  // Constructor tables can use the team-level drop rule instead of inheriting
+  // each driver's dropped rounds — the footnote must match whichever is in force.
+  const teamDrop = !isDriver && dropMode === "team";
+  const showDropNote = isDriver
+    ? dropWorst > 0 && raceNumbers.length > 0
+    : teamDrop
+      ? teamDropWorst > 0 && raceNumbers.length > 0
+      : dropWorst > 0 && raceNumbers.length > 0;
   const [scrollRef, edge] = useScrollEdges();
   // Archive seasons: totals are the league's official final sheet, while the
   // round columns are reconstructed from the era's result posts — the two can
@@ -144,8 +152,15 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                           className="h-7 w-1.5 shrink-0 rounded-full"
                           style={{ backgroundColor: row.team.color }}
                         />
-                        <span className="font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
-                          {row.name}
+                        <span className="min-w-0">
+                          <span className="block truncate font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
+                            {row.name}
+                          </span>
+                          {row.formerName && (
+                            <span className="block font-mono text-[10px] uppercase tracking-wider text-faint">
+                              raced as {row.formerName}
+                            </span>
+                          )}
                         </span>
                         {!row.isActive && (
                           <span className="pill bg-surface2 text-light">inactive</span>
@@ -203,15 +218,21 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
           </tbody>
         </table>
       </div>
-      {(showOfficialNote || (dropWorst > 0 && raceNumbers.length > 0)) && (
+      {(showOfficialNote || showDropNote) && (
         <div className="space-y-1 border-t border-border px-4 py-2.5 font-mono text-[11px] leading-relaxed text-light">
-          {dropWorst > 0 && raceNumbers.length > 0 && (
+          {showDropNote && (
             <p>
               {isDriver ? (
                 <>
                   <span className="text-faint line-through decoration-2">Struck-through</span> rounds are dropped: each
                   driver&rsquo;s {dropWorst} lowest-scoring round{dropWorst === 1 ? " doesn't" : "s don't"} count toward the
                   total{raceNumbers.length > dropWorst && <> (best {raceNumbers.length - dropWorst} of {raceNumbers.length})</>}.
+                </>
+              ) : teamDrop ? (
+                <>
+                  <span className="text-faint line-through decoration-2">Struck-through</span> points are dropped: each
+                  team&rsquo;s {teamDropWorst} lowest single-driver round score{teamDropWorst === 1 ? " doesn't" : "s don't"} count
+                  toward the team total, so a round can count partially (the teammate&rsquo;s share still scores).
                 </>
               ) : (
                 <>

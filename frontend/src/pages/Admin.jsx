@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, getToken, setToken } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { PageHeader, ErrorBox, Notice, CardHead } from "../components/ui.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -8,6 +9,8 @@ import AdminImport from "../components/AdminImport.jsx";
 import AdminRatings from "../components/AdminRatings.jsx";
 import AdminDownloads from "../components/AdminDownloads.jsx";
 import AdminRaceInfo from "../components/AdminRaceInfo.jsx";
+import AdminWelcomeFaq from "../components/AdminWelcomeFaq.jsx";
+import AdminTracks from "../components/AdminTracks.jsx";
 import AdminHealth from "../components/AdminHealth.jsx";
 import AdminMembers from "../components/AdminMembers.jsx";
 import RacePreview from "../components/RacePreview.jsx";
@@ -25,7 +28,9 @@ const TABS = [
   { id: "drivers", label: "Drivers" },
   { id: "members", label: "Members" },
   { id: "social", label: "Social Links" },
+  { id: "tracks", label: "Tracks" },
   { id: "raceinfo", label: "Race Info" },
+  { id: "faq", label: "Home FAQ" },
   { id: "downloads", label: "Downloads" },
   { id: "health", label: "Health" },
   { id: "pin", label: "Change PIN" },
@@ -39,10 +44,11 @@ function AdminSeasonBar({ tab }) {
   const { seasons, season, setSeason, current } = useSeason();
   if (!seasons?.length) return null;
   const isActive = current?.isActive;
+  const isPrivate = current?.isPublic === false;
   const ordered = [...seasons].sort((a, b) => b.number - a.number);
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="flex items-center gap-3 border-l-4 pl-3" style={{ borderColor: isActive ? "#10b981" : "#f59e0b" }}>
+      <div className="flex items-center gap-3 border-l-4 pl-3" style={{ borderColor: isActive ? "#10b981" : isPrivate ? "#f43f5e" : "#f59e0b" }}>
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v13a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 3v4M16 3v4" />
@@ -56,8 +62,10 @@ function AdminSeasonBar({ tab }) {
             </span>
             {isActive ? (
               <span className="pill bg-emerald-500/15 text-emerald-600">active · public</span>
+            ) : isPrivate ? (
+              <span className="pill bg-rose-500/15 text-rose-600">private · hidden</span>
             ) : (
-              <span className="pill bg-amber-500/15 text-amber-600">archive · not public</span>
+              <span className="pill bg-amber-500/15 text-amber-600">archive · public</span>
             )}
           </div>
           {current?.game && <div className="mt-0.5 text-xs text-light">{current.game}</div>}
@@ -110,7 +118,14 @@ function SecurityBanner() {
 }
 
 export default function Admin() {
-  const [authed, setAuthed] = useState(!!getToken());
+  // Two ways in: the PIN admin token, or a designated Discord admin (their user
+  // login already carries admin rights, so no PIN screen). A 401 from any admin
+  // request forces the login view regardless.
+  const { user } = useAuth();
+  const isDiscordAdmin = !!user?.isAdmin;
+  const [pinAuthed, setPinAuthed] = useState(!!getToken());
+  const [unauthorized, setUnauthorized] = useState(false);
+  const authed = !unauthorized && (pinAuthed || isDiscordAdmin);
   const [expired, setExpired] = useState(false);
   // Changing the season remounts the whole page (App keys on it), which would
   // reset the tab — so a deliberate tab hand-off (e.g. "Schedule races" jumping
@@ -126,7 +141,7 @@ export default function Admin() {
   // If any admin request reports an expired/invalid token, bounce to the login.
   useEffect(() => {
     const onUnauth = () => {
-      setAuthed(false);
+      setUnauthorized(true);
       setExpired(true);
     };
     window.addEventListener("nabs-admin-unauthorized", onUnauth);
@@ -139,7 +154,8 @@ export default function Admin() {
         expired={expired}
         onSuccess={() => {
           setExpired(false);
-          setAuthed(true);
+          setUnauthorized(false);
+          setPinAuthed(true);
         }}
       />
     );
@@ -151,8 +167,10 @@ export default function Admin() {
         <button
           className="btn-secondary"
           onClick={() => {
+            // Leave the admin area. Clears the PIN token; a Discord admin stays
+            // signed in to the site (their admin rights come from their account).
             setToken(null);
-            setAuthed(false);
+            window.location.href = "/";
           }}
         >
           Log out
@@ -199,7 +217,9 @@ export default function Admin() {
         {tab === "drivers" && <Drivers />}
         {tab === "members" && <AdminMembers />}
         {tab === "social" && <SocialAdmin />}
+        {tab === "tracks" && <AdminTracks />}
         {tab === "raceinfo" && <AdminRaceInfo />}
+        {tab === "faq" && <AdminWelcomeFaq />}
         {tab === "downloads" && <AdminDownloads />}
         {tab === "health" && <AdminHealth />}
         {tab === "pin" && <ChangePin />}
@@ -461,6 +481,7 @@ function EditResults() {
   const [raceId, setRaceId] = useState("");
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState({ track: "", date: "" }); // race details editor
+  const [dotd, setDotd] = useState(""); // Driver of the Day pick
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
@@ -473,6 +494,7 @@ function EditResults() {
       .raceResults(raceId)
       .then((d) => {
         setMeta({ track: d.race?.track || "", date: toLocalInput(d.race?.date) });
+        setDotd(d.race?.driverOfTheDay?.driverId || "");
         setRows(
           d.results.map((r) => {
             const raw = r.rawPosition ?? r.position ?? "";
@@ -551,6 +573,21 @@ function EditResults() {
     }
   }
 
+  // Driver of the Day — the fan-favourite pick shown on the race facts.
+  async function saveDotd() {
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      await api.setDriverOfTheDay(raceId, dotd || null);
+      setMsg(dotd ? "Driver of the Day saved." : "Driver of the Day cleared.");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -585,6 +622,24 @@ function EditResults() {
             Save details
           </button>
           <span className="pb-2 text-xs text-light">Renames the round everywhere. Results stay untouched.</span>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="card flex flex-wrap items-end gap-3 p-4">
+          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+            Driver of the Day
+            <select className="input min-w-56" value={dotd} onChange={(e) => setDotd(e.target.value)}>
+              <option value="">None</option>
+              {rows.map((r) => (
+                <option key={r.driverId} value={r.driverId}>{r.name}</option>
+              ))}
+            </select>
+          </label>
+          <button className="btn-secondary" disabled={busy} onClick={saveDotd}>
+            Save pick
+          </button>
+          <span className="pb-2 text-xs text-light">Shown as a fan-favourite tile on the race facts.</span>
         </div>
       )}
 
@@ -986,19 +1041,28 @@ function parsePointsInput(text) {
 // the points-per-position table (empty = league default).
 function SeasonScoring({ season, onSaved, onError }) {
   const stored = season.pointsTable ? JSON.parse(season.pointsTable).join(", ") : "";
+  const storedTeamDrop = season.teamDropWorst == null ? "" : String(season.teamDropWorst);
   const [drop, setDrop] = useState(String(season.dropWorst ?? 3));
+  const [teamDrop, setTeamDrop] = useState(storedTeamDrop);
   const [points, setPoints] = useState(stored);
   const [saving, setSaving] = useState(false);
-  const dirty = drop !== String(season.dropWorst ?? 3) || points.trim() !== stored;
+  const dirty =
+    drop !== String(season.dropWorst ?? 3) || teamDrop.trim() !== storedTeamDrop || points.trim() !== stored;
 
   async function save() {
     const n = Number(drop);
     if (!Number.isInteger(n) || n < 0 || n > 10) return onError("Dropped rounds must be a whole number between 0 and 10.");
+    let teamVal = null;
+    if (teamDrop.trim() !== "") {
+      const t = Number(teamDrop);
+      if (!Number.isInteger(t) || t < 0 || t > 24) return onError("Team dropped rounds must be a whole number between 0 and 24, or blank.");
+      teamVal = t;
+    }
     const parsed = parsePointsInput(points);
     if (!parsed.ok) return onError(parsed.error);
     setSaving(true); onError(null);
     try {
-      await api.updateSeason(season.id, { dropWorst: n, pointsTable: parsed.value });
+      await api.updateSeason(season.id, { dropWorst: n, teamDropWorst: teamDrop.trim() === "" ? null : teamVal, pointsTable: parsed.value });
       onSaved(`Scoring for ${season.name} saved.`);
     } catch (err) { onError(err.message); } finally { setSaving(false); }
   }
@@ -1009,7 +1073,12 @@ function SeasonScoring({ season, onSaved, onError }) {
         <label className="flex items-center gap-1.5 text-xs text-light">
           Dropped rounds
           <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="10"
-            value={drop} onChange={(e) => setDrop(e.target.value)} title="How many of each driver's/team's lowest-scoring rounds don't count (0 = every round counts)" />
+            value={drop} onChange={(e) => setDrop(e.target.value)} title="How many of each driver's lowest-scoring rounds don't count in the driver standings (0 = every round counts)" />
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-light">
+          Team dropped rounds
+          <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="24" placeholder="—"
+            value={teamDrop} onChange={(e) => setTeamDrop(e.target.value)} title="Constructor standings: drop each team's N lowest single-driver round scores. Leave blank to keep the old rule (teams inherit driver drops)." />
         </label>
         <input className="input min-w-40 flex-1 py-1 font-mono text-xs" placeholder={`Points P1, P2, … (default: ${DEFAULT_POINTS_HINT})`}
           value={points} onChange={(e) => setPoints(e.target.value)} title="Points per finishing position, starting at P1. Leave empty for the league default." />
@@ -1058,6 +1127,15 @@ function Seasons({ gotoRaces }) {
     setBusy(true); setError(null); setMsg(null);
     try { await api.activateSeason(id); setMsg("Active season changed. Reload the site to see it as the default."); reload(); }
     catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  async function togglePublic(s) {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.updateSeason(s.id, { isPublic: !s.isPublic });
+      setMsg(s.isPublic ? `${s.name} is now private — hidden from the public until you publish it.` : `${s.name} is now public.`);
+      reload();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
   async function clone(targetId, withDrivers) {
@@ -1151,6 +1229,9 @@ function Seasons({ gotoRaces }) {
                 <div>
                   <span className="font-display text-base font-bold text-dark">{s.name}</span>
                   {s.isActive && <span className="ml-2 pill bg-emerald-500/15 text-emerald-600">active</span>}
+                  {!s.isActive && s.isPublic === false && (
+                    <span className="ml-2 pill bg-rose-500/15 text-rose-600">private · hidden</span>
+                  )}
                   <div className="text-xs text-light">
                     {s.game || "—"} · {s._count.teams} teams · {s._count.drivers} drivers · {s._count.races} races
                   </div>
@@ -1164,6 +1245,11 @@ function Seasons({ gotoRaces }) {
                   {!s.isActive && (
                     <>
                       <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                        onClick={() => togglePublic(s)}
+                        title={s.isPublic ? "Hide this season from the public" : "Publish this season to the public"}>
+                        {s.isPublic ? "Make private" : "Make public"}
+                      </button>
+                      <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
                         onClick={() => activate(s.id)}>Make active</button>
                       {/* any non-active season is deletable; a filled one requires
                           typing its name and is backed up first (server-enforced) */}
@@ -1173,7 +1259,7 @@ function Seasons({ gotoRaces }) {
                   )}
                 </div>
               </div>
-              <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.pointsTable || ""}`} season={s}
+              <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.pointsTable || ""}`} season={s}
                 onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
               {/* clone teams (or the full roster) from another season */}
               {(seasons || []).length > 1 && (

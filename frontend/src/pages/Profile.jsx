@@ -424,7 +424,18 @@ function MyProfile() {
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Your profile" title="My Profile" right={<button className="btn-secondary" onClick={logout}>Sign out</button>} />
+      <PageHeader
+        eyebrow="Your profile"
+        title="My Profile"
+        right={
+          <div className="flex items-center gap-2">
+            {user?.isAdmin && (
+              <Link to="/admin" className="btn-primary">Admin area</Link>
+            )}
+            <button className="btn-secondary" onClick={logout}>Sign out</button>
+          </div>
+        }
+      />
 
       {/* Hero */}
       <div className="relative overflow-hidden rounded-2xl bg-ink text-white shadow-lg">

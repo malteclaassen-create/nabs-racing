@@ -5,27 +5,65 @@
 // through the id resolved here, so older seasons stay readable as an archive.
 // ---------------------------------------------------------------------------
 
-// The currently active season (falls back to the highest-numbered one).
+// --- season privacy (Phase 9) ----------------------------------------------
+// Private seasons are hidden from every public read. isPublic is a raw-SQL
+// column (may not be in the generated client), read here with a short cache so
+// it costs about one query per 30s instead of one per request. The admin toggle
+// invalidates it so a publish/hide takes effect on the next request.
+const PRIVATE_CACHE_MS = 30_000;
+let privateCache = { set: null, at: 0 };
+
+export function invalidatePrivateSeasonCache() {
+  privateCache = { set: null, at: 0 };
+}
+
+export async function getPrivateSeasonIds(prisma) {
+  const now = Date.now();
+  if (!privateCache.set || now - privateCache.at > PRIVATE_CACHE_MS) {
+    try {
+      const rows = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Season" WHERE "isPublic" = 0`);
+      privateCache = { set: new Set(rows.map((r) => r.id)), at: now };
+    } catch {
+      // Column missing (fresh checkout before ensureAppSchema): nothing private.
+      privateCache = { set: new Set(), at: now };
+    }
+  }
+  return privateCache.set;
+}
+
+// The currently active season (falls back to the highest-numbered PUBLIC one, so
+// a public fallback never lands on a private season).
 export async function getActiveSeason(prisma) {
   const active = await prisma.season.findFirst({ where: { isActive: true } });
   if (active) return active;
-  return prisma.season.findFirst({ orderBy: { number: "desc" } });
+  const priv = await getPrivateSeasonIds(prisma);
+  const seasons = await prisma.season.findMany({ orderBy: { number: "desc" } });
+  return seasons.find((s) => !priv.has(s.id)) || seasons[0] || null;
 }
 
 // Resolve a season from an optional round-number selector (e.g. a query param).
 // `null`/undefined -> the active season. Returns null if nothing matches.
-export async function resolveSeason(prisma, seasonNumber) {
+// Public callers use the default (includePrivate=false): a specific PRIVATE
+// season number resolves to null so its data can't be reached by a crafted
+// ?season=N. Admin callers pass { includePrivate: true }.
+export async function resolveSeason(prisma, seasonNumber, { includePrivate = false } = {}) {
   if (seasonNumber === undefined || seasonNumber === null || seasonNumber === "") {
     return getActiveSeason(prisma);
   }
   const n = Number(seasonNumber);
   if (!Number.isFinite(n)) return getActiveSeason(prisma);
-  return prisma.season.findUnique({ where: { number: n } });
+  const s = await prisma.season.findUnique({ where: { number: n } });
+  if (!s) return null;
+  if (!includePrivate) {
+    const priv = await getPrivateSeasonIds(prisma);
+    if (priv.has(s.id)) return null;
+  }
+  return s;
 }
 
 // Convenience: just the id of the resolved season (or null).
-export async function resolveSeasonId(prisma, seasonNumber) {
-  const s = await resolveSeason(prisma, seasonNumber);
+export async function resolveSeasonId(prisma, seasonNumber, opts) {
+  const s = await resolveSeason(prisma, seasonNumber, opts);
   return s ? s.id : null;
 }
 
@@ -98,8 +136,22 @@ export async function getSeasonScoring(prisma, seasonOrId) {
   if (typeof seasonOrId === "string") {
     season = await prisma.season.findUnique({ where: { id: seasonOrId } });
   }
+  // teamDropWorst may not be in the generated client yet -> raw read. null =
+  // legacy behaviour (teams inherit each driver's own dropped rounds); 0 = no
+  // team drop; N = drop the N lowest single-driver round contributions per team.
+  let teamDropWorst = null;
+  if (season?.id) {
+    try {
+      const rows = await prisma.$queryRawUnsafe(`SELECT "teamDropWorst" FROM "Season" WHERE "id" = ?`, season.id);
+      const v = rows[0]?.teamDropWorst;
+      teamDropWorst = v == null ? null : Number(v);
+    } catch {
+      teamDropWorst = null;
+    }
+  }
   return {
     dropWorst: Number.isInteger(season?.dropWorst) && season.dropWorst >= 0 ? season.dropWorst : 3,
+    teamDropWorst,
     pointsTable: parsePointsTable(season?.pointsTable),
     finalStandings: parseFinalStandings(season?.finalStandings),
   };

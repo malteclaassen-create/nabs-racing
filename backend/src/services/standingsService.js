@@ -12,6 +12,7 @@ import {
   DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
 import { getSeasonScoring } from "./seasonService.js";
+import { getNameOverrides } from "../lib/persons.js";
 
 // Apply each race's position penalties before scoring. Grouping by race keeps a
 // penalty's re-ranking contained to its own round. With no penalties this is a
@@ -119,6 +120,88 @@ export function buildConstructorRows({ tier, teams, drivers, raceNumbers, result
   return tierTeams.map((team) => ({ team, ...perTeam.get(team.id) }));
 }
 
+// Team-level drop rule (opt-in per season via Season.teamDropWorst). Instead of
+// inheriting each driver's own dropped rounds, a team drops its own N lowest
+// single-driver-per-round contributions. Modelled as "slots": one slot per
+// driver contribution in a run round (subs included), plus ghost 0-slots so
+// every calendar round has at least `rosterSlots` slots (this makes mid-season
+// nothing real drop until enough rounds are behind us, exactly like the driver
+// rule). The N lowest-scoring slots are removed. Pure / side-effect free.
+export function applyTeamDrop({ contributions, rosterSlots, roundNumbers, dropN }) {
+  const slots = [];
+  const countByRound = new Map();
+  for (const c of contributions) {
+    slots.push({ round: c.round, points: c.points });
+    countByRound.set(c.round, (countByRound.get(c.round) || 0) + 1);
+  }
+  // Ghost 0-slots pad each calendar round up to rosterSlots (covers unrun rounds
+  // and rounds where a seat went unfilled).
+  for (const round of roundNumbers) {
+    const have = countByRound.get(round) || 0;
+    for (let i = have; i < rosterSlots; i++) slots.push({ round, points: 0 });
+  }
+  const fullTotal = slots.reduce((s, x) => s + x.points, 0);
+  if (dropN <= 0 || slots.length <= dropN) {
+    return { total: fullTotal, droppedPerRace: {} };
+  }
+  // Lowest points first; tie -> drop the later round (matches applyDropScores).
+  const sorted = [...slots].sort((a, b) => a.points - b.points || b.round - a.round);
+  const dropped = sorted.slice(0, dropN);
+  const droppedPerRace = {};
+  let droppedSum = 0;
+  for (const d of dropped) {
+    if (d.points > 0) {
+      droppedPerRace[d.round] = (droppedPerRace[d.round] || 0) + d.points;
+      droppedSum += d.points;
+    }
+  }
+  return { total: fullTotal - droppedSum, droppedPerRace };
+}
+
+// Constructor rows under the team-level drop rule. Each tier scores in its own
+// currency (T1 real points, T2 re-ranked points); a team's roster size sets how
+// many slots per round pad the drop model. Pure / side-effect free.
+export function buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN, table = DEFAULT_POINTS_TABLE }) {
+  const contributionsFor =
+    tier === 1 ? calculateT1ConstructorContributions : calculateT2ConstructorContributions;
+  const tierTeams = teams.filter((t) => t.tier === tier);
+  const rosterSlots = new Map(
+    tierTeams.map((t) => [t.id, Math.max(1, drivers.filter((d) => d.teamId === t.id && d.tier === tier).length)])
+  );
+  const contribs = new Map(tierTeams.map((t) => [t.id, []]));
+  const perRace = new Map(tierTeams.map((t) => [t.id, {}]));
+
+  for (const num of raceNumbers) {
+    const results = resultsByRound.get(num);
+    if (!results || results.length === 0) continue;
+    for (const t of tierTeams) perRace.get(t.id)[num] = perRace.get(t.id)[num] ?? 0;
+    for (const c of contributionsFor(results, drivers, teams, table)) {
+      if (!contribs.has(c.teamId)) continue;
+      contribs.get(c.teamId).push({ round: num, points: c.points });
+      perRace.get(c.teamId)[num] += c.points;
+    }
+  }
+
+  return tierTeams.map((team) => {
+    const { total, droppedPerRace } = applyTeamDrop({
+      contributions: contribs.get(team.id),
+      rosterSlots: rosterSlots.get(team.id),
+      roundNumbers: raceNumbers,
+      dropN: teamDropN,
+    });
+    return {
+      teamId: team.id,
+      name: team.name,
+      color: team.color,
+      tier: team.tier,
+      logoUrl: team.logoUrl,
+      perRace: perRace.get(team.id),
+      droppedPerRace,
+      total,
+    };
+  });
+}
+
 // Overlay official final standings on top of computed rows (archived seasons).
 // Rows whose id appears in `finals` take its official total and keep the given
 // array order; rows not listed keep their computed total and sort after, by
@@ -190,11 +273,12 @@ async function getRaceNumbers(prisma, seasonId) {
 
 // DRIVER STANDINGS -----------------------------------------------------------
 export async function getDriverStandings(prisma, seasonId) {
-  const [drivers, races, results, scoring] = await Promise.all([
+  const [drivers, races, results, scoring, nameOverrides] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
     prisma.raceResult.findMany({ where: { race: { seasonId } } }),
     getSeasonScoring(prisma, seasonId),
+    getNameOverrides(prisma),
   ]);
   const table = scoring.pointsTable || DEFAULT_POINTS_TABLE;
 
@@ -223,9 +307,14 @@ export async function getDriverStandings(prisma, seasonId) {
     // every real result; droppedRounds tells the UI which ones don't count.
     const { total, droppedRounds } = applyDropScores(pointsByRound, raceNumbers, scoring.dropWorst);
 
+    // Linked-person display: archive rows show the person's current name with a
+    // subtle "raced as <old handle>" note (formerName). No link => own name.
+    const ov = nameOverrides.get(driver.id);
+
     return {
       driverId: driver.id,
-      name: driver.name,
+      name: ov?.displayName || driver.name,
+      formerName: ov?.formerName || null,
       discordName: driver.discordName,
       tier: driver.tier,
       isActive: driver.isActive,
@@ -291,28 +380,38 @@ async function getConstructorStandings(prisma, tier, seasonId) {
   const resultsByRound = new Map();
   for (const [num, rs] of byRace) resultsByRound.set(num, applyPenalties(rs));
 
-  // Archived seasons that ship official per-race team points use those directly
-  // (old per-team drop rule); everyone else computes live from the race results.
-  const rows = scoring.finalStandings?.teamPerRace
-    ? buildStoredConstructorRows({ tier, teams, raceNumbers, teamPerRace: scoring.finalStandings.teamPerRace, dropN: scoring.dropWorst })
-    : buildConstructorRows({
-        tier,
-        teams,
-        drivers,
-        raceNumbers,
-        resultsByRound,
-        dropN: scoring.dropWorst,
-        table,
-      }).map(({ team, perRace, droppedPerRace, total }) => ({
-        teamId: team.id,
-        name: team.name,
-        color: team.color,
-        tier: team.tier,
-        logoUrl: team.logoUrl,
-        perRace,
-        droppedPerRace,
-        total,
-      }));
+  // Three ways to score a constructor season:
+  //   official — archived seasons that ship verbatim per-team round points;
+  //   team     — the season opts into the team-level drop rule (Season.teamDropWorst);
+  //   driver   — the legacy default: teams inherit each driver's own dropped rounds.
+  const dropMode = scoring.finalStandings?.teamPerRace
+    ? "official"
+    : scoring.teamDropWorst != null
+      ? "team"
+      : "driver";
+  const rows =
+    dropMode === "official"
+      ? buildStoredConstructorRows({ tier, teams, raceNumbers, teamPerRace: scoring.finalStandings.teamPerRace, dropN: scoring.dropWorst })
+      : dropMode === "team"
+        ? buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN: scoring.teamDropWorst, table })
+        : buildConstructorRows({
+            tier,
+            teams,
+            drivers,
+            raceNumbers,
+            resultsByRound,
+            dropN: scoring.dropWorst,
+            table,
+          }).map(({ team, perRace, droppedPerRace, total }) => ({
+            teamId: team.id,
+            name: team.name,
+            color: team.color,
+            tier: team.tier,
+            logoUrl: team.logoUrl,
+            perRace,
+            droppedPerRace,
+            total,
+          }));
 
   rows.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
   rows.forEach((row, i) => (row.position = i + 1));
@@ -324,6 +423,11 @@ async function getConstructorStandings(prisma, tier, seasonId) {
     tier,
     raceNumbers,
     dropWorst: scoring.dropWorst,
+    // The rule actually in force for the constructor table, so the UI footnote
+    // matches: "team" (N lowest team round scores dropped), "driver" (legacy
+    // inheritance) or "official" (archived verbatim totals).
+    dropMode,
+    teamDropWorst: dropMode === "team" ? scoring.teamDropWorst : null,
     officialTotals: !!scoring.finalStandings?.teams?.length,
     standings: rows,
   };

@@ -20,11 +20,15 @@
 // no DB writes, recomputes on every call, so it always reflects the latest
 // imported results.
 // ---------------------------------------------------------------------------
+import { telemetryBySeason } from "../lib/telemetryRead.js";
+import { readRatingWeights } from "../lib/ratingWeights.js";
 
 // --- tunables (kept together so the curve is easy to adjust) ----------------
-const BAND_LOW = 60; // worst-in-field maps here
-const BAND_HIGH = 93; // best-in-field maps here
+const BAND_LOW = 58; // worst-in-field maps here
+const BAND_HIGH = 96; // best-in-field maps here
 const SHRINK_K = 3; // pull small samples toward the field mean by this much
+const NO_SHRINK_ABOVE = 6; // a real regular (>= this many samples) isn't shrunk,
+//                            so a dominant driver isn't dragged back to the mean
 const MIN_STARTS_REF = 3; // a "regular": sets the scale everyone is measured on
 const PROVISIONAL_BELOW = 3; // fewer starts than this -> rating shown as provisional
 // Experience saturates: once a driver has raced this share of the season's run
@@ -36,10 +40,16 @@ const FULL_XP_SHARE = 0.7;
 const RTG_WEIGHTS = { rac: 0.35, pac: 0.3, aha: 0.2, exp: 0.15 };
 // How each sub-rating is blended from its underlying percentile components.
 const PAC_WEIGHTS = { lap: 0.65, grid: 0.35 };
-const RAC_WEIGHTS = { finish: 0.55, gained: 0.25, podium: 0.2 };
-// Awareness blends reliability (finishing, few DNFs), consistency, and how often
-// the driver was involved in car-to-car contact (from the AC race telemetry).
-const AHA_WEIGHTS = { finishRate: 0.4, dnf: 0.2, consistency: 0.15, contacts: 0.25 };
+// Racecraft: finishing position, places gained, on-track overtakes and podiums.
+const RAC_WEIGHTS = { finish: 0.45, gained: 0.2, overtakes: 0.15, podium: 0.2 };
+// Awareness/discipline: reliability (finishing, few DNFs), lap consistency, and
+// staying out of trouble (car contacts, off-track/env hits, in-game penalties).
+// `cuts` is available as a tunable but defaults to 0 (old seasons log no cuts).
+const AHA_WEIGHTS = { finishRate: 0.25, dnf: 0.15, consistency: 0.25, contacts: 0.15, env: 0.1, penalties: 0.1, cuts: 0 };
+// A dominant driver (high win share) gets a small boost on top of the blended
+// overall, so a season's runaway leader reads ~99 instead of capping in the low
+// 90s. boost = max * min(1, winShare / fullAt).
+const DOMINANCE = { max: 6, fullAt: 0.6 };
 
 // All knobs in one place, so the admin tuning panel can read the defaults and
 // pass back overrides. `band` is the visible 0–99 range; the rest are the blend
@@ -47,6 +57,7 @@ const AHA_WEIGHTS = { finishRate: 0.4, dnf: 0.2, consistency: 0.15, contacts: 0.
 export const RATING_DEFAULTS = {
   band: { low: BAND_LOW, high: BAND_HIGH },
   fullXpShare: FULL_XP_SHARE,
+  dominance: { ...DOMINANCE },
   rtg: { ...RTG_WEIGHTS },
   pac: { ...PAC_WEIGHTS },
   rac: { ...RAC_WEIGHTS },
@@ -66,20 +77,33 @@ function normalizeGroup(group, base) {
 }
 
 // Merge admin overrides onto the defaults and normalise the weight groups.
-function resolveConfig(opts = {}) {
+export function resolveConfig(opts = {}) {
   const low = Number(opts.band?.low);
   const high = Number(opts.band?.high);
+  const domMax = Number(opts.dominance?.max);
+  const domFullAt = Number(opts.dominance?.fullAt);
   return {
     band: {
       low: Number.isFinite(low) ? low : BAND_LOW,
       high: Number.isFinite(high) ? high : BAND_HIGH,
     },
     fullXpShare: Number.isFinite(Number(opts.fullXpShare)) ? Number(opts.fullXpShare) : FULL_XP_SHARE,
+    dominance: {
+      max: Number.isFinite(domMax) ? domMax : DOMINANCE.max,
+      fullAt: Number.isFinite(domFullAt) && domFullAt > 0 ? domFullAt : DOMINANCE.fullAt,
+    },
     rtg: normalizeGroup(opts.rtg, RTG_WEIGHTS),
     pac: normalizeGroup(opts.pac, PAC_WEIGHTS),
     rac: normalizeGroup(opts.rac, RAC_WEIGHTS),
     aha: normalizeGroup(opts.aha, AHA_WEIGHTS),
   };
+}
+
+// Small overall boost for a runaway leader. Pure/exported for testing.
+export function dominanceBoost(wins, racesRun, dominance = DOMINANCE) {
+  if (!racesRun || racesRun < 1) return 0;
+  const winShare = wins / racesRun;
+  return Math.round(dominance.max * Math.min(1, winShare / dominance.fullAt));
 }
 
 // --- small stats helpers ----------------------------------------------------
@@ -110,9 +134,12 @@ function percentile(v, arr, higherBetter) {
 }
 
 // Shrink a small-sample value toward the field mean: (n·v + K·mean)/(n+K).
-// With n≫K this is ~v; with n small it leans on the field average.
-function shrink(v, n, fieldMean) {
+// With n≫K this is ~v; with n small it leans on the field average. A driver with
+// a full sample (>= NO_SHRINK_ABOVE) is left untouched, so the season's stand-out
+// performers keep their real values instead of being pulled toward average.
+export function shrink(v, n, fieldMean) {
   if (v == null) return fieldMean;
+  if (n >= NO_SHRINK_ABOVE) return v;
   return (n * v + SHRINK_K * fieldMean) / (n + SHRINK_K);
 }
 
@@ -184,14 +211,18 @@ function rawMetrics(driver, results, raceMeta) {
 // group is normalised, so partial or unnormalised input is fine. Omitted -> the
 // defaults above. Used by the admin tuning panel to preview different curves.
 export async function getDriverRatings(prisma, seasonId, opts = {}) {
-  const cfg = resolveConfig(opts);
-  const [drivers, races, results] = await Promise.all([
+  // Persisted admin weights are the baseline; explicit opts (the admin preview)
+  // override them group-by-group. Both fall through to RATING_DEFAULTS.
+  const saved = (await readRatingWeights(prisma)) || {};
+  const cfg = resolveConfig({ ...saved, ...opts });
+  const [drivers, races, results, telemetry] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({
       where: { seasonId, isSpecialEvent: false, isCompleted: true },
       orderBy: { number: "asc" },
     }),
     prisma.raceResult.findMany({ where: { race: { seasonId } } }),
+    telemetryBySeason(prisma, seasonId),
   ]);
 
   const completedRaceIds = new Set(races.map((r) => r.id));
@@ -214,6 +245,29 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
   const contactsById = new Map(
     contactRows.map((x) => [x.driverId, { total: Number(x.total) || 0, rated: Number(x.rated) || 0 }])
   );
+
+  // Extra telemetry per driver, summed over completed rounds (overtakes, env
+  // hits, cuts, in-game penalties, and a clean-lap-weighted consistency). Read
+  // from the raw telemetry map; missing for un-backfilled seasons -> the
+  // percentile degrades to neutral (0.5) for everyone.
+  const telById = new Map();
+  for (const race of races) {
+    for (const r of liveResults) {
+      if (r.raceId !== race.id) continue;
+      const t = telemetry.get(`${r.raceId}|${r.driverId}`);
+      if (!t) continue;
+      let cur = telById.get(r.driverId);
+      if (!cur) {
+        cur = { overtakes: 0, env: 0, cuts: 0, gamePen: 0, consNum: 0, consDen: 0, ratedOt: 0, ratedEnv: 0, ratedPen: 0 };
+        telById.set(r.driverId, cur);
+      }
+      if (t.overtakes != null) { cur.overtakes += t.overtakes; cur.ratedOt++; }
+      if (t.envContacts != null) { cur.env += t.envContacts; cur.ratedEnv++; }
+      if (t.cuts != null) cur.cuts += t.cuts;
+      if (t.gamePenalties != null) { cur.gamePen += t.gamePenalties; cur.ratedPen++; }
+      if (t.consistencyMs != null && t.cleanLaps) { cur.consNum += t.consistencyMs * t.cleanLaps; cur.consDen += t.cleanLaps; }
+    }
+  }
 
   // Races needed to count as a fully seasoned regular (EXP saturates here).
   const fullXp = Math.max(4, Math.round(races.length * cfg.fullXpShare));
@@ -241,10 +295,17 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     .map((d) => ({ driver: d, m: rawMetrics(d, resultsByDriver.get(d.id) || [], raceMeta) }))
     .filter((x) => x.m.starts >= 1);
 
-  // Attach contacts-per-start (null when this driver has no backfilled data).
+  // Attach per-start telemetry rates (null when this driver has no backfilled
+  // data for that signal, so it drops to a neutral percentile).
   for (const { driver, m } of raw) {
     const c = contactsById.get(driver.id);
     m.contactsRate = c && c.rated > 0 && m.starts ? c.total / m.starts : null;
+    const t = telById.get(driver.id);
+    m.overtakesRate = t && t.ratedOt > 0 ? t.overtakes / t.ratedOt : null;
+    m.envRate = t && t.ratedEnv > 0 && m.starts ? t.env / m.starts : null;
+    m.penaltyRate = t && t.ratedPen > 0 && m.starts ? t.gamePen / m.starts : null;
+    m.cutsRate = t && t.consDen > 0 && m.starts ? t.cuts / m.starts : null;
+    m.lapConsistencyMs = t && t.consDen > 0 ? t.consNum / t.consDen : null;
   }
 
   // The reference field = the regulars (>= MIN_STARTS_REF). Their distribution
@@ -263,6 +324,10 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     dnfRate: mean(refField.map((m) => m.dnfRate).filter((x) => x != null)),
     podiumRate: mean(refField.map((m) => m.podiumRate).filter((x) => x != null)),
     contactsRate: mean(refField.map((m) => m.contactsRate).filter((x) => x != null)),
+    overtakesRate: mean(refField.map((m) => m.overtakesRate).filter((x) => x != null)),
+    envRate: mean(refField.map((m) => m.envRate).filter((x) => x != null)),
+    penaltyRate: mean(refField.map((m) => m.penaltyRate).filter((x) => x != null)),
+    cutsRate: mean(refField.map((m) => m.cutsRate).filter((x) => x != null)),
   };
 
   // Reference distributions (after the same shrinkage we apply per driver), so a
@@ -276,7 +341,12 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     dnfRate: refField.map((m) => shrink(m.dnfRate, m.starts, refMean.dnfRate)),
     podiumRate: refField.map((m) => shrink(m.podiumRate, m.starts, refMean.podiumRate)),
     contactsRate: refField.map((m) => shrink(m.contactsRate, m.starts, refMean.contactsRate)),
+    overtakesRate: refField.map((m) => shrink(m.overtakesRate, m.starts, refMean.overtakesRate)),
+    envRate: refField.map((m) => shrink(m.envRate, m.starts, refMean.envRate)),
+    penaltyRate: refField.map((m) => shrink(m.penaltyRate, m.starts, refMean.penaltyRate)),
+    cutsRate: refField.map((m) => shrink(m.cutsRate, m.starts, refMean.cutsRate)),
     spread: refField.map((m) => m.finishSpread).filter((x) => x != null),
+    consistencyMs: refField.map((m) => m.lapConsistencyMs).filter((x) => x != null),
   };
 
   const rows = raw.map(({ driver, m }) => {
@@ -288,27 +358,53 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     const pPodium = percentile(shrink(m.podiumRate, m.starts, refMean.podiumRate), refDist.podiumRate, true);
     const pFinishRate = percentile(shrink(m.finishRate, m.starts, refMean.finishRate), refDist.finishRate, true);
     const pDnf = percentile(shrink(m.dnfRate, m.starts, refMean.dnfRate), refDist.dnfRate, false);
-    const pConsistency = m.finishSpread != null ? percentile(m.finishSpread, refDist.spread, false) : 0.5;
+    // Consistency: lap-time spread of clean laps (lower better) when telemetry
+    // exists, else fall back to finishing-position spread so old seasons still
+    // get a signal, else neutral.
+    const pConsistency =
+      m.lapConsistencyMs != null
+        ? percentile(m.lapConsistencyMs, refDist.consistencyMs, false)
+        : m.finishSpread != null
+          ? percentile(m.finishSpread, refDist.spread, false)
+          : 0.5;
     const pContacts = percentile(shrink(m.contactsRate, m.starts, refMean.contactsRate), refDist.contactsRate, false);
+    const pOvertakes = m.overtakesRate != null
+      ? percentile(shrink(m.overtakesRate, m.starts, refMean.overtakesRate), refDist.overtakesRate, true)
+      : 0.5;
+    const pEnv = m.envRate != null
+      ? percentile(shrink(m.envRate, m.starts, refMean.envRate), refDist.envRate, false)
+      : 0.5;
+    const pPenalties = m.penaltyRate != null
+      ? percentile(shrink(m.penaltyRate, m.starts, refMean.penaltyRate), refDist.penaltyRate, false)
+      : 0.5;
+    const pCuts = m.cutsRate != null
+      ? percentile(shrink(m.cutsRate, m.starts, refMean.cutsRate), refDist.cutsRate, false)
+      : 0.5;
     // Experience is absolute & saturating (not a percentile): at `fullXp`+ races
     // you're a full-marks regular, so missing a round or two barely moves it.
     const expPct = Math.min(1, m.starts / fullXp);
 
     const pacPct = cfg.pac.lap * pLap + cfg.pac.grid * pGrid;
-    const racPct = cfg.rac.finish * pFinish + cfg.rac.gained * pGained + cfg.rac.podium * pPodium;
+    const racPct =
+      cfg.rac.finish * pFinish + cfg.rac.gained * pGained + cfg.rac.overtakes * pOvertakes + cfg.rac.podium * pPodium;
     const ahaPct =
       cfg.aha.finishRate * pFinishRate +
       cfg.aha.dnf * pDnf +
       cfg.aha.consistency * pConsistency +
-      cfg.aha.contacts * pContacts;
+      cfg.aha.contacts * pContacts +
+      cfg.aha.env * pEnv +
+      cfg.aha.penalties * pPenalties +
+      cfg.aha.cuts * pCuts;
 
     const pac = clampRating(pacPct, cfg.band);
     const rac = clampRating(racPct, cfg.band);
     const aha = clampRating(ahaPct, cfg.band);
     const exp = clampRating(expPct, cfg.band);
-    const overall = Math.round(
-      cfg.rtg.rac * rac + cfg.rtg.pac * pac + cfg.rtg.aha * aha + cfg.rtg.exp * exp
-    );
+    // Blended overall, then a small dominance boost so a runaway leader reads
+    // ~99 rather than capping in the low 90s.
+    const blended =
+      cfg.rtg.rac * rac + cfg.rtg.pac * pac + cfg.rtg.aha * aha + cfg.rtg.exp * exp;
+    const overall = Math.min(99, Math.round(blended) + dominanceBoost(m.wins, races.length, cfg.dominance));
 
     return {
       driverId: driver.id,
@@ -320,6 +416,11 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
       wins: m.wins,
       podiums: m.podiums,
       contacts: contactsById.get(driver.id)?.total ?? null,
+      // null (not 0) when the driver has no telemetry for that signal, so the
+      // admin table shows "–" instead of a misleading zero.
+      overtakes: telById.get(driver.id)?.ratedOt ? telById.get(driver.id).overtakes : null,
+      envContacts: telById.get(driver.id)?.ratedEnv ? telById.get(driver.id).env : null,
+      gamePenalties: telById.get(driver.id)?.ratedPen ? telById.get(driver.id).gamePen : null,
       provisional: m.starts < PROVISIONAL_BELOW,
       ratings: { overall, exp, pac, rac, aha },
     };

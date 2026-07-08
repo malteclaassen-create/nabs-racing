@@ -1,7 +1,10 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { getDriverResultPoints, getPointsForPosition, applyPenalties, DEFAULT_POINTS_TABLE } from "../services/pointsCalculator.js";
-import { resolveSeasonId, getSeasonScoring } from "../services/seasonService.js";
+import { resolveSeasonId, getSeasonScoring, getPrivateSeasonIds } from "../services/seasonService.js";
+import { isAdminRequest } from "../middleware/auth.js";
+import { getNameOverrides } from "../lib/persons.js";
+import { telemetryForRace } from "../lib/telemetryRead.js";
 
 const router = Router();
 
@@ -35,8 +38,12 @@ router.get("/:id/results", async (req, res, next) => {
   try {
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
     if (!race) return res.status(404).json({ error: "Race not found" });
+    // A race in a private (unpublished) season is 404 to the public.
+    if (race.seasonId && !isAdminRequest(req) && (await getPrivateSeasonIds(prisma)).has(race.seasonId)) {
+      return res.status(404).json({ error: "Race not found" });
+    }
 
-    const [results, drivers, teams, scoring] = await Promise.all([
+    const [results, drivers, teams, scoring, nameOverrides, telemetry] = await Promise.all([
       prisma.raceResult.findMany({
         where: { raceId: race.id },
         include: { driver: { include: { team: true } }, subForTeam: true },
@@ -44,6 +51,8 @@ router.get("/:id/results", async (req, res, next) => {
       prisma.driver.findMany({ where: { seasonId: race.seasonId } }),
       prisma.team.findMany({ where: { seasonId: race.seasonId } }),
       getSeasonScoring(prisma, race.seasonId),
+      getNameOverrides(prisma),
+      telemetryForRace(prisma, race.id),
     ]);
     const table = scoring.pointsTable || DEFAULT_POINTS_TABLE;
 
@@ -90,9 +99,14 @@ router.get("/:id/results", async (req, res, next) => {
         const effectiveTeam = r.subForTeam
           ? teamById.get(r.subForTeam.id)
           : r.driver.team;
+        const ov = nameOverrides.get(r.driverId);
+        // AC telemetry read via raw SQL (columns may not be in the generated
+        // client yet) — feeds race facts + profiles. null when not imported.
+        const tel = telemetry.get(r.driverId) || {};
         return {
           driverId: r.driverId,
-          name: r.driver.name,
+          name: ov?.displayName || r.driver.name,
+          formerName: ov?.formerName || null,
           discordName: r.driver.discordName,
           country: r.driver.country || null,
           driverTier: r.driver.tier,
@@ -105,6 +119,15 @@ router.get("/:id/results", async (req, res, next) => {
           grid: r.grid,
           bestLapMs: r.bestLapMs,
           totalTimeMs: r.totalTimeMs,
+          contacts: tel.contacts ?? null,
+          envContacts: tel.envContacts ?? null,
+          cuts: tel.cuts ?? null,
+          overtakes: tel.overtakes ?? null,
+          laps: tel.laps ?? null,
+          cleanLaps: tel.cleanLaps ?? null,
+          consistencyMs: tel.consistencyMs ?? null,
+          gamePenalties: tel.gamePenalties ?? null,
+          gamePenaltySeconds: tel.gamePenaltySeconds ?? null,
           team: {
             id: r.driver.team.id,
             name: r.driver.team.name,
@@ -132,6 +155,19 @@ router.get("/:id/results", async (req, res, next) => {
         return (a.position ?? 999) - (b.position ?? 999);
       });
 
+    // Driver of the Day (admin pick) — column may not be in the generated client.
+    let driverOfTheDay = null;
+    try {
+      const dr = await prisma.$queryRawUnsafe(`SELECT "driverOfTheDayId" FROM "Race" WHERE "id" = ?`, race.id);
+      const dotdId = dr[0]?.driverOfTheDayId || null;
+      if (dotdId) {
+        const row = rows.find((r) => r.driverId === dotdId);
+        driverOfTheDay = { driverId: dotdId, name: row?.name || null };
+      }
+    } catch {
+      /* column missing pre-migration */
+    }
+
     res.json({
       race: {
         id: race.id,
@@ -140,6 +176,7 @@ router.get("/:id/results", async (req, res, next) => {
         date: race.date,
         isCompleted: race.isCompleted,
         hasPositions,
+        driverOfTheDay,
       },
       results: rows,
     });

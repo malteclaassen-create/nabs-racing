@@ -20,6 +20,18 @@ import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 // the page prefers, so the copy below always matches the season being shown.
 const DEFAULT_POINTS = [35, 30, 25, 22, 20, 18, 16, 14, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1];
 
+// Admin-edited FAQ answers are stored as plain strings; these two helpers turn
+// them into JSX: fill() resolves {placeholders} from the season, rich() turns
+// **spans** into a bold highlight (same convention as the Race Info page).
+function fillFaq(s, tokens) {
+  return String(s ?? "").replace(/\{(\w+)\}/g, (m, k) => (tokens[k] != null && tokens[k] !== "" ? String(tokens[k]) : m));
+}
+function richFaq(s) {
+  const parts = String(s ?? "").split(/\*\*(.+?)\*\*/g);
+  if (parts.length === 1) return s;
+  return parts.map((p, i) => (i % 2 ? <span key={i} className="font-semibold text-dark">{p}</span> : p));
+}
+
 function DiscordIcon({ className = "" }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
@@ -134,6 +146,8 @@ export default function Welcome() {
   const t1 = useApi(useCallback(() => api.t1Standings(activeNum), [activeNum]));
   const t2 = useApi(useCallback(() => api.t2Standings(activeNum), [activeNum]));
   const races = useApi(useCallback(() => api.races(activeNum), [activeNum]));
+  // Admin-editable FAQ override (null = show the built-in season-aware defaults).
+  const faq = useApi(useCallback(() => api.welcomeFaq(), []));
 
   const heroImgRef = useParallax(0.08);
 
@@ -149,7 +163,14 @@ export default function Welcome() {
 
   // Season-aware copy: everything below adapts to the season being shown, so
   // the page needs no edits when a new season (new game, new rules) starts.
-  const { era, platform } = seasonGameParts(season);
+  // During a season changeover the active season may already be the new one
+  // while no round has run yet — in that gap the era copy keeps naming the
+  // PREVIOUS season's cars, and only flips to the new era once the first round
+  // of the new season is in the books.
+  const hasRunThisSeason = champRaces.some((r) => r.isCompleted);
+  const prevSeason = seasons.find((s) => s.number === (season?.number ?? 0) - 1);
+  const eraSeason = hasRunThisSeason ? season : prevSeason || season;
+  const { era, platform } = seasonGameParts(eraSeason);
   const carsLabel = era || "Formula 1";
   // League-wide facts. Seasons are numbered from 1, so the RUNNING season's
   // number is how many seasons NABS has raced. Counting the highest number
@@ -161,9 +182,25 @@ export default function Welcome() {
   const timeline = [...seasons].sort((a, b) => a.number - b.number);
   const dropWorst = drivers.data?.dropWorst ?? season?.dropWorst ?? 3;
   const counted = dropWorst > 0 && totalRounds > dropWorst ? totalRounds - dropWorst : null;
+  // Team-level drop rule (null = teams inherit the driver drops).
+  const teamDrop = season?.teamDropWorst ?? null;
   const pointsTable =
     Array.isArray(season?.pointsTable) && season.pointsTable.length ? season.pointsTable : DEFAULT_POINTS;
   const pointsPairs = pointsTable.map((pts, i) => [String(i + 1), pts]);
+
+  // Admin-edited FAQ (if any) + the live numbers its {placeholders} reference.
+  const faqItems = faq.data?.content;
+  const faqTokens = {
+    platform: platform || "Assetto Corsa",
+    era: carsLabel,
+    rounds: totalRounds || "",
+    counted: counted || totalRounds || "",
+    drop: dropWorst || "",
+    teamDrop: teamDrop != null && teamDrop > 0 ? teamDrop : "",
+    seasons: seasonCount || "",
+    pointsFirst: pointsPairs[0]?.[1] ?? "",
+    pointsLast: pointsPairs[pointsPairs.length - 1]?.[1] ?? "",
+  };
 
   const loading = drivers.loading || t1.loading || t2.loading || races.loading;
 
@@ -202,7 +239,6 @@ export default function Welcome() {
 
         <div className="relative flex min-h-[520px] flex-col justify-center gap-6 p-7 sm:p-12 lg:max-w-3xl">
           <div className="hero-anim flex items-center gap-3 font-mono text-[12px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
-            <span className="live-dot inline-block h-2 w-2 rounded-full bg-brand" />
             <span>{season ? season.name : "NABS Racing League"}{season?.game ? ` · ${season.game}` : ""}</span>
           </div>
 
@@ -213,12 +249,21 @@ export default function Welcome() {
             <span className="text-brand">on the NABS grid</span>
           </h1>
 
+          {/* Short on phones, full paragraph from sm up (the long copy reads as a
+              wall of text on a narrow screen). */}
           <p className="hero-anim max-w-xl text-lg leading-relaxed text-ink/70 dark:text-white/80" style={{ animationDelay: "0.2s" }}>
-            A community-run racing league on Discord{seasonCount > 1 ? `, ${seasonCount} seasons and counting` : ""}.
-            Every season we race a new era of motorsport; right now the grid runs{" "}
-            <span className="font-semibold text-ink dark:text-white">{carsLabel}</span> cars on {platform}. Two
-            tiers, a full championship, and a friendly grid that welcomes new drivers every season, whether
-            you&rsquo;re chasing wins or just learning the lines.
+            <span className="sm:hidden">
+              A community-run racing league on Discord. Right now we race{" "}
+              <span className="font-semibold text-ink dark:text-white">{carsLabel}</span> on {platform}, across
+              two tiers. New drivers are welcome every season.
+            </span>
+            <span className="hidden sm:inline">
+              A community-run racing league on Discord{seasonCount > 1 ? `, ${seasonCount} seasons and counting` : ""}.
+              Every season we race a new era of motorsport; right now the grid runs{" "}
+              <span className="font-semibold text-ink dark:text-white">{carsLabel}</span> cars on {platform}. Two
+              tiers, a full championship, and a friendly grid that welcomes new drivers every season, whether
+              you&rsquo;re chasing wins or just learning the lines.
+            </span>
           </p>
 
           <div className="hero-anim flex flex-wrap items-center gap-3" style={{ animationDelay: "0.3s" }}>
@@ -404,8 +449,11 @@ export default function Welcome() {
                     <span className="font-bold text-dark">
                       {counted ? `Best ${counted} of ${totalRounds}.` : `Your worst ${dropWorst} don't count.`}
                     </span>{" "}
-                    Every driver&rsquo;s {dropWorst} lowest-scoring rounds are dropped, from the team standings
-                    too, so consistency wins titles, not luck.
+                    Every driver&rsquo;s {dropWorst} lowest-scoring rounds are dropped.{" "}
+                    {teamDrop != null && teamDrop > 0
+                      ? `Teams drop their own ${teamDrop} weakest single-driver rounds too.`
+                      : "The team standings inherit those drops too."}{" "}
+                    Consistency wins titles, not luck.
                   </>
                 ) : (
                   <>
@@ -497,6 +545,16 @@ export default function Welcome() {
       <section>
         <SectionHead center eyebrow="Good to know" title="Frequently asked" />
         <div className="mx-auto grid max-w-3xl gap-3">
+          {faqItems ? (
+            // Admin-edited FAQ: whatever questions were saved, with live numbers
+            // filled into the {placeholders}.
+            faqItems.map((it, i) => (
+              <FaqItem key={i} q={fillFaq(it.q, faqTokens)}>
+                {richFaq(fillFaq(it.a, faqTokens))}
+              </FaqItem>
+            ))
+          ) : (
+          <>
           <FaqItem q="Do I need to be fast to join?">
             Not at all. Tier 2 and the reserve system exist so newer drivers can find their feet against
             similar pace. Clean, consistent racing matters far more than raw speed.
@@ -531,6 +589,8 @@ export default function Welcome() {
               : "Every round counts toward the championship."}{" "}
             It&rsquo;s all calculated automatically and shown live on this site.
           </FaqItem>
+          </>
+          )}
         </div>
       </section>
 

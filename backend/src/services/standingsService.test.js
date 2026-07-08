@@ -5,6 +5,7 @@ import {
   buildConstructorRows,
   applyFinalStandings,
   buildStoredConstructorRows,
+  applyTeamDrop,
 } from "./standingsService.js";
 import { parseFinalStandings } from "./seasonService.js";
 
@@ -363,5 +364,52 @@ describe("buildStoredConstructorRows (official per-race team points, per-team dr
     expect(tx.droppedPerRace).toEqual({ 1: 21, 2: 38 }); // 0-round dropped silently
     expect(tx.total).toBe(40);
     expect(rows.find((r) => r.teamId === "ty").total).toBe(40);
+  });
+});
+
+describe("applyTeamDrop", () => {
+  const CAL12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+  it("drops nothing mid-season while ghost 0-slots outnumber real ones", () => {
+    // 2 real rounds run, 2 roster slots, 12-round calendar -> 24 slots, most 0.
+    const contributions = [
+      { round: 1, points: 30 }, { round: 1, points: 20 },
+      { round: 2, points: 25 }, { round: 2, points: 18 },
+    ];
+    const r = applyTeamDrop({ contributions, rosterSlots: 2, roundNumbers: CAL12, dropN: 6 });
+    expect(r.total).toBe(93); // nothing real dropped: the 6 lowest are all 0-slots
+    expect(r.droppedPerRace).toEqual({});
+  });
+
+  it("drops the N lowest single-driver round scores over a full season", () => {
+    // Every round has 2 slots; make R1 the two lowest (5 and 3).
+    const contributions = [];
+    for (const round of CAL12) {
+      contributions.push({ round, points: round === 1 ? 5 : 20 });
+      contributions.push({ round, points: round === 1 ? 3 : 15 });
+    }
+    const full = contributions.reduce((s, c) => s + c.points, 0);
+    const r = applyTeamDrop({ contributions, rosterSlots: 2, roundNumbers: CAL12, dropN: 2 });
+    expect(r.droppedPerRace).toEqual({ 1: 8 }); // both R1 slots dropped
+    expect(r.total).toBe(full - 8);
+  });
+
+  it("counts a sub's contribution as a droppable slot for the host team", () => {
+    // R1 has 3 contributions (2 regulars + 1 sub); the sub's 2 pts is the lowest.
+    const contributions = [
+      { round: 1, points: 25 }, { round: 1, points: 18 }, { round: 1, points: 2 },
+      { round: 2, points: 25 }, { round: 2, points: 18 },
+    ];
+    const r = applyTeamDrop({ contributions, rosterSlots: 2, roundNumbers: [1, 2], dropN: 1 });
+    // slots: 3 in R1 + 2 in R2 = 5 (no ghosts, both rounds full) -> drop the 2.
+    expect(r.droppedPerRace).toEqual({ 1: 2 });
+    expect(r.total).toBe(25 + 18 + 25 + 18);
+  });
+
+  it("drops nothing when dropN is 0", () => {
+    const contributions = [{ round: 1, points: 30 }, { round: 1, points: 20 }];
+    const r = applyTeamDrop({ contributions, rosterSlots: 2, roundNumbers: [1, 2], dropN: 0 });
+    expect(r.total).toBe(50);
+    expect(r.droppedPerRace).toEqual({});
   });
 });

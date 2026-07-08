@@ -8,13 +8,9 @@
 // server, copy the backup file over prisma/dev.db, start again.
 // ---------------------------------------------------------------------------
 import { mkdirSync, readdirSync, statSync, unlinkSync, existsSync } from "fs";
-import { dirname, join, basename } from "path";
-import { fileURLToPath } from "url";
+import { join, basename } from "path";
 import AdmZip from "adm-zip";
-
-const __dir = dirname(fileURLToPath(import.meta.url));
-export const BACKUP_DIR = join(__dir, "../../backups");
-const UPLOADS_DIR = join(__dir, "../../uploads");
+import { BACKUPS_DIR as BACKUP_DIR, UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const KEEP_N = 40;
 

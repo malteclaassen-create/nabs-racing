@@ -82,15 +82,33 @@ export async function saveRaceResults(prisma, raceId, results) {
   // Reject broken input before touching the database.
   validateResults(results, drivers, teams);
 
-  // Snapshot the car-to-car contact counts stored for this round, so a manual
-  // results edit (which doesn't carry contact data) preserves what the AC import
-  // captured instead of wiping it. Read raw so it works whether or not the
-  // generated client exposes the column yet.
+  // Snapshot the AC-captured telemetry stored for this round (contacts, grid,
+  // best lap, total time, and the distilled telemetry), so a manual results edit
+  // — which only carries the fields shown in the editor — preserves the rest
+  // instead of wiping it. The manual editor has no grid/best-lap/telemetry
+  // inputs, so re-saving a round to fix a driver mapping or a penalty must NOT
+  // throw those away. Read raw so it works whether or not the generated client
+  // exposes every column yet.
+  //
+  // IMPORTANT: every AC-derived column MUST be snapshotted here, or the next
+  // manual Edit-Results save would blank out backfilled telemetry.
+  const TELEMETRY_COLS = [
+    "contacts", "envContacts", "cuts", "overtakes", "laps",
+    "cleanLaps", "consistencyMs", "gamePenalties", "gamePenaltySeconds",
+  ];
   const existing = await prisma.$queryRawUnsafe(
-    `SELECT "driverId", "contacts" FROM "RaceResult" WHERE "raceId" = ?`,
+    `SELECT "driverId", "grid", "bestLapMs", "totalTimeMs", ${TELEMETRY_COLS.map((c) => `"${c}"`).join(", ")} FROM "RaceResult" WHERE "raceId" = ?`,
     raceId
   );
-  const prevContacts = new Map(existing.map((r) => [r.driverId, r.contacts]));
+  const prevGrid = new Map(existing.map((r) => [r.driverId, r.grid]));
+  const prevBestLap = new Map(existing.map((r) => [r.driverId, r.bestLapMs]));
+  const prevTotalTime = new Map(existing.map((r) => [r.driverId, r.totalTimeMs]));
+  // driverId -> { col: prevValue } for the telemetry columns.
+  const prevTelemetry = new Map(existing.map((r) => [r.driverId, r]));
+
+  // A field the caller left off entirely (undefined) keeps whatever the round
+  // already had; an explicit value (including null) from the AC import wins.
+  const keep = (incoming, prev) => (incoming === undefined ? prev ?? null : incoming ?? null);
 
   await prisma.$transaction(async (tx) => {
     // Replace this race's results.
@@ -110,19 +128,30 @@ export async function saveRaceResults(prisma, raceId, results) {
           status: r.status || "FINISHED",
           subForTeamId: r.subForTeamId || null,
           penaltySeconds: r.penaltySeconds || 0,
-          grid: r.grid ?? null,
-          bestLapMs: r.bestLapMs ?? null,
-          totalTimeMs: r.totalTimeMs ?? null,
+          grid: keep(r.grid, prevGrid.get(r.driverId)),
+          bestLapMs: keep(r.bestLapMs, prevBestLap.get(r.driverId)),
+          totalTimeMs: keep(r.totalTimeMs, prevTotalTime.get(r.driverId)),
         },
       });
-      // Contacts: use the value the import supplied, else preserve the previous
-      // one. Written via raw SQL (rather than the create above) so it persists
-      // even before the generated client is refreshed for the column.
-      const contacts = r.contacts ?? prevContacts.get(r.driverId) ?? null;
-      if (contacts != null) {
+      // Telemetry (contacts + distilled metrics): use the value the import
+      // supplied, else preserve the previous one. Written via raw SQL (rather
+      // than the create above) so it persists even before the generated client
+      // is refreshed for these columns. Only touch columns that end up non-null
+      // so a manual edit of an old (telemetry-less) round stays all-null.
+      const prev = prevTelemetry.get(r.driverId) || {};
+      const sets = [];
+      const vals = [];
+      for (const col of TELEMETRY_COLS) {
+        const val = keep(r[col], prev[col]);
+        if (val != null) {
+          sets.push(`"${col}" = ?`);
+          vals.push(val);
+        }
+      }
+      if (sets.length) {
         await tx.$executeRawUnsafe(
-          `UPDATE "RaceResult" SET "contacts" = ? WHERE "raceId" = ? AND "driverId" = ?`,
-          contacts,
+          `UPDATE "RaceResult" SET ${sets.join(", ")} WHERE "raceId" = ? AND "driverId" = ?`,
+          ...vals,
           raceId,
           r.driverId
         );

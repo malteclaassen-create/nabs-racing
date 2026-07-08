@@ -6,7 +6,6 @@ import Logo from "./Logo.jsx";
 import NextRaceTimer from "./NextRaceTimer.jsx";
 import SettingsButton from "./SettingsPanel.jsx";
 import { DriverAvatar } from "./ui.jsx";
-import { useSocial, SocialIcon } from "./SocialLinks.jsx";
 
 // Auth-aware control that replaces the old "Sign Up" nav item: a "Log in" button
 // when logged out, or the driver's avatar + name (linking to /profile) when in.
@@ -41,22 +40,6 @@ function AuthControl({ mobile = false }) {
   );
 }
 
-// Blurple "Join Discord" call-to-action, shown when a Discord link is set.
-function JoinDiscord({ url, className = "" }) {
-  if (!url) return null;
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#5865F2] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#4752c4] ${className}`}
-    >
-      <SocialIcon name="discord" className="h-4 w-4" />
-      Join Discord
-    </a>
-  );
-}
-
 // The season switcher now lives on the Home page (SeasonTimeline), not the bar.
 
 const links = [
@@ -64,6 +47,7 @@ const links = [
   { to: "/drivers", label: "Drivers" },
   { to: "/constructors", label: "Constructors" },
   { to: "/races", label: "Races" },
+  { to: "/attendance", label: "Attendance" },
   { to: "/live", label: "Live Timing" },
   { to: "/downloads", label: "Race Info" },
 ];
@@ -75,8 +59,6 @@ const linkClass = ({ isActive }) =>
 
 export default function NavBar() {
   const { current } = useSeason();
-  const social = useSocial();
-  const { isLoggedIn } = useAuth();
   const [open, setOpen] = useState(false);
   const location = useLocation();
 
@@ -163,7 +145,6 @@ export default function NavBar() {
             </NavLink>
           ))}
           <AuthControl />
-          {!isLoggedIn && <JoinDiscord url={social.data?.discord} className="ml-1" />}
           <SettingsButton className="ml-1 h-9 w-9" />
         </div>
 
@@ -190,17 +171,26 @@ export default function NavBar() {
       </nav>
       </div>
 
-      {/* Mobile menu panel */}
+      {/* Mobile menu — a drop-down panel that OVERLAYS the page (absolute, so the
+          content underneath stays put) with a soft scrim. Tapping the scrim or a
+          link closes it. Both fade/slide in (see .nav-scrim / .nav-drop). */}
       {open && (
-        <div className="relative border-t border-border bg-card lg:hidden">
-          <div className="container-page flex flex-col gap-1 py-3">
-            <AuthControl mobile />
-            {!isLoggedIn && <JoinDiscord url={social.data?.discord} className="mb-1 w-full" />}
-            {links.map((l) => (
-              <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
-                {l.label}
-              </NavLink>
-            ))}
+        <div className="lg:hidden">
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => setOpen(false)}
+            className="nav-scrim fixed inset-x-0 bottom-0 top-[84px] z-20 bg-ink/40 backdrop-blur-sm"
+          />
+          <div className="nav-drop absolute inset-x-0 top-full z-30 origin-top border-t border-border bg-card shadow-xl shadow-ink/20">
+            <div className="container-page flex flex-col gap-1 py-3">
+              <AuthControl mobile />
+              {links.map((l) => (
+                <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
+                  {l.label}
+                </NavLink>
+              ))}
+            </div>
           </div>
         </div>
       )}

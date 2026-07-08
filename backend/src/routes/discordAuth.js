@@ -12,6 +12,8 @@ import prisma from "../lib/prisma.js";
 import { signUserToken } from "../middleware/auth.js";
 import { getActiveSeason } from "../services/seasonService.js";
 import { dbRecordLogin, dbGetMember } from "../lib/members.js";
+import { getLinkedDriverIds } from "../lib/persons.js";
+import { isDiscordAdmin } from "../lib/adminUsers.js";
 
 const router = Router();
 
@@ -118,10 +120,13 @@ router.post("/callback", async (req, res, next) => {
     // fields over, so members keep their identity without any admin work.
     if (driver && activeSeason && driver.seasonId !== activeSeason.id) {
       const roster = await prisma.driver.findMany({ where: { seasonId: activeSeason.id } });
+      // Prefer an explicit cross-season person link (admin-curated identity):
+      // the linked, unclaimed active-season row wins over the name matcher.
+      const linkedIds = await getLinkedDriverIds(prisma, driver.id);
       const keys = [norm(me.username), norm(me.global_name), norm(driver.discordName), norm(driver.name)].filter(Boolean);
-      const successor = roster.find(
-        (d) => !d.discordUserId && [norm(d.discordName), norm(d.name)].some((k) => keys.includes(k))
-      );
+      const successor =
+        roster.find((d) => !d.discordUserId && linkedIds.includes(d.id)) ||
+        roster.find((d) => !d.discordUserId && [norm(d.discordName), norm(d.name)].some((k) => keys.includes(k)));
       if (successor) {
         const old = driver;
         // discordUserId is unique -> clear the old row before setting the new one.
@@ -177,6 +182,9 @@ router.post("/callback", async (req, res, next) => {
       driverName: driver?.name || null,
       // Resolved avatar for the nav chip: custom upload wins, else Discord avatar.
       avatarUrl: (driver && driver.photoUrl) || avatarUrl || null,
+      // Designated Discord admins get admin access without the PIN. Baked into
+      // the token for UI hints; the admin write-gate re-checks this live.
+      isAdmin: await isDiscordAdmin(prisma, me.id).catch(() => false),
     };
     const token = signUserToken(profile);
     res.json({ token, user: profile, linked: !!driver });
