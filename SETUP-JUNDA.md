@@ -10,20 +10,20 @@ So read this first - it decides which path applies to you.
 
 ---
 
-## Step 0 - Check what your Junda package can do
+## Step 0 - What the Junda packages can do (already checked)
 
-Log in to the Junda cPanel and look for an icon called **"Setup Node.js App"**
-(sometimes "Node.js Selector", in the "Software" section).
+We looked at the feature list of Junda's web hosting packages (Basic / Plus /
+Advanced): the runtime they offer is **PHP 7.x/8.x with MySQL** - WordPress-
+style hosting. **Node.js is not offered**, so the NABS app itself cannot run
+on these packages. SSH/FTP access alone doesn't change that.
 
-- **It's there** -> you can *try* path B below. Fair warning: even then,
-  shared hosting limits apply. The live-timing WebSocket and large file
-  up-/downloads may not survive the shared LiteSpeed/Passenger proxy, and the
-  always-on process can be put to sleep. Treat it as an experiment.
-- **It's not there** (only PHP visible) -> the app cannot run on the package
-  at all. Use path A - it is the intended setup anyway.
+That's no problem: use **path A** below. The Junda package still does two
+useful jobs - it holds the **domain** (and its DNS settings, which is all we
+need) and can keep serving e-mail or an existing site.
 
-Junda's support chat can also answer in one line: *"Can I run a persistent
-Node.js web app (with WebSockets) on my package?"*
+If you want to double-check, one line to their support chat settles it:
+*"Can I run a persistent Node.js web app (with WebSockets) on my package?"*
+If the answer is somehow yes, path B describes that route.
 
 ---
 
@@ -50,9 +50,10 @@ domain:
 This path has no surprises: everything on the site works, including live
 timing and the big member downloads.
 
-## Path B (experiment): cPanel "Setup Node.js App"
+## Path B (only if support says Node.js is possible): cPanel "Setup Node.js App"
 
-Only if step 0 found the Node.js icon. Rough outline:
+Per the package feature list this option does not exist on Junda's current
+packages - keep it only in case their support says otherwise. Rough outline:
 
 1. Upload the zip via the cPanel file manager and extract it, e.g. to
    `~/nabs-racing`.
