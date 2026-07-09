@@ -88,9 +88,11 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
 
 export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null }) {
   const isDriver = variant === "driver";
-  // Constructor tables can use the team-level drop rule instead of inheriting
-  // each driver's dropped rounds — the footnote must match whichever is in force.
-  const teamDrop = !isDriver && dropMode === "team";
+  // Constructor tables can use a team-level drop rule instead of inheriting
+  // each driver's dropped rounds — the footnote must match whichever is in
+  // force: "team" counts single-driver round scores, "teamRounds" counts whole
+  // team rounds (the official sheet's style).
+  const teamDrop = !isDriver && (dropMode === "team" || dropMode === "teamRounds");
   const showDropNote = isDriver
     ? dropWorst > 0 && raceNumbers.length > 0
     : teamDrop
@@ -227,6 +229,13 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   <span className="text-faint line-through decoration-2">Struck-through</span> rounds are dropped: each
                   driver&rsquo;s {dropWorst} lowest-scoring round{dropWorst === 1 ? " doesn't" : "s don't"} count toward the
                   total{raceNumbers.length > dropWorst && <> (best {raceNumbers.length - dropWorst} of {raceNumbers.length})</>}.
+                </>
+              ) : dropMode === "teamRounds" ? (
+                <>
+                  <span className="text-faint line-through decoration-2">Struck-through</span> rounds are dropped: each
+                  team&rsquo;s {teamDropWorst} lowest round total{teamDropWorst === 1 ? " doesn't" : "s don't"} count toward the
+                  team total; rounds not yet run count as 0 and are dropped first
+                  {raceNumbers.length > teamDropWorst && <> (best {raceNumbers.length - teamDropWorst} of {raceNumbers.length})</>}.
                 </>
               ) : teamDrop ? (
                 <>

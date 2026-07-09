@@ -301,7 +301,7 @@ export default function TeamProfile() {
           <h2 className="mb-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
             Championship Progression
           </h2>
-          <PointsChart standings={[teamRow]} completed={completedNumbers} allRounds={raceNumbers} dropWorst={dropWorst} />
+          <PointsChart standings={[teamRow]} completed={completedNumbers} allRounds={raceNumbers} dropWorst={dropWorst} dropMode={standingsSet?.dropMode} teamDropWorst={standingsSet?.teamDropWorst} />
         </div>
       )}
 

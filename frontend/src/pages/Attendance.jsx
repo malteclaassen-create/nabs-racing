@@ -6,9 +6,10 @@ import { useAuth } from "../hooks/useAuth.js";
 import { ErrorBox, PageHeader, TableSkeleton } from "../components/ui.jsx";
 import RaceSignupCard from "../components/RaceSignupCard.jsx";
 import RatingCard from "../components/RatingCard.jsx";
-import CircuitMap from "../components/CircuitMap.jsx";
+import RaceCountdown from "../components/RaceCountdown.jsx";
 import Flag from "../components/Flag.jsx";
 import { circuitFor } from "../data/circuits.js";
+import { fmtRaceTime } from "../utils/raceTime.js";
 
 const MAX_LAP_MS = 1_800_000;
 function fmtLap(ms) {
@@ -17,12 +18,8 @@ function fmtLap(ms) {
   const s = Math.floor((ms % 60000) / 1000);
   return `${m}:${String(s).padStart(2, "0")}.${String(ms % 1000).padStart(3, "0")}`;
 }
-function countdown(date) {
-  if (!date) return "Date to be confirmed";
-  const days = Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
-  if (days <= 0) return "Race day";
-  if (days === 1) return "Tomorrow";
-  return `In ${days} days`;
+function fmtDate(d) {
+  return new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
 }
 
 // Personal history at the selected track (from trackHistory.me).
@@ -156,43 +153,71 @@ export default function Attendance() {
             </div>
           )}
 
-          {/* hero strip: countdown + circuit watermark */}
+          {/* hero strip: race identity on the left, the live broadcast-style
+              countdown (same clock as the home page) on the right. No circuit
+              watermark here on purpose — it collided with the countdown tiles. */}
           <div className="card relative overflow-hidden p-5 sm:p-6">
-            <span className="absolute inset-x-0 top-0 h-1.5 bg-brand" />
-            {circuit && (
-              <CircuitMap track={ev.track} className="pointer-events-none absolute right-4 top-1/2 h-32 -translate-y-1/2 text-faint opacity-20" strokeWidth={2} />
-            )}
-            <div className="relative flex items-center gap-2.5">
-              {circuit && <Flag code={circuit.country} w={26} h={19} />}
-              <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Round {ev.number}</span>
+            <div className="relative flex flex-wrap items-center justify-between gap-x-8 gap-y-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2.5">
+                  {circuit && <Flag code={circuit.country} w={26} h={19} />}
+                  <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Round {ev.number}</span>
+                </div>
+                <h2 className="mt-1 font-display text-3xl font-black uppercase tracking-tight text-dark sm:text-4xl">{ev.track}</h2>
+                <div className="mt-1 font-mono text-sm font-bold uppercase tracking-wide text-medium">
+                  {ev.date ? (
+                    <>
+                      {fmtDate(ev.date)} <span className="text-light">· {fmtRaceTime(ev.date)}</span>
+                    </>
+                  ) : (
+                    "Date to be confirmed"
+                  )}
+                </div>
+              </div>
+              {ev.date && <RaceCountdown date={ev.date} className="w-full sm:w-80" />}
             </div>
-            <h2 className="relative mt-1 font-display text-3xl font-black uppercase tracking-tight text-dark sm:text-4xl">{ev.track}</h2>
-            <div className="relative mt-1 font-mono text-sm font-bold uppercase tracking-wide text-medium">{countdown(ev.date)}</div>
           </div>
 
           {error && <ErrorBox message={error} />}
 
-          {/* the sign-up card (moved from the Races page) */}
-          <RaceSignupCard
-            ev={ev}
-            marketRace={marketByRace.get(ev.id)}
-            me={market.data?.me}
-            reloadMarket={market.reload}
-            driverId={driverId}
-            canSignUp={canSignUp}
-            busy={busy}
-            onSetStatus={setStatus}
-            onClear={clearStatus}
-          />
-
-          {/* member extras: rating card + personal track history */}
-          {canSignUp && (
-            <div className="grid gap-6 lg:grid-cols-[auto_1fr] lg:items-start">
-              <div className="flex justify-center">
-                {mine.data && mine.data[1] && <RatingCard driver={mine.data[0].driver} rating={mine.data[1]} />}
+          {/* driver card top-left, sign-up next to it; the personal track
+              history sits under the sign-up. Members without a linked driver
+              (and logged-out visitors) just get the sign-up list full width. */}
+          {canSignUp && mine.data && mine.data[1] ? (
+            <div className="grid gap-6 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
+              <div className="flex justify-center lg:sticky lg:top-28">
+                <RatingCard driver={mine.data[0].driver} rating={mine.data[1]} />
               </div>
-              <MyTrackHistory track={ev.track} me={hist.data?.me} />
+              <div className="min-w-0 space-y-6">
+                <RaceSignupCard
+                  ev={ev}
+                  marketRace={marketByRace.get(ev.id)}
+                  me={market.data?.me}
+                  reloadMarket={market.reload}
+                  driverId={driverId}
+                  canSignUp={canSignUp}
+                  busy={busy}
+                  onSetStatus={setStatus}
+                  onClear={clearStatus}
+                />
+                <MyTrackHistory track={ev.track} me={hist.data?.me} />
+              </div>
             </div>
+          ) : (
+            <>
+              <RaceSignupCard
+                ev={ev}
+                marketRace={marketByRace.get(ev.id)}
+                me={market.data?.me}
+                reloadMarket={market.reload}
+                driverId={driverId}
+                canSignUp={canSignUp}
+                busy={busy}
+                onSetStatus={setStatus}
+                onClear={clearStatus}
+              />
+              {canSignUp && <MyTrackHistory track={ev.track} me={hist.data?.me} />}
+            </>
           )}
         </>
       )}

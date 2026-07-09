@@ -202,6 +202,46 @@ export function buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers
   });
 }
 
+// Sheet-style team drop (Season.teamDropMode = 'rounds'): instead of dropping
+// single-driver contributions, each team's N lowest WHOLE round totals are
+// dropped — rounds not yet run count as 0 and are dropped first, exactly how
+// the league's official sheet computes its constructor standings. Round scores
+// still come from the live per-driver contributions (subs land with the team
+// they drove for). Pure / side-effect free.
+export function buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN, table = DEFAULT_POINTS_TABLE }) {
+  const contributionsFor =
+    tier === 1 ? calculateT1ConstructorContributions : calculateT2ConstructorContributions;
+  const tierTeams = teams.filter((t) => t.tier === tier);
+  const perRace = new Map(tierTeams.map((t) => [t.id, {}]));
+
+  for (const num of raceNumbers) {
+    const results = resultsByRound.get(num);
+    if (!results || results.length === 0) continue;
+    for (const t of tierTeams) perRace.get(t.id)[num] = perRace.get(t.id)[num] ?? 0;
+    for (const c of contributionsFor(results, drivers, teams, table)) {
+      if (!perRace.has(c.teamId)) continue;
+      perRace.get(c.teamId)[num] += c.points;
+    }
+  }
+
+  return tierTeams.map((team) => {
+    const pr = perRace.get(team.id);
+    const { total, droppedRounds } = applyDropScores(pr, raceNumbers, teamDropN);
+    const droppedPerRace = {};
+    for (const num of droppedRounds) if (pr[num]) droppedPerRace[num] = pr[num];
+    return {
+      teamId: team.id,
+      name: team.name,
+      color: team.color,
+      tier: team.tier,
+      logoUrl: team.logoUrl,
+      perRace: pr,
+      droppedPerRace,
+      total,
+    };
+  });
+}
+
 // Overlay official final standings on top of computed rows (archived seasons).
 // Rows whose id appears in `finals` take its official total and keep the given
 // array order; rows not listed keep their computed total and sort after, by
@@ -380,18 +420,24 @@ async function getConstructorStandings(prisma, tier, seasonId) {
   const resultsByRound = new Map();
   for (const [num, rs] of byRace) resultsByRound.set(num, applyPenalties(rs));
 
-  // Three ways to score a constructor season:
-  //   official — archived seasons that ship verbatim per-team round points;
-  //   team     — the season opts into the team-level drop rule (Season.teamDropWorst);
-  //   driver   — the legacy default: teams inherit each driver's own dropped rounds.
+  // Four ways to score a constructor season:
+  //   official   — archived seasons that ship verbatim per-team round points;
+  //   team       — team drop counts single-driver round scores (Season.teamDropWorst);
+  //   teamRounds — team drop counts whole team rounds (teamDropMode 'rounds',
+  //                the official sheet's style);
+  //   driver     — the legacy default: teams inherit each driver's own dropped rounds.
   const dropMode = scoring.finalStandings?.teamPerRace
     ? "official"
     : scoring.teamDropWorst != null
-      ? "team"
+      ? scoring.teamDropMode === "rounds"
+        ? "teamRounds"
+        : "team"
       : "driver";
   const rows =
     dropMode === "official"
       ? buildStoredConstructorRows({ tier, teams, raceNumbers, teamPerRace: scoring.finalStandings.teamPerRace, dropN: scoring.dropWorst })
+      : dropMode === "teamRounds"
+        ? buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN: scoring.teamDropWorst, table })
       : dropMode === "team"
         ? buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN: scoring.teamDropWorst, table })
         : buildConstructorRows({
@@ -424,10 +470,11 @@ async function getConstructorStandings(prisma, tier, seasonId) {
     raceNumbers,
     dropWorst: scoring.dropWorst,
     // The rule actually in force for the constructor table, so the UI footnote
-    // matches: "team" (N lowest team round scores dropped), "driver" (legacy
-    // inheritance) or "official" (archived verbatim totals).
+    // matches: "team" (N lowest single-driver round scores dropped),
+    // "teamRounds" (N lowest whole team rounds dropped, sheet style), "driver"
+    // (legacy inheritance) or "official" (archived verbatim totals).
     dropMode,
-    teamDropWorst: dropMode === "team" ? scoring.teamDropWorst : null,
+    teamDropWorst: dropMode === "team" || dropMode === "teamRounds" ? scoring.teamDropWorst : null,
     officialTotals: !!scoring.finalStandings?.teams?.length,
     standings: rows,
   };

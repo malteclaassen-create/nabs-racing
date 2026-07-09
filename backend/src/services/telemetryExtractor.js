@@ -21,6 +21,7 @@ export const ENV_CONTACT_DEFAULTS = { impactThreshold: 15, mergeWindowMs: 3000 }
 const DEFAULT_SC_NAMES = ["Tyler27", "Janelko", "Samuel Foniok"];
 
 const CLEAN_LAP_WINDOW_MS = 10000; // a lap counts as "clean" within 10s of own best
+const CONSISTENCY_OUTLIER_MS = 21000; // simresults drops laps over best+21s from consistency
 const PIT_LAP_EXTRA_MS = 25000; // a lap this much over the driver's median = a pit lap
 const SC_LAP_FACTOR = 1.3; // a lap whose field median is 1.3x the race median = SC lap
 
@@ -246,11 +247,28 @@ export function extractTelemetry(json, opts = {}) {
     const cuts = arr.reduce((s, l) => s + (Number(l.Cuts) || 0), 0);
     const best = bestLapByGuid.get(guid) || (times.length ? Math.min(...times) : null);
     const clean = best != null ? times.filter((t) => t <= best + CLEAN_LAP_WINDOW_MS) : [];
+    // Consistency percentage, simresults-style (that's what the Discord result
+    // posts show): average racing lap vs the driver's best lap, as a percentage
+    // of the best lap. Considered laps = everything except the driver's FIRST
+    // lap (standing start), the best lap itself, and outliers slower than
+    // best + 21s (pit stops, incidents). 100% would be a perfect metronome.
+    let consistencyPct = null;
+    if (best != null && arr.length >= 3) {
+      const racing = arr
+        .slice(1) // skip lap 1
+        .map((l) => Number(l.LapTime))
+        .filter((t) => Number.isFinite(t) && t > best && t < best + CONSISTENCY_OUTLIER_MS);
+      if (racing.length >= 2) {
+        const avg = racing.reduce((s, t) => s + t, 0) / racing.length;
+        consistencyPct = Math.round((100 - ((avg - best) / best) * 100) * 100) / 100;
+      }
+    }
     metrics.set(guid, {
       laps: arr.length,
       cuts,
       cleanLaps: clean.length,
       consistencyMs: clean.length >= 3 ? Math.round(stdev(clean)) : null,
+      consistencyPct,
     });
   }
 
@@ -283,6 +301,7 @@ export function extractTelemetry(json, opts = {}) {
       laps: m ? m.laps : null,
       cleanLaps: m ? m.cleanLaps : null,
       consistencyMs: m ? m.consistencyMs : null,
+      consistencyPct: m ? m.consistencyPct : null,
       gamePenalties: pen.count,
       gamePenaltySeconds: Math.round(pen.seconds * 1000) / 1000,
     });

@@ -6,6 +6,7 @@ import {
   applyFinalStandings,
   buildStoredConstructorRows,
   applyTeamDrop,
+  buildTeamRoundDropConstructorRows,
 } from "./standingsService.js";
 import { parseFinalStandings } from "./seasonService.js";
 
@@ -411,5 +412,39 @@ describe("applyTeamDrop", () => {
     const r = applyTeamDrop({ contributions, rosterSlots: 2, roundNumbers: [1, 2], dropN: 0 });
     expect(r.total).toBe(50);
     expect(r.droppedPerRace).toEqual({});
+  });
+});
+
+// Season.teamDropMode = 'rounds': the sheet-style variant that drops whole
+// team round totals instead of single-driver contributions.
+describe("buildTeamRoundDropConstructorRows", () => {
+  it("drops the team's N lowest round totals, unrun rounds (as 0) first", () => {
+    // 3 run rounds on a 4-round calendar, dropN 2: the unrun R4 counts as a 0
+    // and is dropped first, then the lowest real round (R1, 15).
+    const resultsByRound = new Map([
+      [1, [res("A", 10), res("B", 5)]], // tx 15
+      [2, [res("A", 30), res("B", 20)]], // tx 50
+      [3, [res("A", 25), res("B", 2)]], // tx 27
+    ]);
+    const rows = buildTeamRoundDropConstructorRows({
+      tier: 1, teams: T1_TEAMS, drivers: T1_DRIVERS,
+      raceNumbers: [1, 2, 3, 4], resultsByRound, teamDropN: 2,
+    });
+    const tx = rows.find((r) => r.teamId === "tx");
+    expect(tx.perRace).toEqual({ 1: 15, 2: 50, 3: 27 });
+    expect(tx.droppedPerRace).toEqual({ 1: 15 });
+    expect(tx.total).toBe(77);
+  });
+
+  it("reproduces the official S7 sheet's Porsche total (475 raw -> 420)", () => {
+    // The sheet's per-round Porsche scores R1..R11 on the 12-round calendar,
+    // dropN 3: R12 (unrun, 0) plus the two lowest real rounds (25 + 30) drop.
+    const perRound = [49, 43, 25, 30, 65, 36, 45, 52, 30, 40, 60];
+    const resultsByRound = new Map(perRound.map((p, i) => [i + 1, [res("A", p)]]));
+    const rows = buildTeamRoundDropConstructorRows({
+      tier: 1, teams: T1_TEAMS, drivers: T1_DRIVERS,
+      raceNumbers: CAL, resultsByRound, teamDropN: 3,
+    });
+    expect(rows.find((r) => r.teamId === "tx").total).toBe(420);
   });
 });

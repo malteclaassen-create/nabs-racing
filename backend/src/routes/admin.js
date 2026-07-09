@@ -465,24 +465,29 @@ router.put("/races/:id/results", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/races/:id/driver-of-the-day  { driverId | null }
+// PUT /api/admin/races/:id/driver-of-the-day  { driverId | null, pickedBy? }
 // Sets (or clears) the fan-favourite pick for a race. The driver must have a
-// result row in that race. Written via raw SQL (new column).
+// result row in that race. `pickedBy` records who made the call (the league's
+// streamer decides each round). Written via raw SQL (new columns).
 router.put("/races/:id/driver-of-the-day", async (req, res, next) => {
   try {
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
     if (!race) return res.status(404).json({ error: "Race not found" });
-    const { driverId } = req.body || {};
+    const { driverId, pickedBy } = req.body || {};
     if (driverId) {
       const has = await prisma.raceResult.findFirst({ where: { raceId: race.id, driverId } });
       if (!has) return res.status(400).json({ error: "That driver has no result in this race" });
     }
+    // The picker only means something alongside a pick; clearing the pick
+    // clears the name too.
+    const by = driverId && typeof pickedBy === "string" && pickedBy.trim() ? pickedBy.trim().slice(0, 80) : null;
     await prisma.$executeRawUnsafe(
-      `UPDATE "Race" SET "driverOfTheDayId" = ? WHERE "id" = ?`,
+      `UPDATE "Race" SET "driverOfTheDayId" = ?, "driverOfTheDayBy" = ? WHERE "id" = ?`,
       driverId || null,
+      by,
       race.id
     );
-    res.json({ ok: true, driverOfTheDayId: driverId || null });
+    res.json({ ok: true, driverOfTheDayId: driverId || null, driverOfTheDayBy: by });
   } catch (e) {
     next(e);
   }
@@ -788,6 +793,44 @@ router.post("/persons/link", async (req, res, next) => {
   }
 });
 
+// POST /api/admin/persons/link-auto
+// Links every "same normalized name in more than one season" suggestion in one
+// go — the same groups the GET above lists as candidates. Only unambiguous
+// groups are linked: when one season holds TWO rows with that name, nobody can
+// tell which row is the person, so that group stays a manual job.
+router.post("/persons/link-auto", async (req, res, next) => {
+  try {
+    const [groups, drivers] = await Promise.all([
+      dbListPersons(prisma),
+      prisma.driver.findMany({ select: { id: true, name: true, seasonId: true } }),
+    ]);
+    const linkedIds = new Set(groups.flatMap((g) => g.driverIds));
+    const byName = new Map();
+    for (const d of drivers) {
+      if (linkedIds.has(d.id)) continue;
+      const key = personNorm(d.name);
+      if (!key) continue;
+      if (!byName.has(key)) byName.set(key, []);
+      byName.get(key).push(d);
+    }
+    let linked = 0;
+    let skippedAmbiguous = 0;
+    for (const rows of byName.values()) {
+      const seasonsSpanned = new Set(rows.map((r) => r.seasonId));
+      if (rows.length < 2 || seasonsSpanned.size < 2) continue;
+      if (seasonsSpanned.size !== rows.length) {
+        skippedAmbiguous++;
+        continue;
+      }
+      await dbLinkDrivers(prisma, rows.map((r) => r.id));
+      linked++;
+    }
+    res.json({ ok: true, linked, skippedAmbiguous });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /api/admin/persons/unlink { driverId }
 router.post("/persons/unlink", async (req, res, next) => {
   try {
@@ -965,8 +1008,8 @@ router.get("/seasons", async (req, res, next) => {
         orderBy: { number: "desc" },
         include: { _count: { select: { teams: true, drivers: true, races: true } } },
       }),
-      // teamDropWorst / isPublic aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "isPublic" FROM "Season"`).catch(() => []),
+      // teamDropWorst / teamDropMode / isPublic aren't in the generated client yet -> raw read.
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic" FROM "Season"`).catch(() => []),
     ]);
     const rawById = new Map(raw.map((r) => [r.id, r]));
     res.json(
@@ -975,6 +1018,7 @@ router.get("/seasons", async (req, res, next) => {
         return {
           ...s,
           teamDropWorst: extra.teamDropWorst == null ? null : Number(extra.teamDropWorst),
+          teamDropMode: extra.teamDropMode === "rounds" ? "rounds" : null,
           isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
         };
       })
@@ -1032,6 +1076,12 @@ function parseSeasonRawFields(body) {
       out.teamDropWorst = n;
     }
   }
+  if (body.teamDropMode !== undefined) {
+    const m = body.teamDropMode;
+    if (m === null || m === "" || m === "results") out.teamDropMode = null; // default: single-driver results
+    else if (m === "rounds") out.teamDropMode = "rounds"; // whole team rounds (sheet style)
+    else return { error: "teamDropMode must be 'results', 'rounds' or blank" };
+  }
   if (body.isPublic !== undefined) out.isPublic = body.isPublic ? 1 : 0;
   return out;
 }
@@ -1040,6 +1090,9 @@ function parseSeasonRawFields(body) {
 async function writeSeasonRawFields(seasonId, raw) {
   if (raw.teamDropWorst !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Season" SET "teamDropWorst" = ? WHERE "id" = ?`, raw.teamDropWorst, seasonId);
+  }
+  if (raw.teamDropMode !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Season" SET "teamDropMode" = ? WHERE "id" = ?`, raw.teamDropMode, seasonId);
   }
   if (raw.isPublic !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Season" SET "isPublic" = ? WHERE "id" = ?`, raw.isPublic, seasonId);

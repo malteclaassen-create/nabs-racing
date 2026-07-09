@@ -26,6 +26,14 @@ export function withApiBase(path) {
 
 const USER_TOKEN_KEY = "nabs_user_token";
 
+// Token for admin routes: the PIN admin token wins; a designated Discord admin
+// has no admin token, so fall back to their user token (the backend accepts it
+// for admin routes when the account is a live-designated admin). EVERY admin
+// call must use this — a bare getToken() breaks for Discord admins.
+function adminAuthToken() {
+  return getToken() || localStorage.getItem(USER_TOKEN_KEY);
+}
+
 // Where Discord should send the user back after login — always the current host
 // (localhost in dev, the tunnel URL when shared). Must be registered in the
 // Discord app's OAuth2 redirects.
@@ -59,10 +67,7 @@ async function request(path, { method = "GET", body, auth = false, userAuth = fa
   const headers = {};
   if (!form) headers["Content-Type"] = "application/json";
   if (auth) {
-    // The PIN admin token wins; a designated Discord admin has no admin token,
-    // so fall back to their user token (the backend accepts it for admin routes
-    // when the account is a live-designated admin).
-    const token = getToken() || localStorage.getItem(USER_TOKEN_KEY);
+    const token = adminAuthToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
   if (userAuth) {
@@ -176,8 +181,8 @@ export const api = {
   commitRace: (body) => request("/admin/races/commit", { method: "POST", body, auth: true }),
   editResults: (id, results) =>
     request(`/admin/races/${id}/results`, { method: "PUT", body: { results }, auth: true }),
-  setDriverOfTheDay: (raceId, driverId) =>
-    request(`/admin/races/${raceId}/driver-of-the-day`, { method: "PUT", body: { driverId }, auth: true }),
+  setDriverOfTheDay: (raceId, driverId, pickedBy) =>
+    request(`/admin/races/${raceId}/driver-of-the-day`, { method: "PUT", body: { driverId, pickedBy }, auth: true }),
   // Live "what would change" preview for unsaved results (no DB writes).
   previewRace: (body) =>
     request("/admin/races/preview", { method: "POST", body: { ...body, season: getSelectedSeason() }, auth: true }),
@@ -222,7 +227,7 @@ export const api = {
   // saved by the caller — a plain <a href> couldn't send the admin token.
   downloadBackupZip: async () => {
     const res = await fetch(`${BASE}/api/admin/backups/download`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: { Authorization: `Bearer ${adminAuthToken()}` },
     });
     if (!res.ok) throw new Error(`Backup download failed (${res.status})`);
     const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "")?.[1];
@@ -259,6 +264,7 @@ export const api = {
   // cross-season person links (admin) — group a person's per-season driver rows
   adminPersons: () => request("/admin/persons", { auth: true }),
   linkPersons: (driverIds) => request("/admin/persons/link", { method: "POST", body: { driverIds }, auth: true }),
+  autoLinkPersons: () => request("/admin/persons/link-auto", { method: "POST", auth: true }),
   unlinkPerson: (driverId) => request("/admin/persons/unlink", { method: "POST", body: { driverId }, auth: true }),
 
   // downloads (admin)
@@ -271,7 +277,7 @@ export const api = {
       fd.append("file", file);
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${BASE}/api/admin/downloads/upload`);
-      const token = getToken();
+      const token = adminAuthToken();
       if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));

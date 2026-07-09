@@ -4,8 +4,10 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import CircuitMap from "./CircuitMap.jsx";
 import Flag from "./Flag.jsx";
+import RaceCountdown from "./RaceCountdown.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { exportSvgToPng } from "../utils/svgExport.js";
+import { fmtRaceTime } from "../utils/raceTime.js";
 
 const MAX_LAP_MS = 1_800_000;
 function fmtLap(ms) {
@@ -15,12 +17,8 @@ function fmtLap(ms) {
   return `${m}:${String(s).padStart(2, "0")}.${String(ms % 1000).padStart(3, "0")}`;
 }
 
-function countdown(date) {
-  if (!date) return "Date to be confirmed";
-  const days = Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
-  if (days <= 0) return "Race day";
-  if (days === 1) return "Tomorrow";
-  return `In ${days} days`;
+function fmtDate(d) {
+  return new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
 }
 
 const RECORD_ICONS = {
@@ -55,6 +53,16 @@ function RecordRow({ icon, label, name, driverId, value }) {
   );
 }
 
+// Slim ruled-line header used by both cards, matching the Race Facts panel.
+function CardHeader({ title, children }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border bg-surface2/50 px-5 py-3">
+      <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
 export default function UpcomingRacePanel({ race }) {
   const mapRef = useRef(null);
   const { data: history, loading } = useApi(useCallback(() => api.trackHistory(race.track), [race.track]));
@@ -73,13 +81,14 @@ export default function UpcomingRacePanel({ race }) {
   if (s.mostCrashes) records.push({ icon: "burst", label: "Most crashes here", ...s.mostCrashes, value: `${s.mostCrashes.count}` });
   if (s.mostCuts) records.push({ icon: "cut", label: "Most cuts here", ...s.mostCuts, value: `${s.mostCuts.count}` });
   const customFacts = history?.customFacts || [];
+  const editions = history?.editions || [];
 
   return (
     <div className="space-y-5">
-      {/* Banner */}
+      {/* Hero: race identity left, the live countdown clock + sign-up right —
+          the same layout language as the Attendance hero. */}
       <div className="card relative overflow-hidden p-5 sm:p-6">
-        <span className="absolute inset-x-0 top-0 h-1.5 bg-brand" />
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
               {circuit && <Flag code={circuit.country} w={26} h={19} />}
@@ -91,59 +100,98 @@ export default function UpcomingRacePanel({ race }) {
               {race.track}
             </h2>
             <div className="mt-1 font-mono text-sm font-bold uppercase tracking-wide text-medium">
-              {countdown(race.date)}
-              {race.date && (
-                <span className="ml-2 text-light">
-                  {new Date(race.date).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" })}
-                </span>
+              {race.date ? (
+                <>
+                  {fmtDate(race.date)} <span className="text-light">· {fmtRaceTime(race.date)}</span>
+                </>
+              ) : (
+                "Date to be confirmed"
               )}
             </div>
           </div>
-          <Link to={`/attendance?race=${race.id}`} className="btn-primary shrink-0">
-            Sign up now
-          </Link>
+          <div className="flex w-full flex-col gap-2.5 sm:w-80">
+            {race.date && <RaceCountdown date={race.date} />}
+            <Link to={`/attendance?race=${race.id}`} className="btn-primary text-center">
+              Sign up now
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* Infographic: circuit map (left) + track record (right) */}
+      {/* Circuit map (left) + track record (right) */}
       <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
-        <div className="card flex flex-col p-5">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Circuit</h3>
-            {circuit && (
-              <button className="btn-secondary px-3 py-1 text-xs" onClick={downloadPng}>
+        <div className="card flex flex-col overflow-hidden">
+          <CardHeader title="Circuit">
+            {circuit && !history?.mapImageUrl && (
+              <button className="btn-secondary px-3 py-1 text-xs" onClick={downloadPng} title="Export the outline as a PNG, e.g. to label the corners and upload the finished map in the admin Tracks tab.">
                 Download PNG
               </button>
             )}
-          </div>
-          <div ref={mapRef} className="flex flex-1 items-center justify-center py-4">
-            {circuit ? (
-              <CircuitMap track={race.track} animate stroke="var(--c-text)" strokeWidth={2} className="h-56 w-full text-dark sm:h-72" />
+          </CardHeader>
+          <div ref={mapRef} className="flex flex-1 items-center justify-center p-5 py-8">
+            {/* An admin-uploaded map (e.g. the outline with labelled corners)
+                replaces the plain generated outline entirely. */}
+            {history?.mapImageUrl ? (
+              <img src={history.mapImageUrl} alt={`${race.track} track map`} className="max-h-80 w-full rounded-lg object-contain" />
+            ) : circuit ? (
+              <CircuitMap
+                track={race.track}
+                rotate={history?.mapRotation || 0}
+                stroke="var(--c-text)"
+                strokeWidth={2}
+                className="h-56 w-full text-dark sm:h-72"
+              />
             ) : (
               <div className="py-10 text-center text-sm text-light">No outline for this track yet.</div>
             )}
           </div>
         </div>
 
-        <div className="card p-5">
-          <h3 className="mb-1 font-mono text-xs font-bold uppercase tracking-widest text-light">Track record</h3>
-          {loading ? (
-            <div className="py-8 text-center text-sm text-light">Loading history…</div>
-          ) : records.length === 0 && customFacts.length === 0 ? (
-            <div className="py-8 text-center text-sm text-light">First time here. No history at this track yet.</div>
-          ) : (
-            <div>
-              {records.map((r) => (
-                <RecordRow key={r.label} {...r} />
-              ))}
-              {customFacts.map((f, i) => (
-                <RecordRow key={`c${i}`} icon="info" label={f.label} name={f.value} value="" />
-              ))}
-            </div>
-          )}
-          {history?.mapImageUrl && (
-            <img src={history.mapImageUrl} alt="Track map" className="mt-4 w-full rounded-lg border border-border" />
-          )}
+        <div className="card overflow-hidden">
+          <CardHeader title="Track record" />
+          <div className="px-5 pb-4 pt-1">
+            {loading ? (
+              <div className="py-8 text-center text-sm text-light">Loading history…</div>
+            ) : records.length === 0 && customFacts.length === 0 && editions.length === 0 ? (
+              <div className="py-8 text-center text-sm text-light">First time here. No history at this track yet.</div>
+            ) : (
+              <div>
+                {records.map((r) => (
+                  <RecordRow key={r.label} {...r} />
+                ))}
+                {customFacts.map((f, i) => (
+                  <RecordRow key={`c${i}`} icon="info" label={f.label} name={f.value} value="" />
+                ))}
+                {/* Every previous running of this circuit, newest first. */}
+                {editions.length > 0 && (
+                  <div className="mt-4">
+                    <div className="mb-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+                      Past winners here
+                    </div>
+                    <div className="space-y-1.5">
+                      {editions.slice(0, 5).map((e, i) => (
+                        <div key={i} className="flex items-center gap-2.5 text-sm">
+                          <span className="pill shrink-0 bg-surface2 font-mono text-[10px] font-bold text-light">
+                            S{e.seasonNumber ?? "?"}
+                          </span>
+                          {e.winner ? (
+                            <Link to={`/drivers/${e.winner.driverId}`} className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark hover:text-brand">
+                              {e.winner.name}
+                            </Link>
+                          ) : (
+                            <span className="text-light">No result recorded</span>
+                          )}
+                          {e.fastestLapMs && (
+                            <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-light">{fmtLap(e.fastestLapMs)}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

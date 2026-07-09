@@ -149,49 +149,6 @@ function StatTiles({ stats, className = "grid-cols-2 sm:grid-cols-3 lg:grid-cols
   );
 }
 
-// AC telemetry tiles (overtakes, consistency, contacts, penalties). Rendered
-// only when the season actually has telemetry, so position-only archive seasons
-// stay clean. Overtakes are an estimate (lap-granularity), so we say so.
-function fmtSpread(ms) {
-  return `±${(ms / 1000).toFixed(2)}s`;
-}
-function TelemetryTiles({ stats }) {
-  const has =
-    stats.overtakes != null || stats.avgConsistencyMs != null || stats.contacts != null || stats.gamePenalties != null;
-  if (!has) return null;
-  const tiles = [];
-  if (stats.overtakes != null)
-    tiles.push({ icon: "swap", label: "Overtakes", value: stats.overtakes, sub: "on-track passes (estimated)" });
-  if (stats.avgConsistencyMs != null)
-    tiles.push({ icon: "gauge", label: "Consistency", value: fmtSpread(stats.avgConsistencyMs), sub: "clean-lap time spread" });
-  if (stats.contacts != null)
-    tiles.push({
-      icon: "spark",
-      label: "Contacts",
-      value: stats.contacts,
-      sub: stats.envContacts != null ? `${stats.envContacts} off-track hits` : "car to car",
-    });
-  if (stats.gamePenalties != null || stats.stewardPenaltySeconds)
-    tiles.push({
-      icon: "alert",
-      label: "Penalties",
-      value: stats.gamePenalties ?? 0,
-      sub: stats.stewardPenaltySeconds ? `${stats.stewardPenaltySeconds}s from stewards` : "in-game",
-    });
-  return (
-    <div>
-      <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-light">
-        Telemetry
-      </div>
-      <div className="cascade grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {tiles.map((t, i) => (
-          <Stat key={t.label} index={i} icon={t.icon} label={t.label} value={t.value} sub={t.sub} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // Cross-season career: one row per linked season, current name resolved. Only
 // rendered when the driver is linked to more than one season.
 function CareerBlock({ career }) {
@@ -233,7 +190,9 @@ function CareerBlock({ career }) {
                     <span className="text-medium">{s.teamName || "—"}</span>
                   </span>
                 </td>
-                <td className="px-2 py-3 text-center font-mono tabular-nums text-medium">{s.position ? `P${s.position}` : "–"}</td>
+                {/* No championship position before the season has actually
+                    been raced — a standings rank over zero starts means nothing. */}
+                <td className="px-2 py-3 text-center font-mono tabular-nums text-medium">{s.position && s.starts > 0 ? `P${s.position}` : "–"}</td>
                 <td className="px-2 py-3 text-center tabular-nums text-medium">{s.starts}</td>
                 <td className="px-2 py-3 text-center tabular-nums text-dark">{s.wins}</td>
                 <td className="px-2 py-3 text-center tabular-nums text-dark">{s.podiums}</td>
@@ -809,8 +768,9 @@ export default function DriverProfile() {
         <CardHeader driver={driver} rating={rating} championship={championship} color={color} stats={stats} />
       )}
 
-      {/* AC telemetry (only when the season has it) */}
-      <TelemetryTiles stats={stats} />
+      {/* The per-season AC telemetry (overtakes, consistency, contacts,
+          penalties) is deliberately NOT shown here — it feeds the rating
+          calculation and the per-round Race Facts instead. */}
 
       {/* Season form + Head to head */}
       <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">

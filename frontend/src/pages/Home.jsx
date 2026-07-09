@@ -690,13 +690,13 @@ export default function Home() {
         <>
           <section className="reveal hidden md:block">
             <Heading index="04" eyebrow="Points Progression" title={hasT2 ? "Tier 1" : "Constructors"} to="/constructors" />
-            <PointsChart standings={t1.data?.standings || []} completed={completedNumbers} allRounds={t1.data?.raceNumbers || []} dropWorst={t1.data?.dropWorst} />
+            <PointsChart standings={t1.data?.standings || []} completed={completedNumbers} allRounds={t1.data?.raceNumbers || []} dropWorst={t1.data?.dropWorst} dropMode={t1.data?.dropMode} teamDropWorst={t1.data?.teamDropWorst} />
           </section>
 
           {hasT2 && (
             <section className="reveal hidden md:block">
               <Heading index="05" eyebrow="Points Progression" title="Tier 2" to="/constructors" />
-              <PointsChart standings={t2.data?.standings || []} completed={completedNumbers} allRounds={t2.data?.raceNumbers || []} dropWorst={t2.data?.dropWorst} />
+              <PointsChart standings={t2.data?.standings || []} completed={completedNumbers} allRounds={t2.data?.raceNumbers || []} dropWorst={t2.data?.dropWorst} dropMode={t2.data?.dropMode} teamDropWorst={t2.data?.teamDropWorst} />
             </section>
           )}
         </>

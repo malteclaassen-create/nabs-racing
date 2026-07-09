@@ -1,10 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox } from "./ui.jsx";
 import Icon from "./InfoIcon.jsx";
 
-const EMPTY = { title: "", folderId: "", version: "", description: "", installNote: "", fileName: "", sortOrder: 0, published: true };
+const EMPTY = { title: "", folderId: "", version: "", description: "", installNote: "", fileName: "", externalUrl: "", sortOrder: 0, published: true };
 
 const inputCls = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark placeholder:text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
 const labelCls = "mb-1 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium";
@@ -126,6 +126,17 @@ export default function AdminDownloads() {
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
   const [upload, setUpload] = useState(null); // { name, pct } while uploading
+  const [flash, setFlash] = useState(false); // brief highlight on the form after a jump
+  const formRef = useRef(null);
+
+  // "Register" and a finished upload both land the admin on the entry form —
+  // scroll to the FORM itself (page top would show the folder manager instead)
+  // and flash it so the next step is unmissable.
+  function jumpToForm() {
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setFlash(true);
+    setTimeout(() => setFlash(false), 1600);
+  }
 
   const downloads = data?.downloads || [];
   const folders = data?.folders || [];
@@ -140,9 +151,10 @@ export default function AdminDownloads() {
     setMsg(null);
     setForm({
       title: d.title, folderId: d.folderId || "", version: d.version || "", description: d.description || "",
-      installNote: d.installNote || "", fileName: d.fileName || "", sortOrder: d.sortOrder || 0, published: d.published,
+      installNote: d.installNote || "", fileName: d.fileName || "", externalUrl: d.externalUrl || "",
+      sortOrder: d.sortOrder || 0, published: d.published,
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    jumpToForm();
   }
 
   async function save(e) {
@@ -150,7 +162,22 @@ export default function AdminDownloads() {
     setBusy(true);
     setMsg(null);
     try {
-      const body = { ...form, folderId: form.folderId || null, sortOrder: Number(form.sortOrder) || 0 };
+      // An address typed without a protocol ("drive.google.com/…") would open as
+      // a relative path on our own site — default it to https.
+      let url = (form.externalUrl || "").trim();
+      if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
+      const body = {
+        ...form,
+        folderId: form.folderId || null,
+        externalUrl: url || null,
+        fileName: form.fileName.trim() || null,
+        sortOrder: Number(form.sortOrder) || 0,
+      };
+      if (!body.fileName && !body.externalUrl) {
+        setMsg({ ok: false, text: "Pick a file on the server or paste an external link — one of the two." });
+        setBusy(false);
+        return;
+      }
       if (editingId) await api.updateDownload(editingId, body);
       else await api.createDownload(body);
       setMsg({ ok: true, text: editingId ? "Updated." : "Added." });
@@ -171,12 +198,13 @@ export default function AdminDownloads() {
     setUpload({ name: file.name, pct: 0 });
     try {
       const res = await api.uploadDownloadFile(file, (pct) => setUpload({ name: file.name, pct }));
-      setMsg({ ok: true, text: `Uploaded "${res.fileName}" (${res.sizeText}). Now register it below.` });
+      setMsg({ ok: true, text: `Uploaded "${res.fileName}" (${res.sizeText}). One more step: register it so members can see it.` });
       // Jump straight into registering the freshly uploaded file.
       startNew();
       set("fileName", res.fileName);
       set("title", res.fileName.replace(/\.[^.]+$/, ""));
       reload();
+      jumpToForm();
     } catch (err) {
       setMsg({ ok: false, text: err.message });
     } finally {
@@ -200,10 +228,10 @@ export default function AdminDownloads() {
   return (
     <div className="space-y-6">
       <div className="rounded-lg bg-surface2/60 px-4 py-3 text-sm text-medium">
-        Add files either by <b>uploading them below</b> or by copying them into{" "}
-        <code className="rounded bg-card px-1.5 py-0.5 text-xs">backend/downloads/</code> on the server. Then register
-        each one and sort it into a folder. Members download them from the <b>Race Info</b> page. File sizes are read
-        live from disk.
+        Three ways to add something: <b>upload a file below</b>, copy it into{" "}
+        <code className="rounded bg-card px-1.5 py-0.5 text-xs">backend/downloads/</code> on the server, or register an{" "}
+        <b>external link</b> to a file hosted elsewhere (Google Drive, Mega…). Then sort it into a folder. Members
+        download everything from the <b>Race Info</b> page. File sizes are read live from disk.
       </div>
 
       {/* Folder management */}
@@ -245,7 +273,7 @@ export default function AdminDownloads() {
                     <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">registered</span>
                   ) : (
                     <button
-                      onClick={() => { startNew(); set("fileName", f.fileName); set("title", f.fileName.replace(/\.[^.]+$/, "")); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                      onClick={() => { startNew(); set("fileName", f.fileName); set("title", f.fileName.replace(/\.[^.]+$/, "")); jumpToForm(); }}
                       className="rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary transition hover:bg-primary/20"
                     >
                       Register
@@ -262,10 +290,16 @@ export default function AdminDownloads() {
       </div>
 
       {/* Create / edit form */}
-      <form onSubmit={save} className="card space-y-4 p-5">
+      <form
+        ref={formRef}
+        onSubmit={save}
+        className={`card scroll-mt-24 space-y-4 p-5 transition-shadow duration-500 ${
+          flash ? "ring-2 ring-primary shadow-lg" : ""
+        }`}
+      >
         <div className="flex items-center justify-between">
           <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
-            {editingId ? "Edit entry" : "New entry"}
+            {editingId ? "Edit entry" : form.fileName ? "Register file" : "New entry"}
           </h3>
           {editingId && (
             <button type="button" onClick={startNew} className="text-xs font-semibold text-light hover:text-dark">
@@ -273,6 +307,14 @@ export default function AdminDownloads() {
             </button>
           )}
         </div>
+
+        {/* The not-yet-registered file the admin is working on right now. */}
+        {!editingId && form.fileName && (
+          <div className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-dark">
+            You are registering <code className="rounded bg-card px-1.5 py-0.5 font-mono text-xs">{form.fileName}</code>.
+            Pick a folder, give it a title, then hit <b>Add download</b> — only then do members see it.
+          </div>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -290,6 +332,23 @@ export default function AdminDownloads() {
             <label className={labelCls}>File on server</label>
             <input list="dl-files" className={inputCls} value={form.fileName} onChange={(e) => set("fileName", e.target.value)} placeholder="filename in backend/downloads/" />
             <datalist id="dl-files">{diskFiles.map((f) => <option key={f.fileName} value={f.fileName}>{f.sizeText}</option>)}</datalist>
+          </div>
+          <div>
+            <label className={labelCls}>… or external link</label>
+            {/* type=text on purpose: native url validation would block submit
+                for "drive.google.com/…" before our https:// autofix can run */}
+            <input
+              type="text"
+              inputMode="url"
+              className={inputCls}
+              value={form.externalUrl}
+              onChange={(e) => set("externalUrl", e.target.value)}
+              placeholder="https://drive.google.com/…"
+            />
+            <p className="mt-1 text-xs text-light">
+              For files hosted elsewhere (Google Drive, Mega, the mod site…). Members get an &ldquo;Open link&rdquo; button
+              instead of a download. Fill in either a file or a link, not both.
+            </p>
           </div>
           <div>
             <label className={labelCls}>Version</label>

@@ -18,8 +18,8 @@ router.get("/", async (req, res, next) => {
         orderBy: { number: "desc" },
         select: { id: true, number: true, name: true, game: true, isActive: true, dropWorst: true, pointsTable: true },
       }),
-      // teamDropWorst / isPublic aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "isPublic" FROM "Season"`).catch(() => []),
+      // teamDropWorst / teamDropMode / isPublic aren't in the generated client yet -> raw read.
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic" FROM "Season"`).catch(() => []),
       getPrivateSeasonIds(prisma),
     ]);
     const rawById = new Map(raw.map((r) => [r.id, r]));
@@ -31,6 +31,7 @@ router.get("/", async (req, res, next) => {
           ...s,
           pointsTable: s.pointsTable ? JSON.parse(s.pointsTable) : null,
           teamDropWorst: extra.teamDropWorst == null ? null : Number(extra.teamDropWorst),
+          teamDropMode: extra.teamDropMode === "rounds" ? "rounds" : null,
           isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
         };
       })

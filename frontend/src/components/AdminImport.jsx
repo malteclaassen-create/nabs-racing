@@ -80,6 +80,7 @@ export default function AdminImport({ onCommitted }) {
           laps: en.laps ?? null,
           cleanLaps: en.cleanLaps ?? null,
           consistencyMs: en.consistencyMs ?? null,
+          consistencyPct: en.consistencyPct ?? null,
           gamePenalties: en.gamePenalties ?? null,
           gamePenaltySeconds: en.gamePenaltySeconds ?? null,
           suggestions: en.suggestions,
@@ -147,6 +148,7 @@ export default function AdminImport({ onCommitted }) {
         laps: r.laps ?? null,
         cleanLaps: r.cleanLaps ?? null,
         consistencyMs: r.consistencyMs ?? null,
+        consistencyPct: r.consistencyPct ?? null,
         gamePenalties: r.gamePenalties ?? null,
         gamePenaltySeconds: r.gamePenaltySeconds ?? null,
       }));

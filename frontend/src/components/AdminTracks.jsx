@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Notice } from "./ui.jsx";
-import { trackKey } from "../data/circuits.js";
+import { trackKey, circuitFor } from "../data/circuits.js";
+import CircuitMap from "./CircuitMap.jsx";
 
 // Admin "Tracks" tab: per-circuit fun facts and an optional custom map image,
 // layered on top of the computed track history shown on the upcoming-race panel
@@ -12,6 +13,7 @@ export default function AdminTracks() {
   const [selected, setSelected] = useState(""); // track display name
   const [facts, setFacts] = useState([]);
   const [mapImageUrl, setMapImageUrl] = useState(null);
+  const [mapRotation, setMapRotation] = useState(0);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
@@ -38,6 +40,7 @@ export default function AdminTracks() {
       .then((d) => {
         setFacts(d.facts?.length ? d.facts : [{ label: "", value: "" }]);
         setMapImageUrl(d.mapImageUrl || null);
+        setMapRotation(d.mapRotation || 0);
       })
       .catch((e) => setError(e.message));
   }, [key]);
@@ -51,7 +54,7 @@ export default function AdminTracks() {
     setError(null);
     setMsg(null);
     try {
-      const content = { facts: facts.filter((f) => f.label.trim() || f.value.trim()), mapImageUrl };
+      const content = { facts: facts.filter((f) => f.label.trim() || f.value.trim()), mapImageUrl, mapRotation };
       await api.saveTrackInfo(key, content);
       setMsg("Track info saved.");
     } catch (e) {
@@ -134,8 +137,43 @@ export default function AdminTracks() {
             )}
           </div>
 
+          {circuitFor(selected) && !mapImageUrl && (
+            <div>
+              <div className="mb-2 font-mono text-xs font-bold uppercase tracking-widest text-light">Outline rotation</div>
+              <p className="mb-2 text-sm text-light">
+                Turn the built-in outline so it fills the upcoming-race panel better. The preview below shows exactly
+                what visitors will see. Remember to hit &ldquo;Save track info&rdquo;.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                {[0, 90, 180, 270].map((d) => (
+                  <button key={d} type="button"
+                    className={`rounded-lg border px-3 py-1.5 font-mono text-xs font-bold transition ${
+                      mapRotation === d ? "border-brand bg-brand/10 text-dark" : "border-border text-light hover:text-dark"
+                    }`}
+                    onClick={() => setMapRotation(d)}>
+                    {d}°
+                  </button>
+                ))}
+                <label className="flex items-center gap-1.5 text-xs text-light">
+                  fine tune
+                  <input className="input w-20 py-1 text-center text-xs" type="number" min="0" max="359" step="5"
+                    value={mapRotation}
+                    onChange={(e) => setMapRotation(((Math.round(Number(e.target.value) || 0) % 360) + 360) % 360)} />
+                  °
+                </label>
+              </div>
+              <div className="mt-3 flex items-center justify-center rounded-lg border border-border bg-surface2/40 p-4">
+                <CircuitMap track={selected} rotate={mapRotation} stroke="var(--c-text)" strokeWidth={2} className="h-48 w-full text-dark" />
+              </div>
+            </div>
+          )}
+
           <div>
             <div className="mb-2 font-mono text-xs font-bold uppercase tracking-widest text-light">Custom map image</div>
+            <p className="mb-2 text-sm text-light">
+              Replaces the plain outline on the upcoming-race panel, e.g. the downloaded PNG with the corners labelled.
+              Remove it to go back to the built-in outline.
+            </p>
             {mapImageUrl ? (
               <div className="flex flex-wrap items-center gap-3">
                 <img src={mapImageUrl} alt="Track map" className="h-24 rounded-lg border border-border" />

@@ -14,21 +14,11 @@ function niceNum(v, round) {
   return nf * Math.pow(10, e);
 }
 
-// Drop-worst-N rule, mirroring the backend (standingsService). Sum of a set of
-// round scores after removing the N lowest. Rounds not yet run count as 0 (and
-// are dropped first), so mid-season the line equals the gross sum until fewer
-// than N rounds remain — exactly how the season total behaves. N comes from the
-// season (`dropWorst` in the standings payload); 0 = every round counts.
-function championshipTotal(pointsByRound, roundNumbers, dropN) {
-  const pts = roundNumbers.map((n) => pointsByRound[n] ?? 0);
-  if (pts.length <= dropN) return pts.reduce((a, b) => a + b, 0);
-  return [...pts].sort((a, b) => a - b).slice(dropN).reduce((a, b) => a + b, 0);
-}
-
 // `completed` = rounds plotted on the x-axis (those with scores). `allRounds` =
-// the full season calendar (incl. not-yet-run rounds), needed so the drop rule
-// counts unrun rounds as droppable zeros just like the standings do.
-export default function PointsChart({ standings = [], completed = [], allRounds = [], dropWorst = 3 }) {
+// the full season calendar (incl. not-yet-run rounds), used in the footnote.
+// `dropMode` / `teamDropWorst` mirror the standings payload so the footnote
+// describes whichever drop rule is actually in force.
+export default function PointsChart({ standings = [], completed = [], allRounds = [], dropWorst = 3, dropMode = "driver", teamDropWorst = null }) {
   const [focus, setFocus] = useState(null); // hovered team
   const [pinned, setPinned] = useState(null); // clicked team
   const [hover, setHover] = useState(null); // { idx, x, w }
@@ -39,17 +29,19 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
   }
 
   const N = completed.length;
-  const calendar = allRounds.length ? allRounds : completed;
   const series = standings.map((t) => {
-    // Cumulative CHAMPIONSHIP total after each round: the season's drop rule
-    // applied to the rounds run so far. The line therefore ends exactly on the
-    // team's real season total (the number in the table) instead of the gross
-    // sum of every race.
+    // Cumulative CHAMPIONSHIP total after each round: each round adds what it
+    // actually counts toward the season total (its scored points minus the
+    // share the standings marked as dropped in droppedPerRace). The standings
+    // already applied whichever drop rule is in force, so the line ends
+    // exactly on the team's real season total (the number in the table).
     const pts = [0];
-    for (const upto of completed) {
-      const pbr = {};
-      for (const n of calendar) pbr[n] = n <= upto ? t.perRace?.[n] || 0 : 0;
-      pts.push(championshipTotal(pbr, calendar, dropWorst));
+    let cum = 0;
+    for (const n of completed) {
+      const scored = t.perRace?.[n] || 0;
+      const dropped = Math.min(scored, t.droppedPerRace?.[n] || 0);
+      cum += scored - dropped;
+      pts.push(cum);
     }
     return { teamId: t.teamId, name: t.name, color: t.color, total: t.total, perRace: t.perRace, pts };
   });
@@ -270,13 +262,25 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
 
       <p className="mt-3 text-xs text-light">
         Cumulative championship points after each round
-        {dropWorst > 0 && (
+        {dropMode === "teamRounds" && teamDropWorst > 0 ? (
           <>
-
+            ; each team&rsquo;s {teamDropWorst} lowest round total{teamDropWorst === 1 ? " doesn't" : "s don't"} count
+            {allRounds.length > teamDropWorst && <> (best&nbsp;{allRounds.length - teamDropWorst} of&nbsp;{allRounds.length})</>}
+          </>
+        ) : dropMode === "team" && teamDropWorst > 0 ? (
+          <>
+            ; each team&rsquo;s {teamDropWorst} lowest single-driver round score{teamDropWorst === 1 ? " doesn't" : "s don't"} count
+          </>
+        ) : dropMode === "official" && dropWorst > 0 ? (
+          <>
             ; each team&rsquo;s {dropWorst} lowest round{dropWorst === 1 ? " is" : "s are"} dropped
             {allRounds.length > dropWorst && <> (best&nbsp;{allRounds.length - dropWorst} of&nbsp;{allRounds.length})</>}
           </>
-        )}
+        ) : dropWorst > 0 ? (
+          <>
+            ; each driver&rsquo;s {dropWorst} lowest round{dropWorst === 1 ? " doesn't" : "s don't"} count for their team
+          </>
+        ) : null}
         , so the line ends on the same total as the standings table.
       </p>
     </div>

@@ -482,6 +482,7 @@ function EditResults() {
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState({ track: "", date: "" }); // race details editor
   const [dotd, setDotd] = useState(""); // Driver of the Day pick
+  const [dotdBy, setDotdBy] = useState(""); // who made the pick (streamer)
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
@@ -495,6 +496,7 @@ function EditResults() {
       .then((d) => {
         setMeta({ track: d.race?.track || "", date: toLocalInput(d.race?.date) });
         setDotd(d.race?.driverOfTheDay?.driverId || "");
+        setDotdBy(d.race?.driverOfTheDay?.pickedBy || "");
         setRows(
           d.results.map((r) => {
             const raw = r.rawPosition ?? r.position ?? "";
@@ -504,6 +506,7 @@ function EditResults() {
               position: raw, // raw finishing position (penalty is separate)
               status: r.status,
               subForTeamId: r.subForTeam?.id || "",
+              ownTeamName: r.team?.name || "", // so the sub dropdown can say which team "own team" is
               penaltySeconds: r.penaltySeconds || 0,
               totalTimeMs: r.totalTimeMs ?? null, // race time, needed to apply a time penalty
               // The STORED points (null = derived from position). Never round-trip
@@ -579,7 +582,7 @@ function EditResults() {
     setError(null);
     setMsg(null);
     try {
-      await api.setDriverOfTheDay(raceId, dotd || null);
+      await api.setDriverOfTheDay(raceId, dotd || null, dotd ? dotdBy.trim() || null : null);
       setMsg(dotd ? "Driver of the Day saved." : "Driver of the Day cleared.");
     } catch (e) {
       setError(e.message);
@@ -636,10 +639,21 @@ function EditResults() {
               ))}
             </select>
           </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+            Picked by
+            <input
+              className="input min-w-48"
+              type="text"
+              placeholder="e.g. the round's streamer"
+              value={dotdBy}
+              onChange={(e) => setDotdBy(e.target.value)}
+              disabled={!dotd}
+            />
+          </label>
           <button className="btn-secondary" disabled={busy} onClick={saveDotd}>
             Save pick
           </button>
-          <span className="pb-2 text-xs text-light">Shown as a fan-favourite tile on the race facts.</span>
+          <span className="pb-2 text-xs text-light">Shown as the fan-favourite card on the race facts, with credit to whoever picked it.</span>
         </div>
       )}
 
@@ -687,7 +701,9 @@ function EditResults() {
                         value={r.subForTeamId}
                         onChange={(e) => setRow(i, { subForTeamId: e.target.value })}
                       >
-                        <option value="">Driver’s own team</option>
+                        <option value="">
+                          {r.ownTeamName ? `Own team · ${r.ownTeamName}` : "Driver’s own team"}
+                        </option>
                         {(teams || [])
                           .filter((t) => t.tier === 1 || t.tier === 2)
                           .map((t) => (
@@ -1042,12 +1058,17 @@ function parsePointsInput(text) {
 function SeasonScoring({ season, onSaved, onError }) {
   const stored = season.pointsTable ? JSON.parse(season.pointsTable).join(", ") : "";
   const storedTeamDrop = season.teamDropWorst == null ? "" : String(season.teamDropWorst);
+  const storedTeamMode = season.teamDropMode === "rounds" ? "rounds" : "results";
   const [drop, setDrop] = useState(String(season.dropWorst ?? 3));
   const [teamDrop, setTeamDrop] = useState(storedTeamDrop);
+  const [teamMode, setTeamMode] = useState(storedTeamMode);
   const [points, setPoints] = useState(stored);
   const [saving, setSaving] = useState(false);
   const dirty =
-    drop !== String(season.dropWorst ?? 3) || teamDrop.trim() !== storedTeamDrop || points.trim() !== stored;
+    drop !== String(season.dropWorst ?? 3) ||
+    teamDrop.trim() !== storedTeamDrop ||
+    teamMode !== storedTeamMode ||
+    points.trim() !== stored;
 
   async function save() {
     const n = Number(drop);
@@ -1062,10 +1083,22 @@ function SeasonScoring({ season, onSaved, onError }) {
     if (!parsed.ok) return onError(parsed.error);
     setSaving(true); onError(null);
     try {
-      await api.updateSeason(season.id, { dropWorst: n, teamDropWorst: teamDrop.trim() === "" ? null : teamVal, pointsTable: parsed.value });
+      await api.updateSeason(season.id, {
+        dropWorst: n,
+        teamDropWorst: teamDrop.trim() === "" ? null : teamVal,
+        teamDropMode: teamDrop.trim() === "" ? null : teamMode,
+        pointsTable: parsed.value,
+      });
       onSaved(`Scoring for ${season.name} saved.`);
     } catch (err) { onError(err.message); } finally { setSaving(false); }
   }
+
+  // What the team-drop number means in each mode, so the admin sees the
+  // difference at a glance (e.g. 6 results ≈ 3 whole rounds for 2-car teams).
+  const teamModeHint =
+    teamMode === "rounds"
+      ? "Drops each team's N lowest WHOLE round totals (unrun rounds count as 0). This is how the league's official sheet calculates."
+      : "Drops each team's N lowest single-driver round scores, however they're spread across the drivers.";
 
   return (
     <div className="space-y-1.5 rounded-lg bg-surface2/60 p-2.5">
@@ -1076,9 +1109,17 @@ function SeasonScoring({ season, onSaved, onError }) {
             value={drop} onChange={(e) => setDrop(e.target.value)} title="How many of each driver's lowest-scoring rounds don't count in the driver standings (0 = every round counts)" />
         </label>
         <label className="flex items-center gap-1.5 text-xs text-light">
-          Team dropped rounds
+          Team drop
           <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="24" placeholder="—"
-            value={teamDrop} onChange={(e) => setTeamDrop(e.target.value)} title="Constructor standings: drop each team's N lowest single-driver round scores. Leave blank to keep the old rule (teams inherit driver drops)." />
+            value={teamDrop} onChange={(e) => setTeamDrop(e.target.value)} title="How many the constructor standings drop per team. What gets counted depends on the style next to this. Leave blank to keep the old rule (teams inherit driver drops)." />
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-light">
+          counts
+          <select className="input py-1 text-xs" value={teamMode} onChange={(e) => setTeamMode(e.target.value)}
+            disabled={teamDrop.trim() === ""} title={teamModeHint}>
+            <option value="results">single results</option>
+            <option value="rounds">whole team rounds (sheet style)</option>
+          </select>
         </label>
         <input className="input min-w-40 flex-1 py-1 font-mono text-xs" placeholder={`Points P1, P2, … (default: ${DEFAULT_POINTS_HINT})`}
           value={points} onChange={(e) => setPoints(e.target.value)} title="Points per finishing position, starting at P1. Leave empty for the league default." />
@@ -1088,8 +1129,11 @@ function SeasonScoring({ season, onSaved, onError }) {
       </div>
       <p className="text-[11px] leading-relaxed text-light">
         {Number(drop) > 0
-          ? `Season totals drop each driver's & team's ${drop} lowest round${Number(drop) === 1 ? "" : "s"}.`
-          : "Every round counts (no dropped rounds)."}{" "}
+          ? `Driver totals drop each driver's ${drop} lowest round${Number(drop) === 1 ? "" : "s"}.`
+          : "Every round counts for drivers (no dropped rounds)."}{" "}
+        {teamDrop.trim() !== "" && Number(teamDrop) > 0 && (
+          <>Teams drop their {teamDrop} lowest {teamMode === "rounds" ? "whole round totals (like the official sheet)" : "single-driver round scores"}. </>
+        )}
         {points.trim() ? "Custom points table." : "League default points table."}
       </p>
     </div>
@@ -1259,7 +1303,7 @@ function Seasons({ gotoRaces }) {
                   )}
                 </div>
               </div>
-              <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.pointsTable || ""}`} season={s}
+              <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.pointsTable || ""}`} season={s}
                 onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
               {/* clone teams (or the full roster) from another season */}
               {(seasons || []).length > 1 && (

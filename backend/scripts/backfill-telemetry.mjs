@@ -58,7 +58,7 @@ const OVERRIDES = {
 
 const TELEMETRY_COLS = [
   "contacts", "envContacts", "cuts", "overtakes", "laps",
-  "cleanLaps", "consistencyMs", "gamePenalties", "gamePenaltySeconds",
+  "cleanLaps", "consistencyMs", "consistencyPct", "gamePenalties", "gamePenaltySeconds",
 ];
 
 function parseArgs(argv) {

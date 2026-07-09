@@ -126,6 +126,7 @@ router.get("/:id/results", async (req, res, next) => {
           laps: tel.laps ?? null,
           cleanLaps: tel.cleanLaps ?? null,
           consistencyMs: tel.consistencyMs ?? null,
+          consistencyPct: tel.consistencyPct ?? null,
           gamePenalties: tel.gamePenalties ?? null,
           gamePenaltySeconds: tel.gamePenaltySeconds ?? null,
           team: {
@@ -155,14 +156,18 @@ router.get("/:id/results", async (req, res, next) => {
         return (a.position ?? 999) - (b.position ?? 999);
       });
 
-    // Driver of the Day (admin pick) — column may not be in the generated client.
+    // Driver of the Day (admin pick + who made the call) — columns may not be
+    // in the generated client.
     let driverOfTheDay = null;
     try {
-      const dr = await prisma.$queryRawUnsafe(`SELECT "driverOfTheDayId" FROM "Race" WHERE "id" = ?`, race.id);
+      const dr = await prisma.$queryRawUnsafe(
+        `SELECT "driverOfTheDayId", "driverOfTheDayBy" FROM "Race" WHERE "id" = ?`,
+        race.id
+      );
       const dotdId = dr[0]?.driverOfTheDayId || null;
       if (dotdId) {
         const row = rows.find((r) => r.driverId === dotdId);
-        driverOfTheDay = { driverId: dotdId, name: row?.name || null };
+        driverOfTheDay = { driverId: dotdId, name: row?.name || null, pickedBy: dr[0]?.driverOfTheDayBy || null };
       }
     } catch {
       /* column missing pre-migration */

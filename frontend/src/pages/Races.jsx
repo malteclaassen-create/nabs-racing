@@ -297,11 +297,7 @@ export default function Races() {
 
   return (
     <div className="space-y-12">
-      <PageHeader
-        eyebrow="Schedule & Results"
-        title="Races"
-        subtitle="Pick a round to see its results, or sign up for one that hasn't run yet. The calendar below lists the whole season."
-      />
+      <PageHeader eyebrow="Schedule & Results" title="Races" />
 
       {/* Results explorer: round list (left), and on the right the selected
           round's results (completed) or sign-up + driver market (upcoming). */}
@@ -344,8 +340,8 @@ export default function Races() {
                           </p>
                         )}
                       </div>
-                      {detail.race.hasPositions && <RaceFacts race={detail.race} results={detail.results} />}
                       <RaceResults race={detail.race} results={detail.results} />
+                      {detail.race.hasPositions && <RaceFacts race={detail.race} results={detail.results} />}
                     </div>
                   )}
                 </>

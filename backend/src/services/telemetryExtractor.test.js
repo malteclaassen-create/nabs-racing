@@ -96,6 +96,35 @@ describe("laps, cuts and consistency", () => {
     };
     expect(extractTelemetry(json).byGuid.get(g).consistencyMs).toBeNull();
   });
+
+  it("computes the simresults-style consistency percentage", () => {
+    const g = "a";
+    const json = {
+      Cars: [car(g, "Ann")],
+      Result: [res(g, 1, { best: 90000, laps: 5 })],
+      Laps: [
+        lap(g, 95000, 100), // first lap (standing start) -> ignored
+        lap(g, 90900, 200),
+        lap(g, 90000, 300), // best lap itself -> ignored
+        lap(g, 120000, 400), // > best + 21s (pit) -> ignored
+        lap(g, 91800, 500),
+      ],
+      Events: [],
+      Penalties: [],
+    };
+    // avg of [90900, 91800] = 91350 -> 100 - (1350/90000)*100 = 98.5
+    expect(extractTelemetry(json).byGuid.get(g).consistencyPct).toBe(98.5);
+  });
+
+  it("returns null consistency percentage when too few racing laps remain", () => {
+    const g = "a";
+    const json = {
+      Result: [res(g, 1, { best: 90000, laps: 3 })],
+      Laps: [lap(g, 95000, 100), lap(g, 90000, 200), lap(g, 91000, 300)],
+    };
+    // only one comparable racing lap (91000) -> not enough signal
+    expect(extractTelemetry(json).byGuid.get(g).consistencyPct).toBeNull();
+  });
 });
 
 describe("overtakes", () => {

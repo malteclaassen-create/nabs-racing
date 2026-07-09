@@ -94,7 +94,7 @@ export async function saveRaceResults(prisma, raceId, results) {
   // manual Edit-Results save would blank out backfilled telemetry.
   const TELEMETRY_COLS = [
     "contacts", "envContacts", "cuts", "overtakes", "laps",
-    "cleanLaps", "consistencyMs", "gamePenalties", "gamePenaltySeconds",
+    "cleanLaps", "consistencyMs", "consistencyPct", "gamePenalties", "gamePenaltySeconds",
   ];
   const existing = await prisma.$queryRawUnsafe(
     `SELECT "driverId", "grid", "bestLapMs", "totalTimeMs", ${TELEMETRY_COLS.map((c) => `"${c}"`).join(", ")} FROM "RaceResult" WHERE "raceId" = ?`,

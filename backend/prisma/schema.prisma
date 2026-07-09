@@ -52,6 +52,11 @@ model Season {
   // the N lowest single-driver round contributions from each team's total.
   // Managed via raw SQL (ensureAppSchema) so it's writable with the dev server up.
   teamDropWorst Int?
+  // How teamDropWorst counts (migration team_drop_mode). null/'results' = the N
+  // lowest single-driver round scores; 'rounds' = the N lowest whole team round
+  // totals, exactly how the league's official sheet computes its standings.
+  // Managed via raw SQL (ensureAppSchema) so it's writable with the dev server up.
+  teamDropMode String?
   // Season visibility (migration season_privacy). Existing rows default public;
   // new seasons are created private and hidden from every public read until the
   // admin publishes them. An active season is always forced public.
@@ -140,6 +145,9 @@ model Race {
   // fan-favourite fact on the results view. null = not chosen. Managed via raw
   // SQL (ensureAppSchema) so it's writable while the dev server holds the client.
   driverOfTheDayId String?
+  // Who made the Driver of the Day pick (the league's streamer decides each
+  // round). Free text, shown under the pick on the results view.
+  driverOfTheDayBy String?
   // Discord webhook message id for the live RSVP/event post (Apollo-style).
   discordMessageId String?
   results     RaceResult[]
@@ -239,6 +247,7 @@ model RaceResult {
   laps               Int?  // laps completed
   cleanLaps          Int?  // laps within 10s of the driver's own best that race
   consistencyMs      Float? // stdev of clean lap times, ms (null under 3 clean laps)
+  consistencyPct     Float? // simresults-style consistency % (avg racing lap vs best lap)
   gamePenalties      Int?  // count of in-game (AC) penalties issued
   gamePenaltySeconds Float? // total in-game penalty seconds
 

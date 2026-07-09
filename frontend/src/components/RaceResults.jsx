@@ -3,6 +3,7 @@ import { StatusPill, Rank, TierBadge } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
+import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
 
 // Small "?" help marker with a hover tooltip (native title).
 function Help({ text }) {
@@ -39,6 +40,30 @@ export default function RaceResults({ race, results }) {
   const fastestDriverId = hasLaps ? lapRows.find((r) => r.bestLapMs === fastestMs)?.driverId : null;
   const dotdId = race.driverOfTheDay?.driverId || null;
 
+  // Race time / gap column (F1-style): the winner's full race time, then each
+  // finisher's gap behind it, or "+N laps" for lapped cars. Steward penalties
+  // are included so the times line up with the classified order.
+  const adjMs = (r) => (r.totalTimeMs > 0 ? r.totalTimeMs + (r.penaltySeconds || 0) * 1000 : null);
+  const isFin = (r) => !r.status || r.status === "FINISHED";
+  const leader = results.find((r) => isFin(r) && r.position === 1);
+  const leaderMs = leader ? adjMs(leader) : null;
+  const leaderLaps = leader?.laps ?? null;
+  const hasTimes = leaderMs != null;
+  function timeCell(r) {
+    if (!isFin(r)) return null;
+    const ms = adjMs(r);
+    if (ms == null) return null;
+    if (r.position === 1) return fmtDuration(ms);
+    if (leaderLaps != null && r.laps != null && r.laps < leaderLaps) {
+      const down = leaderLaps - r.laps;
+      return `+${down} lap${down > 1 ? "s" : ""}`;
+    }
+    const gap = ms - (leaderMs ?? 0);
+    // A smaller total time than the winner means fewer laps (no laps data to
+    // say how many), so fall back to the car's own race time.
+    return gap > 0 ? fmtGap(gap) : fmtDuration(ms);
+  }
+
   return (
     <div className="card overflow-hidden">
       <div className="overflow-x-auto">
@@ -49,6 +74,7 @@ export default function RaceResults({ race, results }) {
               {detailed && hasGrid && <th className="hidden px-3 py-3 text-center md:table-cell">Grid</th>}
               <th className="px-3 py-3">Driver</th>
               <th className="hidden px-3 py-3 sm:table-cell">Team</th>
+              {detailed && hasTimes && <th className="hidden px-3 py-3 text-right md:table-cell">Time</th>}
               {detailed && hasLaps && <th className="hidden px-3 py-3 text-right md:table-cell">Best Lap</th>}
               {detailed && <th className="px-3 py-3 text-center">Status</th>}
               {detailed && (
@@ -159,6 +185,16 @@ export default function RaceResults({ race, results }) {
                       );
                     })()}
                   </td>
+
+                  {detailed && hasTimes && (
+                    <td
+                      className={`hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums md:table-cell ${
+                        r.position === 1 ? "font-bold text-dark" : "text-medium"
+                      }`}
+                    >
+                      {timeCell(r) || <span className="text-faint">—</span>}
+                    </td>
+                  )}
 
                   {detailed && hasLaps && (
                     <td

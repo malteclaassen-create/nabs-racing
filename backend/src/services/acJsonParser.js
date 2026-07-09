@@ -108,6 +108,7 @@ export function parseAcRaceJson(json, drivers) {
         laps: tel ? tel.laps : null,
         cleanLaps: tel ? tel.cleanLaps : null,
         consistencyMs: tel ? tel.consistencyMs : null,
+        consistencyPct: tel ? tel.consistencyPct : null,
         gamePenalties: tel ? tel.gamePenalties : null,
         gamePenaltySeconds: tel ? tel.gamePenaltySeconds : null,
         carModel: r.CarModel,

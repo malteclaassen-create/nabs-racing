@@ -26,16 +26,22 @@ export async function ensureAppSchema(prisma) {
   await addColumn(prisma, "RaceResult", "laps", "INTEGER"); // laps completed
   await addColumn(prisma, "RaceResult", "cleanLaps", "INTEGER"); // laps within 10s of own best
   await addColumn(prisma, "RaceResult", "consistencyMs", "REAL"); // stdev of clean laps (ms)
+  await addColumn(prisma, "RaceResult", "consistencyPct", "REAL"); // simresults-style consistency %
   await addColumn(prisma, "RaceResult", "gamePenalties", "INTEGER"); // in-game penalty count
   await addColumn(prisma, "RaceResult", "gamePenaltySeconds", "REAL"); // in-game penalty seconds
 
   // --- Phase 6: admin-picked Driver of the Day for a completed race.
   await addColumn(prisma, "Race", "driverOfTheDayId", "TEXT");
+  // Who made the pick (the league's streamer decides each round). Free text.
+  await addColumn(prisma, "Race", "driverOfTheDayBy", "TEXT");
 
   // --- Phase 5: team-level drop rule. null = legacy behaviour (teams inherit
   // each driver's own dropped rounds); 0 = no team drop; N = drop the N lowest
   // single-driver round contributions from each team's total.
   await addColumn(prisma, "Season", "teamDropWorst", "INTEGER");
+  // How teamDropWorst counts: null/'results' = single-driver round scores,
+  // 'rounds' = whole team round totals (the official sheet's style).
+  await addColumn(prisma, "Season", "teamDropMode", "TEXT");
 
   // --- Phase 9: season visibility. Existing rows default to public (1). New
   // seasons are created private by the admin route; an active season is forced

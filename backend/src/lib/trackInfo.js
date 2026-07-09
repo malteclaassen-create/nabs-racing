@@ -12,7 +12,7 @@ const MAX_VALUE = 160;
 const cap = (s, n) => (typeof s === "string" ? s.slice(0, n) : "");
 
 export function sanitizeTrackInfo(input) {
-  const out = { facts: [], mapImageUrl: null };
+  const out = { facts: [], mapImageUrl: null, mapRotation: 0 };
   if (input && Array.isArray(input.facts)) {
     out.facts = input.facts
       .map((f) => ({ label: cap(f?.label, MAX_LABEL).trim(), value: cap(f?.value, MAX_VALUE).trim() }))
@@ -22,17 +22,21 @@ export function sanitizeTrackInfo(input) {
   if (input && typeof input.mapImageUrl === "string" && input.mapImageUrl.trim()) {
     out.mapImageUrl = input.mapImageUrl.trim().slice(0, 300);
   }
+  // Rotation (degrees) for the built-in outline, so it can be turned to fill
+  // the upcoming-race panel. Normalised to 0..359; 0 = as drawn.
+  const rot = Number(input?.mapRotation);
+  if (Number.isFinite(rot)) out.mapRotation = ((Math.round(rot) % 360) + 360) % 360;
   return out;
 }
 
 export async function readTrackInfo(prisma, key) {
-  if (!key) return { facts: [], mapImageUrl: null };
+  if (!key) return { facts: [], mapImageUrl: null, mapRotation: 0 };
   try {
     const row = await prisma.setting.findUnique({ where: { key: KEY_PREFIX + key } });
-    if (!row?.value) return { facts: [], mapImageUrl: null };
+    if (!row?.value) return { facts: [], mapImageUrl: null, mapRotation: 0 };
     return sanitizeTrackInfo(JSON.parse(row.value));
   } catch {
-    return { facts: [], mapImageUrl: null };
+    return { facts: [], mapImageUrl: null, mapRotation: 0 };
   }
 }
 

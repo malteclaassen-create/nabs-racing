@@ -136,15 +136,22 @@ export async function getSeasonScoring(prisma, seasonOrId) {
   if (typeof seasonOrId === "string") {
     season = await prisma.season.findUnique({ where: { id: seasonOrId } });
   }
-  // teamDropWorst may not be in the generated client yet -> raw read. null =
-  // legacy behaviour (teams inherit each driver's own dropped rounds); 0 = no
-  // team drop; N = drop the N lowest single-driver round contributions per team.
+  // teamDropWorst/teamDropMode may not be in the generated client yet -> raw
+  // read. teamDropWorst: null = legacy behaviour (teams inherit each driver's
+  // own dropped rounds); 0 = no team drop; N = drop N per team. teamDropMode
+  // says what N counts: null/'results' = single-driver round scores, 'rounds' =
+  // whole team round totals (the official sheet's style).
   let teamDropWorst = null;
+  let teamDropMode = null;
   if (season?.id) {
     try {
-      const rows = await prisma.$queryRawUnsafe(`SELECT "teamDropWorst" FROM "Season" WHERE "id" = ?`, season.id);
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT "teamDropWorst", "teamDropMode" FROM "Season" WHERE "id" = ?`,
+        season.id
+      );
       const v = rows[0]?.teamDropWorst;
       teamDropWorst = v == null ? null : Number(v);
+      teamDropMode = rows[0]?.teamDropMode === "rounds" ? "rounds" : null;
     } catch {
       teamDropWorst = null;
     }
@@ -152,6 +159,7 @@ export async function getSeasonScoring(prisma, seasonOrId) {
   return {
     dropWorst: Number.isInteger(season?.dropWorst) && season.dropWorst >= 0 ? season.dropWorst : 3,
     teamDropWorst,
+    teamDropMode,
     pointsTable: parsePointsTable(season?.pointsTable),
     finalStandings: parseFinalStandings(season?.finalStandings),
   };

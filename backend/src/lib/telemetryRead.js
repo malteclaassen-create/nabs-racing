@@ -11,7 +11,7 @@
 
 const COLS = [
   "contacts", "envContacts", "cuts", "overtakes", "laps",
-  "cleanLaps", "consistencyMs", "gamePenalties", "gamePenaltySeconds",
+  "cleanLaps", "consistencyMs", "consistencyPct", "gamePenalties", "gamePenaltySeconds",
 ];
 
 const num = (v) => (v == null ? null : Number(v));
@@ -25,6 +25,7 @@ function shape(r) {
     laps: num(r.laps),
     cleanLaps: num(r.cleanLaps),
     consistencyMs: num(r.consistencyMs),
+    consistencyPct: num(r.consistencyPct),
     gamePenalties: num(r.gamePenalties),
     gamePenaltySeconds: num(r.gamePenaltySeconds),
   };

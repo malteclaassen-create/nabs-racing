@@ -55,6 +55,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
         editions: [],
         customFacts: info.facts,
         mapImageUrl: info.mapImageUrl,
+        mapRotation: info.mapRotation || 0,
         me: null,
       });
     }
@@ -184,6 +185,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
       editions,
       customFacts: info.facts,
       mapImageUrl: info.mapImageUrl,
+      mapRotation: info.mapRotation || 0,
       me,
     });
   } catch (e) {
