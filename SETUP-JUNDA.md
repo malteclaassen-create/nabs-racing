@@ -10,20 +10,21 @@ So read this first - it decides which path applies to you.
 
 ---
 
-## Step 0 - What the Junda packages can do (already checked)
+## Step 0 - Look for "Setup Node.js App" in cPanel
 
-We looked at the feature list of Junda's web hosting packages (Basic / Plus /
-Advanced): the runtime they offer is **PHP 7.x/8.x with MySQL** - WordPress-
-style hosting. **Node.js is not offered**, so the NABS app itself cannot run
-on these packages. SSH/FTP access alone doesn't change that.
+Junda's package pages only advertise PHP, but what decides it is the actual
+control panel: log in to cPanel and look in the **Software** section for
+**"Setup Node.js App"** (the CloudLinux Node.js selector).
 
-That's no problem: use **path A** below. The Junda package still does two
-useful jobs - it holds the **domain** (and its DNS settings, which is all we
-need) and can keep serving e-mail or an existing site.
+- **The icon is there** -> the app can run on the package. Go to **path B**
+  and try it; it costs nothing. Two features may degrade on shared hosting
+  (details in path B), everything else works normally.
+- **No such icon** -> the package only runs PHP, the app cannot run there.
+  Go to **path A**: the Junda package then still holds the **domain** (its
+  DNS settings are all we need) plus e-mail.
 
-If you want to double-check, one line to their support chat settles it:
-*"Can I run a persistent Node.js web app (with WebSockets) on my package?"*
-If the answer is somehow yes, path B describes that route.
+Their support chat can also confirm it in one line: *"Can I run a persistent
+Node.js web app (with WebSockets) on my package?"*
 
 ---
 
@@ -50,29 +51,43 @@ domain:
 This path has no surprises: everything on the site works, including live
 timing and the big member downloads.
 
-## Path B (only if support says Node.js is possible): cPanel "Setup Node.js App"
+## Path B: run it via cPanel "Setup Node.js App"
 
-Per the package feature list this option does not exist on Junda's current
-packages - keep it only in case their support says otherwise. Rough outline:
-
-1. Upload the zip via the cPanel file manager and extract it, e.g. to
-   `~/nabs-racing`.
-2. Build the website once **on your own PC** (shared hosts often have no
-   build tools): `cd frontend && npm install && npm run build`, then upload
-   the resulting `frontend/dist` folder along with the rest.
-3. In "Setup Node.js App" create an application:
+1. Upload the zip via the cPanel file manager (or SFTP) and extract it, e.g.
+   to `~/nabs-racing`.
+2. Build the website once **on your own PC** (shared hosts often lack the
+   memory for a Vite build): on Windows just run `start-dev.bat` once, or
+   manually `cd frontend && npm install && npm run build`. Then upload the
+   resulting `frontend/dist` folder to the same place on the server. As soon
+   as that folder exists, the backend serves the website itself.
+3. In cPanel -> **Setup Node.js App** -> **Create Application**:
+   - Node.js version: **20+**
+   - Application mode: Production
    - Application root: `nabs-racing/backend`
-   - Startup file: `src/index.js`
-   - Node version: 20+
-   - Environment variables: everything from `backend/.env` (the panel has an
-     env-var table; `PORT` is set by the host - do not set it yourself).
-4. Run `npm install` via the panel button, then start the app.
-5. Point the (sub)domain at the app in the same dialog.
+   - Application URL: the (sub)domain the site should live on
+   - Application startup file: `src/index.js`
+4. Add the **environment variables** in the same dialog - every entry from
+   `backend/.env`, with three changes for the domain (see "In both cases"
+   below): a fresh `JWT_SECRET`, `CORS_ORIGIN=https://<your-domain>`,
+   `DISCORD_REDIRECT_URI=https://<your-domain>/auth/discord/callback`.
+   Do **not** set `PORT` - the host assigns it.
+5. Click **Run NPM Install** (this also prepares the database driver via the
+   postinstall step), then **Start App**.
+6. Open `https://<your-domain>/api/health` - it should answer `{"ok":true}` -
+   and then the site itself.
 
-Known rough edges on shared hosting: the `/api/live/ws` WebSocket (live
-timing) often doesn't connect through the shared proxy, upload limits are
-typically far below our 5 GB admin uploads, and the host may recycle the
-process. If any of that bites, switch to path A rather than fighting it.
+What to expect on shared hosting - worth a 5-minute test after setup:
+
+- **Live timing** (`/api/live/ws` WebSocket): open the Live Timing page. If it
+  never connects, the shared proxy doesn't pass WebSockets - the rest of the
+  site is unaffected, only that page stays empty.
+- **Very large member downloads** (multi-GB AC files): shared packages have
+  disk (50-150 GB) and process limits. If big transfers abort, register those
+  files as **external links** in the admin Downloads tab instead (Google
+  Drive, Mega, R2, ...) - built-in feature, two clicks.
+- If the app gets stopped by the host repeatedly, switch to path A rather
+  than fighting it. Logs live in the app folder (`stderr.log`) and in the
+  panel's app view.
 
 ---
 
