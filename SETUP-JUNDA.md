@@ -1,106 +1,103 @@
-# Running NABS Racing with a junda.nl package
+# NABS Racing on Junda, step by step
 
-Junda is a shared-hosting provider (cPanel, PHP/WordPress packages). The NABS
-site is different from a WordPress site: it is a **Node.js server** that has to
-run permanently, keeps its own files on disk (SQLite database, uploaded
-images, download files) and uses a WebSocket for live timing. That combination
-is exactly what shared PHP hosting is *not* built for.
+This is the full setup for running the site on the Junda hosting package.
+The website is already built and included in this zip, so you only upload
+things and click through cPanel. No coding needed.
 
-So read this first - it decides which path applies to you.
+One thing before you start: the site is a Node.js app. In cPanel there must
+be an icon called "Setup Node.js App" (in the Software section). If you can
+see it, everything below will work. If it is missing, message me first.
 
----
+## 1. Decide the address
 
-## Step 0 - Look for "Setup Node.js App" in cPanel
+Pick the address the site should live on, for example a subdomain like
+`nabs.yourdomain.nl`. You create it in cPanel under "Domains" or
+"Subdomains". Remember it, you will need it twice below.
 
-Junda's package pages only advertise PHP, but what decides it is the actual
-control panel: log in to cPanel and look in the **Software** section for
-**"Setup Node.js App"** (the CloudLinux Node.js selector).
+## 2. Upload the zip
 
-- **The icon is there** -> the app can run on the package. Go to **path B**
-  and try it; it costs nothing. Two features may degrade on shared hosting
-  (details in path B), everything else works normally.
-- **No such icon** -> the package only runs PHP, the app cannot run there.
-  Go to **path A**: the Junda package then still holds the **domain** (its
-  DNS settings are all we need) plus e-mail.
+1. In cPanel open the "File Manager".
+2. Go to your home directory (the folder you land in).
+3. Click "Upload" and upload `nabs-racing-share.zip`.
+4. Back in the File Manager, right click the zip and choose "Extract".
+5. You now have a folder called `nabs-racing`. That is the whole site,
+   including the database and all images.
 
-Their support chat can also confirm it in one line: *"Can I run a persistent
-Node.js web app (with WebSockets) on my package?"*
+## 3. Create the Node.js app
 
----
-
-## Path A (recommended): app elsewhere, domain stays at Junda
-
-Domain and hosting are separate things. The domain registered at Junda can
-point anywhere - so let the app run on something made for it and keep the
-domain:
-
-1. Run the app on one of:
-   - a small **VPS** (e.g. Hetzner, DigitalOcean, Contabo - a few euros per
-     month). Then follow `DEPLOYMENT.md` step by step; it fits a VPS 1:1.
-   - **Railway** (no server admin work at all). `DEPLOYMENT.md` has a
-     dedicated Railway section; the repo is already prepared for it.
-2. In the Junda control panel, open the **DNS settings** of the domain and add
-   a record for a subdomain, e.g.:
-   ```
-   Type A      Name: nabs      Value: <IP of the VPS>
-   ```
-   (For Railway: a CNAME record pointing at the target Railway shows you.)
-3. Everything else (HTTPS, .env values, Discord redirect, first checks) is in
-   `DEPLOYMENT.md`. The final address is then e.g. `https://nabs.<domain>`.
-
-This path has no surprises: everything on the site works, including live
-timing and the big member downloads.
-
-## Path B: run it via cPanel "Setup Node.js App"
-
-1. Upload the zip via the cPanel file manager (or SFTP) and extract it, e.g.
-   to `~/nabs-racing`.
-2. Build the website once **on your own PC** (shared hosts often lack the
-   memory for a Vite build): on Windows just run `start-dev.bat` once, or
-   manually `cd frontend && npm install && npm run build`. Then upload the
-   resulting `frontend/dist` folder to the same place on the server. As soon
-   as that folder exists, the backend serves the website itself.
-3. In cPanel -> **Setup Node.js App** -> **Create Application**:
-   - Node.js version: **20+**
+1. In cPanel open "Setup Node.js App".
+2. Click "Create Application" and fill it in like this:
+   - Node.js version: 20 or higher
    - Application mode: Production
    - Application root: `nabs-racing/backend`
-   - Application URL: the (sub)domain the site should live on
+   - Application URL: the address from step 1
    - Application startup file: `src/index.js`
-4. Add the **environment variables** in the same dialog - every entry from
-   `backend/.env`, with three changes for the domain (see "In both cases"
-   below): a fresh `JWT_SECRET`, `CORS_ORIGIN=https://<your-domain>`,
-   `DISCORD_REDIRECT_URI=https://<your-domain>/auth/discord/callback`.
-   Do **not** set `PORT` - the host assigns it.
-5. Click **Run NPM Install** (this also prepares the database driver via the
-   postinstall step), then **Start App**.
-6. Open `https://<your-domain>/api/health` - it should answer `{"ok":true}` -
-   and then the site itself.
+3. Save it. Do not start it yet, the settings from step 4 come first.
 
-What to expect on shared hosting - worth a 5-minute test after setup:
+## 4. Fill in the environment variables
 
-- **Live timing** (`/api/live/ws` WebSocket): open the Live Timing page. If it
-  never connects, the shared proxy doesn't pass WebSockets - the rest of the
-  site is unaffected, only that page stays empty.
-- **Very large member downloads** (multi-GB AC files): shared packages have
-  disk (50-150 GB) and process limits. If big transfers abort, register those
-  files as **external links** in the admin Downloads tab instead (Google
-  Drive, Mega, R2, ...) - built-in feature, two clicks.
-- If the app gets stopped by the host repeatedly, switch to path A rather
-  than fighting it. Logs live in the app folder (`stderr.log`) and in the
-  panel's app view.
+Still in the same app screen there is a table called "Environment variables".
+Add these entries one by one. Most values are already in the file
+`nabs-racing/backend/.env`, you can open it in the File Manager and copy
+from there.
 
----
+| Name | Value |
+|------|-------|
+| DATABASE_URL | `file:./dev.db` |
+| JWT_SECRET | see below, make a fresh one |
+| CORS_ORIGIN | `https://` plus the address from step 1 |
+| DISCORD_CLIENT_ID | copy from the .env file |
+| DISCORD_CLIENT_SECRET | copy from the .env file |
+| DISCORD_REDIRECT_URI | `https://` plus the address, plus `/auth/discord/callback` |
 
-## In both cases
+Do not add PORT. The host sets that by itself.
 
-- Set a fresh `JWT_SECRET` in the environment (the server refuses to start on
-  a domain with the placeholder). Generate one:
-  `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
-- The Discord callback URL for the final domain must be added in the Discord
-  developer portal - **tell Malte the final URL and he adds it**. Put the same
-  URL in `DISCORD_REDIRECT_URI` and the domain in `CORS_ORIGIN`.
-- Replace `https://nabs-racing.example` in `frontend/index.html` (two image
-  lines) with the real domain before building, so Discord link previews show
-  an image.
-- After the first login, change the admin PIN (Admin -> Change PIN).
-- Backups: Admin -> Health -> "Download full backup" after every race.
+For JWT_SECRET you need a long random string. Easiest way: go to the app
+screen, there is a command line hint at the top ("Enter to the virtual
+environment..."). Open the terminal in cPanel, paste that line, then run:
+
+```
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Copy the output into JWT_SECRET. Important: the server refuses to start on a
+real domain while a placeholder secret is still set. That is on purpose.
+
+## 5. Install and start
+
+1. In the app screen click "Run NPM Install" and wait until it finishes.
+2. Click "Start App".
+
+## 6. Check that it runs
+
+1. Open `https://<your address>/api/health` in the browser.
+   It should show `{"ok":true}`.
+2. Open the site itself. Standings, races and team pages should all show
+   data right away, the database is included.
+3. Open the Live Timing page once. If it stays empty on race night, the
+   host does not pass the live connection through. Everything else still
+   works, only that page would stay empty. Tell me if that happens.
+
+## 7. Discord login
+
+The login needs one entry on the Discord side that only I can make.
+Send me the final address (for example `https://nabs.yourdomain.nl`) and I
+will add it in the Discord developer portal. After that the login works.
+
+## 8. Last two things
+
+1. Log in to the admin area (link in the footer, PIN is `nabs2026`) and
+   change the PIN right away under "Change PIN".
+2. The big AC files (tracks, cars and so on) are not in the zip, they are
+   too large. Either upload them in the admin under "Downloads", or put
+   them in `nabs-racing/backend/downloads/` via the File Manager, or
+   register them as external links (Google Drive, Mega and so on) in the
+   admin. All three ways work.
+
+## If something goes wrong
+
+- The app writes errors to `stderr.log` inside `nabs-racing/backend`.
+  The app screen in cPanel also shows the state.
+- After changing an environment variable, click "Restart" in the app screen.
+- If the host keeps stopping the app or uploads keep failing, tell me.
+  Plan B is a small rented server, the site is prepared for that too.
