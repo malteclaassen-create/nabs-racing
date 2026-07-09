@@ -39,3 +39,5 @@ Thumbs.db
 
 # Raw source material (screenshots etc.) for rebuilding archive seasons - not site code
 archive-material/
+
+# Local dev tooling config (not part of the site)
