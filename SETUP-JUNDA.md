@@ -10,9 +10,15 @@ see it, everything below will work. If it is missing, message me first.
 
 ## 1. Decide the address
 
-Pick the address the site should live on, for example a subdomain like
-`nabs.yourdomain.nl`. You create it in cPanel under "Domains" or
-"Subdomains". Remember it, you will need it twice below.
+Pick the address the site should live on. Best choice: a subdomain of a
+domain you already have, for example `nabs.yourdomain.nl`. You create it in
+cPanel under "Domains" or "Subdomains". Subdomains are unlimited on all
+Junda packages. Remember the address, you will need it twice below.
+
+Important if you already run a website on this hosting: use a NEW subdomain
+and do not touch your existing domain. Then your current site keeps running
+completely untouched, both sites live side by side, and nothing has to be
+switched back afterwards.
 
 ## 2. Upload the zip
 
@@ -101,3 +107,14 @@ will add it in the Discord developer portal. After that the login works.
 - After changing an environment variable, click "Restart" in the app screen.
 - If the host keeps stopping the app or uploads keep failing, tell me.
   Plan B is a small rented server, the site is prepared for that too.
+
+## Removing it again
+
+If you want it gone, that takes two minutes and leaves no trace:
+
+1. In "Setup Node.js App" click "Stop App", then delete the application
+   there ("Destroy").
+2. Delete the `nabs-racing` folder in the File Manager.
+3. Delete the subdomain if you created one just for this.
+
+Your own website is never involved in any of this.
