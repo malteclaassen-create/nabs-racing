@@ -12,15 +12,15 @@ const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 // evidently NOT running as a local dev setup (production mode, or CORS opened
 // for an https domain as DEPLOYMENT.md step 2 does), refuse to start until a
 // real secret is configured. Local development is unaffected.
-const secretIsPlaceholder = !process.env.JWT_SECRET || /change-me|<hier/i.test(process.env.JWT_SECRET);
+const secretIsPlaceholder = !process.env.JWT_SECRET || /change-me|<hier|<put/i.test(process.env.JWT_SECRET);
 const looksDeployed =
   process.env.NODE_ENV === "production" || /https:\/\//i.test(process.env.CORS_ORIGIN || "");
 if (secretIsPlaceholder && looksDeployed) {
   throw new Error(
-    "JWT_SECRET in backend/.env ist noch der Platzhalter. Ohne eigenen, zufälligen " +
-      "Schlüssel könnte jeder Admin-Zugriffe fälschen. Einen erzeugen mit: " +
+    "JWT_SECRET in backend/.env is still the placeholder. Without your own random " +
+      "key, anyone could forge admin access. Generate one with: " +
       'node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))" ' +
-      "— dann in backend/.env als JWT_SECRET eintragen und neu starten. (Siehe DEPLOYMENT.md, Schritt 2.)"
+      "then put it into backend/.env as JWT_SECRET and restart. (See DEPLOYMENT.md, step 2.)"
   );
 }
 

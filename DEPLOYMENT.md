@@ -1,104 +1,106 @@
-# Hosting-Anleitung (Deployment)
+# Hosting guide (deployment)
 
-So bringst du die NABS-Racing-Website dauerhaft auf einen eigenen Server. Das
-**Node-Backend liefert alles selbst aus** — die Website, die API und die
-Downloads, als **ein einziges Programm**. Davor sitzt nur eine dünne
-HTTPS-Schicht (Caddy) für die verschlüsselte Verbindung.
+How to put the NABS Racing website permanently on a server of your own. The
+**Node backend serves everything itself** - the website, the API and the
+downloads, as **one single program**. The only thing in front of it is a thin
+HTTPS layer (Caddy) for the encrypted connection.
 
 ```
-Besucher ──► Caddy (Domain, HTTPS)  ──►  Node-Backend (Port 4000)
-                                          ├─ Website  (frontend/dist)
-                                          ├─ API      (/api/*)
-                                          └─ Downloads
+Visitor ──► Caddy (domain, HTTPS)  ──►  Node backend (port 4000)
+                                         ├─ Website   (frontend/dist)
+                                         ├─ API       (/api/*)
+                                         └─ Downloads
 ```
 
-> Warum so? Website und `/api` liegen dadurch automatisch unter **derselben
-> Adresse** — genau das braucht der Login und der mitglieder-geschützte Download.
-> Und du musst nur **einen** Dienst am Laufen halten.
+> Why this setup? Website and `/api` automatically live under **the same
+> address** - exactly what the login and the members-only downloads need.
+> And there is only **one** service to keep running.
 
 ---
 
-## Voraussetzungen
+## Requirements
 
-- Ein Server (VPS oder Heim-Server) mit **Node.js 18+** und **git**.
-- Eine **Domain**, die auf die Server-IP zeigt (z. B. `nabs.example.com`).
-- **Caddy** (empfohlen, macht HTTPS von allein): <https://caddyserver.com/docs/install>
-- Genug **Speicherplatz** für die Download-Dateien (Strecken, F1 2007, …).
+- A server (VPS or home server) with **Node.js 18+** and **git**.
+- A **domain** pointing at the server's IP (e.g. `nabs.example.com`).
+- **Caddy** (recommended, handles HTTPS by itself): <https://caddyserver.com/docs/install>
+- Enough **disk space** for the download files (tracks, F1 2007, ...).
 
 ---
 
-## Schritt 1 — Code auf den Server holen
+## Step 1 - Get the code onto the server
 
 ```bash
 git clone <REPO-URL> nabs-racing
 cd nabs-racing
 ```
 
-## Schritt 2 — Backend einrichten
+(If you received the site as a zip instead, just extract it there.)
+
+## Step 2 - Set up the backend
 
 ```bash
 cd backend
 npm install
-cp .env.example .env
+cp .env.example .env    # skip if the zip already contains a filled-in .env
 ```
 
-Jetzt `backend/.env` bearbeiten:
+Now edit `backend/.env`:
 
 ```ini
 DATABASE_URL="file:./dev.db"
-JWT_SECRET="<hier eine lange, zufällige Zeichenkette einsetzen>"
-# Einen sicheren Wert erzeugt dieser Befehl (Ausgabe hier einfügen):
+JWT_SECRET="<put a long, random string here>"
+# This command generates a safe value (paste its output here):
 #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# Wichtig: Bleibt der Platzhalter stehen, startet der Server absichtlich NICHT,
-# denn mit einem bekannten Schlüssel könnte jeder Admin-Zugriffe fälschen.
+# Important: if the placeholder is left in, the server deliberately REFUSES to
+# start, because with a known key anyone could forge admin access.
 PORT=4000
 CORS_ORIGIN="https://nabs.example.com"
 
-# Discord-Login (nötig, weil Downloads mitglieder-geschützt sind):
-DISCORD_CLIENT_ID="<deine Client-ID>"
-DISCORD_CLIENT_SECRET="<dein Client-Secret>"
+# Discord login (needed, because the downloads are members-only):
+DISCORD_CLIENT_ID="<your client id>"
+DISCORD_CLIENT_SECRET="<your client secret>"
 DISCORD_REDIRECT_URI="https://nabs.example.com/auth/discord/callback"
 ```
 
-**Datenbank** — zwei Wege:
+**Database** - two options:
 
-- **Am einfachsten (empfohlen):** die bestehende, funktionierende Datenbank­datei
-  vom Entwicklungs-Rechner kopieren nach `backend/prisma/dev.db`. Sie enthält
-  bereits alle Tabellen (auch die für Downloads) und die aktuellen Daten.
-  Dann **nicht** seeden.
-- **Oder frisch aufsetzen:**
+- **Easiest (recommended):** copy the existing, working database file from the
+  development machine to `backend/prisma/dev.db`. It already contains every
+  table (including the download ones) and the current data. Then do **not**
+  seed.
+- **Or start fresh:**
   ```bash
-  npx prisma migrate deploy   # erstellt alle Tabellen (inkl. Downloads)
-  npm run seed                # füllt Teams, Fahrer und Ergebnisse
+  npx prisma migrate deploy   # creates all tables (incl. downloads)
+  npm run seed                # fills teams, drivers and results
   ```
 
-**Download-Dateien** in den Ordner legen (der Ordner ist bewusst nicht im Repo):
+**Download files** go into this folder (deliberately not part of the repo):
 
 ```bash
 mkdir -p downloads
-# die großen AC-Dateien (Strecken, Safety Car, CSP, Real Penalty, F1 2007 …)
-# per SFTP/Kopie hierher legen: nabs-racing/backend/downloads/
+# copy the big AC files (tracks, safety car, CSP, Real Penalty, F1 2007 ...)
+# here via SFTP/copy: nabs-racing/backend/downloads/
 ```
 
-## Schritt 3 — Website bauen
+## Step 3 - Build the website
 
 ```bash
 cd ../frontend
 npm install
-npm run build      # erzeugt frontend/dist/
+npm run build      # creates frontend/dist/
 ```
 
-> Wichtig: `VITE_API_BASE` **leer lassen** (nicht setzen). Dann sprechen Website
-> und API dieselbe Adresse an — passt zum Setup unten.
+> Important: leave `VITE_API_BASE` **empty** (do not set it). Website and API
+> then talk to the same address - which matches the setup below.
 
-Sobald `frontend/dist` existiert, **liefert das Backend die Website automatisch
-mit aus** (unter derselben Adresse wie die API). Es braucht davor also nur noch
-HTTPS.
+As soon as `frontend/dist` exists, **the backend automatically serves the
+website too** (on the same address as the API). All that is missing in front
+of it is HTTPS.
 
-## Schritt 4 — HTTPS davor (Caddy)
+## Step 4 - HTTPS in front (Caddy)
 
-Weil das Backend schon alles ausliefert, reicht ein **einzeiliger** Reverse-Proxy,
-der nur die verschlüsselte Verbindung übernimmt. Eine Datei `Caddyfile` anlegen:
+Because the backend already serves everything, a **one-line** reverse proxy is
+enough; it only handles the encrypted connection. Create a file `Caddyfile`:
 
 ```caddy
 nabs.example.com {
@@ -106,134 +108,136 @@ nabs.example.com {
 }
 ```
 
-Starten:
+Start it:
 
 ```bash
 caddy start --config ./Caddyfile
 ```
 
-Caddy holt sich **automatisch ein HTTPS-Zertifikat** für die Domain und leitet
-alles ans Backend weiter — Website, API, große Downloads (inkl. Wiederaufnahme)
-und das Live-Timing (WebSocket unter `/api/live/ws`).
+Caddy fetches an **HTTPS certificate automatically** for the domain and
+forwards everything to the backend - website, API, large downloads (including
+resume) and the live timing (WebSocket at `/api/live/ws`).
 
-> **Noch einfacher, ganz ohne eigenen Webserver:** die Domain über **Cloudflare**
-> (kostenlos) leiten. Cloudflare übernimmt das HTTPS, das Backend läuft dahinter —
-> dann brauchst du gar kein Caddy/nginx.
+> **Even simpler, without any web server of your own:** route the domain
+> through **Cloudflare** (free). Cloudflare handles the HTTPS, the backend runs
+> behind it - no Caddy/nginx needed at all.
 >
-> Lieber nginx? Auch möglich: `location / { proxy_pass http://localhost:4000; }`
-> mit `proxy_http_version 1.1` + Upgrade-Headern für den WebSocket, HTTPS per certbot.
+> Prefer nginx? Also fine: `location / { proxy_pass http://localhost:4000; }`
+> with `proxy_http_version 1.1` + upgrade headers for the WebSocket, HTTPS via
+> certbot.
 
-## Schritt 5 — Discord-Login für die Domain freischalten
+## Step 5 - Allow the Discord login for the domain
 
-1. <https://discord.com/developers/applications> → deine App → **OAuth2**.
-2. Unter **Redirects** exakt eintragen:
+1. <https://discord.com/developers/applications> -> your app -> **OAuth2**.
+2. Under **Redirects**, add exactly:
    `https://nabs.example.com/auth/discord/callback`
-3. Dieselbe URL steht schon in `backend/.env` als `DISCORD_REDIRECT_URI`. Fertig.
+3. The same URL is already in `backend/.env` as `DISCORD_REDIRECT_URI`. Done.
 
-Ohne diesen Schritt kann sich niemand einloggen — und damit auch niemand die
-Downloads sehen.
+Without this step nobody can log in - and therefore nobody can see the
+downloads.
 
-## Schritt 6 — Backend als Dauerdienst laufen lassen
+## Step 6 - Run the backend as a permanent service
 
-Nicht `npm run dev` (Entwickler-Modus), sondern dauerhaft mit einem
-Prozess-Manager, damit es nach Neustart/Absturz automatisch wieder hochkommt:
+Not `npm run dev` (developer mode) - run it permanently with a process
+manager, so it comes back up automatically after a reboot or crash:
 
 ```bash
 cd nabs-racing/backend
 npm install -g pm2
 pm2 start npm --name nabs-api -- start
 pm2 save
-pm2 startup        # zeigt einen Befehl an -> einmal ausführen (Autostart)
+pm2 startup        # prints a command -> run it once (autostart)
 ```
 
 ---
 
-## Variante: Railway (statt eigenem Server)
+## Alternative: Railway (instead of your own server)
 
-Das Projekt ist dafür vorbereitet: `railway.json` und das Wurzel-`package.json`
-sagen Railway, wie gebaut und gestartet wird (Website bauen → Backend starten →
-Datenbank-Tabellen automatisch anlegen). Schritte 1–6 oben entfallen dann fast
-komplett — kein Caddy, kein pm2, kein eigener Server.
+The project is prepared for it: `railway.json` and the root `package.json`
+tell Railway how to build and start (build website -> start backend -> create
+database tables automatically). Steps 1-6 above then mostly disappear - no
+Caddy, no pm2, no own server.
 
-1. Auf [railway.app](https://railway.app) ein Projekt anlegen und das
-   GitHub-Repo verbinden. Railway baut ab jetzt bei jedem `git push` neu.
-2. Dem Service ein **Volume** geben, eingehängt unter `/data`.
-   **Ohne Volume ist die Festplatte nach jedem Deploy leer** — Datenbank,
-   Bilder und Downloads wären weg.
-3. Unter *Variables* setzen:
+1. Create a project on [railway.app](https://railway.app) and connect the
+   GitHub repo. Railway rebuilds on every `git push` from then on.
+2. Give the service a **volume**, mounted at `/data`.
+   **Without a volume the disk is wiped on every deploy** - database, images
+   and downloads would be gone.
+3. Under *Variables* set:
 
    ```ini
    DATA_DIR=/data
    DATABASE_URL=file:/data/dev.db
-   JWT_SECRET=<lange, zufällige Zeichenkette — Befehl siehe Schritt 2 oben>
-   CORS_ORIGIN=https://<deine-domain>
-   DISCORD_CLIENT_ID=<deine Client-ID>
-   DISCORD_CLIENT_SECRET=<dein Client-Secret>
-   DISCORD_REDIRECT_URI=https://<deine-domain>/auth/discord/callback
+   JWT_SECRET=<long, random string - see the command in step 2 above>
+   CORS_ORIGIN=https://<your-domain>
+   DISCORD_CLIENT_ID=<your client id>
+   DISCORD_CLIENT_SECRET=<your client secret>
+   DISCORD_REDIRECT_URI=https://<your-domain>/auth/discord/callback
    ```
 
-   `PORT` setzt Railway von selbst.
-4. Domain unter *Settings → Networking* verbinden. HTTPS macht Railway
-   automatisch. Danach wie in Schritt 5 oben die Redirect-URL im
-   Discord-Entwicklerportal eintragen.
-5. **Erste Daten:** Beim allerersten Start entstehen nur leere Tabellen.
-   Entweder die bestehende `dev.db` vom Entwicklungs-Rechner per Railway-CLI
-   auf das Volume kopieren (nach `/data/dev.db`), oder einmalig seeden.
-   Die großen Download-Dateien ebenfalls aufs Volume legen
-   (`/data/downloads/`).
+   Railway sets `PORT` by itself.
+4. Connect the domain under *Settings -> Networking*. Railway handles HTTPS
+   automatically. Afterwards add the redirect URL in the Discord developer
+   portal as in step 5 above.
+5. **First data:** the very first start only creates empty tables. Either copy
+   the existing `dev.db` from the development machine onto the volume via the
+   Railway CLI (to `/data/dev.db`), or seed once. Put the big download files
+   onto the volume as well (`/data/downloads/`).
 
-> **Kosten im Blick behalten:** Railway berechnet Speicherplatz **und**
-> ausgehenden Datenverkehr. Wenn viele Mitglieder die großen AC-Dateien
-> (mehrere GB) herunterladen, kann das teurer werden als ein fester VPS.
-> Alternative für die dicken Dateien: ein externer Speicher wie Cloudflare R2
-> (Traffic kostenlos), im Download-Katalog als externer Link eingetragen.
+> **Keep an eye on cost:** Railway charges for storage **and** outgoing
+> traffic. If many members download the big AC files (several GB), that can
+> get more expensive than a fixed VPS. Alternative for the big files: external
+> storage such as Cloudflare R2 (free traffic), registered in the download
+> catalogue as an external link.
 
 ---
 
-## Downloads befüllen (der laufende Betrieb)
+## Filling the downloads (day-to-day operation)
 
-1. Datei per SFTP/Kopie nach `backend/downloads/` auf den Server legen.
-2. Auf der Website: **Admin** (PIN) → Tab **Downloads** → die Datei erscheint dort
-   automatisch → **Register** klicken und Titel/Kategorie/Hinweis ergänzen.
-3. Mitglieder sehen und laden sie sofort unter **Downloads**.
+1. Put a file onto the server into `backend/downloads/` via SFTP/copy - or
+   upload it straight from the browser in the admin Downloads tab.
+2. On the website: **Admin** (PIN) -> **Downloads** tab -> the file shows up
+   there automatically -> click **Register** and add title/folder/notes.
+   For files hosted elsewhere (Google Drive, Mega, ...), register an
+   **external link** instead.
+3. Members see and download it immediately under **Downloads**.
 
-## Backups (wichtigster Handgriff im Betrieb)
+## Backups (the most important routine)
 
-Der Server sichert die Datenbank automatisch vor jedem Ergebnis-Import — aber
-diese Sicherungen liegen auf **derselben Festplatte** wie die Datenbank selbst.
-Deshalb regelmäßig (z. B. nach jedem Rennen): **Admin → Health →
-„Download full backup“**. Das lädt Datenbank + alle hochgeladenen Bilder als
-eine Zip-Datei herunter. Die Datei auf dem eigenen Rechner, einem USB-Stick
-oder in einer Cloud ablegen. Geht der Server verloren, reicht diese Zip:
-`dev.db` nach `backend/prisma/dev.db`, den Ordner `uploads` nach
-`backend/uploads` kopieren, fertig.
+The server backs up the database automatically before every result import -
+but those backups live on **the same disk** as the database itself. So
+regularly (e.g. after every race): **Admin -> Health -> "Download full
+backup"**. That downloads database + all uploaded images as one zip. Keep the
+file on your own machine, a USB stick or in a cloud. If the server is ever
+lost, this zip is all you need: copy `dev.db` to `backend/prisma/dev.db` and
+the `uploads` folder to `backend/uploads`, done.
 
-## Später aktualisieren
+## Updating later
 
 ```bash
 cd nabs-racing
 git pull
 cd backend  && npm install
 cd ../frontend && npm install && npm run build
-pm2 restart nabs-api      # Caddy liefert das neue dist/ automatisch aus
+pm2 restart nabs-api      # Caddy picks up the new dist/ automatically
 ```
 
 ---
 
-## Kurz-Checkliste
+## Short checklist
 
-- [ ] Domain zeigt auf den Server
-- [ ] `backend/.env` ausgefüllt (JWT_SECRET, Discord-Werte, `https`-Redirect, CORS)
-- [ ] Datenbank kopiert **oder** `migrate deploy` + `seed`
-- [ ] Download-Dateien in `backend/downloads/`
-- [ ] `frontend` gebaut (`npm run build`), `VITE_API_BASE` leer
-- [ ] HTTPS davor (Caddy `reverse_proxy localhost:4000` **oder** Cloudflare)
-- [ ] Discord-Redirect-URL im Entwickler-Portal eingetragen
-- [ ] Backend via pm2 als Dauerdienst + Autostart
-- [ ] Link-Vorschau: in `frontend/index.html` bei den beiden `og:image` /
-      `twitter:image`-Zeilen `https://nabs-racing.example` durch die echte
-      Domain ersetzen (sonst zeigt Discord kein Vorschaubild)
+- [ ] Domain points at the server
+- [ ] `backend/.env` filled in (JWT_SECRET, Discord values, `https` redirect, CORS)
+- [ ] Database copied **or** `migrate deploy` + `seed`
+- [ ] Download files in `backend/downloads/`
+- [ ] `frontend` built (`npm run build`), `VITE_API_BASE` empty
+- [ ] HTTPS in front (Caddy `reverse_proxy localhost:4000` **or** Cloudflare)
+- [ ] Discord redirect URL added in the developer portal
+- [ ] Backend running via pm2 as a permanent service + autostart
+- [ ] Link previews: in `frontend/index.html`, replace
+      `https://nabs-racing.example` in the two `og:image` / `twitter:image`
+      lines with the real domain (otherwise Discord shows no preview image)
 
-> **Nur 3 Dinge liegen bewusst außerhalb von git** und müssen auf dem Server
-> selbst angelegt werden: `backend/.env`, die Datenbankdatei `backend/prisma/dev.db`
-> und der Ordner `backend/downloads/` mit den großen Dateien.
+> **Only 3 things deliberately live outside of git** and have to be created on
+> the server itself: `backend/.env`, the database file `backend/prisma/dev.db`
+> and the folder `backend/downloads/` with the big files.
