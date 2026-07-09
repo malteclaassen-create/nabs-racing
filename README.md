@@ -1,11 +1,12 @@
-# NABS Racing League — Season 7
+# NABS Racing League
 
-Full-stack web app for the **NABS Racing League, Season 7** — a Discord-based
-F1-2007 racing series on Assetto Corsa. Driver & constructor standings (Tier 1
-and Tier 2), race results, team pages, Discord-based race sign-ups, and an admin area
-for importing Assetto Corsa result JSON and editing results.
+Full-stack web app for the **NABS Racing League** — a Discord-based
+racing series on Assetto Corsa. Driver & constructor standings (Tier 1
+and Tier 2), race results, team pages, Discord-based race sign-ups, member
+downloads, live timing, and an admin area for importing Assetto Corsa result
+JSON and editing results. Older seasons are kept as a read-only archive.
 
-- **Backend:** Node.js + Express + Prisma (PostgreSQL), JWT (PIN) auth, multer upload
+- **Backend:** Node.js + Express + Prisma (SQLite), JWT (PIN) auth, multer upload
 - **Frontend:** React + Vite + Tailwind CSS (premium, light, F1-website inspired)
 
 ---
@@ -22,14 +23,8 @@ nabs-racing/
 
 ## Prerequisites
 
-- **Node.js 18+**
-- **PostgreSQL 13+** running locally (or a connection string to a hosted DB)
-
-Create an empty database, e.g.:
-
-```sql
-CREATE DATABASE nabs_racing;
-```
+- **Node.js 18+** — that's it. The database is a single SQLite file, no
+  database server needs to be installed.
 
 ---
 
@@ -39,16 +34,12 @@ CREATE DATABASE nabs_racing;
 cd backend
 npm install
 
-# configure environment
+# configure environment (skip if a filled-in .env is already present)
 cp .env.example .env
-#   -> edit DATABASE_URL to point at your PostgreSQL database
-#   -> set a strong JWT_SECRET
 
-# create the schema + generate the Prisma client
-npx prisma migrate dev --name init
-
-# seed teams, drivers and R1–R9 results
-npm run seed
+# only when starting WITHOUT an existing dev.db:
+npx prisma migrate deploy   # create the schema
+npm run seed                # fill teams, drivers and results
 
 # start the API (http://localhost:4000)
 npm run dev
@@ -155,43 +146,42 @@ data could not otherwise be represented faithfully:
 
 ---
 
-## Dark Mode
+## Dark mode
 
-Oben rechts in der Navigation gibt es einen 🌙/☀️-Button. Die Wahl wird im
-Browser gespeichert; beim ersten Besuch richtet sie sich nach der
-System-Einstellung.
+There is a 🌙/☀️ button at the top right of the navigation. The choice is
+stored in the browser; on the first visit it follows the system setting.
 
 ---
 
-## Discord-Anbindung
+## Discord integration
 
-### Webhook (Anmeldungen/Events posten) — kein Bot nötig
-1. Discord: Kanal → **Bearbeiten** → **Integrationen** → **Webhooks** →
-   **Neuer Webhook** → **Webhook-URL kopieren**.
-2. Website: **Admin** (PIN) → Tab **Discord & Events** → URL einfügen →
-   **Speichern** → **Test senden**.
+### Webhook (posting sign-ups/events) — no bot needed
+1. Discord: channel → **Edit** → **Integrations** → **Webhooks** →
+   **New Webhook** → **Copy Webhook URL**.
+2. Website: **Admin** (PIN) → **Discord & Events** tab → paste the URL →
+   **Save** → **Send test**.
 
-Danach postet die Website bei jeder Renn-Anmeldung eine Apollo-artige Nachricht
-(✅ Accepted (n/40) · ❌ Declined · ❓ Tentative) und aktualisiert sie live.
+From then on the website posts an Apollo-style message for every race sign-up
+(✅ Accepted (n/40) · ❌ Declined · ❓ Tentative) and keeps it updated live.
 
-### Discord-Login (optional, fälschungssicher)
-Solange die folgenden Variablen leer sind, ist der Login **deaktiviert** und die
-Seite nutzt das Fahrer-Dropdown. Zum Aktivieren:
+### Discord login (optional, forgery-proof)
+As long as the following variables are empty, the login is **disabled** and the
+site falls back to the driver dropdown. To enable it:
 
 1. <https://discord.com/developers/applications> → **New Application**.
-2. Tab **OAuth2** → **Client ID** und **Client Secret** kopieren.
-3. Bei **Redirects** exakt eintragen:
+2. **OAuth2** tab → copy **Client ID** and **Client Secret**.
+3. Under **Redirects**, add exactly:
    `http://localhost:5173/auth/discord/callback`
-4. In `backend/.env` ausfüllen und das Backend neu starten:
+4. Fill in `backend/.env` and restart the backend:
    ```
    DISCORD_CLIENT_ID="…"
    DISCORD_CLIENT_SECRET="…"
    DISCORD_REDIRECT_URI="http://localhost:5173/auth/discord/callback"
    ```
 
-Beim ersten Login wird der Discord-Account automatisch dem Fahrer mit
-passendem Discord-Namen zugeordnet (danach fest verknüpft). Eingeloggte Fahrer
-können sich nur noch als sich selbst an-/abmelden.
+On first login the Discord account is matched to the driver with the same
+Discord name automatically (and permanently linked from then on). Logged-in
+drivers can only RSVP as themselves.
 
 ---
 
