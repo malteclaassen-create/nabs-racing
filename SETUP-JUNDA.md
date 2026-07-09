@@ -1,158 +1,90 @@
-# Running NABS Racing on junda.nl
+# Running NABS Racing with a junda.nl package
 
-A concrete walkthrough for putting the site live under the junda.nl domain,
-next to what already runs there. The general guide is `DEPLOYMENT.md`; this
-file only fills in the junda-specific pieces.
+Junda is a shared-hosting provider (cPanel, PHP/WordPress packages). The NABS
+site is different from a WordPress site: it is a **Node.js server** that has to
+run permanently, keeps its own files on disk (SQLite database, uploaded
+images, download files) and uses a WebSocket for live timing. That combination
+is exactly what shared PHP hosting is *not* built for.
 
-**The plan:** the site gets its own subdomain, e.g. **`nabs.junda.nl`**, and
-runs as one Node process on port 4000 behind your existing web server.
-www.junda.nl keeps running exactly as it does today.
+So read this first - it decides which path applies to you.
 
 ---
 
-## Step 0 - One thing to check first
+## Step 0 - Check what your Junda package can do
 
-The NABS backend is a normal, always-running Node server with its own files on
-disk (SQLite database, uploaded images, download files, a WebSocket for live
-timing). That works on any VPS / root server / home server.
+Log in to the Junda cPanel and look for an icon called **"Setup Node.js App"**
+(sometimes "Node.js Selector", in the "Software" section).
 
-It does **not** work on serverless platforms (Vercel, Netlify, Cloudflare
-Pages): those freeze the process between requests and wipe the disk. So: if
-www.junda.nl runs on your own server, perfect, continue below. If it is hosted
-on Vercel or similar, host NABS on a small VPS instead and only point the
-subdomain there - the steps below stay the same.
+- **It's there** -> you can *try* path B below. Fair warning: even then,
+  shared hosting limits apply. The live-timing WebSocket and large file
+  up-/downloads may not survive the shared LiteSpeed/Passenger proxy, and the
+  always-on process can be put to sleep. Treat it as an experiment.
+- **It's not there** (only PHP visible) -> the app cannot run on the package
+  at all. Use path A - it is the intended setup anyway.
 
-## Step 1 - DNS
+Junda's support chat can also answer in one line: *"Can I run a persistent
+Node.js web app (with WebSockets) on my package?"*
 
-Add a record for the subdomain at your DNS provider:
+---
 
-```
-Type A      Name: nabs      Value: <your server's IP>
-```
+## Path A (recommended): app elsewhere, domain stays at Junda
 
-(Or an AAAA record for IPv6, or a CNAME to the host www.junda.nl already
-points at - whatever matches your setup.)
+Domain and hosting are separate things. The domain registered at Junda can
+point anywhere - so let the app run on something made for it and keep the
+domain:
 
-## Step 2 - Put the site on the server
+1. Run the app on one of:
+   - a small **VPS** (e.g. Hetzner, DigitalOcean, Contabo - a few euros per
+     month). Then follow `DEPLOYMENT.md` step by step; it fits a VPS 1:1.
+   - **Railway** (no server admin work at all). `DEPLOYMENT.md` has a
+     dedicated Railway section; the repo is already prepared for it.
+2. In the Junda control panel, open the **DNS settings** of the domain and add
+   a record for a subdomain, e.g.:
+   ```
+   Type A      Name: nabs      Value: <IP of the VPS>
+   ```
+   (For Railway: a CNAME record pointing at the target Railway shows you.)
+3. Everything else (HTTPS, .env values, Discord redirect, first checks) is in
+   `DEPLOYMENT.md`. The final address is then e.g. `https://nabs.<domain>`.
 
-Copy the zip to the server and extract it, e.g.:
+This path has no surprises: everything on the site works, including live
+timing and the big member downloads.
 
-```bash
-cd /opt
-unzip nabs-racing-share.zip     # creates /opt/nabs-racing
-cd nabs-racing/backend
-npm install
-```
+## Path B (experiment): cPanel "Setup Node.js App"
 
-The database (`backend/prisma/dev.db`), the uploaded images
-(`backend/uploads/`) and the download files (`backend/downloads/`) are already
-inside the zip - nothing to import.
+Only if step 0 found the Node.js icon. Rough outline:
 
-## Step 3 - backend/.env for nabs.junda.nl
+1. Upload the zip via the cPanel file manager and extract it, e.g. to
+   `~/nabs-racing`.
+2. Build the website once **on your own PC** (shared hosts often have no
+   build tools): `cd frontend && npm install && npm run build`, then upload
+   the resulting `frontend/dist` folder along with the rest.
+3. In "Setup Node.js App" create an application:
+   - Application root: `nabs-racing/backend`
+   - Startup file: `src/index.js`
+   - Node version: 20+
+   - Environment variables: everything from `backend/.env` (the panel has an
+     env-var table; `PORT` is set by the host - do not set it yourself).
+4. Run `npm install` via the panel button, then start the app.
+5. Point the (sub)domain at the app in the same dialog.
 
-Edit `backend/.env` and change exactly three values (the Discord ID/secret
-that are already in the file stay as they are):
+Known rough edges on shared hosting: the `/api/live/ws` WebSocket (live
+timing) often doesn't connect through the shared proxy, upload limits are
+typically far below our 5 GB admin uploads, and the host may recycle the
+process. If any of that bites, switch to path A rather than fighting it.
 
-```ini
-JWT_SECRET="<paste the output of the command below>"
-CORS_ORIGIN="https://nabs.junda.nl"
-DISCORD_REDIRECT_URI="https://nabs.junda.nl/auth/discord/callback"
-```
+---
 
-Generate the secret with:
+## In both cases
 
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-(The server refuses to start on a domain while the placeholder secret is still
-in the file - that is intentional.)
-
-## Step 4 - Build the website
-
-```bash
-cd ../frontend
-# put the real domain into the Discord/WhatsApp link-preview tags:
-sed -i 's|https://nabs-racing.example|https://nabs.junda.nl|g' index.html
-npm install
-npm run build
-```
-
-After the build, the backend serves the website itself - there is no separate
-frontend process.
-
-## Step 5 - Keep it running
-
-```bash
-cd ../backend
-npm install -g pm2        # once, if you don't use pm2 already
-pm2 start npm --name nabs -- start
-pm2 save
-pm2 startup               # prints one command; run it once for autostart
-```
-
-The site now answers on `http://localhost:4000` on the server.
-
-## Step 6 - Hook it into your web server
-
-Whatever already serves www.junda.nl also gets the subdomain. Only one detail
-matters: `/api/live/ws` is a WebSocket, so the proxy must allow upgrades.
-
-**nginx** - one extra server block:
-
-```nginx
-server {
-    server_name nabs.junda.nl;
-
-    location / {
-        proxy_pass http://localhost:4000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        client_max_body_size 5g;    # browser uploads in the admin area
-    }
-}
-```
-
-Then `certbot --nginx -d nabs.junda.nl` for HTTPS (or however you issue
-certificates today).
-
-**Caddy** - one extra block, HTTPS is automatic:
-
-```caddy
-nabs.junda.nl {
-    reverse_proxy localhost:4000
-}
-```
-
-**Next.js on the same box without nginx/Caddy?** If www.junda.nl is served by
-Node directly on ports 80/443, the easiest path is still to put Caddy or nginx
-in front of both apps, or to route the subdomain through Cloudflare (free) and
-let it proxy to port 4000.
-
-## Step 7 - Discord login for the domain
-
-The redirect URL `https://nabs.junda.nl/auth/discord/callback` must be added
-to the Discord application (developer portal, OAuth2 -> Redirects). Only the
-owner of the Discord app can do that - **tell Malte the final URL and he adds
-it**. Until then everything works except the Discord login button.
-
-## Step 8 - First checks
-
-- `https://nabs.junda.nl/api/health` returns `{"ok":true}`
-- The site loads, standings and race pages show data
-- Live timing page connects (WebSocket)
-- Log in to the admin area (link in the footer, PIN `nabs2026`) and
-  **change the PIN right away** (Change PIN, top right)
-
-## Day-to-day notes
-
-- Big AC download files: drop them into `backend/downloads/` on the server (or
-  upload them in the admin Downloads tab), then register them there. Files
-  hosted elsewhere can be registered as external links instead.
-- Backups: Admin -> Health -> "Download full backup" grabs the database plus
-  all images as one zip. Do that after every race and keep the file somewhere
-  safe.
+- Set a fresh `JWT_SECRET` in the environment (the server refuses to start on
+  a domain with the placeholder). Generate one:
+  `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- The Discord callback URL for the final domain must be added in the Discord
+  developer portal - **tell Malte the final URL and he adds it**. Put the same
+  URL in `DISCORD_REDIRECT_URI` and the domain in `CORS_ORIGIN`.
+- Replace `https://nabs-racing.example` in `frontend/index.html` (two image
+  lines) with the real domain before building, so Discord link previews show
+  an image.
+- After the first login, change the admin PIN (Admin -> Change PIN).
+- Backups: Admin -> Health -> "Download full backup" after every race.
