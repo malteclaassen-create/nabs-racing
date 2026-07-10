@@ -15,7 +15,7 @@ import CircuitMap from "../components/CircuitMap.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
-import { heroFor, heroOnError } from "../utils/heroImage.js";
+import { heroFor, heroOnError, carFor } from "../utils/heroImage.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
@@ -41,6 +41,51 @@ function fmtFull(d) {
 
 function pad2(n) {
   return String(n ?? 0).padStart(2, "0");
+}
+
+// The season's car in the coming-soon hero. Shows the Assetto Corsa showroom
+// shot from public/cars/s<n>.jpg when one exists: the shot's black backdrop
+// plus blend-mode "screen" acts as a free cutout on the dark panel, so a
+// plain 140KB JPG reads like a staged reveal. No file = the placeholder text
+// stays, same drop-a-file convention as the season hero photos.
+function CarReveal({ season }) {
+  const [ok, setOk] = useState(false);
+  const src = carFor(season);
+  return (
+    <div
+      /* once the shot is up, the panel goes solid near-black so the blend
+         cutout stays clean no matter how bright the hero photo behind it is */
+      className={`hero-car-slot hero-anim relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/12 lg:w-[42%] ${
+        ok ? "bg-[#05070c]" : "bg-white/[0.04]"
+      }`}
+      style={{ animationDelay: "0.24s" }}
+    >
+      <div className="speed-hatch absolute inset-0 opacity-20" />
+      {!ok && (
+        <div className="relative text-center">
+          <div className="font-display text-2xl font-black uppercase tracking-tight text-white/70">Car reveal</div>
+          <div className="mt-1 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-white/40">Coming soon</div>
+        </div>
+      )}
+      {src && (
+        <img
+          src={src}
+          alt={season?.name ? `The ${season.name} car` : "The season's car"}
+          loading="lazy"
+          onLoad={() => setOk(true)}
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+          }}
+          className={`absolute inset-0 h-full w-full object-cover mix-blend-screen transition-opacity duration-500 ${ok ? "opacity-100" : "opacity-0"}`}
+        />
+      )}
+      {ok && (
+        <div className="absolute bottom-3 left-4 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-white/50">
+          The {season?.name} car{season?.game ? ` · ${season.game}` : ""}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Home() {
@@ -346,17 +391,7 @@ export default function Home() {
                   )}
                 </div>
               </div>
-              {/* Reserved area for the season's car reveal — a real 3D model of the
-                  mod mounts here later. Clean "coming soon" panel for now, no
-                  placeholder graphic. */}
-              <div className="hero-car-slot hero-anim relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/12 bg-white/[0.04] lg:w-[42%]" style={{ animationDelay: "0.24s" }}>
-                <div className="speed-hatch absolute inset-0 opacity-20" />
-                <div className="relative text-center">
-                  <div className="font-display text-2xl font-black uppercase tracking-tight text-white/70">Car reveal</div>
-                  <div className="mt-1 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-white/40">Coming soon</div>
-                </div>
-                {/* 3D car model mounts here later */}
-              </div>
+              <CarReveal season={season} />
             </div>
           ) : (
           <>

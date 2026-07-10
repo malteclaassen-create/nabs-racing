@@ -8,6 +8,13 @@ export function heroFor(season) {
   return season?.number ? `/heroes/s${season.number}.jpg` : DEFAULT_HERO;
 }
 
+// Per-season car image (an Assetto Corsa showroom shot of the season's mod on
+// a black background) at public/cars/s<number>.jpg. Same drop-a-file
+// convention as the hero photos; seasons without one show no car.
+export function carFor(season) {
+  return season?.number ? `/cars/s${season.number}.jpg` : null;
+}
+
 // onError chain for a hero <img>: a missing season photo swaps to the default
 // hero; if that is missing too, the image hides itself (as before).
 export function heroOnError(e) {
