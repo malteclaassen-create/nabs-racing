@@ -17,7 +17,6 @@ import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 import { heroFor, heroOnError } from "../utils/heroImage.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
-import RaceDayBanner from "../components/RaceDayBanner.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
 
@@ -245,13 +244,6 @@ export default function Home() {
           )}
         </div>
       </div>
-
-      {/* ===================== RACE DAY BANNER ===================== */}
-      {/* Only on the live season, and only within 24h of lights-out (the
-          component itself decides and renders nothing on ordinary days). */}
-      {!isPast && !isUpcomingSeason && nextRace && (
-        <RaceDayBanner race={nextRace} event={nextEv} myStatus={myStatus} />
-      )}
 
       {/* ===================== LEAD FEATURE ===================== */}
       {/* `reveal` (without an inline delay) makes the hero the first stop of the
