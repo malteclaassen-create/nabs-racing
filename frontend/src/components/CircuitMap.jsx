@@ -12,6 +12,9 @@ import { circuitFor } from "../data/circuits.js";
 // `rotate`: degrees to spin the outline (admin-set per track, so a tall layout
 // can lie down and fill a wide panel). The viewBox grows to the rotated
 // bounding box, so nothing clips at any angle.
+//
+// `align`: SVG preserveAspectRatio alignment. Default keeps the drawing
+// centered; pass e.g. "xMaxYMax" to pin it to the bottom-right of the box.
 export default function CircuitMap({
   track,
   className = "",
@@ -22,6 +25,7 @@ export default function CircuitMap({
   duration = 2.6,
   traceStroke = "rgba(255,255,255,0.95)",
   rotate = 0,
+  align = "xMidYMid",
 }) {
   const c = circuitFor(track);
   if (!c) return null;
@@ -43,7 +47,7 @@ export default function CircuitMap({
   return (
     <svg
       viewBox={viewBox}
-      preserveAspectRatio="xMidYMid meet"
+      preserveAspectRatio={`${align} meet`}
       className={className}
       style={style}
       fill="none"

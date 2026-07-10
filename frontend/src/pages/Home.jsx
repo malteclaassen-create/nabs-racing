@@ -656,7 +656,7 @@ export default function Home() {
               accent="#0ea5e9"
               mark={
                 nextEv && circuitFor(nextEv.track) ? (
-                  <CircuitMap track={nextEv.track} className="h-full w-full" stroke="currentColor" strokeWidth={2} />
+                  <CircuitMap track={nextEv.track} className="h-full w-full" align="xMaxYMax" stroke="currentColor" strokeWidth={2} />
                 ) : undefined
               }
             />
