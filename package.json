@@ -4,7 +4,7 @@
   "description": "NABS Racing League - one deployable unit: the backend serves the built frontend, the API and the downloads (see DEPLOYMENT.md)",
   "scripts": {
     "build": "npm --prefix frontend install && npm --prefix frontend run build && npm --prefix backend install",
-    "start": "npm --prefix backend run start"
+    "start": "npm --prefix backend run start:prod"
   },
   "engines": {
     "node": ">=20"
