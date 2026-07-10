@@ -276,6 +276,15 @@ body::before {
   animation-delay: var(--reveal-delay, 0s);
 }
 
+/* Race flow slope chart: each grid→finish line draws in, staggered per row. */
+.raceflow-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: nabs-line-draw 0.7s ease-out forwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+  transition: opacity 0.2s ease;
+}
+
 /* Fade/scale-in for tooltips and popovers. */
 @keyframes nabs-pop {
   from { opacity: 0; transform: translateY(4px) scale(0.97); }
@@ -512,11 +521,12 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .reveal,
   .chart-line,
+  .raceflow-line,
   .pop-in {
     animation: none !important;
   }
   .reveal { opacity: 1; transform: none; }
-  .chart-line { stroke-dashoffset: 0; }
+  .chart-line, .raceflow-line { stroke-dashoffset: 0; }
   .lift:hover { transform: none; }
 
   body::before { animation: none; }
@@ -546,6 +556,7 @@ body::before {
 .fx-lite body::before { display: none !important; }
 .fx-lite .reveal { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .chart-line { animation: none !important; stroke-dashoffset: 0; }
+.fx-lite .raceflow-line { animation: none !important; stroke-dashoffset: 0; }
 .fx-lite .pop-in { animation: none !important; }
 .fx-lite .cascade > * { opacity: 1 !important; animation: none !important; }
 .fx-lite .bar-fill { width: var(--w, 0) !important; animation: none !important; }

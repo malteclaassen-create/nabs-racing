@@ -5,6 +5,7 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton } from "../components/ui.jsx";
 import RaceResults from "../components/RaceResults.jsx";
 import RaceFacts from "../components/RaceFacts.jsx";
+import RaceFlow from "../components/RaceFlow.jsx";
 import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
@@ -341,6 +342,7 @@ export default function Races() {
                         )}
                       </div>
                       <RaceResults race={detail.race} results={detail.results} />
+                      {detail.race.hasPositions && <RaceFlow race={detail.race} results={detail.results} />}
                       {detail.race.hasPositions && <RaceFacts race={detail.race} results={detail.results} />}
                     </div>
                   )}
