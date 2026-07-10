@@ -384,7 +384,7 @@ export default function Home() {
             <p className="hero-anim mt-3 font-mono text-sm uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
               {showPrevChamps
                 ? `${prevSeason?.name} Champion · ${prevChampion.total} pts`
-                : `${lastCircuit ? `${lastCircuit.circuit} · ` : ""}${fmtFull(lastRace?.date)}`}
+                : `${lastCircuit && lastCircuit.circuit?.toLowerCase() !== lastRace?.track?.toLowerCase() ? `${lastCircuit.circuit} · ` : ""}${fmtFull(lastRace?.date)}`}
             </p>
 
             {/* podium strip — latest-race (or last-season) top 3 */}
@@ -495,7 +495,9 @@ export default function Home() {
                 <div className="mt-3 break-words font-display text-2xl font-black uppercase leading-[1.05] tracking-tight text-ink dark:text-white sm:text-3xl">
                   {nextRace.track}
                 </div>
-                {nextCircuit && (
+                {/* skip the circuit line when it just repeats the race name
+                    (e.g. race "Interlagos" at circuit "Interlagos") */}
+                {nextCircuit && nextCircuit.circuit?.toLowerCase() !== nextRace.track?.toLowerCase() && (
                   <div className="mt-2 font-mono text-xs uppercase tracking-wider text-ink/60 dark:text-white/65">
                     {nextCircuit.circuit}
                   </div>
@@ -590,6 +592,8 @@ export default function Home() {
                 ) : undefined
               }
             />
+            {/* 5 tiles never fill a 2- or 3-column grid evenly, so the last two
+                stretch to close the row instead of leaving a hole */}
             <NumberTile
               index={3}
               to={`/drivers/${myDriverId}`}
@@ -598,6 +602,7 @@ export default function Home() {
               sub={`${useTier ? myTierPodiums : myPodiums} podiums`}
               icon="trophy"
               accent="#d97706"
+              className="sm:col-span-2 lg:col-span-1"
             />
             <NumberTile
               index={4}
@@ -607,6 +612,7 @@ export default function Home() {
               sub={useTier ? `${myStarts} starts · in tier` : `${myStarts} starts`}
               icon="trend"
               accent="#7c3aed"
+              className="col-span-2 sm:col-span-1"
             />
           </section>
         </div>
@@ -631,6 +637,8 @@ export default function Home() {
             icon="shield"
             accent="#0d9488"
           />
+          {/* same trick as the personal band: the last two tiles stretch so 5
+              tiles close the 2- and 3-column rows without a hole */}
           <NumberTile
             index={3}
             to={leader ? `/drivers/${leader.driverId}` : undefined}
@@ -639,6 +647,7 @@ export default function Home() {
             sub={leader?.name || "TBA"}
             icon="trophy"
             accent={leader?.team?.color || "#d97706"}
+            className="sm:col-span-2 lg:col-span-1"
           />
           <NumberTile
             index={4}
@@ -649,6 +658,7 @@ export default function Home() {
             sub="P1 to P2"
             icon="trend"
             accent="#d97706"
+            className="col-span-2 sm:col-span-1"
           />
         </section>
       )}
@@ -731,10 +741,11 @@ function Heading({ index, eyebrow, title, to }) {
   );
 }
 
-function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = false, icon, accent = "#64748b", mark }) {
+function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = false, icon, accent = "#64748b", mark, className = "" }) {
   const cls =
     "group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-card transition" +
-    (to ? " hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg" : "");
+    (to ? " hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg" : "") +
+    (className ? ` ${className}` : "");
   const valueCls = compact
     ? "relative mt-3.5 truncate font-display text-2xl font-black uppercase leading-tight tracking-tight text-dark"
     : "relative mt-3.5 font-display text-4xl font-black leading-none tabular-nums text-dark";

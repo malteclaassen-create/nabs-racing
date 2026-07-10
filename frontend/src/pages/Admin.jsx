@@ -1177,7 +1177,7 @@ function Seasons({ gotoRaces }) {
     setBusy(true); setError(null); setMsg(null);
     try {
       await api.updateSeason(s.id, { isPublic: !s.isPublic });
-      setMsg(s.isPublic ? `${s.name} is now private — hidden from the public until you publish it.` : `${s.name} is now public.`);
+      setMsg(s.isPublic ? `${s.name} is now private. It stays hidden from the public until you publish it.` : `${s.name} is now public.`);
       reload();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }

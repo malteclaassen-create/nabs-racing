@@ -143,7 +143,7 @@ function Footer() {
             Get on the grid
           </h3>
           <p className="max-w-xs text-sm leading-relaxed text-light">
-            Everything happens in our Discord — sign-ups, stewarding and banter. New drivers welcome every
+            Everything happens in our Discord: sign-ups, stewarding and banter. New drivers welcome every
             season.
           </p>
           {discord && (

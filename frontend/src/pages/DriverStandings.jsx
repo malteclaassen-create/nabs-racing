@@ -144,7 +144,7 @@ export default function DriverStandings() {
     return (
       <div>
         <PageHeaderSkeleton />
-        <div className="mb-8 grid gap-4 md:grid-cols-3">
+        <div className="mb-8 grid gap-4 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-24 w-full rounded-xl" />
           ))}
@@ -198,7 +198,9 @@ export default function DriverStandings() {
       />
 
       {top3.length > 0 && (
-        <div className="cascade mb-8 grid gap-4 md:grid-cols-3">
+        // 3-across only from lg: at md widths the cards get so narrow the
+        // driver names truncate away entirely
+        <div className="cascade mb-8 grid gap-4 lg:grid-cols-3">
           {top3.map((row, i) => (
             <LeaderCard key={row.driverId} row={row} leaderTotal={leaderTotal} rank={i} index={i} showTier={multiTier} />
           ))}

@@ -110,7 +110,7 @@ export default function AdminMembers() {
     const next = !m.isAdmin;
     const name = m.displayName || m.username;
     const ok = next
-      ? window.confirm(`Give "${name}" full admin access?\n\nThey reach the whole admin area straight after logging in with Discord — no PIN needed. Only do this for people you fully trust.`)
+      ? window.confirm(`Give "${name}" full admin access?\n\nThey reach the whole admin area straight after logging in with Discord, no PIN needed. Only do this for people you fully trust.`)
       : window.confirm(`Remove admin access from "${name}"? This takes effect immediately.`);
     if (!ok) return;
     act(m.discordId, () => api.setMemberAdmin(m.discordId, next));

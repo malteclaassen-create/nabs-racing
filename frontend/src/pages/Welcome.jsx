@@ -88,15 +88,13 @@ function DiscordButton({ children = "Join the Discord", className = "", magnetic
   );
 }
 
-function FeatureCard({ icon, title, children, accent, index }) {
+function FeatureCard({ icon, title, children, index }) {
   const ref = useTilt({ max: 5, lift: 5 });
   return (
     <div ref={ref} className="card shine tilt relative overflow-hidden p-6 hover:shadow-xl" style={{ "--i": index }}>
-      <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: accent }} />
-      <span
-        className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
-        style={{ backgroundColor: `${accent}1f`, color: accent }}
-      >
+      {/* one shared accent, not a rainbow: the colour carries no meaning here,
+          so all four cards wear the brand tone */}
+      <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-brand/15 text-brand">
         <Icon name={icon} className="h-6 w-6" />
       </span>
       <h3 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{title}</h3>
@@ -317,15 +315,15 @@ export default function Welcome() {
           sub="A community-run online championship for sim racers. Here's the short version."
         />
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <FeatureCard index={0} icon="wheel" title="A new era every season" accent="#f4afc6">
+          <FeatureCard index={0} icon="wheel" title="A new era every season">
             Each season we race a fresh grid of equally matched cars, right now {carsLabel} on {platform},
             with proper physics and no driver aids holding your hand.
           </FeatureCard>
-          <FeatureCard index={1} icon="layers" title="Two tiers + reserves" accent="#38bdf8">
+          <FeatureCard index={1} icon="layers" title="Two tiers + reserves">
             Tier 1 and Tier 2 keep the racing close to your level. Reserves can step in for any team when a
             regular can&rsquo;t make a round. It&rsquo;s a perfect way to get your first start.
           </FeatureCard>
-          <FeatureCard index={2} icon="calendar" title="A real season" accent="#a78bfa">
+          <FeatureCard index={2} icon="calendar" title="A real season">
             {totalRounds > 0 ? `${totalRounds} rounds` : "A full season of rounds"} on iconic circuits, run
             roughly weekly.{" "}
             {dropWorst > 0
@@ -334,7 +332,7 @@ export default function Welcome() {
                 : `Your ${dropWorst} weakest rounds are dropped, so one bad night never ends your championship.`
               : "Every round counts, so consistency is everything."}
           </FeatureCard>
-          <FeatureCard index={3} icon="community" title="Built on Discord" accent="#34d399">
+          <FeatureCard index={3} icon="community" title="Built on Discord">
             Everything happens in our Discord: sign-ups, banter, stewarding and results. This site is just
             the scoreboard that updates itself after every race.
           </FeatureCard>

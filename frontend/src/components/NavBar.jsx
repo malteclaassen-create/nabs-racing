@@ -31,7 +31,7 @@ function AuthControl({ mobile = false }) {
   return (
     <NavLink
       to="/profile"
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-3.5 py-2 text-sm font-bold text-dark transition hover:bg-brand/20 ${
+      className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-brand/40 bg-brand/10 px-3.5 py-2 text-sm font-bold text-dark transition hover:bg-brand/20 ${
         mobile ? "w-full" : ""
       }`}
     >
@@ -48,12 +48,12 @@ const links = [
   { to: "/constructors", label: "Constructors" },
   { to: "/races", label: "Races" },
   { to: "/attendance", label: "Attendance" },
-  { to: "/live", label: "Live Timing" },
+  { to: "/live", label: "Live" },
   { to: "/downloads", label: "Race Info" },
 ];
 
 const linkClass = ({ isActive }) =>
-  `nav-link flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+  `nav-link flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
     isActive ? "bg-brand/20 text-dark ring-1 ring-brand/50" : "text-medium hover:bg-surface2"
   }`;
 
@@ -125,7 +125,9 @@ export default function NavBar() {
               on inner pages it just eases in once. */}
           {showDocked && (
             <div
-              className="ml-3 flex shrink-0 sm:ml-4"
+              /* between lg and xl the nav links need every pixel, so the
+                 docked chip sits this range out */
+              className="ml-3 flex shrink-0 sm:ml-4 lg:hidden xl:flex"
               style={{
                 opacity: p,
                 transform: `translateY(${(1 - p) * 24}px) scale(${0.92 + 0.08 * p})`,

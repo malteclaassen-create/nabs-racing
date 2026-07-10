@@ -74,9 +74,12 @@ export default function RaceResults({ race, results }) {
               {detailed && hasGrid && <th className="hidden px-3 py-3 text-center md:table-cell">Grid</th>}
               <th className="px-3 py-3">Driver</th>
               <th className="hidden px-3 py-3 sm:table-cell">Team</th>
+              {/* phones: the race time moves under the driver name and DNF/DSQ
+                  becomes a badge next to it; the Time column and the mostly-empty
+                  Status column only appear from md up */}
               {detailed && hasTimes && <th className="hidden px-3 py-3 text-right md:table-cell">Time</th>}
               {detailed && hasLaps && <th className="hidden px-3 py-3 text-right md:table-cell">Best Lap</th>}
-              {detailed && <th className="px-3 py-3 text-center">Status</th>}
+              {detailed && <th className="hidden px-3 py-3 text-center lg:table-cell">Status</th>}
               {detailed && (
                 <th className="hidden px-3 py-3 text-center lg:table-cell">
                   <span className="inline-flex items-center">
@@ -132,20 +135,29 @@ export default function RaceResults({ race, results }) {
                   )}
 
                   <td className="px-3 py-3.5">
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      <span
-                        className="h-7 w-1.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: r.team.color }}
-                      />
-                      <Link
-                        to={`/drivers/${r.driverId}`}
-                        className="font-display text-base font-bold uppercase tracking-tight text-dark transition hover:text-brand"
-                        title={r.formerName ? `Raced as ${r.formerName}` : undefined}
-                      >
-                        {r.name}
-                      </Link>
-                      <Flag code={countryFor(r.driverId, r.country)} />
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      {/* bar + name + flag wrap as one unit, so a long name never
+                          leaves the colour bar stranded on its own line */}
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <span
+                          className="h-7 w-1.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: r.team.color }}
+                        />
+                        <Link
+                          to={`/drivers/${r.driverId}`}
+                          className="font-display text-base font-bold uppercase tracking-tight text-dark transition hover:text-brand"
+                          title={r.formerName ? `Raced as ${r.formerName}` : undefined}
+                        >
+                          {r.name}
+                        </Link>
+                        <Flag code={countryFor(r.driverId, r.country)} />
+                      </span>
                       {tier != null && <TierBadge tier={tier} />}
+                      {r.status && r.status !== "FINISHED" && (
+                        <span className="lg:hidden">
+                          <StatusPill status={r.status} />
+                        </span>
+                      )}
                       {r.driverId === dotdId && (
                         <span className="pill bg-brand/20 text-brand" title="Driver of the Day">
                           ★ DOTD
@@ -165,6 +177,13 @@ export default function RaceResults({ race, results }) {
                         </span>
                       )}
                     </div>
+                    {/* phones: race time as a sub-line, since the Time column
+                        doesn't fit next to the points there */}
+                    {detailed && hasTimes && timeCell(r) && (
+                      <div className="mt-1 pl-4 font-mono text-xs tabular-nums text-light md:hidden">
+                        {timeCell(r)}
+                      </div>
+                    )}
                   </td>
 
                   <td className="hidden px-3 py-3.5 sm:table-cell">
@@ -207,7 +226,7 @@ export default function RaceResults({ race, results }) {
                   )}
 
                   {detailed && (
-                    <td className="px-3 py-3.5 text-center">
+                    <td className="hidden px-3 py-3.5 text-center lg:table-cell">
                       {!r.status || r.status === "FINISHED" ? (
                         <span className="font-mono text-faint">—</span>
                       ) : (
