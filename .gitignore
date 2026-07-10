@@ -41,3 +41,4 @@ Thumbs.db
 archive-material/
 
 # Local dev tooling config (not part of the site)
+__pycache__/
