@@ -701,21 +701,7 @@ function CardHeader({ driver, rating, championship, color, stats }) {
               </div>
               <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">points</div>
             </div>
-            {/* story-style season recap; the page itself bails out politely
-                when there aren't enough finished rounds yet */}
-            <Link
-              to={`/drivers/${driver.id}/recap`}
-              className="ml-auto hidden shrink-0 items-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-medium transition hover:border-brand/40 hover:text-dark sm:inline-flex"
-            >
-              Season recap →
-            </Link>
           </div>
-          <Link
-            to={`/drivers/${driver.id}/recap`}
-            className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-medium transition hover:border-brand/40 hover:text-dark sm:hidden"
-          >
-            Season recap →
-          </Link>
 
           {/* headline stats — bottom-anchored so they fill the space beside the card */}
           <StatTiles stats={stats} className="mt-5 grid-cols-2 sm:grid-cols-3 lg:mt-auto lg:pt-5" />

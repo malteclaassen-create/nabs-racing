@@ -12,7 +12,6 @@ import Home from "./pages/Home.jsx";
 import Welcome from "./pages/Welcome.jsx";
 import DriverStandings from "./pages/DriverStandings.jsx";
 import DriverProfile from "./pages/DriverProfile.jsx";
-import SeasonRecap from "./pages/SeasonRecap.jsx";
 import Constructors from "./pages/Constructors.jsx";
 import TeamProfile from "./pages/TeamProfile.jsx";
 import Races from "./pages/Races.jsx";
@@ -57,7 +56,6 @@ function AppRoutes() {
         <Route path="/" element={<HomeRoute />} />
         <Route path="/drivers" element={<DriverStandings />} />
         <Route path="/drivers/:id" element={<DriverProfile />} />
-        <Route path="/drivers/:id/recap" element={<SeasonRecap />} />
         <Route path="/constructors" element={<Constructors />} />
         <Route path="/constructors/:id" element={<TeamProfile />} />
         <Route path="/teams" element={<Constructors />} />
