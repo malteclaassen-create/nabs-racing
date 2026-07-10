@@ -15,6 +15,14 @@ export function carFor(season) {
   return season?.number ? `/cars/s${season.number}.jpg` : null;
 }
 
+// Per-season interactive 3D model at public/cars/s<number>.glb (converted
+// from the real Assetto Corsa car via tools/kn5-to-glb). Same drop-a-file
+// convention: a season with a GLB gets the rotatable car, one with only the
+// JPG gets the flat shot, neither shows the coming-soon placeholder.
+export function carModelFor(season) {
+  return season?.number ? `/cars/s${season.number}.glb` : null;
+}
+
 // onError chain for a hero <img>: a missing season photo swaps to the default
 // hero; if that is missing too, the image hides itself (as before).
 export function heroOnError(e) {

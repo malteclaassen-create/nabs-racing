@@ -15,7 +15,8 @@ import CircuitMap from "../components/CircuitMap.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
-import { heroFor, heroOnError, carFor } from "../utils/heroImage.js";
+import { heroFor, heroOnError, carFor, carModelFor } from "../utils/heroImage.js";
+import Car3D from "../components/Car3D.jsx";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
@@ -43,34 +44,66 @@ function pad2(n) {
   return String(n ?? 0).padStart(2, "0");
 }
 
-// The season's car in the coming-soon hero. Shows the Assetto Corsa showroom
-// shot from public/cars/s<n>.jpg when one exists: the shot's black backdrop
-// plus blend-mode "screen" acts as a free cutout on the dark panel, so a
-// plain 140KB JPG reads like a staged reveal. No file = the placeholder text
-// stays, same drop-a-file convention as the season hero photos.
+// The season's car in the coming-soon hero. Best case the season has a 3D
+// model at public/cars/s<n>.glb (converted from the real Assetto Corsa car,
+// tools/kn5-to-glb): rotatable, with a driver-view button. A season with only
+// the showroom JPG at cars/s<n>.jpg gets the flat shot (its black backdrop
+// plus blend-mode "screen" acts as a free cutout on the dark panel), and one
+// with neither keeps the coming-soon placeholder. All drop-a-file, no admin.
 function CarReveal({ season }) {
   const [ok, setOk] = useState(false);
+  // null = probing for the GLB, true = use 3D, false = fall back to the JPG
+  const [use3d, setUse3d] = useState(null);
   const src = carFor(season);
+  const modelSrc = carModelFor(season);
+
+  useEffect(() => {
+    let cancelled = false;
+    setUse3d(null);
+    setOk(false);
+    if (!modelSrc) {
+      setUse3d(false);
+      return;
+    }
+    fetch(modelSrc, { method: "HEAD" })
+      .then((res) => {
+        // dev servers answer missing files with index.html, so check the type
+        const type = res.headers.get("content-type") || "";
+        if (!cancelled) setUse3d(res.ok && !type.includes("text/html"));
+      })
+      .catch(() => {
+        if (!cancelled) setUse3d(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modelSrc]);
+
+  const showCar = ok || use3d === true;
+  const alt = season?.name ? `The ${season.name} car` : "The season's car";
   return (
     <div
-      /* once the shot is up, the panel goes solid near-black so the blend
-         cutout stays clean no matter how bright the hero photo behind it is */
+      /* once the car is up, the panel goes solid near-black so both the blend
+         cutout and the 3D stage stay clean no matter the hero photo behind */
       className={`hero-car-slot hero-anim relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/12 lg:w-[42%] ${
-        ok ? "bg-[#05070c]" : "bg-white/[0.04]"
+        showCar ? "bg-[#05070c]" : "bg-white/[0.04]"
       }`}
       style={{ animationDelay: "0.24s" }}
     >
       <div className="speed-hatch absolute inset-0 opacity-20" />
-      {!ok && (
+      {!showCar && (
         <div className="relative text-center">
           <div className="font-display text-2xl font-black uppercase tracking-tight text-white/70">Car reveal</div>
           <div className="mt-1 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-white/40">Coming soon</div>
         </div>
       )}
-      {src && (
+      {use3d === true && (
+        <Car3D src={modelSrc} poster={src || undefined} alt={alt} onFail={() => setUse3d(false)} />
+      )}
+      {use3d === false && src && (
         <img
           src={src}
-          alt={season?.name ? `The ${season.name} car` : "The season's car"}
+          alt={alt}
           loading="lazy"
           onLoad={() => setOk(true)}
           onError={(e) => {
@@ -79,8 +112,8 @@ function CarReveal({ season }) {
           className={`absolute inset-0 h-full w-full object-cover mix-blend-screen transition-opacity duration-500 ${ok ? "opacity-100" : "opacity-0"}`}
         />
       )}
-      {ok && (
-        <div className="absolute bottom-3 left-4 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-white/50">
+      {showCar && (
+        <div className="pointer-events-none absolute bottom-3 left-4 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-white/50">
           The {season?.name} car{season?.game ? ` · ${season.game}` : ""}
         </div>
       )}
