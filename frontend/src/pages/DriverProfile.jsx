@@ -128,11 +128,11 @@ function statsFromRow(row) {
   };
 }
 
-function Stat({ icon, label, value, sub, accent }) {
+function Stat({ icon, label, value, sub, accent, className = "" }) {
   // -ml/-mt tuck each tile's top/left rule under its neighbour (or the frame),
   // so any tile count renders with clean hairlines and no stray edges.
   return (
-    <div className="-ml-px -mt-px border-l border-t border-border bg-card p-4">
+    <div className={`-ml-px -mt-px border-l border-t border-border bg-card p-4 ${className}`}>
       <div className="flex items-center gap-2 text-light">
         <Icon name={icon} className="h-4 w-4" />
         <span className="font-mono text-[11px] font-semibold uppercase tracking-wider">{label}</span>
@@ -197,16 +197,47 @@ const TILE_DEFS = (stats) => [
   },
 ];
 
+// The tiles sit in one hairline-ruled frame; a tile count that doesn't fill
+// the last row (7 tiles in a 3-wide grid, say) would leave a borderless hole
+// in the frame. So the LAST tile stretches over whatever is left of its row —
+// per breakpoint, since the column count changes (2 → sm:3 → lg:6). Static
+// class literals on purpose: Tailwind only generates classes it can see.
+const LAST_SPAN_2 = { 0: "col-span-1", 1: "col-span-2" };
+const LAST_SPAN_3 = { 0: "sm:col-span-1", 1: "sm:col-span-3", 2: "sm:col-span-2" };
+const LAST_SPAN_6 = {
+  0: "lg:col-span-1",
+  1: "lg:col-span-6",
+  2: "lg:col-span-5",
+  3: "lg:col-span-4",
+  4: "lg:col-span-3",
+  5: "lg:col-span-2",
+};
+
 function StatTiles({ stats, visible, className = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" }) {
   const picked = visible || DEFAULT_TILES;
   const defs = TILE_DEFS(stats).filter((t) => picked.includes(t.key) && t.available !== false);
   if (!defs.length) return null;
+  const lastSpan = [
+    LAST_SPAN_2[defs.length % 2],
+    LAST_SPAN_3[defs.length % 3],
+    className.includes("lg:grid-cols-6") ? LAST_SPAN_6[defs.length % 6] : "",
+  ]
+    .join(" ")
+    .trim();
   return (
     // One quiet framed block with hairline rules between the stats, instead of
     // a loose grid of separate bordered cards.
     <div className={`reveal grid overflow-hidden rounded-xl border border-border bg-card ${className}`}>
-      {defs.map((t) => (
-        <Stat key={t.key} icon={t.icon} label={t.label} value={t.value} sub={t.sub} accent={t.accent} />
+      {defs.map((t, i) => (
+        <Stat
+          key={t.key}
+          icon={t.icon}
+          label={t.label}
+          value={t.value}
+          sub={t.sub}
+          accent={t.accent}
+          className={i === defs.length - 1 ? lastSpan : ""}
+        />
       ))}
     </div>
   );
@@ -782,10 +813,20 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                 {showAll ? "Career" : "Championship"}
               </div>
               <div className="mt-1.5 font-display text-5xl font-black leading-none tabular-nums text-dark">
-                {showAll ? <CountUp end={career.totals.seasons} /> : <CountUp end={championship.position} prefix="P" />}
+                {showAll ? (
+                  <CountUp end={career.totals.seasons} />
+                ) : championship.position ? (
+                  <CountUp end={championship.position} prefix="P" />
+                ) : (
+                  "—"
+                )}
               </div>
               <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-                {showAll ? (career.totals.seasons === 1 ? "season" : "seasons") : `of ${championship.fieldSize}`}
+                {showAll
+                  ? (career.totals.seasons === 1 ? "season" : "seasons")
+                  : championship.fieldSize
+                    ? `of ${championship.fieldSize}`
+                    : "no races yet"}
               </div>
               <div className="mt-3 font-display text-3xl font-black leading-none tabular-nums" style={{ color }}>
                 <CountUp end={showAll ? career.totals.points : championship.points} />
@@ -798,10 +839,20 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
           <div className="mt-5 flex items-center justify-center gap-5 rounded-xl bg-surface2/70 px-4 py-3 lg:hidden">
             <div className="text-center">
               <div className="font-display text-4xl font-black leading-none tabular-nums text-dark sm:text-5xl">
-                {showAll ? <CountUp end={career.totals.seasons} /> : <CountUp end={championship.position} prefix="P" />}
+                {showAll ? (
+                  <CountUp end={career.totals.seasons} />
+                ) : championship.position ? (
+                  <CountUp end={championship.position} prefix="P" />
+                ) : (
+                  "—"
+                )}
               </div>
               <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-                {showAll ? (career.totals.seasons === 1 ? "season" : "seasons") : `of ${championship.fieldSize}`}
+                {showAll
+                  ? (career.totals.seasons === 1 ? "season" : "seasons")
+                  : championship.fieldSize
+                    ? `of ${championship.fieldSize}`
+                    : "no races yet"}
               </div>
             </div>
             <div className="h-11 w-px bg-border" />

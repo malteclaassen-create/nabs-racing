@@ -48,6 +48,10 @@ export async function ensureAppSchema(prisma) {
   // public on activation. Private seasons are hidden from every public read.
   await addColumn(prisma, "Season", "isPublic", "BOOLEAN NOT NULL DEFAULT 1");
 
+  // --- "Coming up" announcement: an upcoming season may advertise itself in
+  // the Home/Welcome teaser even while still private. Admin-toggled.
+  await addColumn(prisma, "Season", "isAnnounced", "BOOLEAN NOT NULL DEFAULT 0");
+
   // --- Profile tiles: which of the six headline stat tiles a driver shows on
   // their public profile. JSON array of tile keys; null = all of them.
   await addColumn(prisma, "Driver", "profileTiles", "TEXT");

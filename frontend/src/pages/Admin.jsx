@@ -1182,6 +1182,21 @@ function Seasons({ gotoRaces }) {
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // "Coming up" strip on Home/Welcome: an announced upcoming season advertises
+  // itself there (name, game, opener + car picture) even while still private.
+  async function toggleAnnounce(s) {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.updateSeason(s.id, { isAnnounced: !s.isAnnounced });
+      setMsg(
+        s.isAnnounced
+          ? `${s.name} is no longer announced on the home page.`
+          : `${s.name} now shows in the "Coming up" strip on the home page (name, game and opener only).`
+      );
+      reload();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
   async function clone(targetId, withDrivers) {
     const fromId = cloneFrom[targetId];
     if (!fromId) return;
@@ -1276,6 +1291,9 @@ function Seasons({ gotoRaces }) {
                   {!s.isActive && s.isPublic === false && (
                     <span className="ml-2 pill bg-rose-500/15 text-rose-600">private · hidden</span>
                   )}
+                  {s.isAnnounced && !s.isActive && (
+                    <span className="ml-2 pill bg-sky-500/15 text-sky-600">announced</span>
+                  )}
                   <div className="text-xs text-light">
                     {s.game || "—"} · {s._count.teams} teams · {s._count.drivers} drivers · {s._count.races} races
                   </div>
@@ -1293,6 +1311,16 @@ function Seasons({ gotoRaces }) {
                         title={s.isPublic ? "Hide this season from the public" : "Publish this season to the public"}>
                         {s.isPublic ? "Make private" : "Make public"}
                       </button>
+                      {/* only an UPCOMING season can advertise itself */}
+                      {s.number > ((seasons || []).find((o) => o.isActive)?.number ?? -Infinity) && (
+                        <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                          onClick={() => toggleAnnounce(s)}
+                          title={s.isAnnounced
+                            ? "Remove the 'Coming up' strip from the home page"
+                            : "Show a 'Coming up' strip on the home page (name, game and opener only), even while the season is private"}>
+                          {s.isAnnounced ? "Stop announcing" : "Announce on Home"}
+                        </button>
+                      )}
                       <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
                         onClick={() => activate(s.id)}>Make active</button>
                       {/* any non-active season is deletable; a filled one requires

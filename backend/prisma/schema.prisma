@@ -61,6 +61,11 @@ model Season {
   // new seasons are created private and hidden from every public read until the
   // admin publishes them. An active season is always forced public.
   isPublic  Boolean  @default(true)
+  // "Coming up" announcement (migration season_announced): when ON, an upcoming
+  // season advertises itself in the Home/Welcome teaser strip even while it is
+  // still PRIVATE (name, game, opener + car picture only — nothing else leaks).
+  // Toggled on the admin Seasons tab; managed via raw SQL (ensureAppSchema).
+  isAnnounced Boolean @default(false)
   createdAt DateTime @default(now())
 
   teams   Team[]

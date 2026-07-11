@@ -1,34 +1,38 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { useSeason } from "../context/SeasonContext.jsx";
 import { useSocial } from "./SocialLinks.jsx";
-import { fmtRaceTime } from "../utils/raceTime.js";
+import { carFor } from "../utils/heroImage.js";
+import RaceCountdown from "./RaceCountdown.jsx";
 
-// Announcement strip for the NEXT season. Appears automatically as soon as a
-// season with a higher number than the one being viewed exists in the DB
-// (i.e. during the transition weeks while the new season is being set up),
-// and disappears by itself once that season is activated. If the new season
-// already has a dated first round, it counts down to it.
+// Announcement strip for the NEXT season, fed by /api/seasons/teaser: the
+// admin flips "Announce on Home" (Seasons tab) and the strip appears on Home
+// and the newcomer page — even while the season itself is still PRIVATE and
+// unreachable through the season switcher. The endpoint hands out only the
+// teaser facts (name, game, opener), so nothing else leaks early. The strip
+// disappears by itself once the season is activated. If the season has a car
+// showroom shot (public/cars/s<n>.jpg), it rides along on a dark panel.
 export default function NextSeasonTeaser() {
-  const { seasons, current } = useSeason();
   const social = useSocial();
+  const teaser = useApi(useCallback(() => api.seasonTeaser(), []));
+  // The car picture is optional per season: the panel stays hidden until the
+  // image actually loads, so a season without a shot loses nothing. Besides
+  // onLoad, an effect checks the element directly — a cached image can be
+  // complete before React's load listener is even attached, and the event
+  // would then never come.
+  const [carOk, setCarOk] = useState(false);
+  const carRef = useRef(null);
+  const teasedNumber = teaser.data?.number;
+  useEffect(() => {
+    const el = carRef.current;
+    if (el && el.complete && el.naturalWidth > 0) setCarOk(true);
+  }, [teasedNumber]);
 
-  const next = (seasons || [])
-    // Only public upcoming seasons announce themselves; a private (unpublished)
-    // season stays fully hidden even when an admin is logged in.
-    .filter((s) => current && !s.isActive && s.number > current.number && s.isPublic !== false)
-    .sort((a, b) => a.number - b.number)[0];
-
-  const races = useApi(
-    useCallback(() => (next ? api.racesFor(next.number) : Promise.resolve([])), [next?.number])
-  );
-
+  const next = teaser.data;
   if (!next) return null;
 
-  const firstRace = (races.data || [])
-    .filter((r) => !r.isSpecialEvent && r.number != null && !r.isCompleted && r.date)
-    .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+  const firstRace = next.firstRace;
+  const carSrc = carFor(next);
 
   // "Season 8" reads fine; a season that is literally named "8" gets a prefix.
   const title = /^\d+$/.test(String(next.name).trim()) ? `Season ${next.name}` : next.name;
@@ -41,8 +45,8 @@ export default function NextSeasonTeaser() {
       />
       <div className="speed-hatch absolute inset-y-0 right-0 w-[30%] opacity-[0.12] dark:opacity-25"
         style={{ WebkitMaskImage: "linear-gradient(to left,#000 30%,transparent)", maskImage: "linear-gradient(to left,#000 30%,transparent)" }} />
-      <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <div className="flex items-center gap-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-eyebrow">
             <span className="live-dot inline-block h-2 w-2 rounded-full bg-brand" />
             Coming up
@@ -57,14 +61,34 @@ export default function NextSeasonTeaser() {
               : <>The next season is taking shape: teams, cars and calendar are being prepared. Jump into the Discord to be there from round one.</>}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
-          {firstRace && (
-            <span className="rounded-lg border border-border bg-surface2 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium dark:border-white/15 dark:bg-white/10 dark:text-white/85">
-              Round 1 ·{" "}
-              {new Date(firstRace.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}{" "}
-              · {fmtRaceTime(firstRace.date)}
-            </span>
+
+        {/* the season's car — a showroom shot on black, so the dark panel plus
+            blend-screen act as a free cutout (same trick as the hero's slot) */}
+        <div
+          className={`relative h-32 w-full shrink-0 overflow-hidden rounded-xl bg-[#05070c] ring-1 ring-black/20 dark:ring-white/10 sm:h-36 lg:h-28 lg:w-56 xl:h-32 xl:w-72 ${
+            carOk ? "" : "hidden"
+          }`}
+        >
+          <div className="speed-hatch absolute inset-0 opacity-20" />
+          {/* NOT lazy on purpose: the panel is display:none until the image
+              loads, and a lazy image inside a hidden box never loads — the
+              two would deadlock and the car would never appear. */}
+          {carSrc && (
+            <img
+              ref={carRef}
+              src={carSrc}
+              alt={`The ${title} car`}
+              onLoad={() => setCarOk(true)}
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+              className="absolute inset-0 h-full w-full object-cover mix-blend-screen"
+            />
           )}
+        </div>
+
+        <div className="flex shrink-0 flex-col items-start gap-3 lg:items-end">
+          {/* live countdown to the opener — the same broadcast clock as the
+              hero's next-race panel, instead of a static date pill */}
+          {firstRace?.date && <RaceCountdown date={firstRace.date} className="w-full min-w-[15rem] max-w-[17rem]" />}
           <a
             href={social.data?.discord || undefined}
             target="_blank"

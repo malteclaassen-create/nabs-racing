@@ -380,11 +380,30 @@ export async function getDriverProfile(prisma, driverId) {
     allTime,
     // Earned championship seals: [{ type, seasonNumber, seasonName }].
     badges,
-    championship: {
-      position: standingRow?.position ?? null,
-      points: standingRow?.total ?? 0,
-      fieldSize: standings.standings.length,
-    },
+    // The "P1 of 68" line speaks about people who FINISHED at least one race
+    // this season — the roster also carries every sign-up, reserve and
+    // DNF-only outing, and none of those should inflate the field. The rank is
+    // recomputed within that group (same order as the standings); a driver
+    // without a single finish gets no position at all.
+    championship: (() => {
+      let raced = standings.standings.filter((row) =>
+        Object.values(row.perRace || {}).some((v) => v && v.status === "FINISHED")
+      );
+      // Future-proofing: a season stored ONLY as official totals (points on
+      // the board but no per-race rows to detect finishes from) already IS the
+      // official classification — fall back to the full table there. A season
+      // that simply hasn't raced yet (no finishes, no points) stays empty:
+      // fieldSize 0, no position, and the page says "no races yet".
+      if (raced.length === 0 && standings.standings.some((r) => r.total > 0)) {
+        raced = standings.standings;
+      }
+      const rank = raced.findIndex((row) => row.driverId === driverId) + 1;
+      return {
+        position: rank > 0 ? rank : null,
+        points: standingRow?.total ?? 0,
+        fieldSize: raced.length,
+      };
+    })(),
     // The full standings of THIS driver's own season, so the profile page's
     // head-to-head and drop-round logic use the driver's actual season — not
     // whatever season the site's switcher happens to be on (a driver reached

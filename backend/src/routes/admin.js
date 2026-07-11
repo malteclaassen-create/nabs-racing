@@ -1008,8 +1008,9 @@ router.get("/seasons", async (req, res, next) => {
         orderBy: { number: "desc" },
         include: { _count: { select: { teams: true, drivers: true, races: true } } },
       }),
-      // teamDropWorst / teamDropMode / isPublic aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic" FROM "Season"`).catch(() => []),
+      // teamDropWorst / teamDropMode / isPublic / isAnnounced aren't in the
+      // generated client yet -> raw read.
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic", "isAnnounced" FROM "Season"`).catch(() => []),
     ]);
     const rawById = new Map(raw.map((r) => [r.id, r]));
     res.json(
@@ -1020,6 +1021,7 @@ router.get("/seasons", async (req, res, next) => {
           teamDropWorst: extra.teamDropWorst == null ? null : Number(extra.teamDropWorst),
           teamDropMode: extra.teamDropMode === "rounds" ? "rounds" : null,
           isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
+          isAnnounced: !!Number(extra.isAnnounced ?? 0),
         };
       })
     );
@@ -1083,6 +1085,7 @@ function parseSeasonRawFields(body) {
     else return { error: "teamDropMode must be 'results', 'rounds' or blank" };
   }
   if (body.isPublic !== undefined) out.isPublic = body.isPublic ? 1 : 0;
+  if (body.isAnnounced !== undefined) out.isAnnounced = body.isAnnounced ? 1 : 0;
   return out;
 }
 
@@ -1097,6 +1100,9 @@ async function writeSeasonRawFields(seasonId, raw) {
   if (raw.isPublic !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Season" SET "isPublic" = ? WHERE "id" = ?`, raw.isPublic, seasonId);
     invalidatePrivateSeasonCache();
+  }
+  if (raw.isAnnounced !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Season" SET "isAnnounced" = ? WHERE "id" = ?`, raw.isAnnounced, seasonId);
   }
 }
 

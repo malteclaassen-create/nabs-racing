@@ -660,8 +660,10 @@ function MyProfile() {
       <ProfileEditor me={d} onDraftChange={setDraft} />
 
       {/* Live preview of the PUBLIC driver page, overlaid with the unsaved
-          edits above — change a tile or the bio and watch it land here. Kept
-          non-interactive on purpose: it's a picture of the page, not the page. */}
+          edits above — change a tile or the bio and watch it land here.
+          Links and race rows are deliberately inert (no accidental navigation
+          mid-edit), but CONTROLS stay usable: the Season ⇄ All-time switch and
+          the Head-to-Head opponent picker work right inside the preview. */}
       <section className="space-y-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-3">
           <div>
@@ -677,10 +679,7 @@ function MyProfile() {
             </Link>
           </span>
         </div>
-        <div
-          aria-hidden="true"
-          className="pointer-events-none select-none overflow-hidden rounded-2xl border border-border bg-surface2/40 p-4 sm:p-6"
-        >
+        <div className="pointer-events-none select-none overflow-hidden rounded-2xl border border-border bg-surface2/40 p-4 sm:p-6 [&_button]:pointer-events-auto [&_select]:pointer-events-auto">
           <DriverProfile
             previewId={d.driverId}
             preview={

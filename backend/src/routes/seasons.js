@@ -5,6 +5,39 @@ import { getPrivateSeasonIds } from "../services/seasonService.js";
 
 const router = Router();
 
+// GET /api/seasons/teaser -> the next ANNOUNCED upcoming season, for the
+// "Coming up" strip on Home/Welcome — or null. Works for PRIVATE seasons too,
+// on purpose: the admin flips "Announce" (Seasons tab) to advertise a season
+// before it becomes browsable, and this deliberately leaks ONLY the teaser
+// facts (name, game, opener track + date), never rosters or results.
+router.get("/teaser", async (req, res, next) => {
+  try {
+    const [active, rows] = await Promise.all([
+      prisma.season.findFirst({ where: { isActive: true }, select: { number: true } }),
+      prisma
+        .$queryRawUnsafe(`SELECT "id","number","name","game" FROM "Season" WHERE "isAnnounced" = 1 ORDER BY "number" ASC`)
+        .catch(() => []),
+    ]);
+    // Only a season AHEAD of the running one may announce itself (a stale flag
+    // on an activated or archived season is simply ignored).
+    const teased = rows.find((r) => !active || Number(r.number) > active.number);
+    if (!teased) return res.json(null);
+    const firstRace = await prisma.race.findFirst({
+      where: { seasonId: teased.id, isSpecialEvent: false, number: { not: null }, isCompleted: false },
+      orderBy: { number: "asc" },
+      select: { track: true, date: true },
+    });
+    res.json({
+      number: Number(teased.number),
+      name: teased.name,
+      game: teased.game || null,
+      firstRace: firstRace ? { track: firstRace.track, date: firstRace.date } : null,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // GET /api/seasons -> all seasons, newest first (for the public season switcher
 // and season-aware copy: the Welcome page reads dropWorst/teamDropWorst/
 // pointsTable so its rules texts always match the season being shown).

@@ -121,6 +121,8 @@ export const api = {
   trackHistory: (track) => request(`/tracks/history?track=${encodeURIComponent(track)}`, { userAuth: true }),
   teams: () => request(`/teams${seasonQ()}`, { auth: true }),
   seasons: () => request("/seasons", { auth: true }),
+  // The next ANNOUNCED upcoming season for the "Coming up" strip (or null).
+  seasonTeaser: () => request("/seasons/teaser"),
   // Live championship projection (only { active: true } while a league race is
   // running). auth:true so an admin's ?simulate demo request is recognised.
   liveChampionship: (simulate = false) =>
