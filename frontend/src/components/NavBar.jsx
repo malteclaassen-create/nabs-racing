@@ -4,6 +4,7 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import Logo from "./Logo.jsx";
 import NextRaceTimer from "./NextRaceTimer.jsx";
+import SeasonPicker from "./SeasonPicker.jsx";
 import SettingsButton from "./SettingsPanel.jsx";
 import { DriverAvatar } from "./ui.jsx";
 
@@ -40,7 +41,11 @@ function AuthControl({ mobile = false }) {
   );
 }
 
-// The season switcher now lives on the Home page (SeasonTimeline), not the bar.
+// The season switcher lives on the Home page (season ticker line); on the
+// season-scoped standings pages below it ALSO docks into the bar (compact
+// pill on desktop, a row in the mobile menu) so you can hop seasons without
+// going back Home.
+const SEASON_PAGES = ["/drivers", "/constructors", "/races"];
 
 const links = [
   { to: "/", label: "Home", end: true },
@@ -68,6 +73,7 @@ export default function NavBar() {
   // Scroll-linked progress (0→1) that floats the next-race chip up from the
   // inline home countdown into the bar. On inner pages it's simply parked (1).
   const isHome = location.pathname === "/";
+  const onSeasonPage = SEASON_PAGES.some((p) => location.pathname.startsWith(p));
   const [p, setP] = useState(isHome ? 0 : 1);
   useEffect(() => {
     if (!isHome) {
@@ -126,8 +132,9 @@ export default function NavBar() {
           {showDocked && (
             <div
               /* between lg and xl the nav links need every pixel, so the
-                 docked chip sits this range out */
-              className="ml-3 flex shrink-0 sm:ml-4 lg:hidden xl:flex"
+                 docked chip sits this range out. On season pages the switcher
+                 pill takes the xl slot, so the chip waits until 2xl there. */
+              className={`ml-3 flex shrink-0 sm:ml-4 lg:hidden ${onSeasonPage ? "2xl:flex" : "xl:flex"}`}
               style={{
                 opacity: p,
                 transform: `translateY(${(1 - p) * 24}px) scale(${0.92 + 0.08 * p})`,
@@ -135,6 +142,15 @@ export default function NavBar() {
               }}
             >
               <NextRaceTimer compact className="shrink-0" />
+            </div>
+          )}
+
+          {/* On season-scoped pages the season switcher docks into the bar too
+              (it stays on the Home ticker line as before). Like the chip it
+              sits out the packed lg→xl range; phones get it in the burger menu. */}
+          {onSeasonPage && (
+            <div className="ml-3 hidden shrink-0 xl:flex">
+              <SeasonPicker compact />
             </div>
           )}
         </div>
@@ -187,6 +203,11 @@ export default function NavBar() {
           <div className="nav-drop absolute inset-x-0 top-full z-30 origin-top border-t border-border bg-card shadow-xl shadow-ink/20">
             <div className="container-page flex flex-col gap-1 py-3">
               <AuthControl mobile />
+              {onSeasonPage && (
+                <div className="px-2 py-1.5">
+                  <SeasonPicker onPick={() => setOpen(false)} />
+                </div>
+              )}
               {links.map((l) => (
                 <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
                   {l.label}

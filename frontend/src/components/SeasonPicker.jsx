@@ -20,7 +20,11 @@ function LiveDot({ className = "" }) {
   );
 }
 
-export default function SeasonPicker() {
+// `compact` renders a tighter pill for the NavBar: no "· Live/Complete" status
+// text (the pulsing dot still marks a live season) and nothing at all when
+// there's only one season to show, since a switcher would be pointless there.
+// `onPick` lets a host (the mobile nav menu) react to a season being chosen.
+export default function SeasonPicker({ compact = false, onPick }) {
   const { seasons, season, setSeason, current, active } = useSeason();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -47,6 +51,7 @@ export default function SeasonPicker() {
 
   // Just a status word when there's nothing to switch between.
   if (visible.length <= 1) {
+    if (compact) return null;
     return (
       <span className="flex items-center gap-2 text-dark">
         {label} · {isPast ? "Complete" : "Live"}
@@ -58,6 +63,7 @@ export default function SeasonPicker() {
   const pick = (n) => {
     setSeason(n);
     setOpen(false);
+    onPick?.(n);
   };
 
   return (
@@ -77,7 +83,9 @@ export default function SeasonPicker() {
       >
         {!isPast && <LiveDot />}
         <span>{label}</span>
-        <span className={isPast ? "text-emerald-600" : "text-eyebrow"}>· {isPast ? "Complete" : "Live"}</span>
+        {!compact && (
+          <span className={isPast ? "text-emerald-600" : "text-eyebrow"}>· {isPast ? "Complete" : "Live"}</span>
+        )}
         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/20 text-eyebrow transition group-hover:bg-accent/30">
           <svg
             viewBox="0 0 24 24"
@@ -97,7 +105,7 @@ export default function SeasonPicker() {
       {/* Menu */}
       <div
         role="menu"
-        className={`absolute left-0 top-full z-40 mt-2.5 w-64 origin-top-left rounded-2xl border border-border bg-card p-1.5 normal-case tracking-normal shadow-xl shadow-ink/10 transition duration-150 ${
+        className={`absolute left-0 top-full z-40 mt-2.5 w-64 origin-top-left rounded-2xl border border-border bg-card p-1.5 normal-case tracking-normal shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-150 ${
           open ? "visible scale-100 opacity-100" : "invisible scale-[0.97] opacity-0"
         }`}
       >
