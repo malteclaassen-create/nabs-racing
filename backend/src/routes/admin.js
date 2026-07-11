@@ -1164,7 +1164,7 @@ router.delete("/seasons/:id", async (req, res, next) => {
     const hasContent = teams > 0 || drivers > 0 || races > 0;
     if (hasContent && !req.query.force) {
       return res.status(409).json({
-        error: `${season.name} still holds ${teams} team(s), ${drivers} driver(s) and ${races} race(s) — deleting removes ALL of it.`,
+        error: `${season.name} still holds ${teams} team(s), ${drivers} driver(s) and ${races} race(s). Deleting removes ALL of it.`,
         needsConfirm: true,
       });
     }

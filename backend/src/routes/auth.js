@@ -37,7 +37,7 @@ router.post("/login", async (req, res, next) => {
   try {
     const ip = req.ip || "unknown";
     if (tooManyFails(ip)) {
-      return res.status(429).json({ error: "Too many wrong attempts — try again in 15 minutes." });
+      return res.status(429).json({ error: "Too many wrong attempts. Try again in 15 minutes." });
     }
 
     const { pin } = req.body || {};

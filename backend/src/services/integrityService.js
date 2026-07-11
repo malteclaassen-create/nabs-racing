@@ -107,13 +107,13 @@ export function analyzeSeason({ season, teams, drivers, races, results, scores, 
         if (r.points === tablePts + 1 || r.points === tablePts + 2) {
           issues.push(issue(
             "info", "Results",
-            `Round ${n}: ${name} has ${r.points - tablePts} point(s) more than P${r.position} pays (${r.points} vs ${tablePts}) — probably bonus points (pole / most consistent).`,
+            `Round ${n}: ${name} has ${r.points - tablePts} point(s) more than P${r.position} pays (${r.points} vs ${tablePts}), probably bonus points (pole / most consistent).`,
             n
           ));
         } else {
           issues.push(issue(
             "warning", "Results",
-            `Round ${n}: ${name} is P${r.position} (${tablePts} pts per the table) but ${r.points} pts are stored — check position or points.`,
+            `Round ${n}: ${name} is P${r.position} (${tablePts} pts per the table) but ${r.points} pts are stored. Check position or points.`,
             n
           ));
         }
@@ -158,7 +158,7 @@ export function analyzeSeason({ season, teams, drivers, races, results, scores, 
       if (stored !== recomputed) {
         issues.push(issue(
           "warning", "Team points",
-          `Round ${n}: ${team.name} — stored round points ${stored}, recomputed ${recomputed}. Check lineup ("drove for"), positions or penalties.`,
+          `Round ${n}: ${team.name}: stored round points ${stored}, recomputed ${recomputed}. Check lineup ("drove for"), positions or penalties.`,
           n
         ));
       }
@@ -192,7 +192,7 @@ export function analyzeSeason({ season, teams, drivers, races, results, scores, 
 
   // --- config checks ---------------------------------------------------------
   if (rounds.length > 0 && dropWorst >= rounds.length) {
-    issues.push(issue("warning", "Season", `Dropped results (${dropWorst}) is not smaller than the number of rounds (${rounds.length}) — nothing would be dropped.`));
+    issues.push(issue("warning", "Season", `Dropped results (${dropWorst}) is not smaller than the number of rounds (${rounds.length}), so nothing would be dropped.`));
   }
   const dupNums = new Map();
   for (const r of rounds) {
@@ -224,7 +224,7 @@ export function analyzeSeason({ season, teams, drivers, races, results, scores, 
         if (dist < 50) {
           issues.push(issue(
             "info", "Teams",
-            `${tierTeams[i].name} and ${tierTeams[j].name} (Tier ${tier}) have nearly identical colours — hard to tell apart in charts.`
+            `${tierTeams[i].name} and ${tierTeams[j].name} (Tier ${tier}) have nearly identical colours, hard to tell apart in charts.`
           ));
         }
       }

@@ -174,7 +174,7 @@ export default function AdminDownloads() {
         sortOrder: Number(form.sortOrder) || 0,
       };
       if (!body.fileName && !body.externalUrl) {
-        setMsg({ ok: false, text: "Pick a file on the server or paste an external link — one of the two." });
+        setMsg({ ok: false, text: "Pick a file on the server or paste an external link (one of the two)." });
         setBusy(false);
         return;
       }
