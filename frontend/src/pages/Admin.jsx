@@ -1337,6 +1337,7 @@ function Teams() {
   const { current } = useSeason();
   const { data: teams, reload } = useApi(useCallback(() => api.teams(), []));
   const [form, setForm] = useState({ id: "", name: "", tier: 2, color: "#888888" });
+  const [renaming, setRenaming] = useState(null); // { id, name } while a team is being renamed
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -1359,6 +1360,13 @@ function Teams() {
     setBusy(true); setError(null); setMsg(null);
     try { await api.updateTeam(t.id, patch); reload(); }
     catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  async function saveRename() {
+    const name = (renaming?.name || "").trim();
+    if (!name) return;
+    await saveTeam({ id: renaming.id }, { name });
+    setRenaming(null);
   }
 
   async function uploadLogo(t, file) {
@@ -1421,21 +1429,67 @@ function Teams() {
           <ul className="mt-1 divide-y divide-border">
             {(teams || []).map((t) => (
               <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 py-3">
-                {/* identity */}
+                {/* identity — the name is renameable in place (pencil) */}
                 <div className="flex min-w-[12rem] flex-1 items-center gap-3">
                   <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={38} />
-                  <div className="min-w-0">
-                    <div className="truncate font-display text-base font-bold tracking-tight text-dark">{t.name}</div>
-                    <div className="flex items-center gap-1.5 text-xs text-light">
-                      <span className="font-mono">{t.id}</span>
-                      <span>·</span>
-                      <span>{t.drivers?.length || 0} drivers</span>
+                  {renaming?.id === t.id ? (
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <input
+                        autoFocus
+                        className="input py-1.5 text-sm"
+                        value={renaming.name}
+                        onChange={(e) => setRenaming({ id: t.id, name: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveRename();
+                          if (e.key === "Escape") setRenaming(null);
+                        }}
+                      />
+                      <button className="btn-primary px-3 py-1.5 text-xs" disabled={busy || !renaming.name.trim()} onClick={saveRename}>
+                        Save
+                      </button>
+                      <button className="text-xs font-semibold text-light transition hover:text-dark" onClick={() => setRenaming(null)}>
+                        Cancel
+                      </button>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate font-display text-base font-bold tracking-tight text-dark">{t.name}</span>
+                        <button
+                          title="Rename team"
+                          disabled={busy}
+                          onClick={() => setRenaming({ id: t.id, name: t.name })}
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-light transition hover:bg-surface2 hover:text-dark"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-light">
+                        <span className="font-mono">{t.id}</span>
+                        <span>·</span>
+                        <span>{t.drivers?.length || 0} drivers</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* controls */}
                 <div className="flex items-center gap-2">
+                  {/* team colour — saved when the picker closes (blur) */}
+                  <input
+                    key={`${t.id}-${t.color}`}
+                    type="color"
+                    defaultValue={t.color}
+                    disabled={busy}
+                    title="Team colour, click to change"
+                    onBlur={(e) => {
+                      const v = e.target.value;
+                      if (v && v.toLowerCase() !== (t.color || "").toLowerCase()) saveTeam(t, { color: v });
+                    }}
+                    className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border border-border bg-transparent"
+                  />
                   <select className="input w-28 py-1.5 text-sm" value={t.tier} disabled={busy}
                     onChange={(e) => saveTeam(t, { tier: Number(e.target.value) })}>
                     <option value={1}>Tier 1</option>
