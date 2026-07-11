@@ -276,6 +276,45 @@ body::before {
   animation-delay: var(--reveal-delay, 0s);
 }
 
+/* --- Directional wipes ---------------------------------------------- */
+/* Panels that sweep into view horizontally once their .reveal section shows:
+   wipe-ltr uncovers from the left edge rightward, wipe-rtl from the right edge
+   leftward. Used by the season-form plot (line, area and dots build up round
+   by round) and the head-to-head split bar, whose two halves race toward each
+   other and meet at the seam. The resting keyframe keeps a small negative
+   inset so dot rings/strokes at the plot edges never stay shaved off. */
+@keyframes wipe-in-ltr {
+  from { clip-path: inset(-8px 100% -8px -8px); }
+  to   { clip-path: inset(-8px -8px -8px -8px); }
+}
+@keyframes wipe-in-rtl {
+  from { clip-path: inset(-8px -8px -8px 100%); }
+  to   { clip-path: inset(-8px -8px -8px -8px); }
+}
+.wipe-ltr { clip-path: inset(-8px 100% -8px -8px); }
+.wipe-rtl { clip-path: inset(-8px -8px -8px 100%); }
+/* Duration rides on --wipe-dur so slow, sweeping builds (season form) and
+   snappier ones can share the same utility. Elements with the same duration
+   and delay stay perfectly in sync (plot + result chips). */
+.reveal.is-visible .wipe-ltr {
+  animation: wipe-in-ltr cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  animation-duration: var(--wipe-dur, 1.2s);
+  animation-delay: var(--reveal-delay, 0s);
+}
+.reveal.is-visible .wipe-rtl {
+  animation: wipe-in-rtl cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  animation-duration: var(--wipe-dur, 1.2s);
+  animation-delay: var(--reveal-delay, 0s);
+}
+
+/* Quick exit fade for content swapped in place (e.g. the head-to-head bar
+   when a new opponent is picked): the old version dips out briefly before its
+   replacement animates in. */
+@keyframes nabs-fade-out { to { opacity: 0; } }
+.fade-out {
+  animation: nabs-fade-out 0.18s ease both;
+}
+
 /* Fade/scale-in for tooltips and popovers. */
 @keyframes nabs-pop {
   from { opacity: 0; transform: translateY(4px) scale(0.97); }
@@ -535,6 +574,17 @@ body::before {
   background-color: color-mix(in srgb, #eab308 15%, var(--c-card));
 }
 
+/* Leader rows while the season is still running: the same wash in the brand
+   pink. Gold is reserved for a decided title (see .row-gold above). */
+.row-leader,
+.row-leader .sticky-cell {
+  background-color: color-mix(in srgb, rgb(var(--c-accent)) 10%, var(--c-card));
+}
+.row-leader:hover,
+.row-leader:hover .sticky-cell {
+  background-color: color-mix(in srgb, rgb(var(--c-accent)) 16%, var(--c-card));
+}
+
 /* Season switcher docking into the nav bar: a soft fade + lift as you move
    on/off a season page, on both themes (lite mode drops it, see .fx-lite).
    Enter is a keyframe (plays once on mount, no JS timing needed); exit is the
@@ -564,6 +614,8 @@ body::before {
   }
   .reveal { opacity: 1; transform: none; }
   .chart-line { stroke-dashoffset: 0; }
+  .wipe-ltr, .wipe-rtl { clip-path: none; animation: none !important; }
+  .fade-out { animation: none !important; opacity: 1; }
   .lift:hover { transform: none; }
 
   body::before { animation: none; }
@@ -594,6 +646,8 @@ body::before {
 .fx-lite body::before { display: none !important; }
 .fx-lite .reveal { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .chart-line { animation: none !important; stroke-dashoffset: 0; }
+.fx-lite .wipe-ltr, .fx-lite .wipe-rtl { clip-path: none !important; animation: none !important; }
+.fx-lite .fade-out { animation: none !important; opacity: 1; }
 .fx-lite .pop-in { animation: none !important; }
 .fx-lite .cascade > * { opacity: 1 !important; animation: none !important; }
 .fx-lite .bar-fill { width: var(--w, 0) !important; animation: none !important; }

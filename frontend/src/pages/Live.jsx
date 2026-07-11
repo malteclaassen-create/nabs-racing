@@ -400,7 +400,8 @@ function TeamProjection({ title, rows }) {
       <table className="w-full">
         <tbody>
           {rows.map((t) => (
-            <tr key={t.teamId} className={`border-b border-border last:border-0 ${t.position === 1 ? "row-gold" : ""}`}>
+            // a live projection is never a decided title: leader wash, not gold
+            <tr key={t.teamId} className={`border-b border-border last:border-0 ${t.position === 1 ? "row-leader" : ""}`}>
               <td className="w-12 py-3 pl-5 text-center font-display text-base font-black tabular-nums text-medium">
                 {t.position}
               </td>
@@ -479,7 +480,7 @@ function ChampionshipProjection({ data }) {
                   key={d.driverId}
                   style={{ "--i": Math.min(i, 16) }}
                   className={`border-b border-border last:border-0 transition ${
-                    d.position === 1 ? "row-gold" : "hover:bg-surface2"
+                    d.position === 1 ? "row-leader" : "hover:bg-surface2"
                   }`}
                 >
                   <td className="py-3 pl-5 pr-2 text-center">

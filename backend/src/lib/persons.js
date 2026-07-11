@@ -11,6 +11,18 @@
 // in prisma/schema.prisma.
 // ---------------------------------------------------------------------------
 import { randomUUID } from "crypto";
+import { getActiveSeason } from "../services/seasonService.js";
+
+// The active season's number, or null when it can't be read (fresh checkout,
+// missing tables). Null just means "no cap": overrides then consider every row.
+async function activeSeasonNumber(prisma) {
+  try {
+    const active = await getActiveSeason(prisma);
+    return active?.number ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // Link a set of driver rows to one person. If any of them are already linked,
 // their groups are merged (all end up sharing a single personId). Returns that
@@ -90,8 +102,13 @@ export async function getLinkedDriverIds(prisma, driverId) {
 // Pure core of the name resolution (exported for testing). `rows` =
 // [{ personId, driverId, name, seasonNumber }]. Returns Map<driverId, {
 // displayName, formerName }> for every linked driver whose own name differs from
-// the person's CURRENT name (the name on their highest-season-number row).
-export function resolveNameOverrides(rows) {
+// the person's CURRENT name: the name on their highest-season-number row up to
+// `activeSeasonNumber`. Rows beyond the active season are pre-season drafts
+// (cloned rosters) and must never mask a rename the member makes on their
+// active-season row. A case-only difference (e.g. "DanielJ" vs "Danielj") gets
+// no override: names render uppercase anyway, and a "raced as" note that spells
+// the same name would just look broken.
+export function resolveNameOverrides(rows, activeSeasonNumber = null) {
   const byPerson = new Map();
   for (const r of rows) {
     if (!byPerson.has(r.personId)) byPerson.set(r.personId, []);
@@ -100,9 +117,12 @@ export function resolveNameOverrides(rows) {
   const out = new Map();
   for (const members of byPerson.values()) {
     if (members.length < 2) continue;
-    const current = members.reduce((a, b) => ((b.seasonNumber ?? -1) > (a.seasonNumber ?? -1) ? b : a));
+    const eligible =
+      activeSeasonNumber == null ? members : members.filter((m) => (m.seasonNumber ?? -1) <= activeSeasonNumber);
+    const pool = eligible.length ? eligible : members;
+    const current = pool.reduce((a, b) => ((b.seasonNumber ?? -1) > (a.seasonNumber ?? -1) ? b : a));
     for (const m of members) {
-      if (m.name && current.name && m.name !== current.name) {
+      if (m.name && current.name && m.name.toLowerCase() !== current.name.toLowerCase()) {
         out.set(m.driverId, { displayName: current.name, formerName: m.name });
       }
     }
@@ -115,9 +135,12 @@ export function resolveNameOverrides(rows) {
 // cardPhotoPos }]. Returns Map<driverId, { photoUrl, photoPos, country }> with
 // the person's CURRENT identity: the photo (and its card framing) from their
 // newest row that has one, the country likewise — so archive rows show the
-// same face and flag as the person's latest season. Callers use these as
-// FALLBACKS only (a row's own values always win).
-export function resolveIdentityOverrides(rows) {
+// same face and flag as the person's latest season. Rows beyond
+// `activeSeasonNumber` are pre-season drafts (cloned rosters): they rank last,
+// so a stale clone can't shadow a photo/flag the member changes on their
+// active-season row. Callers use these as FALLBACKS only (a row's own values
+// always win).
+export function resolveIdentityOverrides(rows, activeSeasonNumber = null) {
   const byPerson = new Map();
   for (const r of rows) {
     if (!byPerson.has(r.personId)) byPerson.set(r.personId, []);
@@ -126,7 +149,10 @@ export function resolveIdentityOverrides(rows) {
   const out = new Map();
   for (const members of byPerson.values()) {
     if (members.length < 2) continue;
-    const sorted = [...members].sort((a, b) => (b.seasonNumber ?? -1) - (a.seasonNumber ?? -1));
+    const isDraft = (m) => activeSeasonNumber != null && (m.seasonNumber ?? -1) > activeSeasonNumber;
+    const sorted = [...members].sort(
+      (a, b) => (isDraft(a) ? 1 : 0) - (isDraft(b) ? 1 : 0) || (b.seasonNumber ?? -1) - (a.seasonNumber ?? -1)
+    );
     const photoRow = sorted.find((m) => m.photoUrl || m.discordAvatar);
     const countryRow = sorted.find((m) => m.country);
     if (!photoRow && !countryRow) continue;
@@ -158,7 +184,8 @@ export async function getIdentityOverrides(prisma) {
     return new Map();
   }
   return resolveIdentityOverrides(
-    rows.map((r) => ({ ...r, seasonNumber: r.seasonNumber == null ? null : Number(r.seasonNumber) }))
+    rows.map((r) => ({ ...r, seasonNumber: r.seasonNumber == null ? null : Number(r.seasonNumber) })),
+    await activeSeasonNumber(prisma)
   );
 }
 
@@ -176,5 +203,8 @@ export async function getNameOverrides(prisma) {
   } catch {
     return new Map();
   }
-  return resolveNameOverrides(rows.map((r) => ({ ...r, seasonNumber: r.seasonNumber == null ? null : Number(r.seasonNumber) })));
+  return resolveNameOverrides(
+    rows.map((r) => ({ ...r, seasonNumber: r.seasonNumber == null ? null : Number(r.seasonNumber) })),
+    await activeSeasonNumber(prisma)
+  );
 }

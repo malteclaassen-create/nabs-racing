@@ -1022,7 +1022,7 @@ export default function Home() {
       {/* ===================== DRIVERS' CHAMPIONSHIP ===================== */}
       <section className="reveal">
         <Heading index="01" eyebrow="Championship" title="Drivers' Standings" to="/drivers" />
-        <DriversTable rows={(drivers.data?.standings || []).slice(0, 10)} leaderTotal={leader?.total ?? 0} />
+        <DriversTable rows={(drivers.data?.standings || []).slice(0, 10)} leaderTotal={leader?.total ?? 0} decided={isPast || seasonOver} />
       </section>
 
       {/* ===================== CONSTRUCTORS ===================== */}
@@ -1030,17 +1030,17 @@ export default function Home() {
         <section className="reveal grid gap-10 lg:grid-cols-2">
           <div>
             <Heading index="02" eyebrow="Constructors" title="Tier 1" to="/constructors" />
-            <ConstructorTable rows={(t1.data?.standings || []).slice(0, 5)} />
+            <ConstructorTable rows={(t1.data?.standings || []).slice(0, 5)} decided={isPast || seasonOver} />
           </div>
           <div>
             <Heading index="03" eyebrow="Constructors" title="Tier 2" to="/constructors" />
-            <ConstructorTable rows={(t2.data?.standings || []).slice(0, 5)} />
+            <ConstructorTable rows={(t2.data?.standings || []).slice(0, 5)} decided={isPast || seasonOver} />
           </div>
         </section>
       ) : (
         <section className="reveal">
           <Heading index="02" eyebrow="Championship" title="Constructors" to="/constructors" />
-          <ConstructorTable rows={(t1.data?.standings || []).slice(0, 5)} />
+          <ConstructorTable rows={(t1.data?.standings || []).slice(0, 5)} decided={isPast || seasonOver} />
         </section>
       )}
 
@@ -1169,7 +1169,9 @@ function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = f
   );
 }
 
-function DriversTable({ rows, leaderTotal }) {
+// `decided` — the title is settled: first place wears gold; while the season
+// still runs the leader gets the pink wash instead.
+function DriversTable({ rows, leaderTotal, decided = false }) {
   return (
     <div className="card overflow-hidden">
       <table className="w-full">
@@ -1190,7 +1192,7 @@ function DriversTable({ rows, leaderTotal }) {
               <tr
                 key={d.driverId}
                 className={`group border-b border-border last:border-0 transition ${
-                  isLeader ? "row-gold" : "hover:bg-surface2"
+                  isLeader && d.total > 0 ? (decided ? "row-gold" : "row-leader") : "hover:bg-surface2"
                 }`}
               >
                 <td className="py-4 pl-5 text-center">
@@ -1244,7 +1246,7 @@ function DriversTable({ rows, leaderTotal }) {
   );
 }
 
-function ConstructorTable({ rows }) {
+function ConstructorTable({ rows, decided = false }) {
   const top = rows[0]?.total ?? 0;
   return (
     <div className="card overflow-hidden">
@@ -1256,7 +1258,7 @@ function ConstructorTable({ rows }) {
               <tr
                 key={t.teamId}
                 className={`group border-b border-border last:border-0 transition ${
-                  t.position === 1 ? "row-gold" : "hover:bg-surface2"
+                  t.position === 1 && t.total > 0 ? (decided ? "row-gold" : "row-leader") : "hover:bg-surface2"
                 }`}
               >
                 <td className="w-14 py-4 pl-5 text-center">

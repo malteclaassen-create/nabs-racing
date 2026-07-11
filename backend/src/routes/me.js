@@ -9,6 +9,7 @@ import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import prisma from "../lib/prisma.js";
 import { optionalUser, resolveDriverId } from "../middleware/auth.js";
+import { getLinkedDriverIds } from "../lib/persons.js";
 import { parseSocials, serializeSocials } from "../lib/socials.js";
 import { DEFAULT_PROFILE_TILES, PROFILE_TILE_KEYS, readProfileTiles } from "../lib/profileTiles.js";
 import { parseCardPhotoPos, readCardPhotoPos } from "../lib/cardPhoto.js";
@@ -49,12 +50,15 @@ router.get("/", async (req, res, next) => {
     }
     const driver = await prisma.driver.findUnique({
       where: { id: driverId },
-      include: { team: true },
+      include: { team: true, season: { select: { number: true } } },
     });
     if (!driver) return res.status(404).json({ error: "Driver not found" });
     res.json({
       isLinked: true,
       driverId: driver.id,
+      // The row's own season — the rating card must label itself with THIS
+      // season, not whichever one the site's switcher happens to be on.
+      seasonNumber: driver.season?.number ?? null,
       name: driver.name,
       discordName: driver.discordName,
       country: driver.country || "",
@@ -127,6 +131,34 @@ router.put("/profile", async (req, res, next) => {
       data,
       select: { id: true, name: true, bio: true, number: true, socials: true },
     });
+    // A rename follows the person into UPCOMING seasons: their rows there are
+    // pre-season drafts (cloned rosters) still carrying the old name, and the
+    // site shows the newest row's name — without this, the draft would undo the
+    // rename the moment that season goes live. Never touches a row claimed by a
+    // different Discord account.
+    if (data.name !== undefined) {
+      try {
+        const acting = await prisma.driver.findUnique({
+          where: { id: driverId },
+          select: { discordUserId: true, season: { select: { number: true } } },
+        });
+        const linkedIds = (await getLinkedDriverIds(prisma, driverId)).filter((id) => id !== driverId);
+        if (acting?.season?.number != null && linkedIds.length) {
+          await prisma.driver.updateMany({
+            where: {
+              id: { in: linkedIds },
+              season: { number: { gt: acting.season.number } },
+              OR: acting.discordUserId
+                ? [{ discordUserId: null }, { discordUserId: acting.discordUserId }]
+                : [{ discordUserId: null }],
+            },
+            data: { name: data.name },
+          });
+        }
+      } catch {
+        /* person tables missing etc. — the own-row rename above still counts */
+      }
+    }
     res.json({ ok: true, ...driver, bio: driver.bio || "", socials: parseSocials(driver.socials) });
   } catch (e) {
     next(e);

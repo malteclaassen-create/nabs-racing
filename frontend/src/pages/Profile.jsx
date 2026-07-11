@@ -482,6 +482,9 @@ function ProfileEditor({ me, onDraftChange }) {
                   photoUrl,
                   tier: me.tier,
                   team: me.team,
+                  // Pin the card's footer to the driver's own season — without
+                  // this it would show whichever season the site switcher is on.
+                  seasonNumber: me.seasonNumber ?? null,
                 }}
                 rating={ratingRes.data}
                 pos={photoPos}

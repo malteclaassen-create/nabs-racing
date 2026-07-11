@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -59,10 +59,8 @@ function Icon({ name, className = "" }) {
 }
 
 // --- colour helpers -------------------------------------------------------
-// Team colours drive the head-to-head bars. Teammates (and the odd pair of
-// teams with near-identical brand colours) would otherwise render as two
-// indistinguishable bars — so we pull one side to a clearly different shade of
-// the same hue, keeping it coherent while making "who is who" obvious.
+// Team colours drive the head-to-head bar; a soft white seam marks the split,
+// so teammates (same colour on both sides) still read as two sides.
 function hexToHsl(hex) {
   let c = (hex || "").replace("#", "");
   if (c.length === 3) c = c.split("").map((x) => x + x).join("");
@@ -80,34 +78,6 @@ function hexToHsl(hex) {
     h /= 6;
   }
   return { h: h * 360, s: s * 100, l: l * 100 };
-}
-function hslToHex(h, s, l) {
-  h /= 360; s /= 100; l /= 100;
-  const f = (n) => {
-    const k = (n + h * 12) % 12;
-    const a = s * Math.min(l, 1 - l);
-    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
-  };
-  const to = (x) => Math.round(x * 255).toString(16).padStart(2, "0");
-  return `#${to(f(0))}${to(f(8))}${to(f(4))}`;
-}
-// True when two hex colours are close enough to read as "the same" at a glance.
-function closeColors(a, b) {
-  const rgb = (hex) => {
-    let c = (hex || "").replace("#", "");
-    if (c.length === 3) c = c.split("").map((x) => x + x).join("");
-    return [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16));
-  };
-  const [r1, g1, b1] = rgb(a), [r2, g2, b2] = rgb(b);
-  return Math.hypot(r1 - r2, g1 - g2, b1 - b2) < 46;
-}
-// A clearly different shade of the same hue for the second head-to-head side.
-// We darken by default (keeps white bar text readable) and only lighten colours
-// that are already very dark, so the two sides never blur together.
-function shadeApart(hex) {
-  const { h, s, l } = hexToHsl(hex);
-  const nl = l > 30 ? Math.max(15, l - 26) : Math.min(82, l + 40);
-  return hslToHex(h, s, nl);
 }
 // Pick black or white text for legibility on a solid colour fill.
 function readableText(hex) {
@@ -267,9 +237,9 @@ function CareerBlock({ career }) {
               <th className="px-5 py-2.5 text-right">Pts</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
-            {seasons.map((s) => (
-              <tr key={s.driverId} className="transition hover:bg-surface2">
+          <tbody className="cascade divide-y divide-border">
+            {seasons.map((s, i) => (
+              <tr key={s.driverId} style={{ "--i": Math.min(i, 16) }} className="transition hover:bg-surface2">
                 <td className="px-5 py-3">
                   <Link
                     to={`/drivers/${s.driverId}`}
@@ -422,6 +392,12 @@ function FormChart({ perRace, color }) {
                 style={{ top: `${yPct(p)}%` }}
               />
             ))}
+            {/* line, area and dots share one wrapper that wipes open from the
+                left when the card reveals, so the whole plot builds itself
+                round by round (SVG dash draw-ins don't work here — the
+                stretched viewBox + non-scaling-stroke measure dashes in screen
+                pixels, so that classic trick degrades to a dotted line). */}
+            <div className="wipe-ltr absolute inset-0" style={{ "--wipe-dur": "2s" }}>
             {/* trend area + connecting line (stretched to fill; stroke crisp) */}
             <svg
               viewBox={`0 0 ${N} 100`}
@@ -474,6 +450,7 @@ function FormChart({ perRace, color }) {
                 );
               })}
             </div>
+            </div>
           </div>
         </div>
       </div>
@@ -482,7 +459,9 @@ function FormChart({ perRace, color }) {
           each chip directly under its dot */}
       <div className="mt-3 flex shrink-0 gap-2">
         <div className="sticky left-0 z-10 w-7 shrink-0 bg-card" />
-        <div className="flex flex-1">
+        {/* same wipe, same duration as the plot above — chips surface exactly
+            when the line reaches their round */}
+        <div className="wipe-ltr flex flex-1" style={{ "--wipe-dur": "2s" }}>
           {perRace.map((r) => {
               const finished = r.status === "FINISHED" && r.position != null;
               const medal = finished && r.position <= 3 ? MEDAL[r.position - 1] : null;
@@ -537,6 +516,16 @@ function HeadToHead({ me, meRow, standings }) {
 
   const [oppId, setOppId] = useState(defaultOpp);
   const opp = standings.find((s) => s.driverId === oppId) || others[0];
+  // The split bar trails the picker by one beat: on a switch it keeps showing
+  // the OLD opponent with a quick fade-out, then swaps to the new one, whose
+  // bar wipes in fresh. barLeaving marks that brief exit window.
+  const [barOppId, setBarOppId] = useState(defaultOpp);
+  const barLeaving = !!opp && barOppId !== opp.driverId;
+  useEffect(() => {
+    if (!opp || barOppId === opp.driverId) return;
+    const t = setTimeout(() => setBarOppId(opp.driverId), 180);
+    return () => clearTimeout(t);
+  }, [opp?.driverId, barOppId]);
   // Without the focal driver's row (or no one to compare against) there's no
   // head-to-head to show — hide the panel instead of crashing the page.
   if (!meRow || !opp) return null;
@@ -551,23 +540,48 @@ function HeadToHead({ me, meRow, standings }) {
     if (a.position < b.position) meAhead++;
     else if (b.position < a.position) oppAhead++;
   }
-  const decided = meAhead + oppAhead;
-  const mePct = decided ? Math.round((meAhead / decided) * 100) : 50;
+  // The split bar shows the championship points share; the finished-ahead
+  // record lives in the stat rows below. It renders barOpp — the opponent it
+  // is still showing — which trails `opp` by the fade-out beat on a switch.
+  const barOpp = standings.find((s) => s.driverId === barOppId) || opp;
+  const barOppStats = barOpp === opp ? oppStats : statsFromRow(barOpp);
+  const pointsTotal = meStats.points + barOppStats.points;
+  const mePct = pointsTotal ? Math.round((meStats.points / pointsTotal) * 100) : 50;
   const oppPct = 100 - mePct;
+  // Drawn width is capped at 85/15 so a lopsided split (255 vs 0 pts) still
+  // leaves the smaller side room for its numbers — the printed percentages
+  // stay the real ones.
+  const meBarW = Math.min(85, Math.max(15, mePct));
+  const barOppColor = barOpp.team.color;
   const meColor = me.driver.team.color;
-  // Teammates (and near-identical brand colours) share a colour — pull the
-  // opponent to a clearly different shade so the two sides never blur together.
-  const oppRaw = opp.team.color;
-  const oppColor = closeColors(meColor, oppRaw) ? shadeApart(oppRaw) : oppRaw;
+  // Both sides wear their REAL team colour — teammates share it, and the soft
+  // white seam in the bar is what marks where one side ends.
+  const oppColor = opp.team.color;
 
   // cmp > 0 -> the focal driver leads this stat, < 0 -> the opponent, 0 -> tie.
   const sign = (n) => (n > 0 ? 1 : n < 0 ? -1 : 0);
+  // Values render through CountUp, keyed on the picked opponent: every switch
+  // remounts just the numbers, so BOTH columns (the focal driver's too, even
+  // where the value itself is unchanged) run up again — while the rows around
+  // them stay put instead of re-entering.
+  const num = (v, { prefix = "" } = {}) =>
+    v == null ? "–" : <CountUp key={opp.driverId} end={v} prefix={prefix} decimals={Number.isInteger(v) ? 0 : 1} />;
   const rows = [
-    { label: "Points", a: meStats.points, b: oppStats.points, cmp: sign(meStats.points - oppStats.points) },
-    { label: "Wins", a: meStats.wins, b: oppStats.wins, cmp: sign(meStats.wins - oppStats.wins) },
-    { label: "Podiums", a: meStats.podiums, b: oppStats.podiums, cmp: sign(meStats.podiums - oppStats.podiums) },
-    { label: "Best finish", a: meStats.bestFinish ? `P${meStats.bestFinish}` : "–", b: oppStats.bestFinish ? `P${oppStats.bestFinish}` : "–", cmp: sign((oppStats.bestFinish ?? 99) - (meStats.bestFinish ?? 99)) },
-    { label: "Avg finish", a: meStats.avgFinish ?? "–", b: oppStats.avgFinish ?? "–", cmp: sign((oppStats.avgFinish ?? 99) - (meStats.avgFinish ?? 99)) },
+    {
+      label: "Finished ahead",
+      sub: (
+        <>
+          <CountUp key={opp.driverId} end={shared} /> shared {shared === 1 ? "race" : "races"}
+        </>
+      ),
+      a: num(meAhead),
+      b: num(oppAhead),
+      cmp: sign(meAhead - oppAhead),
+    },
+    { label: "Wins", a: num(meStats.wins), b: num(oppStats.wins), cmp: sign(meStats.wins - oppStats.wins) },
+    { label: "Podiums", a: num(meStats.podiums), b: num(oppStats.podiums), cmp: sign(meStats.podiums - oppStats.podiums) },
+    { label: "Best finish", a: num(meStats.bestFinish, { prefix: "P" }), b: num(oppStats.bestFinish, { prefix: "P" }), cmp: sign((oppStats.bestFinish ?? 99) - (meStats.bestFinish ?? 99)) },
+    { label: "Avg finish", a: num(meStats.avgFinish), b: num(oppStats.avgFinish), cmp: sign((oppStats.avgFinish ?? 99) - (meStats.avgFinish ?? 99)) },
   ];
 
   return (
@@ -595,30 +609,42 @@ function HeadToHead({ me, meRow, standings }) {
           </Link>
         </div>
 
-        {/* head-to-head record: who finished ahead more often, as a split bar
-            with the raw counts either side. Each side keeps a min width so a
-            0% side still shows its colour and label. */}
+        {/* points split: each driver's championship points as a split bar with
+            the raw totals either side. Each side keeps a min width so a 0%
+            side still shows its colour and label. */}
         <div className="mb-2 flex items-center justify-between font-mono text-[10px] font-bold uppercase tracking-wider text-light">
-          <span>Finished ahead</span>
-          <span>{shared} shared {shared === 1 ? "race" : "races"}</span>
+          <span>Points</span>
         </div>
-        <div className="flex h-8 overflow-hidden rounded-lg text-xs font-black ring-1 ring-black/5">
-          <div className="flex min-w-[2.75rem] items-center justify-start gap-1.5 px-2.5 tabular-nums" style={{ width: `${mePct}%`, backgroundColor: meColor, color: readableText(meColor) }}>
-            <span className="font-display text-sm">{meAhead}</span>
-            <span className="opacity-80">{mePct}%</span>
+        {/* Keyed on the opponent the bar is SHOWING: on a switch the old bar
+            first dips out (fade-out while barLeaving), then this remounts for
+            the new opponent and the wipe + count-ups run fresh. */}
+        <div key={`bar-${barOpp.driverId}`} className={barLeaving ? "fade-out" : ""}>
+          {/* gap-1 leaves a real transparent slit between the two sides — the
+              card shows through it, so the two colours never touch */}
+          <div className="flex h-8 gap-1 overflow-hidden rounded-lg text-xs font-black ring-1 ring-black/5">
+            {/* the two halves wipe in toward each other — the left one from the
+                left edge, the right one from the right — and meet at the seam
+                while the numbers count up */}
+            <div className="wipe-ltr flex min-w-16 items-center justify-start gap-1.5 rounded-lg px-2.5 tabular-nums" style={{ "--wipe-dur": "1.8s", width: `${meBarW}%`, backgroundColor: meColor, color: readableText(meColor) }}>
+              <span className="font-display text-sm"><CountUp end={meStats.points} /></span>
+              <span className="opacity-80"><CountUp end={mePct} suffix="%" /></span>
+            </div>
+            <div className="wipe-rtl flex min-w-16 flex-1 items-center justify-end gap-1.5 rounded-lg px-2.5 tabular-nums" style={{ "--wipe-dur": "1.8s", backgroundColor: barOppColor, color: readableText(barOppColor) }}>
+              <span className="opacity-80"><CountUp end={oppPct} suffix="%" /></span>
+              <span className="font-display text-sm"><CountUp end={barOppStats.points} /></span>
+            </div>
           </div>
-          <div className="flex min-w-[2.75rem] flex-1 items-center justify-end gap-1.5 px-2.5 tabular-nums" style={{ backgroundColor: oppColor, color: readableText(oppColor) }}>
-            <span className="opacity-80">{oppPct}%</span>
-            <span className="font-display text-sm">{oppAhead}</span>
+          {/* the names ride the same wipes as their bar halves */}
+          <div className="mb-5 mt-1.5 flex justify-between px-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider">
+            <span className="wipe-ltr truncate" style={{ "--wipe-dur": "1.8s", color: meColor }}>{me.driver.name}</span>
+            <span className="wipe-rtl truncate text-right" style={{ "--wipe-dur": "1.8s", color: barOppColor }}>{barOpp.name}</span>
           </div>
-        </div>
-        <div className="mb-5 mt-1.5 flex justify-between px-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider">
-          <span className="truncate" style={{ color: meColor }}>{me.driver.name}</span>
-          <span className="truncate text-right" style={{ color: oppColor }}>{opp.name}</span>
         </div>
 
-        <div className="divide-y divide-border overflow-hidden rounded-xl bg-surface2/60">
-          {rows.map((r) => {
+        {/* NOT keyed on the opponent: the rows stay put on a switch — only
+            their numbers count up to the new values (CountUp re-counts). */}
+        <div className="cascade divide-y divide-border overflow-hidden rounded-xl bg-surface2/60">
+          {rows.map((r, i) => {
             const aWin = r.cmp > 0, bWin = r.cmp < 0;
             const cell = (val, win, color, align) =>
               win ? (
@@ -632,9 +658,12 @@ function HeadToHead({ me, meRow, standings }) {
                 <span className={`font-display text-base font-black tabular-nums text-medium ${align}`}>{val}</span>
               );
             return (
-              <div key={r.label} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2.5">
+              <div key={r.label} style={{ "--i": i }} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2.5">
                 <span className="flex justify-start">{cell(r.a, aWin, meColor, "text-left")}</span>
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-medium">{r.label}</span>
+                <span className="text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-medium">
+                  {r.label}
+                  {r.sub && <span className="block text-[9px] font-medium normal-case tracking-normal text-light">{r.sub}</span>}
+                </span>
                 <span className="flex justify-end">{cell(r.b, bWin, oppColor, "text-right")}</span>
               </div>
             );
@@ -650,6 +679,15 @@ function TeamPanel({ driver, standings }) {
     .filter((s) => s.team.id === driver.team.id && s.driverId !== driver.id)
     .sort((a, b) => a.position - b.position);
   const c = driver.team.color;
+  // The Reserve "team" can have 50+ drivers, which used to stretch this panel
+  // far past the race-by-race table beside it. Long lists start collapsed at
+  // roughly that table's height; a footer button reveals the rest. Lists only
+  // a little over the cap stay uncollapsed — hiding 2 names behind a button
+  // would be sillier than just showing them.
+  const CAP = 9;
+  const [showAllMates, setShowAllMates] = useState(false);
+  const collapsible = mates.length > CAP + 3;
+  const shownMates = collapsible && !showAllMates ? mates.slice(0, CAP) : mates;
   return (
     <div className="reveal card overflow-hidden">
       <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Team</h2>
@@ -671,9 +709,9 @@ function TeamPanel({ driver, standings }) {
         <div className="relative mt-5">
           <div className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">Teammates</div>
           {mates.length === 0 && <div className="text-sm text-light">No teammates this season.</div>}
-          <div className="space-y-1.5">
-            {mates.map((m) => (
-              <Link key={m.driverId} to={`/drivers/${m.driverId}`}
+          <div className="cascade space-y-1.5">
+            {shownMates.map((m, i) => (
+              <Link key={m.driverId} to={`/drivers/${m.driverId}`} style={{ "--i": Math.min(i, 16) }}
                 className="flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-surface2">
                 <DriverAvatar name={m.name} photoUrl={m.photoUrl} color={m.team.color} size={34} />
                 <span className="flex-1 font-display text-sm font-bold uppercase tracking-tight text-dark">{m.name}</span>
@@ -682,6 +720,15 @@ function TeamPanel({ driver, standings }) {
               </Link>
             ))}
           </div>
+          {collapsible && (
+            <button
+              type="button"
+              onClick={() => setShowAllMates((v) => !v)}
+              className="mt-3 w-full rounded-lg border border-border bg-surface2/60 px-3 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 hover:text-dark"
+            >
+              {showAllMates ? "Show fewer" : `Show all ${mates.length} teammates`}
+            </button>
+          )}
         </div>
       </div>
     </div>

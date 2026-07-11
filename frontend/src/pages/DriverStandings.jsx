@@ -78,7 +78,7 @@ function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champi
   );
 }
 
-function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = false }) {
+function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = false, decided = false }) {
   const isLeader = d.position === 1;
   const gap = leaderTotal - d.total;
   const pct = d.total > 0 && leaderTotal > 0 ? Math.max(4, (d.total / leaderTotal) * 100) : 0;
@@ -87,7 +87,7 @@ function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = fals
       to={`/drivers/${d.driverId}`}
       style={{ "--i": index }}
       className={`flex items-center gap-3 px-4 py-3 transition sm:gap-4 sm:px-5 ${
-        champion ? "row-gold" : "hover:bg-surface2"
+        champion ? (decided ? "row-gold" : "row-leader") : "hover:bg-surface2"
       }`}
     >
       <Rank position={d.position} />
@@ -194,10 +194,11 @@ export default function DriverStandings() {
   const seasonDecided =
     (!!season && !!active && season.number < active.number) ||
     (champRounds.length > 0 && champRounds.every((r) => r.isCompleted));
-  // Gold rows in the list: once the season is decided, the best driver of
-  // EVERY group in view (Tier 1, Tier 2, the reserves) is that group's
-  // champion; while it still runs, only the current overall leader wears the
-  // wash. Rows are points-sorted, so the first row of each tier is its champion.
+  // Highlighted rows in the list: once the season is decided, the best driver
+  // of EVERY group in view (Tier 1, Tier 2, the reserves) is that group's
+  // champion and wears gold; while it still runs, only the current overall
+  // leader is marked, in the pink leader wash. Rows are points-sorted, so the
+  // first row of each tier is its champion.
   const championIds = new Set();
   if (rows.length > 0) {
     if (seasonDecided) {
@@ -306,6 +307,7 @@ export default function DriverStandings() {
           rows={rows}
           dropWorst={data.dropWorst}
           officialTotals={data.officialTotals}
+          decided={seasonDecided}
         />
       ) : (
         <div className="cascade card divide-y divide-border overflow-hidden">
@@ -317,6 +319,7 @@ export default function DriverStandings() {
               index={Math.min(i, 16)}
               showTier={multiTier}
               champion={championIds.has(d.driverId)}
+              decided={seasonDecided}
             />
           ))}
         </div>

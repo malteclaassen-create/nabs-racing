@@ -16,7 +16,7 @@ function completedRounds(data) {
 // One tier shown as a unit: championship table, progression chart and the
 // line-ups of every team in that tier. `championTeamId` (set once the season
 // is decided) puts the golden champion treatment on that team.
-function TierBlock({ id, tier, standings, teams, title, championTeamId }) {
+function TierBlock({ id, tier, standings, teams, title, championTeamId, decided = false }) {
   const rows = standings.standings;
   const done = completedRounds(standings);
   const lastRound = done[done.length - 1];
@@ -37,7 +37,7 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId }) {
         }
       />
 
-      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} dropMode={standings.dropMode} teamDropWorst={standings.teamDropWorst} />
+      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} dropMode={standings.dropMode} teamDropWorst={standings.teamDropWorst} decided={decided} />
 
       <div className="space-y-3 pt-2">
         <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Line-ups</h3>
@@ -157,8 +157,8 @@ export default function Constructors() {
         {hasT2 && <TierJump className="-mt-2 flex sm:hidden" />}
       </div>
 
-      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1.data)} />
-      {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} championTeamId={champId(t2.data)} />}
+      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1.data)} decided={seasonDecided} />
+      {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} championTeamId={champId(t2.data)} decided={seasonDecided} />}
     </div>
   );
 }

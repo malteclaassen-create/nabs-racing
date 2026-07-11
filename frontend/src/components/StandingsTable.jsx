@@ -86,7 +86,10 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
   return <td className={`${base} text-sm text-medium`}>{points || <span className="text-faint">0</span>}</td>;
 }
 
-export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null }) {
+// `decided` — the season's title is settled (archived, or every round in):
+// first place wears gold; while the season still runs it gets the pink
+// leader wash instead.
+export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false }) {
   const isDriver = variant === "driver";
   // Constructor tables can use a team-level drop rule instead of inheriting
   // each driver's dropped rounds — the footnote must match whichever is in
@@ -142,7 +145,11 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   key={row.driverId || row.teamId}
                   style={{ "--i": Math.min(i, 16) }}
                   className={`group border-b border-border last:border-0 transition ${
-                    row.position === 1 ? "row-gold" : "hover:bg-surface2"
+                    row.position === 1 && row.total > 0
+                      ? decided
+                        ? "row-gold"
+                        : "row-leader"
+                      : "hover:bg-surface2"
                   }`}
                 >
                   <td className="sticky left-0 z-10 px-3 py-3 text-center transition sticky-cell">
