@@ -58,8 +58,12 @@ const links = [
 ];
 
 const linkClass = ({ isActive }) =>
+  // The active ring is INSET on purpose: an outset 1px ring sits outside the
+  // pill and can round away to nothing on one edge at fractional browser zoom
+  // (e.g. 90%), which made the pill look cut off at the bottom. Inside the
+  // pill, a lost edge just melts into the tinted background instead.
   `nav-link flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
-    isActive ? "bg-brand/20 text-dark ring-1 ring-brand/50" : "text-medium hover:bg-surface2"
+    isActive ? "bg-brand/20 text-dark ring-1 ring-inset ring-brand/50" : "text-medium hover:bg-surface2"
   }`;
 
 export default function NavBar() {
