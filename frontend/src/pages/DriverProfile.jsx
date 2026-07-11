@@ -9,6 +9,7 @@ import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import SocialLinks from "../components/SocialLinks.jsx";
 import RatingCard from "../components/RatingCard.jsx";
+import ChampionBadge from "../components/ChampionBadge.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { circuitFor } from "../data/circuits.js";
 
@@ -708,7 +709,7 @@ function ClassicHero({ driver, championship, color }) {
 // championship standing and the six headline stats are packed in beside it on a
 // light panel that echoes the card's team-colour frame and fills its full
 // height, so nothing reads as empty. No dark hero, no rating breakdown.
-function CardHeader({ driver, rating, championship, color, stats, allTime, career }) {
+function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges }) {
   // Season ⇄ All-time switch for the headline numbers. Only offered when the
   // driver actually spans several seasons (allTime comes with the career).
   const [scope, setScope] = useState("season");
@@ -815,6 +816,22 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
           {/* headline stats — bottom-anchored so they fill the space beside the
               card. Linked multi-season drivers get the Season ⇄ All-time switch. */}
           <div className="mt-5 lg:mt-auto lg:pt-5">
+            {/* podium seals — the trophy shelf sits right above the stats block,
+                one laurel per season this person finished in the top three */}
+            {(badges || []).length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center justify-center gap-2 lg:justify-start">
+                {badges.map((b) => (
+                  <ChampionBadge
+                    key={`${b.type}-${b.seasonNumber}`}
+                    type={b.type}
+                    seasonNumber={b.seasonNumber}
+                    seasonName={b.seasonName}
+                    game={b.game}
+                    points={b.points}
+                  />
+                ))}
+              </div>
+            )}
             {allTime && (
               <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
@@ -904,6 +921,7 @@ export default function DriverProfile({ previewId, preview }) {
           stats={stats}
           allTime={p.allTime}
           career={p.career}
+          badges={p.badges}
         />
       )}
 

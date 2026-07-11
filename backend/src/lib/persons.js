@@ -110,6 +110,58 @@ export function resolveNameOverrides(rows) {
   return out;
 }
 
+// Pure core of the identity resolution (exported for testing). `rows` =
+// [{ personId, driverId, seasonNumber, photoUrl, discordAvatar, country,
+// cardPhotoPos }]. Returns Map<driverId, { photoUrl, photoPos, country }> with
+// the person's CURRENT identity: the photo (and its card framing) from their
+// newest row that has one, the country likewise — so archive rows show the
+// same face and flag as the person's latest season. Callers use these as
+// FALLBACKS only (a row's own values always win).
+export function resolveIdentityOverrides(rows) {
+  const byPerson = new Map();
+  for (const r of rows) {
+    if (!byPerson.has(r.personId)) byPerson.set(r.personId, []);
+    byPerson.get(r.personId).push(r);
+  }
+  const out = new Map();
+  for (const members of byPerson.values()) {
+    if (members.length < 2) continue;
+    const sorted = [...members].sort((a, b) => (b.seasonNumber ?? -1) - (a.seasonNumber ?? -1));
+    const photoRow = sorted.find((m) => m.photoUrl || m.discordAvatar);
+    const countryRow = sorted.find((m) => m.country);
+    if (!photoRow && !countryRow) continue;
+    const identity = {
+      photoUrl: photoRow ? photoRow.photoUrl || photoRow.discordAvatar : null,
+      // raw JSON string; consumers parse via lib/cardPhoto parseCardPhotoPos
+      photoPos: photoRow ? photoRow.cardPhotoPos || null : null,
+      country: countryRow ? countryRow.country : null,
+    };
+    for (const m of members) out.set(m.driverId, identity);
+  }
+  return out;
+}
+
+// Identity overrides (photo, card framing, country) for linked drivers, keyed
+// by driverId. Safe when the tables/columns are missing.
+export async function getIdentityOverrides(prisma) {
+  let rows = [];
+  try {
+    rows = await prisma.$queryRawUnsafe(
+      `SELECT pl."personId" AS "personId", d."id" AS "driverId", s."number" AS "seasonNumber",
+              d."photoUrl" AS "photoUrl", d."discordAvatar" AS "discordAvatar",
+              d."country" AS "country", d."cardPhotoPos" AS "cardPhotoPos"
+       FROM "PersonLink" pl
+       JOIN "Driver" d ON d."id" = pl."driverId"
+       LEFT JOIN "Season" s ON s."id" = d."seasonId"`
+    );
+  } catch {
+    return new Map();
+  }
+  return resolveIdentityOverrides(
+    rows.map((r) => ({ ...r, seasonNumber: r.seasonNumber == null ? null : Number(r.seasonNumber) }))
+  );
+}
+
 // Name overrides for linked drivers, keyed by driverId. Callers filter to the
 // season they're rendering. Safe when the table is missing.
 export async function getNameOverrides(prisma) {

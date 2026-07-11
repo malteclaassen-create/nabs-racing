@@ -12,7 +12,7 @@ import {
   DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
 import { getSeasonScoring } from "./seasonService.js";
-import { getNameOverrides } from "../lib/persons.js";
+import { getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
 
 // Apply each race's position penalties before scoring. Grouping by race keeps a
 // penalty's re-ranking contained to its own round. With no penalties this is a
@@ -317,12 +317,13 @@ async function getRaceNumbers(prisma, seasonId) {
 // the live championship projection runs the running race order through the
 // exact same scoring pipeline this way. Empty/omitted = plain stored standings.
 export async function getDriverStandings(prisma, seasonId, { extraResults = [] } = {}) {
-  const [drivers, races, results, scoring, nameOverrides] = await Promise.all([
+  const [drivers, races, results, scoring, nameOverrides, identity] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
     prisma.raceResult.findMany({ where: { race: { seasonId } } }),
     getSeasonScoring(prisma, seasonId),
     getNameOverrides(prisma),
+    getIdentityOverrides(prisma),
   ]);
   const table = scoring.pointsTable || DEFAULT_POINTS_TABLE;
 
@@ -352,8 +353,11 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [] }
     const { total, droppedRounds } = applyDropScores(pointsByRound, raceNumbers, scoring.dropWorst);
 
     // Linked-person display: archive rows show the person's current name with a
-    // subtle "raced as <old handle>" note (formerName). No link => own name.
+    // subtle "raced as <old handle>" note (formerName), plus their CURRENT
+    // photo and flag as fallbacks — so the same face follows the person into
+    // every season they raced. A row's own values always win.
     const ov = nameOverrides.get(driver.id);
+    const idov = identity.get(driver.id);
 
     return {
       driverId: driver.id,
@@ -362,8 +366,8 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [] }
       discordName: driver.discordName,
       tier: driver.tier,
       isActive: driver.isActive,
-      country: driver.country || null,
-      photoUrl: driver.photoUrl || driver.discordAvatar || null,
+      country: driver.country || idov?.country || null,
+      photoUrl: driver.photoUrl || driver.discordAvatar || idov?.photoUrl || null,
       team: {
         id: driver.team.id,
         name: driver.team.name,

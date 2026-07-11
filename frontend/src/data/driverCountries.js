@@ -47,7 +47,11 @@ export const DRIVER_COUNTRY = {
 };
 
 // A driver's own DB country (self-selected at sign-up) wins; otherwise fall back
-// to the roster baseline above.
+// to the roster baseline above. Archive driver ids carry a season prefix
+// ("s4_takoda" is Season 4's takoda), so a miss retries with the prefix
+// stripped — the same person shows the same flag in every season.
 export function countryFor(driverId, dbCountry) {
-  return dbCountry || DRIVER_COUNTRY[driverId] || "";
+  if (dbCountry) return dbCountry;
+  const id = String(driverId || "");
+  return DRIVER_COUNTRY[id] || DRIVER_COUNTRY[id.replace(/^s\d+_/, "")] || "";
 }

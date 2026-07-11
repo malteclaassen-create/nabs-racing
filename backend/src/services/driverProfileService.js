@@ -7,10 +7,10 @@
 // ---------------------------------------------------------------------------
 import { getDriverStandings } from "./standingsService.js";
 import { parseSocials } from "../lib/socials.js";
-import { getLinkedDriverIds, getNameOverrides } from "../lib/persons.js";
+import { getLinkedDriverIds, getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
 import { telemetryForDriver } from "../lib/telemetryRead.js";
 import { readProfileTiles } from "../lib/profileTiles.js";
-import { readCardPhotoPos } from "../lib/cardPhoto.js";
+import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -189,7 +189,7 @@ export async function getDriverProfile(prisma, driverId) {
 
   // A driver entry belongs to one season; their stats are scoped to it.
   const seasonId = driver.seasonId;
-  const [standings, races, results, telemetry, nameOverrides, profileTiles, photoPos] = await Promise.all([
+  const [standings, races, results, telemetry, nameOverrides, profileTiles, photoPos, identityOverrides] = await Promise.all([
     getDriverStandings(prisma, seasonId),
     prisma.race.findMany({
       where: { seasonId, isSpecialEvent: false, isCompleted: true },
@@ -200,7 +200,15 @@ export async function getDriverProfile(prisma, driverId) {
     getNameOverrides(prisma),
     readProfileTiles(prisma, driverId),
     readCardPhotoPos(prisma, driverId),
+    getIdentityOverrides(prisma),
   ]);
+  // Person identity fallback: an archive row without its own picture/flag shows
+  // the person's CURRENT ones (and the matching card framing), so a driver
+  // looks the same in every season they raced. Own values always win.
+  const idov = identityOverrides.get(driverId);
+  const ownPhoto = driver.photoUrl || driver.discordAvatar || null;
+  const effPhotoUrl = ownPhoto || idov?.photoUrl || null;
+  const effPhotoPos = ownPhoto ? photoPos : parseCardPhotoPos(idov?.photoPos) || photoPos;
 
   const standingRow = standings.standings.find((r) => r.driverId === driverId);
   const resultByRaceId = new Map(results.map((r) => [r.raceId, r]));
@@ -217,6 +225,50 @@ export async function getDriverProfile(prisma, driverId) {
       .catch(() => []);
     allTime = await buildAllTimeStats(prisma, linkedIds, new Set(privateRows.map((r) => r.id)));
   }
+
+  // Podium badges — earned, never assigned: one seal per CONCLUDED season this
+  // person finished in the championship top three (gold P1, silver P2, bronze
+  // P3). A season counts as concluded when it lies behind the active one, or
+  // when it's the live season and every championship round has been run.
+  // Linked seasons come via the career block, so seals follow the person
+  // across handle changes. One seal per season (the best result wins).
+  const [activeSeasonRow, seasonMeta] = await Promise.all([
+    prisma.season.findFirst({ where: { isActive: true }, select: { number: true } }),
+    prisma.season.findMany({ select: { number: true, game: true } }),
+  ]);
+  const gameByNumber = new Map(seasonMeta.map((s) => [s.number, s.game || null]));
+  const BADGE_TYPE = { 1: "champion", 2: "vice", 3: "third" };
+  const badgeBySeason = new Map();
+  const addBadge = (position, num, name, points) => {
+    const type = BADGE_TYPE[position];
+    if (!type || num == null) return;
+    const existing = badgeBySeason.get(num);
+    if (existing && existing.position <= position) return;
+    badgeBySeason.set(num, {
+      type,
+      position,
+      seasonNumber: num,
+      seasonName: name || `Season ${num}`,
+      // Popover extras: which game it was earned in, and the final score.
+      game: gameByNumber.get(num) ?? null,
+      points: Number.isFinite(points) ? points : null,
+    });
+  };
+  const ownSeasonNumber = driver.season?.number ?? null;
+  const ownConcluded =
+    ownSeasonNumber != null &&
+    activeSeasonRow &&
+    (ownSeasonNumber < activeSeasonRow.number ||
+      (standings.raceNumbers.length > 0 && races.length >= standings.raceNumbers.length));
+  if (ownConcluded && standingRow?.position >= 1 && standingRow.position <= 3) {
+    addBadge(standingRow.position, ownSeasonNumber, driver.season?.name, standingRow.total);
+  }
+  for (const s of career?.seasons || []) {
+    if (s.position >= 1 && s.position <= 3 && s.starts > 0 && activeSeasonRow && s.seasonNumber != null && s.seasonNumber < activeSeasonRow.number) {
+      addBadge(s.position, s.seasonNumber, s.seasonName, s.points);
+    }
+  }
+  const badges = [...badgeBySeason.values()].sort((a, b) => a.seasonNumber - b.seasonNumber);
 
   // One row per completed championship round, in calendar order. Rounds the
   // driver wasn't entered in still appear (status "DNS", 0 points) so the season
@@ -309,11 +361,11 @@ export async function getDriverProfile(prisma, driverId) {
       discordName: driver.discordName,
       tier: driver.tier,
       isActive: driver.isActive,
-      country: driver.country || null,
+      country: driver.country || idov?.country || null,
       number: driver.number ?? null,
-      photoUrl: driver.photoUrl || driver.discordAvatar || null,
+      photoUrl: effPhotoUrl,
       // How the picture sits on the rating card (null = default framing).
-      photoPos,
+      photoPos: effPhotoPos,
       socials: parseSocials(driver.socials),
       // Self-written "about me" line and the driver's pick of headline stat
       // tiles (null = show all) — both self-service on /profile.
@@ -326,6 +378,8 @@ export async function getDriverProfile(prisma, driverId) {
     // Same shape as `stats`, aggregated across every linked season (null when
     // there's only one season — the toggle then has nothing to switch to).
     allTime,
+    // Earned championship seals: [{ type, seasonNumber, seasonName }].
+    badges,
     championship: {
       position: standingRow?.position ?? null,
       points: standingRow?.total ?? 0,
