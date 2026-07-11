@@ -156,39 +156,105 @@ pm2 startup        # prints a command -> run it once (autostart)
 The project is prepared for it: `railway.json` and the root `package.json`
 tell Railway how to build and start (build website -> start backend -> create
 database tables automatically). Steps 1-6 above then mostly disappear - no
-Caddy, no pm2, no own server.
+Caddy, no pm2, no own server. This section was walked through once end to end
+against a real Railway project, so the order below matters - follow it as
+written and the first deploy goes green.
 
-1. Create a project on [railway.app](https://railway.app) and connect the
-   GitHub repo. Railway rebuilds on every `git push` from then on.
-2. Give the service a **volume**, mounted at `/data`.
+1. Create a project on [railway.app](https://railway.app) (Hobby plan, $5/mo)
+   and connect the GitHub repo via **New Project -> Deploy from GitHub repo**.
+   Railway rebuilds on every `git push` from then on. The very first build may
+   fail - that's fine, the settings below are still missing.
+2. In the service settings, set the **region to EU West (Amsterdam)** BEFORE
+   the first successful deploy. The volume is created in whatever region the
+   service first deploys to, and moving it later is a pain. EU West because
+   the drivers are in Europe.
+3. Give the service a **volume**, mounted at `/data` (right-click the project
+   canvas -> Volume -> attach to the service -> mount path `/data`).
    **Without a volume the disk is wiped on every deploy** - database, images
    and downloads would be gone.
-3. Under *Variables* set:
+4. Under *Variables* (use the Raw Editor) set:
 
    ```ini
    DATA_DIR=/data
    DATABASE_URL=file:/data/dev.db
    JWT_SECRET=<long, random string - see the command in step 2 above>
-   CORS_ORIGIN=https://<your-domain>
+   CORS_ORIGIN=https://${{RAILWAY_PUBLIC_DOMAIN}}
+   DISCORD_REDIRECT_URI=https://${{RAILWAY_PUBLIC_DOMAIN}}/auth/discord/callback
    DISCORD_CLIENT_ID=<your client id>
    DISCORD_CLIENT_SECRET=<your client secret>
-   DISCORD_REDIRECT_URI=https://<your-domain>/auth/discord/callback
    ```
 
-   Railway sets `PORT` by itself.
-4. Connect the domain under *Settings -> Networking*. Railway handles HTTPS
-   automatically. Afterwards add the redirect URL in the Discord developer
-   portal as in step 5 above.
-5. **First data:** the very first start only creates empty tables. Either copy
-   the existing `dev.db` from the development machine onto the volume via the
-   Railway CLI (to `/data/dev.db`), or seed once. Put the big download files
-   onto the volume as well (`/data/downloads/`).
+   `${{RAILWAY_PUBLIC_DOMAIN}}` is filled in by Railway with the real address
+   at runtime, so you don't need to know the domain in advance - and it keeps
+   working if you attach a custom domain later. Railway sets `PORT` by itself.
+5. Under *Settings -> Networking* click **Generate Domain** (port 4000 if it
+   asks). Deploy. Afterwards add the redirect URL in the Discord developer
+   portal as in step 5 above - Discord needs the spelled-out address
+   (`https://<the-generated-domain>/auth/discord/callback`), it cannot use
+   placeholders.
+6. **Link previews:** in `frontend/index.html`, put the real domain into the
+   two `og:image` / `twitter:image` lines (see the checklist) and push.
+
+### Getting the data onto the volume
+
+The very first start only creates empty tables. The real data (`dev.db`, the
+`uploads/` images, download files) has to be copied onto the volume once. The
+Railway CLI can pipe files straight onto it:
+
+```bash
+npm install -g @railway/cli
+railway login
+railway link          # pick the project + the service
+railway ssh keys add  # registers your SSH key (generate one with
+                      # `ssh-keygen -t ed25519` if you have none)
+```
+
+Then, from the repo folder on the machine that has the data:
+
+```bash
+# database - upload, verify, swap (paste as-is, one line at a time)
+cat backend/prisma/dev.db | railway ssh -- 'cat > /data/dev.db.new'
+railway ssh -- 'sha256sum /data/dev.db.new'   # compare with the local file!
+railway ssh -- 'rm -f /data/dev.db-journal && mv /data/dev.db.new /data/dev.db'
+
+# images (repeat per file; keep the subfolders avatars/teams/tracks)
+railway ssh -- 'mkdir -p /data/uploads/avatars /data/uploads/teams /data/uploads/tracks'
+cat backend/uploads/teams/example.png | railway ssh -- 'cat > /data/uploads/teams/example.png'
+
+# then restart the service so it opens the new database
+railway redeploy --yes
+```
+
+Quirks learned the hard way:
+
+- `railway ssh` flattens quoting: pass the whole remote command as ONE quoted
+  string (as above). Don't wrap it in `sh -c`, and don't rely on short flags
+  like `-p` surviving - they get eaten.
+- The link from `railway link` is stored per folder - run all commands from
+  the repo folder.
+- If the deploy crash-loops with Prisma error **P3009** ("found failed
+  migrations") right after copying a database: that database has schema
+  changes the dev server applied at boot without booking them in
+  `_prisma_migrations`. Fix it on the dev machine with
+  `npx prisma migrate status` (shows the unbooked names, run in `backend/`)
+  and `npx prisma migrate resolve --applied <name>` per name, then upload the
+  database again. The shipped `dev.db` has this already fixed.
+- Big download files can also be uploaded later from the browser via the
+  admin Downloads tab - no CLI needed for those.
+
+### After the first successful deploy
+
+- Log in once via Discord and check the site.
+- **Change the admin PIN immediately** - the seed default is public knowledge.
+- Download a first full backup (Admin -> Health) as a starting point.
 
 > **Keep an eye on cost:** Railway charges for storage **and** outgoing
 > traffic. If many members download the big AC files (several GB), that can
 > get more expensive than a fixed VPS. Alternative for the big files: external
-> storage such as Cloudflare R2 (free traffic), registered in the download
-> catalogue as an external link.
+> storage such as Cloudflare R2 (free traffic) or Google Drive, registered in
+> the download catalogue as an external link. The default volume is small
+> (500 MB on trial, growable to 5 GB on Hobby) - plenty for database + images,
+> not meant for GB-sized car packs.
 
 ---
 
