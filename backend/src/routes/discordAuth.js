@@ -113,11 +113,33 @@ router.post("/callback", async (req, res, next) => {
     let driver = await prisma.driver.findUnique({ where: { discordUserId: me.id } });
     const activeSeason = await getActiveSeason(prisma);
 
-    // Season handover: drivers are per-season rows, so after a new season
-    // starts the stored link still points at the previous season's entry.
-    // On login, move the link to the matching driver on the ACTIVE roster
-    // (matched by name / Discord name) and carry the self-service profile
-    // fields over, so members keep their identity without any admin work.
+    if (!driver) {
+      // Try to match by Discord name against existing drivers. Prefer the
+      // active season's roster; fall back to older seasons (archive profiles).
+      const candidates = [norm(me.username), norm(me.global_name)].filter(Boolean);
+      const all = await prisma.driver.findMany();
+      const pool = activeSeason
+        ? [...all.filter((d) => d.seasonId === activeSeason.id), ...all.filter((d) => d.seasonId !== activeSeason.id)]
+        : all;
+      const match = pool.find((d) => {
+        const opts = [norm(d.discordName), norm(d.name)];
+        return candidates.some((c) => opts.includes(c)) && !d.discordUserId;
+      });
+      if (match) {
+        driver = await prisma.driver.update({
+          where: { id: match.id },
+          data: { discordUserId: me.id },
+        });
+      }
+    }
+
+    // Season handover: drivers are per-season rows, so a stored (or, above, a
+    // freshly name-matched) link can point at a PREVIOUS season's entry — e.g.
+    // a member whose Discord handle only matches their old row. Runs AFTER the
+    // fresh match on purpose: move the link to this person's driver on the
+    // ACTIVE roster (person link first, then name match) and carry the
+    // self-service profile fields over, so members keep their identity
+    // without any admin work.
     if (driver && activeSeason && driver.seasonId !== activeSeason.id) {
       const roster = await prisma.driver.findMany({ where: { seasonId: activeSeason.id } });
       // Prefer an explicit cross-season person link (admin-curated identity):
@@ -146,26 +168,6 @@ router.post("/callback", async (req, res, next) => {
             },
           }),
         ]);
-      }
-    }
-
-    if (!driver) {
-      // Try to match by Discord name against existing drivers. Prefer the
-      // active season's roster; fall back to older seasons (archive profiles).
-      const candidates = [norm(me.username), norm(me.global_name)].filter(Boolean);
-      const all = await prisma.driver.findMany();
-      const pool = activeSeason
-        ? [...all.filter((d) => d.seasonId === activeSeason.id), ...all.filter((d) => d.seasonId !== activeSeason.id)]
-        : all;
-      const match = pool.find((d) => {
-        const opts = [norm(d.discordName), norm(d.name)];
-        return candidates.some((c) => opts.includes(c)) && !d.discordUserId;
-      });
-      if (match) {
-        driver = await prisma.driver.update({
-          where: { id: match.id },
-          data: { discordUserId: me.id },
-        });
       }
     }
 

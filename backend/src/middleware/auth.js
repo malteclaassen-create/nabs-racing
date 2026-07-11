@@ -2,6 +2,8 @@ import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma.js";
 import { isBanned } from "../lib/members.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
+import { getActiveSeason } from "../services/seasonService.js";
+import { getLinkedDriverIds } from "../lib/persons.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 
@@ -83,14 +85,39 @@ export async function requireUser(req, res, next) {
 // a driver must re-read the CURRENT link from the DB by Discord id — otherwise
 // an unlinked session could keep editing "its" old driver for up to 30 days.
 // Falls back to the token's driverId only for tokens without a discordId.
+//
+// STALE-SEASON self-heal: the stored link can point at a PREVIOUS season's row
+// (e.g. the login name-matcher grabbed an archive row, or a new season started
+// mid-session). When the person has a row on the ACTIVE roster, act as THAT
+// row right away — the member sees their current card/profile without logging
+// out and back in. Read-only here: the stored link itself only moves on the
+// next login (discordAuth's season handover).
 export async function resolveDriverId(prismaClient, user) {
   if (!user) return null;
   if (user.discordId) {
     const d = await prismaClient.driver.findUnique({
       where: { discordUserId: user.discordId },
-      select: { id: true },
+      select: { id: true, seasonId: true },
     });
-    return d?.id || null;
+    if (!d) return null;
+    try {
+      const active = await getActiveSeason(prismaClient);
+      if (active && d.seasonId && d.seasonId !== active.id) {
+        const linkedIds = await getLinkedDriverIds(prismaClient, d.id);
+        if (linkedIds.length > 1) {
+          const rows = await prismaClient.driver.findMany({
+            where: { id: { in: linkedIds }, seasonId: active.id },
+            select: { id: true, discordUserId: true },
+          });
+          // Never hijack a row that belongs to a DIFFERENT Discord account.
+          const own = rows.find((r) => !r.discordUserId || r.discordUserId === user.discordId);
+          if (own) return own.id;
+        }
+      }
+    } catch {
+      /* person tables missing etc. — fall back to the stored link */
+    }
+    return d.id;
   }
   return user.driverId || null;
 }
