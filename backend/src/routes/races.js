@@ -8,10 +8,11 @@ import { telemetryForRace } from "../lib/telemetryRead.js";
 
 const router = Router();
 
-// GET /api/races -> list of all races in the selected (default: active) season
+// GET /api/races -> list of all races in the selected (default: active) season.
+// An admin may target a private season (site preview); the public can't.
 router.get("/", async (req, res, next) => {
   try {
-    const seasonId = await resolveSeasonId(prisma, req.query.season);
+    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: isAdminRequest(req) });
     const races = await prisma.race.findMany({
       where: { seasonId },
       orderBy: { number: "asc" },

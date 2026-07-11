@@ -141,7 +141,9 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                 <tr
                   key={row.driverId || row.teamId}
                   style={{ "--i": Math.min(i, 16) }}
-                  className="group border-b border-border last:border-0 transition hover:bg-surface2"
+                  className={`group border-b border-border last:border-0 transition ${
+                    row.position === 1 ? "row-gold" : "hover:bg-surface2"
+                  }`}
                 >
                   <td className="sticky left-0 z-10 px-3 py-3 text-center transition sticky-cell">
                     <Rank position={row.position} />

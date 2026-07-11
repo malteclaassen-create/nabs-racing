@@ -20,6 +20,8 @@ import discordAuthRoutes from "./routes/discordAuth.js";
 import downloadsRoutes from "./routes/downloads.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard } from "./services/liveTiming.js";
+import { buildLiveChampionship } from "./services/liveChampionshipService.js";
+import { isAdminRequest } from "./middleware/auth.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
@@ -64,6 +66,19 @@ app.use("/api/uploads", express.static(UPLOADS_DIR, {
 // Live timing (Assetto Corsa Server Manager relay). REST snapshot for fallback/
 // debugging; the live stream is the WebSocket at /api/live/ws (set up below).
 app.get("/api/live/timing", (req, res) => res.json(getBoard()));
+
+// Live championship projection: standings as if the RUNNING race ended in the
+// current order. Only active while a league race is on (see the service's
+// guards); otherwise { active: false }. Admins can demo it off race day with
+// ?simulate=1 (uses the next uncompleted race + a reshuffled current top).
+app.get("/api/live/championship", async (req, res, next) => {
+  try {
+    const simulate = req.query.simulate === "1" && isAdminRequest(req);
+    res.json(await buildLiveChampionship(prisma, getBoard(), { simulate }));
+  } catch (e) {
+    next(e);
+  }
+});
 
 // Public
 app.use("/api/standings", standingsRoutes);

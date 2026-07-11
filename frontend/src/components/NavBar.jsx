@@ -3,7 +3,6 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import Logo from "./Logo.jsx";
-import NextRaceTimer from "./NextRaceTimer.jsx";
 import SeasonPicker from "./SeasonPicker.jsx";
 import SettingsButton from "./SettingsPanel.jsx";
 import { DriverAvatar } from "./ui.jsx";
@@ -44,7 +43,8 @@ function AuthControl({ mobile = false }) {
 // The season switcher lives on the Home page (season ticker line); on the
 // season-scoped standings pages below it ALSO docks into the bar (compact
 // pill on desktop, a row in the mobile menu) so you can hop seasons without
-// going back Home.
+// going back Home. The docked pill fades in/out as you move on/off these
+// pages — see .nav-season-dock.
 const SEASON_PAGES = ["/drivers", "/constructors", "/races"];
 
 const links = [
@@ -70,54 +70,40 @@ export default function NavBar() {
   // Close the mobile menu whenever the route changes.
   useEffect(() => setOpen(false), [location.pathname]);
 
-  // Scroll-linked progress (0→1) that floats the next-race chip up from the
-  // inline home countdown into the bar. On inner pages it's simply parked (1).
-  const isHome = location.pathname === "/";
   const onSeasonPage = SEASON_PAGES.some((p) => location.pathname.startsWith(p));
-  const [p, setP] = useState(isHome ? 0 : 1);
+
+  // The docked season pill mounts visible (a CSS keyframe handles its fade-in);
+  // on leaving a season page we keep it mounted for one beat with `shown:false`
+  // so the .is-hidden fade-out can play, then unmount (see .nav-season-dock in
+  // index.css; lite mode skips both animations).
+  const [dock, setDock] = useState({ render: onSeasonPage, shown: onSeasonPage });
   useEffect(() => {
-    if (!isHome) {
-      setP(1);
+    if (onSeasonPage) {
+      setDock({ render: true, shown: true });
       return;
     }
-    const START = 40;
-    const END = 180;
-    let raf = 0;
-    const update = () => {
-      raf = 0;
-      const t = (window.scrollY - START) / (END - START);
-      setP(Math.min(1, Math.max(0, t)));
-    };
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(update);
-    };
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [isHome]);
-  const showDocked = !isHome || p > 0.001;
+    setDock((d) => ({ ...d, shown: false }));
+    const t = setTimeout(() => setDock({ render: false, shown: false }), 300);
+    return () => clearTimeout(t);
+  }, [onSeasonPage]);
 
   return (
     <header className="sticky top-0 z-30">
       {/* Blurred, tinted backdrop for the bar only. Its bottom edge is masked
           out (nav-fade) so the bar melts into the page with no hard line. The
-          84px height = 4px accent line + 80px (h-20) nav row. */}
-      <div aria-hidden className="nav-fade pointer-events-none absolute inset-x-0 top-0 h-[84px] bg-card/95 backdrop-blur" />
+          84px height = 4px accent line + 80px (h-20) nav row. Lite mode swaps
+          this for a solid page-coloured backdrop (see .nav-backdrop rules). */}
+      <div aria-hidden className="nav-backdrop nav-fade pointer-events-none absolute inset-x-0 top-0 h-[84px] bg-card/95 backdrop-blur" />
       <div className="relative">
         {/* team-colour accent line */}
         <div className="h-1 w-full bg-gradient-to-r from-primary via-amber-500 to-sky-600" />
         <nav className="container-page flex h-20 items-center justify-between">
-        {/* Logo + chip share the left edge so the chip hugs the wordmark
+        {/* Logo + season pill share the left edge so the pill hugs the wordmark
             rather than floating out toward the centre. */}
         <div className="flex min-w-0 items-center">
           <NavLink to="/" className="flex shrink-0 items-center gap-3">
             <Logo size={46} />
-            {/* On phones the wordmark steps aside for the docked chip so nothing
-                gets squeezed; it stays put from sm up and whenever undocked. */}
-            <span className={`leading-tight ${showDocked ? "hidden sm:block" : "block"}`}>
+            <span className="leading-tight">
               <span className="block text-base font-extrabold tracking-tight text-dark">
                 NABS Racing League
               </span>
@@ -127,29 +113,11 @@ export default function NavBar() {
             </span>
           </NavLink>
 
-          {/* Next-race chip floats up into the bar as you scroll (p: 0→1);
-              on inner pages it just eases in once. */}
-          {showDocked && (
-            <div
-              /* between lg and xl the nav links need every pixel, so the
-                 docked chip sits this range out. On season pages the switcher
-                 pill takes the xl slot, so the chip waits until 2xl there. */
-              className={`ml-3 flex shrink-0 sm:ml-4 lg:hidden ${onSeasonPage ? "2xl:flex" : "xl:flex"}`}
-              style={{
-                opacity: p,
-                transform: `translateY(${(1 - p) * 24}px) scale(${0.92 + 0.08 * p})`,
-                transition: isHome ? undefined : "opacity .35s ease-out, transform .35s ease-out",
-              }}
-            >
-              <NextRaceTimer compact className="shrink-0" />
-            </div>
-          )}
-
           {/* On season-scoped pages the season switcher docks into the bar too
-              (it stays on the Home ticker line as before). Like the chip it
-              sits out the packed lg→xl range; phones get it in the burger menu. */}
-          {onSeasonPage && (
-            <div className="ml-3 hidden shrink-0 xl:flex">
+              (it stays on the Home ticker line as before). It sits out the
+              packed lg→xl range; phones get it in the burger menu instead. */}
+          {dock.render && (
+            <div className={`nav-season-dock ml-3 hidden shrink-0 xl:flex ${dock.shown ? "" : "is-hidden"}`}>
               <SeasonPicker compact />
             </div>
           )}

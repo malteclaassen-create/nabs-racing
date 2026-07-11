@@ -48,6 +48,14 @@ export async function ensureAppSchema(prisma) {
   // public on activation. Private seasons are hidden from every public read.
   await addColumn(prisma, "Season", "isPublic", "BOOLEAN NOT NULL DEFAULT 1");
 
+  // --- Profile tiles: which of the six headline stat tiles a driver shows on
+  // their public profile. JSON array of tile keys; null = all of them.
+  await addColumn(prisma, "Driver", "profileTiles", "TEXT");
+
+  // --- Card photo framing: how the profile picture sits on the rating card
+  // (JSON {"x":0-100,"y":0-100,"z":1-3}; null = default). Self-service.
+  await addColumn(prisma, "Driver", "cardPhotoPos", "TEXT");
+
   // --- Phase 3: cross-season person links. One row per driver row that belongs
   // to a person; all driver rows of the same person share one personId.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PersonLink" (

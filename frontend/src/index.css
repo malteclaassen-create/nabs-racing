@@ -506,6 +506,53 @@ body::before {
   animation: content-in 0.22s ease both;
 }
 
+/* Champion highlight (finished seasons): a golden frame with an even glow on
+   all four sides (no vertical offset). No self-playing glint — instead the
+   card's .shine hover sweep turns gold on champion cards, so the celebration
+   only moves when the pointer asks it to. */
+.champion-gold {
+  border-color: color-mix(in srgb, #eab308 60%, var(--c-border)) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #eab308 45%, transparent),
+    0 0 26px -2px color-mix(in srgb, #eab308 45%, transparent);
+}
+.shine.champion-gold::after {
+  background: linear-gradient(115deg, transparent 32%, rgba(234, 179, 8, 0.42) 50%, transparent 68%);
+}
+.dark .shine.champion-gold::after {
+  background: linear-gradient(115deg, transparent 36%, rgba(234, 179, 8, 0.24) 50%, transparent 64%);
+}
+
+/* First-place / champion rows in standings lists and tables: a quiet gold wash
+   instead of the brand pink. Solid colours (mixed into the card tone) so the
+   frozen table columns stay opaque; the wash deepens a touch on hover. */
+.row-gold,
+.row-gold .sticky-cell {
+  background-color: color-mix(in srgb, #eab308 9%, var(--c-card));
+}
+.row-gold:hover,
+.row-gold:hover .sticky-cell {
+  background-color: color-mix(in srgb, #eab308 15%, var(--c-card));
+}
+
+/* Season switcher docking into the nav bar: a soft fade + lift as you move
+   on/off a season page, on both themes (lite mode drops it, see .fx-lite).
+   Enter is a keyframe (plays once on mount, no JS timing needed); exit is the
+   .is-hidden transition applied for one beat before unmount. The enter keyframe
+   must NOT use `forwards`, so it stops overriding once done and the exit
+   transition can take over. */
+@keyframes nav-season-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+.nav-season-dock {
+  opacity: 1;
+  transform: none;
+  animation: nav-season-in 0.26s ease;
+  transition: opacity 0.26s ease, transform 0.26s ease;
+}
+.nav-season-dock.is-hidden { opacity: 0; transform: translateY(-6px) scale(0.96); }
+
 /* Count-up numbers shouldn't reflow as digits change width. */
 .tabular-nums { font-variant-numeric: tabular-nums; }
 
@@ -526,6 +573,7 @@ body::before {
   .hero-anim, .hero-zoom, .gradient-anim, .glow-pulse, .float-bob,
   .scroll-cue, .page-in, .content-in { animation: none !important; opacity: 1; transform: none; }
   .nav-drop, .nav-scrim { animation: none !important; opacity: 1; transform: none; }
+  .nav-season-dock { animation: none !important; transition: none !important; }
   .shine::after { display: none; }
   .tilt { transform: none !important; }
   .roll-col { transition: none !important; }
@@ -554,13 +602,28 @@ body::before {
 .fx-lite .glow-pulse, .fx-lite .float-bob, .fx-lite .scroll-cue,
 .fx-lite .page-in, .fx-lite .content-in { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .nav-drop, .fx-lite .nav-scrim { animation: none !important; opacity: 1; transform: none; }
+.fx-lite .nav-season-dock { animation: none !important; transition: none !important; }
 .fx-lite .roll-col { transition: none !important; }
 .fx-lite .shine::after { display: none !important; }
-.fx-lite .tilt { transform: none !important; }
-.fx-lite .live-dot { animation: none !important; }
+/* Lite means STILL: cards don't lean, lift or glide on hover either. The JS
+   tilt bails out on its own (see motion.js); these kill the CSS side. */
+.fx-lite .tilt { transform: none !important; transition: none !important; }
+.fx-lite .lift { transition: none !important; }
+.fx-lite .lift:hover { transform: none; box-shadow: var(--c-shadow); }
+.fx-lite .live-dot, .fx-lite .animate-ping { animation: none !important; }
+.fx-lite .animate-ping { opacity: 0; }
 .fx-lite .circuit-draw { animation: none !important; stroke-dashoffset: 0; }
 .fx-lite .circuit-trace { animation: none !important; opacity: 0; }
 .fx-lite .settings-anim { transition: none !important; }
+/* Without blur the nav bar has nothing behind its text, so lite mode swaps the
+   blurred backdrop for a solid page-coloured one (no fade-out mask) and lets
+   the content scroll underneath a clean hairline. */
+.fx-lite .nav-backdrop {
+  background-color: var(--c-bg) !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  border-bottom: 1px solid var(--c-border);
+}
 
 /* --- Driver rating card (FIFA/EA-style) ---------------------------------- */
 /* A self-contained dark trading card. Team colour rides in on inline --team /
@@ -568,21 +631,41 @@ body::before {
    a graded spotlight over the photo, a slow gloss sweep, and a flat stat bar. */
 .rcard-frame {
   --chamfer: polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px);
+  /* Inner cut is 18.8px, not 20px: the card sits 2px inside the frame, and a
+     45° chamfer needs a slightly SHORTER cut there for the diagonal border to
+     stay the same 2px as the straight edges (20 − 2px·(√2−1)·2 ≈ 18.8). With
+     both cuts at 20px the corner border came out visibly thicker — the "off"
+     edges at the clipped corners. */
+  --chamfer-in: polygon(18.8px 0, 100% 0, 100% calc(100% - 18.8px), calc(100% - 18.8px) 100%, 0 100%, 0 18.8px);
   width: 332px; max-width: 100%; padding: 2px; clip-path: var(--chamfer);
   background: linear-gradient(135deg, #f7f9fc 0%, #c6d0db 15%, color-mix(in srgb, var(--team) 60%, #333b47) 39%, #0d121a 50%, color-mix(in srgb, var(--team) 60%, #333b47) 61%, #c6d0db 85%, #f7f9fc 100%);
   filter: drop-shadow(0 24px 50px rgba(0, 0, 0, 0.55));
 }
-.rcard { position: relative; width: 100%; height: 470px; clip-path: var(--chamfer);
+.rcard { position: relative; width: 100%; height: 470px; clip-path: var(--chamfer-in);
   background: #06090e; color: #fff; overflow: hidden; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16); }
 .rcard * { box-sizing: border-box; }
 
-.rcard-photo { position: absolute; inset: 0 0 auto 0; height: 312px; background-size: cover; background-position: 50% 22%;
-  background-color: color-mix(in srgb, var(--team) 26%, #06090e); z-index: 0; }
+/* Blurred continuation of the photo across the WHOLE card: the sharp picture
+   above fades into this instead of ending on a hard edge over black. Scaled up
+   so the blur never shows its own soft edges inside the card. */
+.rcard-photo-blur { position: absolute; inset: 0; z-index: 0; background-size: cover; background-position: 50% 30%;
+  transform: scale(1.35); filter: blur(26px) saturate(1.3) brightness(0.72); }
+.rcard-photo { position: absolute; inset: 0 0 auto 0; height: 312px; overflow: hidden;
+  background-color: color-mix(in srgb, var(--team) 26%, #06090e); z-index: 0;
+  /* fade the sharp photo (and its backing tint) out over the last quarter so
+     it dissolves into the blurred continuation behind it */
+  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 70%, transparent 100%); }
+.rcard-photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 22%;
+  user-select: none; -webkit-user-drag: none; }
 .rcard-mono { position: absolute; inset: 0 0 auto 0; height: 312px; z-index: 0; display: flex; align-items: center; justify-content: center;
   font-family: theme("fontFamily.display"); font-weight: 900; font-size: 150px; color: rgba(255, 255, 255, 0.9);
   background: radial-gradient(120% 90% at 50% 25%, color-mix(in srgb, var(--team) 60%, #06090e), #06090e 80%); }
 .rcard-duotone { position: absolute; inset: 0 0 auto 0; height: 312px; z-index: 1; mix-blend-mode: overlay;
-  background: linear-gradient(162deg, var(--team2) 0%, transparent 46%, color-mix(in srgb, var(--team) 82%, #000) 100%); }
+  background: linear-gradient(162deg, var(--team2) 0%, transparent 46%, color-mix(in srgb, var(--team) 82%, #000) 100%);
+  /* fades out with the photo, so the tint doesn't draw its own edge at 312px */
+  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 70%, transparent 100%); }
 .rcard-streaks { position: absolute; inset: 0; z-index: 1; opacity: 0.42;
   background: repeating-linear-gradient(123deg, transparent 0 23px, rgba(255, 255, 255, 0.055) 23px 26px);
   -webkit-mask: linear-gradient(120deg, transparent 32%, #000); mask: linear-gradient(120deg, transparent 32%, #000); }
@@ -595,16 +678,16 @@ body::before {
     linear-gradient(180deg, rgba(6, 9, 14, 0.26) 0, rgba(6, 9, 14, 0) 22%, rgba(6, 9, 14, 0.7) 68%, #06090e 100%); }
 .rcard-wm { position: absolute; right: -2px; bottom: 70px; z-index: 2; pointer-events: none; }
 .rcard-wm img { height: 150px; width: auto; opacity: 0.08; filter: grayscale(1) brightness(2.2); }
-.rcard-sheen { position: absolute; top: -40%; left: -30%; width: 55%; height: 180%; z-index: 3; pointer-events: none;
+/* Gloss sweep. The rest position is FULLY off-card (the skewed band reaches
+   ~40% of the card width past its own box, so -100% keeps every part hidden):
+   the sweep glides across, leaves on the right, and the invisible jump back to
+   the left happens off-screen — no white sliver parked at the left edge. */
+.rcard-sheen { position: absolute; top: -40%; left: -100%; width: 55%; height: 180%; z-index: 3; pointer-events: none;
   background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.16), transparent);
   transform: skewX(-18deg); animation: rcard-sweep 7s ease-in-out infinite; }
-@keyframes rcard-sweep { 0%, 60% { left: -35%; } 100% { left: 135%; } }
-.rcard-innerline { position: absolute; inset: 0; z-index: 3; pointer-events: none; clip-path: var(--chamfer);
+@keyframes rcard-sweep { 0%, 55% { left: -100%; } 100% { left: 145%; } }
+.rcard-innerline { position: absolute; inset: 0; z-index: 3; pointer-events: none; clip-path: var(--chamfer-in);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07), inset 0 0 30px rgba(0, 0, 0, 0.4); }
-
-.rcard-tick { position: absolute; z-index: 4; width: 13px; height: 13px; border: 2px solid var(--team2); opacity: 0.8; }
-.rcard-tick.tl { top: 5px; left: 5px; border-right: 0; border-bottom: 0; }
-.rcard-tick.br { bottom: 5px; right: 5px; border-left: 0; border-top: 0; }
 
 .rcard-rtg { position: absolute; top: 16px; left: 21px; z-index: 5; display: flex; flex-direction: column; line-height: 0.76;
   font-family: theme("fontFamily.display"); text-shadow: 0 1px 1px rgba(0, 0, 0, 0.9), 0 2px 10px rgba(0, 0, 0, 0.45); }

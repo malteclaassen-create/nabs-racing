@@ -39,17 +39,34 @@ function useFitName(name, max = 40, min = 15) {
   return { ref, size };
 }
 
+// The driver-adjustable photo framing (Driver.cardPhotoPos, self-service on
+// /profile): focal point in % + zoom, clamped so bad data can't push the
+// picture off the card. null/absent = the classic default framing.
+const clampN = (v, lo, hi, dflt) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt);
+export function cardPhotoFraming(pos) {
+  return {
+    x: clampN(Number(pos?.x), 0, 100, 50),
+    y: clampN(Number(pos?.y), 0, 100, 22),
+    z: clampN(Number(pos?.z), 1, 3, 1),
+  };
+}
+
 // FIFA-/EA-style driver rating card. `driver` supplies identity (name, number,
-// country, photo, team + team logo); `rating` supplies the numbers. The team
-// colour drives the whole card via the --team / --team2 custom properties; all
-// the visual layering lives in index.css (.rcard-*).
+// country, photo + framing, team + team logo); `rating` supplies the numbers.
+// The team colour drives the whole card via the --team / --team2 custom
+// properties; all the visual layering lives in index.css (.rcard-*).
 export default function RatingCard({ driver, rating }) {
   // Hooks run unconditionally (rules of hooks); harmless when we render null.
   const { ref: nameRef, size: nameSize } = useFitName(driver?.name || "");
-  const { current: season } = useSeason();
-  // Card footer brand line, e.g. "NABS RACING · SEASON 7" — follows the season
-  // being viewed instead of a hardcoded label.
-  const seasonLabel = (season?.name || "").toUpperCase() || "LEAGUE";
+  const { current: season, seasons } = useSeason();
+  // Card footer brand line, e.g. "NABS RACING · SEASON 4" — the DRIVER's own
+  // season when known (the ratings are per-season, so an archive driver's card
+  // must not claim the season currently being viewed), else the viewed one.
+  const ownSeason =
+    driver?.seasonNumber != null ? (seasons || []).find((s) => s.number === driver.seasonNumber) : null;
+  const seasonLabel =
+    (ownSeason?.name || (driver?.seasonNumber != null ? `Season ${driver.seasonNumber}` : season?.name) || "")
+      .toUpperCase() || "LEAGUE";
   if (!rating?.ratings) return null;
   const g = rating.ratings;
   const color = driver.team?.color || "#3b4254";
@@ -63,7 +80,28 @@ export default function RatingCard({ driver, rating }) {
     >
       <div className="rcard">
         {driver.photoUrl ? (
-          <div className="rcard-photo" style={{ backgroundImage: `url('${driver.photoUrl}')` }} />
+          (() => {
+            const { x, y, z } = cardPhotoFraming(driver.photoPos);
+            return (
+              <>
+                {/* blurred full-card continuation, so the photo has no hard bottom edge */}
+                <div className="rcard-photo-blur" style={{ backgroundImage: `url('${driver.photoUrl}')` }} />
+                <div className="rcard-photo">
+                  <img
+                    src={driver.photoUrl}
+                    alt=""
+                    draggable={false}
+                    style={{
+                      objectPosition: `${x}% ${y}%`,
+                      // zoom around the chosen focal point, so zooming keeps it in view
+                      transform: z !== 1 ? `scale(${z})` : undefined,
+                      transformOrigin: `${x}% ${y}%`,
+                    }}
+                  />
+                </div>
+              </>
+            );
+          })()
         ) : (
           <div className="rcard-mono">{initial}</div>
         )}
@@ -74,8 +112,6 @@ export default function RatingCard({ driver, rating }) {
         {logo && <div className="rcard-wm"><img src={logo} alt="" /></div>}
         <div className="rcard-sheen" />
         <div className="rcard-innerline" />
-        <span className="rcard-tick tl" />
-        <span className="rcard-tick br" />
 
         <div className="rcard-rtg">
           <span className="rcard-rtg-l">RTG</span>
@@ -98,7 +134,8 @@ export default function RatingCard({ driver, rating }) {
         <div className="rcard-stats">
           <div className="rcard-stat"><span>EXP</span><b>{g.exp}</b></div>
           <div className="rcard-stat"><span>RAC</span><b>{g.rac}</b></div>
-          <div className="rcard-stat"><span>AHA</span><b>{g.aha}</b></div>
+          {/* internal key stays `aha`; the league's display code is AWA */}
+          <div className="rcard-stat"><span>AWA</span><b>{g.aha}</b></div>
           <div className="rcard-stat"><span>PAC</span><b>{g.pac}</b></div>
         </div>
 

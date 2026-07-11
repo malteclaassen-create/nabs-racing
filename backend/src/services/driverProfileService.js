@@ -9,10 +9,97 @@ import { getDriverStandings } from "./standingsService.js";
 import { parseSocials } from "../lib/socials.js";
 import { getLinkedDriverIds, getNameOverrides } from "../lib/persons.js";
 import { telemetryForDriver } from "../lib/telemetryRead.js";
+import { readProfileTiles } from "../lib/profileTiles.js";
+import { readCardPhotoPos } from "../lib/cardPhoto.js";
 
 function avg(nums) {
   if (!nums.length) return null;
   return Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10;
+}
+
+// All-time stats across a person's linked driver rows — the same shape as the
+// per-season `stats` object, so the profile's stat tiles can swap between the
+// two with a toggle. Only built when a career exists (driver linked across
+// seasons); private seasons and special events are excluded, exactly like the
+// career table. Telemetry keys stay null-safe: seasons without telemetry simply
+// don't contribute, and if NO round has any, the telemetry tiles hide.
+async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds) {
+  const results = await prisma.raceResult.findMany({
+    where: { driverId: { in: linkedIds } },
+    include: { race: { select: { seasonId: true, isSpecialEvent: true, isCompleted: true, track: true, number: true } } },
+  });
+  const rows = results.filter(
+    (r) =>
+      r.race &&
+      !r.race.isSpecialEvent &&
+      r.race.isCompleted &&
+      r.race.seasonId &&
+      !privateSeasonIds.has(r.race.seasonId)
+  );
+
+  const starts = rows.filter((r) => r.status !== "DNS");
+  const finishes = starts.filter((r) => r.status === "FINISHED" && r.position != null);
+  const finishPositions = finishes.map((r) => r.position);
+  const gained = finishes
+    .filter((r) => r.grid != null && r.position != null)
+    .map((r) => r.grid - r.position);
+  const wins = finishes.filter((r) => r.position === 1).length;
+  const podiums = finishes.filter((r) => r.position <= 3).length;
+
+  let fastest = null;
+  for (const r of rows) {
+    if (r.bestLapMs && (!fastest || r.bestLapMs < fastest.bestLapMs)) {
+      fastest = { bestLapMs: r.bestLapMs, track: r.race.track, number: r.race.number };
+    }
+  }
+
+  // Telemetry across every linked row (per-driver reads, merged).
+  let overtakesTotal = 0, contactsTotal = 0, consNum = 0, consDen = 0, gamePenSecTotal = 0;
+  let anyTelemetry = false;
+  for (const id of linkedIds) {
+    const tel = await telemetryForDriver(prisma, id);
+    for (const t of tel.values()) {
+      if (t.overtakes != null) { overtakesTotal += t.overtakes; anyTelemetry = true; }
+      if (t.contacts != null) { contactsTotal += t.contacts; anyTelemetry = true; }
+      if (t.gamePenaltySeconds != null) gamePenSecTotal += t.gamePenaltySeconds;
+      if (t.consistencyMs != null && t.cleanLaps) { consNum += t.consistencyMs * t.cleanLaps; consDen += t.cleanLaps; }
+    }
+  }
+
+  // "In the points": stored official points where present, else the position
+  // against the default table — close enough for a cross-season counter.
+  const scored = rows.filter((r) =>
+    r.points != null ? r.points > 0 : r.status === "FINISHED" && r.position != null && r.position <= 18
+  ).length;
+
+  return {
+    starts: starts.length,
+    finishes: finishes.length,
+    wins,
+    podiums,
+    top5: finishes.filter((r) => r.position <= 5).length,
+    top10: finishes.filter((r) => r.position <= 10).length,
+    pointsFinishes: scored,
+    dnf: starts.filter((r) => r.status === "DNF").length,
+    dsq: starts.filter((r) => r.status === "DSQ").length,
+    bestFinish: finishPositions.length ? Math.min(...finishPositions) : null,
+    worstFinish: finishPositions.length ? Math.max(...finishPositions) : null,
+    avgFinish: avg(finishPositions),
+    bestGrid: starts.some((r) => r.grid != null)
+      ? Math.min(...starts.filter((r) => r.grid != null).map((r) => r.grid))
+      : null,
+    polePositions: starts.filter((r) => r.grid === 1).length,
+    avgGrid: avg(starts.filter((r) => r.grid != null).map((r) => r.grid)),
+    positionsGained: gained.length ? gained.reduce((a, b) => a + b, 0) : 0,
+    winRate: starts.length ? Math.round((wins / starts.length) * 100) : 0,
+    podiumRate: starts.length ? Math.round((podiums / starts.length) * 100) : 0,
+    fastestLap: fastest,
+    overtakes: anyTelemetry ? overtakesTotal : null,
+    contacts: anyTelemetry ? contactsTotal : null,
+    avgConsistencyMs: consDen ? Math.round(consNum / consDen) : null,
+    gamePenaltySeconds: anyTelemetry ? Math.round(gamePenSecTotal * 10) / 10 : null,
+    stewardPenaltySeconds: rows.reduce((s, r) => s + (r.penaltySeconds || 0), 0),
+  };
 }
 
 // Career summary across a person's linked driver rows (other seasons). Excludes
@@ -49,9 +136,38 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
       podiums: finishes.filter((v) => v.position <= 3).length,
     });
   }
-  if (seasons.length < 2) return null;
-  seasons.sort((a, b) => (a.seasonNumber ?? 0) - (b.seasonNumber ?? 0));
-  const totals = seasons.reduce(
+  // One person can have TWO rows in the SAME season (e.g. started as a reserve,
+  // then took over a seat under a new Discord handle). Fold those into a single
+  // season line: totals add up, the row with more points is the "main" entry
+  // (its profile link, colour and position), and every team they drove for is
+  // named. Without this a handle change mid-season shows the season twice.
+  const bySeason = new Map();
+  for (const s of seasons) {
+    const key = s.seasonNumber ?? `row-${s.driverId}`;
+    const prev = bySeason.get(key);
+    if (!prev) {
+      bySeason.set(key, s);
+      continue;
+    }
+    const main = s.points > prev.points || (s.points === prev.points && s.starts > prev.starts) ? s : prev;
+    const teams = [...new Set([prev.teamName, s.teamName].filter(Boolean))];
+    const positions = [prev, s].filter((r) => r.position != null && r.starts > 0).map((r) => r.position);
+    bySeason.set(key, {
+      ...main,
+      teamName: teams.length ? teams.join(" / ") : null,
+      position: positions.length ? Math.min(...positions) : null,
+      points: prev.points + s.points,
+      starts: prev.starts + s.starts,
+      wins: prev.wins + s.wins,
+      podiums: prev.podiums + s.podiums,
+      isCurrent: prev.isCurrent || s.isCurrent,
+    });
+  }
+  const merged = [...bySeason.values()];
+  // Nothing to aggregate: a single row that didn't fold anything in.
+  if (merged.length < 2 && merged.length === seasons.length) return null;
+  merged.sort((a, b) => (a.seasonNumber ?? 0) - (b.seasonNumber ?? 0));
+  const totals = merged.reduce(
     (t, s) => ({
       seasons: t.seasons + 1,
       points: t.points + s.points,
@@ -61,19 +177,19 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
     }),
     { seasons: 0, points: 0, starts: 0, wins: 0, podiums: 0 }
   );
-  return { seasons, totals };
+  return { seasons: merged, totals };
 }
 
 export async function getDriverProfile(prisma, driverId) {
   const driver = await prisma.driver.findUnique({
     where: { id: driverId },
-    include: { team: true },
+    include: { team: true, season: true },
   });
   if (!driver) return null;
 
   // A driver entry belongs to one season; their stats are scoped to it.
   const seasonId = driver.seasonId;
-  const [standings, races, results, telemetry, nameOverrides] = await Promise.all([
+  const [standings, races, results, telemetry, nameOverrides, profileTiles, photoPos] = await Promise.all([
     getDriverStandings(prisma, seasonId),
     prisma.race.findMany({
       where: { seasonId, isSpecialEvent: false, isCompleted: true },
@@ -82,12 +198,25 @@ export async function getDriverProfile(prisma, driverId) {
     prisma.raceResult.findMany({ where: { driverId } }),
     telemetryForDriver(prisma, driverId),
     getNameOverrides(prisma),
+    readProfileTiles(prisma, driverId),
+    readCardPhotoPos(prisma, driverId),
   ]);
 
   const standingRow = standings.standings.find((r) => r.driverId === driverId);
   const resultByRaceId = new Map(results.map((r) => [r.raceId, r]));
   const nameOv = nameOverrides.get(driverId);
   const career = await buildCareer(prisma, driverId, seasonId, standings);
+
+  // All-time stats power the Season ⇄ All-time toggle on the profile's stat
+  // tiles — only when the driver actually spans more than one season.
+  let allTime = null;
+  if (career) {
+    const linkedIds = await getLinkedDriverIds(prisma, driverId);
+    const privateRows = await prisma
+      .$queryRawUnsafe(`SELECT "id" FROM "Season" WHERE "isPublic" = 0`)
+      .catch(() => []);
+    allTime = await buildAllTimeStats(prisma, linkedIds, new Set(privateRows.map((r) => r.id)));
+  }
 
   // One row per completed championship round, in calendar order. Rounds the
   // driver wasn't entered in still appear (status "DNS", 0 points) so the season
@@ -99,6 +228,7 @@ export async function getDriverProfile(prisma, driverId) {
     const tel = r ? telemetry.get(race.id) : null;
     if (!r) {
       return {
+        raceId: race.id,
         number: race.number,
         track: race.track,
         position: null,
@@ -109,6 +239,7 @@ export async function getDriverProfile(prisma, driverId) {
       };
     }
     return {
+      raceId: race.id,
       number: race.number,
       track: race.track,
       position: r.position,
@@ -172,17 +303,29 @@ export async function getDriverProfile(prisma, driverId) {
       id: driver.id,
       name: nameOv?.displayName || driver.name,
       formerName: nameOv?.formerName || null,
+      // The season this row belongs to, so race links can steer the Races
+      // page to the right season even when the visitor is viewing another one.
+      seasonNumber: driver.season?.number ?? null,
       discordName: driver.discordName,
       tier: driver.tier,
       isActive: driver.isActive,
       country: driver.country || null,
       number: driver.number ?? null,
       photoUrl: driver.photoUrl || driver.discordAvatar || null,
+      // How the picture sits on the rating card (null = default framing).
+      photoPos,
       socials: parseSocials(driver.socials),
+      // Self-written "about me" line and the driver's pick of headline stat
+      // tiles (null = show all) — both self-service on /profile.
+      bio: driver.bio || null,
+      profileTiles,
       team: { id: driver.team.id, name: driver.team.name, color: driver.team.color, tier: driver.team.tier, logoUrl: driver.team.logoUrl },
     },
     // Cross-season career (null unless this driver is linked to other seasons).
     career,
+    // Same shape as `stats`, aggregated across every linked season (null when
+    // there's only one season — the toggle then has nothing to switch to).
+    allTime,
     championship: {
       position: standingRow?.position ?? null,
       points: standingRow?.total ?? 0,

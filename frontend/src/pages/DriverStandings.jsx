@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useSeason } from "../context/SeasonContext.jsx";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar, CountUp } from "../components/ui.jsx";
 import { useTilt } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
@@ -9,18 +10,20 @@ import TeamLogo from "../components/TeamLogo.jsx";
 import StandingsTable from "../components/StandingsTable.jsx";
 import { countryFor } from "../data/driverCountries.js";
 
-function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true }) {
+function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champion = false }) {
   const gap = leaderTotal - row.total;
   const tiltRef = useTilt({ max: 5, lift: 5 });
   return (
+    // The cascade entrance animates this WRAPPER, not the card itself: a filled
+    // entrance keyframe pins `transform` on its element, which froze the tilt's
+    // smooth hover transition. On the wrapper, the card's transform stays free.
+    <div style={{ "--i": index }}>
     <Link
       ref={tiltRef}
       to={`/drivers/${row.driverId}`}
-      className="card shine tilt relative block overflow-hidden p-5 hover:shadow-xl"
-      style={{ "--i": index }}
+      className={`card shine tilt relative block h-full overflow-hidden p-5 hover:shadow-xl ${champion ? "champion-gold" : ""}`}
     >
-      <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: row.team.color }} />
-      <div className="flex items-start justify-between gap-3 pl-2">
+      <div className="flex items-start justify-between gap-3">
         {/* min-w-0 + truncate let a long name give way instead of pushing
             the points total off the card edge on phones */}
         <div className="flex min-w-0 items-center gap-3">
@@ -60,16 +63,22 @@ function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true }) {
           <div className="font-mono text-2xl font-bold leading-none tabular-nums text-dark sm:text-3xl">
             <CountUp end={row.total} />
           </div>
-          <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-            {gap === 0 ? "Leader" : `−${gap} pts`}
+          <div
+            className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider"
+            style={champion ? { color: "var(--medal-1)" } : undefined}
+          >
+            <span className={champion ? "font-bold" : "text-light"}>
+              {champion ? "Champion" : gap === 0 ? "Leader" : `−${gap} pts`}
+            </span>
           </div>
         </div>
       </div>
     </Link>
+    </div>
   );
 }
 
-function DriverRow({ d, leaderTotal, index = 0, showTier = true }) {
+function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = false }) {
   const isLeader = d.position === 1;
   const gap = leaderTotal - d.total;
   const pct = d.total > 0 && leaderTotal > 0 ? Math.max(4, (d.total / leaderTotal) * 100) : 0;
@@ -77,8 +86,8 @@ function DriverRow({ d, leaderTotal, index = 0, showTier = true }) {
     <Link
       to={`/drivers/${d.driverId}`}
       style={{ "--i": index }}
-      className={`flex items-center gap-3 px-4 py-3 transition hover:bg-surface2 sm:gap-4 sm:px-5 ${
-        isLeader ? "bg-brand/5" : ""
+      className={`flex items-center gap-3 px-4 py-3 transition sm:gap-4 sm:px-5 ${
+        champion ? "row-gold" : "hover:bg-surface2"
       }`}
     >
       <Rank position={d.position} />
@@ -133,6 +142,8 @@ const TIER_FILTERS = [
 
 export default function DriverStandings() {
   const { data, loading, error } = useApi(useCallback(() => api.driverStandings(), []));
+  const races = useApi(useCallback(() => api.races(), []));
+  const { current: season, active } = useSeason();
   const [onlyScoring, setOnlyScoring] = useState(true);
   const [tier, setTier] = useState("all");
   // "list" = the ranked cards/rows; "grid" = the per-round points matrix (same
@@ -175,6 +186,29 @@ export default function DriverStandings() {
 
   const leaderTotal = rows[0]?.total ?? 0;
   const top3 = rows.slice(0, 3);
+  // The season's title is decided: an archived season, or the live one with
+  // every championship round completed. The top card of whatever view is
+  // selected (overall, a tier, the reserves) is that group's champion and
+  // gets the golden treatment.
+  const champRounds = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
+  const seasonDecided =
+    (!!season && !!active && season.number < active.number) ||
+    (champRounds.length > 0 && champRounds.every((r) => r.isCompleted));
+  // Gold rows in the list: once the season is decided, the best driver of
+  // EVERY group in view (Tier 1, Tier 2, the reserves) is that group's
+  // champion; while it still runs, only the current overall leader wears the
+  // wash. Rows are points-sorted, so the first row of each tier is its champion.
+  const championIds = new Set();
+  if (rows.length > 0) {
+    if (seasonDecided) {
+      for (const t of new Set(rows.map((r) => r.tier))) {
+        const top = rows.find((r) => r.tier === t);
+        if (top && top.total > 0) championIds.add(top.driverId);
+      }
+    } else if (rows[0].total > 0) {
+      championIds.add(rows[0].driverId);
+    }
+  }
   const scopeLabel = activeTier === "all" ? "drivers" : TIER_FILTERS.find((t) => t.id === activeTier).label;
   // The per-round matrix needs actual rounds; archived totals-only seasons fall
   // back to the list regardless of what's selected.
@@ -202,7 +236,15 @@ export default function DriverStandings() {
         // driver names truncate away entirely
         <div className="cascade mb-8 grid gap-4 lg:grid-cols-3">
           {top3.map((row, i) => (
-            <LeaderCard key={row.driverId} row={row} leaderTotal={leaderTotal} rank={i} index={i} showTier={multiTier} />
+            <LeaderCard
+              key={row.driverId}
+              row={row}
+              leaderTotal={leaderTotal}
+              rank={i}
+              index={i}
+              showTier={multiTier}
+              champion={seasonDecided && i === 0}
+            />
           ))}
         </div>
       )}
@@ -268,7 +310,14 @@ export default function DriverStandings() {
       ) : (
         <div className="cascade card divide-y divide-border overflow-hidden">
           {rows.map((d, i) => (
-            <DriverRow key={d.driverId} d={d} leaderTotal={leaderTotal} index={Math.min(i, 16)} showTier={multiTier} />
+            <DriverRow
+              key={d.driverId}
+              d={d}
+              leaderTotal={leaderTotal}
+              index={Math.min(i, 16)}
+              showTier={multiTier}
+              champion={championIds.has(d.driverId)}
+            />
           ))}
         </div>
       )}

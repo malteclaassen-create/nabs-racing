@@ -115,6 +115,14 @@ model Driver {
   // Per-driver social links, edited on /profile. JSON object keyed by platform
   // (twitch/youtube/instagram/tiktok/x) -> full URL; null/absent when unset.
   socials       String?
+  // Which of the six headline stat tiles the driver shows on their public
+  // profile (JSON array of tile keys; null = all). Managed via raw SQL
+  // (ensureAppSchema + routes/me.js) so it's writable with the dev server up.
+  profileTiles  String?
+  // How the profile picture sits on the driver rating card, self-service on
+  // /profile: JSON {"x":0-100,"y":0-100,"z":1-3} (focal point % + zoom); null =
+  // the default framing. Raw SQL for the same reason as profileTiles.
+  cardPhotoPos  String?
   results     RaceResult[]
   rsvps       RaceRsvp[]
   // Driver Market: seats this driver has offered, seats this (reserve) driver

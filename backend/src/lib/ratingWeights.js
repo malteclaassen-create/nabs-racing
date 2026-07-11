@@ -8,6 +8,7 @@
 const RATING_WEIGHTS_KEY = "rating_weights";
 
 const clampNum = (v, lo, hi) => {
+  if (v === "" || v == null) return null; // blank admin field = "not set", not 0
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
   return Math.max(lo, Math.min(hi, n));
@@ -34,6 +35,19 @@ export function sanitizeRatingWeights(input) {
   if (low != null) band.low = low;
   if (high != null) band.high = high;
   if (Object.keys(band).length) out.band = band;
+
+  // Optional per-stat floor/ceiling overrides; a stat without values simply
+  // inherits the shared band above (see resolveConfig).
+  const bands = {};
+  for (const k of ["exp", "pac", "rac", "aha"]) {
+    const b = {};
+    const l = clampNum(input.bands?.[k]?.low, 0, 99);
+    const h = clampNum(input.bands?.[k]?.high, 0, 99);
+    if (l != null) b.low = l;
+    if (h != null) b.high = h;
+    if (Object.keys(b).length) bands[k] = b;
+  }
+  if (Object.keys(bands).length) out.bands = bands;
 
   const dom = {};
   const max = clampNum(input.dominance?.max, 0, 20);

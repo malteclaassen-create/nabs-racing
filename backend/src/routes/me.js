@@ -10,6 +10,8 @@ import { join } from "path";
 import prisma from "../lib/prisma.js";
 import { optionalUser, resolveDriverId } from "../middleware/auth.js";
 import { parseSocials, serializeSocials } from "../lib/socials.js";
+import { DEFAULT_PROFILE_TILES, PROFILE_TILE_KEYS, readProfileTiles } from "../lib/profileTiles.js";
+import { parseCardPhotoPos, readCardPhotoPos } from "../lib/cardPhoto.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const router = Router();
@@ -64,6 +66,10 @@ router.get("/", async (req, res, next) => {
       // "reset to Discord picture" button on the profile page.
       photoUrl: driver.photoUrl || driver.discordAvatar || null,
       hasCustomPhoto: !!driver.photoUrl,
+      // Which public-profile stat tiles are shown; null = all (the default).
+      profileTiles: await readProfileTiles(prisma, driver.id),
+      // How the picture sits on the rating card; null = default framing.
+      photoPos: await readCardPhotoPos(prisma, driver.id),
       team: {
         id: driver.team.id,
         name: driver.team.name,
@@ -122,6 +128,57 @@ router.put("/profile", async (req, res, next) => {
       select: { id: true, name: true, bio: true, number: true, socials: true },
     });
     res.json({ ok: true, ...driver, bio: driver.bio || "", socials: parseSocials(driver.socials) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/me/tiles { tiles: ["wins", ...] | null } -> choose which stat tiles
+// the public profile shows. null (or exactly the classic set) = the default.
+router.put("/tiles", async (req, res, next) => {
+  try {
+    const driverId = await requireDriver(req, res);
+    if (!driverId) return;
+    const raw = req.body?.tiles;
+    let value = null;
+    if (raw != null) {
+      if (!Array.isArray(raw) || raw.some((k) => !PROFILE_TILE_KEYS.includes(k))) {
+        return res.status(400).json({ error: "tiles must be an array of known tile keys" });
+      }
+      const picked = PROFILE_TILE_KEYS.filter((k) => raw.includes(k)); // canonical order, dedup
+      // The public profile shows at most 9 tiles (mirrors the /profile editor).
+      if (picked.length > 9) {
+        return res.status(400).json({ error: "Choose at most 9 stat tiles" });
+      }
+      // Picking exactly the classic set IS the default — store null for it.
+      const isDefault =
+        picked.length === DEFAULT_PROFILE_TILES.length && DEFAULT_PROFILE_TILES.every((k) => picked.includes(k));
+      value = isDefault ? null : JSON.stringify(picked);
+    }
+    await prisma.$executeRaw`UPDATE "Driver" SET "profileTiles" = ${value} WHERE "id" = ${driverId}`;
+    res.json({ ok: true, profileTiles: value ? JSON.parse(value) : null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/me/card-photo { pos: {x,y,z} | null } -> how the profile picture
+// sits on the driver rating card (focal point % + zoom). null = back to the
+// default framing. Values are clamped server-side, so a broken client can
+// never park the photo off the card.
+router.put("/card-photo", async (req, res, next) => {
+  try {
+    const driverId = await requireDriver(req, res);
+    if (!driverId) return;
+    const raw = req.body?.pos;
+    let value = null;
+    if (raw != null) {
+      const pos = parseCardPhotoPos(raw);
+      if (!pos) return res.status(400).json({ error: "pos must be { x: 0-100, y: 0-100, z: 1-3 }" });
+      value = JSON.stringify(pos);
+    }
+    await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoPos" = ${value} WHERE "id" = ${driverId}`;
+    res.json({ ok: true, photoPos: value ? JSON.parse(value) : null });
   } catch (e) {
     next(e);
   }

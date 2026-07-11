@@ -147,6 +147,10 @@ function buildEntry(guid, d, onTrack) {
     drs: live.DRSActive ?? d.DRSActive ?? false,
     deltaSelfMs: onTrack ? live.DeltaToSelf ?? d.DeltaToSelf ?? null : null,
     spline: live.NormalisedSplinePos ?? d.NormalisedSplinePos ?? 0,
+    // Race-session running order (from the high-frequency telemetry; null in
+    // practice/quali or for cars that left). The championship projection sorts
+    // by this, NOT by the board's hot-lap ranking below.
+    racePosition: live.RacePosition ?? d.RacePosition ?? null,
   };
 }
 

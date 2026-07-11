@@ -102,25 +102,32 @@ export const api = {
   // public (season-scoped reads honour the selected season)
   // Season-scoped reads default to the selected season; pass an explicit season
   // number to target a specific one (the Welcome page pins the active season).
-  driverStandings: (season) => request(`/standings/drivers${seasonParam(season)}`),
+  // auth:true attaches the admin token when present (harmless for the public:
+  // these routes never require it), so a signed-in admin can preview a PRIVATE
+  // season on the real site. Without the token the backend hides that data.
+  driverStandings: (season) => request(`/standings/drivers${seasonParam(season)}`, { auth: true }),
+  // End-of-season honours (champion, awards) for the finished-season home hero.
+  seasonHonours: (season) => request(`/standings/honours${seasonParam(season)}`, { auth: true }),
   // Races of an EXPLICIT season (e.g. the next-season teaser), regardless of
   // the season the site is currently viewing.
-  racesFor: (n) => request(`/races?season=${n}`),
-  driverProfile: (id) => request(`/drivers/${id}/profile`),
-  driverRating: (id) => request(`/drivers/${id}/rating`),
-  t1Standings: (season) => request(`/standings/constructors/t1${seasonParam(season)}`),
-  t2Standings: (season) => request(`/standings/constructors/t2${seasonParam(season)}`),
-  races: (season) => request(`/races${seasonParam(season)}`),
-  // auth:true attaches the admin token when present (harmless for the public),
-  // so the admin season switcher can also reach private/unpublished seasons.
-  raceResults: (id) => request(`/races/${id}/results`),
+  racesFor: (n) => request(`/races?season=${n}`, { auth: true }),
+  driverProfile: (id) => request(`/drivers/${id}/profile`, { auth: true }),
+  driverRating: (id) => request(`/drivers/${id}/rating`, { auth: true }),
+  t1Standings: (season) => request(`/standings/constructors/t1${seasonParam(season)}`, { auth: true }),
+  t2Standings: (season) => request(`/standings/constructors/t2${seasonParam(season)}`, { auth: true }),
+  races: (season) => request(`/races${seasonParam(season)}`, { auth: true }),
+  raceResults: (id) => request(`/races/${id}/results`, { auth: true }),
   // Track history across all seasons (userAuth so a member gets their own record).
   trackHistory: (track) => request(`/tracks/history?track=${encodeURIComponent(track)}`, { userAuth: true }),
-  teams: () => request(`/teams${seasonQ()}`),
+  teams: () => request(`/teams${seasonQ()}`, { auth: true }),
   seasons: () => request("/seasons", { auth: true }),
+  // Live championship projection (only { active: true } while a league race is
+  // running). auth:true so an admin's ?simulate demo request is recognised.
+  liveChampionship: (simulate = false) =>
+    request(`/live/championship${simulate ? "?simulate=1" : ""}`, { auth: true }),
 
   // events / RSVP (public; scoped to the viewed season, default active)
-  events: () => request(`/events${seasonQ()}`),
+  events: () => request(`/events${seasonQ()}`, { auth: true }),
   rsvp: (raceId, driverId, status) =>
     request(`/events/${raceId}/rsvp`, { method: "POST", body: { driverId, status }, userAuth: true }),
   removeRsvp: (raceId, driverId) =>
@@ -136,6 +143,10 @@ export const api = {
     return request("/me/photo", { method: "POST", body: fd, userAuth: true, form: true });
   },
   clearMyPhoto: () => request("/me/photo", { method: "DELETE", userAuth: true }),
+  // Which headline stat tiles the public profile shows (null = all six).
+  setMyTiles: (tiles) => request("/me/tiles", { method: "PUT", body: { tiles }, userAuth: true }),
+  // How the profile picture sits on the rating card ({x,y,z} or null = default).
+  setMyCardPhoto: (pos) => request("/me/card-photo", { method: "PUT", body: { pos }, userAuth: true }),
 
   // driver market (identity from the Discord login)
   market: () => request("/market", { userAuth: true }),

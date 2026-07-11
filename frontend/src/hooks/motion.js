@@ -7,6 +7,12 @@ const prefersReduced = () =>
   window.matchMedia &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+// Lite graphics mode (Settings → Performance): pointer effects stand still too.
+// Checked live inside the event handlers, so flipping the toggle takes effect
+// without remounting anything.
+const fxLite = () =>
+  typeof document !== "undefined" && document.documentElement.classList.contains("fx-lite");
+
 // Fires once when the element first scrolls into view. Returns [ref, inView].
 // Used to kick off count-ups and other one-shot entrances exactly when seen.
 export function useInView({ rootMargin = "0px 0px -10% 0px", once = true } = {}) {
@@ -47,6 +53,7 @@ export function useTilt({ max = 7, lift = 6 } = {}) {
     if (!el || prefersReduced()) return;
     let raf = 0;
     const onMove = (e) => {
+      if (fxLite()) return;
       const r = el.getBoundingClientRect();
       const px = (e.clientX - r.left) / r.width - 0.5;
       const py = (e.clientY - r.top) / r.height - 0.5;
@@ -85,6 +92,7 @@ export function useMagnetic({ strength = 0.35 } = {}) {
     if (!el || prefersReduced()) return;
     let raf = 0;
     const onMove = (e) => {
+      if (fxLite()) return;
       const r = el.getBoundingClientRect();
       const x = e.clientX - (r.left + r.width / 2);
       const y = e.clientY - (r.top + r.height / 2);
@@ -118,6 +126,10 @@ export function useParallax(speed = 0.15) {
     let raf = 0;
     const update = () => {
       raf = 0;
+      if (fxLite()) {
+        el.style.transform = "";
+        return;
+      }
       const r = el.getBoundingClientRect();
       // Distance of the element's centre from the viewport centre.
       const offset = r.top + r.height / 2 - window.innerHeight / 2;

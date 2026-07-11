@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useSeason } from "../context/SeasonContext.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton } from "../components/ui.jsx";
@@ -212,9 +213,23 @@ export default function Races() {
   const [tab, setTab] = useState("rounds"); // "rounds" | "se"
   const panelRef = useRef(null);
   // Deep link: /races?race=<id> opens the explorer on a specific round (used by
-  // the "next race" sign-up links on the home card and the nav chip).
-  const [searchParams] = useSearchParams();
+  // the "next race" sign-up links on the home card and the driver profiles).
+  // An optional &season=<number> first steers the site to that season — driver
+  // profiles of archived seasons link here while the visitor may be viewing a
+  // different one. The param is consumed immediately so the season switcher
+  // isn't overridden afterwards.
+  const [searchParams, setSearchParams] = useSearchParams();
   const wantRaceId = searchParams.get("race");
+  const wantSeason = searchParams.get("season");
+  const { season, setSeason } = useSeason();
+  useEffect(() => {
+    if (!wantSeason || season == null) return;
+    const n = Number(wantSeason);
+    const next = new URLSearchParams(searchParams);
+    next.delete("season");
+    setSearchParams(next, { replace: true });
+    if (Number.isFinite(n) && n !== season) setSeason(n);
+  }, [wantSeason, season, setSeason, searchParams, setSearchParams]);
 
   // Sign-up + attendance for upcoming rounds now lives on the /attendance page;
   // the Races page shows the UpcomingRacePanel (countdown, circuit, track record).
@@ -308,7 +323,10 @@ export default function Races() {
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]">
             {/* round list — horizontal on phones, vertical sidebar from lg up */}
             <aside className="lg:sticky lg:top-28 lg:self-start">
-              <h3 className="mb-2.5 hidden font-mono text-xs font-bold uppercase tracking-widest text-light lg:block">
+              {/* The label row shares the exact height of the round header on
+                  the right (h-8 title line + mb-4), so the first round button
+                  and the results table start flush on one line. */}
+              <h3 className="mb-4 hidden h-8 items-center font-mono text-xs font-bold uppercase tracking-widest text-light lg:flex">
                 Rounds
               </h3>
               <RoundRail races={championRounds} selectedId={selectedId} onSelect={selectRace} />
@@ -326,13 +344,21 @@ export default function Races() {
                   {detail && !detailLoading && (
                     <div>
                       <div className="mb-4">
-                        <div className="flex items-center gap-3">
+                        <div className="flex h-8 items-center gap-3">
                           {circuitFor(detail.race.track) && (
                             <Flag code={circuitFor(detail.race.track).country} title={circuitFor(detail.race.track).countryName} w={26} h={19} />
                           )}
-                          <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
+                          <h2 className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
                             <span className="text-light">R{detail.race.number}</span> {detail.race.track}
                           </h2>
+                          {detail.race.date && (
+                            <span
+                              className="ml-auto shrink-0 text-right font-mono text-xs font-semibold tabular-nums text-light sm:text-sm"
+                              title={fmtRaceTime(detail.race.date)}
+                            >
+                              {fmtDate(detail.race.date)}
+                            </span>
+                          )}
                         </div>
                         {!detail.race.hasPositions && (
                           <p className="mt-1 text-sm text-light">

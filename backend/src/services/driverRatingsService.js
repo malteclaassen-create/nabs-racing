@@ -6,7 +6,8 @@
 //   EXP  Experience  — how many races the driver has under their belt
 //   PAC  Pace        — raw speed: best-lap pace vs the field + qualifying (grid)
 //   RAC  Racecraft   — race result: finishing position, places gained, podiums
-//   AHA  Awareness   — cleanliness/consistency: finish rate, few DNFs, low spread
+//   AWA  Awareness   — cleanliness/consistency: finish rate, few DNFs, low spread
+//                      (displayed as AWA; the internal key stays `aha`)
 //   RTG  Overall     — weighted blend of the four (RAC + PAC weigh most)
 //
 // All four are RELATIVE to the season's field: we rank each driver against the
@@ -52,10 +53,18 @@ const AHA_WEIGHTS = { finishRate: 0.25, dnf: 0.15, consistency: 0.25, contacts: 
 const DOMINANCE = { max: 6, fullAt: 0.6 };
 
 // All knobs in one place, so the admin tuning panel can read the defaults and
-// pass back overrides. `band` is the visible 0–99 range; the rest are the blend
+// pass back overrides. `band` is the visible 0–99 range shared by every stat;
+// `bands` optionally overrides floor/ceiling PER sub-rating (e.g. Experience
+// spanning 40–99 while the rest keep the shared band). The rest are the blend
 // weights for the overall and each sub-rating.
 export const RATING_DEFAULTS = {
   band: { low: BAND_LOW, high: BAND_HIGH },
+  bands: {
+    exp: { low: BAND_LOW, high: BAND_HIGH },
+    pac: { low: BAND_LOW, high: BAND_HIGH },
+    rac: { low: BAND_LOW, high: BAND_HIGH },
+    aha: { low: BAND_LOW, high: BAND_HIGH },
+  },
   fullXpShare: FULL_XP_SHARE,
   dominance: { ...DOMINANCE },
   rtg: { ...RTG_WEIGHTS },
@@ -77,16 +86,31 @@ function normalizeGroup(group, base) {
 }
 
 // Merge admin overrides onto the defaults and normalise the weight groups.
+// A blank input ("" from an empty admin field) counts as "not set", NOT as 0.
+function numOrNull(v) {
+  if (v === "" || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function resolveConfig(opts = {}) {
-  const low = Number(opts.band?.low);
-  const high = Number(opts.band?.high);
+  const low = numOrNull(opts.band?.low);
+  const high = numOrNull(opts.band?.high);
   const domMax = Number(opts.dominance?.max);
   const domFullAt = Number(opts.dominance?.fullAt);
+  const band = {
+    low: low ?? BAND_LOW,
+    high: high ?? BAND_HIGH,
+  };
+  // Per-stat floor/ceiling: anything not set explicitly inherits the shared
+  // band, so the admin can e.g. give only Experience a wider spread.
+  const bandFor = (key) => ({
+    low: numOrNull(opts.bands?.[key]?.low) ?? band.low,
+    high: numOrNull(opts.bands?.[key]?.high) ?? band.high,
+  });
   return {
-    band: {
-      low: Number.isFinite(low) ? low : BAND_LOW,
-      high: Number.isFinite(high) ? high : BAND_HIGH,
-    },
+    band,
+    bands: { exp: bandFor("exp"), pac: bandFor("pac"), rac: bandFor("rac"), aha: bandFor("aha") },
     fullXpShare: Number.isFinite(Number(opts.fullXpShare)) ? Number(opts.fullXpShare) : FULL_XP_SHARE,
     dominance: {
       max: Number.isFinite(domMax) ? domMax : DOMINANCE.max,
@@ -396,10 +420,10 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
       cfg.aha.penalties * pPenalties +
       cfg.aha.cuts * pCuts;
 
-    const pac = clampRating(pacPct, cfg.band);
-    const rac = clampRating(racPct, cfg.band);
-    const aha = clampRating(ahaPct, cfg.band);
-    const exp = clampRating(expPct, cfg.band);
+    const pac = clampRating(pacPct, cfg.bands.pac);
+    const rac = clampRating(racPct, cfg.bands.rac);
+    const aha = clampRating(ahaPct, cfg.bands.aha);
+    const exp = clampRating(expPct, cfg.bands.exp);
     // Blended overall, then a small dominance boost so a runaway leader reads
     // ~99 rather than capping in the low 90s.
     const blended =

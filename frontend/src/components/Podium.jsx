@@ -41,13 +41,9 @@ export default function Podium({ entries = [] }) {
             )}
 
             <Link to={`/drivers/${e.driverId}`} className="group flex w-full flex-col items-center text-center">
-              {/* avatar (neutral dark so three bright team colours don't clash) with a
-                  medal ring — theme-aware tone so silver/gold stay visible on white */}
-              <span className="rounded-full p-[3px]" style={{ backgroundColor: tone }}>
-                <span className="block rounded-full ring-[3px] ring-card dark:ring-ink">
-                  <DriverAvatar name={e.name} photoUrl={e.photoUrl} color="#232833" size={cfg.avatar} />
-                </span>
-              </span>
+              {/* plain avatar — the medal colour lives in the pedestal and the
+                  points, a coloured ring around the photo was one accent too many */}
+              <DriverAvatar name={e.name} photoUrl={e.photoUrl} color="#232833" size={cfg.avatar} />
 
               <span className={`mt-3 flex max-w-full items-center justify-center gap-1.5 font-display font-black uppercase leading-none tracking-tight text-ink transition group-hover:text-brand dark:text-white ${cfg.name}`}>
                 <span className="truncate">{e.name}</span>

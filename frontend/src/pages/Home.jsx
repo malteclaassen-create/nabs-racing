@@ -44,6 +44,65 @@ function pad2(n) {
   return String(n ?? 0).padStart(2, "0");
 }
 
+// One cell of the end-of-season honours band (below the hero), in the same
+// quiet hairline-ruled language as the profile stat tiles. Driver awards carry
+// the driver's flag and team mark; team awards lead with the team's logo. The
+// award's headline figure (`stat`, with its small `note` underneath) is parked
+// big on the cell's right edge — every current and future award reads the same.
+function HonourCell({ label, to, name, stat, note, driverId, country, team, className = "", index = 0 }) {
+  const flag = driverId ? countryFor(driverId, country) : null;
+  const nameCls =
+    "truncate font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl lg:text-2xl";
+  return (
+    <div
+      // Phones get one full-width cell per row, so the figure sits beside the
+      // name. The 3-across sm: range is too narrow for that and stacks it
+      // underneath instead; from lg: on the cells are wide enough again.
+      className={`-ml-px -mt-px flex min-w-0 items-center justify-between gap-4 border-l border-t border-border bg-card p-5 sm:flex-col sm:items-start sm:gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4 ${className}`}
+      style={{ "--i": index }}
+    >
+      <div className="min-w-0">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-light">{label}</div>
+        <div className="mt-2 flex min-w-0 items-center gap-2.5">
+          {!driverId && team && (
+            <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={28} />
+          )}
+          {to ? (
+            <Link to={to} className={`${nameCls} transition hover:text-brand`}>
+              {name}
+            </Link>
+          ) : (
+            <span className={nameCls}>{name}</span>
+          )}
+          {flag && <Flag code={flag} w={22} h={16} />}
+        </div>
+        {driverId && team && (
+          <TeamLogo
+            id={team.id}
+            name={team.name}
+            color={team.color}
+            logoUrl={team.logoUrl}
+            size={18}
+            showName
+            className="mt-2"
+            nameClassName="truncate text-sm text-light"
+          />
+        )}
+      </div>
+      {stat && (
+        <div className="shrink-0 text-right sm:text-left lg:text-right">
+          <div className="font-display text-3xl font-black tabular-nums leading-none text-dark">{stat}</div>
+          {note && (
+            <div className="mt-1.5 max-w-[9rem] font-mono text-[10px] font-bold uppercase leading-relaxed tracking-wider text-light">
+              {note}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // The season's car in the coming-soon hero. Best case the season has a 3D
 // model at public/cars/s<n>.glb (converted from the real Assetto Corsa car,
 // tools/kn5-to-glb): rotatable, with a driver-view button. A season with only
@@ -161,6 +220,11 @@ export default function Home() {
   // started, so the hero shows a "Coming soon" card (with a reserved slot for a
   // future car reveal) instead of the previous champion.
   const isUpcomingSeason = !!season && !!active && season.number > active.number;
+  // The LIVE season has run every round: the champion is crowned but the next
+  // season isn't active yet (the off-season weeks). The hero switches to the
+  // celebration + honours board, fed by /standings/honours.
+  const seasonOver =
+    !isPast && !isUpcomingSeason && champRaces.length > 0 && champRaces.every((r) => r.isCompleted);
 
   useEffect(() => {
     if (lastRace?.id) api.raceResults(lastRace.id).then(setLatest).catch(() => {});
@@ -173,6 +237,18 @@ export default function Home() {
       setPrevChamps(null);
     }
   }, [awaitingOpener, prevSeason?.number]);
+
+  // End-of-season honours — for the live finale AND archived seasons (the API
+  // reads the selected season; awards without data simply stay away, so old
+  // seasons show whatever can still be computed).
+  const [honours, setHonours] = useState(null);
+  useEffect(() => {
+    if (seasonOver || isPast) {
+      api.seasonHonours().then(setHonours).catch(() => setHonours(null));
+    } else {
+      setHonours(null);
+    }
+  }, [seasonOver, isPast, season?.number]);
 
   if (drivers.loading || t1.loading || t2.loading || races.loading)
     return (
@@ -214,10 +290,11 @@ export default function Home() {
   // champion instead of a (non-existent) upcoming race. The ACTIVE season keeps
   // the full live experience; a not-yet-active future season also stays "live"
   // (it just shows empty states until it starts).
-  const champ = standings[0] || null; // season champion (archive hero)
-  const heroPodium = isPast
-    ? standings.slice(0, 3).map((d, i) => ({ driverId: d.driverId, position: i + 1, name: d.name, country: d.country, team: d.team, total: d.total, photoUrl: d.photoUrl }))
-    : podium;
+  const champ = standings[0] || null; // season champion (archive + finale hero)
+  const heroPodium =
+    isPast || seasonOver
+      ? standings.slice(0, 3).map((d, i) => ({ driverId: d.driverId, position: i + 1, name: d.name, country: d.country, team: d.team, total: d.total, photoUrl: d.photoUrl }))
+      : podium;
 
   // Last season's champions, shown on the hero's left while this season waits
   // for its opener. Only when we actually have the previous standings loaded.
@@ -300,6 +377,20 @@ export default function Home() {
   const STATUS_WORD = { ACCEPTED: "Signed up", TENTATIVE: "Tentative", DECLINED: "Declined" };
   const nextStatusWord = events.loading ? "…" : myStatus ? STATUS_WORD[myStatus] : nextEv ? "Not responded" : "—";
 
+  // The logged-in driver's best finish of the season — takes the middle tile
+  // once the season is over (there is no race left to sign up for).
+  let myBestFinish = null;
+  if (seasonOver && myRow) {
+    for (const [num, v] of Object.entries(myRow.perRace || {})) {
+      if (v.status === "FINISHED" && v.position != null && (!myBestFinish || v.position < myBestFinish.position)) {
+        myBestFinish = { position: v.position, round: Number(num) };
+      }
+    }
+    if (myBestFinish) {
+      myBestFinish.track = champRaces.find((r) => r.number === myBestFinish.round)?.track || null;
+    }
+  }
+
   return (
     <div className="content-in space-y-16">
       {/* ===================== SEASON TICKER ===================== */}
@@ -363,13 +454,19 @@ export default function Home() {
         <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-brand via-brand/40 to-transparent" />
 
         <div className="relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
-          {isPast ? (
-            /* ARCHIVE — the season's final championship podium, front and centre */
+          {seasonOver || isPast ? (
+            /* SEASON COMPLETE — one hero for every finished season, live finale
+               and archive alike: the "<season> complete" line over the final
+               podium, with the honours band right below. The game name stays
+               out of here on purpose; it already sits in the ticker line next
+               to the season switcher. The live finale hands back to the normal
+               hero when the next season starts. */
             <div className="flex flex-1 flex-col justify-center gap-7">
-              <div className="hero-anim flex flex-wrap items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
-                <span>{season?.name} · Final Podium</span>
-                <span className="h-px w-10 bg-accent/50" />
-                <span className="text-medium dark:text-white/50">{season?.game || "Champions"}</span>
+              <div
+                className="hero-anim text-center font-mono text-xl font-bold uppercase tracking-[0.3em] text-eyebrow sm:text-2xl"
+                style={{ animationDelay: "0.05s" }}
+              >
+                {season?.name} complete
               </div>
               <div className="hero-anim" style={{ animationDelay: "0.16s" }}>
                 <Podium entries={heroPodium} />
@@ -384,7 +481,7 @@ export default function Home() {
                 </Link>
                 <Link
                   to="/constructors"
-                  className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
+                  className="inline-flex items-center rounded-lg border border-white/20 bg-white/5 px-6 py-3 text-sm font-bold uppercase tracking-wide text-white backdrop-blur-sm transition hover:bg-white/15"
                 >
                   Constructors
                 </Link>
@@ -411,18 +508,30 @@ export default function Home() {
                 <p className="hero-anim max-w-lg text-base leading-relaxed text-white/75" style={{ animationDelay: "0.2s" }}>
                   The next NABS season is taking shape. Teams, cars and the calendar are being prepared right now. Jump into the Discord to be there from round one.
                 </p>
-                <div className="hero-anim flex flex-wrap items-center gap-3" style={{ animationDelay: "0.3s" }}>
-                  {nextRace?.date && (
-                    <span className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-white/85">
-                      Round 1 · {new Date(nextRace.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · {fmtRaceTime(nextRace.date)}
-                    </span>
-                  )}
-                  {social.data?.discord && (
+                {/* Big countdown to the opener — the same broadcast clock the
+                    next-race panel uses, so race day reads the same site-wide. */}
+                {nextRace?.date && (
+                  <div className="hero-anim max-w-md" style={{ animationDelay: "0.26s" }}>
+                    <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/55">
+                      Season opener · Round {nextRace.number}{nextRace.track ? ` · ${nextRace.track}` : ""}
+                    </div>
+                    <RaceCountdown date={nextRace.date} className="mt-3" />
+                    <div className="mt-3 flex items-center justify-center gap-2 font-mono text-xs uppercase tracking-wider text-white/60">
+                      <span className="font-bold text-white/85">
+                        {new Date(nextRace.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                      </span>
+                      <span className="h-3 w-px bg-white/25" />
+                      <span>{fmtRaceTime(nextRace.date)}</span>
+                    </div>
+                  </div>
+                )}
+                {social.data?.discord && (
+                  <div className="hero-anim flex flex-wrap items-center gap-3" style={{ animationDelay: "0.3s" }}>
                     <a href={social.data.discord} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-2 rounded-xl bg-[#5865F2] px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-[#5865F2]/30 transition hover:brightness-110">
                       Join the Discord <span aria-hidden="true">→</span>
                     </a>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
               <CarReveal season={season} />
             </div>
@@ -598,31 +707,185 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ===================== BY THE NUMBERS (personal when linked) ========= */}
-      {/* Archive seasons show only the general season stats — no personal band. */}
-      {!isPast && myRow ? (
-        <div>
-          {showTierToggle && (
-            <div className="mb-3 flex items-center justify-end gap-2">
-              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Ranking</span>
-              <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setTierView(false)}
-                  className={`rounded-md px-2.5 py-1 text-xs font-bold transition ${!useTier ? "bg-brand text-ink" : "text-light hover:text-dark"}`}
-                >
-                  Overall
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTierView(true)}
-                  className={`rounded-md px-2.5 py-1 text-xs font-bold transition ${useTier ? "bg-brand text-ink" : "text-light hover:text-dark"}`}
-                >
-                  Tier {myTier}
-                </button>
-              </div>
+      {/* ===================== SEASON HONOURS (finished seasons) ============= */}
+      {/* The awards of a completed season — the live finale and every archived
+          season alike — in the site's quiet hairline-grid language. Awards an
+          old season has no data for simply don't get a cell. */}
+      {(seasonOver || isPast) && honours && (() => {
+        // Build the award cells first, so the grid can close its last row
+        // cleanly no matter how many awards this season has (no half-framed
+        // holes). Fastest lap is deliberately not an honour here.
+        // Each award hands its headline figure to the cell as `stat` (big, on
+        // the right) plus a small `note` explaining it — new awards just follow
+        // the same two-field pattern and land in the layout automatically.
+        const cells = [];
+        if (honours.viceChampion) {
+          cells.push({
+            key: "vice",
+            label: "Vice-champion",
+            to: `/drivers/${honours.viceChampion.driverId}`,
+            name: honours.viceChampion.name,
+            stat: honours.viceChampion.points,
+            note: "points",
+            driverId: honours.viceChampion.driverId,
+            country: honours.viceChampion.country,
+            team: honours.viceChampion.team,
+          });
+        }
+        for (const t of honours.teamChampions || []) {
+          cells.push({
+            key: `team${t.tier}`,
+            // Single-class seasons have exactly one champion team — a "Tier 1"
+            // prefix would imply a Tier 2 that never existed.
+            label: (honours.teamChampions?.length || 0) > 1 ? `Tier ${t.tier} team champions` : "Team champions",
+            to: `/teams/${t.teamId}`,
+            name: t.name,
+            stat: t.points,
+            note: "points",
+            team: { id: t.teamId, name: t.name, color: t.color, logoUrl: t.logoUrl },
+          });
+        }
+        if (honours.bestNewcomer) {
+          cells.push({
+            key: "newcomer",
+            label: "Best newcomer",
+            to: `/drivers/${honours.bestNewcomer.driverId}`,
+            name: honours.bestNewcomer.name,
+            stat: honours.bestNewcomer.position ? `P${honours.bestNewcomer.position}` : honours.bestNewcomer.points,
+            note: honours.bestNewcomer.position ? "in their first season" : "points",
+            driverId: honours.bestNewcomer.driverId,
+            country: honours.bestNewcomer.country,
+            team: honours.bestNewcomer.team,
+          });
+        }
+        if (honours.mostOvertakes) {
+          cells.push({
+            key: "overtakes",
+            label: "Most overtakes",
+            to: `/drivers/${honours.mostOvertakes.driverId}`,
+            name: honours.mostOvertakes.name,
+            stat: honours.mostOvertakes.count,
+            note: "on-track passes",
+            driverId: honours.mostOvertakes.driverId,
+            country: honours.mostOvertakes.country,
+            team: honours.mostOvertakes.team,
+          });
+        }
+        if (honours.cleanest) {
+          cells.push({
+            key: "cleanest",
+            label: "Cleanest driver",
+            to: `/drivers/${honours.cleanest.driverId}`,
+            name: honours.cleanest.name,
+            stat: honours.cleanest.contacts,
+            note: `contacts in ${honours.cleanest.starts} starts`,
+            driverId: honours.cleanest.driverId,
+            country: honours.cleanest.country,
+            team: honours.cleanest.team,
+          });
+        }
+        if (!cells.length) return null;
+        // Phones run one cell per row (never a hole to close); from sm: on the
+        // LAST cell stretches over whatever is left of its 3-wide row.
+        const lastClass = { 0: "", 1: "sm:col-span-3", 2: "sm:col-span-2" }[cells.length % 3];
+        return (
+          <section className="reveal space-y-5">
+            <h3 className="section-title">Season honours</h3>
+            {/* cascade: the award cells deal in one after another on reveal */}
+            <div className="cascade grid grid-cols-1 overflow-hidden rounded-xl border border-border bg-card sm:grid-cols-3">
+              {cells.map(({ key, ...c }, i) => (
+                <HonourCell key={key} {...c} index={i} className={i === cells.length - 1 ? lastClass : ""} />
+              ))}
             </div>
-          )}
+          </section>
+        );
+      })()}
+
+      {/* ===================== BY THE NUMBERS (personal when linked) ========= */}
+      {/* Archive seasons show only the general season stats — no personal band.
+          A season that hasn't STARTED yet has no leader or title gap to show,
+          so it gets its own pre-season band: the opener, the calendar and how
+          the grid is filling up. */}
+      {isUpcomingSeason ? (
+        <section className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <NumberTile
+            index={0}
+            compact
+            to="/races"
+            label="Season Opener"
+            value={nextRace?.track || "TBA"}
+            sub={
+              nextRace?.date
+                ? new Date(nextRace.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
+                : "date TBA"
+            }
+            icon="calendar"
+            accent="#0ea5e9"
+            mark={
+              nextRace && circuitFor(nextRace.track) ? (
+                <CircuitMap track={nextRace.track} className="h-full w-full" align="xMaxYMax" stroke="currentColor" strokeWidth={2} />
+              ) : undefined
+            }
+          />
+          <NumberTile
+            index={1}
+            to="/races"
+            label="Rounds Planned"
+            value={totalRounds || "—"}
+            sub="on the calendar"
+            icon="flag"
+            accent="#7c3aed"
+          />
+          <NumberTile index={2} to="/drivers" label="Drivers" value={driverCount} sub="on the entry list" icon="users" accent="#0d9488" />
+          {/* same trick as the other bands: the last two tiles stretch so 5
+              tiles close the 2- and 3-column rows without a hole */}
+          <NumberTile
+            index={3}
+            to="/constructors"
+            label="Constructors"
+            value={constructorCount}
+            sub="teams entered"
+            icon="shield"
+            accent="#d97706"
+            className="sm:col-span-2 lg:col-span-1"
+          />
+          <NumberTile
+            index={4}
+            to="/attendance"
+            label="Sign-Ups"
+            value={nextEv ? nextEv.rsvps.ACCEPTED.length : "—"}
+            sub="for the opener"
+            icon="trend"
+            accent="#e11d48"
+            className="col-span-2 sm:col-span-1"
+          />
+        </section>
+      ) : !isPast && myRow ? (
+        <div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="section-title">Personal Season</h3>
+            {showTierToggle && (
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Ranking</span>
+                <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setTierView(false)}
+                    className={`rounded-md px-2.5 py-1 text-xs font-bold transition ${!useTier ? "bg-brand text-ink" : "text-light hover:text-dark"}`}
+                  >
+                    Overall
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTierView(true)}
+                    className={`rounded-md px-2.5 py-1 text-xs font-bold transition ${useTier ? "bg-brand text-ink" : "text-light hover:text-dark"}`}
+                  >
+                    Tier {myTier}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <section className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <NumberTile
               index={0}
@@ -645,21 +908,41 @@ export default function Home() {
                 <TeamLogo id={myRow.team.id} name={myRow.team.name} color={myRow.team.color} logoUrl={myRow.team.logoUrl} size={76} />
               }
             />
-            <NumberTile
-              index={2}
-              compact
-              to={nextEv ? `/races?race=${nextEv.id}` : "/races"}
-              label="Next Race"
-              value={nextEv ? nextEv.track : "TBA"}
-              sub={nextStatusWord}
-              icon="flag"
-              accent="#0ea5e9"
-              mark={
-                nextEv && circuitFor(nextEv.track) ? (
-                  <CircuitMap track={nextEv.track} className="h-full w-full" align="xMaxYMax" stroke="currentColor" strokeWidth={2} />
-                ) : undefined
-              }
-            />
+            {seasonOver ? (
+              /* the season is done, there is nothing to sign up for — show the
+                 driver's best result of the year instead */
+              <NumberTile
+                index={2}
+                compact
+                to={`/drivers/${myDriverId}`}
+                label="Best Finish"
+                value={myBestFinish ? `P${myBestFinish.position}` : "—"}
+                sub={myBestFinish?.track ? `at ${myBestFinish.track}` : "this season"}
+                icon="flag"
+                accent="#0ea5e9"
+                mark={
+                  myBestFinish?.track && circuitFor(myBestFinish.track) ? (
+                    <CircuitMap track={myBestFinish.track} className="h-full w-full" align="xMaxYMax" stroke="currentColor" strokeWidth={2} />
+                  ) : undefined
+                }
+              />
+            ) : (
+              <NumberTile
+                index={2}
+                compact
+                to={nextEv ? `/races?race=${nextEv.id}` : "/races"}
+                label="Next Race"
+                value={nextEv ? nextEv.track : "TBA"}
+                sub={nextStatusWord}
+                icon="flag"
+                accent="#0ea5e9"
+                mark={
+                  nextEv && circuitFor(nextEv.track) ? (
+                    <CircuitMap track={nextEv.track} className="h-full w-full" align="xMaxYMax" stroke="currentColor" strokeWidth={2} />
+                  ) : undefined
+                }
+              />
+            )}
             {/* 5 tiles never fill a 2- or 3-column grid evenly, so the last two
                 stretch to close the row instead of leaving a hole */}
             <NumberTile
@@ -906,8 +1189,8 @@ function DriversTable({ rows, leaderTotal }) {
             return (
               <tr
                 key={d.driverId}
-                className={`group border-b border-border last:border-0 transition hover:bg-surface2 ${
-                  isLeader ? "bg-brand/5" : ""
+                className={`group border-b border-border last:border-0 transition ${
+                  isLeader ? "row-gold" : "hover:bg-surface2"
                 }`}
               >
                 <td className="py-4 pl-5 text-center">
@@ -970,7 +1253,12 @@ function ConstructorTable({ rows }) {
           {rows.map((t) => {
             const pct = top > 0 ? Math.max(6, (t.total / top) * 100) : 0;
             return (
-              <tr key={t.teamId} className="group border-b border-border last:border-0 transition hover:bg-surface2">
+              <tr
+                key={t.teamId}
+                className={`group border-b border-border last:border-0 transition ${
+                  t.position === 1 ? "row-gold" : "hover:bg-surface2"
+                }`}
+              >
                 <td className="w-14 py-4 pl-5 text-center">
                   <Rank position={t.position} />
                 </td>

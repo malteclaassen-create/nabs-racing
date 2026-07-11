@@ -1,7 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { syncRaceToDiscord } from "../services/discordService.js";
-import { optionalUser, resolveDriverId } from "../middleware/auth.js";
+import { optionalUser, resolveDriverId, isAdminRequest } from "../middleware/auth.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 
 const router = Router();
@@ -9,9 +9,10 @@ const VALID = ["ACCEPTED", "DECLINED", "TENTATIVE"];
 
 // GET /api/events -> upcoming races (not completed) with RSVP lists.
 // Season-scoped (default: the active season) so events never mix seasons.
+// An admin may target a private season (site preview); the public can't.
 router.get("/", async (req, res, next) => {
   try {
-    const seasonId = await resolveSeasonId(prisma, req.query.season);
+    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: isAdminRequest(req) });
     const races = await prisma.race.findMany({
       where: { isCompleted: false, isSpecialEvent: false, seasonId },
       orderBy: { number: "asc" },

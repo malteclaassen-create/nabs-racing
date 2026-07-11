@@ -312,7 +312,11 @@ async function getRaceNumbers(prisma, seasonId) {
 }
 
 // DRIVER STANDINGS -----------------------------------------------------------
-export async function getDriverStandings(prisma, seasonId) {
+// `extraResults` lets a caller inject HYPOTHETICAL result rows (same shape as
+// RaceResult, raceId must belong to the season) on top of the stored ones —
+// the live championship projection runs the running race order through the
+// exact same scoring pipeline this way. Empty/omitted = plain stored standings.
+export async function getDriverStandings(prisma, seasonId, { extraResults = [] } = {}) {
   const [drivers, races, results, scoring, nameOverrides] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
@@ -324,7 +328,7 @@ export async function getDriverStandings(prisma, seasonId) {
 
   const raceNumberById = new Map(races.map((r) => [r.id, r.number]));
   const raceNumbers = races.map((r) => r.number);
-  const appliedResults = withPenaltiesApplied(results);
+  const appliedResults = withPenaltiesApplied(extraResults.length ? [...results, ...extraResults] : results);
 
   const rows = drivers.map((driver) => {
     const perRace = {}; // raceNumber -> { points, status, position }
@@ -393,7 +397,9 @@ export async function getDriverStandings(prisma, seasonId) {
 // because the drop rule needs each round's points traced to the driver who
 // scored them: a driver's own dropped rounds don't count for the team they
 // drove for in those rounds.
-async function getConstructorStandings(prisma, tier, seasonId) {
+// `extraResults` works exactly like in getDriverStandings (hypothetical rows
+// for the live projection); omitted = plain stored standings.
+async function getConstructorStandings(prisma, tier, seasonId, { extraResults = [] } = {}) {
   const [teams, drivers, races, results, scoring] = await Promise.all([
     // ALL season teams/drivers (not just this tier): resolving a result's
     // effective team & tier needs the full grid, reserves included.
@@ -411,7 +417,7 @@ async function getConstructorStandings(prisma, tier, seasonId) {
   // Group by round with each race's penalties applied; results of special
   // events (not in the number map) never score constructor points.
   const byRace = new Map();
-  for (const r of results) {
+  for (const r of extraResults.length ? [...results, ...extraResults] : results) {
     const num = raceNumberById.get(r.raceId);
     if (num == null) continue;
     if (!byRace.has(num)) byRace.set(num, []);
@@ -480,12 +486,12 @@ async function getConstructorStandings(prisma, tier, seasonId) {
   };
 }
 
-export function getT1ConstructorStandings(prisma, seasonId) {
-  return getConstructorStandings(prisma, 1, seasonId);
+export function getT1ConstructorStandings(prisma, seasonId, opts) {
+  return getConstructorStandings(prisma, 1, seasonId, opts);
 }
 
-export function getT2ConstructorStandings(prisma, seasonId) {
-  return getConstructorStandings(prisma, 2, seasonId);
+export function getT2ConstructorStandings(prisma, seasonId, opts) {
+  return getConstructorStandings(prisma, 2, seasonId, opts);
 }
 
 export { getRaceNumbers };

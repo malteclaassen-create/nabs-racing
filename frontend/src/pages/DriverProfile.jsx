@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import {
@@ -34,7 +34,20 @@ const I = {
   gauge: "M12 13l3.5-3.5M6.5 19a8 8 0 1111 0",
   alert: "M10.3 4.3l-7.4 12.8A1.5 1.5 0 004.2 19.4h15.6a1.5 1.5 0 001.3-2.3L13.7 4.3a1.5 1.5 0 00-2.6 0zM12 9v4M12 16.5h.01",
   spark: "M13 2L4.5 13H11l-1 9 8.5-11H12l1-9z",
+  medal: "M12 14a5 5 0 100-10 5 5 0 000 10zM8.5 12.5L7 21l5-2.2L17 21l-1.5-8.5",
+  stack: "M12 3l9 5-9 5-9-5 9-5zM3 13.5l9 5 9-5",
+  cross: "M12 21a9 9 0 100-18 9 9 0 000 18zM9 9l6 6M15 9l-6 6",
+  grid: "M4 4h16v16H4zM4 12h16M12 4v16",
+  stopwatch: "M12 13V9M9 2h6M19 6l-1.5 1.5M12 21a8 8 0 100-16 8 8 0 000 16z",
 };
+
+// Lap-time formatter for the fastest-lap tile (1:43.250).
+function fmtLapMs(ms) {
+  if (!ms || ms <= 0) return null;
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${m}:${String(s).padStart(2, "0")}.${String(ms % 1000).padStart(3, "0")}`;
+}
 function Icon({ name, className = "" }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -114,9 +127,11 @@ function statsFromRow(row) {
   };
 }
 
-function Stat({ icon, label, value, sub, accent, index = 0 }) {
+function Stat({ icon, label, value, sub, accent }) {
+  // -ml/-mt tuck each tile's top/left rule under its neighbour (or the frame),
+  // so any tile count renders with clean hairlines and no stray edges.
   return (
-    <div className="card shine p-4" style={{ "--i": index }}>
+    <div className="-ml-px -mt-px border-l border-t border-border bg-card p-4">
       <div className="flex items-center gap-2 text-light">
         <Icon name={icon} className="h-4 w-4" />
         <span className="font-mono text-[11px] font-semibold uppercase tracking-wider">{label}</span>
@@ -130,32 +145,80 @@ function Stat({ icon, label, value, sub, accent, index = 0 }) {
   );
 }
 
-// The six headline season stats. Shared by both layouts; `className` sets the
-// grid so the same tiles read as a wide strip (classic) or a compact block
-// packed in beside the rating card (card layout).
-function StatTiles({ stats, className = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" }) {
+// The headline season stats. The driver picks which tiles show on their own
+// profile (self-service on /profile); null = the classic six. Tiles whose data
+// simply doesn't exist for this season (telemetry on an archive season, no
+// fastest lap recorded) drop out on their own even when selected.
+const DEFAULT_TILES = ["wins", "podiums", "bestFinish", "avgFinish", "poles", "gained"];
+
+const TILE_DEFS = (stats) => [
+  { key: "wins", icon: "trophy", label: "Wins", value: stats.wins, sub: `${stats.winRate}% of starts`, accent: stats.wins ? MEDAL_TEXT[0] : undefined },
+  { key: "podiums", icon: "podium", label: "Podiums", value: stats.podiums, sub: `${stats.podiumRate}% of starts` },
+  { key: "bestFinish", icon: "flagChk", label: "Best Finish", value: stats.bestFinish ? `P${stats.bestFinish}` : "–", sub: `${stats.starts} starts` },
+  { key: "avgFinish", icon: "chart", label: "Avg Finish", value: stats.avgFinish != null ? `P${stats.avgFinish}` : "–", sub: `${stats.pointsFinishes} in the points` },
+  { key: "poles", icon: "flag", label: "Poles", value: stats.polePositions, sub: `best grid P${stats.bestGrid ?? "–"}` },
+  {
+    key: "gained", icon: "trend", label: "Places Gained",
+    value: stats.positionsGained > 0 ? `+${stats.positionsGained}` : stats.positionsGained,
+    sub: "start → finish",
+    accent: stats.positionsGained > 0 ? "#16a34a" : stats.positionsGained < 0 ? "#dc2626" : undefined,
+  },
+  { key: "top5", icon: "medal", label: "Top 5s", value: stats.top5, sub: `${stats.finishes} finishes` },
+  { key: "top10", icon: "stack", label: "Top 10s", value: stats.top10, sub: `${stats.finishes} finishes` },
+  { key: "pointsFinishes", icon: "spark", label: "In the Points", value: stats.pointsFinishes, sub: `of ${stats.starts} starts` },
+  {
+    key: "dnf", icon: "cross", label: "DNFs", value: stats.dnf,
+    sub: stats.dsq ? `plus ${stats.dsq} DSQ` : "retirements",
+    accent: stats.dnf === 0 ? "#16a34a" : undefined,
+  },
+  { key: "avgGrid", icon: "grid", label: "Avg Grid", value: stats.avgGrid != null ? `P${stats.avgGrid}` : "–", sub: "qualifying" },
+  {
+    key: "fastestLap", icon: "gauge", label: "Fastest Lap",
+    value: stats.fastestLap ? fmtLapMs(stats.fastestLap.bestLapMs) : "–",
+    sub: stats.fastestLap ? `${stats.fastestLap.track} · R${stats.fastestLap.number}` : "",
+    available: !!stats.fastestLap,
+  },
+  { key: "overtakes", icon: "swap", label: "Overtakes", value: stats.overtakes, sub: "on-track passes", available: stats.overtakes != null },
+  {
+    key: "contacts", icon: "alert", label: "Contacts", value: stats.contacts, sub: "car to car",
+    accent: stats.contacts === 0 ? "#16a34a" : undefined, available: stats.contacts != null,
+  },
+  {
+    key: "consistency", icon: "stopwatch", label: "Consistency",
+    value: stats.avgConsistencyMs != null ? `±${(stats.avgConsistencyMs / 1000).toFixed(2)}s` : "–",
+    sub: "clean-lap spread", available: stats.avgConsistencyMs != null,
+  },
+  {
+    key: "penalties", icon: "flagChk", label: "Penalty Time",
+    value: `${Math.round((stats.stewardPenaltySeconds || 0) + (stats.gamePenaltySeconds || 0))}s`,
+    sub: "steward + in-game",
+    accent: !(stats.stewardPenaltySeconds || stats.gamePenaltySeconds) ? "#16a34a" : undefined,
+  },
+];
+
+function StatTiles({ stats, visible, className = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" }) {
+  const picked = visible || DEFAULT_TILES;
+  const defs = TILE_DEFS(stats).filter((t) => picked.includes(t.key) && t.available !== false);
+  if (!defs.length) return null;
   return (
-    <div className={`cascade grid gap-3 ${className}`}>
-      <Stat index={0} icon="trophy" label="Wins" value={stats.wins} sub={`${stats.winRate}% of starts`} accent={stats.wins ? MEDAL_TEXT[0] : undefined} />
-      <Stat index={1} icon="podium" label="Podiums" value={stats.podiums} sub={`${stats.podiumRate}% of starts`} />
-      <Stat index={2} icon="flagChk" label="Best Finish" value={stats.bestFinish ? `P${stats.bestFinish}` : "–"} sub={`${stats.starts} starts`} />
-      <Stat index={3} icon="chart" label="Avg Finish" value={stats.avgFinish != null ? `P${stats.avgFinish}` : "–"} sub={`${stats.pointsFinishes} in the points`} />
-      <Stat index={4} icon="flag" label="Poles" value={stats.polePositions} sub={`best grid P${stats.bestGrid ?? "–"}`} />
-      <Stat index={5} icon="trend" label="Places Gained"
-        value={stats.positionsGained > 0 ? `+${stats.positionsGained}` : stats.positionsGained}
-        sub="start → finish"
-        accent={stats.positionsGained > 0 ? "#16a34a" : stats.positionsGained < 0 ? "#dc2626" : undefined} />
+    // One quiet framed block with hairline rules between the stats, instead of
+    // a loose grid of separate bordered cards.
+    <div className={`reveal grid overflow-hidden rounded-xl border border-border bg-card ${className}`}>
+      {defs.map((t) => (
+        <Stat key={t.key} icon={t.icon} label={t.label} value={t.value} sub={t.sub} accent={t.accent} />
+      ))}
     </div>
   );
 }
 
-// Cross-season career: one row per linked season, current name resolved. Only
-// rendered when the driver is linked to more than one season.
+// Cross-season career: one row per linked season, current name resolved. The
+// backend folds two rows of the SAME season (handle change mid-season) into a
+// single line, so this renders whenever there's anything aggregated at all.
 function CareerBlock({ career }) {
-  if (!career || (career.seasons?.length ?? 0) < 2) return null;
+  if (!career || (career.seasons?.length ?? 0) < 1) return null;
   const { seasons, totals } = career;
   return (
-    <div className="card overflow-hidden">
+    <div className="reveal card overflow-hidden">
       <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:px-6 sm:text-xl">
         Career across seasons
       </h2>
@@ -202,7 +265,7 @@ function CareerBlock({ career }) {
           </tbody>
           <tfoot>
             <tr className="border-t border-border font-mono text-[11px] uppercase tracking-wider text-light">
-              <td className="px-5 py-2.5">{totals.seasons} seasons</td>
+              <td className="px-5 py-2.5">{totals.seasons} {totals.seasons === 1 ? "season" : "seasons"}</td>
               <td className="px-2 py-2.5" />
               <td className="px-2 py-2.5" />
               <td className="px-2 py-2.5 text-center tabular-nums text-medium">{totals.starts}</td>
@@ -223,11 +286,12 @@ function RatingBreakdown({ rating, stats, color }) {
   const g = rating.ratings;
   const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const dnf = Math.max(0, (rating.starts ?? 0) - (rating.finishes ?? 0));
+  // `k` is the backend key (aha stays aha); `code` is the displayed shorthand.
   const rows = [
-    { k: "exp", label: "Experience", note: plural(rating.starts ?? 0, "start") },
-    { k: "rac", label: "Racecraft", note: `${plural(rating.wins ?? 0, "win")} · ${plural(rating.podiums ?? 0, "podium")}` },
-    { k: "aha", label: "Awareness", note: `${plural(rating.contacts ?? 0, "contact")} · ${plural(dnf, "DNF")}` },
-    { k: "pac", label: "Pace", note: stats?.bestGrid ? `best grid P${stats.bestGrid}` : stats?.avgGrid != null ? `avg grid P${stats.avgGrid}` : "—" },
+    { k: "exp", code: "EXP", label: "Experience", note: plural(rating.starts ?? 0, "start") },
+    { k: "rac", code: "RAC", label: "Racecraft", note: `${plural(rating.wins ?? 0, "win")} · ${plural(rating.podiums ?? 0, "podium")}` },
+    { k: "aha", code: "AWA", label: "Awareness", note: `${plural(rating.contacts ?? 0, "contact")} · ${plural(dnf, "DNF")}` },
+    { k: "pac", code: "PAC", label: "Pace", note: stats?.bestGrid ? `best grid P${stats.bestGrid}` : stats?.avgGrid != null ? `avg grid P${stats.avgGrid}` : "—" },
   ];
   return (
     <div className="card p-5 sm:p-6">
@@ -240,7 +304,7 @@ function RatingBreakdown({ rating, stats, color }) {
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">
                 {r.label}
-                <span className="ml-1.5 font-mono text-[10px] font-semibold text-light">{r.k.toUpperCase()}</span>
+                <span className="ml-1.5 font-mono text-[10px] font-semibold text-light">{r.code}</span>
               </span>
               <span className="font-display text-xl font-black tabular-nums" style={{ color }}>{g[r.k]}</span>
             </div>
@@ -475,7 +539,7 @@ function HeadToHead({ me, meRow, standings }) {
   ];
 
   return (
-    <div className="card overflow-hidden">
+    <div className="reveal card overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
         <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Head to Head</h2>
         <select value={opp.driverId} onChange={(e) => setOppId(e.target.value)}
@@ -555,7 +619,7 @@ function TeamPanel({ driver, standings }) {
     .sort((a, b) => a.position - b.position);
   const c = driver.team.color;
   return (
-    <div className="card overflow-hidden">
+    <div className="reveal card overflow-hidden">
       <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Team</h2>
       <div className="relative overflow-hidden p-5">
         <div className="absolute inset-0 opacity-[0.1]" style={{ background: `radial-gradient(circle at 85% 0%, ${c}, transparent 60%)` }} />
@@ -644,17 +708,36 @@ function ClassicHero({ driver, championship, color }) {
 // championship standing and the six headline stats are packed in beside it on a
 // light panel that echoes the card's team-colour frame and fills its full
 // height, so nothing reads as empty. No dark hero, no rating breakdown.
-function CardHeader({ driver, rating, championship, color, stats }) {
+function CardHeader({ driver, rating, championship, color, stats, allTime, career }) {
+  // Season ⇄ All-time switch for the headline numbers. Only offered when the
+  // driver actually spans several seasons (allTime comes with the career).
+  const [scope, setScope] = useState("season");
+  const showAll = !!allTime && scope === "all";
+  const shown = showAll ? allTime : stats;
+  const scopeBtn = (key, label) => (
+    <button
+      type="button"
+      onClick={() => setScope(key)}
+      className={`rounded-md px-2.5 py-1 text-xs font-bold transition ${
+        (key === "all") === showAll ? "bg-brand text-ink" : "text-light hover:text-dark"
+      }`}
+    >
+      {label}
+    </button>
+  );
   return (
-    <div className="card relative overflow-hidden p-5 sm:p-6">
+    <div className="reveal card relative overflow-hidden p-5 sm:p-6">
       {/* team-colour top strip + faint wash tie the panel to the card frame */}
       <span className="absolute inset-x-0 top-0 h-1.5" style={{ backgroundColor: color }} />
       <div className="pointer-events-none absolute inset-0 opacity-[0.07]"
         style={{ background: `radial-gradient(130% 120% at 6% 0%, ${color}, transparent 55%)` }} />
 
       <div className="relative grid gap-6 lg:grid-cols-[auto_1fr] lg:items-stretch">
-        {/* rating card */}
-        <div className="flex justify-center">
+        {/* rating card — vertically CENTRED, never stretched: when the info
+            column grows taller than the card (all-time toggle, many tiles),
+            the card keeps its own height and floats mid-row with equal space
+            above and below, instead of its frame stretching down. */}
+        <div className="flex items-center justify-center">
           {rating ? (
             <RatingCard driver={driver} rating={rating} />
           ) : (
@@ -662,57 +745,103 @@ function CardHeader({ driver, rating, championship, color, stats }) {
           )}
         </div>
 
-        {/* identity + championship + stats fill the height beside the card */}
+        {/* identity (left) + championship scoreboard (top right) + stats */}
         <div className="flex min-w-0 flex-col">
-          <div className="text-center lg:text-left">
-            <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
-              <h1 className="font-display text-4xl font-black uppercase tracking-tight text-dark sm:text-5xl">{driver.name}</h1>
-              <Flag code={countryFor(driver.id, driver.country)} w={30} h={22} />
-              <TierBadge tier={driver.tier} />
-            </div>
-            <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2 text-light lg:justify-start">
-              <Link to={`/teams/${driver.team.id}`} className="group flex items-center gap-2">
-                <TeamLogo id={driver.team.id} name={driver.team.name} color={color} logoUrl={driver.team.logoUrl} size={22} />
-                <span className="font-display text-base font-bold uppercase tracking-tight text-medium transition group-hover:text-dark">{driver.team.name}</span>
-              </Link>
-              <span className="text-faint">·</span>
-              <span className="text-sm">{driver.discordName}</span>
-            </div>
-            {driver.formerName && (
-              <div className="mt-1.5 font-mono text-[11px] uppercase tracking-wider text-light">
-                raced as {driver.formerName}
+          <div className="flex items-start justify-between gap-6">
+            <div className="min-w-0 flex-1 text-center lg:text-left">
+              <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+                <h1 className="font-display text-4xl font-black uppercase tracking-tight text-dark sm:text-5xl">{driver.name}</h1>
+                <Flag code={countryFor(driver.id, driver.country)} w={30} h={22} />
+                <TierBadge tier={driver.tier} />
               </div>
-            )}
-            <SocialLinks links={driver.socials} baseClass="text-light" className="mt-3.5 justify-center lg:justify-start" />
-          </div>
+              <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2 text-light lg:justify-start">
+                <Link to={`/teams/${driver.team.id}`} className="group flex items-center gap-2">
+                  <TeamLogo id={driver.team.id} name={driver.team.name} color={color} logoUrl={driver.team.logoUrl} size={22} />
+                  <span className="font-display text-base font-bold uppercase tracking-tight text-medium transition group-hover:text-dark">{driver.team.name}</span>
+                </Link>
+                <span className="text-faint">·</span>
+                <span className="text-sm">{driver.discordName}</span>
+              </div>
+              {driver.formerName && (
+                <div className="mt-1.5 font-mono text-[11px] uppercase tracking-wider text-light">
+                  raced as {driver.formerName}
+                </div>
+              )}
+              {/* The driver's own "about me" line fills the panel with a bit of
+                  personality — especially when they've hidden some stat tiles. */}
+              {driver.bio && (
+                <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-medium lg:mx-0">{driver.bio}</p>
+              )}
+              <SocialLinks links={driver.socials} baseClass="text-light" className="mt-3.5 justify-center lg:justify-start" />
+            </div>
 
-          {/* championship standing */}
-          <div className="mt-5 flex items-center justify-center gap-5 rounded-xl bg-surface2/70 px-4 py-3 lg:justify-start lg:gap-8">
-            <div className="text-center lg:text-left">
-              <div className="font-display text-4xl font-black leading-none tabular-nums text-dark sm:text-5xl">
-                <CountUp end={championship.position} prefix="P" />
+            {/* championship (or career) scoreboard fills the former dead corner (lg+) */}
+            <div className="hidden shrink-0 flex-col items-end border-l border-border pl-6 text-right lg:flex">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+                {showAll ? "Career" : "Championship"}
               </div>
-              <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">of {championship.fieldSize}</div>
-            </div>
-            <div className="h-11 w-px bg-border" />
-            <div className="text-center lg:text-left">
-              <div className="font-display text-4xl font-black leading-none tabular-nums sm:text-5xl" style={{ color }}>
-                <CountUp end={championship.points} />
+              <div className="mt-1.5 font-display text-5xl font-black leading-none tabular-nums text-dark">
+                {showAll ? <CountUp end={career.totals.seasons} /> : <CountUp end={championship.position} prefix="P" />}
+              </div>
+              <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+                {showAll ? (career.totals.seasons === 1 ? "season" : "seasons") : `of ${championship.fieldSize}`}
+              </div>
+              <div className="mt-3 font-display text-3xl font-black leading-none tabular-nums" style={{ color }}>
+                <CountUp end={showAll ? career.totals.points : championship.points} />
               </div>
               <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">points</div>
             </div>
           </div>
 
-          {/* headline stats — bottom-anchored so they fill the space beside the card */}
-          <StatTiles stats={stats} className="mt-5 grid-cols-2 sm:grid-cols-3 lg:mt-auto lg:pt-5" />
+          {/* championship strip for phones (the scoreboard above is lg+) */}
+          <div className="mt-5 flex items-center justify-center gap-5 rounded-xl bg-surface2/70 px-4 py-3 lg:hidden">
+            <div className="text-center">
+              <div className="font-display text-4xl font-black leading-none tabular-nums text-dark sm:text-5xl">
+                {showAll ? <CountUp end={career.totals.seasons} /> : <CountUp end={championship.position} prefix="P" />}
+              </div>
+              <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+                {showAll ? (career.totals.seasons === 1 ? "season" : "seasons") : `of ${championship.fieldSize}`}
+              </div>
+            </div>
+            <div className="h-11 w-px bg-border" />
+            <div className="text-center">
+              <div className="font-display text-4xl font-black leading-none tabular-nums sm:text-5xl" style={{ color }}>
+                <CountUp end={showAll ? career.totals.points : championship.points} />
+              </div>
+              <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">points</div>
+            </div>
+          </div>
+
+          {/* headline stats — bottom-anchored so they fill the space beside the
+              card. Linked multi-season drivers get the Season ⇄ All-time switch. */}
+          <div className="mt-5 lg:mt-auto lg:pt-5">
+            {allTime && (
+              <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                  {showAll ? `All-time · ${career.totals.seasons} seasons` : "This season"}
+                </span>
+                <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
+                  {scopeBtn("season", "Season")}
+                  {scopeBtn("all", "All-time")}
+                </div>
+              </div>
+            )}
+            <StatTiles stats={shown} visible={driver.profileTiles} className="grid-cols-2 sm:grid-cols-3" />
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-export default function DriverProfile() {
-  const { id } = useParams();
+// `previewId` + `preview` turn the page into the LIVE PREVIEW embedded on the
+// private /profile editor: the id comes from the prop instead of the route,
+// and `preview` (unsaved edits: name, bio, tiles, photo framing, …) overlays
+// the fetched driver, so the page shows what the edits WOULD look like.
+export default function DriverProfile({ previewId, preview }) {
+  const { id: routeId } = useParams();
+  const id = previewId || routeId;
+  const navigate = useNavigate();
   const { data, loading, error } = useApi(
     useCallback(() => Promise.all([api.driverProfile(id), api.driverRating(id)]), [id])
   );
@@ -733,7 +862,9 @@ export default function DriverProfile() {
   // The driver's OWN season standings (sent with the profile), so a driver
   // opened from an archived season still resolves against the right field.
   const standingsData = p.season;
-  const { driver, championship, stats, perRace } = p;
+  const { championship, stats, perRace } = p;
+  // Preview mode: unsaved profile edits overlay the stored driver fields.
+  const driver = preview ? { ...p.driver, ...preview } : p.driver;
   const color = driver.team.color;
   const meRow = standingsData.standings.find((s) => s.driverId === driver.id);
   // Rounds dropped from this driver's total (the season's drop rule).
@@ -760,12 +891,20 @@ export default function DriverProfile() {
               </div>
             </div>
           )}
-          <StatTiles stats={stats} />
+          <StatTiles stats={stats} visible={driver.profileTiles} />
         </>
       ) : (
         /* Card-led top: rating card is the centrepiece; identity, championship
            and the headline stats fill the space beside it (no dark hero, no breakdown) */
-        <CardHeader driver={driver} rating={rating} championship={championship} color={color} stats={stats} />
+        <CardHeader
+          driver={driver}
+          rating={rating}
+          championship={championship}
+          color={color}
+          stats={stats}
+          allTime={p.allTime}
+          career={p.career}
+        />
       )}
 
       {/* The per-season AC telemetry (overtakes, consistency, contacts,
@@ -774,7 +913,7 @@ export default function DriverProfile() {
 
       {/* Season form + Head to head */}
       <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">
-        <div className="card flex flex-col overflow-hidden lg:col-span-2">
+        <div className="reveal card flex flex-col overflow-hidden lg:col-span-2">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-5 py-4 sm:px-6">
             <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Season Form</h2>
             <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">finishing position by round</span>
@@ -801,7 +940,7 @@ export default function DriverProfile() {
 
       {/* Race by race + Team */}
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="card overflow-hidden lg:col-span-2">
+        <div className="reveal card overflow-hidden lg:col-span-2">
           <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:px-6 sm:text-xl">Race by Race</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -815,23 +954,32 @@ export default function DriverProfile() {
                   <th className="hidden px-5 py-2.5 text-right sm:table-cell">+/−</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
-                {perRace.map((r) => {
+              {/* cascade: rounds deal in one after another, like the standings rows */}
+              <tbody className="cascade divide-y divide-border">
+                {perRace.map((r, i) => {
                   const finished = r.status === "FINISHED" && r.position != null;
                   const medal = finished && r.position <= 3 ? MEDAL[r.position - 1] : null;
                   const delta = finished && r.grid != null ? r.grid - r.position : null;
                   const dropped = droppedRounds.has(r.number);
+                  const raceHref = r.raceId
+                    ? `/races?race=${r.raceId}${driver.seasonNumber != null ? `&season=${driver.seasonNumber}` : ""}`
+                    : null;
                   return (
                     <tr
                       key={r.number}
-                      title={dropped ? "Dropped: one of the lowest-scoring rounds, not counted toward the total" : undefined}
-                      className="transition hover:bg-surface2"
+                      style={{ "--i": Math.min(i, 16) }}
+                      title={dropped ? "Dropped: one of the lowest-scoring rounds, not counted toward the total" : raceHref ? "Open this race" : undefined}
+                      onClick={raceHref ? () => navigate(raceHref) : undefined}
+                      onKeyDown={raceHref ? (e) => { if (e.key === "Enter") navigate(raceHref); } : undefined}
+                      tabIndex={raceHref ? 0 : undefined}
+                      role={raceHref ? "link" : undefined}
+                      className={`group transition hover:bg-surface2 ${raceHref ? "cursor-pointer" : ""}`}
                     >
                       <td className="px-5 py-3 font-mono font-bold tabular-nums text-light">{r.number}</td>
                       <td className="px-2 py-3">
                         <div className="flex items-center gap-2.5">
                           <Flag code={circuitFor(r.track)?.country} w={22} h={16} />
-                          <span className="font-display font-bold uppercase tracking-tight text-dark">{r.track}</span>
+                          <span className="font-display font-bold uppercase tracking-tight text-dark transition group-hover:text-brand">{r.track}</span>
                         </div>
                       </td>
                       <td className="px-2 py-3 text-center font-mono tabular-nums text-medium">{r.grid ? `P${r.grid}` : "–"}</td>

@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useSeason } from "../context/SeasonContext.jsx";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton, Skeleton } from "../components/ui.jsx";
 import { useTilt } from "../hooks/motion.js";
 import StandingsTable from "../components/StandingsTable.jsx";
@@ -13,14 +14,17 @@ function completedRounds(data) {
 }
 
 // One tier shown as a unit: championship table, progression chart and the
-// line-ups of every team in that tier.
-function TierBlock({ id, tier, standings, teams, title }) {
+// line-ups of every team in that tier. `championTeamId` (set once the season
+// is decided) puts the golden champion treatment on that team.
+function TierBlock({ id, tier, standings, teams, title, championTeamId }) {
   const rows = standings.standings;
   const done = completedRounds(standings);
   const lastRound = done[done.length - 1];
 
   return (
     <section id={id} className="reveal scroll-mt-28 space-y-6">
+      {/* No "Champions" pill up here — the gold first row of the table and the
+          champion team card below already say it. */}
       <SectionHeading
         eyebrow="Constructors' Championship"
         title={title || `Tier ${tier}`}
@@ -39,7 +43,7 @@ function TierBlock({ id, tier, standings, teams, title }) {
         <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Line-ups</h3>
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {teams.map((team, i) => (
-            <TeamCard key={team.id} team={team} index={i} />
+            <TeamCard key={team.id} team={team} index={i} champion={team.id === championTeamId} />
           ))}
         </div>
       </div>
@@ -47,10 +51,16 @@ function TierBlock({ id, tier, standings, teams, title }) {
   );
 }
 
-function TeamCard({ team, index = 0 }) {
+function TeamCard({ team, index = 0, champion = false }) {
   const tiltRef = useTilt({ max: 5, lift: 5 });
   return (
-    <div ref={tiltRef} className="card shine tilt group overflow-hidden hover:shadow-xl" style={{ "--i": index }}>
+    // Wrapper takes the cascade entrance so its filled keyframe can't pin the
+    // card's transform — that's what kept the tilt from easing in smoothly.
+    <div style={{ "--i": index }}>
+    <div
+      ref={tiltRef}
+      className={`card shine tilt group relative h-full overflow-hidden hover:shadow-xl ${champion ? "champion-gold" : ""}`}
+    >
       <div className="h-1.5 w-full" style={{ backgroundColor: team.color }} />
       <div className="p-5">
         <Link to={`/teams/${team.id}`} className="flex items-center gap-3">
@@ -58,6 +68,11 @@ function TeamCard({ team, index = 0 }) {
           <h4 className="font-display text-base font-extrabold uppercase tracking-tight text-dark transition group-hover:text-brand sm:text-lg">
             {team.name}
           </h4>
+          {champion && (
+            <span className="ml-auto shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--medal-1)" }}>
+              Champions
+            </span>
+          )}
         </Link>
         <ul className="mt-4 space-y-1">
           {team.drivers.map((d) => (
@@ -74,6 +89,7 @@ function TeamCard({ team, index = 0 }) {
           {team.drivers.length === 0 && <li className="px-2 text-sm text-light">No drivers assigned.</li>}
         </ul>
       </div>
+    </div>
     </div>
   );
 }
@@ -99,6 +115,8 @@ export default function Constructors() {
   const t1 = useApi(useCallback(() => api.t1Standings(), []));
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const teams = useApi(useCallback(() => api.teams(), []));
+  const races = useApi(useCallback(() => api.races(), []));
+  const { current: season, active } = useSeason();
 
   if (t1.loading || t2.loading || teams.loading)
     return (
@@ -119,6 +137,12 @@ export default function Constructors() {
   // Single-class seasons (archived S1–S5) have no Tier 2 at all: hide the split
   // and the jump pills, and title the one block plainly "Constructors".
   const hasT2 = t2.data.standings.length > 0 || t2Teams.length > 0;
+  // The title is decided: archived season, or the live one with every round in.
+  const champRounds = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
+  const seasonDecided =
+    (!!season && !!active && season.number < active.number) ||
+    (champRounds.length > 0 && champRounds.every((r) => r.isCompleted));
+  const champId = (data) => (seasonDecided && (data.standings[0]?.total ?? 0) > 0 ? data.standings[0].teamId : null);
 
   return (
     <div className="content-in space-y-16">
@@ -133,8 +157,8 @@ export default function Constructors() {
         {hasT2 && <TierJump className="-mt-2 flex sm:hidden" />}
       </div>
 
-      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} title={hasT2 ? undefined : "Constructors"} />
-      {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} />}
+      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1.data)} />
+      {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} championTeamId={champId(t2.data)} />}
     </div>
   );
 }

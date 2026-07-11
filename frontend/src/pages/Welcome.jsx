@@ -170,13 +170,16 @@ export default function Welcome() {
   const eraSeason = hasRunThisSeason ? season : prevSeason || season;
   const { era, platform } = seasonGameParts(eraSeason);
   const carsLabel = era || "Formula 1";
-  // League-wide facts. Seasons are numbered from 1, so the RUNNING season's
-  // number is how many seasons NABS has raced. Counting the highest number
-  // instead would inflate this as soon as the next season is created in the
-  // admin (a not-yet-started "Season 8" isn't a raced season).
+  // League-wide facts. Seasons are numbered from 1, so the highest PUBLIC
+  // season number is how many seasons NABS spans — once the next season is
+  // published (visible in the switcher, races scheduled), the landing page
+  // counts it too instead of lagging one behind. Private drafts stay out.
+  // The RUNNING season's number still marks the timeline (later ones = "next").
   const activeNumber =
     seasons.find((s) => s.isActive)?.number ?? seasons.reduce((max, s) => Math.max(max, s.number), 0);
-  const seasonCount = activeNumber;
+  const seasonCount = seasons
+    .filter((s) => s.isPublic !== false)
+    .reduce((max, s) => Math.max(max, s.number), 0);
   const timeline = [...seasons].sort((a, b) => a.number - b.number);
   const dropWorst = drivers.data?.dropWorst ?? season?.dropWorst ?? 3;
   const counted = dropWorst > 0 && totalRounds > dropWorst ? totalRounds - dropWorst : null;

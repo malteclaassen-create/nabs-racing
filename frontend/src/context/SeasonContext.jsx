@@ -21,7 +21,10 @@ export function SeasonProvider({ children }) {
         .then((list) => {
           setSeasons(list);
           setSeason((cur) => {
-            if (cur != null) return cur;
+            // Keep the current pick only while it's still in the list: an admin
+            // who logs out while viewing a PRIVATE season loses access to it,
+            // so snap back to the active season instead of an empty site.
+            if (cur != null && list.some((s) => s.number === cur)) return cur;
             const active = list.find((s) => s.isActive) || list[0];
             return active ? active.number : null;
           });

@@ -114,7 +114,9 @@ export default function AdminPersons() {
           <p className="text-sm text-light">
             Link the season entries of one person, so their profile shows a combined career and old seasons display the
             current name with a &ldquo;raced as&rdquo; note. Identical names are linked automatically with the button
-            below; only people who changed their handle need the manual search.
+            below; only people who changed their handle need the manual search. Two entries from the <em>same</em> season
+            (say, a stint as a reserve and a later seat under a new handle) can be linked too and count as one season in
+            the career.
           </p>
 
           {msg && <ErrorBox message={msg} />}

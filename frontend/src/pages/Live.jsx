@@ -6,6 +6,7 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { seasonGameParts } from "../utils/seasonGame.js";
 import { PageHeader, SectionHeading } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
+import TeamLogo from "../components/TeamLogo.jsx";
 import {
   makeDriverMatcher,
   formatLap,
@@ -366,6 +367,193 @@ function Row({ e, match, index = 0 }) {
   );
 }
 
+/* ===== Championship projection ("if it ends like this") =================== */
+
+// Position movement vs. the current table: green up-triangle, red down, quiet
+// dot for no change.
+function MoveArrow({ move }) {
+  if (!move) return <span className="font-mono text-sm text-faint">·</span>;
+  const up = move > 0;
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 font-mono text-xs font-bold tabular-nums ${
+        up ? "text-emerald-600" : "text-red-500"
+      }`}
+      title={up ? `Up ${move} vs. current standings` : `Down ${-move} vs. current standings`}
+    >
+      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
+        {up ? <path d="M12 5l7 11H5z" /> : <path d="M12 19L5 8h14z" />}
+      </svg>
+      {Math.abs(move)}
+    </span>
+  );
+}
+
+// One tier's compact constructor projection card.
+function TeamProjection({ title, rows }) {
+  if (!rows || rows.length === 0) return null;
+  return (
+    <div className="card overflow-hidden">
+      <div className="border-b border-border px-5 py-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+        {title}
+      </div>
+      <table className="w-full">
+        <tbody>
+          {rows.map((t) => (
+            <tr key={t.teamId} className={`border-b border-border last:border-0 ${t.position === 1 ? "row-gold" : ""}`}>
+              <td className="w-12 py-3 pl-5 text-center font-display text-base font-black tabular-nums text-medium">
+                {t.position}
+              </td>
+              <td className="w-10 py-3 text-center">
+                <MoveArrow move={t.move} />
+              </td>
+              <td className="py-3">
+                <TeamLogo
+                  id={t.teamId}
+                  name={t.name}
+                  color={t.color}
+                  logoUrl={t.logoUrl}
+                  size={22}
+                  showName
+                  nameClassName="truncate text-sm font-bold uppercase tracking-tight text-dark"
+                />
+              </td>
+              <td className="py-3 pr-5 text-right">
+                <span className="font-mono text-base font-bold tabular-nums text-dark">{t.total}</span>
+                {t.gained > 0 && (
+                  <span className="ml-2 font-mono text-xs font-bold tabular-nums text-emerald-600">+{t.gained}</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// The championship "as if the race ended right now": driver table with live
+// race position and movement, plus the two constructor tiers. Data comes from
+// /api/live/championship, which only activates during a league race (calendar
+// cross-checked server-side) — this section simply isn't there otherwise.
+function ChampionshipProjection({ data }) {
+  const [showAll, setShowAll] = useState(false);
+  const LIMIT = 12;
+  // Keep the table to competitors who matter for the title picture: everyone
+  // in the running race plus anyone who already has points on the board.
+  const rows = data.drivers.filter((d) => d.livePosition != null || d.dnf || d.total > 0 || d.currentTotal > 0);
+  const shown = showAll ? rows : rows.slice(0, LIMIT);
+  return (
+    <section className="reveal space-y-4">
+      <SectionHeading
+        eyebrow={`Round ${data.race.number} · ${data.race.track}`}
+        title="Championship, If It Ends Like This"
+        right={
+          <span className="flex items-center gap-2">
+            {data.simulated && <span className="pill bg-amber-500/15 text-amber-600">Demo</span>}
+            <span className="inline-flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-eyebrow">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand" />
+              </span>
+              Projection
+            </span>
+          </span>
+        }
+      />
+      <div className="card overflow-hidden">
+        <div className="scrollbar-slim overflow-x-auto">
+          <table className="w-full min-w-[520px]">
+            <thead>
+              <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">
+                <th className="w-14 py-3 pl-5 text-center">Pos</th>
+                <th className="w-12 py-3 text-center"></th>
+                <th className="py-3 pl-1">Driver</th>
+                <th className="py-3 pr-4 text-center">Race</th>
+                <th className="py-3 pr-5 text-right">Pts</th>
+              </tr>
+            </thead>
+            <tbody className="cascade">
+              {shown.map((d, i) => (
+                <tr
+                  key={d.driverId}
+                  style={{ "--i": Math.min(i, 16) }}
+                  className={`border-b border-border last:border-0 transition ${
+                    d.position === 1 ? "row-gold" : "hover:bg-surface2"
+                  }`}
+                >
+                  <td className="py-3 pl-5 pr-2 text-center">
+                    <span
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums ${
+                        d.position === 1 ? "bg-brand text-ink" : "text-medium"
+                      }`}
+                    >
+                      {d.position}
+                    </span>
+                  </td>
+                  <td className="py-3 text-center">
+                    <MoveArrow move={d.move} />
+                  </td>
+                  <td className="py-3 pl-1 pr-3">
+                    <div className="flex items-center gap-3">
+                      <span className="h-8 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: d.team.color }} />
+                      {d.country ? <Flag code={d.country} /> : <span className="h-[15px] w-5 shrink-0" />}
+                      <span className="min-w-0">
+                        <span className="block truncate font-display text-base font-bold uppercase tracking-tight text-dark">
+                          {d.name}
+                        </span>
+                        <span className="block truncate text-xs text-light">{d.team.name}</span>
+                      </span>
+                    </div>
+                  </td>
+                  <td className="py-3 pr-4 text-center">
+                    {d.livePosition != null ? (
+                      <span className="pill bg-surface2 font-mono text-medium">P{d.livePosition}</span>
+                    ) : d.dnf ? (
+                      <span className="pill bg-red-500/10 font-mono text-red-500">DNF</span>
+                    ) : (
+                      <span className="font-mono text-xs text-faint">—</span>
+                    )}
+                  </td>
+                  <td className="py-3 pr-5 text-right">
+                    <span className="font-mono text-base font-bold tabular-nums text-dark sm:text-lg">{d.total}</span>
+                    {d.gained > 0 && (
+                      <span className="ml-2 font-mono text-xs font-bold tabular-nums text-emerald-600">+{d.gained}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {rows.length > LIMIT && (
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            className="flex w-full items-center justify-center gap-1.5 border-t border-border py-3 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2"
+          >
+            {showAll ? "Show top 12" : `Show all ${rows.length} drivers`}
+            <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition-transform ${showAll ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <TeamProjection title={data.t2?.length ? "Constructors · Tier 1" : "Constructors"} rows={data.t1} />
+        <TeamProjection title="Constructors · Tier 2" rows={data.t2} />
+      </div>
+
+      <p className="px-1 font-mono text-[11px] uppercase tracking-wider text-light">
+        A projection, not a result: it assumes the race finishes in the current running order, with drop
+        scores applied. Time penalties and stewarding are not included. The official tables update once the
+        result is posted.
+      </p>
+    </section>
+  );
+}
+
 const COLS = [
   { label: "Pos", cls: "w-14 py-3 pl-5 text-center" },
   { label: "Driver", cls: "py-3 pl-1" },
@@ -395,6 +583,26 @@ export default function Live() {
   const onTrack = entries.filter((e) => e.onTrack);
   const receivedAt = useMemo(() => Date.now(), [board?.updatedAt]);
 
+  // Championship projection: polled (the standings only move when the race
+  // order does, so ~20s is plenty). { active: false } or any error hides the
+  // section entirely. `?demo=1` asks the backend for the admin-only simulation.
+  const [champ, setChamp] = useState(null);
+  useEffect(() => {
+    const demo = new URLSearchParams(window.location.search).has("demo");
+    let alive = true;
+    const load = () =>
+      api
+        .liveChampionship(demo)
+        .then((d) => alive && setChamp(d))
+        .catch(() => alive && setChamp(null));
+    load();
+    const t = setInterval(load, 20000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
+
   // Mobile: keep the classification to a single screenful, expandable on tap.
   const narrow = useIsNarrow();
   const [showAllTimes, setShowAllTimes] = useState(false);
@@ -421,6 +629,9 @@ export default function Live() {
       ) : (
         <div className="content-in space-y-8">
           <SessionHeader session={session} receivedAt={receivedAt} />
+
+          {/* ===== Championship projection (league race days only) ===== */}
+          {champ?.active && <ChampionshipProjection data={champ} />}
 
           {/* ===== On track now — live current lap, separate from the table ===== */}
           {onTrack.length > 0 && (

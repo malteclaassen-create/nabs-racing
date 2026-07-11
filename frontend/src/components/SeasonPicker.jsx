@@ -20,9 +20,20 @@ function LiveDot({ className = "" }) {
   );
 }
 
+// Padlock marking a private (unpublished) season. Only admins ever get those in
+// their season list, so whoever sees this icon is previewing hidden data.
+function LockIcon({ className = "h-3 w-3" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
+      <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+    </svg>
+  );
+}
+
 // `compact` renders a tighter pill for the NavBar: no "· Live/Complete" status
-// text (the pulsing dot still marks a live season) and nothing at all when
-// there's only one season to show, since a switcher would be pointless there.
+// text and no pulsing live dot, and nothing at all when there's only one season
+// to show, since a switcher would be pointless there.
 // `onPick` lets a host (the mobile nav menu) react to a season being chosen.
 export default function SeasonPicker({ compact = false, onPick }) {
   const { seasons, season, setSeason, current, active } = useSeason();
@@ -42,12 +53,13 @@ export default function SeasonPicker({ compact = false, onPick }) {
   }, [open]);
 
   const isPast = current && active && current.number < active.number;
+  const isPrivate = current && current.isPublic === false;
   const label = current ? nameOf(current) : "Season";
 
-  // Private (unpublished) seasons never appear in the PUBLIC switcher, even when
-  // an admin is logged in (the season context carries them so the admin season
-  // bar can still reach them, but the public control must not offer them).
-  const visible = (seasons || []).filter((s) => s.isPublic !== false);
+  // The backend only includes private (unpublished) seasons for a signed-in
+  // admin, so this list is already correct per viewer: the public never gets
+  // them, an admin sees them here marked with a padlock (site preview).
+  const visible = seasons || [];
 
   // Just a status word when there's nothing to switch between.
   if (visible.length <= 1) {
@@ -81,10 +93,16 @@ export default function SeasonPicker({ compact = false, onPick }) {
         }`}
         title="Switch season"
       >
-        {!isPast && <LiveDot />}
+        {isPrivate ? (
+          <LockIcon className="h-3 w-3 shrink-0 text-amber-600" />
+        ) : (
+          !isPast && !compact && <LiveDot />
+        )}
         <span>{label}</span>
         {!compact && (
-          <span className={isPast ? "text-emerald-600" : "text-eyebrow"}>· {isPast ? "Complete" : "Live"}</span>
+          <span className={isPrivate ? "text-amber-600" : isPast ? "text-emerald-600" : "text-eyebrow"}>
+            · {isPrivate ? "Private" : isPast ? "Complete" : "Live"}
+          </span>
         )}
         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/20 text-eyebrow transition group-hover:bg-accent/30">
           <svg
@@ -113,6 +131,7 @@ export default function SeasonPicker({ compact = false, onPick }) {
           {byNewest.map((s) => {
             const viewing = s.number === season;
             const past = active && s.number < active.number;
+            const priv = s.isPublic === false;
             return (
               <button
                 key={s.id}
@@ -134,9 +153,15 @@ export default function SeasonPicker({ compact = false, onPick }) {
                   <span className="flex items-center gap-1.5">
                     <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{nameOf(s)}</span>
                     {s.isActive && <LiveDot />}
+                    {priv && (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-amber-600">
+                        <LockIcon className="h-2.5 w-2.5" />
+                        Private
+                      </span>
+                    )}
                   </span>
                   <span className="mt-0.5 block truncate font-mono text-[11px] text-light">
-                    {s.game || (past ? "Archived season" : "Upcoming")}
+                    {priv ? "Only admins can see this season" : s.game || (past ? "Archived season" : "Upcoming")}
                   </span>
                 </span>
                 {viewing && (

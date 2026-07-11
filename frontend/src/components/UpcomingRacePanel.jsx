@@ -114,6 +114,9 @@ export default function UpcomingRacePanel({ race }) {
             <Link to={`/attendance?race=${race.id}`} className="btn-primary text-center">
               Sign up now
             </Link>
+            <Link to="/tools" className="btn-secondary text-center" title="Fuel calculator, practice pace and pit strategy">
+              Race tools
+            </Link>
           </div>
         </div>
       </div>

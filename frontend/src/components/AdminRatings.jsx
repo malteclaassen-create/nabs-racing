@@ -22,7 +22,7 @@ const GROUPS = {
     parts: [["finish", "Finishing position"], ["gained", "Places gained"], ["overtakes", "On-track overtakes"], ["podium", "Podium rate"]],
   },
   aha: {
-    title: "AHA · Awareness",
+    title: "AWA · Awareness",
     help: "Cleanliness, consistency & discipline.",
     parts: [
       ["finishRate", "Finish rate"], ["dnf", "Few DNFs"],
@@ -40,8 +40,15 @@ function toState(defaults, saved) {
     const base = Object.fromEntries(Object.entries(defaults[key]).map(([k, v]) => [k, Math.round(v * 100)]));
     return saved?.[key] ? { ...base, ...saved[key] } : base;
   };
+  // Per-stat floor/ceiling overrides: blank = inherit the shared band, so the
+  // state keeps "" for anything the admin hasn't set explicitly.
+  const bands = {};
+  for (const k of ["exp", "pac", "rac", "aha"]) {
+    bands[k] = { low: saved?.bands?.[k]?.low ?? "", high: saved?.bands?.[k]?.high ?? "" };
+  }
   return {
     band: { ...defaults.band, ...(saved?.band || {}) },
+    bands,
     dominance: { ...defaults.dominance, ...(saved?.dominance || {}) },
     rtg: grp("rtg"),
     pac: grp("pac"),
@@ -128,6 +135,9 @@ export default function AdminRatings() {
   const setBand = useCallback((key, value) => {
     setWeights((w) => ({ ...w, band: { ...w.band, [key]: value } }));
   }, []);
+  const setStatBand = useCallback((stat, key, value) => {
+    setWeights((w) => ({ ...w, bands: { ...w.bands, [stat]: { ...w.bands?.[stat], [key]: value } } }));
+  }, []);
   const setDominance = useCallback((key, value) => {
     setWeights((w) => ({ ...w, dominance: { ...w.dominance, [key]: value } }));
   }, []);
@@ -175,7 +185,7 @@ export default function AdminRatings() {
         <CardHead eyebrow="Driver Ratings" title="Live rating-weight tuning" />
         <p className="text-sm text-light">
           Every driver gets four sub-ratings: <b>EXP</b> (experience), <b>PAC</b> (pace),
-          <b> RAC</b> (racecraft) and <b>AHA</b> (awareness/cleanliness), blended into the overall <b>RTG</b>.
+          <b> RAC</b> (racecraft) and <b>AWA</b> (awareness/cleanliness), blended into the overall <b>RTG</b>.
           Each value is ranked across the field and mapped onto the spread below. Drag the sliders to
           re-weight; the table updates live. Hit <b>Save</b> to make the public ratings use these weights,
           or leave it unsaved to just experiment. {hasSaved
@@ -212,6 +222,36 @@ export default function AdminRatings() {
                   className="input w-20 py-1 text-center" />
               </label>
             </div>
+
+            {/* Per-stat overrides: blank = the shared band above. */}
+            <div className="mt-4 border-t border-border pt-3">
+              <div className="mb-2 text-xs text-light">
+                Per-stat floor and ceiling. Leave a field blank to use the shared spread above; set values to give a
+                single stat its own range (say, Experience from 40 up to 99).
+              </div>
+              <div className="space-y-1.5">
+                {[["exp", "EXP · Experience"], ["pac", "PAC · Pace"], ["rac", "RAC · Racecraft"], ["aha", "AWA · Awareness"]].map(([stat, label]) => (
+                  <div key={stat} className="flex items-center gap-3">
+                    <span className="w-36 shrink-0 text-sm text-medium">{label}</span>
+                    <input
+                      type="number" min="0" max="98" placeholder={String(weights.band.low)}
+                      value={weights.bands?.[stat]?.low ?? ""}
+                      onChange={(e) => setStatBand(stat, "low", e.target.value)}
+                      className="input w-20 py-1 text-center"
+                      aria-label={`${label} floor`}
+                    />
+                    <span className="text-xs text-faint">to</span>
+                    <input
+                      type="number" min="1" max="99" placeholder={String(weights.band.high)}
+                      value={weights.bands?.[stat]?.high ?? ""}
+                      onChange={(e) => setStatBand(stat, "high", e.target.value)}
+                      className="input w-20 py-1 text-center"
+                      aria-label={`${label} ceiling`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Dominance boost */}
@@ -240,7 +280,7 @@ export default function AdminRatings() {
             className="text-sm font-semibold text-primary hover:underline"
             onClick={() => setAdvanced((a) => !a)}
           >
-            {advanced ? "▾ Hide per-category breakdown" : "▸ Show per-category breakdown (PAC / RAC / AHA)"}
+            {advanced ? "▾ Hide per-category breakdown" : "▸ Show per-category breakdown (PAC / RAC / AWA)"}
           </button>
           {advanced && (
             <div className="space-y-4">
@@ -288,7 +328,7 @@ export default function AdminRatings() {
                   <th className="px-2 py-2 text-center font-bold text-dark">RTG</th>
                   <th className="px-1 py-2 text-center">EXP</th>
                   <th className="px-1 py-2 text-center">RAC</th>
-                  <th className="px-1 py-2 text-center">AHA</th>
+                  <th className="px-1 py-2 text-center">AWA</th>
                   <th className="px-1 py-2 text-center">PAC</th>
                 </tr>
               </thead>

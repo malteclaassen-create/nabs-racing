@@ -18,8 +18,12 @@ export function CountUp({ end, prefix = "", suffix = "", duration = 1200, decima
 
   useEffect(() => {
     if (!inView || !isFinite(target)) return;
+    // Straight to the final value under reduced motion and in lite graphics
+    // mode (both themes animate; Performance → Lite is the single off-switch).
+    const html = document.documentElement.classList;
     const reduce =
-      window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
+      html.contains("fx-lite");
     if (reduce) {
       setN(target);
       return;

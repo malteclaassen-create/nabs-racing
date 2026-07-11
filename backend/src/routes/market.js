@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
-import { optionalUser, resolveDriverId } from "../middleware/auth.js";
+import { optionalUser, resolveDriverId, isAdminRequest } from "../middleware/auth.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 
 const router = Router();
@@ -71,7 +71,8 @@ const offerInclude = {
 router.get("/", async (req, res, next) => {
   try {
     // The market only deals in upcoming races, i.e. the active season.
-    const seasonId = await resolveSeasonId(prisma, req.query.season);
+    // (Admins may preview a private season's market; the public can't.)
+    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: isAdminRequest(req) });
     const races = await prisma.race.findMany({
       where: { isCompleted: false, isSpecialEvent: false, seasonId },
       orderBy: { number: "asc" },
