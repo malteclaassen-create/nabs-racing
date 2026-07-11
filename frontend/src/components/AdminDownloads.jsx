@@ -312,7 +312,7 @@ export default function AdminDownloads() {
         {!editingId && form.fileName && (
           <div className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-dark">
             You are registering <code className="rounded bg-card px-1.5 py-0.5 font-mono text-xs">{form.fileName}</code>.
-            Pick a folder, give it a title, then hit <b>Add download</b> — only then do members see it.
+            Pick a folder, give it a title, then hit <b>Add download</b>. Only then do members see it.
           </div>
         )}
 
