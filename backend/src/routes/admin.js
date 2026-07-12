@@ -18,8 +18,9 @@ import { createBackup, tryCreateBackup, listBackups, createFullBackupZip } from 
 import { SOCIAL_KEYS, readSocialLinks } from "./settings.js";
 import { parseFormatNumber } from "../lib/raceFormat.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
+import { getTrafficStats } from "../lib/traffic.js";
 import {
-  dbListDownloads, dbGetDownload, dbCreateDownload, dbUpdateDownload, dbDeleteDownload,
+  dbListDownloads, dbGetDownload, dbCreateDownload, dbUpdateDownload, dbDeleteDownload, ensureReplaysFolder,
   dbListFolders, dbGetFolder, dbCreateFolder, dbUpdateFolder, dbDeleteFolder,
   listDiskFiles, statFile, fmtSize, shapeDownload, ensureDownloadsDir, DOWNLOADS_DIR,
 } from "../lib/downloads.js";
@@ -491,6 +492,17 @@ router.delete("/market/:offerId", async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// TRAFFIC (admin Traffic tab) — the self-hosted visit counter's numbers.
+// ---------------------------------------------------------------------------
+router.get("/traffic", async (req, res, next) => {
+  try {
+    res.json(await getTrafficStats(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // SOCIAL LINKS (footer icons + the "Join Discord" button)
 // ---------------------------------------------------------------------------
 
@@ -719,10 +731,21 @@ router.get("/members", async (req, res, next) => {
         null;
       return { ...m, driver: shapeDriver(driver), isAdmin: adminIds.has(String(m.discordId)) };
     });
+    // Drivers an account can be linked to: no stored Discord ID, OR an ID that
+    // no known login account carries — i.e. an admin-entered ID that might be
+    // a typo. Linking such a driver simply replaces the wrong ID with the real
+    // one, so a mistyped entry is one click away from being corrected once the
+    // person actually logs in.
+    const knownIds = new Set(rows.map((r) => String(r.discordId)));
     const unclaimed = drivers
-      .filter((d) => activeSeason && d.seasonId === activeSeason.id && !d.discordUserId)
+      .filter(
+        (d) =>
+          activeSeason &&
+          d.seasonId === activeSeason.id &&
+          (!d.discordUserId || !knownIds.has(String(d.discordUserId)))
+      )
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map(shapeDriver);
+      .map((d) => ({ ...shapeDriver(d), preEnteredId: d.discordUserId || null }));
     res.json({ members, unclaimed });
   } catch (e) {
     next(e);
@@ -1757,15 +1780,29 @@ router.post("/downloads/upload", downloadUpload.single("file"), (req, res, next)
   }
 });
 
+// Shared validation for create & update: a race-linked entry (replay) must
+// point at a real race, and lands in the auto-created "Replays" folder unless
+// the admin picked a folder themselves.
+async function prepareDownloadInput(b) {
+  if (b.raceId) {
+    const race = await prisma.race.findUnique({ where: { id: b.raceId } });
+    if (!race) return { error: "That race no longer exists" };
+    if (!b.folderId) b.folderId = (await ensureReplaysFolder(prisma)).id;
+  }
+  if (b.folderId && !(await dbGetFolder(prisma, b.folderId))) {
+    return { error: "That folder no longer exists" };
+  }
+  return { ok: true };
+}
+
 // POST /api/admin/downloads -> create a catalogue entry.
 router.post("/downloads", async (req, res, next) => {
   try {
     const b = req.body || {};
     if (!b.title) return res.status(400).json({ error: "Title is required" });
     if (!b.fileName && !b.externalUrl) return res.status(400).json({ error: "Pick a file or give an external link" });
-    if (b.folderId && !(await dbGetFolder(prisma, b.folderId))) {
-      return res.status(400).json({ error: "That folder no longer exists" });
-    }
+    const check = await prepareDownloadInput(b);
+    if (check.error) return res.status(400).json({ error: check.error });
     const created = await dbCreateDownload(prisma, b);
     res.json({ ok: true, download: shapeDownload(created) });
   } catch (e) {
@@ -1779,6 +1816,8 @@ router.patch("/downloads/:id", async (req, res, next) => {
     const existing = await dbGetDownload(prisma, req.params.id);
     if (!existing) return res.status(404).json({ error: "Not found" });
     const merged = { ...shapeDownload(existing), ...(req.body || {}) };
+    const check = await prepareDownloadInput(merged);
+    if (check.error) return res.status(400).json({ error: check.error });
     const updated = await dbUpdateDownload(prisma, req.params.id, merged);
     res.json({ ok: true, download: shapeDownload(updated) });
   } catch (e) {

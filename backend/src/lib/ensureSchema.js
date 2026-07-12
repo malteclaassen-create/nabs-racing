@@ -69,6 +69,21 @@ export async function ensureAppSchema(prisma) {
   // regular driver; 'safety' = safety car driver. Admin-set (Drivers tab).
   await addColumn(prisma, "Driver", "role", "TEXT");
 
+  // --- Self-hosted traffic counter (admin Traffic tab). Aggregated page views
+  // per day+path, plus anonymous daily-unique visitor markers (see lib/traffic.js
+  // for the privacy story). Raw SQL tables like PersonLink below.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TrafficView" (
+    "day"   TEXT NOT NULL,
+    "path"  TEXT NOT NULL,
+    "views" INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY ("day", "path")
+  )`);
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TrafficVisitor" (
+    "day"  TEXT NOT NULL,
+    "hash" TEXT NOT NULL,
+    PRIMARY KEY ("day", "hash")
+  )`);
+
   // --- Phase 3: cross-season person links. One row per driver row that belongs
   // to a person; all driver rows of the same person share one personId.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PersonLink" (

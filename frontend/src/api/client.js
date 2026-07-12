@@ -203,6 +203,23 @@ export const api = {
   adminDeleteOffer: (offerId) => request(`/admin/market/${offerId}`, { method: "DELETE", auth: true }),
   // full takeover record of the selected season, completed races included
   adminMarketHistory: () => request(`/admin/market/history${seasonQ()}`, { auth: true }),
+  // self-hosted traffic counter: fire-and-forget page-view beacon + admin stats.
+  // sendBeacon survives tab closes and never blocks navigation; fetch keepalive
+  // is the fallback. Both are best-effort — analytics must never throw.
+  hit: (path) => {
+    try {
+      const url = `${BASE}/api/hit`;
+      const body = JSON.stringify({ path });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+      } else {
+        fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {});
+      }
+    } catch {
+      /* never let analytics break the page */
+    }
+  },
+  adminTraffic: () => request("/admin/traffic", { auth: true }),
 
   // social links (public read + admin manage)
   socialLinks: () => request("/settings/social"),

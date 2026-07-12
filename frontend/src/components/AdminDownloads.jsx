@@ -4,7 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox } from "./ui.jsx";
 import Icon from "./InfoIcon.jsx";
 
-const EMPTY = { title: "", folderId: "", version: "", description: "", installNote: "", fileName: "", externalUrl: "", sortOrder: 0, published: true };
+const EMPTY = { title: "", folderId: "", raceId: "", version: "", description: "", installNote: "", fileName: "", externalUrl: "", sortOrder: 0, published: true };
 
 const inputCls = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark placeholder:text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
 const labelCls = "mb-1 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium";
@@ -121,6 +121,8 @@ function Folders({ folders, reload, onMsg }) {
 
 export default function AdminDownloads() {
   const { data, loading, error, reload } = useApi(useCallback(() => api.adminDownloads(), []));
+  // Races of the season being edited, for linking a replay to its round.
+  const { data: racesData } = useApi(useCallback(() => api.races(), []));
   const [form, setForm] = useState(EMPTY);
   const [editingId, setEditingId] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -143,6 +145,13 @@ export default function AdminDownloads() {
   const diskFiles = data?.diskFiles || [];
   const unregistered = diskFiles.filter((f) => !f.registered);
   const folderName = (id) => folders.find((f) => f.id === id)?.name || null;
+  // Newest round first — that's the one whose replay is being added.
+  const races = [...(racesData || [])].sort((a, b) => (b.number ?? 0) - (a.number ?? 0));
+  const raceLabel = (r) => `${r.isSpecialEvent || r.number == null ? "SE" : `R${r.number}`} · ${r.track}`;
+  const raceName = (id) => {
+    const r = races.find((x) => x.id === id);
+    return r ? raceLabel(r) : null;
+  };
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   function startNew() { setForm(EMPTY); setEditingId(null); }
@@ -150,11 +159,22 @@ export default function AdminDownloads() {
     setEditingId(d.id);
     setMsg(null);
     setForm({
-      title: d.title, folderId: d.folderId || "", version: d.version || "", description: d.description || "",
+      title: d.title, folderId: d.folderId || "", raceId: d.raceId || "", version: d.version || "",
+      description: d.description || "",
       installNote: d.installNote || "", fileName: d.fileName || "", externalUrl: d.externalUrl || "",
       sortOrder: d.sortOrder || 0, published: d.published,
     });
     jumpToForm();
+  }
+
+  // Picking a race turns the entry into that round's replay: prefill a title
+  // when the field is still empty, so the catalogue reads consistently.
+  function pickRace(raceId) {
+    setForm((f) => {
+      const race = races.find((r) => r.id === raceId);
+      const title = f.title.trim() || (race ? `Replay ${raceLabel(race)}` : f.title);
+      return { ...f, raceId, title: raceId ? title : f.title };
+    });
   }
 
   async function save(e) {
@@ -169,6 +189,7 @@ export default function AdminDownloads() {
       const body = {
         ...form,
         folderId: form.folderId || null,
+        raceId: form.raceId || null,
         externalUrl: url || null,
         fileName: form.fileName.trim() || null,
         sortOrder: Number(form.sortOrder) || 0,
@@ -329,6 +350,17 @@ export default function AdminDownloads() {
             </select>
           </div>
           <div>
+            <label className={labelCls}>Race (for replays)</label>
+            <select className={inputCls} value={form.raceId} onChange={(e) => pickRace(e.target.value)}>
+              <option value="">Not tied to a race</option>
+              {races.map((r) => <option key={r.id} value={r.id}>{raceLabel(r)}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-light">
+              Marks this entry as that round&rsquo;s replay: it lands in the Replays folder automatically and the
+              race gets a Replay button on the Races page.
+            </p>
+          </div>
+          <div>
             <label className={labelCls}>File on server</label>
             <input list="dl-files" className={inputCls} value={form.fileName} onChange={(e) => set("fileName", e.target.value)} placeholder="filename in backend/downloads/" />
             <datalist id="dl-files">{diskFiles.map((f) => <option key={f.fileName} value={f.fileName}>{f.sizeText}</option>)}</datalist>
@@ -404,6 +436,11 @@ export default function AdminDownloads() {
                       <Icon name="folder" className="h-3 w-3" />
                       {folderName(d.folderId) || "More files"}
                     </span>
+                    {d.raceId && (
+                      <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary">
+                        {raceName(d.raceId) || "Replay"}
+                      </span>
+                    )}
                     {!d.published && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">hidden</span>}
                     {!d.fileExists && !d.externalUrl && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-500">file missing</span>}
                   </div>

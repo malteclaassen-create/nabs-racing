@@ -64,6 +64,9 @@ export function shapeDownload(r) {
     title: r.title,
     category: r.category,
     folderId: r.folderId ?? null,
+    // The race this entry belongs to (replays): links the entry to the round
+    // so the Races page can offer a "Replay" button on that round.
+    raceId: r.raceId ?? null,
     description: r.description ?? null,
     version: r.version ?? null,
     installNote: r.installNote ?? null,
@@ -98,6 +101,10 @@ export async function ensureDownloadTables(prisma) {
   const cols = await prisma.$queryRawUnsafe(`PRAGMA table_info("Download")`);
   if (!cols.some((c) => c.name === "folderId")) {
     await prisma.$executeRawUnsafe(`ALTER TABLE "Download" ADD COLUMN "folderId" TEXT`);
+  }
+  // Replays: a download can belong to a specific race (null = ordinary file).
+  if (!cols.some((c) => c.name === "raceId")) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Download" ADD COLUMN "raceId" TEXT`);
   }
   // One-time migration: category -> folder (only for rows not yet in a folder).
   const orphans = await prisma.$queryRawUnsafe(
@@ -145,6 +152,39 @@ export async function dbDeleteFolder(prisma, id) {
   await prisma.$executeRaw`DELETE FROM "DownloadFolder" WHERE "id" = ${id}`;
 }
 
+// The shared "Replays" folder: race-linked downloads land here automatically
+// when the admin didn't pick a folder. Created on first use, found by name
+// afterwards (case-insensitive, so a hand-made "replays" folder is reused).
+export async function ensureReplaysFolder(prisma) {
+  const rows = await prisma.$queryRaw`SELECT * FROM "DownloadFolder" WHERE LOWER("name") = 'replays' LIMIT 1`;
+  if (rows[0]) return shapeFolder(rows[0]);
+  return dbCreateFolder(prisma, {
+    name: "Replays",
+    description: "Race replays, one per round. Load them in Assetto Corsa to rewatch the race.",
+    sortOrder: 99,
+  });
+}
+
+// Map raceId -> download id for PUBLISHED race-linked entries (the Races page
+// uses this to show a Replay button on rounds that have one). Empty map when
+// the column doesn't exist yet (fresh checkout before ensureDownloadTables).
+export async function dbReplaysByRace(prisma, raceIds) {
+  const ids = [...new Set((raceIds || []).filter(Boolean))];
+  if (!ids.length) return new Map();
+  try {
+    const ph = ids.map(() => "?").join(",");
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "id", "raceId" FROM "Download" WHERE "published" = 1 AND "raceId" IN (${ph}) ORDER BY "sortOrder" ASC`,
+      ...ids
+    );
+    const out = new Map();
+    for (const r of rows) if (!out.has(r.raceId)) out.set(r.raceId, r.id);
+    return out;
+  } catch {
+    return new Map();
+  }
+}
+
 // --- raw-SQL data access ---------------------------------------------------
 export async function dbListDownloads(prisma, { publishedOnly = false } = {}) {
   return publishedOnly
@@ -161,9 +201,9 @@ export async function dbCreateDownload(prisma, d) {
   const id = randomUUID();
   await prisma.$executeRaw`
     INSERT INTO "Download"
-      ("id","title","category","folderId","description","version","installNote","fileName","externalUrl","sortOrder","published")
+      ("id","title","category","folderId","raceId","description","version","installNote","fileName","externalUrl","sortOrder","published")
     VALUES
-      (${id}, ${d.title}, ${d.category ?? ""}, ${d.folderId ?? null}, ${d.description ?? null}, ${d.version ?? null}, ${d.installNote ?? null},
+      (${id}, ${d.title}, ${d.category ?? ""}, ${d.folderId ?? null}, ${d.raceId ?? null}, ${d.description ?? null}, ${d.version ?? null}, ${d.installNote ?? null},
        ${d.fileName ?? null}, ${d.externalUrl ?? null}, ${Number(d.sortOrder) || 0}, ${d.published ? 1 : 0})`;
   return dbGetDownload(prisma, id);
 }
@@ -174,6 +214,7 @@ export async function dbUpdateDownload(prisma, id, d) {
       "title" = ${d.title},
       "category" = ${d.category ?? ""},
       "folderId" = ${d.folderId ?? null},
+      "raceId" = ${d.raceId ?? null},
       "description" = ${d.description ?? null},
       "version" = ${d.version ?? null},
       "installNote" = ${d.installNote ?? null},

@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, withApiBase } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -66,7 +67,7 @@ function LoginGate() {
   );
 }
 
-function DownloadCard({ item }) {
+function DownloadCard({ item, highlight = false }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -85,7 +86,10 @@ function DownloadCard({ item }) {
   }
 
   return (
-    <div className="card flex flex-col p-5">
+    <div
+      id={`dl-${item.id}`}
+      className={`card flex scroll-mt-28 flex-col p-5 ${highlight ? "ring-2 ring-brand shadow-lg" : ""}`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{item.title}</h3>
@@ -130,7 +134,7 @@ function DownloadCard({ item }) {
 
 // One collapsible folder of downloads (folders are created in the admin, e.g.
 // Tracks / Cars / one folder per event). Same accordion pattern as the rulebook.
-function FolderSection({ name, description, items, index = 0, defaultOpen = false }) {
+function FolderSection({ name, description, items, index = 0, defaultOpen = false, highlightId = null }) {
   return (
     <details className="group card overflow-hidden" open={defaultOpen} style={{ "--i": index }}>
       <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition hover:bg-surface2">
@@ -150,7 +154,7 @@ function FolderSection({ name, description, items, index = 0, defaultOpen = fals
       <div className="border-t border-border bg-bg/50 p-4">
         {description && <p className="mb-3 text-sm leading-relaxed text-medium">{description}</p>}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((it) => <DownloadCard key={it.id} item={it} />)}
+          {items.map((it) => <DownloadCard key={it.id} item={it} highlight={it.id === highlightId} />)}
         </div>
       </div>
     </details>
@@ -159,6 +163,10 @@ function FolderSection({ name, description, items, index = 0, defaultOpen = fals
 
 function Catalogue() {
   const { data, loading, error } = useApi(useCallback(() => api.downloads(), []));
+  // Deep link from the Races page ("Replay" button): /downloads?dl=<id> opens
+  // the folder holding that entry, scrolls to it and highlights the card.
+  const [params] = useSearchParams();
+  const highlightId = params.get("dl");
 
   const groups = useMemo(() => {
     const items = data?.downloads || [];
@@ -171,6 +179,24 @@ function Catalogue() {
     if (loose.length) out.push({ key: "loose", name: "More files", description: null, items: loose });
     return out;
   }, [data]);
+
+  useEffect(() => {
+    if (!highlightId || !data) return;
+    // Keep nudging until the card actually sits in the viewport: the page
+    // remounts once the season context resolves (scroll resets to top) and
+    // the entrance animations shift the layout, so a single scroll attempt
+    // reliably lands short. Instant jumps can't be cancelled mid-animation.
+    const timers = [300, 800, 1500, 2400].map((ms) =>
+      setTimeout(() => {
+        const el = document.getElementById(`dl-${highlightId}`);
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        const inView = r.top >= 0 && r.bottom <= window.innerHeight;
+        if (!inView) el.scrollIntoView({ behavior: "auto", block: "center" });
+      }, ms)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [highlightId, data]);
 
   if (loading)
     return (
@@ -197,7 +223,8 @@ function Catalogue() {
           description={g.description}
           items={g.items}
           index={Math.min(i, 8)}
-          defaultOpen={i === 0}
+          defaultOpen={i === 0 || g.items.some((it) => it.id === highlightId)}
+          highlightId={highlightId}
         />
       ))}
     </div>

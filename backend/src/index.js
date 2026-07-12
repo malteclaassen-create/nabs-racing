@@ -20,6 +20,7 @@ import discordAuthRoutes from "./routes/discordAuth.js";
 import downloadsRoutes from "./routes/downloads.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard } from "./services/liveTiming.js";
+import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest } from "./middleware/auth.js";
 import prisma from "./lib/prisma.js";
@@ -52,6 +53,18 @@ app.use(cors({ origin: origins }));
 app.use(express.json({ limit: "12mb" }));
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
+
+// Anonymous page-view beacon for the admin Traffic tab (see lib/traffic.js:
+// no cookies, nothing personal stored, bots and admin pages filtered out).
+// Always answers 204 — analytics must never break or slow the site.
+app.post("/api/hit", (req, res) => {
+  recordHit(prisma, {
+    path: req.body?.path,
+    ip: req.ip,
+    userAgent: req.headers["user-agent"],
+  }).catch(() => {});
+  res.status(204).end();
+});
 
 // User-uploaded files (e.g. driver profile pictures from /api/me/photo). Served
 // under /api/* on purpose so they go through the Vite proxy in both dev and the

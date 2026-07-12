@@ -96,10 +96,19 @@ export default function AdminMembers() {
     act(m.discordId, () => api.banMember(m.discordId, false));
   }
 
-  function link(m) {
-    const driverId = linkChoice[m.discordId];
+  function link(m, driverId) {
     if (!driverId) return;
     act(m.discordId, () => api.linkMember(m.discordId, driverId));
+  }
+
+  // Safe name-based SUGGESTION for an unlinked account: pre-selects the
+  // linkable driver whose name/handle matches the account. Unlike the old
+  // login-time matcher this never links by itself — the admin still reads the
+  // name and clicks Link, so nobody can claim a profile just by renaming.
+  const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+  function suggestionFor(m) {
+    const keys = [norm(m.username), norm(m.displayName)].filter(Boolean);
+    return unclaimed.find((d) => keys.includes(norm(d.name)) || keys.includes(norm(d.discordName))) || null;
   }
 
   function unlink(m) {
@@ -157,7 +166,10 @@ export default function AdminMembers() {
             one step with <b>New driver</b>.
           </p>
           <ul className="mt-3 divide-y divide-border">
-            {unlinked.map((m) => (
+            {unlinked.map((m) => {
+              const suggested = suggestionFor(m);
+              const sel = linkChoice[m.discordId] ?? suggested?.id ?? "";
+              return (
               <li key={m.discordId} className="py-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <DriverAvatar name={m.displayName || m.username} photoUrl={m.avatarUrl} color="#64748b" size={36} />
@@ -166,25 +178,30 @@ export default function AdminMembers() {
                     <span className="block font-mono text-xs text-light">
                       @{m.username} · ID {m.discordId} · last login {fmtDate(m.lastLoginAt)}
                     </span>
+                    {suggested && sel === suggested.id && (
+                      <span className="block font-mono text-[11px] text-emerald-600">
+                        name matches {suggested.name} · check, then hit Link
+                      </span>
+                    )}
                   </span>
                   <StatusPills m={m} />
                   <span className="flex items-center gap-2">
                     <select
                       className="input py-1.5 text-sm"
-                      value={linkChoice[m.discordId] || ""}
+                      value={sel}
                       onChange={(e) => setLinkChoice((c) => ({ ...c, [m.discordId]: e.target.value }))}
                     >
                       <option value="">Link to driver…</option>
                       {unclaimed.map((d) => (
                         <option key={d.id} value={d.id}>
-                          {d.name} ({d.team?.name || "—"})
+                          {d.name} ({d.team?.name || "—"}){d.preEnteredId ? " · replaces typed ID" : ""}
                         </option>
                       ))}
                     </select>
                     <button
                       className="btn-primary py-1.5 text-sm disabled:opacity-50"
-                      disabled={!linkChoice[m.discordId] || busy === m.discordId}
-                      onClick={() => link(m)}
+                      disabled={!sel || busy === m.discordId}
+                      onClick={() => link(m, sel)}
                     >
                       Link
                     </button>
@@ -251,7 +268,8 @@ export default function AdminMembers() {
                   </div>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         </div>
       )}

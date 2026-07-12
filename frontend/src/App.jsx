@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
 import { useScrollReveal } from "./hooks/useScrollReveal.js";
+import { api } from "./api/client.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
 import NavBar from "./components/NavBar.jsx";
 import Logo from "./components/Logo.jsx";
@@ -69,6 +70,13 @@ function HomeRoute() {
 function AppRoutes() {
   const { season } = useSeason();
   const location = useLocation();
+  // Anonymous page-view beacon for the admin Traffic tab. Fire-and-forget;
+  // admin/auth paths are skipped here AND server-side.
+  useEffect(() => {
+    if (!location.pathname.startsWith("/admin") && !location.pathname.startsWith("/auth")) {
+      api.hit(location.pathname);
+    }
+  }, [location.pathname]);
   return (
     <main key={season ?? "loading"} className="container-page w-full flex-1 py-10">
       {/* Keyed on the path so each navigation replays the fade-in entrance. */}

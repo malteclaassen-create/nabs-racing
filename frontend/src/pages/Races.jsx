@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -358,14 +358,29 @@ export default function Races() {
                           <h2 className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
                             <span className="text-light">R{detail.race.number}</span> {detail.race.track}
                           </h2>
-                          {detail.race.date && (
-                            <span
-                              className="ml-auto shrink-0 text-right font-mono text-xs font-semibold tabular-nums text-light sm:text-sm"
-                              title={fmtRaceTime(detail.race.date)}
-                            >
-                              {fmtDate(detail.race.date)}
-                            </span>
-                          )}
+                          <span className="ml-auto flex shrink-0 items-center gap-3">
+                            {/* replay of this round, registered in the admin Downloads tab */}
+                            {detail.race.replayDownloadId && (
+                              <Link
+                                to={`/downloads?dl=${detail.race.replayDownloadId}`}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark"
+                                title="Rewatch this race: opens the replay in the downloads"
+                              >
+                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-brand" fill="currentColor" aria-hidden="true">
+                                  <path d="M8 5.5v13l11-6.5-11-6.5z" />
+                                </svg>
+                                Replay
+                              </Link>
+                            )}
+                            {detail.race.date && (
+                              <span
+                                className="text-right font-mono text-xs font-semibold tabular-nums text-light sm:text-sm"
+                                title={fmtRaceTime(detail.race.date)}
+                              >
+                                {fmtDate(detail.race.date)}
+                              </span>
+                            )}
+                          </span>
                         </div>
                         {!detail.race.hasPositions && (
                           <p className="mt-1 text-sm text-light">

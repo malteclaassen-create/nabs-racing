@@ -6,6 +6,7 @@ import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides } from "../lib/persons.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
+import { dbReplaysByRace } from "../lib/downloads.js";
 
 const router = Router();
 
@@ -19,8 +20,12 @@ router.get("/", async (req, res, next) => {
       orderBy: { number: "asc" },
       include: { _count: { select: { results: true } } },
     });
-    // Session format (raw-SQL columns) for the upcoming-race panel.
-    const format = await readRaceFormat(prisma, races.map((r) => r.id));
+    // Session format (raw-SQL columns) for the upcoming-race panel, and any
+    // published replay downloads so the calendar can offer a Replay button.
+    const [format, replays] = await Promise.all([
+      readRaceFormat(prisma, races.map((r) => r.id)),
+      dbReplaysByRace(prisma, races.map((r) => r.id)),
+    ]);
     res.json(
       races.map((r) => ({
         id: r.id,
@@ -33,6 +38,7 @@ router.get("/", async (req, res, next) => {
         info: r.info || null,
         qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
         raceLaps: format.get(r.id)?.raceLaps ?? null,
+        replayDownloadId: replays.get(r.id) || null,
       }))
     );
   } catch (e) {
@@ -180,8 +186,10 @@ router.get("/:id/results", async (req, res, next) => {
       /* column missing pre-migration */
     }
 
-    // Session format + details, so the admin race editor can round-trip them.
+    // Session format + details, so the admin race editor can round-trip them,
+    // plus the round's published replay (if any) for the Replay button.
     const format = (await readRaceFormat(prisma, [race.id])).get(race.id) || {};
+    const replays = await dbReplaysByRace(prisma, [race.id]);
     res.json({
       race: {
         id: race.id,
@@ -192,6 +200,7 @@ router.get("/:id/results", async (req, res, next) => {
         info: race.info || null,
         qualiMinutes: format.qualiMinutes ?? null,
         raceLaps: format.raceLaps ?? null,
+        replayDownloadId: replays.get(race.id) || null,
         hasPositions,
         driverOfTheDay,
       },

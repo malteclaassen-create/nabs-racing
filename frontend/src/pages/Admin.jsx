@@ -32,6 +32,7 @@ const TABS = [
   { id: "raceinfo", label: "Race Info" },
   { id: "faq", label: "Home FAQ" },
   { id: "downloads", label: "Downloads" },
+  { id: "traffic", label: "Traffic" },
   { id: "health", label: "Health" },
   { id: "pin", label: "Change PIN" },
 ];
@@ -221,6 +222,7 @@ export default function Admin() {
         {tab === "raceinfo" && <AdminRaceInfo />}
         {tab === "faq" && <AdminWelcomeFaq />}
         {tab === "downloads" && <AdminDownloads />}
+        {tab === "traffic" && <TrafficAdmin />}
         {tab === "health" && <AdminHealth />}
         {tab === "pin" && <ChangePin />}
       </div>
@@ -409,6 +411,95 @@ function OfferAdminRow({ offer, reserves, busy, onAssign, onDelete }) {
           Remove offer
         </button>
       </div>
+    </div>
+  );
+}
+
+// --- TRAFFIC ---------------------------------------------------------------
+// The self-hosted visit counter: page views + anonymous daily-unique visitors
+// (see backend lib/traffic.js for the privacy story — no cookies, no service).
+function TrafficAdmin() {
+  const { data, loading, error, reload } = useApi(useCallback(() => api.adminTraffic(), []));
+
+  const Tile = ({ label, views, visitors }) => (
+    <div className="rounded-xl border border-border p-4">
+      <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">{label}</div>
+      <div className="mt-1 font-display text-3xl font-black tabular-nums text-dark">{visitors}</div>
+      <div className="font-mono text-[11px] text-light">visitors · {views} page views</div>
+    </div>
+  );
+
+  const maxDay = Math.max(1, ...(data?.days || []).map((d) => d.views));
+  const fmtDay = (iso) =>
+    new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
+
+  return (
+    <div className="space-y-5">
+      <div className="card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardHead eyebrow="Traffic" title="Who's visiting" />
+          <button className="btn-secondary py-1.5 text-sm" onClick={reload}>Refresh</button>
+        </div>
+        <p className="text-sm text-light">
+          Counted on the site itself: no cookies, no external service, nothing personal stored. A visitor is an
+          anonymous marker that resets every day, so people are counted once per day but can never be tracked
+          across days. Bots and the admin area don&rsquo;t count.
+        </p>
+      </div>
+
+      {error && <ErrorBox message={error} />}
+      {loading && <div className="card p-8 text-center text-sm text-light">Counting…</div>}
+
+      {data && (
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Tile label="Today" views={data.views.today} visitors={data.visitors.today} />
+            <Tile label="Last 7 days" views={data.views.last7} visitors={data.visitors.last7} />
+            <Tile label="Last 30 days" views={data.views.last30} visitors={data.visitors.last30} />
+            <Tile label="All time" views={data.views.total} visitors={data.visitors.total} />
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div className="card p-5">
+              <CardHead eyebrow="Traffic" title="Last 14 days" />
+              {data.days.length === 0 ? (
+                <p className="text-sm text-faint">Nothing counted yet. Numbers appear with the first visit.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {data.days.map((d) => (
+                    <li key={d.day} className="flex items-center gap-3 text-sm">
+                      <span className="w-28 shrink-0 font-mono text-xs text-light">{fmtDay(d.day)}</span>
+                      <span className="h-2 flex-1 overflow-hidden rounded-full bg-surface2">
+                        <span className="block h-full rounded-full bg-brand" style={{ width: `${Math.max(3, (d.views / maxDay) * 100)}%` }} />
+                      </span>
+                      <span className="w-24 shrink-0 text-right font-mono text-xs tabular-nums text-medium">
+                        {d.visitors} · {d.views}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-faint">visitors · page views</p>
+            </div>
+
+            <div className="card p-5">
+              <CardHead eyebrow="Traffic" title="Most visited (30 days)" />
+              {data.topPages.length === 0 ? (
+                <p className="text-sm text-faint">Nothing counted yet.</p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {data.topPages.map((p) => (
+                    <li key={p.path} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                      <span className="min-w-0 truncate font-mono text-xs text-dark">{p.path}</span>
+                      <span className="shrink-0 font-mono text-xs tabular-nums text-medium">{p.views}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -998,11 +1089,14 @@ function DiscordResultsPost({ raceId }) {
 // --- DRIVERS ---------------------------------------------------------------
 function Drivers() {
   const { data: teams, reload } = useApi(useCallback(() => api.teams(), []));
+  // Known login accounts, to verify hand-entered Discord IDs on the spot.
+  const { data: membersData } = useApi(useCallback(() => api.adminMembers(), []));
   const [form, setForm] = useState({ name: "", discordName: "", teamId: "", tier: 2 });
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const accounts = new Map(((membersData && membersData.members) || []).map((m) => [String(m.discordId), m]));
   const allDrivers = (teams || []).flatMap((t) => t.drivers.map((d) => ({ ...d, teamName: t.name })));
 
   async function create(e) {
@@ -1123,7 +1217,7 @@ function Drivers() {
                       onClick={() => patchDriver(d, { isActive: !d.isActive })}>
                       {d.isActive ? "Deactivate" : "Reactivate"}
                     </button>
-                    <DriverDiscordId d={d} busy={busy}
+                    <DriverDiscordId d={d} busy={busy} accounts={accounts}
                       onSave={(v) => patchDriver(d, { discordUserId: v })} />
                   </li>
                 ))}
@@ -1141,12 +1235,16 @@ function Drivers() {
 // this exact id, and the Discord results post pings <@id> — so filling it in
 // for drivers who never signed in gives them a working login AND real
 // mentions. Full width on its own line so the roster row above stays tidy.
-function DriverDiscordId({ d, busy, onSave }) {
+// `accounts` (discordId -> login account) verifies entries on the spot: an id
+// that matches a known login shows WHOSE login it is, so a typo in a
+// hand-entered id is visible immediately instead of failing silently later.
+function DriverDiscordId({ d, busy, accounts, onSave }) {
   const [val, setVal] = useState(d.discordUserId || "");
   useEffect(() => setVal(d.discordUserId || ""), [d.discordUserId]);
   const dirty = val.trim() !== (d.discordUserId || "");
+  const acct = val.trim() ? accounts?.get(val.trim()) : null;
   return (
-    <span className="flex w-full items-center gap-2">
+    <span className="flex w-full flex-wrap items-center gap-2">
       <input
         className="input w-52 py-1 font-mono text-xs"
         placeholder="Discord user ID (not set)"
@@ -1154,8 +1252,21 @@ function DriverDiscordId({ d, busy, onSave }) {
         value={val}
         onChange={(e) => setVal(e.target.value.trim())}
       />
-      {d.discordUserId && !dirty && (
-        <span className="font-mono text-[10px] font-bold uppercase text-emerald-600">linked</span>
+      {acct && (
+        <span
+          className="font-mono text-[10px] font-bold text-emerald-600"
+          title={`This ID belongs to the login of ${acct.displayName || acct.username}`}
+        >
+          = @{acct.username}
+        </span>
+      )}
+      {val.trim() && !acct && !dirty && (
+        <span
+          className="font-mono text-[10px] text-light"
+          title="Nobody with this ID has logged in yet. Fine for someone who never signed in; if they HAVE logged in before, double-check the digits."
+        >
+          no login seen yet
+        </span>
       )}
       {dirty && (
         <>
