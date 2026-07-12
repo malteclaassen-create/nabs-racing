@@ -3,6 +3,7 @@ import prisma from "../lib/prisma.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides } from "../lib/persons.js";
+import { readDriverRoles } from "../lib/driverRoles.js";
 
 const router = Router();
 
@@ -21,6 +22,8 @@ router.get("/", async (req, res, next) => {
       }),
       getNameOverrides(prisma),
     ]);
+    // Special roles (raw-SQL column) for the role badge / admin role select.
+    const roles = await readDriverRoles(prisma, teams.flatMap((t) => t.drivers.map((d) => d.id)));
     // Archive rosters show the person's current name with a "raced as" note.
     // No-op for the active season (its own row already carries the current name).
     for (const t of teams) {
@@ -30,6 +33,7 @@ router.get("/", async (req, res, next) => {
           d.formerName = ov.formerName;
           d.name = ov.displayName;
         }
+        d.role = roles.get(d.id) || null;
       }
     }
     res.json(teams);

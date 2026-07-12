@@ -67,9 +67,15 @@ export default function RatingCard({ driver, rating }) {
   const seasonLabel =
     (ownSeason?.name || (driver?.seasonNumber != null ? `Season ${driver.seasonNumber}` : season?.name) || "")
       .toUpperCase() || "LEAGUE";
-  if (!rating?.ratings) return null;
-  const g = rating.ratings;
-  const color = driver.team?.color || "#3b4254";
+  // Safety car drivers get their own card edition: the classic marshalling
+  // amber replaces the team colour, the tier plate reads SAFETY CAR, and the
+  // card renders even WITHOUT ratings (no races -> no rating payload): the
+  // RTG box then says SC and the stat boxes show dashes. If they do race,
+  // their real numbers appear on the same card.
+  const isSafety = driver?.role === "safety";
+  if (!rating?.ratings && !isSafety) return null;
+  const g = rating?.ratings || null;
+  const color = isSafety ? "#f59e0b" : driver.team?.color || "#3b4254";
   const initial = (driver.name || "?").trim().charAt(0).toUpperCase();
   const logo = driver.team?.logoUrl;
 
@@ -115,9 +121,13 @@ export default function RatingCard({ driver, rating }) {
 
         <div className="rcard-rtg">
           <span className="rcard-rtg-l">RTG</span>
-          <span className="rcard-rtg-n">{g.overall}</span>
+          <span className="rcard-rtg-n">{g ? g.overall : "SC"}</span>
         </div>
-        {TIER[driver.tier] && <div className="rcard-tier">{TIER[driver.tier].toUpperCase()}</div>}
+        {isSafety ? (
+          <div className="rcard-tier">SAFETY CAR</div>
+        ) : (
+          TIER[driver.tier] && <div className="rcard-tier">{TIER[driver.tier].toUpperCase()}</div>
+        )}
 
         <div className="rcard-id">
           <div className="rcard-meta">
@@ -132,11 +142,11 @@ export default function RatingCard({ driver, rating }) {
         </div>
 
         <div className="rcard-stats">
-          <div className="rcard-stat"><span>EXP</span><b>{g.exp}</b></div>
-          <div className="rcard-stat"><span>RAC</span><b>{g.rac}</b></div>
+          <div className="rcard-stat"><span>EXP</span><b>{g ? g.exp : "–"}</b></div>
+          <div className="rcard-stat"><span>RAC</span><b>{g ? g.rac : "–"}</b></div>
           {/* internal key stays `aha`; the league's display code is AWA */}
-          <div className="rcard-stat"><span>AWA</span><b>{g.aha}</b></div>
-          <div className="rcard-stat"><span>PAC</span><b>{g.pac}</b></div>
+          <div className="rcard-stat"><span>AWA</span><b>{g ? g.aha : "–"}</b></div>
+          <div className="rcard-stat"><span>PAC</span><b>{g ? g.pac : "–"}</b></div>
         </div>
 
         <div className="rcard-brand"><span>NABS</span> RACING<i />{seasonLabel}</div>

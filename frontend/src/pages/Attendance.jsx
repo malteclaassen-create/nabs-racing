@@ -173,9 +173,25 @@ export default function Attendance() {
                     "Date to be confirmed"
                   )}
                 </div>
+                {(ev.qualiMinutes || ev.raceLaps) && (
+                  <div className="mt-1.5 font-mono text-xs font-bold uppercase tracking-wide text-light">
+                    {[
+                      ev.qualiMinutes && `Qualifying ${ev.qualiMinutes} min`,
+                      ev.raceLaps && `Race ${ev.raceLaps} laps`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                )}
               </div>
               {ev.date && <RaceCountdown date={ev.date} className="w-full sm:w-80" />}
             </div>
+            {/* free-text race details (rules, mods, links) — as the admin wrote them */}
+            {ev.info && (
+              <p className="relative mt-4 whitespace-pre-line border-t border-border pt-4 text-sm leading-relaxed text-medium">
+                {ev.info}
+              </p>
+            )}
           </div>
 
           {error && <ErrorBox message={error} />}

@@ -15,6 +15,18 @@ import { circuitFor } from "../data/circuits.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
+// Amber pill marking the league's safety car driver, next to the tier badge.
+function SafetyCarBadge() {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-amber-600 ring-1 ring-amber-500/40 dark:text-amber-400">
+      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M3 17h18M5 17l1.5-4.5A3 3 0 019.3 10h5.4a3 3 0 012.8 2l1.5 5M7.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM16.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
+      </svg>
+      Safety Car
+    </span>
+  );
+}
+
 // Public driver page layout switch:
 //   "card"    → the rating-card–led design (no dark hero banner, no rating
 //               breakdown); the card is the centrepiece of a coherent top block.
@@ -753,6 +765,7 @@ function ClassicHero({ driver, championship, color }) {
             <h1 className="font-display text-4xl font-black uppercase tracking-tight sm:text-6xl">{driver.name}</h1>
             <Flag code={countryFor(driver.id, driver.country)} w={30} h={22} />
             <TierBadge tier={driver.tier} />
+            {driver.role === "safety" && <SafetyCarBadge />}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-white/70">
             <Link to={`/teams/${driver.team.id}`} className="group flex items-center gap-2">
@@ -817,7 +830,8 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
             the card keeps its own height and floats mid-row with equal space
             above and below, instead of its frame stretching down. */}
         <div className="flex items-center justify-center">
-          {rating ? (
+          {/* safety car drivers get their card even with no races (no rating) */}
+          {rating || driver.role === "safety" ? (
             <RatingCard driver={driver} rating={rating} />
           ) : (
             <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={160} className="text-6xl" />
@@ -832,6 +846,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                 <h1 className="font-display text-4xl font-black uppercase tracking-tight text-dark sm:text-5xl">{driver.name}</h1>
                 <Flag code={countryFor(driver.id, driver.country)} w={30} h={22} />
                 <TierBadge tier={driver.tier} />
+                {driver.role === "safety" && <SafetyCarBadge />}
               </div>
               <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2 text-light lg:justify-start">
                 <Link to={`/teams/${driver.team.id}`} className="group flex items-center gap-2">

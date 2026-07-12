@@ -99,6 +99,70 @@ export async function getLinkedDriverIds(prisma, driverId) {
   return byPerson.get(personId) || [driverId];
 }
 
+// The driver row this PERSON has in `seasonId`, starting from any of their
+// rows. Used by season-scoped actions (RSVP, driver market) so acting on a
+// race of another season books the RIGHT roster row — not the row the login
+// happens to point at. Resolution mirrors the login's season handover:
+// person link first, then a name/handle match among UNCLAIMED rows; never a
+// row claimed by a different Discord account. Returns the row (with team)
+// or null when the person isn't on that season's roster.
+export async function seasonRowForDriver(prisma, driver, seasonId, discordId) {
+  if (!driver) return null;
+  if (!seasonId || driver.seasonId === seasonId) return driver;
+  const norm = (s) =>
+    (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+  const [roster, linkedIds] = await Promise.all([
+    prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
+    getLinkedDriverIds(prisma, driver.id),
+  ]);
+  const keys = [driver.discordName, driver.name].map(norm).filter(Boolean);
+  const ownable = (d) => !d.discordUserId || (discordId && d.discordUserId === discordId);
+  return (
+    roster.find((d) => linkedIds.includes(d.id) && ownable(d)) ||
+    roster.find((d) => !d.discordUserId && [norm(d.discordName), norm(d.name)].some((k) => keys.includes(k))) ||
+    null
+  );
+}
+
+// Map driverId -> Discord user id for the given rows: the row's own
+// discordUserId, or — because the id lives on only ONE row per person and
+// moves on login — the id found on any person-linked row. This is what lets a
+// season-opener results post @mention members whose login still points at
+// last season's row (nobody has to re-log-in just so pings work).
+export async function discordIdsForDrivers(prisma, driverIds) {
+  const ids = [...new Set((driverIds || []).filter(Boolean))];
+  const out = new Map();
+  if (!ids.length) return out;
+  const ph = ids.map(() => "?").join(",");
+  const own = await prisma.$queryRawUnsafe(
+    `SELECT "id", "discordUserId" FROM "Driver" WHERE "id" IN (${ph})`,
+    ...ids
+  );
+  const missing = [];
+  for (const d of own) {
+    if (d.discordUserId) out.set(d.id, d.discordUserId);
+    else missing.push(d.id);
+  }
+  if (!missing.length) return out;
+  const { byDriver, byPerson } = await getPersonGroups(prisma);
+  const linkedIds = [
+    ...new Set(missing.flatMap((id) => (byPerson.get(byDriver.get(id)) || []).filter((x) => x !== id))),
+  ];
+  if (!linkedIds.length) return out;
+  const lph = linkedIds.map(() => "?").join(",");
+  const linked = await prisma.$queryRawUnsafe(
+    `SELECT "id", "discordUserId" FROM "Driver" WHERE "id" IN (${lph}) AND "discordUserId" IS NOT NULL`,
+    ...linkedIds
+  );
+  const idByRow = new Map(linked.map((d) => [d.id, d.discordUserId]));
+  for (const id of missing) {
+    const siblings = byPerson.get(byDriver.get(id)) || [];
+    const found = siblings.map((s) => idByRow.get(s)).find(Boolean);
+    if (found) out.set(id, found);
+  }
+  return out;
+}
+
 // Pure core of the name resolution (exported for testing). `rows` =
 // [{ personId, driverId, name, seasonNumber }]. Returns Map<driverId, {
 // displayName, formerName }> for every linked driver whose own name differs from

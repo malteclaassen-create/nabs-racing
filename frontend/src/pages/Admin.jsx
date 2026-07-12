@@ -231,6 +231,8 @@ export default function Admin() {
 // --- DRIVER MARKET (admin override) ----------------------------------------
 function MarketAdmin() {
   const market = useApi(useCallback(() => api.market(), []));
+  // Full takeover record (completed races included) — read-only history.
+  const history = useApi(useCallback(() => api.adminMarketHistory(), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -244,7 +246,7 @@ function MarketAdmin() {
     setBusy(key);
     try {
       await fn();
-      await market.reload();
+      await Promise.all([market.reload(), history.reload()]);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -294,6 +296,58 @@ function MarketAdmin() {
           </div>
         </div>
       ))}
+
+      {/* --- takeover record ------------------------------------------------ */}
+      <div className="card p-5">
+        <CardHead eyebrow="Driver Market" title="Takeover history" />
+        <p className="text-sm text-light">
+          Every seat offer of this season, race by race, completed rounds included, so you can always trace
+          who stood in for whom. &ldquo;In the result&rdquo; means the stored race result actually carries the
+          takeover (the reserve scored for that team); if it says &ldquo;not in the result&rdquo;, check the
+          round&rsquo;s results in Edit Results.
+        </p>
+        {history.loading && <p className="mt-3 text-sm text-light">Loading…</p>}
+        {history.error && <div className="mt-3"><ErrorBox message={history.error} /></div>}
+        {history.data && (history.data.races || []).length === 0 && (
+          <p className="mt-3 text-sm text-faint">No seat offers in this season yet.</p>
+        )}
+        {(history.data?.races || []).map((race) => (
+          <div key={race.id} className="mt-4 first:mt-3">
+            <div className="mb-1.5 flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-medium">
+              R{race.number} · {race.track}
+              {race.isCompleted && <span className="pill bg-surface2 text-[10px] text-light">done</span>}
+            </div>
+            <ul className="divide-y divide-border border-t border-border">
+              {race.offers.map((o) => (
+                <li key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+                  <span className="min-w-0 font-semibold text-dark">
+                    {o.filledBy ? o.filledBy.name : "—"}
+                  </span>
+                  <span className="text-light">
+                    {o.filledBy ? "took over" : "no taker for"} the {o.team.name} seat of {o.offeredBy.name}
+                  </span>
+                  <span className="ml-auto flex items-center gap-1.5">
+                    {o.confirmedInResult === true && (
+                      <span className="pill bg-emerald-500/15 font-mono text-[10px] font-bold uppercase text-emerald-600">in the result</span>
+                    )}
+                    {o.confirmedInResult === false && (
+                      <span className="pill bg-amber-500/15 font-mono text-[10px] font-bold uppercase text-amber-600">not in the result</span>
+                    )}
+                    {o.confirmedInResult === null && o.status === "FILLED" && (
+                      <span className="pill bg-surface2 font-mono text-[10px] font-bold uppercase text-light">agreed · race pending</span>
+                    )}
+                    {o.confirmedInResult === null && o.status !== "FILLED" && (
+                      <span className="pill bg-surface2 font-mono text-[10px] font-bold uppercase text-light">
+                        {race.isCompleted ? "stayed unfilled" : "open"}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -475,12 +529,23 @@ function toLocalInput(date) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// <input type="datetime-local"> value -> unambiguous ISO instant for the API.
+// The raw "2026-08-15T19:00" string carries NO timezone; the deployed backend
+// runs on UTC and would read it as 19:00 UTC (21:00 German time) — the admin
+// would save a time and get a different one back. The browser parses the
+// string in the admin's own zone, which is exactly what they meant.
+function fromLocalInput(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 function EditResults() {
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [raceId, setRaceId] = useState("");
   const [rows, setRows] = useState([]);
-  const [meta, setMeta] = useState({ track: "", date: "" }); // race details editor
+  const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceLaps: "", info: "" }); // race details editor
   const [dotd, setDotd] = useState(""); // Driver of the Day pick
   const [dotdBy, setDotdBy] = useState(""); // who made the pick (streamer)
   const [busy, setBusy] = useState(false);
@@ -494,7 +559,13 @@ function EditResults() {
     api
       .raceResults(raceId)
       .then((d) => {
-        setMeta({ track: d.race?.track || "", date: toLocalInput(d.race?.date) });
+        setMeta({
+          track: d.race?.track || "",
+          date: toLocalInput(d.race?.date),
+          qualiMinutes: d.race?.qualiMinutes ?? "",
+          raceLaps: d.race?.raceLaps ?? "",
+          info: d.race?.info || "",
+        });
         setDotd(d.race?.driverOfTheDay?.driverId || "");
         setDotdBy(d.race?.driverOfTheDay?.pickedBy || "");
         setRows(
@@ -566,7 +637,13 @@ function EditResults() {
     setError(null);
     setMsg(null);
     try {
-      await api.updateEvent(raceId, { track: meta.track, date: meta.date || null });
+      await api.updateEvent(raceId, {
+        track: meta.track,
+        date: fromLocalInput(meta.date),
+        qualiMinutes: meta.qualiMinutes === "" ? null : meta.qualiMinutes,
+        raceLaps: meta.raceLaps === "" ? null : meta.raceLaps,
+        info: meta.info || null,
+      });
       setMsg("Race details saved.");
       reloadRaces(); // the round selector shows the new name
     } catch (e) {
@@ -621,10 +698,27 @@ function EditResults() {
             <input className="input" type="datetime-local" value={meta.date}
               onChange={(e) => setMeta({ ...meta, date: e.target.value })} />
           </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+            Qualifying (min)
+            <input className="input w-32" type="number" min="1" value={meta.qualiMinutes}
+              onChange={(e) => setMeta({ ...meta, qualiMinutes: e.target.value })} />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+            Race laps
+            <input className="input w-32" type="number" min="1" value={meta.raceLaps}
+              onChange={(e) => setMeta({ ...meta, raceLaps: e.target.value })} />
+          </label>
+          <label className="flex w-full flex-col gap-1 text-xs font-semibold text-light">
+            Details (rules, mods, links… shown in the Discord post and on the site)
+            <textarea className="input min-h-20" value={meta.info}
+              onChange={(e) => setMeta({ ...meta, info: e.target.value })} />
+          </label>
           <button className="btn-secondary" disabled={busy || !meta.track.trim()} onClick={saveDetails}>
             Save details
           </button>
-          <span className="pb-2 text-xs text-light">Renames the round everywhere. Results stay untouched.</span>
+          <span className="pb-2 text-xs text-light">
+            Renames the round everywhere; format &amp; details feed the announcement. Results stay untouched.
+          </span>
         </div>
       )}
 
@@ -748,8 +842,155 @@ function EditResults() {
           <button className="btn-primary" onClick={save} disabled={busy}>
             {busy ? "Saving…" : "Save results"}
           </button>
+
+          <DiscordResultsPost raceId={raceId} />
         </>
       )}
+    </div>
+  );
+}
+
+// --- DISCORD RESULTS POST ----------------------------------------------------
+// Generates the "#results" message for the selected round (classification with
+// real @mentions + a stats block), lets the admin tweak it, then copy it or
+// post it straight to the results-channel webhook. Save the results first —
+// the draft is built from what's stored, not from unsaved edits above.
+function DiscordResultsPost({ raceId }) {
+  const { data: hook, reload: reloadHook } = useApi(useCallback(() => api.getResultsWebhook(), []));
+  const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [error, setError] = useState(null);
+
+  // A different round starts from a clean slate.
+  useEffect(() => {
+    setText("");
+    setMsg(null);
+    setError(null);
+  }, [raceId]);
+
+  async function run(fn, doneMsg) {
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      await fn();
+      if (doneMsg) setMsg(doneMsg);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const generate = () =>
+    run(async () => {
+      const r = await api.getResultsPost(raceId);
+      setText(r.text || "");
+    });
+
+  const copy = () =>
+    run(async () => {
+      await navigator.clipboard.writeText(text);
+    }, "Copied. Paste it into Discord.");
+
+  const post = () => {
+    if (!window.confirm("Post this message to the results channel? Mentioned drivers get pinged.")) return;
+    run(async () => {
+      const r = await api.sendResultsPost(raceId, text);
+      setMsg(r.messages > 1 ? `Posted as ${r.messages} messages (Discord length limit).` : "Posted to Discord.");
+    });
+  };
+
+  const saveHook = () =>
+    run(async () => {
+      await api.setResultsWebhook(url.trim());
+      setUrl("");
+      reloadHook();
+    }, "Results webhook saved.");
+
+  // Clearing only stops the "Post to Discord" button; Copy keeps working. The
+  // URL itself stays usable in Discord until it's deleted there too.
+  const removeHook = () => {
+    if (!window.confirm("Remove the saved results webhook? Posting from here stops until a new one is saved. (To fully revoke the URL, also delete the webhook in Discord.)")) return;
+    run(async () => {
+      await api.setResultsWebhook("");
+      reloadHook();
+    }, "Results webhook removed.");
+  };
+
+  return (
+    <div className="card space-y-3 p-4">
+      <CardHead eyebrow="Discord" title="Results post" />
+      <p className="text-sm text-light">
+        Builds the results message for this round: podium and classification with real @mentions, DNFs, and the
+        stats block (pole, fastest lap, consistency, crashes, DOTD). Save the results above first, then generate,
+        tweak the text if you like (team emojis, role pings), and post or copy it.
+      </p>
+      {error && <ErrorBox message={error} />}
+      {msg && <Notice kind="success">{msg}</Notice>}
+
+      {!text ? (
+        <button className="btn-secondary" disabled={busy} onClick={generate}>
+          {busy ? "Building…" : "Generate message"}
+        </button>
+      ) : (
+        <>
+          <textarea
+            className="input min-h-72 w-full font-mono text-xs leading-relaxed"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            spellCheck={false}
+          />
+          <p className="text-xs text-light">
+            The &lt;@…&gt; codes turn into real @mentions once the message lands in Discord. Custom server emojis
+            can be added as :emoji_name: if the webhook&rsquo;s server has them.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-primary" disabled={busy || !hook?.configured || !text.trim()} onClick={post}>
+              Post to Discord
+            </button>
+            <button className="btn-secondary" disabled={busy || !text.trim()} onClick={copy}>
+              Copy
+            </button>
+            <button className="btn-secondary" disabled={busy} onClick={generate}>
+              Regenerate
+            </button>
+          </div>
+        </>
+      )}
+
+      <div className="rounded-lg bg-surface2 p-3">
+        <div className="text-sm">
+          Results channel webhook:{" "}
+          {hook?.configured ? (
+            <span className="font-semibold text-emerald-600">connected ({hook.preview})</span>
+          ) : (
+            <span className="font-semibold text-light">not connected (copy still works)</span>
+          )}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <input
+            className="input max-w-md flex-1"
+            placeholder="https://discord.com/api/webhooks/… (the #results channel)"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <button className="btn-secondary" disabled={busy || !url.trim()} onClick={saveHook}>
+            Save webhook
+          </button>
+          {hook?.configured && (
+            <button className="btn-secondary" disabled={busy} onClick={removeHook}>
+              Remove
+            </button>
+          )}
+        </div>
+        <p className="mt-1.5 text-xs text-light">
+          Separate from the events webhook, so results land in their own channel. Discord channel &rarr; Edit
+          Channel &rarr; Integrations &rarr; Webhooks.
+        </p>
+      </div>
     </div>
   );
 }
@@ -839,7 +1080,12 @@ function Drivers() {
 
       <div className="card max-h-[640px] overflow-y-auto p-5">
         <CardHead eyebrow="Roster" title={`Drivers by team (${allDrivers.length})`} />
-        <p className="mb-3 text-xs text-light">Use the dropdowns to move a driver to another team or change their tier.</p>
+        <p className="mb-3 text-xs text-light">
+          Use the dropdowns to move a driver to another team or change their tier. The Discord user ID field links
+          the driver to their Discord account: it makes their website login connect instantly and lets the results
+          post @mention them, even before their first login. (Discord: Settings → Advanced → Developer Mode, then
+          right-click the user → Copy User ID.)
+        </p>
         <div className="space-y-5">
           {teamGroups.map((t) => (
             <div key={t.id}>
@@ -867,10 +1113,18 @@ function Drivers() {
                       <option value={2}>T2</option>
                       <option value={0}>Res</option>
                     </select>
+                    <select className="input py-1 text-xs" value={d.role || ""} disabled={busy}
+                      title="Special league role: shown on the profile and turns the rating card into the Safety Car edition"
+                      onChange={(e) => patchDriver(d, { role: e.target.value })}>
+                      <option value="">Driver</option>
+                      <option value="safety">Safety Car</option>
+                    </select>
                     <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
                       onClick={() => patchDriver(d, { isActive: !d.isActive })}>
                       {d.isActive ? "Deactivate" : "Reactivate"}
                     </button>
+                    <DriverDiscordId d={d} busy={busy}
+                      onSave={(v) => patchDriver(d, { discordUserId: v })} />
                   </li>
                 ))}
               </ul>
@@ -883,6 +1137,42 @@ function Drivers() {
   );
 }
 
+// Per-driver Discord user id (the long number). Login connects the member by
+// this exact id, and the Discord results post pings <@id> — so filling it in
+// for drivers who never signed in gives them a working login AND real
+// mentions. Full width on its own line so the roster row above stays tidy.
+function DriverDiscordId({ d, busy, onSave }) {
+  const [val, setVal] = useState(d.discordUserId || "");
+  useEffect(() => setVal(d.discordUserId || ""), [d.discordUserId]);
+  const dirty = val.trim() !== (d.discordUserId || "");
+  return (
+    <span className="flex w-full items-center gap-2">
+      <input
+        className="input w-52 py-1 font-mono text-xs"
+        placeholder="Discord user ID (not set)"
+        title="The 17-20 digit Discord user ID. In Discord: Settings → Advanced → Developer Mode on, then right-click the user → Copy User ID. Used to link their login and to @mention them in results posts."
+        value={val}
+        onChange={(e) => setVal(e.target.value.trim())}
+      />
+      {d.discordUserId && !dirty && (
+        <span className="font-mono text-[10px] font-bold uppercase text-emerald-600">linked</span>
+      )}
+      {dirty && (
+        <>
+          <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+            onClick={() => onSave(val.trim())}>
+            Save
+          </button>
+          <button className="text-xs font-semibold text-light hover:underline" disabled={busy}
+            onClick={() => setVal(d.discordUserId || "")}>
+            Cancel
+          </button>
+        </>
+      )}
+    </span>
+  );
+}
+
 // --- DISCORD & EVENTS ------------------------------------------------------
 function DiscordEvents() {
   const { current } = useSeason();
@@ -892,7 +1182,10 @@ function DiscordEvents() {
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [event, setEvent] = useState({ number: "", track: "", date: "", isSpecialEvent: false });
+  const [event, setEvent] = useState({
+    number: "", track: "", date: "", isSpecialEvent: false,
+    qualiMinutes: "", raceLaps: "", info: "",
+  });
 
   async function saveWebhook(e) {
     e.preventDefault();
@@ -913,6 +1206,18 @@ function DiscordEvents() {
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // Clearing the webhook stops all event posts/updates; the URL itself keeps
+  // working in Discord until it's deleted there too, hence the hint.
+  async function removeWebhook() {
+    if (!window.confirm("Remove the saved webhook? Event posts and RSVP updates to Discord stop until a new one is saved. (To fully revoke the URL, also delete the webhook in Discord.)")) return;
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.setWebhook("");
+      setMsg("Webhook removed.");
+      reload();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
   async function createEvent(e) {
     e.preventDefault();
     setBusy(true); setError(null); setMsg(null);
@@ -920,12 +1225,15 @@ function DiscordEvents() {
       await api.createEvent({
         number: event.isSpecialEvent ? null : Number(event.number),
         track: event.track,
-        date: event.date || null,
+        date: fromLocalInput(event.date),
         isSpecialEvent: event.isSpecialEvent,
         seasonId: current?.id,
+        qualiMinutes: event.qualiMinutes || null,
+        raceLaps: event.raceLaps || null,
+        info: event.info || null,
       });
       setMsg(event.isSpecialEvent ? `Special event "${event.track}" created.` : `Round ${event.number} created.`);
-      setEvent({ number: "", track: "", date: "", isSpecialEvent: false });
+      setEvent({ number: "", track: "", date: "", isSpecialEvent: false, qualiMinutes: "", raceLaps: "", info: "" });
       reloadRaces();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -937,6 +1245,39 @@ function DiscordEvents() {
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // Inline per-race editor: every schedule detail of a round is editable here,
+  // before and after it ran. Saving also refreshes an already-announced
+  // Discord post (the backend re-syncs the message automatically).
+  const [editingId, setEditingId] = useState(null);
+  const [edit, setEdit] = useState(null);
+
+  function startEdit(r) {
+    setEditingId(r.id);
+    setEdit({
+      track: r.track || "",
+      date: toLocalInput(r.date),
+      qualiMinutes: r.qualiMinutes ?? "",
+      raceLaps: r.raceLaps ?? "",
+      info: r.info || "",
+    });
+  }
+
+  async function saveEdit() {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.updateEvent(editingId, {
+        track: edit.track,
+        date: fromLocalInput(edit.date),
+        qualiMinutes: edit.qualiMinutes === "" ? null : edit.qualiMinutes,
+        raceLaps: edit.raceLaps === "" ? null : edit.raceLaps,
+        info: edit.info || null,
+      });
+      setMsg("Race saved. An already-announced Discord post updates itself.");
+      setEditingId(null);
+      reloadRaces();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
   async function announce(id) {
     setBusy(true); setError(null); setMsg(null);
     try {
@@ -944,8 +1285,6 @@ function DiscordEvents() {
       setMsg("Event posted/updated in Discord.");
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
-
-  const upcoming = (races || []).filter((r) => !r.isCompleted);
 
   return (
     <div>
@@ -971,11 +1310,16 @@ function DiscordEvents() {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
         />
-        <div className="flex gap-2">
-          <button className="btn-primary" disabled={busy}>Save</button>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-primary" disabled={busy || !url.trim()}>Save</button>
           <button type="button" className="btn-secondary" disabled={busy || !hook?.configured} onClick={test}>
             Send test
           </button>
+          {hook?.configured && (
+            <button type="button" className="btn-secondary" disabled={busy} onClick={removeWebhook}>
+              Remove
+            </button>
+          )}
         </div>
         {error && <Notice kind="error">{error}</Notice>}
         {msg && <Notice kind="success">{msg}</Notice>}
@@ -1000,32 +1344,96 @@ function DiscordEvents() {
           </div>
           <input className="input" type="datetime-local" value={event.date}
             onChange={(e) => setEvent({ ...event, date: e.target.value })} />
+          {/* session format + free text: all optional, shown in the Discord
+              announcement and on the site's upcoming-race panels */}
+          <div className="grid grid-cols-2 gap-3">
+            <input className="input" type="number" min="1" placeholder="Qualifying (min)" value={event.qualiMinutes}
+              onChange={(e) => setEvent({ ...event, qualiMinutes: e.target.value })} />
+            <input className="input" type="number" min="1" placeholder="Race laps" value={event.raceLaps}
+              onChange={(e) => setEvent({ ...event, raceLaps: e.target.value })} />
+          </div>
+          <textarea className="input min-h-20" placeholder="Details for the announcement & website: rules, mods, links… (optional)"
+            value={event.info} onChange={(e) => setEvent({ ...event, info: e.target.value })} />
           <button className="btn-primary w-full" disabled={busy}>Create</button>
         </form>
 
         <div className="card p-5">
-          <CardHead eyebrow="Schedule" title="Upcoming races" />
+          <CardHead eyebrow="Schedule" title="Season races" />
+          <p className="mb-2 text-sm text-light">
+            One place for the whole calendar: every detail (track, time, sessions, rules text) stays editable
+            here, before and after a round ran. Saving updates an announced Discord post automatically.
+          </p>
           <ul className="divide-y divide-border">
-            {upcoming.map((r) => (
-              <li key={r.id} className="flex items-center justify-between py-2 text-sm">
-                <span className="font-semibold text-dark">
-                  {r.isSpecialEvent ? "SE" : `Round ${r.number}`} · {r.track}
-                </span>
-                <span className="flex items-center gap-3">
-                  {!r.isSpecialEvent && (
+            {(races || []).map((r) => (
+              <li key={r.id} className="py-2 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 truncate font-semibold text-dark">
+                    {r.isSpecialEvent ? "SE" : `Round ${r.number}`} · {r.track}
+                    {r.isCompleted && (
+                      <span className="pill ml-2 bg-surface2 font-mono text-[10px] font-bold uppercase text-light">done</span>
+                    )}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3">
                     <button className="text-xs font-semibold text-primary hover:underline"
-                      disabled={busy} onClick={() => announce(r.id)}>
-                      Post to Discord
+                      disabled={busy} onClick={() => (editingId === r.id ? setEditingId(null) : startEdit(r))}>
+                      {editingId === r.id ? "Close" : "Edit"}
                     </button>
-                  )}
-                  <button className="text-xs font-semibold text-rose-500 hover:underline"
-                    disabled={busy} onClick={() => deleteRace(r.id)}>
-                    Delete
-                  </button>
-                </span>
+                    {!r.isSpecialEvent && !r.isCompleted && (
+                      <button className="text-xs font-semibold text-primary hover:underline"
+                        disabled={busy} onClick={() => announce(r.id)}>
+                        Post to Discord
+                      </button>
+                    )}
+                    {r.resultCount === 0 && (
+                      <button className="text-xs font-semibold text-rose-500 hover:underline"
+                        disabled={busy} onClick={() => deleteRace(r.id)}>
+                        Delete
+                      </button>
+                    )}
+                  </span>
+                </div>
+                {editingId === r.id && edit && (
+                  <div className="mt-3 space-y-3 rounded-lg bg-surface2 p-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+                        Track
+                        <input className="input" value={edit.track}
+                          onChange={(e) => setEdit({ ...edit, track: e.target.value })} />
+                      </label>
+                      <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+                        Date &amp; time
+                        <input className="input" type="datetime-local" value={edit.date}
+                          onChange={(e) => setEdit({ ...edit, date: e.target.value })} />
+                      </label>
+                      <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+                        Qualifying (min)
+                        <input className="input" type="number" min="1" value={edit.qualiMinutes}
+                          onChange={(e) => setEdit({ ...edit, qualiMinutes: e.target.value })} />
+                      </label>
+                      <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+                        Race laps
+                        <input className="input" type="number" min="1" value={edit.raceLaps}
+                          onChange={(e) => setEdit({ ...edit, raceLaps: e.target.value })} />
+                      </label>
+                    </div>
+                    <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+                      Details (rules, mods, links… shown in the Discord post and on the site)
+                      <textarea className="input min-h-24" value={edit.info}
+                        onChange={(e) => setEdit({ ...edit, info: e.target.value })} />
+                    </label>
+                    <div className="flex gap-2">
+                      <button className="btn-primary py-1.5 text-sm" disabled={busy || !edit.track.trim()} onClick={saveEdit}>
+                        Save
+                      </button>
+                      <button className="btn-secondary py-1.5 text-sm" disabled={busy} onClick={() => setEditingId(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
-            {upcoming.length === 0 && <li className="py-2 text-sm text-light">No upcoming races.</li>}
+            {(races || []).length === 0 && <li className="py-2 text-sm text-light">No races in this season yet.</li>}
           </ul>
         </div>
       </div>

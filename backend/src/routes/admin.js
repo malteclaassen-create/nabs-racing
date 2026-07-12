@@ -10,11 +10,14 @@ import { listRemoteResults, fetchRemoteResult } from "../services/emperorResults
 import { saveRaceResults } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
 import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
-import { getWebhookUrl, setWebhookUrl, announce, syncRaceToDiscord } from "../services/discordService.js";
+import { getWebhookUrl, setWebhookUrl, getResultsWebhookUrl, setResultsWebhookUrl, postToResultsChannel, announce, syncRaceToDiscord } from "../services/discordService.js";
+import { buildResultsPost } from "../services/resultsPostService.js";
 import { resolveSeasonId, invalidatePrivateSeasonCache } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, createFullBackupZip } from "../services/backupService.js";
 import { SOCIAL_KEYS, readSocialLinks } from "./settings.js";
+import { parseFormatNumber } from "../lib/raceFormat.js";
+import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import {
   dbListDownloads, dbGetDownload, dbCreateDownload, dbUpdateDownload, dbDeleteDownload,
   dbListFolders, dbGetFolder, dbCreateFolder, dbUpdateFolder, dbDeleteFolder,
@@ -27,7 +30,7 @@ import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq, writeWelcomeFaq } from "../lib/welcomeFaq.js";
 import { dbListMembers, dbGetMember, dbSetBanned, shapeMember } from "../lib/members.js";
-import { dbLinkDrivers, dbUnlinkDriver, dbListPersons } from "../lib/persons.js";
+import { dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds } from "../lib/persons.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import { UPLOADS_DIR, LOGS_DIR } from "../lib/dataDirs.js";
 
@@ -375,9 +378,14 @@ router.put("/ratings/weights", async (req, res, next) => {
 
 // POST /api/admin/market/:offerId/assign  { driverId | null }
 // Force the chosen reserve for an offer; null clears it (back to OPEN).
+// Works on completed races too — this is how the admin corrects the takeover
+// record after the fact (the driver-facing pick locks at race completion).
 router.post("/market/:offerId/assign", async (req, res, next) => {
   try {
-    const offer = await prisma.seatOffer.findUnique({ where: { id: req.params.offerId } });
+    const offer = await prisma.seatOffer.findUnique({
+      where: { id: req.params.offerId },
+      include: { race: { select: { seasonId: true } } },
+    });
     if (!offer) return res.status(404).json({ error: "Offer not found" });
 
     const pickId = req.body?.driverId || null;
@@ -390,12 +398,81 @@ router.post("/market/:offerId/assign", async (req, res, next) => {
       if (reserve.team?.tier !== 0) {
         return res.status(400).json({ error: "Only reserve drivers can fill a seat" });
       }
+      // A seat is filled from the RACE's season's reserve pool — a same-named
+      // row from another season would poison the import pre-fill ids.
+      if (offer.race?.seasonId && reserve.seasonId !== offer.race.seasonId) {
+        return res.status(400).json({ error: "That driver belongs to another season's roster" });
+      }
     }
     await prisma.seatOffer.update({
       where: { id: offer.id },
       data: { filledById: pickId, status: pickId ? "FILLED" : "OPEN" },
     });
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/market/history?season=N -> every seat offer of the season,
+// grouped per race (completed rounds included) — the after-the-fact record of
+// who stood in for whom. `confirmedInResult` says whether the takeover is
+// actually reflected in the stored race result (the authoritative data):
+// true/false once the race has results, null while it hasn't run.
+router.get("/market/history", async (req, res, next) => {
+  try {
+    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true });
+    const offers = await prisma.seatOffer.findMany({
+      where: { race: { seasonId } },
+      include: {
+        race: { include: { _count: { select: { results: true } } } },
+        team: true,
+        driver: true,
+        filledBy: true,
+        interests: { include: { driver: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    // One results lookup for all filled offers, to flag confirmed takeovers.
+    const filled = offers.filter((o) => o.filledById);
+    const results = filled.length
+      ? await prisma.raceResult.findMany({
+          where: { OR: filled.map((o) => ({ raceId: o.raceId, driverId: o.filledById })) },
+          select: { raceId: true, driverId: true, subForTeamId: true },
+        })
+      : [];
+    const resultKey = new Map(results.map((r) => [`${r.raceId}:${r.driverId}`, r]));
+
+    const byRace = new Map();
+    for (const o of offers) {
+      if (!byRace.has(o.raceId)) {
+        byRace.set(o.raceId, {
+          id: o.race.id,
+          number: o.race.number,
+          track: o.race.track,
+          date: o.race.date,
+          isCompleted: o.race.isCompleted,
+          hasResults: o.race._count.results > 0,
+          offers: [],
+        });
+      }
+      const result = o.filledById ? resultKey.get(`${o.raceId}:${o.filledById}`) : null;
+      byRace.get(o.raceId).offers.push({
+        id: o.id,
+        status: o.status,
+        createdAt: o.createdAt,
+        team: { id: o.team.id, name: o.team.name, color: o.team.color },
+        offeredBy: { driverId: o.driver.id, name: o.driver.name },
+        filledBy: o.filledBy ? { driverId: o.filledBy.id, name: o.filledBy.name } : null,
+        interests: o.interests.map((i) => i.driver.name),
+        confirmedInResult:
+          o.race._count.results > 0 && o.filledById
+            ? !!result && result.subForTeamId === o.teamId
+            : null,
+      });
+    }
+    const races = [...byRace.values()].sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+    res.json({ races });
   } catch (e) {
     next(e);
   }
@@ -541,7 +618,12 @@ router.post("/drivers", async (req, res, next) => {
 
 router.put("/drivers/:id", async (req, res, next) => {
   try {
-    const { name, discordName, teamId, tier, isActive, photoUrl } = req.body || {};
+    const { name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role } = req.body || {};
+    // Special league role ('safety' = safety car driver, "" clears). Raw-SQL
+    // column, so it's written after the prisma update below.
+    if (role !== undefined && role !== "" && role !== null && !DRIVER_ROLES.includes(role)) {
+      return res.status(400).json({ error: `role must be empty or one of: ${DRIVER_ROLES.join(", ")}` });
+    }
     const data = {};
     if (name !== undefined) data.name = name;
     if (discordName !== undefined) data.discordName = discordName;
@@ -549,10 +631,52 @@ router.put("/drivers/:id", async (req, res, next) => {
     if (tier !== undefined) data.tier = Number(tier);
     if (isActive !== undefined) data.isActive = isActive;
     if (photoUrl !== undefined) data.photoUrl = photoUrl || null;
-    const driver = await prisma.driver.update({ where: { id: req.params.id }, data });
+    // The driver's Discord user id (the long number). Login links by exact id,
+    // and the results post pings <@id> — so pre-filling it here gives drivers
+    // who never signed in a working login link AND real mentions. "" clears.
+    //
+    // The id is unique across ALL seasons (it sits on one row per person and
+    // moves on login). So when another row already holds it: if that row is
+    // person-linked to this driver (same human, e.g. their last-season row),
+    // MOVE the id over — that's the season-start case and always what the
+    // admin means. Any other holder is a real conflict and gets named.
+    if (discordUserId !== undefined) {
+      const v = String(discordUserId || "").trim();
+      if (v && !/^\d{15,21}$/.test(v)) {
+        return res.status(400).json({ error: "A Discord user ID is a 17-20 digit number (Discord: enable Developer Mode, right-click the user, Copy User ID)" });
+      }
+      if (v) {
+        const holder = await prisma.driver.findUnique({
+          where: { discordUserId: v },
+          include: { season: { select: { name: true } } },
+        });
+        if (holder && holder.id !== req.params.id) {
+          const samePerson = (await getLinkedDriverIds(prisma, req.params.id)).includes(holder.id);
+          if (!samePerson) {
+            return res.status(409).json({
+              error:
+                `That Discord ID is already on ${holder.name}` +
+                (holder.season?.name ? ` (${holder.season.name})` : "") +
+                ". If that's the same person, link the two entries under Members → Same person across seasons first; saving here then moves the ID over.",
+            });
+          }
+          await prisma.driver.update({ where: { id: holder.id }, data: { discordUserId: null } });
+        }
+      }
+      data.discordUserId = v || null;
+    }
+    // A role-only change arrives with an empty prisma patch — just read the row.
+    const driver = Object.keys(data).length
+      ? await prisma.driver.update({ where: { id: req.params.id }, data })
+      : await prisma.driver.findUnique({ where: { id: req.params.id } });
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
+    if (role !== undefined) {
+      driver.role = await writeDriverRole(prisma, driver.id, role);
+    }
     res.json(driver);
   } catch (e) {
     if (e.code === "P2025") return res.status(404).json({ error: "Driver not found" });
+    if (e.code === "P2002") return res.status(409).json({ error: "That Discord ID is already linked to another driver" });
     next(e);
   }
 });
@@ -726,8 +850,85 @@ router.post("/members/:discordId/unlink", async (req, res, next) => {
 // ---------------------------------------------------------------------------
 const personNorm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
 
+// Clusters of driver rows that plausibly belong to one person. Rows connect
+// when they share a normalized display name OR Discord handle — the handle
+// usually survives a rename ("mtimmis" replaced "Timmy 'Bunker' Gilmore" as
+// display name, but the Discord name stayed), so photos and the current name
+// can follow the person into old seasons without manual work. Already-linked
+// rows keep their group together, letting a newly matched old row attach to
+// the group it belongs to. Returns { linkable, ambiguous }: a cluster is
+// ambiguous when it would merge two DIFFERENT existing groups (an admin may
+// have split those on purpose), or when one season holds two rows that aren't
+// already linked to each other — nobody can tell which row is the person.
+// Those stay manual jobs.
+function buildPersonClusters(drivers, groups) {
+  const parent = new Map(drivers.map((d) => [d.id, d.id]));
+  const find = (x) => {
+    while (parent.get(x) !== x) {
+      parent.set(x, parent.get(parent.get(x)));
+      x = parent.get(x);
+    }
+    return x;
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  const firstByKey = new Map();
+  for (const d of drivers) {
+    for (const key of [personNorm(d.name), personNorm(d.discordName)]) {
+      if (!key) continue;
+      if (firstByKey.has(key)) union(d.id, firstByKey.get(key));
+      else firstByKey.set(key, d.id);
+    }
+  }
+  const personOf = new Map();
+  for (const g of groups) {
+    const present = g.driverIds.filter((id) => parent.has(id));
+    for (const id of present) personOf.set(id, g.personId);
+    for (let i = 1; i < present.length; i++) union(present[0], present[i]);
+  }
+  const byRoot = new Map();
+  for (const d of drivers) {
+    const r = find(d.id);
+    if (!byRoot.has(r)) byRoot.set(r, []);
+    byRoot.get(r).push(d);
+  }
+  const linkable = [];
+  const ambiguous = [];
+  for (const rows of byRoot.values()) {
+    if (rows.length < 2) continue;
+    const personIds = new Set(rows.map((d) => personOf.get(d.id)).filter(Boolean));
+    const hasUnlinked = rows.some((d) => !personOf.get(d.id));
+    if (!hasUnlinked && personIds.size <= 1) continue; // fully linked already
+    // Two rows in ONE season with nothing else is the deliberate same-season
+    // merge feature — that call stays with the admin.
+    if (new Set(rows.map((d) => d.seasonId)).size < 2) continue;
+    let amb = personIds.size > 1;
+    if (!amb) {
+      const bySeason = new Map();
+      for (const d of rows) {
+        if (!bySeason.has(d.seasonId)) bySeason.set(d.seasonId, []);
+        bySeason.get(d.seasonId).push(d);
+      }
+      for (const seasonRows of bySeason.values()) {
+        if (seasonRows.length < 2) continue;
+        const pids = new Set(seasonRows.map((d) => personOf.get(d.id) || null));
+        if (pids.size > 1 || pids.has(null)) {
+          amb = true;
+          break;
+        }
+      }
+    }
+    (amb ? ambiguous : linkable).push(rows);
+  }
+  return { linkable, ambiguous };
+}
+
 // GET /api/admin/persons -> { persons: [{personId, drivers:[...]}], candidates }
-// candidates = same-normalized-name driver rows spanning >1 season, not yet linked.
+// candidates = clusters sharing a display name or Discord handle across
+// seasons that aren't fully linked yet.
 router.get("/persons", async (req, res, next) => {
   try {
     const [groups, drivers, seasons] = await Promise.all([
@@ -745,7 +946,6 @@ router.get("/persons", async (req, res, next) => {
         seasonName: d.season?.name ?? null,
         teamName: d.team?.name ?? null,
       };
-    const linkedIds = new Set(groups.flatMap((g) => g.driverIds));
     const persons = groups
       .map((g) => ({
         personId: g.personId,
@@ -753,22 +953,20 @@ router.get("/persons", async (req, res, next) => {
       }))
       .filter((p) => p.drivers.length);
 
-    // Suggestions: names that appear in more than one season and aren't linked.
-    const byName = new Map();
-    for (const d of drivers) {
-      if (linkedIds.has(d.id)) continue;
-      const key = personNorm(d.name);
-      if (!key) continue;
-      if (!byName.has(key)) byName.set(key, []);
-      byName.get(key).push(d);
-    }
-    const candidates = [];
-    for (const rows of byName.values()) {
-      const seasonsSpanned = new Set(rows.map((r) => r.seasonId));
-      if (rows.length > 1 && seasonsSpanned.size > 1) {
-        candidates.push(rows.map(shape).sort((a, b) => (a.seasonNumber ?? 0) - (b.seasonNumber ?? 0)));
-      }
-    }
+    // Suggestions: clusters that share a display name OR Discord handle across
+    // seasons and aren't fully linked yet (see buildPersonClusters). A cluster
+    // may include an existing group — linking it pulls the new rows in.
+    // Ambiguous clusters are listed too (flagged), so the admin can settle
+    // them by hand; the auto-link button skips them.
+    const { linkable, ambiguous } = buildPersonClusters(drivers, groups);
+    const shapeCluster = (rows, amb) => ({
+      ambiguous: amb,
+      drivers: rows.map(shape).sort((a, b) => (a.seasonNumber ?? 0) - (b.seasonNumber ?? 0)),
+    });
+    const candidates = [
+      ...linkable.map((rows) => shapeCluster(rows, false)),
+      ...ambiguous.map((rows) => shapeCluster(rows, true)),
+    ];
     // Compact roster (all seasons) for the manual two-step linker.
     const allDrivers = drivers
       .map(shape)
@@ -794,38 +992,21 @@ router.post("/persons/link", async (req, res, next) => {
 });
 
 // POST /api/admin/persons/link-auto
-// Links every "same normalized name in more than one season" suggestion in one
-// go — the same groups the GET above lists as candidates. Only unambiguous
-// groups are linked: when one season holds TWO rows with that name, nobody can
-// tell which row is the person, so that group stays a manual job.
+// Links every candidate cluster the GET above lists, in one go — rows that
+// share a display name OR Discord handle across seasons (see
+// buildPersonClusters). Ambiguous clusters (a duplicate row inside one season,
+// or two existing groups that would merge) stay manual jobs.
 router.post("/persons/link-auto", async (req, res, next) => {
   try {
     const [groups, drivers] = await Promise.all([
       dbListPersons(prisma),
-      prisma.driver.findMany({ select: { id: true, name: true, seasonId: true } }),
+      prisma.driver.findMany({ select: { id: true, name: true, discordName: true, seasonId: true } }),
     ]);
-    const linkedIds = new Set(groups.flatMap((g) => g.driverIds));
-    const byName = new Map();
-    for (const d of drivers) {
-      if (linkedIds.has(d.id)) continue;
-      const key = personNorm(d.name);
-      if (!key) continue;
-      if (!byName.has(key)) byName.set(key, []);
-      byName.get(key).push(d);
-    }
-    let linked = 0;
-    let skippedAmbiguous = 0;
-    for (const rows of byName.values()) {
-      const seasonsSpanned = new Set(rows.map((r) => r.seasonId));
-      if (rows.length < 2 || seasonsSpanned.size < 2) continue;
-      if (seasonsSpanned.size !== rows.length) {
-        skippedAmbiguous++;
-        continue;
-      }
+    const { linkable, ambiguous } = buildPersonClusters(drivers, groups);
+    for (const rows of linkable) {
       await dbLinkDrivers(prisma, rows.map((r) => r.id));
-      linked++;
     }
-    res.json({ ok: true, linked, skippedAmbiguous });
+    res.json({ ok: true, linked: linkable.length, skippedAmbiguous: ambiguous.length });
   } catch (e) {
     next(e);
   }
@@ -918,14 +1099,100 @@ router.post("/discord/test", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/events  { number?, track, date?, seasonId?, isSpecialEvent? }
+// GET current RESULTS-channel webhook config (separate from the events one).
+router.get("/discord/results-webhook", async (req, res, next) => {
+  try {
+    const url = await getResultsWebhookUrl(prisma);
+    res.json({ configured: !!url, preview: url ? url.replace(/\/[^/]+$/, "/•••") : null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/discord/results-webhook  { url }   ("" clears it)
+router.put("/discord/results-webhook", async (req, res, next) => {
+  try {
+    const { url } = req.body || {};
+    if (url && !/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(url)) {
+      return res.status(400).json({ error: "Not a valid Discord webhook URL" });
+    }
+    await setResultsWebhookUrl(prisma, url || "");
+    res.json({ ok: true, configured: !!url });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/races/:id/results-post -> { text } — a generated draft of the
+// Discord results message for this round (the admin edits it before posting).
+router.get("/races/:id/results-post", async (req, res, next) => {
+  try {
+    const text = await buildResultsPost(prisma, req.params.id);
+    if (text == null) return res.status(404).json({ error: "Race not found or has no results yet" });
+    res.json({ text });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/races/:id/results-post { content } -> send the (possibly
+// edited) message to the results-channel webhook.
+router.post("/races/:id/results-post", async (req, res, next) => {
+  try {
+    const content = String(req.body?.content || "").trim();
+    if (!content) return res.status(400).json({ error: "Message is empty" });
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    const result = await postToResultsChannel(prisma, content);
+    if (result.skipped) return res.status(400).json({ error: "No results webhook configured" });
+    if (!result.ok) return res.status(502).json({ error: result.reason || "Discord rejected the message" });
+    res.json({ ok: true, messages: result.messages });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Validate the optional announcement fields shared by create & edit below:
+// info (free text for rules/mods), qualiMinutes, raceLaps. Returns { error }
+// or { info?, qualiMinutes?, raceLaps? } with only the supplied keys set.
+function parseEventExtras(body) {
+  const out = {};
+  if (body.info !== undefined) {
+    const info = String(body.info || "").trim();
+    if (info.length > 1500) return { error: "Details must be 1500 characters or fewer" };
+    out.info = info || null;
+  }
+  const quali = parseFormatNumber(body.qualiMinutes, "Qualifying minutes", 240);
+  if (quali.error) return { error: quali.error };
+  if (quali.ok) out.qualiMinutes = quali.value;
+  const laps = parseFormatNumber(body.raceLaps, "Race laps", 999);
+  if (laps.error) return { error: laps.error };
+  if (laps.ok) out.raceLaps = laps.value;
+  return out;
+}
+
+// qualiMinutes/raceLaps live outside the generated client -> raw write.
+async function writeRaceFormat(raceId, extras) {
+  if (extras.qualiMinutes !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "qualiMinutes" = ? WHERE "id" = ?`, extras.qualiMinutes, raceId);
+  }
+  if (extras.raceLaps !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "raceLaps" = ? WHERE "id" = ?`, extras.raceLaps, raceId);
+  }
+}
+
+// POST /api/admin/events  { number?, track, date?, seasonId?, isSpecialEvent?,
+//                           info?, qualiMinutes?, raceLaps? }
 // Creates an upcoming race (or a non-championship special event when
-// isSpecialEvent is set; those have no round number).
+// isSpecialEvent is set; those have no round number). The optional extras feed
+// the Discord announcement and the site's upcoming-race panels.
 router.post("/events", async (req, res, next) => {
   try {
     const { number, track, date, seasonId, isSpecialEvent } = req.body || {};
     if (!track) return res.status(400).json({ error: "track required" });
     if (!isSpecialEvent && !number) return res.status(400).json({ error: "number required" });
+    const extras = parseEventExtras(req.body || {});
+    if (extras.error) return res.status(400).json({ error: extras.error });
     const targetSeasonId = seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true }));
     const race = await prisma.race.create({
       data: {
@@ -935,8 +1202,10 @@ router.post("/events", async (req, res, next) => {
         isCompleted: false,
         isSpecialEvent: !!isSpecialEvent,
         seasonId: targetSeasonId,
+        info: extras.info ?? null,
       },
     });
+    await writeRaceFormat(race.id, extras);
     res.status(201).json(race);
   } catch (e) {
     if (e.code === "P2002") return res.status(409).json({ error: "Round number already exists in this season" });
@@ -944,7 +1213,7 @@ router.post("/events", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/events/:id  { track?, date? }
+// PUT /api/admin/events/:id  { track?, date?, info?, qualiMinutes?, raceLaps? }
 // Edit a race's details AFTER the fact — e.g. rename the raw AC track id
 // ("acu_cota_2021") to a display name ("COTA") once the round is imported.
 // Works for completed rounds too; results and scoring are untouched.
@@ -953,13 +1222,20 @@ router.put("/events/:id", async (req, res, next) => {
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
     if (!race) return res.status(404).json({ error: "Race not found" });
     const { track, date } = req.body || {};
+    const extras = parseEventExtras(req.body || {});
+    if (extras.error) return res.status(400).json({ error: extras.error });
     const data = {};
     if (track !== undefined) {
       if (!String(track).trim()) return res.status(400).json({ error: "Track name cannot be empty" });
       data.track = String(track).trim();
     }
     if (date !== undefined) data.date = date ? new Date(date) : null;
+    if (extras.info !== undefined) data.info = extras.info;
     const updated = await prisma.race.update({ where: { id: race.id }, data });
+    await writeRaceFormat(race.id, extras);
+    // The Discord post mirrors these details — keep an already-announced
+    // message in sync without the admin having to hit Announce again.
+    if (race.discordMessageId) syncRaceToDiscord(prisma, race.id).catch(() => {});
     res.json({ ok: true, race: { id: updated.id, number: updated.number, track: updated.track, date: updated.date } });
   } catch (e) {
     next(e);

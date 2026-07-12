@@ -469,8 +469,9 @@ function ProfileEditor({ me, onDraftChange }) {
             </div>
           </div>
 
-          {/* Driver card with drag-to-position + zoom; saved by the main button. */}
-          {ratingRes.data?.ratings && photoUrl && (
+          {/* Driver card with drag-to-position + zoom; saved by the main button.
+              Safety car drivers get their card edition even without ratings. */}
+          {(ratingRes.data?.ratings || me.role === "safety") && photoUrl && (
             <div className="mx-auto w-full max-w-[332px] lg:mx-0">
               <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Your driver card</div>
               <CardPhotoEditor
@@ -481,6 +482,7 @@ function ProfileEditor({ me, onDraftChange }) {
                   country,
                   photoUrl,
                   tier: me.tier,
+                  role: me.role ?? null, // safety car drivers see their special card here too
                   team: me.team,
                   // Pin the card's footer to the driver's own season — without
                   // this it would show whichever season the site switcher is on.

@@ -11,6 +11,7 @@ import { getLinkedDriverIds, getNameOverrides, getIdentityOverrides } from "../l
 import { telemetryForDriver } from "../lib/telemetryRead.js";
 import { readProfileTiles } from "../lib/profileTiles.js";
 import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
+import { readDriverRoles } from "../lib/driverRoles.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -371,6 +372,9 @@ export async function getDriverProfile(prisma, driverId) {
       // tiles (null = show all) — both self-service on /profile.
       bio: driver.bio || null,
       profileTiles,
+      // Special league role ('safety' = safety car driver) — drives the role
+      // badge on the profile and the SAFETY CAR rating card variant.
+      role: (await readDriverRoles(prisma, [driver.id])).get(driver.id) || null,
       team: { id: driver.team.id, name: driver.team.name, color: driver.team.color, tier: driver.team.tier, logoUrl: driver.team.logoUrl },
     },
     // Cross-season career (null unless this driver is linked to other seasons).

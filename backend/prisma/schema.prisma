@@ -128,6 +128,10 @@ model Driver {
   // /profile: JSON {"x":0-100,"y":0-100,"z":1-3} (focal point % + zoom); null =
   // the default framing. Raw SQL for the same reason as profileTiles.
   cardPhotoPos  String?
+  // Special league role, shown on the rating card and profile: null = regular
+  // driver, 'safety' = safety car driver. Managed via raw SQL (ensureAppSchema),
+  // migration driver_role.
+  role          String?
   results     RaceResult[]
   rsvps       RaceRsvp[]
   // Driver Market: seats this driver has offered, seats this (reserve) driver
@@ -153,7 +157,12 @@ model Race {
   date        DateTime?
   isCompleted Boolean      @default(false)
   capacity    Int          @default(40) // grid size (Apollo "Accepted (n/40)")
-  info        String? // optional event details (sessions, streamer, …)
+  info        String? // optional event details (rules, mods, …) — Discord post + site
+  // Session format for the announcement post and the site's upcoming-race
+  // panels: qualifying length in minutes, race distance in laps. Optional.
+  // Managed via raw SQL (ensureAppSchema) like driverOfTheDay* below.
+  qualiMinutes Int?
+  raceLaps     Int?
   // Admin-picked "Driver of the Day" for this race (a driver id). Shown as a
   // fan-favourite fact on the results view. null = not chosen. Managed via raw
   // SQL (ensureAppSchema) so it's writable while the dev server holds the client.

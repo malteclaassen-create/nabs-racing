@@ -10,6 +10,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { optionalUser, resolveDriverId, isAdminRequest } from "../middleware/auth.js";
 import { resolveSeasonId } from "../services/seasonService.js";
+import { seasonRowForDriver } from "../lib/persons.js";
 
 const router = Router();
 router.use(optionalUser);
@@ -32,6 +33,22 @@ async function requireDriver(req, res) {
     return null;
   }
   return driver;
+}
+
+// Resolve the logged-in driver AS THEIR ROW IN `seasonId` (or 401/403). Market
+// actions are per-race and a race belongs to a season — the login however
+// points at ONE row (usually the active season's). Acting on another season's
+// race must book that season's roster row, or offers/interest would carry a
+// foreign season's team ids into the race.
+async function requireDriverForSeason(req, res, seasonId) {
+  const base = await requireDriver(req, res);
+  if (!base) return null;
+  const row = await seasonRowForDriver(prisma, base, seasonId, req.user?.discordId);
+  if (!row) {
+    res.status(403).json({ error: "You're not on this season's roster" });
+    return null;
+  }
+  return row;
 }
 
 // A driver can offer a seat only if they hold a real (tier 1/2) seat.
@@ -85,13 +102,17 @@ router.get("/", async (req, res, next) => {
       },
     });
 
+    // The caller's market context IN THIS SEASON: their login may point at
+    // another season's row, so map it to this season's roster (person link /
+    // unclaimed name match — same rules as the login's season handover).
     let me = null;
     const myDriverId = await resolveDriverId(prisma, req.user);
     if (myDriverId) {
-      const d = await prisma.driver.findUnique({
+      const base = await prisma.driver.findUnique({
         where: { id: myDriverId },
         include: { team: true },
       });
+      const d = await seasonRowForDriver(prisma, base, seasonId, req.user?.discordId);
       if (d) {
         me = {
           driverId: d.id,
@@ -123,19 +144,26 @@ router.get("/", async (req, res, next) => {
 // their seat for that race. Idempotent: re-offering reopens a cancelled offer.
 router.post("/offer", async (req, res, next) => {
   try {
-    const driver = await requireDriver(req, res);
-    if (!driver) return;
-    if (!hasRealSeat(driver)) {
-      return res.status(403).json({ error: "Only full-time drivers can offer a seat" });
-    }
     const { raceId } = req.body || {};
     const race = await prisma.race.findUnique({ where: { id: raceId } });
     if (!race) return res.status(404).json({ error: "Race not found" });
     if (race.isCompleted) return res.status(400).json({ error: "Race already completed" });
+    // Special events aren't scored and have no market (the market view never
+    // lists them) — refuse the write too so no orphaned offers can exist.
+    if (race.isSpecialEvent) return res.status(400).json({ error: "Special events have no driver market" });
+    // Act as the row this person has in the RACE's season (offers carry that
+    // season's team, and the import pre-fill relies on those ids matching).
+    const driver = await requireDriverForSeason(req, res, race.seasonId);
+    if (!driver) return;
+    if (!hasRealSeat(driver)) {
+      return res.status(403).json({ error: "Only full-time drivers can offer a seat" });
+    }
 
     const offer = await prisma.seatOffer.upsert({
       where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
-      update: { status: "OPEN" },
+      // Re-opening an old offer starts fresh: a leftover pick must not ride
+      // along into the new round of interest.
+      update: { status: "OPEN", filledById: null },
       create: { raceId: race.id, driverId: driver.id, teamId: driver.teamId, status: "OPEN" },
       include: offerInclude,
     });
@@ -149,10 +177,18 @@ router.post("/offer", async (req, res, next) => {
 // offer entirely (removes it and any interest on it).
 router.delete("/offer/:offerId", async (req, res, next) => {
   try {
-    const driver = await requireDriver(req, res);
-    if (!driver) return;
-    const offer = await prisma.seatOffer.findUnique({ where: { id: req.params.offerId } });
+    const offer = await prisma.seatOffer.findUnique({
+      where: { id: req.params.offerId },
+      include: { race: { select: { seasonId: true, isCompleted: true } } },
+    });
     if (!offer) return res.status(404).json({ error: "Offer not found" });
+    // Once the race ran, the offer is the RECORD of who stood in for whom —
+    // it stays for the admin's takeover history (only an admin can remove it).
+    if (offer.race?.isCompleted) {
+      return res.status(400).json({ error: "Race already completed. This offer is kept as the takeover record" });
+    }
+    const driver = await requireDriverForSeason(req, res, offer.race?.seasonId);
+    if (!driver) return;
     if (offer.driverId !== driver.id) {
       return res.status(403).json({ error: "You can only withdraw your own offer" });
     }
@@ -167,14 +203,18 @@ router.delete("/offer/:offerId", async (req, res, next) => {
 // hand for an offered seat (stays open even after the seat is filled).
 router.post("/offer/:offerId/interest", async (req, res, next) => {
   try {
-    const driver = await requireDriver(req, res);
+    const offer = await prisma.seatOffer.findUnique({
+      where: { id: req.params.offerId },
+      include: { race: { select: { seasonId: true, isCompleted: true } } },
+    });
+    if (!offer) return res.status(404).json({ error: "Offer not found" });
+    if (offer.status === "CANCELLED") return res.status(400).json({ error: "Offer is no longer open" });
+    if (offer.race?.isCompleted) return res.status(400).json({ error: "Race already completed" });
+    const driver = await requireDriverForSeason(req, res, offer.race?.seasonId);
     if (!driver) return;
     if (!isReserve(driver)) {
       return res.status(403).json({ error: "Only reserve drivers can express interest" });
     }
-    const offer = await prisma.seatOffer.findUnique({ where: { id: req.params.offerId } });
-    if (!offer) return res.status(404).json({ error: "Offer not found" });
-    if (offer.status === "CANCELLED") return res.status(400).json({ error: "Offer is no longer open" });
 
     await prisma.seatInterest.upsert({
       where: { offerId_driverId: { offerId: offer.id, driverId: driver.id } },
@@ -191,7 +231,13 @@ router.post("/offer/:offerId/interest", async (req, res, next) => {
 // own interest.
 router.delete("/offer/:offerId/interest", async (req, res, next) => {
   try {
-    const driver = await requireDriver(req, res);
+    const offer = await prisma.seatOffer.findUnique({
+      where: { id: req.params.offerId },
+      include: { race: { select: { seasonId: true, isCompleted: true } } },
+    });
+    if (!offer) return res.status(404).json({ error: "Offer not found" });
+    if (offer.race?.isCompleted) return res.status(400).json({ error: "Race already completed" });
+    const driver = await requireDriverForSeason(req, res, offer.race?.seasonId);
     if (!driver) return;
     await prisma.seatInterest.deleteMany({
       where: { offerId: req.params.offerId, driverId: driver.id },
@@ -206,13 +252,16 @@ router.delete("/offer/:offerId/interest", async (req, res, next) => {
 // chooses one of the interested reserves (or { driverId: null } to clear).
 router.post("/offer/:offerId/pick", async (req, res, next) => {
   try {
-    const driver = await requireDriver(req, res);
-    if (!driver) return;
     const offer = await prisma.seatOffer.findUnique({
       where: { id: req.params.offerId },
-      include: { interests: true },
+      include: { interests: true, race: { select: { seasonId: true, isCompleted: true } } },
     });
     if (!offer) return res.status(404).json({ error: "Offer not found" });
+    // The pick freezes with the race: post-race corrections are admin-only
+    // (Driver Market tab), so the takeover record can't be rewritten quietly.
+    if (offer.race?.isCompleted) return res.status(400).json({ error: "Race already completed" });
+    const driver = await requireDriverForSeason(req, res, offer.race?.seasonId);
+    if (!driver) return;
     if (offer.driverId !== driver.id) {
       return res.status(403).json({ error: "Only the offering driver can pick a replacement" });
     }

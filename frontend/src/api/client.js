@@ -63,6 +63,32 @@ function seasonParam(n) {
   return n != null ? `?season=${n}` : seasonQ();
 }
 
+// Drop a dead Discord session (expired 30-day token, or a token the backend
+// rejected outright). Clearing the stored profile flips the whole UI to
+// logged-out via the "nabs-auth" event — without this, the nav keeps showing
+// the member as signed in while every action fails. NOT triggered by 401s a
+// valid-but-unlinked session can hit ("Sign in with Discord…"), only when the
+// token itself is done.
+function dropDeadUserSession(data) {
+  const ut = localStorage.getItem(USER_TOKEN_KEY);
+  if (!ut) return;
+  const invalidByServer = data && data.error === "Invalid or expired session";
+  if (!invalidByServer && !userTokenExpired(ut)) return;
+  localStorage.removeItem(USER_TOKEN_KEY);
+  localStorage.removeItem("nabs_user");
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("nabs-auth"));
+}
+
+// The JWT's expiry rides in its (unsigned, world-readable) payload.
+function userTokenExpired(token) {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.exp === "number" && payload.exp * 1000 < Date.now();
+  } catch {
+    return false;
+  }
+}
+
 async function request(path, { method = "GET", body, auth = false, userAuth = false, form = false } = {}) {
   const headers = {};
   if (!form) headers["Content-Type"] = "application/json";
@@ -83,12 +109,21 @@ async function request(path, { method = "GET", body, auth = false, userAuth = fa
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
     // An expired/invalid admin token: drop it and let the admin UI bounce back
-    // to the login screen instead of pretending we're still signed in.
+    // to the login screen instead of pretending we're still signed in. Discord
+    // admins have no PIN token — their admin calls ride on the user token, so
+    // a dead one is cleared the same way as on member routes below.
     if (res.status === 401 && auth) {
-      setToken(null);
+      if (getToken()) setToken(null);
+      else dropDeadUserSession(data);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("nabs-admin-unauthorized"));
       }
+    }
+    // A member call rejected because the Discord session itself is dead
+    // (30-day token ran out, or the backend no longer accepts it): log the
+    // UI out instead of showing a signed-in nav over failing features.
+    if (res.status === 401 && userAuth) {
+      dropDeadUserSession(data);
     }
     const err = new Error((data && data.error) || `Request failed (${res.status})`);
     err.status = res.status;
@@ -150,8 +185,10 @@ export const api = {
   // How the profile picture sits on the rating card ({x,y,z} or null = default).
   setMyCardPhoto: (pos) => request("/me/card-photo", { method: "PUT", body: { pos }, userAuth: true }),
 
-  // driver market (identity from the Discord login)
-  market: () => request("/market", { userAuth: true }),
+  // driver market (identity from the Discord login). Season-scoped like
+  // /events — without it, viewing another season shows that season's races
+  // but the market of the ACTIVE one (the "Offer my seat" button vanished).
+  market: () => request(`/market${seasonQ()}`, { userAuth: true }),
   offerSeat: (raceId) => request("/market/offer", { method: "POST", body: { raceId }, userAuth: true }),
   withdrawOffer: (offerId) => request(`/market/offer/${offerId}`, { method: "DELETE", userAuth: true }),
   expressInterest: (offerId) =>
@@ -164,6 +201,8 @@ export const api = {
   adminAssignSeat: (offerId, driverId) =>
     request(`/admin/market/${offerId}/assign`, { method: "POST", body: { driverId }, auth: true }),
   adminDeleteOffer: (offerId) => request(`/admin/market/${offerId}`, { method: "DELETE", auth: true }),
+  // full takeover record of the selected season, completed races included
+  adminMarketHistory: () => request(`/admin/market/history${seasonQ()}`, { auth: true }),
 
   // social links (public read + admin manage)
   socialLinks: () => request("/settings/social"),
@@ -215,6 +254,12 @@ export const api = {
   getWebhook: () => request("/admin/discord/webhook", { auth: true }),
   setWebhook: (url) => request("/admin/discord/webhook", { method: "PUT", body: { url }, auth: true }),
   testWebhook: () => request("/admin/discord/test", { method: "POST", auth: true }),
+  // results-channel webhook + the generated Discord results post (admin)
+  getResultsWebhook: () => request("/admin/discord/results-webhook", { auth: true }),
+  setResultsWebhook: (url) => request("/admin/discord/results-webhook", { method: "PUT", body: { url }, auth: true }),
+  getResultsPost: (raceId) => request(`/admin/races/${raceId}/results-post`, { auth: true }),
+  sendResultsPost: (raceId, content) =>
+    request(`/admin/races/${raceId}/results-post`, { method: "POST", body: { content }, auth: true }),
   createEvent: (body) => request("/admin/events", { method: "POST", body, auth: true }),
   updateEvent: (id, body) => request(`/admin/events/${id}`, { method: "PUT", body, auth: true }),
   announceEvent: (id) => request(`/admin/events/${id}/announce`, { method: "POST", auth: true }),

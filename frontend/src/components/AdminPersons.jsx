@@ -112,11 +112,12 @@ export default function AdminPersons() {
         <CardHeader title="Same person across seasons" />
         <div className="space-y-5 p-5">
           <p className="text-sm text-light">
-            Link the season entries of one person, so their profile shows a combined career and old seasons display the
-            current name with a &ldquo;raced as&rdquo; note. Identical names are linked automatically with the button
-            below; only people who changed their handle need the manual search. Two entries from the <em>same</em> season
-            (say, a stint as a reserve and a later seat under a new handle) can be linked too and count as one season in
-            the career.
+            Link the season entries of one person, so their profile shows a combined career, old seasons display the
+            current name with a &ldquo;raced as&rdquo; note, and their photo and flag follow them into every season.
+            Matching names or Discord handles are linked automatically with the button below, which also catches most
+            renames; only someone whose name <em>and</em> handle both changed needs the manual search. Two entries from
+            the <em>same</em> season (say, a stint as a reserve and a later seat under a new handle) can be linked too
+            and count as one season in the career.
           </p>
 
           {msg && <ErrorBox message={msg} />}
@@ -130,7 +131,7 @@ export default function AdminPersons() {
             <div className="rounded-lg border border-border">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
                 <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
-                  Same name in several seasons · {data.candidates.length} open
+                  Same name or Discord handle in several seasons · {data.candidates.length} open
                 </span>
                 <button
                   className="btn-primary py-1 text-sm disabled:opacity-50"
@@ -141,7 +142,7 @@ export default function AdminPersons() {
                       setNote(
                         `Linked ${r.linked} ${r.linked === 1 ? "person" : "people"} automatically.` +
                           (r.skippedAmbiguous
-                            ? ` ${r.skippedAmbiguous} name${r.skippedAmbiguous === 1 ? "" : "s"} appear twice in one season and need a manual decision.`
+                            ? ` ${r.skippedAmbiguous} group${r.skippedAmbiguous === 1 ? "" : "s"} need${r.skippedAmbiguous === 1 ? "s" : ""} a manual decision (a duplicate entry within one season, or two existing links that would merge).`
                             : "")
                       );
                     })
@@ -153,18 +154,25 @@ export default function AdminPersons() {
               <ul className="divide-y divide-border">
                 {data.candidates.map((group, i) => (
                   <li key={i} className="flex flex-wrap items-center gap-2 px-4 py-2">
-                    <span className="font-semibold text-dark">{group[0].name}</span>
+                    <span className="font-semibold text-dark">{group.drivers[0].name}</span>
                     <span className="flex flex-wrap gap-1">
-                      {group.map((d) => (
+                      {group.drivers.map((d) => (
                         <span key={d.id} className="pill bg-surface2 font-mono text-[10px] text-light">
-                          S{d.seasonNumber ?? "?"}
+                          S{d.seasonNumber ?? "?"} {d.name}
                         </span>
                       ))}
                     </span>
+                    {/* skipped by the auto button: a duplicate row within one
+                        season, or two existing links that would merge */}
+                    {group.ambiguous && (
+                      <span className="pill bg-amber-500/15 font-mono text-[10px] font-bold uppercase text-amber-600">
+                        check first
+                      </span>
+                    )}
                     <button
                       className="btn-secondary ml-auto px-3 py-1 text-xs disabled:opacity-50"
                       disabled={busy}
-                      onClick={() => linkGroup(group.map((d) => d.id))}
+                      onClick={() => linkGroup(group.drivers.map((d) => d.id))}
                     >
                       Link
                     </button>

@@ -108,6 +108,16 @@ export default function UpcomingRacePanel({ race }) {
                 "Date to be confirmed"
               )}
             </div>
+            {(race.qualiMinutes || race.raceLaps) && (
+              <div className="mt-1.5 font-mono text-xs font-bold uppercase tracking-wide text-light">
+                {[
+                  race.qualiMinutes && `Qualifying ${race.qualiMinutes} min`,
+                  race.raceLaps && `Race ${race.raceLaps} laps`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
+            )}
           </div>
           <div className="flex w-full flex-col gap-2.5 sm:w-80">
             {race.date && <RaceCountdown date={race.date} />}
@@ -119,6 +129,12 @@ export default function UpcomingRacePanel({ race }) {
             </Link>
           </div>
         </div>
+        {/* free-text race details (rules, mods, links) — as the admin wrote them */}
+        {race.info && (
+          <p className="mt-4 whitespace-pre-line border-t border-border pt-4 text-sm leading-relaxed text-medium">
+            {race.info}
+          </p>
+        )}
       </div>
 
       {/* Circuit map (left) + track record (right) */}

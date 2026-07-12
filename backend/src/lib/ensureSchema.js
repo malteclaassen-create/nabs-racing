@@ -35,6 +35,11 @@ export async function ensureAppSchema(prisma) {
   // Who made the pick (the league's streamer decides each round). Free text.
   await addColumn(prisma, "Race", "driverOfTheDayBy", "TEXT");
 
+  // --- Session format for the announcement (Discord post + upcoming-race
+  // panels): qualifying length in minutes, race distance in laps. Optional.
+  await addColumn(prisma, "Race", "qualiMinutes", "INTEGER");
+  await addColumn(prisma, "Race", "raceLaps", "INTEGER");
+
   // --- Phase 5: team-level drop rule. null = legacy behaviour (teams inherit
   // each driver's own dropped rounds); 0 = no team drop; N = drop the N lowest
   // single-driver round contributions from each team's total.
@@ -59,6 +64,10 @@ export async function ensureAppSchema(prisma) {
   // --- Card photo framing: how the profile picture sits on the rating card
   // (JSON {"x":0-100,"y":0-100,"z":1-3}; null = default). Self-service.
   await addColumn(prisma, "Driver", "cardPhotoPos", "TEXT");
+
+  // --- Special league role, shown on the rating card and profile. null =
+  // regular driver; 'safety' = safety car driver. Admin-set (Drivers tab).
+  await addColumn(prisma, "Driver", "role", "TEXT");
 
   // --- Phase 3: cross-season person links. One row per driver row that belongs
   // to a person; all driver rows of the same person share one personId.

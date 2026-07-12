@@ -1,18 +1,14 @@
 import { useEffect, useState } from "react";
 import { RollingNumber } from "./ui.jsx";
+import { raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 
 // Big, broadcast-style live countdown to the next race.
-// Renders four numerals (Days / Hrs / Min / Sec) and flips to a pulsing
-// "Lights Out" badge the moment the lights go green.
+// Renders four numerals (Days / Hrs / Min / Sec), flips to a pulsing
+// "Lights Out" badge while the race is presumably running, and settles into a
+// quiet "results coming soon" note once the race is clearly over but its
+// results haven't been imported yet — instead of blinking LIVE for days.
 export default function RaceCountdown({ date, className = "" }) {
-  const nextDate = date ? new Date(date) : null;
-  // The stored date is the real kickoff instant. Older/date-only entries land
-  // on UTC midnight, so fall back to the league's 18:00 GMT start for those.
-  const target = nextDate
-    ? nextDate.getUTCHours() === 0 && nextDate.getUTCMinutes() === 0
-      ? new Date(Date.UTC(nextDate.getUTCFullYear(), nextDate.getUTCMonth(), nextDate.getUTCDate(), 18, 0, 0))
-      : nextDate
-    : null;
+  const target = raceKickoff(date);
 
   const [remaining, setRemaining] = useState(() => (target ? target.getTime() - Date.now() : 0));
 
@@ -24,6 +20,19 @@ export default function RaceCountdown({ date, className = "" }) {
   }, [target?.getTime()]);
 
   if (!target) return null;
+
+  // Race over (past the live window), results not in yet: calm placeholder.
+  if (remaining <= -LIVE_WINDOW_MS) {
+    return (
+      <div
+        className={`flex items-center justify-center gap-2 rounded-xl bg-ink/[0.06] px-4 py-3 dark:bg-white/10 ${className}`}
+      >
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-ink/60 dark:text-white/60">
+          Race run · results coming soon
+        </span>
+      </div>
+    );
+  }
 
   if (remaining <= 0) {
     return (

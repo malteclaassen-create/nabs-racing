@@ -4,8 +4,13 @@
 // Tentative for an upcoming race, and EDITS that same message on every change
 // (the message id is stored on the Race).
 // ---------------------------------------------------------------------------
+import { raceKickoff } from "../lib/raceKickoff.js";
+import { readRaceFormat } from "../lib/raceFormat.js";
 
 const WEBHOOK_KEY = "discord_webhook_url";
+// Results posts go to their OWN channel/webhook (#results), separate from the
+// event/RSVP channel above — configured in the results editor.
+const RESULTS_WEBHOOK_KEY = "discord_results_webhook_url";
 
 export async function getWebhookUrl(prisma) {
   const s = await prisma.setting.findUnique({ where: { key: WEBHOOK_KEY } });
@@ -20,6 +25,58 @@ export async function setWebhookUrl(prisma, url) {
   });
 }
 
+export async function getResultsWebhookUrl(prisma) {
+  const s = await prisma.setting.findUnique({ where: { key: RESULTS_WEBHOOK_KEY } });
+  return s?.value || null;
+}
+
+export async function setResultsWebhookUrl(prisma, url) {
+  await prisma.setting.upsert({
+    where: { key: RESULTS_WEBHOOK_KEY },
+    update: { value: url },
+    create: { key: RESULTS_WEBHOOK_KEY, value: url },
+  });
+}
+
+// Free-form post to the results channel. Discord caps one message at 2000
+// characters, so long posts (a 25-car field plus stats) are split at line
+// breaks and sent in order. allowed_mentions lets the <@id> codes ping the
+// drivers and any role mention the admin typed into the preview.
+export async function postToResultsChannel(prisma, content) {
+  const url = await getResultsWebhookUrl(prisma);
+  if (!url) return { ok: false, skipped: true, reason: "no results webhook configured" };
+  const chunks = [];
+  let current = "";
+  for (const rawLine of String(content).split("\n")) {
+    // A single absurdly long line still has to fit a message on its own.
+    const line = rawLine.length > 1900 ? rawLine.slice(0, 1900) : rawLine;
+    if (current && current.length + 1 + line.length > 1900) {
+      chunks.push(current);
+      current = line;
+    } else {
+      current = current ? `${current}\n${line}` : line;
+    }
+  }
+  if (current.trim()) chunks.push(current);
+  if (!chunks.length) return { ok: false, reason: "empty message" };
+  try {
+    for (const chunk of chunks) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: chunk, allowed_mentions: { parse: ["users", "roles"] } }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        return { ok: false, reason: `discord ${res.status}: ${text.slice(0, 200)}` };
+      }
+    }
+    return { ok: true, messages: chunks.length };
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+}
+
 // Order matches the Apollo layout: Accepted · Declined · Tentative
 const STATUS_META = {
   ACCEPTED: { label: "✅ Accepted", color: 0x16a34a },
@@ -28,10 +85,21 @@ const STATUS_META = {
 };
 
 function fmtDate(date) {
-  if (!date) return "Date TBA";
+  // Date-only entries resolve to the league's usual start time (19:00 German
+  // time) instead of midnight — see lib/raceKickoff.js.
+  const kickoff = raceKickoff(date);
+  if (!kickoff) return "Date TBA";
   // Discord renders <t:unix:F> as a localized timestamp for every viewer.
-  const unix = Math.floor(new Date(date).getTime() / 1000);
+  const unix = Math.floor(kickoff.getTime() / 1000);
   return `<t:${unix}:F>`;
+}
+
+// "8" reads better as "Season 8"; a season with a real name keeps it as-is.
+// (Same convention as the frontend's season teaser.)
+function seasonLabel(season) {
+  if (!season?.name) return null;
+  const name = String(season.name).trim();
+  return /^\d+$/.test(name) ? `Season ${name}` : name;
 }
 
 function buildEmbed(race, rsvps) {
@@ -53,16 +121,26 @@ function buildEmbed(race, rsvps) {
   });
 
   const desc = [`**${fmtDate(race.date)}**`];
-  if (race.info) desc.push(race.info);
-  desc.push("Sign up on the NABS Racing website.");
+  // Session format line (Apollo-style), only the parts that are actually set.
+  const sessions = [];
+  if (race.qualiMinutes) sessions.push(`${race.qualiMinutes} min qualifying`);
+  if (race.raceLaps) sessions.push(`${race.raceLaps} lap race`);
+  if (sessions.length) desc.push("", "**SESSIONS**", sessions.join(" · "));
+  // Free text (rules, mods, links…) exactly as the admin wrote it.
+  if (race.info) desc.push("", race.info);
+  desc.push("", "Sign up on the NABS Racing website.");
 
+  // Footer names the race's OWN season (the race row carries it), so the text
+  // stays right across season changes without anyone touching it. No embed
+  // timestamp on purpose: Discord would render a localized "today at 12:29"
+  // next to the footer, which reads like a second (wrong) race time.
+  const season = seasonLabel(race.season);
   return {
     title: `🏁 Round ${race.number} · ${race.track}`,
     description: desc.join("\n"),
     color: 0xb91c1c,
     fields,
-    footer: { text: "NABS Racing League · Season 7" },
-    timestamp: new Date().toISOString(),
+    footer: { text: season ? `NABS Racing League · ${season}` : "NABS Racing League" },
   };
 }
 
@@ -75,11 +153,13 @@ export async function syncRaceToDiscord(prisma, raceId) {
 
     const race = await prisma.race.findUnique({
       where: { id: raceId },
-      include: { rsvps: { include: { driver: true } } },
+      include: { rsvps: { include: { driver: true } }, season: { select: { name: true } } },
     });
     if (!race) return { ok: false, reason: "race not found" };
+    // Session format (raw-SQL columns, not in the generated client).
+    const format = (await readRaceFormat(prisma, [race.id])).get(race.id) || {};
 
-    const payload = { embeds: [buildEmbed(race, race.rsvps)] };
+    const payload = { embeds: [buildEmbed({ ...race, ...format }, race.rsvps)] };
 
     // Try to edit the existing message first.
     if (race.discordMessageId) {

@@ -5,38 +5,41 @@ import { useApi } from "../hooks/useApi.js";
 import Flag from "./Flag.jsx";
 import { RollingNumber } from "./ui.jsx";
 import { circuitFor } from "../data/circuits.js";
-import { fmtRaceTime } from "../utils/raceTime.js";
+import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 
 // Compact, broadcast-style next-race countdown chip.
 // `compact` renders a slimmer single-line version for the nav bar.
 export default function NextRaceTimer({ className = "", compact = false }) {
   const races = useApi(useCallback(() => api.races(), []));
-  const nextRace = (races.data || []).find((r) => !r.isCompleted && !r.isSpecialEvent && r.number != null);
 
-  const nextDate = nextRace?.date ? new Date(nextRace.date) : null;
-  // The stored date is the real kickoff instant. Older/date-only entries land
-  // on UTC midnight, so fall back to the league's 18:00 GMT start for those.
-  const target = nextDate
-    ? nextDate.getUTCHours() === 0 && nextDate.getUTCMinutes() === 0
-      ? new Date(Date.UTC(nextDate.getUTCFullYear(), nextDate.getUTCMonth(), nextDate.getUTCDate(), 18, 0, 0))
-      : nextDate
-    : null;
-
-  const [remaining, setRemaining] = useState(() => (target ? target.getTime() - Date.now() : 0));
-
+  // A once-a-second heartbeat; drives both the countdown and the switch to the
+  // following round once a race has clearly finished.
+  const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    if (!target) return;
-    setRemaining(target.getTime() - Date.now());
-    const id = setInterval(() => setRemaining(target.getTime() - Date.now()), 1000);
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [target?.getTime()]);
+  }, []);
+
+  // Next round: the first uncompleted championship race that hasn't clearly
+  // finished yet. A race whose start is longer than the live window ago is
+  // over (its results just aren't imported yet), so the chip moves on to the
+  // following round instead of showing LIVE for days. Rounds without a date
+  // stay in (they're still the next round — their time is simply TBA).
+  const nextRace = (races.data || []).find((r) => {
+    if (r.isCompleted || r.isSpecialEvent || r.number == null) return false;
+    const kickoff = raceKickoff(r.date);
+    return !kickoff || kickoff.getTime() + LIVE_WINDOW_MS > now;
+  });
+
+  const target = nextRace ? raceKickoff(nextRace.date) : null;
 
   if (!nextRace) return null;
 
   const circuit = circuitFor(nextRace.track);
-  const live = remaining <= 0;
+  const remaining = target ? target.getTime() - now : null;
+  const live = remaining != null && remaining <= 0;
 
-  const total = Math.max(0, Math.floor(remaining / 1000));
+  const total = Math.max(0, Math.floor((remaining ?? 0) / 1000));
   const days = Math.floor(total / 86400);
   const hours = Math.floor((total % 86400) / 3600);
   const mins = Math.floor((total % 3600) / 60);
@@ -49,11 +52,15 @@ export default function NextRaceTimer({ className = "", compact = false }) {
     { value: secs, suffix: "s" },
   ];
 
+  const title = `Next race: ${nextRace.track} · Round ${nextRace.number} · ${
+    target ? fmtRaceTime(target) : "time TBA"
+  }`;
+
   if (compact) {
     return (
       <Link
         to={`/races?race=${nextRace.id}`}
-        title={`Next race: ${nextRace.track} · Round ${nextRace.number} · ${fmtRaceTime(target)}`}
+        title={title}
         className={`group inline-flex items-center gap-2 rounded-lg border border-border bg-surface2/80 py-1.5 pl-2 pr-2.5 shadow-sm backdrop-blur transition hover:border-brand/50 ${className}`}
       >
         {circuit && <Flag code={circuit.country} title={circuit.countryName} w={16} h={12} />}
@@ -63,6 +70,8 @@ export default function NextRaceTimer({ className = "", compact = false }) {
         <span className="hidden h-4 w-px bg-border sm:inline-block" />
         {live ? (
           <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">Live</span>
+        ) : !target ? (
+          <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">TBA</span>
         ) : (
           <span className="flex items-baseline gap-1 tabular-nums">
             {/* Calmer than the inline chip: drop seconds, and hide minutes on
@@ -85,7 +94,7 @@ export default function NextRaceTimer({ className = "", compact = false }) {
   return (
     <Link
       to={`/races?race=${nextRace.id}`}
-      title={`Next race: ${nextRace.track} · Round ${nextRace.number} · 18:00 GMT`}
+      title={title}
       className={`group inline-flex items-stretch overflow-hidden rounded-xl border border-border bg-card/80 shadow-sm backdrop-blur transition hover:border-brand/50 hover:shadow-card ${className}`}
     >
       {/* brand accent rail */}
@@ -114,6 +123,10 @@ export default function NextRaceTimer({ className = "", compact = false }) {
         {live ? (
           <span className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-eyebrow">
             Lights out
+          </span>
+        ) : !target ? (
+          <span className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-light">
+            Time TBA
           </span>
         ) : (
           <span className="flex items-baseline gap-1.5 tabular-nums">

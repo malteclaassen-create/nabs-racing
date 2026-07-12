@@ -10,7 +10,7 @@ import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
 import { circuitFor } from "../data/circuits.js";
-import { fmtRaceTime } from "../utils/raceTime.js";
+import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 
 // The calendar is built entirely from the season's races (DB), so it stays in
 // sync with whatever the admin schedules. Championship rounds (number set) are
@@ -20,14 +20,16 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
 }
 
-// Live ticking countdown to a future date. Renders nothing once the date passes.
+// Live ticking countdown to a future kickoff. Renders nothing once it passes.
 function Countdown({ date }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-  const diff = new Date(date).getTime() - now;
+  const target = raceKickoff(date);
+  if (!target) return null;
+  const diff = target.getTime() - now;
   if (diff <= 0) return null;
   const days = Math.floor(diff / 86400000);
   const h = Math.floor(diff / 3600000) % 24;
@@ -290,7 +292,9 @@ export default function Races() {
   if (error) return <ErrorBox message={error} />;
 
   const now = Date.now();
-  const withDate = (r) => (r.date ? new Date(r.date).getTime() : Infinity);
+  // Sort/compare by the resolved kickoff (date-only entries fall back to the
+  // league's usual start time instead of midnight).
+  const withDate = (r) => raceKickoff(r.date)?.getTime() ?? Infinity;
   // Championship rounds (have a number) and special events, each in calendar order.
   const rounds = races
     .filter((r) => !r.isSpecialEvent && r.number != null)
@@ -298,9 +302,12 @@ export default function Races() {
   const specials = races.filter((r) => r.isSpecialEvent).sort((a, b) => withDate(a) - withDate(b));
   const championRounds = rounds; // RoundStrip only flips between scored rounds
 
-  // "Next up" = earliest not-yet-completed entry with a future date.
+  // "Next up" = earliest not-yet-completed entry that hasn't clearly finished
+  // yet. The live window keeps a running race listed as next up (rather than
+  // dropping it the second the lights go out) without pinning an old race
+  // whose results simply aren't imported yet.
   const nextEntry = [...races]
-    .filter((r) => !r.isCompleted && r.date && new Date(r.date).getTime() >= now)
+    .filter((r) => !r.isCompleted && r.date && withDate(r) + LIVE_WINDOW_MS > now)
     .sort((a, b) => withDate(a) - withDate(b))[0];
 
   const shown = tab === "rounds" ? rounds : specials;

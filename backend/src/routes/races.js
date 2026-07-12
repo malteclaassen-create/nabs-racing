@@ -5,6 +5,7 @@ import { resolveSeasonId, getSeasonScoring, getPrivateSeasonIds } from "../servi
 import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides } from "../lib/persons.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
+import { readRaceFormat } from "../lib/raceFormat.js";
 
 const router = Router();
 
@@ -18,6 +19,8 @@ router.get("/", async (req, res, next) => {
       orderBy: { number: "asc" },
       include: { _count: { select: { results: true } } },
     });
+    // Session format (raw-SQL columns) for the upcoming-race panel.
+    const format = await readRaceFormat(prisma, races.map((r) => r.id));
     res.json(
       races.map((r) => ({
         id: r.id,
@@ -27,6 +30,9 @@ router.get("/", async (req, res, next) => {
         isCompleted: r.isCompleted,
         isSpecialEvent: r.isSpecialEvent,
         resultCount: r._count.results,
+        info: r.info || null,
+        qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
+        raceLaps: format.get(r.id)?.raceLaps ?? null,
       }))
     );
   } catch (e) {
@@ -174,6 +180,8 @@ router.get("/:id/results", async (req, res, next) => {
       /* column missing pre-migration */
     }
 
+    // Session format + details, so the admin race editor can round-trip them.
+    const format = (await readRaceFormat(prisma, [race.id])).get(race.id) || {};
     res.json({
       race: {
         id: race.id,
@@ -181,6 +189,9 @@ router.get("/:id/results", async (req, res, next) => {
         track: race.track,
         date: race.date,
         isCompleted: race.isCompleted,
+        info: race.info || null,
+        qualiMinutes: format.qualiMinutes ?? null,
+        raceLaps: format.raceLaps ?? null,
         hasPositions,
         driverOfTheDay,
       },

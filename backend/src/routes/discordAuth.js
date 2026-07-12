@@ -109,29 +109,16 @@ router.post("/callback", async (req, res, next) => {
       avatarUrl,
     }).catch(() => {});
 
-    // 3. Find / link a driver.
+    // 3. Find the driver this account belongs to — by Discord user id ONLY.
+    // There used to be a name matcher here that let a first login claim any
+    // unclaimed roster row with a matching name. That was an impersonation
+    // hole: anyone could rename their Discord account after a driver and take
+    // over that profile (photo, bio, site-wide display name). Linking is now
+    // explicit: the admin either links a logged-in account in the Members tab
+    // or pre-fills the driver's Discord user id in the Drivers tab; the login
+    // then connects by exact id. Unmatched logins simply stay unlinked.
     let driver = await prisma.driver.findUnique({ where: { discordUserId: me.id } });
     const activeSeason = await getActiveSeason(prisma);
-
-    if (!driver) {
-      // Try to match by Discord name against existing drivers. Prefer the
-      // active season's roster; fall back to older seasons (archive profiles).
-      const candidates = [norm(me.username), norm(me.global_name)].filter(Boolean);
-      const all = await prisma.driver.findMany();
-      const pool = activeSeason
-        ? [...all.filter((d) => d.seasonId === activeSeason.id), ...all.filter((d) => d.seasonId !== activeSeason.id)]
-        : all;
-      const match = pool.find((d) => {
-        const opts = [norm(d.discordName), norm(d.name)];
-        return candidates.some((c) => opts.includes(c)) && !d.discordUserId;
-      });
-      if (match) {
-        driver = await prisma.driver.update({
-          where: { id: match.id },
-          data: { discordUserId: me.id },
-        });
-      }
-    }
 
     // Season handover: drivers are per-season rows, so a stored (or, above, a
     // freshly name-matched) link can point at a PREVIOUS season's entry — e.g.

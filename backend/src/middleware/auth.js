@@ -122,12 +122,18 @@ export async function resolveDriverId(prismaClient, user) {
   return user.driverId || null;
 }
 
-// A short-lived, single-purpose ticket that authorises ONE file download. A
-// plain browser download (link/window.location) can't send an Authorization
-// header, so a logged-in member first exchanges their session for this ticket,
-// which then rides in the download URL and gates the actual file stream.
+// A single-purpose ticket that authorises ONE file download. A plain browser
+// download (link/window.location) can't send an Authorization header, so a
+// logged-in member first exchanges their session for this ticket, which then
+// rides in the download URL and gates the actual file stream.
+//
+// Valid for 12 HOURS on purpose: pausing/resuming a multi-gigabyte AC mod
+// re-requests the SAME ticketed URL, so a short expiry (it used to be 10
+// minutes) made every resume beyond that window fail mid-download. The ticket
+// still names exactly one file and expires within the day, which is plenty of
+// protection for a member-only catalogue.
 export function signDownloadTicket(id) {
-  return jwt.sign({ role: "dl", id }, JWT_SECRET, { expiresIn: "10m" });
+  return jwt.sign({ role: "dl", id }, JWT_SECRET, { expiresIn: "12h" });
 }
 export function verifyDownloadTicket(token, id) {
   try {

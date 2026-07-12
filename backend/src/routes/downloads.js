@@ -1,8 +1,9 @@
 // ---------------------------------------------------------------------------
 // Member-only download catalogue. Everything here requires a logged-in Discord
-// member, except the actual file stream, which is gated by a short-lived ticket
+// member, except the actual file stream, which is gated by a 12-hour ticket
 // (a browser download can't send an Authorization header, so the member trades
-// their session for a ticket first — see /:id/ticket).
+// their session for a ticket first — see /:id/ticket; the generous validity is
+// what lets multi-GB downloads pause and resume, see signDownloadTicket).
 // ---------------------------------------------------------------------------
 import { Router } from "express";
 import prisma from "../lib/prisma.js";

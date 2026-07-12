@@ -3,6 +3,8 @@ import prisma from "../lib/prisma.js";
 import { syncRaceToDiscord } from "../services/discordService.js";
 import { optionalUser, resolveDriverId, isAdminRequest } from "../middleware/auth.js";
 import { resolveSeasonId } from "../services/seasonService.js";
+import { readRaceFormat } from "../lib/raceFormat.js";
+import { seasonRowForDriver } from "../lib/persons.js";
 
 const router = Router();
 const VALID = ["ACCEPTED", "DECLINED", "TENTATIVE"];
@@ -20,6 +22,9 @@ router.get("/", async (req, res, next) => {
         rsvps: { include: { driver: { include: { team: true } } } },
       },
     });
+
+    // Session format (raw-SQL columns) for the attendance hero.
+    const format = await readRaceFormat(prisma, races.map((r) => r.id));
 
     const events = races.map((race) => {
       const grouped = { ACCEPTED: [], DECLINED: [], TENTATIVE: [] };
@@ -39,6 +44,8 @@ router.get("/", async (req, res, next) => {
         date: race.date,
         capacity: race.capacity,
         info: race.info,
+        qualiMinutes: format.get(race.id)?.qualiMinutes ?? null,
+        raceLaps: format.get(race.id)?.raceLaps ?? null,
         counts: {
           ACCEPTED: grouped.ACCEPTED.length,
           DECLINED: grouped.DECLINED.length,
@@ -69,13 +76,18 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     if (!race) return res.status(404).json({ error: "Race not found" });
     if (race.isCompleted) return res.status(400).json({ error: "Race already completed" });
 
-    const driver = await prisma.driver.findUnique({ where: { id: driverId } });
-    if (!driver) return res.status(404).json({ error: "Driver not found" });
+    // RSVP as the person's row in the RACE's season — the login may still
+    // point at another season's row (e.g. answering next season's opener
+    // before ever logging in again after the season switch).
+    const base = await prisma.driver.findUnique({ where: { id: driverId } });
+    if (!base) return res.status(404).json({ error: "Driver not found" });
+    const driver = await seasonRowForDriver(prisma, base, race.seasonId, req.user?.discordId);
+    if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
 
     await prisma.raceRsvp.upsert({
-      where: { raceId_driverId: { raceId: race.id, driverId } },
+      where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
       update: { status },
-      create: { raceId: race.id, driverId, status },
+      create: { raceId: race.id, driverId: driver.id, status },
     });
 
     // Fire-and-await Discord sync, but don't fail the request if Discord errors.
@@ -91,8 +103,14 @@ router.delete("/:id/rsvp/:driverId", optionalUser, async (req, res, next) => {
   try {
     const driverId = await resolveDriverId(prisma, req.user);
     if (!driverId) return res.status(401).json({ error: "Sign in with Discord to respond" });
+    // Same season mapping as the RSVP above, so removing hits the row that
+    // actually answered. (The :driverId param is ignored on purpose — the
+    // caller can only ever remove their OWN response.)
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    const base = await prisma.driver.findUnique({ where: { id: driverId } });
+    const driver = race && base ? await seasonRowForDriver(prisma, base, race.seasonId, req.user?.discordId) : base;
     await prisma.raceRsvp.deleteMany({
-      where: { raceId: req.params.id, driverId },
+      where: { raceId: req.params.id, driverId: driver?.id || driverId },
     });
     const discord = await syncRaceToDiscord(prisma, req.params.id);
     res.json({ ok: true, discord });

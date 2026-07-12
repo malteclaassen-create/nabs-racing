@@ -13,6 +13,7 @@ import { getLinkedDriverIds } from "../lib/persons.js";
 import { parseSocials, serializeSocials } from "../lib/socials.js";
 import { DEFAULT_PROFILE_TILES, PROFILE_TILE_KEYS, readProfileTiles } from "../lib/profileTiles.js";
 import { parseCardPhotoPos, readCardPhotoPos } from "../lib/cardPhoto.js";
+import { readDriverRoles } from "../lib/driverRoles.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const router = Router();
@@ -66,6 +67,9 @@ router.get("/", async (req, res, next) => {
       number: driver.number ?? null,
       socials: parseSocials(driver.socials),
       tier: driver.tier,
+      // Special league role ('safety' = safety car driver) — drives the
+      // SAFETY CAR rating card variant on the profile page.
+      role: (await readDriverRoles(prisma, [driver.id])).get(driver.id) || null,
       // Custom upload wins over the Discord avatar; hasCustomPhoto drives the
       // "reset to Discord picture" button on the profile page.
       photoUrl: driver.photoUrl || driver.discordAvatar || null,

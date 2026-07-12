@@ -7,8 +7,9 @@ import TeamLogo from "./TeamLogo.jsx";
 import AdminPersons from "./AdminPersons.jsx";
 
 // Admin "Members" tab: every Discord account that has ever logged in on the
-// site. The name matcher links most accounts to their roster driver on first
-// login; this tab is for everything it can't do alone —
+// site. Logins connect to a driver ONLY via a stored Discord user ID (the old
+// name matcher was an impersonation hole and is gone), so this tab is where
+// identities get managed:
 //   * see who logged in but is NOT linked to any driver (and link them by hand),
 //   * see which roster drivers never logged in at all,
 //   * ban an account (no more logins, running sessions stop working).
@@ -133,9 +134,9 @@ export default function AdminMembers() {
   return (
     <div className="space-y-6">
       <div className="rounded-lg bg-surface2/60 px-4 py-3 text-sm text-medium">
-        Everyone who has logged in with Discord shows up here automatically. Most accounts link themselves to their
-        roster driver by name on first login. Anything the matcher couldn&rsquo;t place lands in{" "}
-        <b>Needs attention</b> below, where you can link it by hand. Banning an account blocks logins <i>and</i> cuts
+        Everyone who has logged in with Discord shows up here automatically. An account connects to its driver via
+        the stored Discord user ID (set in the Drivers tab, or by linking below); new logins without one land in{" "}
+        <b>Needs attention</b>, where you link them by hand. Banning an account blocks logins <i>and</i> cuts
         off its current session.
       </div>
 
@@ -150,9 +151,10 @@ export default function AdminMembers() {
             <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 font-mono text-xs text-amber-600">{unlinked.length}</span>
           </h3>
           <p className="mt-1 text-sm text-light">
-            These people signed in but the name matcher couldn&rsquo;t find them on the roster. Pick their driver entry
-            to link them, or, for someone completely new to the league, create a fresh driver in one step with{" "}
-            <b>New driver</b>.
+            These people signed in but aren&rsquo;t connected to a roster driver yet. (Logins only auto-connect via a
+            stored Discord user ID; there is no name guessing, so nobody can claim someone else&rsquo;s profile.) Pick
+            their driver entry to link them, or, for someone completely new to the league, create a fresh driver in
+            one step with <b>New driver</b>.
           </p>
           <ul className="mt-3 divide-y divide-border">
             {unlinked.map((m) => (
@@ -162,7 +164,7 @@ export default function AdminMembers() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold text-dark">{m.displayName || m.username}</span>
                     <span className="block font-mono text-xs text-light">
-                      @{m.username} · last login {fmtDate(m.lastLoginAt)}
+                      @{m.username} · ID {m.discordId} · last login {fmtDate(m.lastLoginAt)}
                     </span>
                   </span>
                   <StatusPills m={m} />
@@ -272,7 +274,7 @@ export default function AdminMembers() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold text-dark">{m.displayName || m.username}</span>
                   <span className="block font-mono text-xs text-light">
-                    @{m.username} · first {fmtDate(m.firstLoginAt)} · last {fmtDate(m.lastLoginAt)} · {m.loginCount}×
+                    @{m.username} · ID {m.discordId} · first {fmtDate(m.firstLoginAt)} · last {fmtDate(m.lastLoginAt)} · {m.loginCount}×
                   </span>
                 </span>
                 {m.driver && (
@@ -329,7 +331,8 @@ export default function AdminMembers() {
         </h3>
         <p className="mt-1 text-sm text-light">
           Drivers on the active season&rsquo;s roster without a Discord login yet. Worth a nudge on Discord so they get
-          their profile, RSVP and market access.
+          their profile, RSVP and market access. Tip: enter their Discord user ID in the <b>Drivers</b> tab now and
+          their first login connects by itself, and the results post can @mention them right away.
         </p>
         {unclaimed.length > 0 && (
           <ul className="mt-3 grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
