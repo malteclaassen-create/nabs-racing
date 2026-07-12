@@ -8,15 +8,18 @@ import SettingsButton from "./SettingsPanel.jsx";
 import { DriverAvatar } from "./ui.jsx";
 
 // Auth-aware control that replaces the old "Sign Up" nav item: a "Log in" button
-// when logged out, or the driver's avatar + name (linking to /profile) when in.
+// when logged out, or the driver's avatar + name when in. The chip links to the
+// PUBLIC driver page of the current season (the editor is one click further,
+// via "Edit my profile" there); a login without a linked driver row still
+// lands on /profile, which explains the linking.
 function AuthControl({ mobile = false }) {
   const { user, isLoggedIn } = useAuth();
   if (isLoggedIn) {
     const name = user.driverName || user.discordName || "Profile";
     return (
       <NavLink
-        to="/profile"
-        title="Your profile"
+        to={user.driverId ? `/drivers/${user.driverId}` : "/profile"}
+        title="Your driver profile"
         className={({ isActive }) =>
           `flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold transition ${
             mobile ? "w-full" : ""

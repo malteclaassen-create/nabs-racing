@@ -5,7 +5,11 @@
 // truth); finishing-order extras (grid, best lap, positions gained) come from
 // the per-result metadata stored at import/seed time.
 // ---------------------------------------------------------------------------
-import { getDriverStandings } from "./standingsService.js";
+import {
+  getDriverStandings,
+  getT1ConstructorStandings,
+  getT2ConstructorStandings,
+} from "./standingsService.js";
 import { parseSocials } from "../lib/socials.js";
 import { getLinkedDriverIds, getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
 import { telemetryForDriver } from "../lib/telemetryRead.js";
@@ -216,15 +220,19 @@ export async function getDriverProfile(prisma, driverId) {
   const nameOv = nameOverrides.get(driverId);
   const career = await buildCareer(prisma, driverId, seasonId, standings);
 
+  // Linked rows + private seasons are shared by the all-time stats and both
+  // badge shelves below, so resolve them once.
+  const linkedIds = await getLinkedDriverIds(prisma, driverId);
+  const privateSeasonRows = await prisma
+    .$queryRawUnsafe(`SELECT "id" FROM "Season" WHERE "isPublic" = 0`)
+    .catch(() => []);
+  const privateSeasonIds = new Set(privateSeasonRows.map((r) => r.id));
+
   // All-time stats power the Season ⇄ All-time toggle on the profile's stat
   // tiles — only when the driver actually spans more than one season.
   let allTime = null;
   if (career) {
-    const linkedIds = await getLinkedDriverIds(prisma, driverId);
-    const privateRows = await prisma
-      .$queryRawUnsafe(`SELECT "id" FROM "Season" WHERE "isPublic" = 0`)
-      .catch(() => []);
-    allTime = await buildAllTimeStats(prisma, linkedIds, new Set(privateRows.map((r) => r.id)));
+    allTime = await buildAllTimeStats(prisma, linkedIds, privateSeasonIds);
   }
 
   // Podium badges — earned, never assigned: one seal per CONCLUDED season this
@@ -270,6 +278,58 @@ export async function getDriverProfile(prisma, driverId) {
     }
   }
   const badges = [...badgeBySeason.values()].sort((a, b) => a.seasonNumber - b.seasonNumber);
+
+  // Team podium seals — the constructor twin of the driver seals: one per
+  // concluded season in which this person's roster team finished its own
+  // tier's constructor championship in the top three ("Season 7 · Williams ·
+  // Teams P3"). Linked rows carry the seals across handle changes, exactly
+  // like the driver shelf; private seasons and the reserve pool (no tier-1/2
+  // team) never produce one.
+  const linkedRows =
+    linkedIds.length > 1
+      ? await prisma.driver.findMany({
+          where: { id: { in: linkedIds } },
+          include: { team: true, season: true },
+        })
+      : [driver];
+  const constructorCache = new Map();
+  const constructorTable = async (sid, tier) => {
+    const key = `${sid}:${tier}`;
+    if (!constructorCache.has(key)) {
+      const fn = tier === 1 ? getT1ConstructorStandings : getT2ConstructorStandings;
+      constructorCache.set(key, await fn(prisma, sid));
+    }
+    return constructorCache.get(key);
+  };
+  const teamBadgeBySeason = new Map();
+  for (const row of linkedRows) {
+    if (!row.seasonId || !row.team || privateSeasonIds.has(row.seasonId)) continue;
+    const num = row.season?.number ?? null;
+    const tier = row.team.tier;
+    if (num == null || (tier !== 1 && tier !== 2)) continue;
+    // Same "concluded" rule as the driver seals: seasons behind the active
+    // one, or the person's own season once every round has been run.
+    const concluded =
+      activeSeasonRow &&
+      (num < activeSeasonRow.number || (row.seasonId === seasonId && ownConcluded));
+    if (!concluded) continue;
+    const table = await constructorTable(row.seasonId, tier);
+    const trow = (table?.standings || []).find((t) => t.teamId === row.team.id);
+    const pos = trow?.position;
+    if (!trow || !(pos >= 1 && pos <= 3)) continue;
+    const existing = teamBadgeBySeason.get(num);
+    if (existing && existing.position <= pos) continue;
+    teamBadgeBySeason.set(num, {
+      type: BADGE_TYPE[pos],
+      position: pos,
+      seasonNumber: num,
+      seasonName: row.season?.name || `Season ${num}`,
+      game: gameByNumber.get(num) ?? null,
+      points: Number.isFinite(trow.total) ? trow.total : null,
+      team: { id: row.team.id, name: row.team.name, color: row.team.color, logoUrl: row.team.logoUrl },
+    });
+  }
+  const teamBadges = [...teamBadgeBySeason.values()].sort((a, b) => a.seasonNumber - b.seasonNumber);
 
   // One row per completed championship round, in calendar order. Rounds the
   // driver wasn't entered in still appear (status "DNS", 0 points) so the season
@@ -384,6 +444,9 @@ export async function getDriverProfile(prisma, driverId) {
     allTime,
     // Earned championship seals: [{ type, seasonNumber, seasonName }].
     badges,
+    // Constructor seals for the teams this person drove for: [{ type,
+    // position, seasonNumber, seasonName, game, points, team }].
+    teamBadges,
     // The "P1 of 68" line speaks about people who FINISHED at least one race
     // this season — the roster also carries every sign-up, reserve and
     // DNF-only outing, and none of those should inflate the field. The rank is

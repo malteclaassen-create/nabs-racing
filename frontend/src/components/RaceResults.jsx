@@ -74,12 +74,11 @@ export default function RaceResults({ race, results }) {
               {detailed && hasGrid && <th className="hidden px-3 py-3 text-center md:table-cell">Grid</th>}
               <th className="px-3 py-3">Driver</th>
               <th className="hidden px-3 py-3 sm:table-cell">Team</th>
-              {/* phones: the race time moves under the driver name and DNF/DSQ
-                  becomes a badge next to it; the Time column and the mostly-empty
-                  Status column only appear from md up */}
+              {/* phones: the race time moves under the driver name; the Time
+                  column only appears from md up. DNF/DSQ shows in the points
+                  column (those drivers score 0 anyway). */}
               {detailed && hasTimes && <th className="hidden px-3 py-3 text-right md:table-cell">Time</th>}
               {detailed && hasLaps && <th className="hidden px-3 py-3 text-right md:table-cell">Best Lap</th>}
-              {detailed && <th className="hidden px-3 py-3 text-center lg:table-cell">Status</th>}
               {detailed && (
                 <th className="hidden px-3 py-3 text-center lg:table-cell">
                   <span className="inline-flex items-center">
@@ -153,11 +152,6 @@ export default function RaceResults({ race, results }) {
                         <Flag code={countryFor(r.driverId, r.country)} />
                       </span>
                       {tier != null && <TierBadge tier={tier} />}
-                      {r.status && r.status !== "FINISHED" && (
-                        <span className="lg:hidden">
-                          <StatusPill status={r.status} />
-                        </span>
-                      )}
                       {r.driverId === dotdId && (
                         <span className="pill bg-brand/20 text-brand" title="Driver of the Day">
                           ★ DOTD
@@ -227,16 +221,6 @@ export default function RaceResults({ race, results }) {
 
                   {detailed && (
                     <td className="hidden px-3 py-3.5 text-center lg:table-cell">
-                      {!r.status || r.status === "FINISHED" ? (
-                        <span className="font-mono text-faint">—</span>
-                      ) : (
-                        <StatusPill status={r.status} />
-                      )}
-                    </td>
-                  )}
-
-                  {detailed && (
-                    <td className="hidden px-3 py-3.5 text-center lg:table-cell">
                       {r.t2 ? (
                         <span className="inline-flex items-center gap-2">
                           <span className="pill bg-primary/10 text-primary">P{r.t2.rank}</span>
@@ -260,7 +244,11 @@ export default function RaceResults({ race, results }) {
                   )}
 
                   <td className="px-4 py-3.5 text-right">
-                    <span className="font-mono text-lg font-bold tabular-nums text-dark">{r.points}</span>
+                    {r.status && r.status !== "FINISHED" ? (
+                      <StatusPill status={r.status} />
+                    ) : (
+                      <span className="font-mono text-lg font-bold tabular-nums text-dark">{r.points}</span>
+                    )}
                   </td>
                 </tr>
               );

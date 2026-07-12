@@ -73,6 +73,10 @@ export default function NextSeasonTeaser() {
           {/* NOT lazy on purpose: the panel is display:none until the image
               loads, and a lazy image inside a hidden box never loads — the
               two would deadlock and the car would never appear. */}
+          {/* AC showroom shots put the car in the LOWER half of the frame
+              (black studio above) — a centred crop in this short panel cuts
+              the wheels off, so the crop window sits low to keep the car
+              whole and vertically centred in the box. */}
           {carSrc && (
             <img
               ref={carRef}
@@ -80,7 +84,7 @@ export default function NextSeasonTeaser() {
               alt={`The ${title} car`}
               onLoad={() => setCarOk(true)}
               onError={(e) => { e.currentTarget.style.display = "none"; }}
-              className="absolute inset-0 h-full w-full object-cover mix-blend-screen"
+              className="absolute inset-0 h-full w-full object-cover object-[center_82%] mix-blend-screen"
             />
           )}
         </div>

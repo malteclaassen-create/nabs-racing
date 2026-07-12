@@ -722,7 +722,7 @@ export default function Home() {
         if (honours.viceChampion) {
           cells.push({
             key: "vice",
-            label: "Vice-champion",
+            label: "2nd place",
             to: `/drivers/${honours.viceChampion.driverId}`,
             name: honours.viceChampion.name,
             stat: honours.viceChampion.points,

@@ -1,11 +1,13 @@
 // Podium seal — the site's "Discord role" for a top-three championship finish.
 // Earned, never assigned: the backend derives one per concluded season
 // (driverProfileService `badges`): gold laurel for the champion, silver for
-// the vice-champion, bronze for third. Design (settled with the league after a
+// second place, bronze for third. Design (settled with the league after a
 // few rounds): a classic laurel wreath — open at the top, closing at the
 // bottom, leaves tapering upward — with the season tag ("S6") inside, no
 // filled disc. Hovering opens a small popover with the full story
 // ("Season 6 Champion · F1 2013 · 265 pts"); deliberately NO hover glint.
+
+import TeamLogo from "./TeamLogo.jsx";
 
 // Metal palettes, one per podium step. `text` classes are static literals on
 // purpose (Tailwind needs to see them) — darker metal on the light theme,
@@ -25,7 +27,7 @@ const METALS = {
   },
 };
 const METAL_BY_TYPE = { champion: "gold", vice: "silver", third: "bronze" };
-const TITLE_BY_TYPE = { champion: "Champion", vice: "Vice-Champion", third: "Third Place" };
+const TITLE_BY_TYPE = { champion: "Champion", vice: "2nd Place", third: "3rd Place" };
 
 // The wreath, generated: two mirrored branches of tapered leaf ellipses along
 // a circle — open at the top (±34°), meeting at the bottom (±168°), each leaf
@@ -54,7 +56,15 @@ function wreathLeaves() {
 }
 const LEAVES = wreathLeaves();
 
-export default function ChampionBadge({ type = "champion", seasonNumber, seasonName, game, points, size = 32 }) {
+// Popover placement: centred under the seal by default; "right" pins it to the
+// seal's right edge so a seal at the card's right border never gets clipped by
+// the card's overflow-hidden.
+const POP_POS = {
+  center: "left-1/2 -translate-x-1/2",
+  right: "right-0",
+};
+
+export default function ChampionBadge({ type = "champion", seasonNumber, seasonName, game, points, size = 32, align = "center" }) {
   const m = METALS[METAL_BY_TYPE[type]] || METALS.gold;
   const gid = `seal-${type}-${seasonNumber}`;
   const label = `${seasonName || `Season ${seasonNumber}`} ${TITLE_BY_TYPE[type] || "Champion"}`;
@@ -99,7 +109,66 @@ export default function ChampionBadge({ type = "champion", seasonNumber, seasonN
           rounded overflow never clips it */}
       <span
         role="tooltip"
-        className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 translate-y-1 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-2 text-left opacity-0 shadow-xl shadow-ink/20 transition duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"
+        className={`pointer-events-none invisible absolute top-full z-30 mt-2 translate-y-1 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-2 text-left opacity-0 shadow-xl shadow-ink/20 transition duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 ${POP_POS[align] || POP_POS.center}`}
+      >
+        <span className="block font-display text-xs font-extrabold uppercase tracking-tight text-dark">{label}</span>
+        {detail && (
+          <span className="mt-0.5 block font-mono text-[10px] font-semibold uppercase tracking-wider text-light">
+            {detail}
+          </span>
+        )}
+      </span>
+    </span>
+  );
+}
+
+// Team seal — the constructor twin of the podium seal: the same laurel wreath
+// in the metal of the TEAM's final championship position, with the team logo
+// inside instead of the season tag. The popover tells the story ("Season 7
+// Teams 3rd Place · Williams · 312 pts").
+const TEAM_TITLE_BY_POS = { 1: "Team Champions", 2: "Teams 2nd Place", 3: "Teams 3rd Place" };
+const METAL_BY_POS = { 1: "gold", 2: "silver", 3: "bronze" };
+
+export function TeamPodiumBadge({ position = 1, seasonNumber, seasonName, game, points, team, size = 32, align = "center" }) {
+  const m = METALS[METAL_BY_POS[position]] || METALS.gold;
+  const gid = `team-seal-${position}-${seasonNumber}`;
+  const label = `${seasonName || `Season ${seasonNumber}`} ${TEAM_TITLE_BY_POS[position] || "Team Champions"}`;
+  const detail = [team?.name, game, points != null ? `${points} pts` : null].filter(Boolean).join(" · ");
+  return (
+    <span
+      className={`group relative inline-flex shrink-0 ${m.text}`}
+      style={{ width: size, height: size }}
+      role="img"
+      aria-label={`${label} · ${team?.name || ""}`}
+    >
+      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={m.stops[0]} />
+            <stop offset="55%" stopColor={m.stops[1]} />
+            <stop offset="100%" stopColor={m.stops[2]} />
+          </linearGradient>
+        </defs>
+        <g fill={`url(#${gid})`}>
+          {LEAVES.map((l) => (
+            <ellipse key={l.key} cx={l.x} cy={l.y} rx={l.rx} ry={l.ry} transform={`rotate(${l.rot} ${l.x} ${l.y})`} />
+          ))}
+        </g>
+      </svg>
+      {/* the team logo fills the wreath's open centre */}
+      <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <TeamLogo id={team?.id} name={team?.name} color={team?.color} logoUrl={team?.logoUrl} size={Math.round(size * 0.48)} />
+      </span>
+      {/* season ribbon over the wreath's closing leaves — the driver seal
+          carries its season INSIDE the wreath, the team seal carries the logo
+          there, so the season tag moves onto a little banner at the bottom */}
+      <span className="pointer-events-none absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-[3px] bg-card px-[3px] py-px font-mono text-[7px] font-black leading-none tracking-tight">
+        S{seasonNumber}
+      </span>
+
+      <span
+        role="tooltip"
+        className={`pointer-events-none invisible absolute top-full z-30 mt-2 translate-y-1 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-2 text-left opacity-0 shadow-xl shadow-ink/20 transition duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 ${POP_POS[align] || POP_POS.center}`}
       >
         <span className="block font-display text-xs font-extrabold uppercase tracking-tight text-dark">{label}</span>
         {detail && (

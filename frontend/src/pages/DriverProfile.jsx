@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useAuth } from "../hooks/useAuth.js";
 import {
   ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp,
 } from "../components/ui.jsx";
@@ -9,7 +10,7 @@ import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import SocialLinks from "../components/SocialLinks.jsx";
 import RatingCard from "../components/RatingCard.jsx";
-import ChampionBadge from "../components/ChampionBadge.jsx";
+import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { circuitFor } from "../data/circuits.js";
 
@@ -800,12 +801,68 @@ function ClassicHero({ driver, championship, color }) {
 // championship standing and the six headline stats are packed in beside it on a
 // light panel that echoes the card's team-colour frame and fills its full
 // height, so nothing reads as empty. No dark hero, no rating breakdown.
-function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges }) {
+function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges, teamBadges }) {
   // Season ⇄ All-time switch for the headline numbers. Only offered when the
   // driver actually spans several seasons (allTime comes with the career).
   const [scope, setScope] = useState("season");
   const showAll = !!allTime && scope === "all";
   const shown = showAll ? allTime : stats;
+  // Trophy shelf: the driver's own podium seals (labelled WDC) with the
+  // constructor seals of their teams beneath (WCC) — desktop as its own
+  // column just left of the scoreboard's divider line, phones centred under
+  // the championship strip.
+  const hasSeals = (badges || []).length > 0 || (teamBadges || []).length > 0;
+  const sealLabel = (text, title) => (
+    <span
+      title={title}
+      className="cursor-help font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-light"
+    >
+      {text}
+    </span>
+  );
+  // Each shelf row: the label ABOVE its seals; wide enough for seven wreaths
+  // (7 × 32px + 6 gaps ≈ 16.5rem) before a row wraps.
+  const sealRows = (alignRight) => (
+    <>
+      {(badges || []).length > 0 && (
+        <div className={`flex flex-col gap-1 ${alignRight ? "items-end" : "items-center"}`}>
+          {sealLabel("WDC", "Drivers' championship podiums")}
+          <div className={`flex max-w-[16.5rem] flex-wrap gap-1.5 ${alignRight ? "justify-end" : "justify-center"}`}>
+            {badges.map((b) => (
+              <ChampionBadge
+                key={`${b.type}-${b.seasonNumber}`}
+                type={b.type}
+                seasonNumber={b.seasonNumber}
+                seasonName={b.seasonName}
+                game={b.game}
+                points={b.points}
+                align={alignRight ? "right" : "center"}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {(teamBadges || []).length > 0 && (
+        <div className={`flex flex-col gap-1 ${alignRight ? "items-end" : "items-center"}`}>
+          {sealLabel("WCC", "Constructors' championship podiums (the driver's team)")}
+          <div className={`flex max-w-[16.5rem] flex-wrap gap-1.5 ${alignRight ? "justify-end" : "justify-center"}`}>
+            {teamBadges.map((b) => (
+              <TeamPodiumBadge
+                key={`team-${b.seasonNumber}`}
+                position={b.position}
+                seasonNumber={b.seasonNumber}
+                seasonName={b.seasonName}
+                game={b.game}
+                points={b.points}
+                team={b.team}
+                align={alignRight ? "right" : "center"}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
   const scopeBtn = (key, label) => (
     <button
       type="button"
@@ -869,6 +926,14 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
               <SocialLinks links={driver.socials} baseClass="text-light" className="mt-3.5 justify-center lg:justify-start" />
             </div>
 
+            {/* trophy shelf — its own column just LEFT of the scoreboard's
+                divider line, vertically centred on the scoreboard (lg+) */}
+            {hasSeals && (
+              <div className="hidden shrink-0 flex-col items-end justify-center gap-2.5 self-stretch lg:flex">
+                {sealRows(true)}
+              </div>
+            )}
+
             {/* championship (or career) scoreboard fills the former dead corner (lg+) */}
             <div className="hidden shrink-0 flex-col items-end border-l border-border pl-6 text-right lg:flex">
               <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">
@@ -926,25 +991,12 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
             </div>
           </div>
 
+          {/* trophy shelf for phones (the scoreboard above carries it on lg+) */}
+          {hasSeals && <div className="mt-3 flex flex-col items-center gap-2 lg:hidden">{sealRows(false)}</div>}
+
           {/* headline stats — bottom-anchored so they fill the space beside the
               card. Linked multi-season drivers get the Season ⇄ All-time switch. */}
           <div className="mt-5 lg:mt-auto lg:pt-5">
-            {/* podium seals — the trophy shelf sits right above the stats block,
-                one laurel per season this person finished in the top three */}
-            {(badges || []).length > 0 && (
-              <div className="mb-3 flex flex-wrap items-center justify-center gap-2 lg:justify-start">
-                {badges.map((b) => (
-                  <ChampionBadge
-                    key={`${b.type}-${b.seasonNumber}`}
-                    type={b.type}
-                    seasonNumber={b.seasonNumber}
-                    seasonName={b.seasonName}
-                    game={b.game}
-                    points={b.points}
-                  />
-                ))}
-              </div>
-            )}
             {allTime && (
               <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
@@ -972,6 +1024,7 @@ export default function DriverProfile({ previewId, preview }) {
   const { id: routeId } = useParams();
   const id = previewId || routeId;
   const navigate = useNavigate();
+  const { user: authedUser } = useAuth();
   const { data, loading, error } = useApi(
     useCallback(() => Promise.all([api.driverProfile(id), api.driverRating(id)]), [id])
   );
@@ -1001,9 +1054,23 @@ export default function DriverProfile({ previewId, preview }) {
   const droppedRounds = new Set(meRow?.droppedRounds || []);
   const dropWorst = standingsData.dropWorst ?? 3;
   const totalRounds = standingsData.raceNumbers?.length || 0;
+  // The nav chip leads HERE (the public page) — so the page returns the
+  // favour: the owner gets a button through to the private editor. Hidden in
+  // the /profile live preview, which would otherwise show it to no purpose.
+  const isOwnProfile = !previewId && authedUser?.driverId === driver.id;
 
   return (
     <div className="content-in space-y-6">
+      {isOwnProfile && (
+        <div className="-mb-2 flex justify-end">
+          <Link to="/profile" className="btn-secondary inline-flex items-center gap-1.5">
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+            </svg>
+            Edit my profile
+          </Link>
+        </div>
+      )}
       {LAYOUT === "classic" ? (
         <>
           {/* Classic hero banner */}
@@ -1035,6 +1102,7 @@ export default function DriverProfile({ previewId, preview }) {
           allTime={p.allTime}
           career={p.career}
           badges={p.badges}
+          teamBadges={p.teamBadges}
         />
       )}
 
