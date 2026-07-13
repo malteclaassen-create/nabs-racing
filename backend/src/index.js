@@ -19,7 +19,7 @@ import authRoutes from "./routes/auth.js";
 import discordAuthRoutes from "./routes/discordAuth.js";
 import downloadsRoutes from "./routes/downloads.js";
 import adminRoutes from "./routes/admin.js";
-import { initLiveTiming, getBoard } from "./services/liveTiming.js";
+import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest } from "./middleware/auth.js";
@@ -79,6 +79,18 @@ app.use("/api/uploads", express.static(UPLOADS_DIR, {
 // Live timing (Assetto Corsa Server Manager relay). REST snapshot for fallback/
 // debugging; the live stream is the WebSocket at /api/live/ws (set up below).
 app.get("/api/live/timing", (req, res) => res.json(getBoard()));
+
+// The real overhead track map (proxied + cached from the server manager's public
+// content), drawn under the live car dots. 404 until a track with a usable map is
+// loaded; the frontend then falls back to the stylised outline. The ?v= token in
+// the board's session.map busts the browser cache when the track changes.
+app.get("/api/live/map.png", (req, res) => {
+  const png = getTrackMapPng();
+  if (!png) return res.status(404).json({ error: "No track map" });
+  res.setHeader("Content-Type", "image/png");
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.send(png);
+});
 
 // Live championship projection: standings as if the RUNNING race ended in the
 // current order. Only active while a league race is on (see the service's

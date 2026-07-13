@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
-import { useSeason } from "../context/SeasonContext.jsx";
-import { seasonGameParts } from "../utils/seasonGame.js";
 import { PageHeader, SectionHeading } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
+import LiveTrackMap from "../components/LiveTrackMap.jsx";
+import TyreStrategy, { TyreBadge } from "../components/TyreStrategy.jsx";
+import { circuitForLive } from "../data/circuits.js";
 import {
   makeDriverMatcher,
   formatLap,
@@ -16,6 +17,8 @@ import {
   formatRunning,
   formatDelta,
   countryCodeFromName,
+  tyreCompound,
+  COMPOUND_ORDER,
 } from "../data/liveTiming.js";
 
 function prettyWeather(w) {
@@ -571,12 +574,290 @@ const COLS = [
   { label: "", cls: "py-3 pr-5" },
 ];
 
+/* ===== External links, view switch, track map ============================= */
+
+function ExternalIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 4h6v6M20 4l-9 9M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6" />
+    </svg>
+  );
+}
+
+// The two admin-configured external buttons. "Full live timing" always shows
+// (it has a sensible default); "Join in Content Manager" appears only once an
+// admin has pasted the running server's CM deep link.
+function ExternalButtons({ links }) {
+  const timing = links?.liveTimingUrl;
+  const join = links?.cmJoinUrl;
+  if (!timing && !join) return null;
+  return (
+    <div className="mb-6 flex flex-wrap gap-2.5">
+      {timing && (
+        <a
+          href={timing}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-dark transition hover:bg-surface2"
+        >
+          <ExternalIcon />
+          Full live timing
+        </a>
+      )}
+      {join && (
+        <a
+          href={join}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/25 transition hover:brightness-105"
+        >
+          <ExternalIcon />
+          Join in Content Manager
+        </a>
+      )}
+    </div>
+  );
+}
+
+// Segmented Timing / Strategy switch, matching the profile scope toggle.
+function ViewSwitch({ view, setView }) {
+  const btn = (key, label) => (
+    <button
+      type="button"
+      onClick={() => setView(key)}
+      className={`rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+        view === key ? "bg-brand text-ink" : "text-light hover:text-dark"
+      }`}
+      aria-pressed={view === key}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
+      {btn("timing", "Timing")}
+      {btn("strategy", "Strategy")}
+    </div>
+  );
+}
+
+// Live track map card. Prefers the REAL overhead map with cars at their surveyed
+// world positions (session.map calibration present); otherwise the stylised
+// circuit outline with dots walked along the lap. Unknown circuits with no real
+// map get a quiet, intentional fallback instead of a blank hole.
+// Shares a row with the session card on lg+ (the map used to be its own
+// full-width section, which was mostly empty margin), so the heading moved
+// inside the card as a compact header strip.
+function TrackMapSection({ session, entries, match, className = "" }) {
+  const realMap = session.map || null;
+  // Live sessions carry the mod's display name ("NABS Monza F1 2025") which the
+  // tidy resolver can't place, so try the AC id (session.track) too.
+  const stylised = circuitForLive(session.trackName, session.track);
+  const hasMap = !!realMap || !!stylised;
+  const cars = entries.filter((e) => e.onTrack || e.inPits);
+  return (
+    <section className={`reveal card flex flex-col overflow-hidden ${className}`}>
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Track map</span>
+        <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+          {cars.filter((c) => !c.inPits).length} on track
+        </span>
+      </div>
+      <div className="p-3 sm:p-4">
+        {hasMap ? (
+          <>
+            <LiveTrackMap
+              track={session.trackName || session.track}
+              cars={cars}
+              matchFn={match}
+              map={realMap}
+              className={realMap ? "" : "mx-auto h-auto max-h-[440px] w-full text-medium"}
+            />
+            {/* The caveat only applies to the stylised outline; real map is exact. */}
+            {!realMap && (
+              <p className="mt-3 text-center font-mono text-[11px] uppercase tracking-wider text-light">
+                Car positions are approximate: dots follow each lap&rsquo;s progress, so the start line and
+                direction may not match the real circuit.
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="py-12 text-center text-light">
+            <p className="font-mono text-sm uppercase tracking-wider">No map for this circuit yet</p>
+            <p className="mt-1 text-sm">{session.trackName || session.track || "Unknown track"}</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// "Driving now" — the cars currently out on track, sat left of the map so the
+// two share one row and read as a single "what's happening right now" block.
+// The list scrolls INSIDE the card (capped height, sticky column header), so a
+// packed server never turns the page into one endless table; the map column
+// next door stays in proportion. Empty state (nobody out) keeps the panel
+// instead of vanishing.
+function DrivingNowSection({ onTrack, match, className = "" }) {
+  return (
+    <section className={`reveal card flex flex-col overflow-hidden ${className}`}>
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Driving now</span>
+        {onTrack.length > 0 ? (
+          <span className="inline-flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-wider text-emerald-600">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            {onTrack.length} live
+          </span>
+        ) : (
+          <span className="font-mono text-[11px] uppercase tracking-wider text-light">Nobody out</span>
+        )}
+      </div>
+      {onTrack.length > 0 ? (
+        // Phones: the list is simply capped and scrolls. lg+: the map + pit-lane
+        // column next door sets the row height, and the absolutely-positioned
+        // scroll area fills exactly that — the table's own length never drives
+        // the page (that's what made it one endless column before).
+        <div className="min-h-0 flex-1 lg:relative">
+          <div className="scrollbar-slim max-h-[430px] overflow-auto lg:absolute lg:inset-0 lg:max-h-none">
+            <table className="w-full min-w-[520px]">
+            <thead>
+              <tr className="text-left font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">
+                {ONTRACK_COLS.map((c, i) => (
+                  // sticky per-cell (sticky thead still doesn't scroll along in
+                  // every browser); shadow stands in for the border, which
+                  // wouldn't travel with the sticky cells either
+                  <th key={i} className={`${c.cls} sticky top-0 z-10 bg-card shadow-[inset_0_-1px_0_var(--c-border)]`}>
+                    {c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            {/* cascade: rows rise in one after another, like the standings tables */}
+            <tbody className="cascade">
+              {onTrack.map((e, i) => (
+                <OnTrackRow key={e.guid} e={e} match={match(e.name)} index={i} />
+              ))}
+            </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center gap-1 px-4 py-12 text-center">
+          <p className="font-mono text-sm uppercase tracking-wider text-light">No cars out on track</p>
+          <p className="text-sm text-light">Drivers show up here the moment they leave the pit lane.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// Sits under the track map and completes the picture: the map shows who's OUT,
+// this lists who's currently sitting in the pit lane (the map's dimmed dots).
+// flex-1 in the map column, so the pair always closes flush with the "driving
+// now" card beside it.
+function PitLaneSection({ entries, match, className = "" }) {
+  const inPits = entries.filter((e) => e.onTrack && e.inPits);
+  return (
+    <section className={`reveal card flex flex-col overflow-hidden ${className}`}>
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Pit lane</span>
+        <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+          {inPits.length > 0 ? `${inPits.length} in the pits` : "Empty"}
+        </span>
+      </div>
+      {inPits.length > 0 ? (
+        <div className="scrollbar-slim max-h-[240px] flex-1 divide-y divide-border overflow-y-auto">
+          {inPits.map((e) => {
+            const m = match ? match(e.name) : null;
+            const t = e.currentTyre ? tyreCompound(e.currentTyre) : null;
+            return (
+              <div key={e.guid} className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
+                <span className="h-7 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: m?.teamColor || "var(--c-border)" }} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+                    {m?.nabsName || e.name}
+                  </span>
+                  <span className="block truncate text-[11px] text-light">{m?.teamName || "—"}</span>
+                </span>
+                {t && (
+                  <span
+                    className="inline-flex h-5 min-w-5 items-center justify-center rounded px-1 font-mono text-[10px] font-black leading-none"
+                    style={{
+                      backgroundColor: t.color,
+                      color: t.light ? "#111827" : "#fff",
+                      boxShadow: t.light ? "inset 0 0 0 1px rgba(17,24,39,0.28)" : "none",
+                    }}
+                    title="Current compound"
+                  >
+                    {t.label}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-1 items-center justify-center px-4 py-8 text-center">
+          <p className="font-mono text-xs uppercase tracking-wider text-light">Pit lane is empty</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// Compound colour key for the strategy view (built from the same mapping the
+// bars use, so it never drifts out of sync). Lists only the compounds actually
+// seen in THIS session — a server running supersoft/soft/medium shows exactly
+// those three, softest first — so the key describes the graphic, not the rulebook.
+function CompoundLegend({ entries }) {
+  const seen = new Map();
+  for (const e of entries || []) {
+    const names = [e.currentTyre, ...(Array.isArray(e.stints) ? e.stints.map((s) => s.tyre) : [])];
+    for (const n of names) {
+      if (!n) continue;
+      const t = tyreCompound(n);
+      if (!seen.has(t.label)) seen.set(t.label, t);
+    }
+  }
+  const items = [...seen.values()].sort((a, b) => {
+    const ia = COMPOUND_ORDER.indexOf(a.label);
+    const ib = COMPOUND_ORDER.indexOf(b.label);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  if (items.length === 0) return null;
+  const anyPitted = (entries || []).some((e) => Array.isArray(e.stints) && e.stints.length > 0);
+  return (
+    <div className="reveal flex flex-wrap items-center gap-x-4 gap-y-2 px-1 font-mono text-[11px] uppercase tracking-wider text-light">
+      {items.map((t) => (
+        <span key={t.label} className="flex items-center gap-1.5">
+          <TyreBadge t={t} size={16} />
+          {t.name}
+        </span>
+      ))}
+      {anyPitted && (
+        <span className="flex items-center gap-1.5">
+          <span
+            className="h-3 w-3 rounded-sm ring-1 ring-black/10 dark:ring-white/10"
+            style={{ background: "repeating-linear-gradient(135deg, var(--c-surface2) 0 3px, var(--c-border) 3px 5px)" }}
+          />
+          In the pits
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function Live() {
   const { board, socketState } = useLiveTiming();
-  const { current: season } = useSeason();
-  const { platform } = seasonGameParts(season);
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const match = useMemo(() => makeDriverMatcher(teams), [teams]);
+  // Admin-configured external buttons (server-manager live timing + CM join).
+  const { data: extLinks } = useApi(useCallback(() => api.liveLinks(), []));
+  // Timing ⇄ Strategy switch (the track map sits above both).
+  const [view, setView] = useState("timing");
 
   const connected = board?.connected && !board?.stale && socketState === "open";
   const session = board?.session;
@@ -616,9 +897,16 @@ export default function Live() {
       <PageHeader
         eyebrow="Real-time"
         title="Live Timing"
-        subtitle={`Direct from the NABS ${platform} server: sectors, potential lap, gaps and pit data, updating live.`}
-        right={<LiveBadge live={connected} />}
+        right={
+          <span className="flex items-center gap-2">
+            {board?.demo && <span className="pill bg-amber-500/15 text-amber-600">Demo</span>}
+            <LiveBadge live={connected} />
+          </span>
+        }
       />
+
+      {/* External buttons (server-manager live timing + Content Manager join). */}
+      <ExternalButtons links={extLinks} />
 
       {!session ? (
         <div className="card flex flex-col items-center justify-center gap-3 py-20 text-center">
@@ -629,51 +917,45 @@ export default function Live() {
         </div>
       ) : (
         <div className="content-in space-y-8">
+          {/* ===== Session bar across the top ===== */}
           <SessionHeader session={session} receivedAt={receivedAt} />
+
+          {/* ===== Driving now (left, wider) beside the track map + pit lane
+                 (right, narrower): one "right now" block. The map column is
+                 first in the DOM so it leads on phones; explicit column starts
+                 put it right on lg, and the pit-lane card stretches so both
+                 columns close flush. ===== */}
+          <div className="grid gap-4 sm:gap-6 lg:grid-cols-5 lg:items-stretch">
+            <div className="flex flex-col gap-4 sm:gap-6 lg:col-span-2 lg:col-start-4 lg:row-start-1">
+              <TrackMapSection session={session} entries={entries} match={match} />
+              <PitLaneSection entries={entries} match={match} className="flex-1" />
+            </div>
+            <DrivingNowSection
+              onTrack={onTrack}
+              match={match}
+              className="lg:col-span-3 lg:col-start-1 lg:row-start-1"
+            />
+          </div>
 
           {/* ===== Championship projection (league race days only) ===== */}
           {champ?.active && <ChampionshipProjection data={champ} />}
 
-          {/* ===== On track now — live current lap, separate from the table ===== */}
-          {onTrack.length > 0 && (
-            <section className="reveal space-y-4">
-              <SectionHeading
-                eyebrow="Out on track"
-                title="Driving Now"
-                right={
-                  <span className="inline-flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-emerald-600">
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                    </span>
-                    {onTrack.length} live
-                  </span>
-                }
-              />
-              <div className="card overflow-hidden ring-1 ring-emerald-500/20">
-                <div className="scrollbar-slim overflow-x-auto">
-                  <table className="w-full min-w-[560px]">
-                    <thead>
-                      <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">
-                        {ONTRACK_COLS.map((c, i) => (
-                          <th key={i} className={c.cls}>
-                            {c.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    {/* cascade: rows rise in one after another, like the standings tables */}
-                    <tbody className="cascade">
-                      {onTrack.map((e, i) => (
-                        <OnTrackRow key={e.guid} e={e} match={match(e.name)} index={i} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </section>
-          )}
+          {/* ===== Timing / Strategy switch ===== */}
+          <div className="reveal flex items-center justify-between gap-4">
+            <span className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+              Session view
+            </span>
+            <ViewSwitch view={view} setView={setView} />
+          </div>
 
+          {view === "strategy" ? (
+            <section className="reveal space-y-4">
+              <SectionHeading eyebrow="Tyres" title="Strategy" />
+              <TyreStrategy entries={entries} matchFn={match} raceLaps={session.raceLaps} />
+              <CompoundLegend entries={entries} />
+            </section>
+          ) : (
+          <>
           {/* ===== Full session-best leaderboard (all drivers) ===== */}
           <section className="reveal space-y-4">
             <SectionHeading eyebrow="Classification" title="Session Best Times" />
@@ -731,6 +1013,8 @@ export default function Live() {
             </span>
             <span className="text-faint">Potential = sum of best sectors</span>
           </div>
+          </>
+          )}
 
           {!connected && (
             <p className="text-center font-mono text-xs uppercase tracking-wider text-amber-600">

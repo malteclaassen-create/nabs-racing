@@ -16,14 +16,18 @@ export const WELCOME_FAQ_DEFAULTS = [
   },
   {
     q: "How often do you race?",
-    a: "Roughly one round a week across a {rounds}-race season, plus the occasional special event like an endurance night. You sign up for each round, so you're never locked in.",
+    a: "Roughly one round a week through the season, plus the occasional special event like an endurance night. You sign up for each round, so you're never locked in.",
   },
   {
     q: "What if I can't make a race?",
     a: "Just mark yourself Declined for that round, no penalty. Teams can call on a reserve to fill the seat, which is often how new drivers get their first start.",
   },
   {
+    // Kept to tokens that always resolve ({pointsFirst}/{pointsLast} fall back to
+    // the league default table): a brand-new season with no rounds scheduled yet
+    // would leave {rounds}/{counted} empty, and an unresolved token renders as a
+    // literal "{rounds}", so the drop-count detail is described in words instead.
     q: "How do the standings work?",
-    a: "You score points for your finishing position every round (P1 is {pointsFirst} down to {pointsLast} for the last points-paying place). Your best {counted} results of {rounds} count toward the championship. It's all calculated automatically and shown live on this site.",
+    a: "You score points for your finishing position every round (P1 is {pointsFirst} down to {pointsLast} for the last points-paying place). Only your best results count toward the championship, with your weakest rounds dropped, so a single rough night never sinks your season. It's all calculated automatically and shown live on this site.",
   },
 ];

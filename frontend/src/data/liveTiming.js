@@ -118,3 +118,100 @@ const COUNTRY_CODE = {
 export function countryCodeFromName(name) {
   return COUNTRY_CODE[String(name || "").trim().toLowerCase()] || "";
 }
+
+// --- Tyre compounds ---------------------------------------------------------
+// Map an Assetto Corsa compound name onto the F1-TV colour convention for the
+// strategy view. AC mods name tyres every which way ("Soft", "(S)", "SM",
+// "Hypersoft", "Wet"…), so we sniff the normalised string rather than demand an
+// exact match; anything we can't place gets a stable colour from a small palette
+// (hashed off the name, so the same unknown compound always keeps one colour).
+const COMPOUND_PALETTE = ["#38bdf8", "#fb923c", "#c084fc", "#2dd4bf", "#f472b6", "#a3a3a3"];
+
+// A light chip needs dark text + a thin rim to stay legible; everything else
+// takes white text. Medium is white in the league scheme, so it sits here too.
+const LIGHT_COMPOUNDS = new Set(["hard", "superhard", "medium"]);
+
+// Short codes (as the current-tyre field ships them, e.g. "S", "SS", "I") take
+// priority, so they can't be misread by the substring checks below (a tidy "ss"
+// isn't "soft"). Then the descriptive names, most specific first, so "supersoft"
+// resolves before plain "soft". Handles messy mod strings like "Soft (S)" too.
+const SHORT_CODES = {
+  hs: "hypersoft",
+  us: "ultrasoft",
+  ss: "supersoft",
+  sh: "superhard",
+  s: "soft",
+  m: "medium",
+  h: "hard",
+  i: "intermediate",
+  in: "intermediate",
+  int: "intermediate",
+  inter: "intermediate",
+  w: "wet",
+  wet: "wet",
+};
+
+function compoundKey(name) {
+  const n = String(name || "").toLowerCase().replace(/[^a-z]/g, "");
+  if (!n) return null;
+  if (SHORT_CODES[n]) return SHORT_CODES[n];
+  if (n.includes("inter")) return "intermediate";
+  if (n.includes("wet")) return "wet";
+  if (n.includes("hyper")) return "hypersoft";
+  if (n.includes("ultra")) return "ultrasoft";
+  if (n.includes("super") && n.includes("soft")) return "supersoft";
+  if (n.includes("super") && n.includes("hard")) return "superhard";
+  if (n.includes("soft")) return "soft";
+  if (n.includes("medium")) return "medium";
+  if (n.includes("hard")) return "hard";
+  return null;
+}
+
+// NABS league colour scheme (matched to the on-stream race-standings graphic):
+// hypersoft pink, supersoft red, soft yellow, medium white, hard ice blue —
+// i.e. one step "softer-coloured" than modern F1 (soft is yellow here, not red).
+// Ultrasoft/superhard stay defined (purple / light grey) in case a future mod
+// runs them, but the league doesn't use them. `light` compounds (see
+// LIGHT_COMPOUNDS) are pale, so they take dark text + a thin rim.
+//
+// >>> To recolour a compound, change its `color` here (any CSS/hex value). If a
+// >>> colour becomes pale, also add its key to LIGHT_COMPOUNDS above so the
+// >>> letter flips to dark. That's the only place tyre colours are defined.
+const COMPOUND_META = {
+  hypersoft: { color: "#f472b6", label: "HS", name: "Hypersoft" },
+  ultrasoft: { color: "#a855f7", label: "US", name: "Ultrasoft" },
+  supersoft: { color: "#e11d2e", label: "SS", name: "Supersoft" },
+  soft: { color: "#f4c410", label: "S", name: "Soft" },
+  medium: { color: "#eceff3", label: "M", name: "Medium" },
+  hard: { color: "#93d5ef", label: "H", name: "Hard" },
+  superhard: { color: "#cbd5e1", label: "SH", name: "Superhard" },
+  intermediate: { color: "#22c55e", label: "I", name: "Intermediate" },
+  wet: { color: "#3b82f6", label: "W", name: "Wet" },
+};
+
+// Softest-to-hardest, then rain — the display order for legends and pickers.
+export const COMPOUND_ORDER = ["HS", "US", "SS", "S", "M", "H", "SH", "I", "W"];
+
+// Stable colour for an unknown compound: a tiny string hash into the palette.
+function hashPick(str, arr) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return arr[h % arr.length];
+}
+
+// { color, label, name, light } for a compound name. `light` marks pale chips
+// that need dark text; `name` is the display name for legends (unknown
+// compounds keep whatever the mod calls them).
+export function tyreCompound(name) {
+  const key = compoundKey(name);
+  if (key && COMPOUND_META[key]) {
+    return { ...COMPOUND_META[key], light: LIGHT_COMPOUNDS.has(key) };
+  }
+  const raw = String(name || "").trim();
+  return {
+    color: raw ? hashPick(raw.toLowerCase(), COMPOUND_PALETTE) : "#94a3b8",
+    label: raw ? raw.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "?" : "?",
+    name: raw || "Unknown",
+    light: false,
+  };
+}

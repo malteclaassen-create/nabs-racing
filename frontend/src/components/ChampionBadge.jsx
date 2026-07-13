@@ -7,6 +7,7 @@
 // filled disc. Hovering opens a small popover with the full story
 // ("Season 6 Champion · F1 2013 · 265 pts"); deliberately NO hover glint.
 
+import { useId } from "react";
 import TeamLogo from "./TeamLogo.jsx";
 
 // Metal palettes, one per podium step. `text` classes are static literals on
@@ -66,7 +67,12 @@ const POP_POS = {
 
 export default function ChampionBadge({ type = "champion", seasonNumber, seasonName, game, points, size = 32, align = "center" }) {
   const m = METALS[METAL_BY_TYPE[type]] || METALS.gold;
-  const gid = `seal-${type}-${seasonNumber}`;
+  // Unique per component INSTANCE, not just per (type, season): the trophy
+  // shelf renders twice (a display:none desktop column + the mobile block), so
+  // a deterministic id would collide and `fill="url(#…)"` would resolve to the
+  // hidden copy's gradient — painting nothing on the visible one (the phone
+  // seals looked blank). useId() gives each render its own gradient id.
+  const gid = `seal${useId()}`;
   const label = `${seasonName || `Season ${seasonNumber}`} ${TITLE_BY_TYPE[type] || "Champion"}`;
   const detail = [game, points != null ? `${points} pts` : null].filter(Boolean).join(" · ");
   return (
@@ -131,7 +137,10 @@ const METAL_BY_POS = { 1: "gold", 2: "silver", 3: "bronze" };
 
 export function TeamPodiumBadge({ position = 1, seasonNumber, seasonName, game, points, team, size = 32, align = "center" }) {
   const m = METALS[METAL_BY_POS[position]] || METALS.gold;
-  const gid = `team-seal-${position}-${seasonNumber}`;
+  // Unique per instance (see ChampionBadge): the shelf renders on both the
+  // desktop and mobile layouts, so a deterministic id would collide across the
+  // two copies and the gradient would paint the wrong (hidden) one.
+  const gid = `teamseal${useId()}`;
   const label = `${seasonName || `Season ${seasonNumber}`} ${TEAM_TITLE_BY_POS[position] || "Team Champions"}`;
   const detail = [team?.name, game, points != null ? `${points} pts` : null].filter(Boolean).join(" · ");
   return (

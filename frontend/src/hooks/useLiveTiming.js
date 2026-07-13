@@ -18,7 +18,10 @@ export function useLiveTiming() {
       if (!aliveRef.current) return;
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
       const base = import.meta.env.VITE_API_BASE || `${proto}//${window.location.host}`;
-      const url = base.replace(/^http/, "ws") + "/api/live/ws";
+      // Forward the page's ?demo=1 so the backend can send the fabricated demo
+      // board (dev/opt-in only there — a real visitor's plain URL never gets it).
+      const demo = new URLSearchParams(window.location.search).has("demo") ? "?demo=1" : "";
+      const url = base.replace(/^http/, "ws") + "/api/live/ws" + demo;
 
       let ws;
       try {

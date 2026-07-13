@@ -962,37 +962,45 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
             </div>
           </div>
 
-          {/* championship strip for phones (the scoreboard above is lg+) */}
-          <div className="mt-5 flex items-center justify-center gap-5 rounded-xl bg-surface2/70 px-4 py-3 lg:hidden">
-            <div className="text-center">
-              <div className="font-display text-4xl font-black leading-none tabular-nums text-dark sm:text-5xl">
-                {showAll ? (
-                  <CountUp end={career.totals.seasons} />
-                ) : championship.position ? (
-                  <CountUp end={championship.position} prefix="P" />
-                ) : (
-                  "—"
-                )}
+          {/* championship + trophy shelf for phones — ONE box (the lg+ scoreboard
+              and its own shelf column carry these on desktop). Folding the seals
+              into the same surface as the P/points readout keeps the middle of
+              the card reading as a single block, not stacked leftovers. Without
+              seals it's just the stats row, so there's no empty hole. */}
+          <div className="mt-5 rounded-xl bg-surface2/70 lg:hidden">
+            <div className="flex items-center justify-center gap-5 px-4 py-3">
+              <div className="text-center">
+                <div className="font-display text-4xl font-black leading-none tabular-nums text-dark sm:text-5xl">
+                  {showAll ? (
+                    <CountUp end={career.totals.seasons} />
+                  ) : championship.position ? (
+                    <CountUp end={championship.position} prefix="P" />
+                  ) : (
+                    "—"
+                  )}
+                </div>
+                <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+                  {showAll
+                    ? (career.totals.seasons === 1 ? "season" : "seasons")
+                    : championship.fieldSize
+                      ? `of ${championship.fieldSize}`
+                      : "no races yet"}
+                </div>
               </div>
-              <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-                {showAll
-                  ? (career.totals.seasons === 1 ? "season" : "seasons")
-                  : championship.fieldSize
-                    ? `of ${championship.fieldSize}`
-                    : "no races yet"}
+              <div className="h-11 w-px bg-border" />
+              <div className="text-center">
+                <div className="font-display text-4xl font-black leading-none tabular-nums sm:text-5xl" style={{ color }}>
+                  <CountUp end={showAll ? career.totals.points : championship.points} />
+                </div>
+                <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">points</div>
               </div>
             </div>
-            <div className="h-11 w-px bg-border" />
-            <div className="text-center">
-              <div className="font-display text-4xl font-black leading-none tabular-nums sm:text-5xl" style={{ color }}>
-                <CountUp end={showAll ? career.totals.points : championship.points} />
+            {hasSeals && (
+              <div className="flex flex-col items-center gap-2.5 border-t border-border px-4 py-3.5">
+                {sealRows(false)}
               </div>
-              <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">points</div>
-            </div>
+            )}
           </div>
-
-          {/* trophy shelf for phones (the scoreboard above carries it on lg+) */}
-          {hasSeals && <div className="mt-3 flex flex-col items-center gap-2 lg:hidden">{sealRows(false)}</div>}
 
           {/* headline stats — bottom-anchored so they fill the space beside the
               card. Linked multi-season drivers get the Season ⇄ All-time switch. */}

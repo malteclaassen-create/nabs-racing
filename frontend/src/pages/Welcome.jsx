@@ -170,6 +170,14 @@ export default function Welcome() {
   const eraSeason = hasRunThisSeason ? season : prevSeason || season;
   const { era, platform } = seasonGameParts(eraSeason);
   const carsLabel = era || "Formula 1";
+  // seasonGameParts already guarantees a platform (falls back to "Assetto
+  // Corsa"), so "on {platform}" never renders "on undefined". But when the
+  // season's game names ONLY the sim (e.g. game = "Assetto Corsa", no distinct
+  // car era) the era and platform collapse to the same word, and "Assetto Corsa
+  // cars on Assetto Corsa" reads badly — so the "on {platform}" fragment drops
+  // out whenever it would just echo the car label.
+  const gnorm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const showPlatform = !!platform && gnorm(platform) !== gnorm(carsLabel);
   // League-wide facts. Seasons are numbered from 1, so the highest PUBLIC
   // season number is how many seasons NABS spans — once the next season is
   // published (visible in the switcher, races scheduled), the landing page
@@ -255,13 +263,14 @@ export default function Welcome() {
           <p className="hero-anim max-w-xl text-lg leading-relaxed text-ink/70 dark:text-white/80" style={{ animationDelay: "0.2s" }}>
             <span className="sm:hidden">
               A community-run racing league on Discord. Right now we race{" "}
-              <span className="font-semibold text-ink dark:text-white">{carsLabel}</span> on {platform}, across
-              two tiers. New drivers are welcome every season.
+              <span className="font-semibold text-ink dark:text-white">{carsLabel}</span>
+              {showPlatform ? <> on {platform}</> : ""}, across two tiers. New drivers are welcome every season.
             </span>
             <span className="hidden sm:inline">
               A community-run racing league on Discord{seasonCount > 1 ? `, ${seasonCount} seasons and counting` : ""}.
               Every season we race a new era of motorsport; right now the grid runs{" "}
-              <span className="font-semibold text-ink dark:text-white">{carsLabel}</span> cars on {platform}. Two
+              <span className="font-semibold text-ink dark:text-white">{carsLabel}</span> cars
+              {showPlatform ? <> on {platform}</> : ""}. Two
               tiers, a full championship, and a friendly grid that welcomes new drivers every season, whether
               you&rsquo;re chasing wins or just learning the lines.
             </span>
@@ -319,8 +328,8 @@ export default function Welcome() {
         />
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <FeatureCard index={0} icon="wheel" title="A new era every season">
-            Each season we race a fresh grid of equally matched cars, right now {carsLabel} on {platform},
-            with proper physics and no driver aids holding your hand.
+            Each season we race a fresh grid of equally matched cars, right now {carsLabel}
+            {showPlatform ? ` on ${platform}` : ""}, with proper physics and no driver aids holding your hand.
           </FeatureCard>
           <FeatureCard index={1} icon="layers" title="Two tiers + reserves">
             Tier 1 and Tier 2 keep the racing close to your level. Reserves can step in for any team when a
@@ -481,8 +490,9 @@ export default function Welcome() {
               That&rsquo;s the home base. Hop in, say hello in the intro channel and let us know you&rsquo;d like to race.
             </Step>
             <Step n="2" title="Get set up">
-              Install the season&rsquo;s game and car mod (right now that&rsquo;s {carsLabel} on {platform})
-              and run a few laps. Everything you need is linked in the Discord and on the Race Info page.
+              Install the season&rsquo;s game and car mod (right now that&rsquo;s {carsLabel}
+              {showPlatform ? ` on ${platform}` : ""}) and run a few laps. Everything you need is linked in the
+              Discord and on the Race Info page.
             </Step>
             <Step n="3" title="Sign up for a round">
               Each race you mark yourself Accepted, Tentative or Declined, right here on the site or in Discord.

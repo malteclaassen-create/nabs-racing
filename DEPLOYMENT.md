@@ -1,5 +1,9 @@
 # Hosting guide (deployment)
 
+> Taking over the site as the league admin, without any server knowledge?
+> Read `HANDOVER.md` instead - it walks through the Railway + Discord setup
+> click by click. This file here is the technical reference.
+
 How to put the NABS Racing website permanently on a server of your own. The
 **Node backend serves everything itself** - the website, the API and the
 downloads, as **one single program**. The only thing in front of it is a thin

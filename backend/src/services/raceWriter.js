@@ -116,6 +116,11 @@ export async function saveRaceResults(prisma, raceId, results) {
     await tx.constructorRaceScore.deleteMany({ where: { raceId } });
 
     for (const r of results) {
+      // A driver swap in the editor sends prevDriverId = who USED to hold this
+      // result row. The captured race data (time, grid, best lap, telemetry)
+      // belongs to the row, not the person, so the preserved values follow the
+      // swap instead of being dropped.
+      const prevKey = r.prevDriverId || r.driverId;
       await tx.raceResult.create({
         data: {
           raceId,
@@ -128,9 +133,9 @@ export async function saveRaceResults(prisma, raceId, results) {
           status: r.status || "FINISHED",
           subForTeamId: r.subForTeamId || null,
           penaltySeconds: r.penaltySeconds || 0,
-          grid: keep(r.grid, prevGrid.get(r.driverId)),
-          bestLapMs: keep(r.bestLapMs, prevBestLap.get(r.driverId)),
-          totalTimeMs: keep(r.totalTimeMs, prevTotalTime.get(r.driverId)),
+          grid: keep(r.grid, prevGrid.get(prevKey)),
+          bestLapMs: keep(r.bestLapMs, prevBestLap.get(prevKey)),
+          totalTimeMs: keep(r.totalTimeMs, prevTotalTime.get(prevKey)),
         },
       });
       // Telemetry (contacts + distilled metrics): use the value the import
@@ -138,7 +143,7 @@ export async function saveRaceResults(prisma, raceId, results) {
       // than the create above) so it persists even before the generated client
       // is refreshed for these columns. Only touch columns that end up non-null
       // so a manual edit of an old (telemetry-less) round stays all-null.
-      const prev = prevTelemetry.get(r.driverId) || {};
+      const prev = prevTelemetry.get(prevKey) || {};
       const sets = [];
       const vals = [];
       for (const col of TELEMETRY_COLS) {

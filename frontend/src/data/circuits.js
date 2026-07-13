@@ -428,6 +428,26 @@ export function circuitFor(track) {
   return null;
 }
 
+// Live sessions name the track by the MOD's display name ("NABS Monza F1 2025"),
+// which circuitFor()'s startsWith test can't resolve, while the AC id it also
+// carries ("monza") usually does. Try the clean resolvers on both first, then a
+// last-ditch "contains" match on the mod name, guarded to circuit tokens of
+// length >= 5 so short keys (Spa, Most, COTA) can't grab an unrelated name
+// ("spain" must never become "Spa"). Live-only, because contains is looser than
+// the tidy startsWith match circuitFor uses everywhere else.
+export function circuitForLive(trackName, track) {
+  return circuitFor(track) || circuitFor(trackName) || containsCircuit(trackName) || containsCircuit(track);
+}
+
+function containsCircuit(track) {
+  if (!track) return null;
+  const n = normKey(track);
+  for (const c of NORM_KEYS) {
+    if (c.nk.length >= 5 && (n.includes(c.nk) || n.includes(c.cnk))) return CIRCUITS[c.key];
+  }
+  return null;
+}
+
 // Resolve a raw track string to its clean canonical name ("istanbul_park" ->
 // "Turkey"). Used at import time so stored race names stay tidy. Unknown tracks
 // are returned unchanged for the admin to edit.

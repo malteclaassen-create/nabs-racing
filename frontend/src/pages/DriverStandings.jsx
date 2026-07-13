@@ -144,7 +144,7 @@ export default function DriverStandings() {
   const { data, loading, error } = useApi(useCallback(() => api.driverStandings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const { current: season, active } = useSeason();
-  const [onlyScoring, setOnlyScoring] = useState(true);
+  const [onlyScoring, setOnlyScoring] = useState(false);
   const [tier, setTier] = useState("all");
   // "list" = the ranked cards/rows; "grid" = the per-round points matrix (same
   // table the Constructors page uses), so you can read each driver's haul at

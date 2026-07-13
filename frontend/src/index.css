@@ -190,6 +190,22 @@ body::before {
   animation: nabs-pulse 1.6s ease-in-out infinite;
 }
 
+/* Live track map: each car dot glides to its new spot between the 700ms board
+   ticks instead of teleporting. Purely decorative, so Performance-Lite drops the
+   transition (dots then step each tick, which stays perfectly readable). */
+.live-dot-move {
+  transition: transform 700ms linear;
+}
+
+/* The real overhead map is a pale track band on transparency: legible on dark,
+   near-invisible on white. So it always sits on a fixed dark surface, in both
+   themes (like the always-dark hero card). */
+.live-map-dark {
+  background-color: #0b1220;
+  background-image: radial-gradient(120% 90% at 50% 0%, rgba(148, 163, 184, 0.1), transparent 70%);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
 /* Oversized ghost numeral behind hero content. */
 .ghost-numeral {
   font-family: theme("fontFamily.display");
@@ -668,6 +684,7 @@ body::before {
 .fx-lite .animate-ping { opacity: 0; }
 .fx-lite .circuit-draw { animation: none !important; stroke-dashoffset: 0; }
 .fx-lite .circuit-trace { animation: none !important; opacity: 0; }
+.fx-lite .live-dot-move { transition: none !important; }
 .fx-lite .settings-anim { transition: none !important; }
 /* Without blur the nav bar has nothing behind its text, so lite mode swaps the
    blurred backdrop for a solid page-coloured one (no fade-out mask) and lets

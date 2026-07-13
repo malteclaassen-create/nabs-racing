@@ -15,7 +15,7 @@ import { buildResultsPost } from "../services/resultsPostService.js";
 import { resolveSeasonId, invalidatePrivateSeasonCache } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, createFullBackupZip } from "../services/backupService.js";
-import { SOCIAL_KEYS, readSocialLinks } from "./settings.js";
+import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
 import { parseFormatNumber } from "../lib/raceFormat.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
@@ -530,6 +530,50 @@ router.put("/social", async (req, res, next) => {
       });
     }
     res.json(await readSocialLinks(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// LIVE TIMING PAGE LINKS (external "Full live timing" + "Join in Content Manager")
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/live-links -> the raw stored values plus the effective ones, so
+// the editor can show the live-timing default it falls back to when left blank.
+router.get("/live-links", async (req, res, next) => {
+  try {
+    const rows = await prisma.setting.findMany({
+      where: { key: { in: ["live_timing_url", "live_cm_join_url"] } },
+    });
+    const get = (k) => rows.find((r) => r.key === k)?.value || "";
+    res.json({
+      liveTimingUrl: get("live_timing_url"),
+      cmJoinUrl: get("live_cm_join_url"),
+      defaults: LIVE_LINK_DEFAULTS,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/live-links  { liveTimingUrl, cmJoinUrl }
+// Empty live-timing URL falls back to the server-manager default; empty CM link
+// hides that button. Bare values get https:// prefixed (CM's acstuff.ru scheme
+// links are left untouched).
+router.put("/live-links", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const clean = (v) => {
+      let val = String(v ?? "").trim();
+      if (val && !/^[a-z]+:\/\//i.test(val)) val = `https://${val}`;
+      return val;
+    };
+    const map = { live_timing_url: clean(body.liveTimingUrl), live_cm_join_url: clean(body.cmJoinUrl) };
+    for (const [key, value] of Object.entries(map)) {
+      await prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
+    }
+    res.json(await readLiveLinks(prisma));
   } catch (e) {
     next(e);
   }
@@ -1278,7 +1322,12 @@ router.post("/events/:id/announce", async (req, res, next) => {
 });
 
 // DELETE /api/admin/events/:id -> remove an upcoming race / special event.
-// Refuses to delete a race that already has stored results.
+// Refuses to delete a race that already has stored results, UNLESS ?force=1
+// (the Edit-Results editor's explicit "delete this race" action): then an
+// automatic backup is written first and the round goes away with everything
+// attached to it — results, constructor scores, RSVPs, seat offers. Standings
+// recompute themselves from the remaining rounds. Replay downloads pointing at
+// the race survive; they just lose their race link.
 router.delete("/events/:id", async (req, res, next) => {
   try {
     const race = await prisma.race.findUnique({
@@ -1286,9 +1335,18 @@ router.delete("/events/:id", async (req, res, next) => {
       include: { _count: { select: { results: true } } },
     });
     if (!race) return res.status(404).json({ error: "Race not found" });
-    if (race._count.results > 0) {
+    const force = req.query.force === "1" || req.query.force === "true";
+    if (race._count.results > 0 && !force) {
       return res.status(409).json({ error: "Race has results; edit them instead of deleting." });
     }
+    if (race._count.results > 0) {
+      await tryCreateBackup(prisma, `before-delete-r${race.number ?? "x"}`);
+    }
+    // Raw column without a foreign key (see lib/downloads.js) — unlink by hand.
+    // .catch: the Download table is created lazily and may not exist yet.
+    await prisma
+      .$executeRawUnsafe(`UPDATE "Download" SET "raceId" = NULL WHERE "raceId" = ?`, race.id)
+      .catch(() => {});
     await prisma.race.delete({ where: { id: race.id } });
     res.json({ ok: true });
   } catch (e) {

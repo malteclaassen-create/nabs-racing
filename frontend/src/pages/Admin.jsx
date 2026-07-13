@@ -217,7 +217,12 @@ export default function Admin() {
         {tab === "market" && <MarketAdmin />}
         {tab === "drivers" && <Drivers />}
         {tab === "members" && <AdminMembers />}
-        {tab === "social" && <SocialAdmin />}
+        {tab === "social" && (
+          <div className="space-y-4">
+            <SocialAdmin />
+            <LiveLinksAdmin />
+          </div>
+        )}
         {tab === "tracks" && <AdminTracks />}
         {tab === "raceinfo" && <AdminRaceInfo />}
         {tab === "faq" && <AdminWelcomeFaq />}
@@ -563,6 +568,82 @@ function SocialAdmin() {
   );
 }
 
+// --- LIVE TIMING LINKS -----------------------------------------------------
+// The two external buttons on the Live page: the server manager's own live
+// timing page, and a Content Manager "join" deep link for the running server.
+function LiveLinksAdmin() {
+  const { data, loading, error } = useApi(useCallback(() => api.getLiveLinks(), []));
+  const [form, setForm] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    if (data) setForm({ liveTimingUrl: data.liveTimingUrl || "", cmJoinUrl: data.cmJoinUrl || "" });
+  }, [data]);
+
+  if (loading || !form) return <div className="card p-5 text-sm text-light">Loading…</div>;
+  if (error) return <ErrorBox message={error} />;
+
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    setSaved(false);
+    try {
+      const res = await api.setLiveLinks(form);
+      setForm({ liveTimingUrl: res.liveTimingUrl || "", cmJoinUrl: res.cmJoinUrl || "" });
+      setSaved(true);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card space-y-5 p-5">
+      <CardHead eyebrow="Live Timing" title="External buttons" />
+      <p className="text-sm text-light">
+        The two buttons at the top of the Live page. Leave the live-timing URL blank to fall back to the server
+        manager default. Leave the Content Manager link blank to hide that button until a race is up.
+      </p>
+      {err && <Notice kind="error">{err}</Notice>}
+      {saved && <Notice kind="success">Saved.</Notice>}
+      <div className="space-y-4">
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-medium">Full live timing URL</label>
+          <input
+            className="input"
+            placeholder={data.defaults?.liveTimingUrl || "https://…/live-timing"}
+            value={form.liveTimingUrl}
+            onChange={(e) => setForm((f) => ({ ...f, liveTimingUrl: e.target.value }))}
+          />
+          <p className="mt-1 text-xs text-light">
+            The server manager&rsquo;s own live-timing page. Default:{" "}
+            <span className="font-mono">{data.defaults?.liveTimingUrl}</span>
+          </p>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-medium">Join in Content Manager (deep link)</label>
+          <input
+            className="input"
+            placeholder="acstuff.ru/s/q:race/online/join?ip=…&httpPort=…"
+            value={form.cmJoinUrl}
+            onChange={(e) => setForm((f) => ({ ...f, cmJoinUrl: e.target.value }))}
+          />
+          <p className="mt-1 text-xs text-light">
+            The one-click Content Manager join link for the running server (from CM: right-click the server &rarr;
+            &ldquo;Copy direct join link&rdquo;). Hidden while empty.
+          </p>
+        </div>
+      </div>
+      <button className="btn-primary" onClick={save} disabled={busy}>
+        {busy ? "Saving…" : "Save links"}
+      </button>
+    </div>
+  );
+}
+
 // --- LOGIN -----------------------------------------------------------------
 function Login({ onSuccess, expired }) {
   const [pin, setPin] = useState("");
@@ -664,6 +745,10 @@ function EditResults() {
             const raw = r.rawPosition ?? r.position ?? "";
             return {
               driverId: r.driverId,
+              // Who held this row when it was loaded — a driver swap sends this
+              // as prevDriverId so the row's race data (time, grid, telemetry)
+              // follows the correction instead of being wiped.
+              origDriverId: r.driverId,
               name: r.name,
               position: raw, // raw finishing position (penalty is separate)
               status: r.status,
@@ -688,12 +773,44 @@ function EditResults() {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
 
+  // Season roster (from the teams payload) for the driver-swap dropdown, so a
+  // wrongly mapped result can be reassigned to the person who actually drove.
+  const roster = (teams || []).flatMap((t) =>
+    (t.drivers || []).map((d) => ({ id: d.id, name: d.name, teamId: t.id, teamName: t.name }))
+  );
+  const rosterById = new Map(roster.map((d) => [d.id, d]));
+
+  // Swap the person on a result row. The row keeps its finish, status, penalty
+  // and race team: an "own team" drive is pinned to the OLD driver's team via
+  // subForTeamId, otherwise the result would silently move to the new driver's
+  // own team.
+  function swapDriver(i, newId) {
+    const nd = rosterById.get(newId);
+    if (!nd) return;
+    setRows((rs) =>
+      rs.map((r, idx) => {
+        if (idx !== i) return r;
+        const oldOwn = rosterById.get(r.driverId);
+        return {
+          ...r,
+          driverId: newId,
+          name: nd.name,
+          ownTeamName: nd.teamName,
+          subForTeamId: r.subForTeamId || oldOwn?.teamId || "",
+        };
+      })
+    );
+  }
+
   // Normalised results for both the live preview and the save. A row keeps its
   // official points only while its finish/status are untouched; once changed,
   // points are derived from position (penalties are handled server-side).
   const toResults = (rs) =>
     rs.map((r) => ({
       driverId: r.driverId,
+      // On a driver swap: tells the server whose stored race data this row
+      // inherits (undefined when unchanged — JSON drops it).
+      prevDriverId: r.origDriverId !== r.driverId ? r.origDriverId : undefined,
       position: r.position === "" ? null : Number(r.position),
       status: r.status,
       subForTeamId: r.subForTeamId || null,
@@ -714,6 +831,9 @@ function EditResults() {
     setMsg(null);
     try {
       await api.editResults(raceId, toResults(rows));
+      // The swap is stored now; a second save must not point prevDriverId at a
+      // row that no longer exists (that would drop the preserved race data).
+      setRows((rs) => rs.map((r) => ({ ...r, origDriverId: r.driverId })));
       setMsg("Results saved and standings recalculated.");
     } catch (e) {
       setError(e.message);
@@ -737,6 +857,33 @@ function EditResults() {
       });
       setMsg("Race details saved.");
       reloadRaces(); // the round selector shows the new name
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Remove the whole round, results included. The backend writes an automatic
+  // backup first; standings recompute themselves from the remaining rounds.
+  async function deleteRace() {
+    const race = (races || []).find((r) => r.id === raceId);
+    const label = race ? `Round ${race.number} · ${race.track}` : "this race";
+    if (
+      !window.confirm(
+        `Delete ${label} and ALL its results?\n\nStandings will recalculate without this round. A backup is saved automatically, so it can be restored if this was a mistake.`
+      )
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      await api.deleteEvent(raceId, { force: true });
+      setRaceId("");
+      setRows([]);
+      setMsg(`${label} deleted. Standings updated.`);
+      reloadRaces();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -862,9 +1009,27 @@ function EditResults() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
-                  <tr key={r.driverId} className="border-b border-border last:border-0">
-                    <td className="px-3 py-2 font-semibold text-dark">{r.name}</td>
+                {rows.map((r, i) => {
+                  // Everyone already in the results can't be picked a second time.
+                  const usedIds = new Set(rows.map((x) => x.driverId));
+                  const swapOptions = roster.filter((d) => !usedIds.has(d.id));
+                  return (
+                  <tr key={r.origDriverId} className="border-b border-border last:border-0">
+                    <td className="px-3 py-2">
+                      <select
+                        className="input min-w-40 py-1 font-semibold"
+                        title="Wrong person on this result? Pick who actually drove — finish, penalty and race data stay with the row."
+                        value={r.driverId}
+                        onChange={(e) => swapDriver(i, e.target.value)}
+                      >
+                        <option value={r.driverId}>{r.name}</option>
+                        {swapOptions.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}{d.teamName ? ` · ${d.teamName}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="px-3 py-2">
                       <input
                         className="input w-16 py-1 text-center"
@@ -916,11 +1081,15 @@ function EditResults() {
                       />
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
           <p className="text-xs text-light">
+            Wrong person on a result? Pick who actually drove in the{" "}
+            <span className="font-semibold text-medium">Driver</span> column: the finish, penalty, race team and
+            captured race data stay with the row, only the name changes.
             Enter each driver&rsquo;s <span className="font-semibold text-medium">raw finishing position</span> in
             &ldquo;Finish&rdquo;. <span className="font-semibold text-medium">Penalty (sec)</span> is a time penalty
             in seconds. It&rsquo;s added to the driver&rsquo;s race time and the field is re-sorted, so they drop
@@ -936,6 +1105,26 @@ function EditResults() {
 
           <DiscordResultsPost raceId={raceId} />
         </>
+      )}
+
+      {raceId && (
+        <div className="card flex flex-wrap items-center justify-between gap-3 border-red-500/40 p-4">
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-dark">Delete this race</div>
+            <p className="text-xs text-light">
+              Removes the round with all its results; the championship recalculates without it. A backup is
+              saved automatically first. Linked replay downloads stay available, they just lose the race link.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary shrink-0 border-red-500/50 text-red-500 hover:bg-red-500/10"
+            disabled={busy}
+            onClick={deleteRace}
+          >
+            Delete race
+          </button>
+        </div>
       )}
     </div>
   );

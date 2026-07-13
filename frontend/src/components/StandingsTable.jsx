@@ -78,12 +78,22 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
     return <td className={`${base} text-sm text-medium`}>{cell || <span className="text-faint">0</span>}</td>;
   }
 
-  const { points, status } = cell;
+  const { points, status, position } = cell;
   if (status && status !== "FINISHED") {
     const cls = status === "DNF" ? "text-amber-600" : status === "DSQ" ? "text-primary" : "text-light";
     return <td className={`${base} text-[11px] font-semibold ${cls}`}>{status}</td>;
   }
-  return <td className={`${base} text-sm text-medium`}>{points || <span className="text-faint">0</span>}</td>;
+  // Podium finishes light up in the medal colours (gold/silver/bronze), so a
+  // driver's best rounds read straight off the matrix, season to season.
+  const medal = position >= 1 && position <= 3 ? `var(--medal-${position})` : null;
+  return (
+    <td
+      className={`${base} text-sm ${medal ? "font-bold" : "text-medium"}`}
+      style={medal ? { color: medal } : undefined}
+    >
+      {points || <span className="text-faint">0</span>}
+    </td>
+  );
 }
 
 // `decided` — the season's title is settled (archived, or every round in):

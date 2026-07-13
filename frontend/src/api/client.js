@@ -226,6 +226,11 @@ export const api = {
   getSocial: () => request("/admin/social", { auth: true }),
   setSocial: (body) => request("/admin/social", { method: "PUT", body, auth: true }),
 
+  // Live Timing page external links (public read + admin manage)
+  liveLinks: () => request("/settings/live"),
+  getLiveLinks: () => request("/admin/live-links", { auth: true }),
+  setLiveLinks: (body) => request("/admin/live-links", { method: "PUT", body, auth: true }),
+
   // discord login. The redirect URI is derived from the current origin so login
   // works on localhost and over a tunnel without changing the backend .env.
   discordConfig: () =>
@@ -280,7 +285,10 @@ export const api = {
   createEvent: (body) => request("/admin/events", { method: "POST", body, auth: true }),
   updateEvent: (id, body) => request(`/admin/events/${id}`, { method: "PUT", body, auth: true }),
   announceEvent: (id) => request(`/admin/events/${id}/announce`, { method: "POST", auth: true }),
-  deleteEvent: (id) => request(`/admin/events/${id}`, { method: "DELETE", auth: true }),
+  // force: also deletes a race that already has results (Edit-Results editor);
+  // the backend writes a backup first.
+  deleteEvent: (id, { force = false } = {}) =>
+    request(`/admin/events/${id}${force ? "?force=1" : ""}`, { method: "DELETE", auth: true }),
 
   // seasons + teams (admin)
   adminSeasons: () => request("/admin/seasons", { auth: true }),
