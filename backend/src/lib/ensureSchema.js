@@ -143,6 +143,28 @@ export async function ensureAppSchema(prisma) {
     `CREATE UNIQUE INDEX IF NOT EXISTS "Season_seriesId_number_key" ON "Season"("seriesId", "number")`
   );
 
+  // --- In-site notifications (migration notifications): the nav-bar bell.
+  // recipientId null = broadcast to every member; a discordId = personal.
+  // dedupeKey (unique) makes event writes idempotent — see lib/notifications.js.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Notification" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "type" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "body" TEXT,
+    "link" TEXT,
+    "recipientId" TEXT,
+    "dedupeKey" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Notification_dedupeKey_key" ON "Notification"("dedupeKey")`
+  );
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "Notification_createdAt_idx" ON "Notification"("createdAt")`
+  );
+  // When this member last opened the bell — everything newer counts as unread.
+  await addColumn(prisma, "MemberAccount", "notificationsSeenAt", "DATETIME");
+
   // --- Phase 3: cross-season person links. One row per driver row that belongs
   // to a person; all driver rows of the same person share one personId.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PersonLink" (

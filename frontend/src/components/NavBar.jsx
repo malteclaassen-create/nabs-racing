@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import Logo from "./Logo.jsx";
 import SeasonPicker from "./SeasonPicker.jsx";
 import SeriesSwitcher from "./SeriesSwitcher.jsx";
-import SettingsButton from "./SettingsPanel.jsx";
+import NotificationBell from "./NotificationBell.jsx";
 import { DriverAvatar } from "./ui.jsx";
 
 // Auth-aware control that replaces the old "Sign Up" nav item: a "Log in" button
@@ -151,12 +151,13 @@ export default function NavBar() {
             </NavLink>
           ))}
           <AuthControl />
-          <SettingsButton className="ml-1 h-9 w-9" />
+          {/* The bell replaced the gear here; Settings lives inside its menu. */}
+          <NotificationBell className="ml-1 h-9 w-9" />
         </div>
 
         {/* Mobile controls */}
         <div className="flex items-center gap-1 lg:hidden">
-          <SettingsButton className="h-10 w-10" />
+          <NotificationBell className="h-10 w-10" />
           <button
             onClick={() => setOpen((o) => !o)}
             aria-label={open ? "Close menu" : "Open menu"}

@@ -388,6 +388,28 @@ model MemberAccount {
   firstLoginAt DateTime @default(now())
   lastLoginAt  DateTime @default(now())
   loginCount   Int      @default(1)
+  // When this member last opened the notification bell — everything newer
+  // counts as unread (raw-SQL column, migration notifications).
+  notificationsSeenAt DateTime?
+}
+
+// In-site notifications behind the nav-bar bell. recipientId null = broadcast
+// every member sees; a discordId = personal (e.g. "you got the seat").
+// dedupeKey (unique) makes event writes idempotent, so re-saving a race's
+// results or re-checking race-day reminders can never post twice. Managed via
+// raw SQL like MemberAccount — see backend/src/lib/notifications.js, which
+// must be kept in sync with this model.
+model Notification {
+  id          String   @id
+  type        String // RESULTS | REMINDER | DOWNLOAD | MARKET (icon key in the frontend)
+  title       String
+  body        String?
+  link        String? // frontend route the entry navigates to
+  recipientId String? // MemberAccount.discordId, or null for broadcast
+  dedupeKey   String?  @unique
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 // Member-only download catalogue (self-hosted Assetto Corsa resources: tracks,

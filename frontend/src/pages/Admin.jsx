@@ -14,6 +14,7 @@ import AdminWelcomeFaq from "../components/AdminWelcomeFaq.jsx";
 import AdminTracks from "../components/AdminTracks.jsx";
 import AdminHealth from "../components/AdminHealth.jsx";
 import AdminMembers from "../components/AdminMembers.jsx";
+import AdminNotifications from "../components/AdminNotifications.jsx";
 import RacePreview from "../components/RacePreview.jsx";
 import { SOCIAL_META } from "../components/SocialLinks.jsx";
 import { fmtTimeCell } from "../utils/raceDuration.js";
@@ -28,6 +29,7 @@ const TABS = [
   { id: "market", label: "Driver Market" },
   { id: "drivers", label: "Drivers" },
   { id: "members", label: "Members" },
+  { id: "notify", label: "Notifications" },
   { id: "social", label: "Social Links" },
   { id: "tracks", label: "Tracks" },
   { id: "raceinfo", label: "Race Info" },
@@ -243,6 +245,7 @@ export default function Admin() {
         {tab === "market" && <MarketAdmin />}
         {tab === "drivers" && <Drivers />}
         {tab === "members" && <AdminMembers />}
+        {tab === "notify" && <AdminNotifications />}
         {tab === "social" && (
           <div className="space-y-4">
             <SocialAdmin />

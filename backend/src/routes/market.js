@@ -11,6 +11,7 @@ import prisma from "../lib/prisma.js";
 import { optionalUser, resolveDriverId, isAdminRequest } from "../middleware/auth.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { seasonRowForDriver } from "../lib/persons.js";
+import { notifySeatOffered, notifySeatFilled } from "../lib/notifications.js";
 
 const router = Router();
 router.use(optionalUser);
@@ -171,6 +172,9 @@ router.post("/offer", async (req, res, next) => {
       create: { raceId: race.id, driverId: driver.id, teamId: driver.teamId, status: "OPEN" },
       include: offerInclude,
     });
+    // Bell notification for this season's reserves (plus members who opted in
+    // to all offers). Deduped per offer+recipient, so a re-offer stays silent.
+    notifySeatOffered(prisma, { race, teamName: offer.team?.name, driver });
     res.json({ ok: true, offer: shapeOffer(offer) });
   } catch (e) {
     next(e);
@@ -282,6 +286,10 @@ router.post("/offer/:offerId/pick", async (req, res, next) => {
       data: { filledById: pickId, status: pickId ? "FILLED" : "OPEN" },
       include: offerInclude,
     });
+    // Tell the picked reserve personally (needs their linked Discord id).
+    if (updated.filledBy) {
+      notifySeatFilled(prisma, { offerId: offer.id, raceId: offer.raceId, reserve: updated.filledBy });
+    }
     res.json({ ok: true, offer: shapeOffer(updated) });
   } catch (e) {
     next(e);

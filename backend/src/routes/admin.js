@@ -40,6 +40,10 @@ import {
   writeSeriesLogo,
 } from "../lib/series.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
+import {
+  notifyResultsSaved, notifyDownloadAdded, notifySeatFilled,
+  readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
+} from "../lib/notifications.js";
 import { UPLOADS_DIR, LOGS_DIR } from "../lib/dataDirs.js";
 
 const router = Router();
@@ -310,6 +314,8 @@ router.post("/races/commit", async (req, res, next) => {
     // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
     await tryCreateBackup(prisma, `before-import-r${race.number}`);
     await saveRaceResults(prisma, race.id, results);
+    // Bell notification (deduped per race, so re-imports stay silent).
+    if (results.length) notifyResultsSaved(prisma, race);
     // Move the raw JSON into its season folder so this round's telemetry can be
     // recomputed later. Best-effort: never fails the commit.
     if (archiveKey) {
@@ -385,6 +391,34 @@ router.put("/ratings/weights", async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// NOTIFICATION SETTINGS (the nav-bar bell)
+// League-wide: which events notify, who hears about seat offers, and when the
+// race reminders go out. One Setting blob — see lib/notifications.js.
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/notification-settings -> { settings, defaults, reminderOffsets }
+router.get("/notification-settings", async (req, res, next) => {
+  try {
+    res.json({
+      settings: await readNotifySettings(prisma),
+      defaults: NOTIFY_DEFAULTS,
+      reminderOffsets: REMINDER_OFFSETS,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/notification-settings  { settings } -> sanitized + saved.
+router.put("/notification-settings", async (req, res, next) => {
+  try {
+    res.json({ ok: true, settings: await writeNotifySettings(prisma, req.body?.settings) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // DRIVER MARKET — admin override
 // Admins can swap in / remove the chosen reserve (e.g. a weak reserve shouldn't
 // take a Tier-1 seat) or cancel an offer outright. The driver-facing flow lives
@@ -423,6 +457,11 @@ router.post("/market/:offerId/assign", async (req, res, next) => {
       where: { id: offer.id },
       data: { filledById: pickId, status: pickId ? "FILLED" : "OPEN" },
     });
+    // Tell the picked reserve personally (needs their linked Discord id).
+    if (pickId) {
+      const reserve = await prisma.driver.findUnique({ where: { id: pickId } });
+      notifySeatFilled(prisma, { offerId: offer.id, raceId: offer.raceId, reserve });
+    }
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -606,6 +645,9 @@ router.put("/races/:id/results", async (req, res, next) => {
     // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
     await tryCreateBackup(prisma, `before-edit-r${race.number ?? "x"}`);
     await saveRaceResults(prisma, race.id, results);
+    // Bell notification (deduped per race: only the FIRST save of this round
+    // pings the members, edits stay silent).
+    if (results.length) notifyResultsSaved(prisma, race);
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -2194,7 +2236,10 @@ router.post("/downloads", async (req, res, next) => {
     const check = await prepareDownloadInput(b);
     if (check.error) return res.status(400).json({ error: check.error });
     const created = await dbCreateDownload(prisma, b);
-    res.json({ ok: true, download: shapeDownload(created) });
+    const shaped = shapeDownload(created);
+    // Bell notification for the members (skipped for unpublished entries).
+    notifyDownloadAdded(prisma, shaped);
+    res.json({ ok: true, download: shaped });
   } catch (e) {
     next(e);
   }

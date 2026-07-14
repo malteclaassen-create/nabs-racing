@@ -201,6 +201,14 @@ export const api = {
   removeRsvp: (raceId, driverId) =>
     request(`/events/${raceId}/rsvp/${driverId}`, { method: "DELETE", userAuth: true }),
 
+  // notifications (the nav-bar bell; member-only)
+  notifications: () => request("/notifications", { userAuth: true }),
+  notificationsCount: () => request("/notifications/count", { userAuth: true }),
+  markNotificationsSeen: () => request("/notifications/seen", { method: "POST", userAuth: true }),
+  adminNotificationSettings: () => request("/admin/notification-settings", { auth: true }),
+  saveNotificationSettings: (settings) =>
+    request("/admin/notification-settings", { method: "PUT", body: { settings }, auth: true }),
+
   // logged-in driver self-service
   me: () => request("/me", { userAuth: true }),
   setMyCountry: (country) => request("/me/country", { method: "PUT", body: { country }, userAuth: true }),

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTheme } from "../hooks/useTheme.js";
 import { useGraphics } from "../hooks/useGraphics.js";
 
-function GearIcon() {
+export function GearIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="3" />
@@ -62,43 +62,40 @@ function Segmented({ value, options, onChange }) {
   );
 }
 
-// Gear button that opens a right-hand settings drawer (theme + graphics).
-// Replaces the old standalone theme toggle in the nav.
-export default function SettingsButton({ className = "" }) {
+// The right-hand settings drawer (theme + graphics), controlled from outside
+// via `open`/`onClose` so it can sit behind any trigger — the notification
+// bell's "Settings" row today, the standalone gear button below as a fallback.
+export function SettingsDrawer({ open, onClose }) {
   const [render, setRender] = useState(false); // mounted in the DOM
   const [show, setShow] = useState(false); // animated into place
   const { theme, toggle } = useTheme();
   const { mode, setMode } = useGraphics();
 
-  function openPanel() {
-    setRender(true);
-    // Next frame: flip to the visible state so the CSS transition plays in.
-    requestAnimationFrame(() => setShow(true));
-  }
-  function closePanel() {
+  useEffect(() => {
+    if (open) {
+      setRender(true);
+      // Next tick: flip to the visible state so the CSS transition plays in.
+      // (A timeout, not requestAnimationFrame — rAF can starve in occluded/
+      // embedded windows and the drawer would stay stuck off-screen.)
+      const t = setTimeout(() => setShow(true), 15);
+      return () => clearTimeout(t);
+    }
     setShow(false); // animate out…
-    setTimeout(() => setRender(false), 220); // …then unmount after the transition
-  }
+    const t = setTimeout(() => setRender(false), 220); // …then unmount after the transition
+    return () => clearTimeout(t);
+  }, [open]);
 
   useEffect(() => {
     if (!render) return;
-    const onKey = (e) => e.key === "Escape" && closePanel();
+    const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [render]);
+  }, [render, onClose]);
+
+  const closePanel = onClose;
 
   return (
     <>
-      <button
-        type="button"
-        onClick={openPanel}
-        aria-label="Settings"
-        title="Settings"
-        className={`flex items-center justify-center rounded-lg text-light transition hover:bg-surface2 ${className}`}
-      >
-        <GearIcon />
-      </button>
-
       {render &&
         createPortal(
           <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label="Settings">
@@ -156,6 +153,27 @@ export default function SettingsButton({ className = "" }) {
           </div>,
           document.body
         )}
+    </>
+  );
+}
+
+// Standalone gear button owning its drawer. No longer in the nav bar (the
+// notification bell took its slot and opens the drawer from its menu), kept
+// for any place that wants a direct settings trigger.
+export default function SettingsButton({ className = "" }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Settings"
+        title="Settings"
+        className={`flex items-center justify-center rounded-lg text-light transition hover:bg-surface2 ${className}`}
+      >
+        <GearIcon />
+      </button>
+      <SettingsDrawer open={open} onClose={() => setOpen(false)} />
     </>
   );
 }
