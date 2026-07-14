@@ -331,6 +331,13 @@ export const api = {
   activateSeries: (id) => request(`/admin/series/${id}/activate`, { method: "POST", auth: true }),
   deleteSeries: (id, force = false) =>
     request(`/admin/series/${id}${force ? "?force=1" : ""}`, { method: "DELETE", auth: true }),
+  // Series dark-mode logo mark (light mode always uses the shared default).
+  uploadSeriesLogo: (id, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/series/${id}/logo`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  clearSeriesLogo: (id) => request(`/admin/series/${id}/logo`, { method: "DELETE", auth: true }),
 
   // seasons + teams (admin) — scoped to the series being edited
   adminSeasons: () => request(`/admin/seasons${seriesQ()}`, { auth: true }),

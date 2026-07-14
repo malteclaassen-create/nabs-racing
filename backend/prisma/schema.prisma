@@ -49,6 +49,14 @@ model Series {
   // rule keyed by slug: a hardcoded [data-series="..."] selector broke the
   // moment production's real slug differed from the one tested locally.
   accentColor String?
+  // Admin-uploaded dark-mode logo mark (migration series_logo), e.g.
+  // "/api/uploads/series/<id>.png?v=<ts>". null = the shared default
+  // logo-dark.png. Light mode always uses the shared logo-light.png (a plain
+  // black mark reads fine regardless of series colour, so it has no
+  // override). Same "upload via admin, not a slug-named file" fix as
+  // accentColor above — a /logo-dark-<slug>.png convention has the identical
+  // failure mode if the real slug ever differs from what was tested locally.
+  logoDarkUrl String?
   createdAt   DateTime @default(now())
 
   seasons Season[]

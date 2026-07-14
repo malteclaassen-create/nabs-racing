@@ -2198,6 +2198,52 @@ function Seasons({ gotoRaces }) {
   );
 }
 
+// Dark-mode logo mark for one series (the nav wordmark on dark backgrounds).
+// Light mode always shows the shared logo-light.png (a plain black mark reads
+// fine on any series' colour), so only this one variant is overridable.
+// Recommended: a transparent PNG, square, at least 512x512 — matches the
+// shared default's own 1080x1080.
+function SeriesLogo({ series, onSaved, onError }) {
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      await api.uploadSeriesLogo(series.id, file);
+      onSaved(`Logo updated for ${series.name}.`);
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  async function clear() {
+    if (!window.confirm(`Remove ${series.name}'s custom logo? It falls back to the default NABS mark.`)) return;
+    setBusy(true);
+    try {
+      await api.clearSeriesLogo(series.id);
+      onSaved(`Logo reset for ${series.name}.`);
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <>
+      <input ref={fileRef} type="file" accept="image/png,image/webp,image/svg+xml" className="hidden" onChange={pick} />
+      <button type="button" className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+        onClick={() => fileRef.current?.click()} title="Dark-mode nav logo, recommended: transparent PNG, square, 512px+">
+        {series.logoDarkUrl ? "Replace logo" : "Upload logo"}
+      </button>
+      {series.logoDarkUrl && (
+        <button type="button" className="text-xs font-semibold text-light transition hover:text-primary" disabled={busy}
+          onClick={clear}>
+          Reset logo
+        </button>
+      )}
+    </>
+  );
+}
+
 // --- SERIES ------------------------------------------------------------------
 // The level above seasons: several championships (Friday F1, Sunday GT, …) in
 // one deployment. The slug (the /s/<slug>/ URL identity) is set once at
@@ -2352,6 +2398,7 @@ function SeriesPanel() {
                   Reset colour
                 </button>
               )}
+              <SeriesLogo series={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
               <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
                 onClick={() => setSlug(s.slug)} title="Point the admin at this series (the bar above follows)">
                 Edit this series →

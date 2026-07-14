@@ -23,6 +23,7 @@ router.get("/", async (req, res, next) => {
         isActive: s.isActive,
         isPublic: s.isPublic,
         accentColor: s.accentColor,
+        logoDarkUrl: s.logoDarkUrl,
       }))
     );
   } catch (e) {

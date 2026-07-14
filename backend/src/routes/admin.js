@@ -37,6 +37,7 @@ import { dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds } from
 import {
   dbListSeries, dbCreateSeries, dbUpdateSeries, dbActivateSeries, dbDeleteSeries,
   getSeriesById, resolveSeries, seasonIdsOfSeries, seasonSeriesMap, setSeasonSeries,
+  writeSeriesLogo,
 } from "../lib/series.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import { UPLOADS_DIR, LOGS_DIR } from "../lib/dataDirs.js";
@@ -85,6 +86,7 @@ const downloadUpload = multer({
 const TEAMS_DIR = join(UPLOADS_DIR, "teams");
 const TRACKS_DIR = join(UPLOADS_DIR, "tracks");
 const SEASONS_DIR = join(UPLOADS_DIR, "seasons");
+const SERIES_DIR = join(UPLOADS_DIR, "series");
 const LOGO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg" };
 // A track key is a slug (letters/digits only) — validate before touching the FS.
 const safeTrackKey = (k) => (normKey(k) === String(k || "").toLowerCase() && k ? k : null);
@@ -1540,6 +1542,46 @@ router.delete("/series/:id", async (req, res, next) => {
     }
     await dbDeleteSeries(prisma, series.id);
     res.json({ ok: true, deletedSeasons: seasons.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/series/:id/logo  (multipart: file=<image>)
+// Uploads (or replaces) this series' dark-mode logo mark (the nav wordmark on
+// dark backgrounds). Light mode always uses the shared logo-light.png — a
+// plain black mark reads fine on any series' colour, so it has no override.
+// An upload works with no file-system access (Railway has none), unlike the
+// /logo-dark-<slug>.png drop-in convention it replaces, which silently failed
+// whenever a series' real slug differed from the one a file was named after.
+router.post("/series/:id/logo", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = LOGO_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, WEBP or SVG)" });
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+
+    mkdirSync(SERIES_DIR, { recursive: true });
+    const filename = `${series.id}${ext}`;
+    writeFileSync(join(SERIES_DIR, filename), req.file.buffer);
+    // Cache-bust the URL so an updated logo shows immediately.
+    const logoDarkUrl = `/api/uploads/series/${filename}?v=${Date.now()}`;
+    await writeSeriesLogo(prisma, series.id, logoDarkUrl);
+    res.json({ ok: true, logoDarkUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/series/:id/logo -> clear the override (back to the shared
+// default logo-dark.png).
+router.delete("/series/:id/logo", async (req, res, next) => {
+  try {
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    await writeSeriesLogo(prisma, series.id, null);
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }

@@ -1,33 +1,21 @@
 import { useSeries } from "../context/SeriesContext.jsx";
 
-// The original league's slug (see the series backfill in backend's
-// ensureAppSchema — it's the fixed, permanent default series id/slug). It
-// seeds the SAME logo-dark.png every other series falls back to anyway, so it
-// never needs a slug-suffixed file of its own. Comparing the URL slug against
-// this constant directly (rather than against the async-loaded series list's
-// `active` flag) means the right file is known on the very FIRST render, not
-// only once the /api/series fetch resolves — otherwise that one render with
-// the wrong guess already fires the failed request the fix is meant to avoid.
-const DEFAULT_SERIES_SLUG = "friday-f1";
-
 // NABS logo — uses the real logo images. Two versions swap by theme:
 //   logo-light.png (black mark) on light mode, logo-dark.png (pink mark) on dark.
-// Any OTHER series can override the DARK-mode mark (e.g. Sunday GT's blue
-// one): drop /logo-dark-<slug>.png into frontend/public/ and it's picked up
-// automatically, no code change needed — same drop-a-file convention as the
-// per-season hero/car images (utils/heroImage.js). A missing override 404s
-// once and falls back to the default logo-dark.png; `key` forces a fresh
-// <img> per slug so that fallback never gets stuck after switching series
-// (see heroOnError there for the same pattern).
-// The default league never attempts an override — it just IS logo-dark.png,
-// so switching back to it (or loading it directly) is instant: no failed
-// request, so no gap where the browser shows the alt text before a fallback
-// image lands.
+// A series can override the DARK-mode mark via an admin upload (Seasons tab ->
+// Racing series -> Logo): Series.logoDarkUrl, read straight off the resolved
+// series object. null -> the shared default logo-dark.png. Light mode always
+// uses logo-light.png — a plain black mark reads fine regardless of a
+// series' own colour, so it has no override.
+// Deliberately an ADMIN UPLOAD, not a /logo-dark-<slug>.png drop-in file: that
+// convention silently failed whenever a series' real slug differed from the
+// one a file was named after (the exact same lesson as the accent-colour fix
+// in utils/seriesColor.js — see that file's comment for the full story).
 // The `dark` class lives on <html>, so Tailwind's dark: variants do the swap.
 // Pass `size` (px) and optional `className`.
 export default function Logo({ size = 40, className = "" }) {
-  const { slug } = useSeries();
-  const darkSrc = !slug || slug === DEFAULT_SERIES_SLUG ? "/logo-dark.png" : `/logo-dark-${slug}.png`;
+  const { current } = useSeries();
+  const darkSrc = current?.logoDarkUrl || "/logo-dark.png";
   return (
     <>
       <img

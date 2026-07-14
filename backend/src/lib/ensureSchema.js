@@ -125,6 +125,8 @@ export async function ensureAppSchema(prisma) {
   // Admin-picked accent colour (hex). null = default NABS pink. See the
   // frontend derivation in utils/seriesColor.js.
   await addColumn(prisma, "Series", "accentColor", "TEXT");
+  // Admin-uploaded dark-mode logo mark. null = the shared default logo-dark.png.
+  await addColumn(prisma, "Series", "logoDarkUrl", "TEXT");
   // Default series: created once; the SLUG is the stable URL identity, the
   // NAME is admin-renamable. Seasons without a series (pre-migration data or
   // a fresh seed) are adopted by the active series on every boot.
