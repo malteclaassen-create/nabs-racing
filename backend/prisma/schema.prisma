@@ -42,6 +42,13 @@ model Series {
   order       Int      @default(0) // position in the series switcher
   isActive    Boolean  @default(false) // the primary series ("/" target)
   isPublic    Boolean  @default(true) // hidden from the public until published
+  // Admin-picked accent colour (migration series_accent_color), hex like
+  // "#6de0fc". null = the default NABS pink. The frontend derives a readable
+  // darker variant for light-mode text from this single value — see
+  // frontend/src/utils/seriesColor.js. Deliberately NOT baked into any CSS
+  // rule keyed by slug: a hardcoded [data-series="..."] selector broke the
+  // moment production's real slug differed from the one tested locally.
+  accentColor String?
   createdAt   DateTime @default(now())
 
   seasons Season[]

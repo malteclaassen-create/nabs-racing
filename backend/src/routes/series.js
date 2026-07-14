@@ -22,6 +22,7 @@ router.get("/", async (req, res, next) => {
         order: s.order,
         isActive: s.isActive,
         isPublic: s.isPublic,
+        accentColor: s.accentColor,
       }))
     );
   } catch (e) {

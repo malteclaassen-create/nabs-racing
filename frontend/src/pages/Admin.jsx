@@ -2207,7 +2207,7 @@ function Seasons({ gotoRaces }) {
 function SeriesPanel() {
   const { data: series, reload } = useApi(useCallback(() => api.adminSeries(), []));
   const { setSlug } = useSeries();
-  const [form, setForm] = useState({ name: "", game: "" });
+  const [form, setForm] = useState({ name: "", game: "", accentColor: "" });
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -2220,9 +2220,24 @@ function SeriesPanel() {
     e.preventDefault();
     setBusy(true); setError(null); setMsg(null);
     try {
-      const s = await api.createSeries({ name: form.name.trim(), game: form.game.trim() || null });
+      const s = await api.createSeries({
+        name: form.name.trim(),
+        game: form.game.trim() || null,
+        accentColor: form.accentColor.trim() || null,
+      });
       setMsg(`Series "${s.name}" created (URL: /s/${s.slug}). It starts private — build its seasons, then publish it. Pick it in the bar above to start editing.`);
-      setForm({ name: "", game: "" });
+      setForm({ name: "", game: "", accentColor: "" });
+      reload(); nudge();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  // Accent colour: saved when the picker closes (blur), matching the team-
+  // colour control. "Reset colour" clears it back to the default NABS pink.
+  async function saveColor(s, hex) {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.updateSeries(s.id, { accentColor: hex });
+      setMsg(hex ? `${s.name}'s accent colour updated.` : `${s.name} is back to the default NABS pink.`);
       reload(); nudge();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -2317,6 +2332,26 @@ function SeriesPanel() {
                     onClick={() => move(s, 1)} title="Move down in the switcher">▼</button>
                 </span>
               )}
+              {/* Accent colour — saved when the picker closes (blur), same
+                  pattern as a team's colour swatch. */}
+              <input
+                key={`${s.id}-${s.accentColor || "default"}`}
+                type="color"
+                defaultValue={s.accentColor || "#f4afc6"}
+                disabled={busy}
+                title="Accent colour for this series, click to change"
+                onBlur={(e) => {
+                  const v = e.target.value;
+                  if (v && v.toLowerCase() !== (s.accentColor || "").toLowerCase()) saveColor(s, v);
+                }}
+                className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border border-border bg-transparent"
+              />
+              {s.accentColor && (
+                <button className="text-xs font-semibold text-light transition hover:text-primary" disabled={busy}
+                  onClick={() => saveColor(s, null)} title="Back to the default NABS pink">
+                  Reset colour
+                </button>
+              )}
               <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
                 onClick={() => setSlug(s.slug)} title="Point the admin at this series (the bar above follows)">
                 Edit this series →
@@ -2344,6 +2379,15 @@ function SeriesPanel() {
           onChange={(e) => setForm({ ...form, name: e.target.value })} required />
         <input className="input min-w-44 flex-1" placeholder="Game / subtitle (optional)" value={form.game}
           onChange={(e) => setForm({ ...form, game: e.target.value })} />
+        <input
+          type="color"
+          value={form.accentColor || "#f4afc6"}
+          onChange={(e) => setForm({ ...form, accentColor: e.target.value })}
+          title="Accent colour (optional, defaults to NABS pink)"
+          className="h-10 w-12 shrink-0 cursor-pointer rounded border border-border bg-transparent"
+        />
+        <input className="input w-28 font-mono" placeholder="#6de0fc" value={form.accentColor}
+          onChange={(e) => setForm({ ...form, accentColor: e.target.value })} />
         <button className="btn-primary" disabled={busy || !form.name.trim()}>Create series</button>
       </form>
       {error && <Notice kind="error">{error}</Notice>}

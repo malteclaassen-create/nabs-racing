@@ -17,9 +17,14 @@
   --c-shadow-lift: 0 2px 6px rgba(15, 23, 42, 0.08), 0 18px 40px -16px rgba(15, 23, 42, 0.34);
   /* Brand accent, raw RGB triple (NABS pink by default). Theme-independent —
      the SAME value in :root and .dark, like the Tailwind `brand` colour it
-     feeds (see tailwind.config.js). A series can override this (and the
-     theme-aware eyebrow/accent below) via [data-series="..."] further down. */
-  --c-brand: 244 175 198;
+     feeds (see tailwind.config.js). Each var(...) here falls back to the
+     default pink but resolves to a series' own colour when SeriesProvider
+     (frontend/src/context/SeriesContext.jsx) sets the matching --c-*-dynamic
+     custom property on <html> from Series.accentColor (admin-picked, Series
+     tab) — see utils/seriesColor.js for the derivation. Deliberately NOT a
+     CSS rule keyed to a slug: that broke the moment production's real slug
+     differed from the one tested locally. */
+  --c-brand: var(--c-brand-dynamic, 244 175 198);
   --c-page-glow: radial-gradient(1200px 540px at 50% -10%, rgb(var(--c-brand) / 0.16), transparent 70%);
   /* Medal tones for TEXT/borders sitting on the card background. The bright
      gold/silver used for filled chips (MEDAL in ui.jsx) wash out as text on
@@ -30,10 +35,10 @@
   /* Eyebrow/mono-label colour (`text-eyebrow`): brand pink is too pale on the
      light theme, so light mode deepens it to a strong pink (NOT rose/red — it
      must still read as pink); dark mode keeps brand pink. */
-  --c-eyebrow: #db2777;
+  --c-eyebrow: var(--c-eyebrow-light-dynamic, #db2777);
   /* Same idea with alpha support (`accent` in tailwind.config): raw RGB triple
      for borders/fills like accent/40 that must stay visible on white. */
-  --c-accent: 219 39 119;
+  --c-accent: var(--c-accent-light-dynamic, 219 39 119);
 }
 
 .dark {
@@ -52,34 +57,8 @@
   --medal-1: #eab308;
   --medal-2: #94a3b8;
   --medal-3: #c2410c;
-  --c-eyebrow: #f4afc6;
-  --c-accent: 244 175 198;
-}
-
-/* --- Per-series accent override -------------------------------------------
-   [data-series] is set on <html> by SeriesProvider (frontend/src/context/
-   SeriesContext.jsx) whenever a series is being viewed. With ONE series this
-   attribute exists but nothing below targets it, so the site looks exactly
-   like before. Sunday GT wears neon blue instead of NABS pink: --c-brand is
-   theme-independent (like the base token above), --c-eyebrow/--c-accent stay
-   themed for contrast the same way the default pink tokens do (deep tone on
-   white in light mode, the pale/neon tone in dark mode).
-   The second block's selector list covers BOTH cases where .dark applies:
-   the global theme toggle (class sits on the same <html> as [data-series])
-   AND a component that forces its own scoped dark look via a nested .dark
-   element (e.g. the always-dark home hero) — a plain ".dark" rule earlier in
-   this file would otherwise win there since it targets that element directly.
-   Add a new block here for each future series that wants its own accent. */
-[data-series="sunday-gt"] {
-  --c-brand: 109 224 252; /* #6de0fc */
-  --c-eyebrow: #0891b2; /* deep cyan-blue, readable on white (same relationship
-                            as --c-eyebrow's pink-600 to the pale brand pink) */
-  --c-accent: 8 145 178;
-}
-[data-series="sunday-gt"].dark,
-[data-series="sunday-gt"] .dark {
-  --c-eyebrow: #6de0fc;
-  --c-accent: 109 224 252;
+  --c-eyebrow: var(--c-eyebrow-dark-dynamic, #f4afc6);
+  --c-accent: var(--c-accent-dark-dynamic, 244 175 198);
 }
 
 /* Always reserve space for the vertical scrollbar so the centered layout never

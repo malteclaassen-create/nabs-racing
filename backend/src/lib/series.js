@@ -24,8 +24,24 @@ function shapeSeries(r) {
     order: Number(r.order ?? 0),
     isActive: !!Number(r.isActive ?? 0),
     isPublic: r.isPublic == null ? true : !!Number(r.isPublic),
+    accentColor: r.accentColor || null,
     createdAt: r.createdAt,
   };
+}
+
+// Admin-picked accent colour: a plain 6-digit hex like "#6de0fc", or "" /
+// null / undefined to clear it (back to the default NABS pink). Anything else
+// is rejected — this rides straight into inline CSS custom properties on the
+// client, so it must never carry anything but a colour.
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
+export function parseAccentColor(v) {
+  if (v === undefined) return { ok: true, skip: true };
+  if (v === null || v === "") return { ok: true, value: null };
+  const s = String(v).trim();
+  if (!HEX_COLOR_RE.test(s)) {
+    return { ok: false, error: "accentColor must be a 6-digit hex colour like #6de0fc, or blank" };
+  }
+  return { ok: true, value: s.toLowerCase() };
 }
 
 // URL-safe slug from a series name ("Sunday GT Masters" -> "sunday-gt-masters").
@@ -82,7 +98,7 @@ export async function getSeriesById(prisma, id) {
 
 // Create a series. The slug is derived from the name (or taken explicitly),
 // uniquified with a numeric suffix, and FROZEN afterwards.
-export async function dbCreateSeries(prisma, { name, slug, game, description }) {
+export async function dbCreateSeries(prisma, { name, slug, game, description, accentColor }) {
   const base = slugifySeries(slug || name) || "series";
   const all = await dbListSeries(prisma, { includePrivate: true });
   const taken = new Set(all.map((s) => s.slug));
@@ -90,17 +106,20 @@ export async function dbCreateSeries(prisma, { name, slug, game, description }) 
   for (let i = 2; taken.has(finalSlug); i++) finalSlug = `${base}-${i}`;
   const id = randomUUID();
   const order = all.length ? Math.max(...all.map((s) => s.order)) + 1 : 0;
+  const color = parseAccentColor(accentColor);
+  if (!color.ok) throw Object.assign(new Error(color.error), { status: 400 });
   // New series start PRIVATE (like new seasons): built up quietly, published
   // when ready. The first series ever is created public by the backfill.
   await prisma.$executeRawUnsafe(
-    `INSERT INTO "Series" ("id","name","slug","game","description","order","isActive","isPublic")
-     VALUES (?, ?, ?, ?, ?, ?, 0, 0)`,
+    `INSERT INTO "Series" ("id","name","slug","game","description","order","isActive","isPublic","accentColor")
+     VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)`,
     id,
     String(name).trim(),
     finalSlug,
     game ? String(game).trim() : null,
     description ? String(description).trim() : null,
-    order
+    order,
+    color.skip ? null : color.value
   );
   return getSeriesById(prisma, id);
 }
@@ -129,6 +148,12 @@ export async function dbUpdateSeries(prisma, id, patch) {
   if (patch.isPublic !== undefined) {
     sets.push(`"isPublic" = ?`);
     vals.push(patch.isPublic ? 1 : 0);
+  }
+  if (patch.accentColor !== undefined) {
+    const color = parseAccentColor(patch.accentColor);
+    if (!color.ok) throw Object.assign(new Error(color.error), { status: 400 });
+    sets.push(`"accentColor" = ?`);
+    vals.push(color.value);
   }
   if (sets.length) {
     await prisma.$executeRawUnsafe(`UPDATE "Series" SET ${sets.join(", ")} WHERE "id" = ?`, ...vals, id);

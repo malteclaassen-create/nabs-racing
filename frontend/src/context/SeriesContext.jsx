@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { api, setSelectedSeries } from "../api/client.js";
+import { deriveSeriesAccent } from "../utils/seriesColor.js";
 
 // Holds the racing SERIES the site is viewing — the level above SeasonContext,
 // same pattern one step up. The slug comes from the URL (/s/<slug>/…); pages
@@ -83,14 +84,27 @@ export function SeriesProvider({ children }) {
   setSelectedSeries(effective);
 
   // Stamp the slug onto <html> as [data-series="..."], same synchronous spot
-  // as setSelectedSeries above (so the very first paint already carries it —
-  // no flash of the wrong colour). A per-series CSS block (index.css) can then
-  // override the accent tokens; with no matching block the site looks exactly
-  // like the single-series site did.
+  // as setSelectedSeries above (so the very first paint already carries it).
   if (effective) document.documentElement.dataset.series = effective;
   else delete document.documentElement.dataset.series;
+
+  // Apply this series' admin-picked accent colour (Series.accentColor) by
+  // setting the --c-*-dynamic custom properties the tokens in index.css fall
+  // back from — NOT a CSS rule keyed to the slug (that broke the moment
+  // production's real slug differed from the one tested locally). No colour
+  // set -> clear the properties, which restores the default pink via the
+  // var(..., <default>) fallback.
+  const html = document.documentElement.style;
+  const derived = deriveSeriesAccent((current || (loaded ? active : null))?.accentColor);
+  const apply = (prop, value) => (value ? html.setProperty(prop, value) : html.removeProperty(prop));
+  apply("--c-brand-dynamic", derived?.brandRgb);
+  apply("--c-eyebrow-light-dynamic", derived?.eyebrowLightTheme);
+  apply("--c-accent-light-dynamic", derived?.accentLightThemeRgb);
+  apply("--c-eyebrow-dark-dynamic", derived?.eyebrowDarkTheme);
+  apply("--c-accent-dark-dynamic", derived?.accentDarkThemeRgb);
+
   // Mobile address-bar tint: read back whatever --c-brand resolved to (after
-  // the attribute above), so a new series' colour picks this up automatically
+  // the properties above), so a new series' colour picks this up automatically
   // without touching this file again.
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {

@@ -1449,7 +1449,7 @@ router.get("/series", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/series  { name, game?, description? }
+// POST /api/admin/series  { name, game?, description?, accentColor? }
 // The slug is derived from the name once and then frozen.
 router.post("/series", async (req, res, next) => {
   try {
@@ -1460,6 +1460,7 @@ router.post("/series", async (req, res, next) => {
       slug: req.body?.slug,
       game: req.body?.game,
       description: req.body?.description,
+      accentColor: req.body?.accentColor,
     });
     res.status(201).json(series);
   } catch (e) {
@@ -1467,7 +1468,7 @@ router.post("/series", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic? }
+// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor? }
 // The slug is deliberately NOT editable (bookmarked URLs must keep working).
 router.put("/series/:id", async (req, res, next) => {
   try {
