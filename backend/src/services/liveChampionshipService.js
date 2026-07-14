@@ -16,13 +16,20 @@
 //     happens to run a race never produces a table.
 // Anything short of that returns { active: false, reason } and the frontend
 // simply shows nothing.
+//
+// TEST/TRAINING RACES (isSpecialEvent) get a STANDALONE variant: they aren't
+// scored, so instead of projecting the championship the table shows this race
+// alone — live order priced with the season's normal points table, nothing
+// added to anyone's season total. A championship race scheduled the same day
+// always wins over a test race.
 // ---------------------------------------------------------------------------
 import {
   getDriverStandings,
   getT1ConstructorStandings,
   getT2ConstructorStandings,
 } from "./standingsService.js";
-import { getActiveSeason } from "./seasonService.js";
+import { getActiveSeason, getSeasonScoring } from "./seasonService.js";
+import { DEFAULT_POINTS_TABLE, getPointsForPosition } from "./pointsCalculator.js";
 
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -76,24 +83,40 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
   const season = await getActiveSeason(prisma);
   if (!season) return off("no-season");
 
-  // Calendar cross-check: the projection needs a championship race of the
-  // ACTIVE season scheduled for today that hasn't been run/imported yet.
+  // Calendar cross-check: the projection needs a race of the ACTIVE season
+  // scheduled for today that hasn't been run/imported yet. A championship
+  // round beats a test/training race on the same day; the simulate demo takes
+  // today's race first, then the next open round of either kind.
   const candidates = await prisma.race.findMany({
-    where: { seasonId: season.id, isSpecialEvent: false, isCompleted: false },
+    where: { seasonId: season.id, isCompleted: false },
     orderBy: { number: "asc" },
     include: { _count: { select: { results: true } } },
   });
+  const championship = candidates.filter((r) => !r.isSpecialEvent);
+  const specials = candidates.filter((r) => r.isSpecialEvent);
+  const today = (list) => list.find((r) => r.date && dayKey(r.date) === dayKey(new Date()));
   const race = simulate
-    ? candidates[0]
-    : candidates.find((r) => r.date && dayKey(r.date) === dayKey(new Date()));
+    ? today(championship) || today(specials) || championship[0] || specials[0]
+    : today(championship) || today(specials);
   if (!race) return off("no-race-today");
   // Results already being entered (a re-opened round, or the import landing
   // mid-evening): the real numbers win, the projection steps aside.
   if (race._count.results > 0) return off("results-exist");
+  // Test/training race: standalone table (this race only), not a championship
+  // projection.
+  const standalone = !!race.isSpecialEvent;
 
   const drivers = await prisma.driver.findMany({
     where: { seasonId: season.id },
-    select: { id: true, name: true, discordName: true },
+    select: {
+      id: true,
+      name: true,
+      discordName: true,
+      country: true,
+      photoUrl: true,
+      discordAvatar: true,
+      team: { select: { id: true, name: true, color: true, logoUrl: true } },
+    },
   });
 
   // Running order + retirements, matched to this season's drivers.
@@ -104,12 +127,20 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
 
   if (simulate) {
     // Admin demo (?simulate=1, admin token): current top of the championship,
-    // deterministically reshuffled so the table visibly moves. Runs through
-    // the identical pipeline as the real thing.
+    // reshuffled once so the table visibly differs from the real standings.
+    // On top of that, a FEW adjacent swaps that change every 30s — small,
+    // local "overtakes" like a real race, so the frontend's glide animation
+    // shows without the whole field jumping around. Identical pipeline as
+    // the real thing.
     const cur = await getDriverStandings(prisma, season.id);
     const top = cur.standings.filter((r) => r.total > 0).slice(0, 14);
     if (top.length < 3) return off("not-enough-data");
     runningIds = top.map((_, i) => top[(i + 2) % top.length].driverId);
+    const window30s = Math.floor(Date.now() / 30_000);
+    for (let k = 0; k < 3; k++) {
+      const i = (window30s * (k + 3) + k * 5) % (runningIds.length - 1);
+      [runningIds[i], runningIds[i + 1]] = [runningIds[i + 1], runningIds[i]];
+    }
   } else {
     if (!board?.ok || !board.session) return off("no-session");
     if (board.session.type !== "Race") return off("not-a-race");
@@ -166,6 +197,57 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
     };
   }
 
+  // Standalone (test/training race): no championship math at all. The live
+  // order priced with the season's normal points table IS the table — DNFs
+  // classify behind the runners with zero points, exactly what the race would
+  // pay if it were scored, but nothing is added to any season total.
+  if (standalone) {
+    const { pointsTable } = await getSeasonScoring(prisma, season);
+    const table = pointsTable || DEFAULT_POINTS_TABLE;
+    const byId = new Map(drivers.map((d) => [d.id, d]));
+    const row = (driverId, position, { dnf } = {}) => {
+      const d = byId.get(driverId);
+      return {
+        driverId,
+        name: d?.name || "?",
+        country: d?.country || null,
+        photoUrl: d?.photoUrl || d?.discordAvatar || null,
+        team: d?.team
+          ? { id: d.team.id, name: d.team.name, color: d.team.color, logoUrl: d.team.logoUrl || null }
+          : { id: null, name: "", color: "#888", logoUrl: null },
+        position,
+        total: dnf ? 0 : getPointsForPosition(position, table),
+        livePosition: dnf ? null : position,
+        dnf: !!dnf,
+        // Delta fields exist for shape parity; a one-off race has no "current"
+        // table to move against.
+        currentPosition: null,
+        currentTotal: 0,
+        gained: 0,
+        move: 0,
+      };
+    };
+    const payload = {
+      active: true,
+      simulated: !!simulate,
+      standalone: true,
+      updatedAt: Date.now(),
+      season: { number: season.number, name: season.name },
+      race: { id: race.id, number: race.number, track: race.track },
+      session: sessionInfo,
+      matched: runningIds.length + retiredIds.length,
+      unmatched: unmatched.length,
+      drivers: [
+        ...runningIds.map((id, i) => row(id, i + 1)),
+        ...retiredIds.map((id, j) => row(id, runningIds.length + j + 1, { dnf: true })),
+      ],
+      t1: [],
+      t2: [],
+    };
+    if (!simulate) cache = { at: Date.now(), payload };
+    return payload;
+  }
+
   // The hypothetical result set: running matched drivers classify P1..Pn in
   // live order (guests hold no slot — same contiguous-classification rule as
   // the real import); matched drivers who left the server count as DNF.
@@ -208,6 +290,7 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
   const payload = {
     active: true,
     simulated: !!simulate,
+    standalone: false,
     updatedAt: Date.now(),
     season: { number: season.number, name: season.name },
     race: { id: race.id, number: race.number, track: race.track },

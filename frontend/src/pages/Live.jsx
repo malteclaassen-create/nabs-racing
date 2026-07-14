@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
@@ -8,6 +8,7 @@ import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
 import TyreStrategy, { TyreBadge } from "../components/TyreStrategy.jsx";
 import { circuitForLive } from "../data/circuits.js";
+import { countryFor } from "../data/driverCountries.js";
 import {
   makeDriverMatcher,
   formatLap,
@@ -372,17 +373,65 @@ function Row({ e, match, index = 0 }) {
 
 /* ===== Championship projection ("if it ends like this") =================== */
 
-// Position movement vs. the current table: green up-triangle, red down, quiet
-// dot for no change.
-function MoveArrow({ move }) {
-  if (!move) return <span className="font-mono text-sm text-faint">·</span>;
+// FLIP-animate vertical reordering inside a container: children carrying
+// data-flip-id glide to their new slot whenever the list order changes
+// (someone overtakes on track), plus a short green/red row flash for the
+// direction. Pure transform/transition, no rAF: set the old offset with
+// transitions off, force a reflow, then release — the browser animates to 0.
+// Lite graphics mode and reduced motion skip it entirely (rows just jump).
+function useFlipList(containerRef, dep) {
+  const prevTops = useRef(new Map());
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const items = [...el.querySelectorAll("[data-flip-id]")];
+    const next = new Map(items.map((it) => [it.dataset.flipId, it.getBoundingClientRect().top]));
+    const skip =
+      document.documentElement.classList.contains("fx-lite") ||
+      (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    if (!skip) {
+      for (const it of items) {
+        const id = it.dataset.flipId;
+        const before = prevTops.current.get(id);
+        if (before == null) continue;
+        const delta = before - next.get(id);
+        if (Math.abs(delta) < 2) continue;
+        it.style.transition = "none";
+        it.style.transform = `translateY(${delta}px)`;
+        it.classList.remove("proj-flash-up", "proj-flash-down");
+        void it.offsetHeight; // commit the start position before releasing
+        it.style.transition = "transform 0.7s cubic-bezier(0.22, 0.9, 0.35, 1)";
+        it.style.transform = "";
+        it.classList.add(delta > 0 ? "proj-flash-up" : "proj-flash-down");
+        it.addEventListener(
+          "animationend",
+          () => it.classList.remove("proj-flash-up", "proj-flash-down"),
+          { once: true }
+        );
+      }
+    }
+    prevTops.current = next;
+  }, [containerRef, dep]);
+}
+
+// Position movement vs. the current table: a tinted pill with triangle +
+// places gained/lost, quiet dash for no change. Louder than the old bare
+// arrow on purpose — the before/after story is the point of this table.
+function MovePill({ move }) {
+  if (!move) {
+    return (
+      <span className="inline-flex h-6 min-w-[2.5rem] items-center justify-center rounded-full bg-surface2 font-mono text-xs font-bold text-faint">
+        –
+      </span>
+    );
+  }
   const up = move > 0;
   return (
     <span
-      className={`inline-flex items-center gap-0.5 font-mono text-xs font-bold tabular-nums ${
-        up ? "text-emerald-600" : "text-red-500"
+      className={`inline-flex h-6 min-w-[2.5rem] items-center justify-center gap-0.5 rounded-full px-2 font-mono text-xs font-bold tabular-nums ${
+        up ? "bg-emerald-500/15 text-emerald-600" : "bg-red-500/10 text-red-500"
       }`}
-      title={up ? `Up ${move} vs. current standings` : `Down ${-move} vs. current standings`}
+      title={up ? `Up ${move} vs. the standings before this race` : `Down ${-move} vs. the standings before this race`}
     >
       <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
         {up ? <path d="M12 5l7 11H5z" /> : <path d="M12 19L5 8h14z" />}
@@ -393,7 +442,9 @@ function MoveArrow({ move }) {
 }
 
 // One tier's compact constructor projection card.
-function TeamProjection({ title, rows }) {
+function TeamProjection({ title, rows, flipKey }) {
+  const bodyRef = useRef(null);
+  useFlipList(bodyRef, flipKey);
   if (!rows || rows.length === 0) return null;
   return (
     <div className="card overflow-hidden">
@@ -401,15 +452,19 @@ function TeamProjection({ title, rows }) {
         {title}
       </div>
       <table className="w-full">
-        <tbody>
+        <tbody ref={bodyRef}>
           {rows.map((t) => (
             // a live projection is never a decided title: leader wash, not gold
-            <tr key={t.teamId} className={`border-b border-border last:border-0 ${t.position === 1 ? "row-leader" : ""}`}>
+            <tr
+              key={t.teamId}
+              data-flip-id={t.teamId}
+              className={`border-b border-border last:border-0 ${t.position === 1 ? "row-leader" : ""}`}
+            >
               <td className="w-12 py-3 pl-5 text-center font-display text-base font-black tabular-nums text-medium">
                 {t.position}
               </td>
-              <td className="w-10 py-3 text-center">
-                <MoveArrow move={t.move} />
+              <td className="w-14 py-3 text-center">
+                <MovePill move={t.move} />
               </td>
               <td className="py-3">
                 <TeamLogo
@@ -440,9 +495,16 @@ function TeamProjection({ title, rows }) {
 // race position and movement, plus the two constructor tiers. Data comes from
 // /api/live/championship, which only activates during a league race (calendar
 // cross-checked server-side) — this section simply isn't there otherwise.
+// `standalone` = a test/training race: the table is THIS race alone (normal
+// points table, nothing counts toward the championship), so the movement
+// column and constructor cards stay out.
 function ChampionshipProjection({ data }) {
   const [showAll, setShowAll] = useState(false);
   const LIMIT = 12;
+  const standalone = !!data.standalone;
+  // Rows glide to their new slot when the running order changes mid-race.
+  const bodyRef = useRef(null);
+  useFlipList(bodyRef, data.updatedAt);
   // Keep the table to competitors who matter for the title picture: everyone
   // in the running race plus anyone who already has points on the board.
   const rows = data.drivers.filter((d) => d.livePosition != null || d.dnf || d.total > 0 || d.currentTotal > 0);
@@ -450,10 +512,15 @@ function ChampionshipProjection({ data }) {
   return (
     <section className="reveal space-y-4">
       <SectionHeading
-        eyebrow={`Round ${data.race.number} · ${data.race.track}`}
-        title="Championship, If It Ends Like This"
+        eyebrow={
+          standalone
+            ? `Test race · ${data.race.track}`
+            : `Round ${data.race.number} · ${data.race.track}`
+        }
+        title={standalone ? "This Race, If It Ends Like This" : "Championship, If It Ends Like This"}
         right={
           <span className="flex items-center gap-2">
+            {standalone && <span className="pill bg-sky-500/15 text-sky-600">Not scored</span>}
             {data.simulated && <span className="pill bg-amber-500/15 text-amber-600">Demo</span>}
             <span className="inline-flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-eyebrow">
               <span className="relative flex h-2.5 w-2.5">
@@ -467,22 +534,28 @@ function ChampionshipProjection({ data }) {
       />
       <div className="card overflow-hidden">
         <div className="scrollbar-slim overflow-x-auto">
-          <table className="w-full min-w-[520px]">
+          <table className={`w-full ${standalone ? "min-w-[520px]" : "min-w-[620px]"}`}>
             <thead>
               <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">
                 <th className="w-14 py-3 pl-5 text-center">Pos</th>
-                <th className="w-12 py-3 text-center"></th>
+                {!standalone && <th className="w-16 py-3 text-center"></th>}
                 <th className="py-3 pl-1">Driver</th>
                 <th className="py-3 pr-4 text-center">Race</th>
-                <th className="py-3 pr-5 text-right">Pts</th>
+                {!standalone && <th className="py-3 pr-4 text-right">Before</th>}
+                <th className="py-3 pr-5 text-right">{standalone ? "Pts" : "After"}</th>
               </tr>
             </thead>
-            <tbody className="cascade">
+            {/* No cascade here on purpose: reordering rows (React moves the DOM
+                nodes) would REPLAY the entrance animation on every overtake,
+                which reads as the whole table rebuilding. The FLIP glide in
+                useFlipList is the only movement. */}
+            <tbody ref={bodyRef}>
               {shown.map((d, i) => (
                 <tr
                   key={d.driverId}
+                  data-flip-id={d.driverId}
                   style={{ "--i": Math.min(i, 16) }}
-                  className={`border-b border-border last:border-0 transition ${
+                  className={`border-b border-border last:border-0 ${
                     d.position === 1 ? "row-leader" : "hover:bg-surface2"
                   }`}
                 >
@@ -495,13 +568,16 @@ function ChampionshipProjection({ data }) {
                       {d.position}
                     </span>
                   </td>
-                  <td className="py-3 text-center">
-                    <MoveArrow move={d.move} />
-                  </td>
+                  {!standalone && (
+                    <td className="py-3 text-center">
+                      <MovePill move={d.move} />
+                    </td>
+                  )}
                   <td className="py-3 pl-1 pr-3">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5">
                       <span className="h-8 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: d.team.color }} />
-                      {d.country ? <Flag code={d.country} /> : <span className="h-[15px] w-5 shrink-0" />}
+                      <TeamLogo id={d.team.id} name={d.team.name} color={d.team.color} logoUrl={d.team.logoUrl} size={24} />
+                      <Flag code={countryFor(d.driverId, d.country)} />
                       <span className="min-w-0">
                         <span className="block truncate font-display text-base font-bold uppercase tracking-tight text-dark">
                           {d.name}
@@ -519,6 +595,20 @@ function ChampionshipProjection({ data }) {
                       <span className="font-mono text-xs text-faint">—</span>
                     )}
                   </td>
+                  {!standalone && (
+                    <td className="py-3 pr-4 text-right">
+                      {d.currentPosition != null ? (
+                        <span
+                          className="font-mono text-sm tabular-nums text-light"
+                          title={`Before this race: P${d.currentPosition} with ${d.currentTotal} points`}
+                        >
+                          P{d.currentPosition} · {d.currentTotal}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-xs text-faint">–</span>
+                      )}
+                    </td>
+                  )}
                   <td className="py-3 pr-5 text-right">
                     <span className="font-mono text-base font-bold tabular-nums text-dark sm:text-lg">{d.total}</span>
                     {d.gained > 0 && (
@@ -545,14 +635,14 @@ function ChampionshipProjection({ data }) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <TeamProjection title={data.t2?.length ? "Constructors · Tier 1" : "Constructors"} rows={data.t1} />
-        <TeamProjection title="Constructors · Tier 2" rows={data.t2} />
+        <TeamProjection title={data.t2?.length ? "Constructors · Tier 1" : "Constructors"} rows={data.t1} flipKey={data.updatedAt} />
+        <TeamProjection title="Constructors · Tier 2" rows={data.t2} flipKey={data.updatedAt} />
       </div>
 
       <p className="px-1 font-mono text-[11px] uppercase tracking-wider text-light">
-        A projection, not a result: it assumes the race finishes in the current running order, with drop
-        scores applied. Time penalties and stewarding are not included. The official tables update once the
-        result is posted.
+        {standalone
+          ? "This is a test race: points use the league's normal table but count for this race only. Nothing here changes the championship standings."
+          : "A projection, not a result: it assumes the race finishes in the current running order, with drop scores applied. Time penalties and stewarding are not included. The official tables update once the result is posted."}
       </p>
     </section>
   );
@@ -619,17 +709,30 @@ function ExternalButtons({ links }) {
   );
 }
 
-// Segmented Timing / Strategy switch, matching the profile scope toggle.
-function ViewSwitch({ view, setView }) {
-  const btn = (key, label) => (
+// Segmented Timing / Strategy / Standings switch, matching the profile scope
+// toggle. "Standings" (the live championship projection) only exists on league
+// race days — it joins the switch with a pulsing dot so it gets noticed.
+function ViewSwitch({ view, setView, hasStandings }) {
+  const btn = (key, label, dot = false) => (
     <button
+      key={key}
       type="button"
       onClick={() => setView(key)}
-      className={`rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+      className={`flex items-center gap-1.5 rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
         view === key ? "bg-brand text-ink" : "text-light hover:text-dark"
       }`}
       aria-pressed={view === key}
     >
+      {dot && (
+        <span className="relative flex h-2 w-2">
+          <span
+            className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${
+              view === key ? "bg-ink" : "bg-brand"
+            }`}
+          />
+          <span className={`relative inline-flex h-2 w-2 rounded-full ${view === key ? "bg-ink" : "bg-brand"}`} />
+        </span>
+      )}
       {label}
     </button>
   );
@@ -637,6 +740,7 @@ function ViewSwitch({ view, setView }) {
     <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
       {btn("timing", "Timing")}
       {btn("strategy", "Strategy")}
+      {hasStandings && btn("standings", "Standings", true)}
     </div>
   );
 }
@@ -876,14 +980,23 @@ export default function Live() {
       api
         .liveChampionship(demo)
         .then((d) => alive && setChamp(d))
-        .catch(() => alive && setChamp(null));
+        // A failed poll (server restart, hiccup) keeps the last table on
+        // screen instead of tearing the whole section down and rebuilding it
+        // on the next success; a real deactivation arrives as active:false.
+        .catch(() => {});
     load();
-    const t = setInterval(load, 20000);
+    const t = setInterval(load, 12000); // matches the server-side 10s cache
     return () => {
       alive = false;
       clearInterval(t);
     };
   }, []);
+
+  // The Standings view only exists while the projection is active (race day);
+  // if it deactivates mid-visit the switch falls back to Timing.
+  useEffect(() => {
+    if (view === "standings" && champ && !champ.active) setView("timing");
+  }, [champ, view]);
 
   // Mobile: keep the classification to a single screenful, expandable on tap.
   const narrow = useIsNarrow();
@@ -937,18 +1050,17 @@ export default function Live() {
             />
           </div>
 
-          {/* ===== Championship projection (league race days only) ===== */}
-          {champ?.active && <ChampionshipProjection data={champ} />}
-
-          {/* ===== Timing / Strategy switch ===== */}
+          {/* ===== Timing / Strategy / Standings switch ===== */}
           <div className="reveal flex items-center justify-between gap-4">
             <span className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">
               Session view
             </span>
-            <ViewSwitch view={view} setView={setView} />
+            <ViewSwitch view={view} setView={setView} hasStandings={!!champ?.active} />
           </div>
 
-          {view === "strategy" ? (
+          {view === "standings" && champ?.active ? (
+            <ChampionshipProjection data={champ} />
+          ) : view === "strategy" ? (
             <section className="reveal space-y-4">
               <SectionHeading eyebrow="Tyres" title="Strategy" />
               <TyreStrategy entries={entries} matchFn={match} raceLaps={session.raceLaps} />
