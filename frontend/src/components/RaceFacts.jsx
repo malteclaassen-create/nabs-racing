@@ -32,6 +32,7 @@ const ICONS = {
   star: "M12 2l3 6.5 7 .9-5 4.8 1.3 7L12 18l-6.6 3.2L6.7 14l-5-4.8 7-.9L12 2z",
   gap: "M4 4v16M20 4v16M8 12h8M8 12l3-3M8 12l3 3M16 12l-3-3M16 12l-3 3",
   steady: "M3 12h4l2-5 4 10 2-5h6",
+  lead: "M5 20h14M6 20V9l3 2 3-6 3 6 3-2v11",
 };
 
 function FactIcon({ name, className = "h-4 w-4" }) {
@@ -182,6 +183,19 @@ export default function RaceFacts({ race, results }) {
         value: `±${(best.consistencyMs / 1000).toFixed(3)}s per lap`,
         hint: "Smallest spread between the driver's own clean race laps, from the race telemetry." });
     }
+  }
+
+  // Most laps led — the car out front at the S/F line most often. A heuristic
+  // from lap-by-lap order (grid lap excluded, safety-car laps counted), so it's
+  // shown as a fun fact, not an official stat.
+  const ledRows = results.filter((r) => typeof r.lapsLed === "number" && r.lapsLed > 0);
+  if (ledRows.length) {
+    const most = ledRows.reduce((b, r) => (r.lapsLed > b.lapsLed ? r : b));
+    const wireToWire = winner && most.driverId === winner.driverId && most.laps != null && most.lapsLed >= most.laps;
+    facts.push({ key: "led", label: "Most laps led", icon: "lead",
+      driverId: most.driverId, name: most.name, country: countryFor(most.driverId, most.country),
+      value: wireToWire ? `All ${most.lapsLed} laps` : `${most.lapsLed} lap${most.lapsLed > 1 ? "s" : ""}`,
+      hint: "Laps spent leading at the start/finish line (estimated from lap-by-lap order; grid lap excluded, safety-car laps counted)." });
   }
 
   // Pole position (grid P1) — note when the pole sitter didn't win.

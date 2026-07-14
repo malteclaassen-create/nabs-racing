@@ -1,0 +1,177 @@
+// ---------------------------------------------------------------------------
+// Racing series (the level above Season). One deployment can host several
+// independent championships (Friday F1, Sunday GT, ...): each series has its
+// own seasons/teams/drivers/races/standings, while Discord login, members,
+// downloads and the bot stay global. Exactly one series is `isActive` (the
+// primary one "/" redirects to); `slug` is the URL identity (/s/<slug>/…) and
+// stays stable after creation — only `name` is renamable.
+//
+// Like MemberAccount/Download/PersonLink, managed via raw SQL (the running dev
+// server locks the generated Prisma client on Windows). Keep in sync with the
+// Series model in prisma/schema.prisma.
+// ---------------------------------------------------------------------------
+import { randomUUID } from "crypto";
+
+// Shape a raw row for callers: numbers/booleans normalised.
+function shapeSeries(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    name: r.name,
+    slug: r.slug,
+    game: r.game || null,
+    description: r.description || null,
+    order: Number(r.order ?? 0),
+    isActive: !!Number(r.isActive ?? 0),
+    isPublic: r.isPublic == null ? true : !!Number(r.isPublic),
+    createdAt: r.createdAt,
+  };
+}
+
+// URL-safe slug from a series name ("Sunday GT Masters" -> "sunday-gt-masters").
+export function slugifySeries(name) {
+  return String(name || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+// All series, switcher order. includePrivate=false hides unpublished ones.
+export async function dbListSeries(prisma, { includePrivate = false } = {}) {
+  let rows = [];
+  try {
+    rows = await prisma.$queryRawUnsafe(
+      `SELECT * FROM "Series" ORDER BY "order" ASC, "createdAt" ASC`
+    );
+  } catch {
+    // Table missing (fresh checkout before ensureAppSchema): no series yet.
+    return [];
+  }
+  const all = rows.map(shapeSeries);
+  return includePrivate ? all : all.filter((s) => s.isPublic || s.isActive);
+}
+
+// The primary series (isActive), with sensible fallbacks so a broken flag can
+// never blank the whole site: first public series by order, else just the first.
+export async function getActiveSeries(prisma) {
+  const all = await dbListSeries(prisma, { includePrivate: true });
+  return all.find((s) => s.isActive) || all.find((s) => s.isPublic) || all[0] || null;
+}
+
+// Resolve an optional ?series=<slug> to a series row. No slug -> the active
+// series. Unknown slug -> null. A PRIVATE series resolves to null for public
+// callers so its data can't be reached by a crafted URL; admins see it.
+export async function resolveSeries(prisma, slug, { includePrivate = false } = {}) {
+  if (slug === undefined || slug === null || slug === "") {
+    return getActiveSeries(prisma);
+  }
+  const all = await dbListSeries(prisma, { includePrivate: true });
+  const s = all.find((x) => x.slug === String(slug)) || null;
+  if (!s) return null;
+  if (!includePrivate && !s.isPublic && !s.isActive) return null;
+  return s;
+}
+
+export async function getSeriesById(prisma, id) {
+  const all = await dbListSeries(prisma, { includePrivate: true });
+  return all.find((s) => s.id === id) || null;
+}
+
+// Create a series. The slug is derived from the name (or taken explicitly),
+// uniquified with a numeric suffix, and FROZEN afterwards.
+export async function dbCreateSeries(prisma, { name, slug, game, description }) {
+  const base = slugifySeries(slug || name) || "series";
+  const all = await dbListSeries(prisma, { includePrivate: true });
+  const taken = new Set(all.map((s) => s.slug));
+  let finalSlug = base;
+  for (let i = 2; taken.has(finalSlug); i++) finalSlug = `${base}-${i}`;
+  const id = randomUUID();
+  const order = all.length ? Math.max(...all.map((s) => s.order)) + 1 : 0;
+  // New series start PRIVATE (like new seasons): built up quietly, published
+  // when ready. The first series ever is created public by the backfill.
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "Series" ("id","name","slug","game","description","order","isActive","isPublic")
+     VALUES (?, ?, ?, ?, ?, ?, 0, 0)`,
+    id,
+    String(name).trim(),
+    finalSlug,
+    game ? String(game).trim() : null,
+    description ? String(description).trim() : null,
+    order
+  );
+  return getSeriesById(prisma, id);
+}
+
+// Update name/game/description/order/isPublic. The slug is deliberately NOT
+// updatable — it's the URL identity shared links depend on.
+export async function dbUpdateSeries(prisma, id, patch) {
+  const sets = [];
+  const vals = [];
+  if (patch.name !== undefined) {
+    sets.push(`"name" = ?`);
+    vals.push(String(patch.name).trim());
+  }
+  if (patch.game !== undefined) {
+    sets.push(`"game" = ?`);
+    vals.push(patch.game ? String(patch.game).trim() : null);
+  }
+  if (patch.description !== undefined) {
+    sets.push(`"description" = ?`);
+    vals.push(patch.description ? String(patch.description).trim() : null);
+  }
+  if (patch.order !== undefined) {
+    sets.push(`"order" = ?`);
+    vals.push(Number(patch.order) || 0);
+  }
+  if (patch.isPublic !== undefined) {
+    sets.push(`"isPublic" = ?`);
+    vals.push(patch.isPublic ? 1 : 0);
+  }
+  if (sets.length) {
+    await prisma.$executeRawUnsafe(`UPDATE "Series" SET ${sets.join(", ")} WHERE "id" = ?`, ...vals, id);
+  }
+  return getSeriesById(prisma, id);
+}
+
+// Make this the primary series ("/" redirects here). Exactly one is active;
+// an active series is forced public — being the site default is publishing.
+export async function dbActivateSeries(prisma, id) {
+  await prisma.$executeRawUnsafe(`UPDATE "Series" SET "isActive" = 0`);
+  await prisma.$executeRawUnsafe(`UPDATE "Series" SET "isActive" = 1, "isPublic" = 1 WHERE "id" = ?`, id);
+}
+
+export async function dbDeleteSeries(prisma, id) {
+  await prisma.$executeRawUnsafe(`DELETE FROM "Series" WHERE "id" = ?`, id);
+}
+
+// The seasons of one series: [{ id, number }]. Raw read because seriesId is a
+// raw-SQL column the generated client may not know yet.
+export async function seasonIdsOfSeries(prisma, seriesId) {
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "id", "number" FROM "Season" WHERE "seriesId" = ? ORDER BY "number" ASC`,
+      seriesId
+    );
+    return rows.map((r) => ({ id: r.id, number: Number(r.number) }));
+  } catch {
+    return [];
+  }
+}
+
+// Map seasonId -> seriesId for every season (missing/unmigrated -> null).
+export async function seasonSeriesMap(prisma) {
+  try {
+    const rows = await prisma.$queryRawUnsafe(`SELECT "id", "seriesId" FROM "Season"`);
+    return new Map(rows.map((r) => [r.id, r.seriesId || null]));
+  } catch {
+    return new Map();
+  }
+}
+
+// Assign a season to a series (used by the admin season editor).
+export async function setSeasonSeries(prisma, seasonId, seriesId) {
+  await prisma.$executeRawUnsafe(`UPDATE "Season" SET "seriesId" = ? WHERE "id" = ?`, seriesId, seasonId);
+}

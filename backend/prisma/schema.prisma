@@ -23,14 +23,46 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// A racing series (migration series_model). The level ABOVE Season: the league
+// can host several independent championships (e.g. the Friday F1 league and a
+// Sunday GT series) in ONE deployment. Each series has its own seasons (and
+// through them teams/drivers/races/standings); Discord login, members area,
+// downloads and the bot stay global. Exactly one series is `isActive` — the
+// primary one "/" redirects to. The `slug` is the URL identity (/s/<slug>/…)
+// and stays STABLE after creation (renames only touch `name`), so shared and
+// bookmarked links never break. Like PersonLink/Download, this table is
+// managed via raw SQL (the running dev server locks the generated Prisma
+// client on Windows) — see backend/src/lib/series.js, kept in sync by hand.
+model Series {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  game        String?
+  description String?
+  order       Int      @default(0) // position in the series switcher
+  isActive    Boolean  @default(false) // the primary series ("/" target)
+  isPublic    Boolean  @default(true) // hidden from the public until published
+  createdAt   DateTime @default(now())
+
+  seasons Season[]
+}
+
 // A league season (e.g. Season 7 = F1 2007). Each season is a self-contained
-// world: its own teams, drivers and races. Exactly one season is `isActive`,
-// which is what the public site shows by default; older seasons stay readable
-// as an archive via the season switcher.
+// world: its own teams, drivers and races. Per SERIES exactly one season is
+// `isActive`, which is what the public site shows by default; older seasons
+// stay readable as an archive via the season switcher.
 model Season {
   id        String   @id @default(cuid())
-  number    Int      @unique
+  // Round number within its series (unique per series since the series model —
+  // was globally unique before, migration series_model relaxed it so a second
+  // series can start at Season 1 again).
+  number    Int
   name      String // display label, e.g. "Season 7"
+  // Which series this season belongs to (migration series_model). Nullable for
+  // the backfill; ensureAppSchema assigns stragglers to the default series on
+  // every boot, so effectively always set. Raw-SQL column like teamDropWorst.
+  seriesId  String?
+  series    Series?  @relation(fields: [seriesId], references: [id])
   game      String? // e.g. "F1 2007 · Assetto Corsa"
   isActive  Boolean  @default(false)
   // Scoring rules, admin-editable per season (migration season_scoring):
@@ -66,11 +98,19 @@ model Season {
   // still PRIVATE (name, game, opener + car picture only — nothing else leaks).
   // Toggled on the admin Seasons tab; managed via raw SQL (ensureAppSchema).
   isAnnounced Boolean @default(false)
+  // Admin-uploaded hero photo for the Home/Welcome main card (migration
+  // season_hero_image), e.g. "/api/uploads/seasons/<id>.jpg?v=<ts>". null =
+  // fall back to the static /heroes/s<number>.jpg drop-in convention, then the
+  // shared /hero.jpg (see frontend/src/utils/heroImage.js). Managed via raw
+  // SQL (ensureAppSchema) so it's writable with the dev server up.
+  heroImageUrl String?
   createdAt DateTime @default(now())
 
   teams   Team[]
   drivers Driver[]
   races   Race[]
+
+  @@unique([seriesId, number])
 }
 
 model Team {
@@ -132,6 +172,11 @@ model Driver {
   // driver, 'safety' = safety car driver. Managed via raw SQL (ensureAppSchema),
   // migration driver_role.
   role          String?
+  // Admin-set: remove this (deactivated) driver from the public driver
+  // standings entirely. Race results and constructor points stay untouched;
+  // reactivating clears it. Managed via raw SQL (ensureAppSchema), migration
+  // driver_hide_from_standings.
+  hideFromStandings Boolean @default(false)
   results     RaceResult[]
   rsvps       RaceRsvp[]
   // Driver Market: seats this driver has offered, seats this (reserve) driver
@@ -145,10 +190,16 @@ model Driver {
 model Race {
   id          String       @id @default(cuid())
   // Round number within its season (unique per season, so each season can start
-  // again at round 1). Null for non-championship special events.
+  // again at round 1). Null for non-championship entries (SPECIAL/TRAINING).
   number      Int?
-  // Whether this is a non-championship special event (shown on the calendar but
-  // not scored / not part of the round numbering).
+  // What kind of entry this is (migration race_type): CHAMPIONSHIP (scored
+  // round), TRAINING (practice session — not scored, no round number, but RSVP
+  // works for session planning) or SPECIAL (special event). Managed via raw
+  // SQL (ensureAppSchema + lib/raceTypes.js).
+  type        String       @default("CHAMPIONSHIP")
+  // DEPRECATED, kept in sync as a derived flag: true for every non-CHAMPIONSHIP
+  // type. All scoring/round-numbering reads still filter on it, which is
+  // exactly why TRAINING rows carry it too — they must never score.
   isSpecialEvent Boolean   @default(false)
   // Which season this race belongs to (backfilled to Season 7).
   seasonId    String?
@@ -266,6 +317,7 @@ model RaceResult {
   envContacts        Int?  // wall / off-track collisions ("crashes")
   cuts               Int?  // sum of per-lap track cuts / off-tracks
   overtakes          Int?  // estimated on-track passes (heuristic)
+  lapsLed            Int?  // laps led (leader at S/F line each lap; heuristic)
   laps               Int?  // laps completed
   cleanLaps          Int?  // laps within 10s of the driver's own best that race
   consistencyMs      Float? // stdev of clean lap times, ms (null under 3 clean laps)

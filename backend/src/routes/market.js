@@ -89,7 +89,10 @@ router.get("/", async (req, res, next) => {
   try {
     // The market only deals in upcoming races, i.e. the active season.
     // (Admins may preview a private season's market; the public can't.)
-    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: isAdminRequest(req) });
+    const seasonId = await resolveSeasonId(prisma, req.query.season, {
+      includePrivate: isAdminRequest(req),
+      series: req.query.series,
+    });
     const races = await prisma.race.findMany({
       where: { isCompleted: false, isSpecialEvent: false, seasonId },
       orderBy: { number: "asc" },
@@ -148,9 +151,10 @@ router.post("/offer", async (req, res, next) => {
     const race = await prisma.race.findUnique({ where: { id: raceId } });
     if (!race) return res.status(404).json({ error: "Race not found" });
     if (race.isCompleted) return res.status(400).json({ error: "Race already completed" });
-    // Special events aren't scored and have no market (the market view never
-    // lists them) — refuse the write too so no orphaned offers can exist.
-    if (race.isSpecialEvent) return res.status(400).json({ error: "Special events have no driver market" });
+    // Special events and training sessions aren't scored and have no market
+    // (the market view never lists them — both carry isSpecialEvent) — refuse
+    // the write too so no orphaned offers can exist.
+    if (race.isSpecialEvent) return res.status(400).json({ error: "Only championship rounds have a driver market" });
     // Act as the row this person has in the RACE's season (offers carry that
     // season's team, and the import pre-fill relies on those ids matching).
     const driver = await requireDriverForSeason(req, res, race.seasonId);

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getToken, setToken } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { useSeries } from "../context/SeriesContext.jsx";
 import { PageHeader, ErrorBox, Notice, CardHead } from "../components/ui.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
@@ -37,16 +38,18 @@ const TABS = [
   { id: "pin", label: "Change PIN" },
 ];
 
-// Prominent bar at the top of the admin: shows WHICH season every season-scoped
-// edit below applies to, and lets the admin switch it right here (no hunting for
-// the nav selector). Switching remounts the page (App keys on the season), so we
-// stash the current tab first — the admin stays where they were.
+// Prominent bar at the top of the admin: shows WHICH series + season every
+// scoped edit below applies to, and lets the admin switch both right here (no
+// hunting for the nav selector). Switching remounts the page (App keys on the
+// season / series), so we stash the current tab first — the admin stays where
+// they were.
 function AdminSeasonBar({ tab }) {
   const { seasons, season, setSeason, current } = useSeason();
-  if (!seasons?.length) return null;
+  const { seriesList, current: series, setSlug } = useSeries();
+  if (!seasons?.length && seriesList.length <= 1) return null;
   const isActive = current?.isActive;
   const isPrivate = current?.isPublic === false;
-  const ordered = [...seasons].sort((a, b) => b.number - a.number);
+  const ordered = [...(seasons || [])].sort((a, b) => b.number - a.number);
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-center gap-3 border-l-4 pl-3" style={{ borderColor: isActive ? "#10b981" : isPrivate ? "#f43f5e" : "#f59e0b" }}>
@@ -59,6 +62,7 @@ function AdminSeasonBar({ tab }) {
           <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Currently editing</div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-display text-lg font-extrabold uppercase leading-none tracking-tight text-dark">
+              {seriesList.length > 1 && series ? `${series.name} · ` : ""}
               {current?.name || "—"}
             </span>
             {isActive ? (
@@ -72,24 +76,46 @@ function AdminSeasonBar({ tab }) {
           {current?.game && <div className="mt-0.5 text-xs text-light">{current.game}</div>}
         </div>
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <span className="font-semibold text-medium">Switch season</span>
-        <select
-          className="input py-1.5"
-          value={season ?? ""}
-          onChange={(e) => {
-            sessionStorage.setItem("nabs_admin_tab", tab); // survive the remount
-            setSeason(Number(e.target.value));
-          }}
-        >
-          {ordered.map((s) => (
-            <option key={s.id} value={s.number}>
-              {s.name}
-              {s.isActive ? " (active)" : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="flex flex-wrap items-center gap-4">
+        {seriesList.length > 1 && (
+          <label className="flex items-center gap-2 text-sm">
+            <span className="font-semibold text-medium">Series</span>
+            <select
+              className="input py-1.5"
+              value={series?.slug ?? ""}
+              onChange={(e) => {
+                sessionStorage.setItem("nabs_admin_tab", tab); // survive the remount
+                setSlug(e.target.value);
+              }}
+            >
+              {seriesList.map((s) => (
+                <option key={s.id} value={s.slug}>
+                  {s.name}
+                  {s.isActive ? " (primary)" : s.isPublic === false ? " (private)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="flex items-center gap-2 text-sm">
+          <span className="font-semibold text-medium">Switch season</span>
+          <select
+            className="input py-1.5"
+            value={season ?? ""}
+            onChange={(e) => {
+              sessionStorage.setItem("nabs_admin_tab", tab); // survive the remount
+              setSeason(Number(e.target.value));
+            }}
+          >
+            {ordered.map((s) => (
+              <option key={s.id} value={s.number}>
+                {s.name}
+                {s.isActive ? " (active)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
     </div>
   );
 }
@@ -1406,6 +1432,18 @@ function Drivers() {
                       onClick={() => patchDriver(d, { isActive: !d.isActive })}>
                       {d.isActive ? "Deactivate" : "Reactivate"}
                     </button>
+                    {/* Only a deactivated driver can be removed from the public
+                        standings; reactivating brings them back automatically. */}
+                    {!d.isActive && (
+                      <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                        title="Hidden drivers disappear from the public driver standings (everyone below moves up). Their race results and their team's points stay untouched."
+                        onClick={() => patchDriver(d, { hideFromStandings: !d.hideFromStandings })}>
+                        {d.hideFromStandings ? "Show in standings" : "Hide from standings"}
+                      </button>
+                    )}
+                    {!d.isActive && d.hideFromStandings && (
+                      <span className="pill bg-surface2 text-light" title="Not shown in the public driver standings">hidden</span>
+                    )}
                     <DriverDiscordId d={d} busy={busy} accounts={accounts}
                       onSave={(v) => patchDriver(d, { discordUserId: v })} />
                   </li>
@@ -1483,7 +1521,7 @@ function DiscordEvents() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [event, setEvent] = useState({
-    number: "", track: "", date: "", isSpecialEvent: false,
+    number: "", track: "", date: "", type: "CHAMPIONSHIP",
     qualiMinutes: "", raceLaps: "", info: "",
   });
 
@@ -1521,19 +1559,26 @@ function DiscordEvents() {
   async function createEvent(e) {
     e.preventDefault();
     setBusy(true); setError(null); setMsg(null);
+    const isChamp = event.type === "CHAMPIONSHIP";
     try {
       await api.createEvent({
-        number: event.isSpecialEvent ? null : Number(event.number),
+        number: isChamp ? Number(event.number) : null,
         track: event.track,
         date: fromLocalInput(event.date),
-        isSpecialEvent: event.isSpecialEvent,
+        type: event.type,
         seasonId: current?.id,
         qualiMinutes: event.qualiMinutes || null,
         raceLaps: event.raceLaps || null,
         info: event.info || null,
       });
-      setMsg(event.isSpecialEvent ? `Special event "${event.track}" created.` : `Round ${event.number} created.`);
-      setEvent({ number: "", track: "", date: "", isSpecialEvent: false, qualiMinutes: "", raceLaps: "", info: "" });
+      setMsg(
+        event.type === "SPECIAL"
+          ? `Special event "${event.track}" created.`
+          : event.type === "TRAINING"
+            ? `Training session "${event.track}" created.`
+            : `Round ${event.number} created.`
+      );
+      setEvent({ number: "", track: "", date: "", type: "CHAMPIONSHIP", qualiMinutes: "", raceLaps: "", info: "" });
       reloadRaces();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -1556,6 +1601,9 @@ function DiscordEvents() {
     setEdit({
       track: r.track || "",
       date: toLocalInput(r.date),
+      type: r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
+      number: r.number ?? "",
+      hasResults: (r.resultCount || 0) > 0,
       qualiMinutes: r.qualiMinutes ?? "",
       raceLaps: r.raceLaps ?? "",
       info: r.info || "",
@@ -1568,6 +1616,8 @@ function DiscordEvents() {
       await api.updateEvent(editingId, {
         track: edit.track,
         date: fromLocalInput(edit.date),
+        type: edit.type,
+        number: edit.type === "CHAMPIONSHIP" && edit.number !== "" ? Number(edit.number) : undefined,
         qualiMinutes: edit.qualiMinutes === "" ? null : edit.qualiMinutes,
         raceLaps: edit.raceLaps === "" ? null : edit.raceLaps,
         info: edit.info || null,
@@ -1629,17 +1679,21 @@ function DiscordEvents() {
       <div className="space-y-6 order-1">
         <form onSubmit={createEvent} className="card space-y-3 p-5">
           <CardHead eyebrow="Schedule" title="Create race / event" />
-          <label className="flex items-center gap-2 text-sm text-medium">
-            <input type="checkbox" checked={event.isSpecialEvent}
-              onChange={(e) => setEvent({ ...event, isSpecialEvent: e.target.checked })} />
-            Special event (no round number, not scored)
+          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+            Type
+            <select className="input" value={event.type}
+              onChange={(e) => setEvent({ ...event, type: e.target.value })}>
+              <option value="CHAMPIONSHIP">Championship round (scored, has a round number)</option>
+              <option value="TRAINING">Training / session (not scored, RSVP works)</option>
+              <option value="SPECIAL">Special event (not scored, announcement only)</option>
+            </select>
           </label>
           <div className="grid grid-cols-2 gap-3">
-            {!event.isSpecialEvent && (
+            {event.type === "CHAMPIONSHIP" && (
               <input className="input" type="number" placeholder="Round #" value={event.number}
                 onChange={(e) => setEvent({ ...event, number: e.target.value })} required />
             )}
-            <input className={`input ${event.isSpecialEvent ? "col-span-2" : ""}`} placeholder="Track" value={event.track}
+            <input className={`input ${event.type !== "CHAMPIONSHIP" ? "col-span-2" : ""}`} placeholder="Track" value={event.track}
               onChange={(e) => setEvent({ ...event, track: e.target.value })} required />
           </div>
           <input className="input" type="datetime-local" value={event.date}
@@ -1668,7 +1722,7 @@ function DiscordEvents() {
               <li key={r.id} className="py-2 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate font-semibold text-dark">
-                    {r.isSpecialEvent ? "SE" : `Round ${r.number}`} · {r.track}
+                    {r.type === "TRAINING" ? "Training" : r.type === "SPECIAL" || r.isSpecialEvent ? "SE" : `Round ${r.number}`} · {r.track}
                     {r.isCompleted && (
                       <span className="pill ml-2 bg-surface2 font-mono text-[10px] font-bold uppercase text-light">done</span>
                     )}
@@ -1678,7 +1732,8 @@ function DiscordEvents() {
                       disabled={busy} onClick={() => (editingId === r.id ? setEditingId(null) : startEdit(r))}>
                       {editingId === r.id ? "Close" : "Edit"}
                     </button>
-                    {!r.isSpecialEvent && !r.isCompleted && (
+                    {/* Rounds AND training sessions get the RSVP post; specials stay site-only. */}
+                    {r.type !== "SPECIAL" && !r.isCompleted && (
                       <button className="text-xs font-semibold text-primary hover:underline"
                         disabled={busy} onClick={() => announce(r.id)}>
                         Post to Discord
@@ -1695,6 +1750,25 @@ function DiscordEvents() {
                 {editingId === r.id && edit && (
                   <div className="mt-3 space-y-3 rounded-lg bg-surface2 p-3">
                     <div className="grid grid-cols-2 gap-3">
+                      <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+                        Type
+                        {/* A round with stored results must stay a championship
+                            round — retyping it would pull its points out of the
+                            standings (the backend refuses it too). */}
+                        <select className="input" value={edit.type} disabled={edit.hasResults}
+                          onChange={(e) => setEdit({ ...edit, type: e.target.value })}>
+                          <option value="CHAMPIONSHIP">Championship round</option>
+                          <option value="TRAINING">Training / session</option>
+                          <option value="SPECIAL">Special event</option>
+                        </select>
+                      </label>
+                      {edit.type === "CHAMPIONSHIP" && (
+                        <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+                          Round #
+                          <input className="input" type="number" min="1" value={edit.number}
+                            onChange={(e) => setEdit({ ...edit, number: e.target.value })} />
+                        </label>
+                      )}
                       <label className="flex flex-col gap-1 text-xs font-semibold text-light">
                         Track
                         <input className="input" value={edit.track}
@@ -1759,6 +1833,60 @@ function parsePointsInput(text) {
     return { ok: false, error: "Points must be whole numbers (0 to 1000), separated by commas, e.g. 25, 18, 15" };
   }
   return { ok: true, value: parts };
+}
+
+// Home/Welcome main-card photo for one season. Uploads (no file-system access
+// needed, e.g. Railway); a season without one falls back to the static
+// /heroes/s<number>.jpg drop-in convention, then the shared default photo.
+function SeasonHero({ season, onSaved, onError }) {
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // clears the input so re-picking the same file still fires onChange
+    if (!file) return;
+    setBusy(true);
+    try {
+      await api.uploadSeasonHero(season.id, file);
+      onSaved(`Main-card photo updated for ${season.name}.`);
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  async function clear() {
+    if (!window.confirm(`Remove ${season.name}'s custom photo? The home page falls back to the default.`)) return;
+    setBusy(true);
+    try {
+      await api.clearSeasonHero(season.id);
+      onSaved(`Main-card photo reset for ${season.name}.`);
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="font-semibold text-light">Main-card photo</span>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={pick}
+      />
+      <button type="button" className="btn-secondary px-3 py-1 text-xs" disabled={busy}
+        onClick={() => fileRef.current?.click()}>
+        {season.heroImageUrl ? "Replace" : "Upload"}
+      </button>
+      {season.heroImageUrl && (
+        <button type="button" className="font-semibold text-light transition hover:text-rose-500" disabled={busy}
+          onClick={clear}>
+          Reset to default
+        </button>
+      )}
+      <span className="text-light" title="Shown on the Home/Welcome hero card, cropped to fill the panel">
+        Recommended: wide landscape, at least 1920×800px
+      </span>
+    </div>
+  );
 }
 
 // Per-season scoring editor: how many worst rounds are dropped (0 = none) and
@@ -1952,6 +2080,8 @@ function Seasons({ gotoRaces }) {
   }
 
   return (
+    <div className="space-y-6">
+    <SeriesPanel />
     <div className="grid gap-6 lg:grid-cols-2">
       <form onSubmit={create} className="card space-y-4 p-5">
         <CardHead eyebrow="Seasons" title="Create a season" />
@@ -2039,6 +2169,7 @@ function Seasons({ gotoRaces }) {
                   )}
                 </div>
               </div>
+              <SeasonHero season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
               <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.pointsTable || ""}`} season={s}
                 onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
               {/* clone teams (or the full roster) from another season */}
@@ -2062,6 +2193,161 @@ function Seasons({ gotoRaces }) {
           ))}
         </ul>
       </div>
+    </div>
+    </div>
+  );
+}
+
+// --- SERIES ------------------------------------------------------------------
+// The level above seasons: several championships (Friday F1, Sunday GT, …) in
+// one deployment. The slug (the /s/<slug>/ URL identity) is set once at
+// creation and never changes — renaming only touches the display name. The
+// series switcher in the NavBar appears automatically once a second series
+// exists (private ones only for admins).
+function SeriesPanel() {
+  const { data: series, reload } = useApi(useCallback(() => api.adminSeries(), []));
+  const { setSlug } = useSeries();
+  const [form, setForm] = useState({ name: "", game: "" });
+  const [msg, setMsg] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  // Refetching the NavBar's series list happens via the auth event listeners;
+  // nudging it after edits keeps the switcher in sync without a reload.
+  const nudge = () => window.dispatchEvent(new Event("nabs-auth"));
+
+  async function create(e) {
+    e.preventDefault();
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      const s = await api.createSeries({ name: form.name.trim(), game: form.game.trim() || null });
+      setMsg(`Series "${s.name}" created (URL: /s/${s.slug}). It starts private — build its seasons, then publish it. Pick it in the bar above to start editing.`);
+      setForm({ name: "", game: "" });
+      reload(); nudge();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  async function rename(s) {
+    const name = window.prompt(`New name for "${s.name}" (the URL /s/${s.slug} stays the same):`, s.name);
+    if (name === null || !name.trim() || name.trim() === s.name) return;
+    setBusy(true); setError(null); setMsg(null);
+    try { await api.updateSeries(s.id, { name: name.trim() }); setMsg("Series renamed."); reload(); nudge(); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  async function togglePublic(s) {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.updateSeries(s.id, { isPublic: !s.isPublic });
+      setMsg(s.isPublic ? `${s.name} is now private — hidden from the public.` : `${s.name} is now public.`);
+      reload(); nudge();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  async function activate(s) {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.activateSeries(s.id);
+      setMsg(`${s.name} is now the primary series — "/" and old links land there.`);
+      reload(); nudge();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  async function move(s, dir) {
+    const sorted = [...(series || [])].sort((a, b) => a.order - b.order);
+    const i = sorted.findIndex((x) => x.id === s.id);
+    const other = sorted[i + dir];
+    if (!other) return;
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.updateSeries(s.id, { order: other.order });
+      await api.updateSeries(other.id, { order: s.order });
+      reload(); nudge();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  async function remove(s) {
+    if (s.seasonCount === 0) {
+      if (!window.confirm(`Delete the series "${s.name}"?`)) return;
+    } else {
+      const typed = window.prompt(
+        `${s.name} still holds ${s.seasonCount} season(s) with all their teams, drivers and races.\n` +
+        `Deleting removes ALL of it (a database backup is made first).\n\n` +
+        `Type the series' name (${s.name}) to confirm:`
+      );
+      if (typed === null) return;
+      if (typed.trim() !== s.name) { setError(`Not deleted. The typed name didn't match "${s.name}".`); return; }
+    }
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.deleteSeries(s.id, s.seasonCount > 0);
+      setMsg(`${s.name} deleted${s.seasonCount > 0 ? " (backup created first, see the Health tab)" : ""}.`);
+      reload(); nudge();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  const sorted = [...(series || [])].sort((a, b) => a.order - b.order);
+  return (
+    <div className="card space-y-4 p-5">
+      <CardHead eyebrow="Series" title={`Racing series (${sorted.length})`} />
+      <p className="text-sm text-light">
+        A series is its own championship with its own seasons, teams, drivers and standings — Discord
+        login, members and downloads stay shared. With a single series the public site looks exactly
+        as before; the switcher in the top bar appears once a second one exists.
+      </p>
+      <ul className="divide-y divide-border">
+        {sorted.map((s, i) => (
+          <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+            <div className="min-w-0">
+              <span className="font-display text-base font-bold text-dark">{s.name}</span>
+              {s.isActive && <span className="ml-2 pill bg-emerald-500/15 text-emerald-600">primary</span>}
+              {!s.isActive && s.isPublic === false && (
+                <span className="ml-2 pill bg-rose-500/15 text-rose-600">private · hidden</span>
+              )}
+              <div className="text-xs text-light">
+                /s/{s.slug} · {s.seasonCount} season{s.seasonCount === 1 ? "" : "s"}{s.game ? ` · ${s.game}` : ""}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {sorted.length > 1 && (
+                <span className="flex items-center gap-1">
+                  <button className="text-xs text-light transition hover:text-dark disabled:opacity-30" disabled={busy || i === 0}
+                    onClick={() => move(s, -1)} title="Move up in the switcher">▲</button>
+                  <button className="text-xs text-light transition hover:text-dark disabled:opacity-30" disabled={busy || i === sorted.length - 1}
+                    onClick={() => move(s, 1)} title="Move down in the switcher">▼</button>
+                </span>
+              )}
+              <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                onClick={() => setSlug(s.slug)} title="Point the admin at this series (the bar above follows)">
+                Edit this series →
+              </button>
+              <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                onClick={() => rename(s)}>Rename</button>
+              {!s.isActive && (
+                <>
+                  <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                    onClick={() => togglePublic(s)}>
+                    {s.isPublic ? "Make private" : "Make public"}
+                  </button>
+                  <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                    onClick={() => activate(s)}>Make primary</button>
+                  <button className="text-xs font-semibold text-light transition hover:text-primary" disabled={busy}
+                    onClick={() => remove(s)}>Delete</button>
+                </>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <form onSubmit={create} className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+        <input className="input min-w-44 flex-1" placeholder="New series name (e.g. Sunday GT)" value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+        <input className="input min-w-44 flex-1" placeholder="Game / subtitle (optional)" value={form.game}
+          onChange={(e) => setForm({ ...form, game: e.target.value })} />
+        <button className="btn-primary" disabled={busy || !form.name.trim()}>Create series</button>
+      </form>
+      {error && <Notice kind="error">{error}</Notice>}
+      {msg && <Notice kind="success">{msg}</Notice>}
     </div>
   );
 }

@@ -16,6 +16,13 @@ import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 // sync with whatever the admin schedules. Championship rounds (number set) are
 // clickable once completed; special events (isSpecialEvent) are info-only.
 
+// Pure + used both in early effects (deep-link handling, before any early
+// return) and in the render body, so it lives at module scope rather than
+// being redefined in two places.
+function kindOf(r) {
+  return r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+}
+
 function fmtDate(d) {
   return new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
 }
@@ -93,7 +100,7 @@ function RoundRail({ races, selectedId, onSelect }) {
             className={`group flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition lg:w-full lg:shrink ${border}`}
           >
             <span className={`font-display text-lg font-black leading-none tabular-nums ${active ? "text-dark" : done ? "text-emerald-600" : "text-faint group-hover:text-light"}`}>
-              {String(r.number).padStart(2, "0")}
+              {r.number != null ? String(r.number).padStart(2, "0") : kindOf(r) === "TRAINING" ? "TR" : "SE"}
             </span>
             {c && <Flag code={c.country} title={c.countryName} />}
             <span className="flex min-w-0 flex-col leading-tight">
@@ -120,20 +127,28 @@ function RoundRail({ races, selectedId, onSelect }) {
 // are static info cards.
 // ---------------------------------------------------------------------------
 const EMERALD = "#10b981";
-const BRAND = "#f4afc6"; // NABS pastel pink
+// Reads the live brand accent (--c-brand, series-overridable — see index.css)
+// rather than a fixed hex, so a series' recoloured accent reaches this inline
+// style too.
+const BRAND = "rgb(var(--c-brand))";
+const SKY = "#0ea5e9"; // training sessions
 
 function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
-  const e = { type: r.isSpecialEvent ? "se" : "round", number: r.number, track: r.track, date: r.date };
-  const se = r.isSpecialEvent;
+  const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+  const se = kind === "SPECIAL";
+  const training = kind === "TRAINING";
+  const e = { number: r.number, track: r.track, date: r.date };
+  // Training sessions run on real circuits, so their outline still draws.
   const circuit = se ? null : circuitFor(r.track);
   const done = !!r.isCompleted;
-  const clickable = done && !se;
+  const clickable = done && kind === "CHAMPIONSHIP";
   const dbRace = r;
 
-  const tone = se || done ? EMERALD : isNext ? BRAND : null;
+  const tone = training ? SKY : se || done ? EMERALD : isNext ? BRAND : null;
 
   let pill;
-  if (se) pill = <span className="pill bg-emerald-500/15 text-emerald-600">Special Event</span>;
+  if (training) pill = <span className="pill bg-sky-500/15 text-sky-600">Training</span>;
+  else if (se) pill = <span className="pill bg-emerald-500/15 text-emerald-600">Special Event</span>;
   else if (done) pill = <span className="pill bg-emerald-500/15 text-emerald-600">View results</span>;
   else if (isNext) pill = <span className="pill bg-brand/30 text-dark">Next up</span>;
   else pill = <span className="pill bg-surface2 text-light">Upcoming</span>;
@@ -157,7 +172,9 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
         </div>
       ) : (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="ghost-numeral select-none text-[7rem] leading-none text-emerald-500/10">SE</span>
+          <span className={`ghost-numeral select-none text-[7rem] leading-none ${training ? "text-sky-500/10" : "text-emerald-500/10"}`}>
+            {training ? "TR" : "SE"}
+          </span>
         </div>
       )}
 
@@ -165,14 +182,14 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
       <div className="relative flex h-full flex-col justify-between p-4">
         <div className="flex items-start justify-between">
           <div className="flex h-10 min-w-10 items-center justify-center rounded-xl bg-ink px-2.5 font-display text-base font-black tabular-nums text-white shadow">
-            {se ? "SE" : `R${e.number}`}
+            {training ? "TR" : se ? "SE" : `R${e.number}`}
           </div>
           {pill}
         </div>
         <div className="space-y-1.5">
           <div className="flex items-center gap-2.5">
             {circuit && <Flag code={circuit.country} title={circuit.countryName} />}
-            <h4 className={`font-display text-xl font-extrabold uppercase tracking-tight ${se ? "text-emerald-600" : "text-dark"}`}>
+            <h4 className={`font-display text-xl font-extrabold uppercase tracking-tight ${training ? "text-sky-600" : se ? "text-emerald-600" : "text-dark"}`}>
               {e.track}
             </h4>
           </div>
@@ -243,19 +260,25 @@ export default function Races() {
     const target = races.find((r) => r.id === wantRaceId);
     if (target) {
       setSelectedId(target.id);
+      // The explorer only lists ONE session type at a time — switch to the
+      // linked race's own tab so it's actually visible (and highlighted) in
+      // the rail, not just selected behind the scenes.
+      const k = kindOf(target);
+      setTab(k === "TRAINING" ? "training" : k === "SPECIAL" ? "se" : "rounds");
       requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
     }
   }, [wantRaceId, races]);
 
   useEffect(() => {
     if (races && races.length && !selectedId) {
-      // A valid ?race=<id> is handled above; otherwise default to the most recent
-      // completed round, falling back to the next upcoming round before any
-      // results exist so its sign-up is shown.
+      // A valid ?race=<id> is handled above; otherwise default to the most
+      // recent completed CHAMPIONSHIP round (the "rounds" tab is the initial
+      // tab), falling back to the next upcoming one before any results exist
+      // so its sign-up is shown.
       const wanted = wantRaceId ? races.find((r) => r.id === wantRaceId) : null;
       if (wanted) return;
-      const last = [...races].reverse().find((r) => r.isCompleted && !r.isSpecialEvent);
-      const nextUp = races.find((r) => !r.isCompleted && !r.isSpecialEvent && r.number != null);
+      const last = [...races].reverse().find((r) => r.isCompleted && kindOf(r) === "CHAMPIONSHIP");
+      const nextUp = races.find((r) => !r.isCompleted && kindOf(r) === "CHAMPIONSHIP" && r.number != null);
       const target = last || nextUp;
       if (target) setSelectedId(target.id);
     }
@@ -295,12 +318,13 @@ export default function Races() {
   // Sort/compare by the resolved kickoff (date-only entries fall back to the
   // league's usual start time instead of midnight).
   const withDate = (r) => raceKickoff(r.date)?.getTime() ?? Infinity;
-  // Championship rounds (have a number) and special events, each in calendar order.
+  // Championship rounds (have a number), training sessions and special events,
+  // each group in calendar order.
   const rounds = races
-    .filter((r) => !r.isSpecialEvent && r.number != null)
+    .filter((r) => kindOf(r) === "CHAMPIONSHIP" && r.number != null)
     .sort((a, b) => a.number - b.number);
-  const specials = races.filter((r) => r.isSpecialEvent).sort((a, b) => withDate(a) - withDate(b));
-  const championRounds = rounds; // RoundStrip only flips between scored rounds
+  const trainings = races.filter((r) => kindOf(r) === "TRAINING").sort((a, b) => withDate(a) - withDate(b));
+  const specials = races.filter((r) => kindOf(r) === "SPECIAL").sort((a, b) => withDate(a) - withDate(b));
 
   // "Next up" = earliest not-yet-completed entry that hasn't clearly finished
   // yet. The live window keeps a running race listed as next up (rather than
@@ -310,33 +334,73 @@ export default function Races() {
     .filter((r) => !r.isCompleted && r.date && withDate(r) + LIVE_WINDOW_MS > now)
     .sort((a, b) => withDate(a) - withDate(b))[0];
 
-  const shown = tab === "rounds" ? rounds : specials;
+  // The ONE list driving both the explorer (rail + detail) above and the
+  // calendar grid below — switching tabs changes what both show, together.
+  const shown = tab === "rounds" ? rounds : tab === "training" ? trainings : specials;
+  const tabLabel = tab === "rounds" ? "Championship rounds" : tab === "training" ? "Training sessions" : "Special events";
+  const railLabel = tab === "rounds" ? "Rounds" : tab === "training" ? "Sessions" : "Events";
   // The race currently open in the explorer. Completed -> results table;
   // upcoming -> the UpcomingRacePanel (countdown, circuit map, track record).
   const selectedRace = (races || []).find((r) => r.id === selectedId);
   const tabCls = (active) =>
     `rounded-lg px-4 py-2 text-sm font-bold transition ${active ? "bg-brand text-ink shadow" : "text-light hover:text-dark"}`;
 
+  // Switching tabs re-points the explorer at a sensible race of the NEW type —
+  // same heuristic as the initial pick (most recent completed, else next
+  // upcoming, else just the first one) — so the rail and detail panel always
+  // land on something relevant instead of staying on the old tab's selection.
+  function selectTab(next) {
+    setTab(next);
+    const list = next === "rounds" ? rounds : next === "training" ? trainings : specials;
+    const last = [...list].reverse().find((r) => r.isCompleted);
+    const nextUp = list.find((r) => !r.isCompleted);
+    setSelectedId((last || nextUp || list[0])?.id ?? null);
+  }
+
   return (
     <div className="space-y-12">
       <PageHeader eyebrow="Schedule & Results" title="Races" />
 
-      {/* Results explorer: round list (left), and on the right the selected
-          round's results (completed) or sign-up + driver market (upcoming). */}
+      {/* Session-type switcher: drives BOTH the explorer below (rail + detail)
+          and the calendar grid further down, so picking a type shows every
+          view of it — not just the calendar cards. */}
+      <div className="reveal inline-flex rounded-xl border border-border bg-card p-1">
+        <button type="button" onClick={() => selectTab("rounds")} className={tabCls(tab === "rounds")}>
+          Championship
+          <span className="ml-1.5 opacity-70">{rounds.length}</span>
+        </button>
+        {/* Training sessions get their own clearly-labelled group — the tab
+            only appears once a session is scheduled, so a league without
+            trainings keeps today's two-tab page. */}
+        {trainings.length > 0 && (
+          <button type="button" onClick={() => selectTab("training")} className={tabCls(tab === "training")}>
+            Training / Sessions
+            <span className="ml-1.5 opacity-70">{trainings.length}</span>
+          </button>
+        )}
+        <button type="button" onClick={() => selectTab("se")} className={tabCls(tab === "se")}>
+          Special Events
+          <span className="ml-1.5 opacity-70">{specials.length}</span>
+        </button>
+      </div>
+
+      {/* Results explorer: race list (left), and on the right the selected
+          race's results (completed) or sign-up + info (upcoming) — for
+          whichever session type is picked above. */}
       <div ref={panelRef} className="reveal scroll-mt-24">
-        {championRounds.length > 0 ? (
+        {shown.length > 0 ? (
           // minmax(0,…) keeps the wide results table from stretching the
           // column (and the whole page) past the viewport on phones
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]">
-            {/* round list — horizontal on phones, vertical sidebar from lg up */}
+            {/* race list — horizontal on phones, vertical sidebar from lg up */}
             <aside className="lg:sticky lg:top-28 lg:self-start">
               {/* The label row shares the exact height of the round header on
                   the right (h-8 title line + mb-4), so the first round button
                   and the results table start flush on one line. */}
               <h3 className="mb-4 hidden h-8 items-center font-mono text-xs font-bold uppercase tracking-widest text-light lg:flex">
-                Rounds
+                {railLabel}
               </h3>
-              <RoundRail races={championRounds} selectedId={selectedId} onSelect={selectRace} />
+              <RoundRail races={shown} selectedId={selectedId} onSelect={selectRace} />
             </aside>
 
             {/* selected race: results for completed rounds, sign-up + driver
@@ -356,7 +420,7 @@ export default function Races() {
                             <Flag code={circuitFor(detail.race.track).country} title={circuitFor(detail.race.track).countryName} w={26} h={19} />
                           )}
                           <h2 className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
-                            <span className="text-light">R{detail.race.number}</span> {detail.race.track}
+                            {detail.race.number != null && <span className="text-light">R{detail.race.number}</span>} {detail.race.track}
                           </h2>
                           <span className="ml-auto flex shrink-0 items-center gap-3">
                             {/* replay of this round, registered in the admin Downloads tab */}
@@ -397,24 +461,22 @@ export default function Races() {
             </div>
           </div>
         ) : (
-          <div className="card p-8 text-center text-medium">No championship rounds scheduled yet.</div>
+          <div className="card p-8 text-center text-medium">
+            {tab === "rounds"
+              ? "No championship rounds scheduled yet."
+              : tab === "training"
+                ? "No training sessions scheduled."
+                : "No special events scheduled."}
+          </div>
         )}
       </div>
 
-      {/* Full calendar */}
+      {/* Full calendar — same session type as the explorer above (one shared
+          switcher drives both), just as an at-a-glance grid instead of one
+          race at a time. */}
       <div className="reveal space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="section-title">Calendar</h3>
-          <div className="inline-flex rounded-xl border border-border bg-card p-1">
-            <button type="button" onClick={() => setTab("rounds")} className={tabCls(tab === "rounds")}>
-              Championship
-              <span className="ml-1.5 opacity-70">{rounds.length}</span>
-            </button>
-            <button type="button" onClick={() => setTab("se")} className={tabCls(tab === "se")}>
-              Special Events
-              <span className="ml-1.5 opacity-70">{specials.length}</span>
-            </button>
-          </div>
+          <h3 className="section-title">Calendar · {tabLabel}</h3>
         </div>
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((r, i) => (
@@ -429,7 +491,11 @@ export default function Races() {
           ))}
           {shown.length === 0 && (
             <div className="card col-span-full p-8 text-center text-medium">
-              {tab === "rounds" ? "No championship rounds scheduled yet." : "No special events scheduled."}
+              {tab === "rounds"
+                ? "No championship rounds scheduled yet."
+                : tab === "training"
+                  ? "No training sessions scheduled."
+                  : "No special events scheduled."}
             </div>
           )}
         </div>

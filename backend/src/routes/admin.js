@@ -17,6 +17,8 @@ import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, createFullBackupZip } from "../services/backupService.js";
 import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
 import { parseFormatNumber } from "../lib/raceFormat.js";
+import { RACE_TYPES, writeRaceType } from "../lib/raceTypes.js";
+import { writeSeasonHero } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
 import {
@@ -32,6 +34,10 @@ import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq, writeWelcomeFaq } from "../lib/welcomeFaq.js";
 import { dbListMembers, dbGetMember, dbSetBanned, shapeMember } from "../lib/members.js";
 import { dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds } from "../lib/persons.js";
+import {
+  dbListSeries, dbCreateSeries, dbUpdateSeries, dbActivateSeries, dbDeleteSeries,
+  getSeriesById, resolveSeries, seasonIdsOfSeries, seasonSeriesMap, setSeasonSeries,
+} from "../lib/series.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import { UPLOADS_DIR, LOGS_DIR } from "../lib/dataDirs.js";
 
@@ -78,6 +84,7 @@ const downloadUpload = multer({
 // seeded logos keep living at /teams/<id>.png inside the frontend bundle.
 const TEAMS_DIR = join(UPLOADS_DIR, "teams");
 const TRACKS_DIR = join(UPLOADS_DIR, "tracks");
+const SEASONS_DIR = join(UPLOADS_DIR, "seasons");
 const LOGO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg" };
 // A track key is a slug (letters/digits only) — validate before touching the FS.
 const safeTrackKey = (k) => (normKey(k) === String(k || "").toLowerCase() && k ? k : null);
@@ -130,7 +137,7 @@ router.get("/activity", (req, res) => {
 // GET /api/admin/integrity?season=<number|id> -> full season consistency report.
 router.get("/integrity", async (req, res, next) => {
   try {
-    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true });
+    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true, series: req.query.series });
     if (!seasonId) return res.status(404).json({ error: "Season not found" });
     res.json(await checkSeasonIntegrity(prisma, seasonId));
   } catch (e) {
@@ -208,8 +215,10 @@ router.post("/races/import", upload.single("file"), async (req, res, next) => {
     }
 
     // Match only against the target season's roster — with several seasons in
-    // the DB, same-named drivers of old seasons must never be suggested.
-    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true });
+    // the DB, same-named drivers of old seasons must never be suggested. The
+    // series param pins the lookup to the series the admin is editing, so an
+    // import can never silently land in the wrong series.
+    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true, series: req.query.series });
     const drivers = await prisma.driver.findMany({ where: { seasonId }, orderBy: { name: "asc" } });
     const parsed = parseAcRaceJson(json, drivers);
     // Keep the raw JSON so the round's telemetry can be recomputed later; the
@@ -238,10 +247,10 @@ router.get("/results/remote", async (req, res, next) => {
 // fuzzy-matched mapping as a manual file upload (nothing persisted yet).
 router.post("/results/remote/import", async (req, res, next) => {
   try {
-    const { id, season } = req.body || {};
+    const { id, season, series } = req.body || {};
     if (!id || !/^[A-Za-z0-9_]+$/.test(id)) return res.status(400).json({ error: "Valid result id required" });
     const json = await fetchRemoteResult(id);
-    const seasonId = await resolveSeasonId(prisma, season, { includePrivate: true });
+    const seasonId = await resolveSeasonId(prisma, season, { includePrivate: true, series });
     const drivers = await prisma.driver.findMany({ where: { seasonId }, orderBy: { name: "asc" } });
     const parsed = parseAcRaceJson(json, drivers);
     const archiveKey = stashIncoming(json);
@@ -262,7 +271,10 @@ router.post("/races/commit", async (req, res, next) => {
       return res.status(400).json({ error: "number and results[] required" });
     }
 
-    const targetSeasonId = seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true }));
+    // Explicit seasonId wins; the fallback resolves the active season of the
+    // series the admin is editing (never a foreign series' active season).
+    const targetSeasonId =
+      seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
     let race = await prisma.race.findFirst({
       where: { number: Number(number), seasonId: targetSeasonId },
       include: { _count: { select: { results: true } } },
@@ -320,7 +332,7 @@ router.post("/races/preview", async (req, res, next) => {
   try {
     const { raceId, number, results, season } = req.body || {};
     if (!Array.isArray(results)) return res.status(400).json({ error: "results[] required" });
-    const seasonId = await resolveSeasonId(prisma, season, { includePrivate: true });
+    const seasonId = await resolveSeasonId(prisma, season, { includePrivate: true, series: req.body?.series });
     const preview = await previewRaceImpact(prisma, {
       seasonId,
       raceId: raceId || null,
@@ -341,7 +353,7 @@ router.post("/races/preview", async (req, res, next) => {
 router.post("/ratings/preview", async (req, res, next) => {
   try {
     const { weights, season } = req.body || {};
-    const seasonId = await resolveSeasonId(prisma, season, { includePrivate: true });
+    const seasonId = await resolveSeasonId(prisma, season, { includePrivate: true, series: req.body?.series });
     const ratings = seasonId ? await getDriverRatings(prisma, seasonId, weights || {}) : [];
     const saved = await readRatingWeights(prisma);
     res.json({ defaults: RATING_DEFAULTS, saved, ratings });
@@ -422,7 +434,7 @@ router.post("/market/:offerId/assign", async (req, res, next) => {
 // true/false once the race has results, null while it hasn't run.
 router.get("/market/history", async (req, res, next) => {
   try {
-    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true });
+    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true, series: req.query.series });
     const offers = await prisma.seatOffer.findMany({
       where: { race: { seasonId } },
       include: {
@@ -648,11 +660,14 @@ router.post("/drivers", async (req, res, next) => {
     }
     // Explicit id still wins (scripted imports); otherwise derive from the name.
     const driverId = String(id || "").trim() || (await uniqueDriverId(name));
-    // Default to the season the chosen team belongs to (or the active season).
+    // Default to the season the chosen team belongs to (or the active season
+    // of the series the admin is editing).
     let resolvedSeasonId = seasonId;
     if (!resolvedSeasonId) {
       const team = await prisma.team.findUnique({ where: { id: teamId } });
-      resolvedSeasonId = team?.seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true }));
+      resolvedSeasonId =
+        team?.seasonId ||
+        (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
     }
     const driver = await prisma.driver.create({
       data: {
@@ -674,7 +689,7 @@ router.post("/drivers", async (req, res, next) => {
 
 router.put("/drivers/:id", async (req, res, next) => {
   try {
-    const { name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role } = req.body || {};
+    const { name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role, hideFromStandings } = req.body || {};
     // Special league role ('safety' = safety car driver, "" clears). Raw-SQL
     // column, so it's written after the prisma update below.
     if (role !== undefined && role !== "" && role !== null && !DRIVER_ROLES.includes(role)) {
@@ -729,6 +744,19 @@ router.put("/drivers/:id", async (req, res, next) => {
     if (role !== undefined) {
       driver.role = await writeDriverRole(prisma, driver.id, role);
     }
+    // Hide from the public driver standings (raw-SQL column). An explicit value
+    // wins; reactivating a driver clears the flag so nobody ends up active but
+    // invisible.
+    const hideVal =
+      hideFromStandings !== undefined ? (hideFromStandings ? 1 : 0) : isActive === true ? 0 : null;
+    if (hideVal !== null) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "Driver" SET "hideFromStandings" = ? WHERE "id" = ?`,
+        hideVal,
+        driver.id
+      );
+      driver.hideFromStandings = !!hideVal;
+    }
     res.json(driver);
   } catch (e) {
     if (e.code === "P2025") return res.status(404).json({ error: "Driver not found" });
@@ -748,12 +776,20 @@ router.put("/drivers/:id", async (req, res, next) => {
 //   unclaimed = active-season drivers nobody has logged in as yet.
 router.get("/members", async (req, res, next) => {
   try {
-    const [rows, drivers, activeSeason, adminIds] = await Promise.all([
+    const [rows, drivers, activeSeasons, primarySeason, adminIds] = await Promise.all([
       dbListMembers(prisma),
       prisma.driver.findMany({ include: { team: true, season: true } }),
-      prisma.season.findFirst({ where: { isActive: true } }),
+      // One active season PER SERIES since the series model — a roster row on
+      // any of them counts as "current" here.
+      prisma.season.findMany({ where: { isActive: true }, select: { id: true } }),
+      // The primary series' active season, preferred when a person has current
+      // rows in several series.
+      resolveSeasonId(prisma, undefined, { includePrivate: true }).then((id) =>
+        id ? { id } : null
+      ),
       getAdminDiscordIds(prisma),
     ]);
+    const activeIds = new Set(activeSeasons.map((s) => s.id));
     const shapeDriver = (d) =>
       d && {
         id: d.id,
@@ -763,14 +799,16 @@ router.get("/members", async (req, res, next) => {
         team: d.team ? { id: d.team.id, name: d.team.name, color: d.team.color } : null,
         seasonId: d.seasonId,
         seasonName: d.season?.name || null,
-        isActiveSeason: !!activeSeason && d.seasonId === activeSeason.id,
+        isActiveSeason: activeIds.has(d.seasonId),
       };
     const members = rows.map((r) => {
       const m = shapeMember(r);
       const linked = drivers.filter((d) => d.discordUserId === m.discordId);
-      // Prefer the active season's row; else the most recent season's.
+      // Prefer the primary series' active row, then any active season's row,
+      // else the most recent season's.
       const driver =
-        linked.find((d) => activeSeason && d.seasonId === activeSeason.id) ||
+        linked.find((d) => primarySeason && d.seasonId === primarySeason.id) ||
+        linked.find((d) => activeIds.has(d.seasonId)) ||
         linked.sort((a, b) => (b.season?.number ?? 0) - (a.season?.number ?? 0))[0] ||
         null;
       return { ...m, driver: shapeDriver(driver), isAdmin: adminIds.has(String(m.discordId)) };
@@ -779,13 +817,12 @@ router.get("/members", async (req, res, next) => {
     // no known login account carries — i.e. an admin-entered ID that might be
     // a typo. Linking such a driver simply replaces the wrong ID with the real
     // one, so a mistyped entry is one click away from being corrected once the
-    // person actually logs in.
+    // person actually logs in. Every series' active roster is listed.
     const knownIds = new Set(rows.map((r) => String(r.discordId)));
     const unclaimed = drivers
       .filter(
         (d) =>
-          activeSeason &&
-          d.seasonId === activeSeason.id &&
+          activeIds.has(d.seasonId) &&
           (!d.discordUserId || !knownIds.has(String(d.discordUserId)))
       )
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -1248,30 +1285,41 @@ async function writeRaceFormat(raceId, extras) {
   }
 }
 
-// POST /api/admin/events  { number?, track, date?, seasonId?, isSpecialEvent?,
-//                           info?, qualiMinutes?, raceLaps? }
-// Creates an upcoming race (or a non-championship special event when
-// isSpecialEvent is set; those have no round number). The optional extras feed
-// the Discord announcement and the site's upcoming-race panels.
+// POST /api/admin/events  { number?, track, date?, seasonId?, type?,
+//                           isSpecialEvent?, info?, qualiMinutes?, raceLaps? }
+// Creates an upcoming race. `type` picks what it is: CHAMPIONSHIP (scored
+// round, needs a number), TRAINING (practice session — no number, not scored,
+// RSVP works) or SPECIAL (special event). The legacy isSpecialEvent flag still
+// works as an alias for SPECIAL. The optional extras feed the Discord
+// announcement and the site's upcoming-race panels.
 router.post("/events", async (req, res, next) => {
   try {
     const { number, track, date, seasonId, isSpecialEvent } = req.body || {};
     if (!track) return res.status(400).json({ error: "track required" });
-    if (!isSpecialEvent && !number) return res.status(400).json({ error: "number required" });
+    const type = req.body?.type || (isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+    if (!RACE_TYPES.includes(type)) {
+      return res.status(400).json({ error: `type must be one of: ${RACE_TYPES.join(", ")}` });
+    }
+    const isChampionship = type === "CHAMPIONSHIP";
+    if (isChampionship && !number) return res.status(400).json({ error: "number required" });
     const extras = parseEventExtras(req.body || {});
     if (extras.error) return res.status(400).json({ error: extras.error });
-    const targetSeasonId = seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true }));
+    const targetSeasonId =
+      seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
     const race = await prisma.race.create({
       data: {
-        number: isSpecialEvent ? null : Number(number),
+        number: isChampionship ? Number(number) : null,
         track,
         date: date ? new Date(date) : null,
         isCompleted: false,
-        isSpecialEvent: !!isSpecialEvent,
+        // Derived flag every scoring read filters on: TRAINING carries it too,
+        // so a session can never sneak into standings or round numbering.
+        isSpecialEvent: !isChampionship,
         seasonId: targetSeasonId,
         info: extras.info ?? null,
       },
     });
+    race.type = await writeRaceType(prisma, race.id, type);
     await writeRaceFormat(race.id, extras);
     res.status(201).json(race);
   } catch (e) {
@@ -1280,15 +1328,18 @@ router.post("/events", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/events/:id  { track?, date?, info?, qualiMinutes?, raceLaps? }
+// PUT /api/admin/events/:id  { track?, date?, type?, number?, info?,
+//                              qualiMinutes?, raceLaps? }
 // Edit a race's details AFTER the fact — e.g. rename the raw AC track id
 // ("acu_cota_2021") to a display name ("COTA") once the round is imported.
-// Works for completed rounds too; results and scoring are untouched.
+// Works for completed rounds too; results and scoring are untouched. Changing
+// the type re-derives number/isSpecialEvent: switching to CHAMPIONSHIP needs a
+// round number, switching away clears it.
 router.put("/events/:id", async (req, res, next) => {
   try {
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
     if (!race) return res.status(404).json({ error: "Race not found" });
-    const { track, date } = req.body || {};
+    const { track, date, type, number } = req.body || {};
     const extras = parseEventExtras(req.body || {});
     if (extras.error) return res.status(400).json({ error: extras.error });
     const data = {};
@@ -1298,7 +1349,30 @@ router.put("/events/:id", async (req, res, next) => {
     }
     if (date !== undefined) data.date = date ? new Date(date) : null;
     if (extras.info !== undefined) data.info = extras.info;
+    if (type !== undefined) {
+      if (!RACE_TYPES.includes(type)) {
+        return res.status(400).json({ error: `type must be one of: ${RACE_TYPES.join(", ")}` });
+      }
+      if (type === "CHAMPIONSHIP") {
+        const n = number !== undefined ? Number(number) : race.number;
+        if (!n) return res.status(400).json({ error: "A championship round needs a round number" });
+        data.number = n;
+      } else {
+        // A race with stored results keeps its identity — retyping it would
+        // silently pull its points out of the standings.
+        const count = await prisma.raceResult.count({ where: { raceId: race.id } });
+        if (count > 0) {
+          return res.status(409).json({ error: "This race has stored results and must stay a championship round" });
+        }
+        data.number = null;
+      }
+    } else if (number !== undefined && race.number != null) {
+      const n = Number(number);
+      if (!n) return res.status(400).json({ error: "Round number cannot be empty" });
+      data.number = n;
+    }
     const updated = await prisma.race.update({ where: { id: race.id }, data });
+    if (type !== undefined) updated.type = await writeRaceType(prisma, race.id, type);
     await writeRaceFormat(race.id, extras);
     // The Discord post mirrors these details — keep an already-announced
     // message in sync without the admin having to hit Announce again.
@@ -1355,32 +1429,167 @@ router.delete("/events/:id", async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// SERIES
+// The level above seasons: several independent championships in one deploy.
+// The slug (URL identity) is set once at creation and never changes — renames
+// only touch the display name, so shared /s/<slug>/ links keep working.
+// ---------------------------------------------------------------------------
+// GET /api/admin/series -> all series (private included) with season counts.
+router.get("/series", async (req, res, next) => {
+  try {
+    const [series, bySeries] = await Promise.all([
+      dbListSeries(prisma, { includePrivate: true }),
+      seasonSeriesMap(prisma),
+    ]);
+    const counts = new Map();
+    for (const sid of bySeries.values()) counts.set(sid, (counts.get(sid) || 0) + 1);
+    res.json(series.map((s) => ({ ...s, seasonCount: counts.get(s.id) || 0 })));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/series  { name, game?, description? }
+// The slug is derived from the name once and then frozen.
+router.post("/series", async (req, res, next) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    if (!name) return res.status(400).json({ error: "name required" });
+    const series = await dbCreateSeries(prisma, {
+      name,
+      slug: req.body?.slug,
+      game: req.body?.game,
+      description: req.body?.description,
+    });
+    res.status(201).json(series);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic? }
+// The slug is deliberately NOT editable (bookmarked URLs must keep working).
+router.put("/series/:id", async (req, res, next) => {
+  try {
+    const existing = await getSeriesById(prisma, req.params.id);
+    if (!existing) return res.status(404).json({ error: "Series not found" });
+    if (req.body?.name !== undefined && !String(req.body.name).trim()) {
+      return res.status(400).json({ error: "Series name cannot be empty" });
+    }
+    // Hiding the ACTIVE (primary) series would blank the public site.
+    if (req.body?.isPublic === false && existing.isActive) {
+      return res.status(409).json({ error: "The active series cannot be hidden — activate another series first" });
+    }
+    const series = await dbUpdateSeries(prisma, req.params.id, req.body || {});
+    res.json(series);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/series/:id/activate -> make this the primary series ("/"
+// redirects here). Forced public, exactly one active at a time.
+router.post("/series/:id/activate", async (req, res, next) => {
+  try {
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    await dbActivateSeries(prisma, series.id);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/series/:id[?force=1] -> remove a series.
+// The ACTIVE series and the last remaining series can never be deleted. An
+// empty series goes right away; one that still holds seasons requires the
+// explicit force flag — then every season (with all its teams/drivers/races)
+// is removed, right after an automatic DB backup. Backup failure aborts.
+router.delete("/series/:id", async (req, res, next) => {
+  try {
+    const [series, all] = await Promise.all([
+      getSeriesById(prisma, req.params.id),
+      dbListSeries(prisma, { includePrivate: true }),
+    ]);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    if (series.isActive) return res.status(409).json({ error: "The active series cannot be deleted" });
+    if (all.length <= 1) return res.status(409).json({ error: "The last series cannot be deleted" });
+
+    const seasons = await seasonIdsOfSeries(prisma, series.id);
+    if (seasons.length && !req.query.force) {
+      return res.status(409).json({
+        error: `${series.name} still holds ${seasons.length} season(s) with all their teams, drivers and races. Deleting removes ALL of it.`,
+        needsConfirm: true,
+      });
+    }
+
+    if (seasons.length) {
+      // Safety net first: this wipes real data.
+      await createBackup(prisma, `before-delete-series-${series.slug}`);
+      for (const s of seasons) {
+        await prisma.$transaction([
+          // Races first: results, constructor scores, RSVPs and seat offers
+          // (with their interests) cascade off them.
+          prisma.race.deleteMany({ where: { seasonId: s.id } }),
+          prisma.driver.deleteMany({ where: { seasonId: s.id } }),
+          prisma.team.deleteMany({ where: { seasonId: s.id } }),
+          prisma.season.delete({ where: { id: s.id } }),
+        ]);
+      }
+    }
+    await dbDeleteSeries(prisma, series.id);
+    res.json({ ok: true, deletedSeasons: seasons.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // SEASONS
 // ---------------------------------------------------------------------------
-// GET /api/admin/seasons -> all seasons with content counts.
+// GET /api/admin/seasons[?series=<slug>] -> seasons with content counts —
+// scoped to one series when asked (the admin UI edits one series at a time),
+// otherwise all of them (each row says which series it belongs to).
 router.get("/seasons", async (req, res, next) => {
   try {
-    const [seasons, raw] = await Promise.all([
+    const [seasons, raw, bySeries, allSeries] = await Promise.all([
       prisma.season.findMany({
         orderBy: { number: "desc" },
         include: { _count: { select: { teams: true, drivers: true, races: true } } },
       }),
-      // teamDropWorst / teamDropMode / isPublic / isAnnounced aren't in the
-      // generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic", "isAnnounced" FROM "Season"`).catch(() => []),
+      // teamDropWorst / teamDropMode / isPublic / isAnnounced / heroImageUrl
+      // aren't in the generated client yet -> raw read.
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic", "isAnnounced", "heroImageUrl" FROM "Season"`).catch(() => []),
+      seasonSeriesMap(prisma),
+      dbListSeries(prisma, { includePrivate: true }),
     ]);
     const rawById = new Map(raw.map((r) => [r.id, r]));
+    const seriesById = new Map(allSeries.map((s) => [s.id, s]));
+    let filterSeriesId = null;
+    if (req.query.series !== undefined && req.query.series !== "") {
+      const target = await resolveSeries(prisma, req.query.series, { includePrivate: true });
+      if (!target) return res.json([]);
+      filterSeriesId = target.id;
+    }
     res.json(
-      seasons.map((s) => {
-        const extra = rawById.get(s.id) || {};
-        return {
-          ...s,
-          teamDropWorst: extra.teamDropWorst == null ? null : Number(extra.teamDropWorst),
-          teamDropMode: extra.teamDropMode === "rounds" ? "rounds" : null,
-          isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
-          isAnnounced: !!Number(extra.isAnnounced ?? 0),
-        };
-      })
+      seasons
+        .filter((s) => !filterSeriesId || bySeries.get(s.id) === filterSeriesId)
+        .map((s) => {
+          const extra = rawById.get(s.id) || {};
+          const seriesId = bySeries.get(s.id) || null;
+          const series = seriesId ? seriesById.get(seriesId) : null;
+          return {
+            ...s,
+            seriesId,
+            seriesName: series?.name || null,
+            seriesSlug: series?.slug || null,
+            teamDropWorst: extra.teamDropWorst == null ? null : Number(extra.teamDropWorst),
+            teamDropMode: extra.teamDropMode === "rounds" ? "rounds" : null,
+            isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
+            isAnnounced: !!Number(extra.isAnnounced ?? 0),
+            heroImageUrl: extra.heroImageUrl || null,
+          };
+        })
     );
   } catch (e) {
     next(e);
@@ -1464,24 +1673,47 @@ async function writeSeasonRawFields(seasonId, raw) {
 }
 
 
-// POST /api/admin/seasons  { number, name, game?, dropWorst?, pointsTable? }
+// Season numbers are unique PER SERIES now. The DB enforces it via the
+// composite index, but the seriesId is written in a second raw step (the
+// generated client doesn't know the column), so check up front for a clean
+// error instead of a failed raw UPDATE halfway through.
+async function seasonNumberTaken(seriesId, number, exceptSeasonId = null) {
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT "id" FROM "Season" WHERE "seriesId" = ? AND "number" = ?`,
+      seriesId,
+      Number(number)
+    )
+    .catch(() => []);
+  return rows.some((r) => r.id !== exceptSeasonId);
+}
+
+// POST /api/admin/seasons  { number, name, game?, series?, dropWorst?, pointsTable? }
+// `series` (a slug) says which series the season belongs to — default: the
+// series the admin is editing / the active one.
 router.post("/seasons", async (req, res, next) => {
   try {
     const { number, name, game } = req.body || {};
     if (number === undefined || !name) return res.status(400).json({ error: "number and name required" });
+    const series = await resolveSeries(prisma, req.body?.series, { includePrivate: true });
+    if (!series) return res.status(400).json({ error: "Unknown series" });
+    if (await seasonNumberTaken(series.id, number)) {
+      return res.status(409).json({ error: `A season with that number already exists in ${series.name}` });
+    }
     const data = { number: Number(number), name, game: game || null };
     const scoringError = applyScoringInput(req.body || {}, data);
     if (scoringError) return res.status(400).json({ error: scoringError });
     const raw = parseSeasonRawFields(req.body || {});
     if (raw.error) return res.status(400).json({ error: raw.error });
     const season = await prisma.season.create({ data });
+    await setSeasonSeries(prisma, season.id, series.id);
     // New seasons are created PRIVATE by default (hidden until the admin
     // publishes them), unless the request explicitly set isPublic.
     if (raw.isPublic === undefined) raw.isPublic = 0;
     await writeSeasonRawFields(season.id, raw);
-    res.status(201).json(season);
+    res.status(201).json({ ...season, seriesId: series.id, seriesSlug: series.slug });
   } catch (e) {
-    if (e.code === "P2002") return res.status(409).json({ error: "A season with that number already exists" });
+    if (e.code === "P2002") return res.status(409).json({ error: "A season with that number already exists in this series" });
     next(e);
   }
 });
@@ -1498,11 +1730,19 @@ router.put("/seasons/:id", async (req, res, next) => {
     if (scoringError) return res.status(400).json({ error: scoringError });
     const raw = parseSeasonRawFields(req.body || {});
     if (raw.error) return res.status(400).json({ error: raw.error });
+    if (number !== undefined) {
+      // Numbers are unique per series — check against THIS season's series.
+      const bySeries = await seasonSeriesMap(prisma);
+      const seriesId = bySeries.get(req.params.id) || null;
+      if (seriesId && (await seasonNumberTaken(seriesId, number, req.params.id))) {
+        return res.status(409).json({ error: "A season with that number already exists in this series" });
+      }
+    }
     const season = await prisma.season.update({ where: { id: req.params.id }, data });
     await writeSeasonRawFields(season.id, raw);
     res.json(season);
   } catch (e) {
-    if (e.code === "P2002") return res.status(409).json({ error: "A season with that number already exists" });
+    if (e.code === "P2002") return res.status(409).json({ error: "A season with that number already exists in this series" });
     if (e.code === "P2025") return res.status(404).json({ error: "Season not found" });
     next(e);
   }
@@ -1552,15 +1792,26 @@ router.delete("/seasons/:id", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/seasons/:id/activate -> make this the active (public default) season.
+// POST /api/admin/seasons/:id/activate -> make this the active (public
+// default) season OF ITS SERIES. The invariant is "max. one active season per
+// series" — activating the GT series' season never deactivates the F1 one.
 router.post("/seasons/:id/activate", async (req, res, next) => {
   try {
     const season = await prisma.season.findUnique({ where: { id: req.params.id } });
     if (!season) return res.status(404).json({ error: "Season not found" });
-    await prisma.$transaction([
-      prisma.season.updateMany({ data: { isActive: false } }),
-      prisma.season.update({ where: { id: season.id }, data: { isActive: true } }),
-    ]);
+    const bySeries = await seasonSeriesMap(prisma);
+    const seriesId = bySeries.get(season.id) || null;
+    if (seriesId) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "Season" SET "isActive" = 0 WHERE "seriesId" = ? AND "id" != ?`,
+        seriesId,
+        season.id
+      );
+    } else {
+      // Unmigrated row (no series yet): fall back to the old global behaviour.
+      await prisma.season.updateMany({ where: { id: { not: season.id } }, data: { isActive: false } });
+    }
+    await prisma.season.update({ where: { id: season.id }, data: { isActive: true } });
     // An active season is always public — publishing it is the whole point.
     await prisma.$executeRawUnsafe(`UPDATE "Season" SET "isPublic" = 1 WHERE "id" = ?`, season.id);
     invalidatePrivateSeasonCache();
@@ -1663,6 +1914,43 @@ router.post("/seasons/:id/clone-roster", async (req, res, next) => {
   }
 });
 
+// POST /api/admin/seasons/:id/hero  (multipart: file=<image>)
+// Uploads (or replaces) the season's Home/Welcome main-card photo. Works
+// without file-system access (Railway has none), unlike the static
+// /heroes/s<number>.jpg drop-in convention it overrides for seasons that use it.
+router.post("/seasons/:id/hero", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = LOGO_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG or WEBP)" });
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+
+    mkdirSync(SEASONS_DIR, { recursive: true });
+    const filename = `${season.id}${ext}`;
+    writeFileSync(join(SEASONS_DIR, filename), req.file.buffer);
+    // Cache-bust the URL so an updated photo shows immediately.
+    const heroImageUrl = `/api/uploads/seasons/${filename}?v=${Date.now()}`;
+    await writeSeasonHero(prisma, season.id, heroImageUrl);
+    res.json({ ok: true, heroImageUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/seasons/:id/hero -> clear the override (falls back to the
+// static /heroes/s<number>.jpg drop-in convention, then /hero.jpg).
+router.delete("/seasons/:id/hero", async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    await writeSeasonHero(prisma, season.id, null);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // TEAMS
 // ---------------------------------------------------------------------------
@@ -1673,7 +1961,8 @@ router.post("/teams", async (req, res, next) => {
     if (!id || !name || tier === undefined || !color) {
       return res.status(400).json({ error: "id, name, tier, color required" });
     }
-    const targetSeasonId = seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true }));
+    const targetSeasonId =
+      seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
     const team = await prisma.team.create({
       data: { id, name, tier: Number(tier), color, seasonId: targetSeasonId },
     });

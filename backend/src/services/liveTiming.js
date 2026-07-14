@@ -536,8 +536,13 @@ async function ensureDemoState() {
   demoBuilding = true;
   let roster = [];
   try {
+    // The live relay serves the PRIMARY series' race server, so the demo grid
+    // uses that series' active roster (several seasons can be active now —
+    // one per series).
+    const { getActiveSeason } = await import("./seasonService.js");
+    const active = await getActiveSeason(prisma);
     const drivers = await prisma.driver.findMany({
-      where: { season: { isActive: true }, tier: { in: [1, 2] } },
+      where: { seasonId: active?.id, tier: { in: [1, 2] } },
       select: { name: true },
       orderBy: { tier: "asc" },
       take: 12,

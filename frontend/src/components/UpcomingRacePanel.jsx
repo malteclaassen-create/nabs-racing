@@ -67,6 +67,11 @@ export default function UpcomingRacePanel({ race }) {
   const mapRef = useRef(null);
   const { data: history, loading } = useApi(useCallback(() => api.trackHistory(race.track), [race.track]));
   const circuit = circuitFor(race.track);
+  // Training sessions have RSVP like a round; special events are announcement-
+  // only (no attendance feature to sign up for) — see backend routes/events.js.
+  const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+  const canSignUp = kind !== "SPECIAL";
+  const eyebrow = race.number != null ? `Round ${race.number} · Up next` : kind === "TRAINING" ? "Training session" : "Special event";
 
   function downloadPng() {
     const svg = mapRef.current?.querySelector("svg");
@@ -93,7 +98,7 @@ export default function UpcomingRacePanel({ race }) {
             <div className="flex items-center gap-2.5">
               {circuit && <Flag code={circuit.country} w={26} h={19} />}
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
-                Round {race.number} · Up next
+                {eyebrow}
               </span>
             </div>
             <h2 className="mt-1 font-display text-3xl font-black uppercase tracking-tight text-dark sm:text-4xl">
@@ -121,9 +126,11 @@ export default function UpcomingRacePanel({ race }) {
           </div>
           <div className="flex w-full flex-col gap-2.5 sm:w-80">
             {race.date && <RaceCountdown date={race.date} />}
-            <Link to={`/attendance?race=${race.id}`} className="btn-primary text-center">
-              Sign up now
-            </Link>
+            {canSignUp && (
+              <Link to={`/attendance?race=${race.id}`} className="btn-primary text-center">
+                Sign up now
+              </Link>
+            )}
             <Link to="/tools" className="btn-secondary text-center" title="Fuel calculator, practice pace and pit strategy">
               Race tools
             </Link>

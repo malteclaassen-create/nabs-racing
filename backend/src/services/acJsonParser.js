@@ -105,6 +105,7 @@ export function parseAcRaceJson(json, drivers) {
         envContacts: tel ? tel.envContacts : null,
         cuts: tel ? tel.cuts : null,
         overtakes: tel ? tel.overtakes : null,
+        lapsLed: tel ? tel.lapsLed : null,
         laps: tel ? tel.laps : null,
         cleanLaps: tel ? tel.cleanLaps : null,
         consistencyMs: tel ? tel.consistencyMs : null,

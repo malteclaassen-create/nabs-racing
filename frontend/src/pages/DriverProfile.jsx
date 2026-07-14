@@ -45,6 +45,7 @@ const I = {
   flag: "M5 21V4M5 4c3-1.5 6 1.5 9 0s4-1 4-1v9s-1 .5-4 1-6-1.5-9 0",
   trend: "M3 17l6-6 4 4 7-7M14 8h6v6",
   swap: "M4 8h13l-3-3M20 16H7l3 3",
+  lead: "M5 20h14M6 20V9l3 2 3-6 3 6 3-2v11",
   gauge: "M12 13l3.5-3.5M6.5 19a8 8 0 1111 0",
   alert: "M10.3 4.3l-7.4 12.8A1.5 1.5 0 004.2 19.4h15.6a1.5 1.5 0 001.3-2.3L13.7 4.3a1.5 1.5 0 00-2.6 0zM12 9v4M12 16.5h.01",
   spark: "M13 2L4.5 13H11l-1 9 8.5-11H12l1-9z",
@@ -163,6 +164,7 @@ const TILE_DEFS = (stats) => [
     available: !!stats.fastestLap,
   },
   { key: "overtakes", icon: "swap", label: "Overtakes", value: stats.overtakes, sub: "on-track passes", available: stats.overtakes != null },
+  { key: "lapsLed", icon: "lead", label: "Laps Led", value: stats.lapsLed, sub: "laps out front", available: stats.lapsLed != null },
   {
     key: "contacts", icon: "alert", label: "Contacts", value: stats.contacts, sub: "car to car",
     accent: stats.contacts === 0 ? "#16a34a" : undefined, available: stats.contacts != null,
@@ -226,11 +228,53 @@ function StatTiles({ stats, visible, className = "grid-cols-2 sm:grid-cols-3 lg:
   );
 }
 
-// Cross-season career: one row per linked season, current name resolved. The
-// backend folds two rows of the SAME season (handle change mid-season) into a
-// single line, so this renders whenever there's anything aggregated at all.
-function CareerBlock({ career }) {
-  if (!career || (career.seasons?.length ?? 0) < 1) return null;
+// A quiet footer line per OTHER series this person races in (the career table
+// itself stays scoped to the profile's own series). Line-separated list, no
+// deep link into the other series' row here — the switcher is one click away.
+function OtherSeriesLines({ otherSeries }) {
+  if (!otherSeries?.length) return null;
+  return (
+    <div className="divide-y divide-border border-t border-border">
+      {otherSeries.map((o) => (
+        <div key={o.seriesSlug || o.seriesName} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 py-3 sm:px-6">
+          <span className="text-sm text-medium">
+            Also races in{" "}
+            {o.seriesSlug ? (
+              <Link to={`/s/${o.seriesSlug}`} className="font-semibold text-dark hover:text-brand">
+                {o.seriesName}
+              </Link>
+            ) : (
+              <span className="font-semibold text-dark">{o.seriesName}</span>
+            )}
+          </span>
+          <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+            {o.seasons} {o.seasons === 1 ? "season" : "seasons"} · {o.starts} starts · {o.wins} wins ·{" "}
+            {o.points} pts{o.bestPosition ? ` · best P${o.bestPosition}` : ""}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Cross-season career: one row per linked season of THIS series, current name
+// resolved. The backend folds two rows of the SAME season (handle change
+// mid-season) into a single line, so this renders whenever there's anything
+// aggregated at all; other series show as one summary line each underneath.
+function CareerBlock({ career, otherSeries }) {
+  const hasTable = career && (career.seasons?.length ?? 0) >= 1;
+  if (!hasTable && !otherSeries?.length) return null;
+  if (!hasTable) {
+    // The person only spans series, not seasons: just the summary lines.
+    return (
+      <div className="reveal card overflow-hidden">
+        <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:px-6 sm:text-xl">
+          Across the leagues
+        </h2>
+        <OtherSeriesLines otherSeries={otherSeries} />
+      </div>
+    );
+  }
   const { seasons, totals } = career;
   return (
     <div className="reveal card overflow-hidden">
@@ -291,6 +335,7 @@ function CareerBlock({ career }) {
           </tfoot>
         </table>
       </div>
+      <OtherSeriesLines otherSeries={otherSeries} />
     </div>
   );
 }
@@ -1230,7 +1275,7 @@ export default function DriverProfile({ previewId, preview }) {
       </div>
 
       {/* Career across linked seasons (only when this driver spans more than one) */}
-      <CareerBlock career={p.career} />
+      <CareerBlock career={p.career} otherSeries={p.otherSeries} />
 
       <div>
         <Link to="/drivers" className="text-sm font-semibold text-primary hover:underline">← All drivers</Link>

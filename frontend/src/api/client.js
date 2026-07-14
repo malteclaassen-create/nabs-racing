@@ -41,6 +41,21 @@ function discordRedirectUri() {
   return `${window.location.origin}/auth/discord/callback`;
 }
 
+// The series the site is currently viewing (a URL slug), or null for the
+// active (primary) series. Set by the SeriesProvider; appended to every
+// season-scoped read so all data is transitively series-scoped. Mirrors
+// setSelectedSeason below, one level higher.
+let SELECTED_SERIES = null;
+export function setSelectedSeries(slug) {
+  SELECTED_SERIES = slug || null;
+}
+export function getSelectedSeries() {
+  return SELECTED_SERIES;
+}
+function seriesQ() {
+  return SELECTED_SERIES ? `?series=${encodeURIComponent(SELECTED_SERIES)}` : "";
+}
+
 // The season the public site is currently viewing (a round number), or null for
 // the active season. Set by the SeasonProvider; appended to season-scoped reads.
 let SELECTED_SEASON = null;
@@ -53,14 +68,24 @@ export function getSelectedSeason() {
 function seasonQ(extra = "") {
   const parts = [];
   if (SELECTED_SEASON != null) parts.push(`season=${SELECTED_SEASON}`);
+  if (SELECTED_SERIES) parts.push(`series=${encodeURIComponent(SELECTED_SERIES)}`);
   if (extra) parts.push(extra);
   return parts.length ? `?${parts.join("&")}` : "";
 }
 // Query string for a read that may target an EXPLICIT season (e.g. the Welcome
 // page always shows the active season regardless of the switcher). `null`/
-// undefined falls back to the currently-selected season.
+// undefined falls back to the currently-selected season. The series always
+// rides along — an explicit season number means "this season OF THIS SERIES".
 function seasonParam(n) {
-  return n != null ? `?season=${n}` : seasonQ();
+  if (n == null) return seasonQ();
+  const parts = [`season=${n}`];
+  if (SELECTED_SERIES) parts.push(`series=${encodeURIComponent(SELECTED_SERIES)}`);
+  return `?${parts.join("&")}`;
+}
+// For POST bodies that target the admin's currently-edited season: the series
+// rides along so the backend's active-season fallback stays inside the series.
+function seriesBody() {
+  return SELECTED_SERIES ? { series: SELECTED_SERIES } : {};
 }
 
 // Drop a dead Discord session (expired 30-day token, or a token the backend
@@ -144,20 +169,26 @@ export const api = {
   // End-of-season honours (champion, awards) for the finished-season home hero.
   seasonHonours: (season) => request(`/standings/honours${seasonParam(season)}`, { auth: true }),
   // Races of an EXPLICIT season (e.g. the next-season teaser), regardless of
-  // the season the site is currently viewing.
-  racesFor: (n) => request(`/races?season=${n}`, { auth: true }),
+  // the season the site is currently viewing (within the current series).
+  racesFor: (n) => request(`/races${seasonParam(n)}`, { auth: true }),
   driverProfile: (id) => request(`/drivers/${id}/profile`, { auth: true }),
   driverRating: (id) => request(`/drivers/${id}/rating`, { auth: true }),
   t1Standings: (season) => request(`/standings/constructors/t1${seasonParam(season)}`, { auth: true }),
   t2Standings: (season) => request(`/standings/constructors/t2${seasonParam(season)}`, { auth: true }),
   races: (season) => request(`/races${seasonParam(season)}`, { auth: true }),
   raceResults: (id) => request(`/races/${id}/results`, { auth: true }),
-  // Track history across all seasons (userAuth so a member gets their own record).
-  trackHistory: (track) => request(`/tracks/history?track=${encodeURIComponent(track)}`, { userAuth: true }),
+  // Track history across the series' seasons (userAuth so a member gets their own record).
+  trackHistory: (track) =>
+    request(
+      `/tracks/history?track=${encodeURIComponent(track)}${SELECTED_SERIES ? `&series=${encodeURIComponent(SELECTED_SERIES)}` : ""}`,
+      { userAuth: true }
+    ),
   teams: () => request(`/teams${seasonQ()}`, { auth: true }),
-  seasons: () => request("/seasons", { auth: true }),
+  seasons: () => request(`/seasons${seriesQ()}`, { auth: true }),
+  // All visible racing series, switcher order (admins also get private ones).
+  series: () => request("/series", { auth: true }),
   // The next ANNOUNCED upcoming season for the "Coming up" strip (or null).
-  seasonTeaser: () => request("/seasons/teaser"),
+  seasonTeaser: () => request(`/seasons/teaser${seriesQ()}`),
   // Live championship projection (only { active: true } while a league race is
   // running). auth:true so an admin's ?simulate demo request is recognised.
   liveChampionship: (simulate = false) =>
@@ -235,10 +266,12 @@ export const api = {
   // works on localhost and over a tunnel without changing the backend .env.
   discordConfig: () =>
     request(`/auth/discord/config?redirect=${encodeURIComponent(discordRedirectUri())}`),
+  // The viewed series rides along so the login's season handover lands the
+  // member on THAT series' roster (fallback: the primary series).
   discordCallback: (code) =>
     request("/auth/discord/callback", {
       method: "POST",
-      body: { code, redirectUri: discordRedirectUri() },
+      body: { code, redirectUri: discordRedirectUri(), ...seriesBody() },
     }),
 
   // admin
@@ -251,22 +284,22 @@ export const api = {
   },
   remoteResults: (type = "RACE") => request(`/admin/results/remote?type=${type}`, { auth: true }),
   importRemoteResult: (id) =>
-    request("/admin/results/remote/import", { method: "POST", body: { id, season: getSelectedSeason() }, auth: true }),
-  commitRace: (body) => request("/admin/races/commit", { method: "POST", body, auth: true }),
+    request("/admin/results/remote/import", { method: "POST", body: { id, season: getSelectedSeason(), ...seriesBody() }, auth: true }),
+  commitRace: (body) => request("/admin/races/commit", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   editResults: (id, results) =>
     request(`/admin/races/${id}/results`, { method: "PUT", body: { results }, auth: true }),
   setDriverOfTheDay: (raceId, driverId, pickedBy) =>
     request(`/admin/races/${raceId}/driver-of-the-day`, { method: "PUT", body: { driverId, pickedBy }, auth: true }),
   // Live "what would change" preview for unsaved results (no DB writes).
   previewRace: (body) =>
-    request("/admin/races/preview", { method: "POST", body: { ...body, season: getSelectedSeason() }, auth: true }),
+    request("/admin/races/preview", { method: "POST", body: { ...body, season: getSelectedSeason(), ...seriesBody() }, auth: true }),
   // Driver ratings with tunable weights — powers the admin ratings panel.
   ratingsPreview: (weights) =>
-    request("/admin/ratings/preview", { method: "POST", body: { weights, season: getSelectedSeason() }, auth: true }),
+    request("/admin/ratings/preview", { method: "POST", body: { weights, season: getSelectedSeason(), ...seriesBody() }, auth: true }),
   ratingsWeights: () => request("/admin/ratings/weights", { auth: true }),
   saveRatingsWeights: (weights) =>
     request("/admin/ratings/weights", { method: "PUT", body: { weights }, auth: true }),
-  createDriver: (body) => request("/admin/drivers", { method: "POST", body, auth: true }),
+  createDriver: (body) => request("/admin/drivers", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   updateDriver: (id, body) => request(`/admin/drivers/${id}`, { method: "PUT", body, auth: true }),
   changePin: (newPin) =>
     request("/admin/settings/pin", { method: "PUT", body: { newPin }, auth: true }),
@@ -282,7 +315,7 @@ export const api = {
   getResultsPost: (raceId) => request(`/admin/races/${raceId}/results-post`, { auth: true }),
   sendResultsPost: (raceId, content) =>
     request(`/admin/races/${raceId}/results-post`, { method: "POST", body: { content }, auth: true }),
-  createEvent: (body) => request("/admin/events", { method: "POST", body, auth: true }),
+  createEvent: (body) => request("/admin/events", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   updateEvent: (id, body) => request(`/admin/events/${id}`, { method: "PUT", body, auth: true }),
   announceEvent: (id) => request(`/admin/events/${id}/announce`, { method: "POST", auth: true }),
   // force: also deletes a race that already has results (Edit-Results editor);
@@ -290,9 +323,18 @@ export const api = {
   deleteEvent: (id, { force = false } = {}) =>
     request(`/admin/events/${id}${force ? "?force=1" : ""}`, { method: "DELETE", auth: true }),
 
-  // seasons + teams (admin)
-  adminSeasons: () => request("/admin/seasons", { auth: true }),
-  createSeason: (body) => request("/admin/seasons", { method: "POST", body, auth: true }),
+  // series (admin) — the level above seasons. The slug is set at creation and
+  // never changes (URL identity); renames only touch the name.
+  adminSeries: () => request("/admin/series", { auth: true }),
+  createSeries: (body) => request("/admin/series", { method: "POST", body, auth: true }),
+  updateSeries: (id, body) => request(`/admin/series/${id}`, { method: "PUT", body, auth: true }),
+  activateSeries: (id) => request(`/admin/series/${id}/activate`, { method: "POST", auth: true }),
+  deleteSeries: (id, force = false) =>
+    request(`/admin/series/${id}${force ? "?force=1" : ""}`, { method: "DELETE", auth: true }),
+
+  // seasons + teams (admin) — scoped to the series being edited
+  adminSeasons: () => request(`/admin/seasons${seriesQ()}`, { auth: true }),
+  createSeason: (body) => request("/admin/seasons", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   updateSeason: (id, body) => request(`/admin/seasons/${id}`, { method: "PUT", body, auth: true }),
   deleteSeason: (id, force = false) =>
     request(`/admin/seasons/${id}${force ? "?force=1" : ""}`, { method: "DELETE", auth: true }),
@@ -301,6 +343,13 @@ export const api = {
     request(`/admin/seasons/${id}/clone-teams`, { method: "POST", body: { fromSeasonId }, auth: true }),
   cloneRoster: (id, fromSeasonId) =>
     request(`/admin/seasons/${id}/clone-roster`, { method: "POST", body: { fromSeasonId }, auth: true }),
+  // Home/Welcome main-card photo, per season.
+  uploadSeasonHero: (id, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/seasons/${id}/hero`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  clearSeasonHero: (id) => request(`/admin/seasons/${id}/hero`, { method: "DELETE", auth: true }),
 
   // health (admin): integrity check, backups, activity log
   integrity: () => request(`/admin/integrity${seasonQ()}`, { auth: true }),
@@ -317,7 +366,7 @@ export const api = {
     return { blob: await res.blob(), name: name || "nabs-full-backup.zip" };
   },
   activity: () => request("/admin/activity", { auth: true }),
-  createTeam: (body) => request("/admin/teams", { method: "POST", body, auth: true }),
+  createTeam: (body) => request("/admin/teams", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   updateTeam: (id, body) => request(`/admin/teams/${id}`, { method: "PUT", body, auth: true }),
   deleteTeam: (id) => request(`/admin/teams/${id}`, { method: "DELETE", auth: true }),
   uploadTeamLogo: (id, file) => {
@@ -406,6 +455,6 @@ export const api = {
   saveWelcomeFaq: (content) => request("/admin/welcome-faq", { method: "PUT", body: { content }, auth: true }),
 
   // season-scoped reads by explicit season number (used by the admin editor)
-  teamsForSeason: (n) => request(`/teams?season=${n}`),
-  racesForSeason: (n) => request(`/races?season=${n}`),
+  teamsForSeason: (n) => request(`/teams${seasonParam(n)}`),
+  racesForSeason: (n) => request(`/races${seasonParam(n)}`),
 };

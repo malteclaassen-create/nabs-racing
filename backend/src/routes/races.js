@@ -6,6 +6,7 @@ import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides } from "../lib/persons.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
+import { readRaceTypes } from "../lib/raceTypes.js";
 import { dbReplaysByRace } from "../lib/downloads.js";
 
 const router = Router();
@@ -14,16 +15,21 @@ const router = Router();
 // An admin may target a private season (site preview); the public can't.
 router.get("/", async (req, res, next) => {
   try {
-    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: isAdminRequest(req) });
+    const seasonId = await resolveSeasonId(prisma, req.query.season, {
+      includePrivate: isAdminRequest(req),
+      series: req.query.series,
+    });
     const races = await prisma.race.findMany({
       where: { seasonId },
       orderBy: { number: "asc" },
       include: { _count: { select: { results: true } } },
     });
-    // Session format (raw-SQL columns) for the upcoming-race panel, and any
-    // published replay downloads so the calendar can offer a Replay button.
-    const [format, replays] = await Promise.all([
+    // Session format + race type (raw-SQL columns) for the upcoming-race panel
+    // and the calendar's grouping, and any published replay downloads so the
+    // calendar can offer a Replay button.
+    const [format, types, replays] = await Promise.all([
       readRaceFormat(prisma, races.map((r) => r.id)),
+      readRaceTypes(prisma, races.map((r) => r.id)),
       dbReplaysByRace(prisma, races.map((r) => r.id)),
     ]);
     res.json(
@@ -34,6 +40,7 @@ router.get("/", async (req, res, next) => {
         date: r.date,
         isCompleted: r.isCompleted,
         isSpecialEvent: r.isSpecialEvent,
+        type: types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
         resultCount: r._count.results,
         info: r.info || null,
         qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
@@ -136,6 +143,7 @@ router.get("/:id/results", async (req, res, next) => {
           envContacts: tel.envContacts ?? null,
           cuts: tel.cuts ?? null,
           overtakes: tel.overtakes ?? null,
+          lapsLed: tel.lapsLed ?? null,
           laps: tel.laps ?? null,
           cleanLaps: tel.cleanLaps ?? null,
           consistencyMs: tel.consistencyMs ?? null,

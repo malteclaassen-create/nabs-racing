@@ -11,6 +11,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { signUserToken } from "../middleware/auth.js";
 import { getActiveSeason } from "../services/seasonService.js";
+import { resolveSeries } from "../lib/series.js";
 import { dbRecordLogin, dbGetMember } from "../lib/members.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
@@ -118,7 +119,16 @@ router.post("/callback", async (req, res, next) => {
     // or pre-fills the driver's Discord user id in the Drivers tab; the login
     // then connects by exact id. Unmatched logins simply stay unlinked.
     let driver = await prisma.driver.findUnique({ where: { discordUserId: me.id } });
-    const activeSeason = await getActiveSeason(prisma);
+    // The season handover below targets the series the member was VIEWING when
+    // they logged in (the frontend sends its slug), falling back to the
+    // primary series — so a GT member logging in on the GT pages lands on the
+    // GT roster, not sideways in the F1 league.
+    let activeSeason = null;
+    if (req.body?.series) {
+      const viewed = await resolveSeries(prisma, req.body.series).catch(() => null);
+      if (viewed) activeSeason = await getActiveSeason(prisma, viewed.id);
+    }
+    if (!activeSeason) activeSeason = await getActiveSeason(prisma);
 
     // Season handover: drivers are per-season rows, so a stored (or, above, a
     // freshly name-matched) link can point at a PREVIOUS season's entry — e.g.

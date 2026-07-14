@@ -4,6 +4,7 @@ import { syncRaceToDiscord } from "../services/discordService.js";
 import { optionalUser, resolveDriverId, isAdminRequest } from "../middleware/auth.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
+import { readRaceTypes } from "../lib/raceTypes.js";
 import { seasonRowForDriver } from "../lib/persons.js";
 
 const router = Router();
@@ -14,14 +15,22 @@ const VALID = ["ACCEPTED", "DECLINED", "TENTATIVE"];
 // An admin may target a private season (site preview); the public can't.
 router.get("/", async (req, res, next) => {
   try {
-    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: isAdminRequest(req) });
-    const races = await prisma.race.findMany({
-      where: { isCompleted: false, isSpecialEvent: false, seasonId },
-      orderBy: { number: "asc" },
+    const seasonId = await resolveSeasonId(prisma, req.query.season, {
+      includePrivate: isAdminRequest(req),
+      series: req.query.series,
+    });
+    // Championship rounds AND training sessions get RSVP (training is exactly
+    // what session planning needs); special events stay announcement-only.
+    const allUpcoming = await prisma.race.findMany({
+      where: { isCompleted: false, seasonId },
+      orderBy: [{ number: "asc" }, { date: "asc" }],
       include: {
         rsvps: { include: { driver: { include: { team: true } } } },
       },
     });
+    const types = await readRaceTypes(prisma, allUpcoming.map((r) => r.id));
+    const typeOf = (r) => types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+    const races = allUpcoming.filter((r) => typeOf(r) !== "SPECIAL");
 
     // Session format (raw-SQL columns) for the attendance hero.
     const format = await readRaceFormat(prisma, races.map((r) => r.id));
@@ -40,6 +49,7 @@ router.get("/", async (req, res, next) => {
       return {
         id: race.id,
         number: race.number,
+        type: typeOf(race),
         track: race.track,
         date: race.date,
         capacity: race.capacity,

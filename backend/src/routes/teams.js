@@ -11,7 +11,10 @@ const router = Router();
 // season. An admin may target a private season (site preview); the public can't.
 router.get("/", async (req, res, next) => {
   try {
-    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: isAdminRequest(req) });
+    const seasonId = await resolveSeasonId(prisma, req.query.season, {
+      includePrivate: isAdminRequest(req),
+      series: req.query.series,
+    });
     const [teams, nameOverrides] = await Promise.all([
       prisma.team.findMany({
         where: { seasonId },
@@ -23,7 +26,18 @@ router.get("/", async (req, res, next) => {
       getNameOverrides(prisma),
     ]);
     // Special roles (raw-SQL column) for the role badge / admin role select.
-    const roles = await readDriverRoles(prisma, teams.flatMap((t) => t.drivers.map((d) => d.id)));
+    const allIds = teams.flatMap((t) => t.drivers.map((d) => d.id));
+    const roles = await readDriverRoles(prisma, allIds);
+    // Standings-hidden flag (raw-SQL column) for the admin Drivers tab toggle.
+    // .catch: fresh checkout before ensureAppSchema ran.
+    let hiddenSet = new Set();
+    if (allIds.length) {
+      const ph = allIds.map(() => "?").join(",");
+      const hiddenRows = await prisma
+        .$queryRawUnsafe(`SELECT "id" FROM "Driver" WHERE "hideFromStandings" = 1 AND "id" IN (${ph})`, ...allIds)
+        .catch(() => []);
+      hiddenSet = new Set(hiddenRows.map((r) => r.id));
+    }
     // Archive rosters show the person's current name with a "raced as" note.
     // No-op for the active season (its own row already carries the current name).
     for (const t of teams) {
@@ -34,6 +48,7 @@ router.get("/", async (req, res, next) => {
           d.name = ov.displayName;
         }
         d.role = roles.get(d.id) || null;
+        d.hideFromStandings = hiddenSet.has(d.id);
       }
     }
     res.json(teams);

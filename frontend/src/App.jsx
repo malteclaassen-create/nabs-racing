@@ -1,8 +1,9 @@
 import { useEffect } from "react";
-import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, Link, useLocation, useParams } from "react-router-dom";
 import { useScrollReveal } from "./hooks/useScrollReveal.js";
 import { api } from "./api/client.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
+import { SeriesProvider, useSeries, useSeriesPath } from "./context/SeriesContext.jsx";
 import NavBar from "./components/NavBar.jsx";
 import Logo from "./components/Logo.jsx";
 import SocialLinks, { useSocial, SocialIcon } from "./components/SocialLinks.jsx";
@@ -26,12 +27,16 @@ import Admin from "./pages/Admin.jsx";
 import NotFound from "./pages/NotFound.jsx";
 
 // Keeps the browser-tab title in sync with the season being viewed (the static
-// title in index.html is just the pre-load fallback).
+// title in index.html is just the pre-load fallback). With several series the
+// series name joins in, so two open tabs are tellable apart.
 function TitleSync() {
   const { current } = useSeason();
+  const { current: series, seriesList } = useSeries();
+  const seriesName = seriesList.length > 1 && series ? series.name : null;
   useEffect(() => {
-    document.title = current ? `NABS Racing League · ${current.name}` : "NABS Racing League";
-  }, [current?.name]);
+    const brand = seriesName || "NABS Racing League";
+    document.title = current ? `${brand} · ${current.name}` : brand;
+  }, [current?.name, seriesName]);
   return null;
 }
 
@@ -65,10 +70,26 @@ function HomeRoute() {
   return showWelcome ? <Welcome /> : <Home />;
 }
 
+// Sends a flat legacy path to its series-prefixed home: the series being
+// viewed (sticky across global pages), else the active one. Old bookmarks and
+// every internal `/drivers/...` link keep working — they just normalise to
+// /s/<slug>/… on arrival. `sub` may contain :params (filled from the URL) and
+// the query string rides along (e.g. /races?race=<id>).
+function ToSeries({ sub = "" }) {
+  const { slug, active, loaded } = useSeries();
+  const params = useParams();
+  const location = useLocation();
+  const target = slug || active?.slug || null;
+  if (!target) return loaded ? <NotFound /> : null; // list still loading / no series at all
+  const path = sub.replace(/:(\w+)/g, (_, k) => params[k] ?? "");
+  return <Navigate to={`/s/${target}${path}${location.search}`} replace />;
+}
+
 // Season-scoped pages remount when the selected season changes, so their data
 // refetches for the new season. Admin/live/auth are not season-scoped.
 function AppRoutes() {
   const { season } = useSeason();
+  const { active, loaded, unknownSlug } = useSeries();
   const location = useLocation();
   // Anonymous page-view beacon for the admin Traffic tab. Fire-and-forget;
   // admin/auth paths are skipped here AND server-side.
@@ -77,23 +98,49 @@ function AppRoutes() {
       api.hit(location.pathname);
     }
   }, [location.pathname]);
+  // A /s/<slug> that doesn't resolve (typo, deleted series, private without
+  // rights): hop to the same subpage of the active series — no white page.
+  if (unknownSlug) {
+    if (!active) return loaded ? <NotFound /> : null;
+    const rest = location.pathname.replace(/^\/s\/[^/]+/, "");
+    return <Navigate to={`/s/${active.slug}${rest}${location.search}`} replace />;
+  }
   return (
     <main key={season ?? "loading"} className="container-page w-full flex-1 py-10">
       {/* Keyed on the path so each navigation replays the fade-in entrance. */}
       <div key={location.pathname} className="page-in">
       <Routes location={location}>
-        <Route path="/" element={<HomeRoute />} />
-        <Route path="/drivers" element={<DriverStandings />} />
-        <Route path="/drivers/:id" element={<DriverProfile />} />
-        <Route path="/constructors" element={<Constructors />} />
-        <Route path="/constructors/:id" element={<TeamProfile />} />
-        <Route path="/teams" element={<Constructors />} />
-        <Route path="/teams/:id" element={<TeamProfile />} />
-        <Route path="/races" element={<Races />} />
-        <Route path="/results" element={<Races />} />
-        <Route path="/calendar" element={<Races />} />
-        <Route path="/attendance" element={<Attendance />} />
-        <Route path="/live" element={<Live />} />
+        {/* Series-scoped pages live under /s/<slug>/… — the series is part of
+            the page's identity, so links can be shared across series. */}
+        <Route path="/s/:seriesSlug" element={<HomeRoute />} />
+        <Route path="/s/:seriesSlug/drivers" element={<DriverStandings />} />
+        <Route path="/s/:seriesSlug/drivers/:id" element={<DriverProfile />} />
+        <Route path="/s/:seriesSlug/constructors" element={<Constructors />} />
+        <Route path="/s/:seriesSlug/constructors/:id" element={<TeamProfile />} />
+        <Route path="/s/:seriesSlug/teams" element={<Constructors />} />
+        <Route path="/s/:seriesSlug/teams/:id" element={<TeamProfile />} />
+        <Route path="/s/:seriesSlug/races" element={<Races />} />
+        <Route path="/s/:seriesSlug/results" element={<Races />} />
+        <Route path="/s/:seriesSlug/calendar" element={<Races />} />
+        <Route path="/s/:seriesSlug/attendance" element={<Attendance />} />
+        <Route path="/s/:seriesSlug/live" element={<Live />} />
+
+        {/* Legacy flat paths -> the same page inside the current series, so
+            old bookmarks and unprefixed internal links keep working. */}
+        <Route path="/" element={<ToSeries />} />
+        <Route path="/drivers" element={<ToSeries sub="/drivers" />} />
+        <Route path="/drivers/:id" element={<ToSeries sub="/drivers/:id" />} />
+        <Route path="/constructors" element={<ToSeries sub="/constructors" />} />
+        <Route path="/constructors/:id" element={<ToSeries sub="/constructors/:id" />} />
+        <Route path="/teams" element={<ToSeries sub="/teams" />} />
+        <Route path="/teams/:id" element={<ToSeries sub="/teams/:id" />} />
+        <Route path="/races" element={<ToSeries sub="/races" />} />
+        <Route path="/results" element={<ToSeries sub="/results" />} />
+        <Route path="/calendar" element={<ToSeries sub="/calendar" />} />
+        <Route path="/attendance" element={<ToSeries sub="/attendance" />} />
+        <Route path="/live" element={<ToSeries sub="/live" />} />
+
+        {/* Global pages (shared across series): no prefix. */}
         <Route path="/downloads" element={<Downloads />} />
         {/* Race-prep calculators. Not in the nav on purpose: linked from the
             upcoming-race panel and the private profile. */}
@@ -103,10 +150,10 @@ function AppRoutes() {
         <Route path="/rules" element={<Navigate to="/downloads" replace />} />
         <Route path="/info" element={<Navigate to="/downloads" replace />} />
         {/* Sign-Up + Driver Market now live on the Races page; keep old links working. */}
-        <Route path="/signup" element={<Navigate to="/races" replace />} />
-        <Route path="/rennen" element={<Navigate to="/races" replace />} />
-        <Route path="/market" element={<Navigate to="/races" replace />} />
-        <Route path="/driver-market" element={<Navigate to="/races" replace />} />
+        <Route path="/signup" element={<ToSeries sub="/races" />} />
+        <Route path="/rennen" element={<ToSeries sub="/races" />} />
+        <Route path="/market" element={<ToSeries sub="/races" />} />
+        <Route path="/driver-market" element={<ToSeries sub="/races" />} />
         <Route path="/auth/discord/callback" element={<DiscordCallback />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<NotFound />} />
@@ -116,18 +163,24 @@ function AppRoutes() {
   );
 }
 
-const FOOTER_LINKS = [
-  { to: "/", label: "Home" },
-  { to: "/drivers", label: "Drivers" },
-  { to: "/constructors", label: "Constructors" },
-  { to: "/races", label: "Races" },
-  { to: "/attendance", label: "Attendance" },
-  { to: "/live", label: "Live Timing" },
-  { to: "/downloads", label: "Race Info" },
-];
+// Footer quick links, built inside the component so the series-scoped ones
+// carry the /s/<slug> prefix of the series being viewed ("global" pages like
+// Race Info have none).
+function footerLinks(p) {
+  return [
+    { to: p(""), label: "Home" },
+    { to: p("/drivers"), label: "Drivers" },
+    { to: p("/constructors"), label: "Constructors" },
+    { to: p("/races"), label: "Races" },
+    { to: p("/attendance"), label: "Attendance" },
+    { to: p("/live"), label: "Live Timing" },
+    { to: "/downloads", label: "Race Info" },
+  ];
+}
 
 function Footer() {
   const { current } = useSeason();
+  const { seriesPath } = useSeriesPath();
   const social = useSocial();
   const discord = social.data?.discord;
   const year = new Date().getFullYear();
@@ -159,7 +212,7 @@ function Footer() {
         <nav className="space-y-3">
           <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Explore</h3>
           <ul className="space-y-2 text-sm">
-            {FOOTER_LINKS.map((l) => (
+            {footerLinks(seriesPath).map((l) => (
               <li key={l.to}>
                 <Link to={l.to} className="text-medium transition hover:text-dark">
                   {l.label}
@@ -210,11 +263,12 @@ function Footer() {
   );
 }
 
-export default function App() {
-  useScrollReveal();
-  useEffect(() => applyPreviewFromUrl(), []);
+// Series outside, season inside: the SeasonProvider remounts (fresh, already
+// series-scoped season list) whenever the viewed series changes.
+function SeriesScopedApp() {
+  const { slug } = useSeries();
   return (
-    <SeasonProvider>
+    <SeasonProvider key={slug || "default"}>
       <TitleSync />
       <div className="flex min-h-screen flex-col">
         <NavBar />
@@ -224,5 +278,15 @@ export default function App() {
       </div>
       <PreviewToggle />
     </SeasonProvider>
+  );
+}
+
+export default function App() {
+  useScrollReveal();
+  useEffect(() => applyPreviewFromUrl(), []);
+  return (
+    <SeriesProvider>
+      <SeriesScopedApp />
+    </SeriesProvider>
   );
 }

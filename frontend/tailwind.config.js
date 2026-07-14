@@ -20,7 +20,10 @@ export default {
         gold: "#EAB308",
         silver: "#94A3B8",
         bronze: "#C2410C",
-        brand: "#F4AFC6", // NABS pink (from the logo)
+        // Brand accent (NABS pink by default). Raw RGB triple with alpha support
+        // (brand/20 etc.), driven by --c-brand so a series can override it — see
+        // the [data-series] block in index.css.
+        brand: "rgb(var(--c-brand) / <alpha-value>)",
         // Eyebrow/mono-label text: readable rose in light mode, brand pink in
         // dark mode (see --c-eyebrow in index.css).
         eyebrow: "var(--c-eyebrow)",

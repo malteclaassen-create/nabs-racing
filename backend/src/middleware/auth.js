@@ -101,7 +101,16 @@ export async function resolveDriverId(prismaClient, user) {
     });
     if (!d) return null;
     try {
-      const active = await getActiveSeason(prismaClient);
+      // Heal within the SERIES the linked row belongs to: a GT-linked login
+      // moves along the GT seasons, never sideways into another series.
+      let seriesId = null;
+      if (d.seasonId) {
+        const rows = await prismaClient
+          .$queryRawUnsafe(`SELECT "seriesId" FROM "Season" WHERE "id" = ?`, d.seasonId)
+          .catch(() => []);
+        seriesId = rows[0]?.seriesId || null;
+      }
+      const active = await getActiveSeason(prismaClient, seriesId);
       if (active && d.seasonId && d.seasonId !== active.id) {
         const linkedIds = await getLinkedDriverIds(prismaClient, d.id);
         if (linkedIds.length > 1) {

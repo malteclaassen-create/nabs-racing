@@ -23,6 +23,7 @@ export async function ensureAppSchema(prisma) {
   await addColumn(prisma, "RaceResult", "envContacts", "INTEGER"); // wall / off-track hits
   await addColumn(prisma, "RaceResult", "cuts", "INTEGER"); // sum of per-lap track cuts
   await addColumn(prisma, "RaceResult", "overtakes", "INTEGER"); // estimated on-track passes
+  await addColumn(prisma, "RaceResult", "lapsLed", "INTEGER"); // laps led (leader at S/F line each lap)
   await addColumn(prisma, "RaceResult", "laps", "INTEGER"); // laps completed
   await addColumn(prisma, "RaceResult", "cleanLaps", "INTEGER"); // laps within 10s of own best
   await addColumn(prisma, "RaceResult", "consistencyMs", "REAL"); // stdev of clean laps (ms)
@@ -39,6 +40,16 @@ export async function ensureAppSchema(prisma) {
   // panels): qualifying length in minutes, race distance in laps. Optional.
   await addColumn(prisma, "Race", "qualiMinutes", "INTEGER");
   await addColumn(prisma, "Race", "raceLaps", "INTEGER");
+
+  // --- Race type (migration race_type): CHAMPIONSHIP | TRAINING | SPECIAL.
+  // Backfill: rows flagged isSpecialEvent become SPECIAL once (a CHAMPIONSHIP-
+  // typed row with the flag set is by definition unmigrated — TRAINING rows
+  // carry the flag too but keep their type). isSpecialEvent stays in sync as
+  // the derived "not scored" flag every scoring read already filters on.
+  await addColumn(prisma, "Race", "type", "TEXT NOT NULL DEFAULT 'CHAMPIONSHIP'");
+  await prisma.$executeRawUnsafe(
+    `UPDATE "Race" SET "type" = 'SPECIAL' WHERE "isSpecialEvent" = 1 AND "type" = 'CHAMPIONSHIP'`
+  );
 
   // --- Phase 5: team-level drop rule. null = legacy behaviour (teams inherit
   // each driver's own dropped rounds); 0 = no team drop; N = drop the N lowest
@@ -57,6 +68,10 @@ export async function ensureAppSchema(prisma) {
   // the Home/Welcome teaser even while still private. Admin-toggled.
   await addColumn(prisma, "Season", "isAnnounced", "BOOLEAN NOT NULL DEFAULT 0");
 
+  // --- Admin-uploaded hero photo override for the Home/Welcome main card.
+  // null = fall back to the static /heroes/s<number>.jpg drop-in convention.
+  await addColumn(prisma, "Season", "heroImageUrl", "TEXT");
+
   // --- Profile tiles: which of the six headline stat tiles a driver shows on
   // their public profile. JSON array of tile keys; null = all of them.
   await addColumn(prisma, "Driver", "profileTiles", "TEXT");
@@ -68,6 +83,11 @@ export async function ensureAppSchema(prisma) {
   // --- Special league role, shown on the rating card and profile. null =
   // regular driver; 'safety' = safety car driver. Admin-set (Drivers tab).
   await addColumn(prisma, "Driver", "role", "TEXT");
+
+  // --- Admin-set: remove a (deactivated) driver from the public driver
+  // standings entirely. Race results and constructor points stay untouched;
+  // reactivating the driver clears the flag. Admin Drivers tab.
+  await addColumn(prisma, "Driver", "hideFromStandings", "BOOLEAN NOT NULL DEFAULT 0");
 
   // --- Self-hosted traffic counter (admin Traffic tab). Aggregated page views
   // per day+path, plus anonymous daily-unique visitor markers (see lib/traffic.js
@@ -83,6 +103,40 @@ export async function ensureAppSchema(prisma) {
     "hash" TEXT NOT NULL,
     PRIMARY KEY ("day", "hash")
   )`);
+
+  // --- Multi-series support (migration series_model): Series table + the
+  // Season.seriesId column, with an idempotent backfill so every existing
+  // season lives in one default series and the site behaves exactly as before.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Series" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    "slug" TEXT NOT NULL,
+    "game" TEXT,
+    "description" TEXT,
+    "order" INTEGER NOT NULL DEFAULT 0,
+    "isActive" BOOLEAN NOT NULL DEFAULT 0,
+    "isPublic" BOOLEAN NOT NULL DEFAULT 1,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Series_slug_key" ON "Series"("slug")`
+  );
+  await addColumn(prisma, "Season", "seriesId", "TEXT");
+  // Default series: created once; the SLUG is the stable URL identity, the
+  // NAME is admin-renamable. Seasons without a series (pre-migration data or
+  // a fresh seed) are adopted by the active series on every boot.
+  await prisma.$executeRawUnsafe(`INSERT INTO "Series" ("id","name","slug","order","isActive","isPublic")
+    SELECT 'friday-f1', 'NABS Racing League', 'friday-f1', 0, 1, 1
+    WHERE NOT EXISTS (SELECT 1 FROM "Series")`);
+  await prisma.$executeRawUnsafe(`UPDATE "Season"
+    SET "seriesId" = (SELECT "id" FROM "Series" WHERE "isActive" = 1 ORDER BY "order" LIMIT 1)
+    WHERE "seriesId" IS NULL`);
+  // Season numbers are unique PER SERIES now (was: globally), so a second
+  // series can start with its own Season 1 — mirrors Race.number per season.
+  await prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "Season_number_key"`);
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Season_seriesId_number_key" ON "Season"("seriesId", "number")`
+  );
 
   // --- Phase 3: cross-season person links. One row per driver row that belongs
   // to a person; all driver rows of the same person share one personId.

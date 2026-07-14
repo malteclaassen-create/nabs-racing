@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 import { raceKickoff } from "../lib/raceKickoff.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
+import { readRaceTypes } from "../lib/raceTypes.js";
 
 const WEBHOOK_KEY = "discord_webhook_url";
 // Results posts go to their OWN channel/webhook (#results), separate from the
@@ -135,8 +136,16 @@ function buildEmbed(race, rsvps) {
   // timestamp on purpose: Discord would render a localized "today at 12:29"
   // next to the footer, which reads like a second (wrong) race time.
   const season = seasonLabel(race.season);
+  // Training sessions have no round number; specials neither (not announced
+  // today, but the title must never read "Round null").
+  const title =
+    race.number != null
+      ? `🏁 Round ${race.number} · ${race.track}`
+      : race.type === "TRAINING"
+        ? `🏁 Training · ${race.track}`
+        : `🏁 ${race.track}`;
   return {
-    title: `🏁 Round ${race.number} · ${race.track}`,
+    title,
     description: desc.join("\n"),
     color: 0xb91c1c,
     fields,
@@ -156,10 +165,11 @@ export async function syncRaceToDiscord(prisma, raceId) {
       include: { rsvps: { include: { driver: true } }, season: { select: { name: true } } },
     });
     if (!race) return { ok: false, reason: "race not found" };
-    // Session format (raw-SQL columns, not in the generated client).
+    // Session format + race type (raw-SQL columns, not in the generated client).
     const format = (await readRaceFormat(prisma, [race.id])).get(race.id) || {};
+    const type = (await readRaceTypes(prisma, [race.id])).get(race.id) || null;
 
-    const payload = { embeds: [buildEmbed({ ...race, ...format }, race.rsvps)] };
+    const payload = { embeds: [buildEmbed({ ...race, ...format, type }, race.rsvps)] };
 
     // Try to edit the existing message first.
     if (race.discordMessageId) {

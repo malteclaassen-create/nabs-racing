@@ -331,7 +331,16 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [] }
   const raceNumbers = races.map((r) => r.number);
   const appliedResults = withPenaltiesApplied(extraResults.length ? [...results, ...extraResults] : results);
 
-  const rows = drivers.map((driver) => {
+  // Admin-hidden rows (a deactivated driver removed from the public table) get
+  // no standings row at all — everyone below moves up. Their race results and
+  // constructor points are untouched. Raw column (ensureAppSchema); .catch:
+  // fresh checkout before the schema upkeep ran.
+  const hiddenRows = await prisma
+    .$queryRawUnsafe(`SELECT "id" FROM "Driver" WHERE "seasonId" = ? AND "hideFromStandings" = 1`, seasonId)
+    .catch(() => []);
+  const hidden = new Set(hiddenRows.map((r) => r.id));
+
+  const rows = drivers.filter((d) => !hidden.has(d.id)).map((driver) => {
     const perRace = {}; // raceNumber -> { points, status, position }
     const pointsByRound = {};
 

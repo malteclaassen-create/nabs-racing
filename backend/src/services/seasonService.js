@@ -10,6 +10,8 @@
 // column (may not be in the generated client), read here with a short cache so
 // it costs about one query per 30s instead of one per request. The admin toggle
 // invalidates it so a publish/hide takes effect on the next request.
+import { getActiveSeries, resolveSeries } from "../lib/series.js";
+
 const PRIVATE_CACHE_MS = 30_000;
 let privateCache = { set: null, at: 0 };
 
@@ -31,13 +33,42 @@ export async function getPrivateSeasonIds(prisma) {
   return privateCache.set;
 }
 
-// The currently active season (falls back to the highest-numbered PUBLIC one, so
-// a public fallback never lands on a private season).
-export async function getActiveSeason(prisma) {
-  const active = await prisma.season.findFirst({ where: { isActive: true } });
+// The seasons (ids, ordered by number desc) of ONE series. seriesId is a
+// raw-SQL column (may not be in the generated client) -> raw read. A null
+// seriesId (fresh checkout before the backfill ran) means "no filter", so the
+// site keeps working exactly as in single-series days.
+async function seasonIdsInSeries(prisma, seriesId) {
+  if (!seriesId) return null;
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "id" FROM "Season" WHERE "seriesId" = ? ORDER BY "number" DESC`,
+      seriesId
+    );
+    return rows.map((r) => r.id);
+  } catch {
+    return null;
+  }
+}
+
+// The currently active season OF A SERIES (invariant since the series model:
+// max. one active season per seriesId, not globally). Falls back to the
+// series' highest-numbered PUBLIC season, so a public fallback never lands on
+// a private one. `seriesId` null/omitted = the active (primary) series.
+export async function getActiveSeason(prisma, seriesId = null) {
+  if (!seriesId) {
+    const series = await getActiveSeries(prisma);
+    seriesId = series?.id || null;
+  }
+  const inSeries = await seasonIdsInSeries(prisma, seriesId);
+  const active = await prisma.season.findFirst({
+    where: { isActive: true, ...(inSeries ? { id: { in: inSeries } } : {}) },
+  });
   if (active) return active;
   const priv = await getPrivateSeasonIds(prisma);
-  const seasons = await prisma.season.findMany({ orderBy: { number: "desc" } });
+  const seasons = await prisma.season.findMany({
+    where: inSeries ? { id: { in: inSeries } } : {},
+    orderBy: { number: "desc" },
+  });
   return seasons.find((s) => !priv.has(s.id)) || seasons[0] || null;
 }
 
@@ -46,13 +77,37 @@ export async function getActiveSeason(prisma) {
 // Public callers use the default (includePrivate=false): a specific PRIVATE
 // season number resolves to null so its data can't be reached by a crafted
 // ?season=N. Admin callers pass { includePrivate: true }.
-export async function resolveSeason(prisma, seasonNumber, { includePrivate = false } = {}) {
+// `series` (a slug from ?series=) scopes everything to that series — season
+// numbers are per-series now, so "season 1" of the GT series is a different
+// row than "season 1" of the F1 league. Omitted = the active (primary) series;
+// an unknown or (for non-admins) private slug resolves to null.
+export async function resolveSeason(prisma, seasonNumber, { includePrivate = false, series } = {}) {
+  const seriesRow = await resolveSeries(prisma, series, { includePrivate });
+  if (series !== undefined && series !== null && series !== "" && !seriesRow) return null;
+  const seriesId = seriesRow?.id || null;
   if (seasonNumber === undefined || seasonNumber === null || seasonNumber === "") {
-    return getActiveSeason(prisma);
+    return getActiveSeason(prisma, seriesId);
   }
   const n = Number(seasonNumber);
-  if (!Number.isFinite(n)) return getActiveSeason(prisma);
-  const s = await prisma.season.findUnique({ where: { number: n } });
+  if (!Number.isFinite(n)) return getActiveSeason(prisma, seriesId);
+  // Numbers are unique per series: look the season up INSIDE the series (raw
+  // read — seriesId is a raw-SQL column). Without a series filter (pre-backfill
+  // DB) this falls back to the old global number lookup.
+  let s = null;
+  if (seriesId) {
+    try {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT "id" FROM "Season" WHERE "number" = ? AND "seriesId" = ?`,
+        n,
+        seriesId
+      );
+      s = rows[0] ? await prisma.season.findUnique({ where: { id: rows[0].id } }) : null;
+    } catch {
+      s = await prisma.season.findFirst({ where: { number: n } });
+    }
+  } else {
+    s = await prisma.season.findFirst({ where: { number: n } });
+  }
   if (!s) return null;
   if (!includePrivate) {
     const priv = await getPrivateSeasonIds(prisma);

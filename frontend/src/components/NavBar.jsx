@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { useSeason } from "../context/SeasonContext.jsx";
+import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import Logo from "./Logo.jsx";
 import SeasonPicker from "./SeasonPicker.jsx";
+import SeriesSwitcher from "./SeriesSwitcher.jsx";
 import SettingsButton from "./SettingsPanel.jsx";
 import { DriverAvatar } from "./ui.jsx";
 
@@ -47,18 +48,23 @@ function AuthControl({ mobile = false }) {
 // season-scoped standings pages below it ALSO docks into the bar (compact
 // pill on desktop, a row in the mobile menu) so you can hop seasons without
 // going back Home. The docked pill fades in/out as you move on/off these
-// pages — see .nav-season-dock.
+// pages — see .nav-season-dock. (Paths are checked with the /s/<slug> series
+// prefix stripped.)
 const SEASON_PAGES = ["/drivers", "/constructors", "/races"];
 
-const links = [
-  { to: "/", label: "Home", end: true },
-  { to: "/drivers", label: "Drivers" },
-  { to: "/constructors", label: "Constructors" },
-  { to: "/races", label: "Races" },
-  { to: "/attendance", label: "Attendance" },
-  { to: "/live", label: "Live" },
-  { to: "/downloads", label: "Race Info" },
-];
+// Nav links, built per render: series-scoped pages carry the /s/<slug> prefix
+// of the series being viewed; Race Info (downloads) is global and has none.
+function navLinks(p) {
+  return [
+    { to: p(""), label: "Home", end: true },
+    { to: p("/drivers"), label: "Drivers" },
+    { to: p("/constructors"), label: "Constructors" },
+    { to: p("/races"), label: "Races" },
+    { to: p("/attendance"), label: "Attendance" },
+    { to: p("/live"), label: "Live" },
+    { to: "/downloads", label: "Race Info" },
+  ];
+}
 
 const linkClass = ({ isActive }) =>
   // The active ring is INSET on purpose: an outset 1px ring sits outside the
@@ -70,14 +76,19 @@ const linkClass = ({ isActive }) =>
   }`;
 
 export default function NavBar() {
-  const { current } = useSeason();
+  const { seriesList } = useSeries();
+  const { seriesPath } = useSeriesPath();
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const links = navLinks(seriesPath);
 
   // Close the mobile menu whenever the route changes.
   useEffect(() => setOpen(false), [location.pathname]);
 
-  const onSeasonPage = SEASON_PAGES.some((p) => location.pathname.startsWith(p));
+  // Season pages are matched with the series prefix stripped, so the docked
+  // season pill follows the same pages inside every series.
+  const pathNoSeries = location.pathname.replace(/^\/s\/[^/]+/, "") || "/";
+  const onSeasonPage = SEASON_PAGES.some((p) => pathNoSeries.startsWith(p));
 
   // The docked season pill mounts visible (a CSS keyframe handles its fade-in);
   // on leaving a season page we keep it mounted for one beat with `shown:false`
@@ -106,19 +117,21 @@ export default function NavBar() {
         <div className="h-1 w-full bg-gradient-to-r from-primary via-amber-500 to-sky-600" />
         <nav className="container-page flex h-20 items-center justify-between">
         {/* Logo + season pill share the left edge so the pill hugs the wordmark
-            rather than floating out toward the centre. */}
+            rather than floating out toward the centre. The line under the
+            wordmark belongs to the SERIES switcher (nothing with one series —
+            the series is page identity, so the control shows on every page). */}
         <div className="flex min-w-0 items-center">
-          <NavLink to="/" className="flex shrink-0 items-center gap-3">
-            <Logo size={46} />
+          <div className="flex shrink-0 items-center gap-3">
+            <NavLink to={seriesPath("")} className="shrink-0">
+              <Logo size={46} />
+            </NavLink>
             <span className="leading-tight">
-              <span className="block text-base font-extrabold tracking-tight text-dark">
+              <NavLink to={seriesPath("")} className="block text-base font-extrabold tracking-tight text-dark">
                 NABS Racing League
-              </span>
-              <span className="block text-xs font-semibold uppercase tracking-widest text-light">
-                {current ? current.name : "NABS"}
-              </span>
+              </NavLink>
+              <SeriesSwitcher />
             </span>
-          </NavLink>
+          </div>
 
           {/* On season-scoped pages the season switcher docks into the bar too
               (it stays on the Home ticker line as before). It sits out the
@@ -178,6 +191,12 @@ export default function NavBar() {
           <div className="nav-drop absolute inset-x-0 top-full z-30 origin-top border-t border-border bg-card shadow-xl shadow-ink/20">
             <div className="container-page flex flex-col gap-1 py-3">
               <AuthControl mobile />
+              {/* Series first (page identity), season below it (page filter). */}
+              {seriesList.length > 1 && (
+                <div className="px-2 py-1.5">
+                  <SeriesSwitcher mobile onPick={() => setOpen(false)} />
+                </div>
+              )}
               {onSeasonPage && (
                 <div className="px-2 py-1.5">
                   <SeasonPicker onPick={() => setOpen(false)} />

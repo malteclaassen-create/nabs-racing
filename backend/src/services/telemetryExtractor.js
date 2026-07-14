@@ -95,7 +95,8 @@ export function countCarContacts(events, opts = {}) {
   return countIncidents(events, { type: "COLLISION_WITH_CAR", ...CONTACT_DEFAULTS, ...opts });
 }
 
-// Estimated on-track overtakes per driver, from lap-by-lap position tracking.
+// Estimated on-track overtakes AND laps-led per driver, from lap-by-lap position
+// tracking. Returns { overtakes: Map<guid,count>, lapsLed: Map<guid,count> }.
 //
 // Position after lap n = rank (by S/F-line crossing time, cumulative race time
 // as tiebreak) among drivers who have completed >= n laps. Lap 0 = the grid.
@@ -103,14 +104,23 @@ export function countCarContacts(events, opts = {}) {
 // at n-1 is BEHIND at n, provided O also completed lap n (so a retirement is not
 // a "gain"), O did not pit on lap n, and lap n is not a safety-car lap.
 //
-// Limitations (documented on purpose): granularity is one lap, so mid-lap
-// swap-backs net out; lap-1 changes are counted from the grid (a good start
-// reads as overtakes); pit under/over-cuts and SC-restart shuffles can leak
-// through. It is indicative, not exact.
+// Laps led: for each lap n = 1..maxLap, the car ranked 0 (first across the S/F
+// line completing that lap) led that lap. Lap 0 (the grid) does NOT count, so a
+// pole sitter earns nothing before turn 1; safety-car laps DO count (the car out
+// front is still leading, standard motorsport convention). Determined at the
+// start/finish line once per lap by crossing time, so it inherits the same
+// limitations as the overtake heuristic (pit-cycle laps, SC phases and lapped
+// cars can distort it). Indicative, not FIA-exact — fine for a league stat.
+//
+// Overtake limitations (documented on purpose): granularity is one lap, so
+// mid-lap swap-backs net out; lap-1 changes are counted from the grid (a good
+// start reads as overtakes); pit under/over-cuts and SC-restart shuffles can
+// leak through. It is indicative, not exact.
 function computeOvertakes(lapsByGuid, results, scGuids) {
   const out = new Map();
+  const lapsLed = new Map();
   const guids = [...lapsByGuid.keys()].filter((g) => !scGuids.has(g));
-  if (guids.length < 2) return out;
+  if (guids.length < 2) return { overtakes: out, lapsLed };
 
   const info = new Map();
   for (const g of guids) {
@@ -127,7 +137,7 @@ function computeOvertakes(lapsByGuid, results, scGuids) {
   }
 
   const maxLap = Math.max(...guids.map((g) => info.get(g).laps.length));
-  if (maxLap < 1) return out;
+  if (maxLap < 1) return { overtakes: out, lapsLed };
 
   const allLapTimes = [];
   for (const g of guids) for (const l of info.get(g).laps) if (l.lapTime > 0) allLapTimes.push(l.lapTime);
@@ -162,6 +172,15 @@ function computeOvertakes(lapsByGuid, results, scGuids) {
     rankAt[n] = new Map(runners.map((g, i) => [g, i]));
     const lapTimes = runners.map((g) => info.get(g).laps[n - 1].lapTime).filter((t) => t > 0);
     scLap[n] = globalMedian > 0 && medianOf(lapTimes) > globalMedian * SC_LAP_FACTOR;
+    // The car ranked 0 completed lap n first -> it led that lap. Safety-car laps
+    // count too (the leader still leads). Lap 0 (grid) is excluded by starting at
+    // n = 1, so pole alone earns nothing.
+    for (const [g, rank] of rankAt[n]) {
+      if (rank === 0) {
+        lapsLed.set(g, (lapsLed.get(g) || 0) + 1);
+        break;
+      }
+    }
   }
 
   for (const d of guids) {
@@ -185,7 +204,7 @@ function computeOvertakes(lapsByGuid, results, scGuids) {
     }
     out.set(d, gained);
   }
-  return out;
+  return { overtakes: out, lapsLed };
 }
 
 // Main entry point. Returns { byGuid: Map<guid, metrics>, safetyCarGuids }.
@@ -272,7 +291,7 @@ export function extractTelemetry(json, opts = {}) {
     });
   }
 
-  const overtakesByGuid = computeOvertakes(lapsByGuid, results, safetyCarGuids);
+  const { overtakes: overtakesByGuid, lapsLed: lapsLedByGuid } = computeOvertakes(lapsByGuid, results, safetyCarGuids);
 
   const penByGuid = new Map();
   for (const p of penalties) {
@@ -298,6 +317,9 @@ export function extractTelemetry(json, opts = {}) {
       envContacts: envByGuid.get(guid) ?? 0,
       cuts: m ? m.cuts : null,
       overtakes: overtakesByGuid.get(guid) ?? 0,
+      // Laps led this race (null when the driver has no lap data — same
+      // convention as the other lap-derived metrics).
+      lapsLed: m ? (lapsLedByGuid.get(guid) ?? 0) : null,
       laps: m ? m.laps : null,
       cleanLaps: m ? m.cleanLaps : null,
       consistencyMs: m ? m.consistencyMs : null,

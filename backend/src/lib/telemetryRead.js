@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 const COLS = [
-  "contacts", "envContacts", "cuts", "overtakes", "laps",
+  "contacts", "envContacts", "cuts", "overtakes", "lapsLed", "laps",
   "cleanLaps", "consistencyMs", "consistencyPct", "gamePenalties", "gamePenaltySeconds",
 ];
 
@@ -22,6 +22,7 @@ function shape(r) {
     envContacts: num(r.envContacts),
     cuts: num(r.cuts),
     overtakes: num(r.overtakes),
+    lapsLed: num(r.lapsLed),
     laps: num(r.laps),
     cleanLaps: num(r.cleanLaps),
     consistencyMs: num(r.consistencyMs),

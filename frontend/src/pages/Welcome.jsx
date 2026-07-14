@@ -264,14 +264,14 @@ export default function Welcome() {
             <span className="sm:hidden">
               A community-run racing league on Discord. Right now we race{" "}
               <span className="font-semibold text-ink dark:text-white">{carsLabel}</span>
-              {showPlatform ? <> on {platform}</> : ""}, across two tiers. New drivers are welcome every season.
+              {showPlatform ? <> on {platform}</> : ""}. New drivers are welcome every season.
             </span>
             <span className="hidden sm:inline">
               A community-run racing league on Discord{seasonCount > 1 ? `, ${seasonCount} seasons and counting` : ""}.
               Every season we race a new era of motorsport; right now the grid runs{" "}
               <span className="font-semibold text-ink dark:text-white">{carsLabel}</span> cars
-              {showPlatform ? <> on {platform}</> : ""}. Two
-              tiers, a full championship, and a friendly grid that welcomes new drivers every season, whether
+              {showPlatform ? <> on {platform}</> : ""}. A
+              full championship and a friendly grid that welcomes new drivers every season, whether
               you&rsquo;re chasing wins or just learning the lines.
             </span>
           </p>
@@ -331,9 +331,9 @@ export default function Welcome() {
             Each season we race a fresh grid of equally matched cars, right now {carsLabel}
             {showPlatform ? ` on ${platform}` : ""}, with proper physics and no driver aids holding your hand.
           </FeatureCard>
-          <FeatureCard index={1} icon="layers" title="Two tiers + reserves">
-            Tier 1 and Tier 2 keep the racing close to your level. Reserves can step in for any team when a
-            regular can&rsquo;t make a round. It&rsquo;s a perfect way to get your first start.
+          <FeatureCard index={1} icon="layers" title="Racing at every level">
+            Grids are split by pace so the racing stays close, whatever your speed. Reserves can step in for
+            any team when a regular can&rsquo;t make a round &mdash; a perfect way to get your first start.
           </FeatureCard>
           <FeatureCard index={2} icon="calendar" title="A real season">
             {totalRounds > 0 ? `${totalRounds} rounds` : "A full season of rounds"} on iconic circuits, run
@@ -413,7 +413,7 @@ export default function Welcome() {
         <SectionHead
           eyebrow="The format"
           title="How the championship works"
-          sub="Finish a race, earn points for your position, and climb the tables. Two championships run at once."
+          sub="Finish a race, earn points for your position, and climb the tables — as a driver and as a team."
         />
         <div className="grid gap-6 lg:grid-cols-5">
           {/* points table */}
@@ -441,14 +441,13 @@ export default function Welcome() {
             </div>
           </div>
 
-          {/* tier explainer */}
+          {/* drivers/constructors explainer */}
           <div className="reveal space-y-4 lg:col-span-2">
             <div className="card p-5">
-              <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Two championships</h3>
+              <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Drivers &amp; constructors</h3>
               <ul className="mt-3 space-y-3 text-sm leading-relaxed text-light">
-                <li><span className="font-bold text-dark">Drivers:</span> everyone, T1, T2 and reserves, in one table ranked by points scored.</li>
-                <li><span className="font-bold text-dark">Constructors T1:</span> a team&rsquo;s two Tier-1 drivers&rsquo; points added together.</li>
-                <li><span className="font-bold text-dark">Constructors T2:</span> only the Tier-2 cars are re-ranked among themselves, then scored.</li>
+                <li><span className="font-bold text-dark">Drivers:</span> everyone in the field, ranked in one table by points scored.</li>
+                <li><span className="font-bold text-dark">Constructors:</span> each level of the grid runs its own separate teams&rsquo; table, so there&rsquo;s a title to fight for wherever you race.</li>
               </ul>
             </div>
             <div className="card flex items-start gap-3 p-5">
@@ -567,8 +566,8 @@ export default function Welcome() {
           ) : (
           <>
           <FaqItem q="Do I need to be fast to join?">
-            Not at all. Tier 2 and the reserve system exist so newer drivers can find their feet against
-            similar pace. Clean, consistent racing matters far more than raw speed.
+            Not at all. The grid is split by pace, and the reserve system exists too, so newer drivers can
+            find their feet against similar competition. Clean, consistent racing matters far more than raw speed.
           </FaqItem>
           <FaqItem q="What do I need to race?">
             A PC copy of the season&rsquo;s game ({platform} right now), the current car mod, and a stable
@@ -607,7 +606,7 @@ export default function Welcome() {
 
       {/* ====================== FINAL CTA ======================= */}
       <section className="reveal relative overflow-hidden rounded-[1.75rem] bg-ink p-10 text-center shadow-xl shadow-ink/20 sm:p-14">
-        <div className="absolute inset-0 opacity-60" style={{ background: "radial-gradient(120% 120% at 50% 0%, rgba(244,175,198,0.25), transparent 60%)" }} />
+        <div className="absolute inset-0 opacity-60" style={{ background: "radial-gradient(120% 120% at 50% 0%, rgb(var(--c-brand) / 0.25), transparent 60%)" }} />
         <div className="speed-hatch absolute inset-0 opacity-30" />
         <div className="relative">
           <h2 className="font-display text-3xl font-black uppercase tracking-tight text-white sm:text-5xl">

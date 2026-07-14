@@ -307,6 +307,25 @@ export default function Home() {
   // The podium strip in the hero's left column uses whichever set applies.
   const leftPodium = showPrevChamps ? prevPodium : heroPodium;
 
+  // The "Coming soon" hero (season name, countdown to the opener, Join Discord)
+  // was built for a future season previewed before it's activated. A brand-new
+  // SERIES' first-ever season hits the exact same "nothing has happened yet"
+  // state while already ACTIVE (awaitingOpener), just with no previous season
+  // to fall back to (showPrevChamps false) — so it gets the same treatment
+  // instead of the "Latest Race" hero faking a result that doesn't exist yet.
+  const showComingSoonHero = isUpcomingSeason || (awaitingOpener && !showPrevChamps);
+  const comingSoonCopy = isUpcomingSeason
+    ? {
+        eyebrow: "Coming soon",
+        blurb:
+          "The next NABS season is taking shape. Teams, cars and the calendar are being prepared right now. Jump into the Discord to be there from round one.",
+      }
+    : {
+        eyebrow: "Season opener soon",
+        blurb:
+          "This season just got underway. Teams and drivers are locking in their seats, and the grid comes together on Discord. Jump in to be there from round one.",
+      };
+
   // Personal "by the numbers" — shown to a logged-in driver who appears in the
   // SELECTED season: by their linked id in the active season, else by name /
   // discord in an archive season they raced in. If they didn't drive this season
@@ -487,15 +506,17 @@ export default function Home() {
                 </Link>
               </div>
             </div>
-          ) : isUpcomingSeason ? (
-            /* COMING SOON — a future season previewed before it has started. No
+          ) : showComingSoonHero ? (
+            /* COMING SOON — a future season previewed before it has started, OR
+               an already-active season waiting for its very first round with no
+               previous season to fall back to (a brand-new series' opener). No
                champion/last-season content; a reserved slot holds the eventual
                3D car reveal (a real model mounts there later). */
             <div className="flex flex-1 flex-col justify-center gap-7 lg:flex-row lg:items-center lg:gap-10">
               <div className="flex flex-1 flex-col gap-5">
                 <div className="hero-anim flex items-center gap-2.5 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
                   <span className="live-dot inline-block h-2 w-2 rounded-full bg-brand" />
-                  Coming soon
+                  {comingSoonCopy.eyebrow}
                 </div>
                 <h1 className="hero-anim font-display text-4xl font-black uppercase leading-[0.95] tracking-tight text-white sm:text-6xl" style={{ animationDelay: "0.12s" }}>
                   {season?.name}
@@ -506,7 +527,7 @@ export default function Home() {
                   </div>
                 )}
                 <p className="hero-anim max-w-lg text-base leading-relaxed text-white/75" style={{ animationDelay: "0.2s" }}>
-                  The next NABS season is taking shape. Teams, cars and the calendar are being prepared right now. Jump into the Discord to be there from round one.
+                  {comingSoonCopy.blurb}
                 </p>
                 {/* Big countdown to the opener — the same broadcast clock the
                     next-race panel uses, so race day reads the same site-wide. */}
@@ -771,6 +792,19 @@ export default function Home() {
             team: honours.mostOvertakes.team,
           });
         }
+        if (honours.mostLapsLed) {
+          cells.push({
+            key: "lapsLed",
+            label: "Most laps led",
+            to: `/drivers/${honours.mostLapsLed.driverId}`,
+            name: honours.mostLapsLed.name,
+            stat: honours.mostLapsLed.count,
+            note: "laps out front",
+            driverId: honours.mostLapsLed.driverId,
+            country: honours.mostLapsLed.country,
+            team: honours.mostLapsLed.team,
+          });
+        }
         if (honours.cleanest) {
           cells.push({
             key: "cleanest",
@@ -803,10 +837,12 @@ export default function Home() {
 
       {/* ===================== BY THE NUMBERS (personal when linked) ========= */}
       {/* Archive seasons show only the general season stats — no personal band.
-          A season that hasn't STARTED yet has no leader or title gap to show,
-          so it gets its own pre-season band: the opener, the calendar and how
-          the grid is filling up. */}
-      {isUpcomingSeason ? (
+          A season that hasn't STARTED yet (not-yet-active future season, or an
+          already-active one still waiting for round one with no previous
+          season to fall back to) has no leader or title gap to show, so it
+          gets its own pre-season band: the opener, the calendar and how the
+          grid is filling up — same condition as the hero above. */}
+      {showComingSoonHero ? (
         <section className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <NumberTile
             index={0}

@@ -93,7 +93,7 @@ export async function saveRaceResults(prisma, raceId, results) {
   // IMPORTANT: every AC-derived column MUST be snapshotted here, or the next
   // manual Edit-Results save would blank out backfilled telemetry.
   const TELEMETRY_COLS = [
-    "contacts", "envContacts", "cuts", "overtakes", "laps",
+    "contacts", "envContacts", "cuts", "overtakes", "lapsLed", "laps",
     "cleanLaps", "consistencyMs", "consistencyPct", "gamePenalties", "gamePenaltySeconds",
   ];
   const existing = await prisma.$queryRawUnsafe(

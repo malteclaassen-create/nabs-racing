@@ -147,7 +147,7 @@ export default function Attendance() {
                   onClick={() => setSelectedId(e.id)}
                   className={`pill ${e.id === ev.id ? "bg-primary text-white" : "bg-surface2 text-medium hover:text-dark"}`}
                 >
-                  R{e.number} {e.track}
+                  {e.type === "TRAINING" ? "Training" : `R${e.number}`} {e.track}
                 </button>
               ))}
             </div>
@@ -161,7 +161,9 @@ export default function Attendance() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2.5">
                   {circuit && <Flag code={circuit.country} w={26} h={19} />}
-                  <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Round {ev.number}</span>
+                  <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+                    {ev.type === "TRAINING" ? "Training session" : `Round ${ev.number}`}
+                  </span>
                 </div>
                 <h2 className="mt-1 font-display text-3xl font-black uppercase tracking-tight text-dark sm:text-4xl">{ev.track}</h2>
                 <div className="mt-1 font-mono text-sm font-bold uppercase tracking-wide text-medium">

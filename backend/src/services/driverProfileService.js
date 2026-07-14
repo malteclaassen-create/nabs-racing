@@ -12,6 +12,8 @@ import {
 } from "./standingsService.js";
 import { parseSocials } from "../lib/socials.js";
 import { getLinkedDriverIds, getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
+import { getActiveSeason } from "./seasonService.js";
+import { seasonSeriesMap, dbListSeries } from "../lib/series.js";
 import { telemetryForDriver } from "../lib/telemetryRead.js";
 import { readProfileTiles } from "../lib/profileTiles.js";
 import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
@@ -59,13 +61,14 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds) {
   }
 
   // Telemetry across every linked row (per-driver reads, merged).
-  let overtakesTotal = 0, contactsTotal = 0, consNum = 0, consDen = 0, gamePenSecTotal = 0;
+  let overtakesTotal = 0, contactsTotal = 0, lapsLedTotal = 0, consNum = 0, consDen = 0, gamePenSecTotal = 0;
   let anyTelemetry = false;
   for (const id of linkedIds) {
     const tel = await telemetryForDriver(prisma, id);
     for (const t of tel.values()) {
       if (t.overtakes != null) { overtakesTotal += t.overtakes; anyTelemetry = true; }
       if (t.contacts != null) { contactsTotal += t.contacts; anyTelemetry = true; }
+      if (t.lapsLed != null) { lapsLedTotal += t.lapsLed; anyTelemetry = true; }
       if (t.gamePenaltySeconds != null) gamePenSecTotal += t.gamePenaltySeconds;
       if (t.consistencyMs != null && t.cleanLaps) { consNum += t.consistencyMs * t.cleanLaps; consDen += t.cleanLaps; }
     }
@@ -101,6 +104,7 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds) {
     fastestLap: fastest,
     overtakes: anyTelemetry ? overtakesTotal : null,
     contacts: anyTelemetry ? contactsTotal : null,
+    lapsLed: anyTelemetry ? lapsLedTotal : null,
     avgConsistencyMs: consDen ? Math.round(consNum / consDen) : null,
     gamePenaltySeconds: anyTelemetry ? Math.round(gamePenSecTotal * 10) / 10 : null,
     stewardPenaltySeconds: rows.reduce((s, r) => s + (r.penaltySeconds || 0), 0),
@@ -108,18 +112,28 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds) {
 }
 
 // Career summary across a person's linked driver rows (other seasons). Excludes
-// private seasons so a public profile never leaks an unpublished season. Returns
-// null when the driver isn't linked to any other season.
+// private seasons so a public profile never leaks an unpublished season. Since
+// the series model the career table is scoped to the profile row's OWN series
+// (season numbers only mean something inside one series); the person's other
+// series come back as a compact per-series summary for the "all series" look.
+// Returns { career, otherSeries } — career null when the driver isn't linked
+// to any other season of this series, otherSeries null when the person races
+// nowhere else.
 async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
   const linkedIds = await getLinkedDriverIds(prisma, driverId);
-  if (linkedIds.length < 2) return null;
-  const [linkedDrivers, privateRows] = await Promise.all([
+  if (linkedIds.length < 2) return { career: null, otherSeries: null };
+  const [linkedDrivers, privateRows, bySeries, allSeries] = await Promise.all([
     prisma.driver.findMany({ where: { id: { in: linkedIds } }, include: { team: true, season: true } }),
     prisma.$queryRawUnsafe(`SELECT "id" FROM "Season" WHERE "isPublic" = 0`).catch(() => []),
+    seasonSeriesMap(prisma),
+    dbListSeries(prisma, { includePrivate: true }),
   ]);
   const privateSeasonIds = new Set(privateRows.map((r) => r.id));
+  const ownSeriesId = bySeries.get(ownSeasonId) ?? null;
+  const seriesById = new Map(allSeries.map((s) => [s.id, s]));
 
   const seasons = [];
+  const foreign = new Map(); // seriesId -> accumulating summary of OTHER series
   for (const ld of linkedDrivers) {
     if (!ld.seasonId || privateSeasonIds.has(ld.seasonId)) continue;
     const st = ld.seasonId === ownSeasonId ? ownStandings : await getDriverStandings(prisma, ld.seasonId);
@@ -127,7 +141,7 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
     if (!row) continue;
     const rounds = Object.values(row.perRace || {});
     const finishes = rounds.filter((v) => v.status === "FINISHED" && v.position != null);
-    seasons.push({
+    const line = {
       driverId: ld.id,
       seasonNumber: ld.season?.number ?? null,
       seasonName: ld.season?.name ?? null,
@@ -139,8 +153,38 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
       starts: rounds.filter((v) => v.status !== "DNS").length,
       wins: finishes.filter((v) => v.position === 1).length,
       podiums: finishes.filter((v) => v.position <= 3).length,
-    });
+    };
+    const seriesId = bySeries.get(ld.seasonId) ?? null;
+    if (seriesId === ownSeriesId) {
+      seasons.push(line);
+    } else {
+      // A season in ANOTHER series: folded into that series' summary line.
+      // Hidden series (private, non-admin readers can't browse them anyway)
+      // still count into the numbers but stay unnamed for safety.
+      const series = seriesById.get(seriesId);
+      if (series && !series.isPublic) continue;
+      const acc = foreign.get(seriesId) || {
+        seriesSlug: series?.slug ?? null,
+        seriesName: series?.name ?? "Other series",
+        seasons: 0,
+        points: 0,
+        starts: 0,
+        wins: 0,
+        podiums: 0,
+        bestPosition: null,
+      };
+      acc.seasons += 1;
+      acc.points += line.points;
+      acc.starts += line.starts;
+      acc.wins += line.wins;
+      acc.podiums += line.podiums;
+      if (line.position != null && line.starts > 0) {
+        acc.bestPosition = acc.bestPosition == null ? line.position : Math.min(acc.bestPosition, line.position);
+      }
+      foreign.set(seriesId, acc);
+    }
   }
+  const otherSeries = foreign.size ? [...foreign.values()] : null;
   // One person can have TWO rows in the SAME season (e.g. started as a reserve,
   // then took over a seat under a new Discord handle). Fold those into a single
   // season line: totals add up, the row with more points is the "main" entry
@@ -170,7 +214,9 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
   }
   const merged = [...bySeason.values()];
   // Nothing to aggregate: a single row that didn't fold anything in.
-  if (merged.length < 2 && merged.length === seasons.length) return null;
+  if (merged.length < 2 && merged.length === seasons.length) {
+    return { career: null, otherSeries };
+  }
   merged.sort((a, b) => (a.seasonNumber ?? 0) - (b.seasonNumber ?? 0));
   const totals = merged.reduce(
     (t, s) => ({
@@ -182,7 +228,7 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
     }),
     { seasons: 0, points: 0, starts: 0, wins: 0, podiums: 0 }
   );
-  return { seasons: merged, totals };
+  return { career: { seasons: merged, totals }, otherSeries };
 }
 
 export async function getDriverProfile(prisma, driverId) {
@@ -218,18 +264,35 @@ export async function getDriverProfile(prisma, driverId) {
   const standingRow = standings.standings.find((r) => r.driverId === driverId);
   const resultByRaceId = new Map(results.map((r) => [r.raceId, r]));
   const nameOv = nameOverrides.get(driverId);
-  const career = await buildCareer(prisma, driverId, seasonId, standings);
+  const { career, otherSeries } = await buildCareer(prisma, driverId, seasonId, standings);
 
   // Linked rows + private seasons are shared by the all-time stats and both
-  // badge shelves below, so resolve them once.
-  const linkedIds = await getLinkedDriverIds(prisma, driverId);
+  // badge shelves below, so resolve them once. Everything here is scoped to
+  // the profile row's OWN series (default view "pro Serie"); the person's
+  // other series appear only in the compact otherSeries summary above.
+  const [linkedIdsAll, bySeriesMap] = await Promise.all([
+    getLinkedDriverIds(prisma, driverId),
+    seasonSeriesMap(prisma),
+  ]);
+  const ownSeriesId = bySeriesMap.get(seasonId) ?? null;
+  const linkedSeasonRows =
+    linkedIdsAll.length > 1
+      ? await prisma.driver.findMany({
+          where: { id: { in: linkedIdsAll } },
+          select: { id: true, seasonId: true },
+        })
+      : [{ id: driverId, seasonId }];
+  const linkedIds = linkedSeasonRows
+    .filter((r) => (bySeriesMap.get(r.seasonId) ?? null) === ownSeriesId)
+    .map((r) => r.id);
   const privateSeasonRows = await prisma
     .$queryRawUnsafe(`SELECT "id" FROM "Season" WHERE "isPublic" = 0`)
     .catch(() => []);
   const privateSeasonIds = new Set(privateSeasonRows.map((r) => r.id));
 
   // All-time stats power the Season ⇄ All-time toggle on the profile's stat
-  // tiles — only when the driver actually spans more than one season.
+  // tiles — only when the driver actually spans more than one season of THIS
+  // series (matching the career table next to it).
   let allTime = null;
   if (career) {
     allTime = await buildAllTimeStats(prisma, linkedIds, privateSeasonIds);
@@ -237,15 +300,22 @@ export async function getDriverProfile(prisma, driverId) {
 
   // Podium badges — earned, never assigned: one seal per CONCLUDED season this
   // person finished in the championship top three (gold P1, silver P2, bronze
-  // P3). A season counts as concluded when it lies behind the active one, or
-  // when it's the live season and every championship round has been run.
-  // Linked seasons come via the career block, so seals follow the person
-  // across handle changes. One seal per season (the best result wins).
+  // P3). A season counts as concluded when it lies behind the active one OF
+  // THIS SERIES, or when it's the live season and every championship round
+  // has been run. Linked seasons come via the career block (own series), so
+  // seals follow the person across handle changes. One seal per season (the
+  // best result wins).
   const [activeSeasonRow, seasonMeta] = await Promise.all([
-    prisma.season.findFirst({ where: { isActive: true }, select: { number: true } }),
-    prisma.season.findMany({ select: { number: true, game: true } }),
+    getActiveSeason(prisma, ownSeriesId),
+    prisma.season.findMany({ select: { id: true, number: true, game: true } }),
   ]);
-  const gameByNumber = new Map(seasonMeta.map((s) => [s.number, s.game || null]));
+  // Season numbers only mean something inside one series -> the game lookup
+  // for badge popovers is restricted to this series' seasons.
+  const gameByNumber = new Map(
+    seasonMeta
+      .filter((s) => (bySeriesMap.get(s.id) ?? null) === ownSeriesId)
+      .map((s) => [s.number, s.game || null])
+  );
   const BADGE_TYPE = { 1: "champion", 2: "vice", 3: "third" };
   const badgeBySeason = new Map();
   const addBadge = (position, num, name, points) => {
@@ -373,6 +443,7 @@ export async function getDriverProfile(prisma, driverId) {
   // rounds with imported telemetry contribute; consistency is clean-lap weighted).
   let overtakesTotal = 0;
   let contactsTotal = 0;
+  let lapsLedTotal = 0;
   let envTotal = 0;
   let cutsTotal = 0;
   let gamePenTotal = 0;
@@ -385,6 +456,7 @@ export async function getDriverProfile(prisma, driverId) {
     if (!t) continue;
     if (t.overtakes != null) { overtakesTotal += t.overtakes; anyTelemetry = true; }
     if (t.contacts != null) { contactsTotal += t.contacts; anyTelemetry = true; }
+    if (t.lapsLed != null) { lapsLedTotal += t.lapsLed; anyTelemetry = true; }
     if (t.envContacts != null) envTotal += t.envContacts;
     if (t.cuts != null) cutsTotal += t.cuts;
     if (t.gamePenalties != null) gamePenTotal += t.gamePenalties;
@@ -437,8 +509,12 @@ export async function getDriverProfile(prisma, driverId) {
       role: (await readDriverRoles(prisma, [driver.id])).get(driver.id) || null,
       team: { id: driver.team.id, name: driver.team.name, color: driver.team.color, tier: driver.team.tier, logoUrl: driver.team.logoUrl },
     },
-    // Cross-season career (null unless this driver is linked to other seasons).
+    // Cross-season career within this row's series (null unless this driver is
+    // linked to other seasons of the same series).
     career,
+    // Compact per-series summary of the person's OTHER series (null when they
+    // race only here) — the optional "across all series" look.
+    otherSeries,
     // Same shape as `stats`, aggregated across every linked season (null when
     // there's only one season — the toggle then has nothing to switch to).
     allTime,
@@ -505,6 +581,7 @@ export async function getDriverProfile(prisma, driverId) {
       // profile hides these tiles for position-only archive seasons).
       overtakes: anyTelemetry ? overtakesTotal : null,
       contacts: anyTelemetry ? contactsTotal : null,
+      lapsLed: anyTelemetry ? lapsLedTotal : null,
       envContacts: anyTelemetry ? envTotal : null,
       cuts: anyTelemetry ? cutsTotal : null,
       gamePenalties: anyTelemetry ? gamePenTotal : null,

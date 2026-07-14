@@ -8,7 +8,7 @@
 export const WELCOME_FAQ_DEFAULTS = [
   {
     q: "Do I need to be fast to join?",
-    a: "Not at all. Tier 2 and the reserve system exist so newer drivers can find their feet against similar pace. Clean, consistent racing matters far more than raw speed.",
+    a: "Not at all. The grid is split by pace, and the reserve system exists too, so newer drivers can find their feet against similar competition. Clean, consistent racing matters far more than raw speed.",
   },
   {
     q: "What do I need to race?",

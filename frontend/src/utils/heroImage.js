@@ -1,10 +1,13 @@
-// Per-season hero photo. Each season can have its own era image at
-// public/heroes/s<number>.jpg (e.g. an F1 1990 shot for Season 4); seasons
-// without one fall back to the shared /hero.jpg. Convention-based, so adding a
-// season image is just dropping a file — no code or admin change needed.
+// Per-season hero photo. Three levels, most specific wins:
+//   1. season.heroImageUrl — admin-uploaded (Seasons tab), works with no
+//      file-system access (e.g. Railway).
+//   2. public/heroes/s<number>.jpg — drop-a-file convention for anyone who DOES
+//      have file access; still works, untouched by the upload feature.
+//   3. the shared /hero.jpg.
 export const DEFAULT_HERO = "/hero.jpg";
 
 export function heroFor(season) {
+  if (season?.heroImageUrl) return season.heroImageUrl;
   return season?.number ? `/heroes/s${season.number}.jpg` : DEFAULT_HERO;
 }
 

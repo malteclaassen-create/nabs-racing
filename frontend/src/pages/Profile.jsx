@@ -43,6 +43,7 @@ const PROFILE_TILES = [
   { key: "avgGrid", label: "Avg Grid" },
   { key: "fastestLap", label: "Fastest Lap" },
   { key: "overtakes", label: "Overtakes", telemetry: true },
+  { key: "lapsLed", label: "Laps Led", telemetry: true },
   { key: "contacts", label: "Contacts", telemetry: true },
   { key: "consistency", label: "Consistency", telemetry: true },
   { key: "penalties", label: "Penalty Time" },

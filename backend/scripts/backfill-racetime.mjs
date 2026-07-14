@@ -1,46 +1,46 @@
 // ---------------------------------------------------------------------------
-// Backfill per-driver telemetry (contacts, env hits, cuts, overtakes,
-// consistency, in-game penalties) onto EXISTING RaceResult rows from the raw AC
-// result JSONs, without touching any scoring (position/points/status/penalty).
+// Backfill ONLY the race time (`totalTimeMs`) onto EXISTING RaceResult rows from
+// the raw AC result JSONs, without touching any scoring
+// (position/points/status/penalty/subForTeamId).
 //
-// Sources:
-//   --dir <path>   read *RACE*.json from a folder (e.g. ../archive-material/5)
-//   --remote       pull RACE sessions from the Emperor server in the season's
-//                  date window (fallback/primary for Season 7)
-// Round matching:
-//   S5/S6 (--dir): the JSONs sort chronologically onto rounds 1..N. A soft track
-//                  guard warns if a resolvable JSON track disagrees with the DB.
-//   S7 (--remote): each JSON is matched to a race by date (±3 days).
-// Driver matching: fuzzy (parser suggestion >= 0.55) restricted to the drivers
-//   who actually have a result row in that race, plus a per-season OVERRIDE map.
+// Why: the reconstructed Season 7 rounds (R1–R10) came from seed.js, which stored
+// the official points/positions/grid/best-lap but never the race time. The AC
+// parser already reads `totalTimeMs` from the `TotalTime` field correctly — those
+// rounds just never went through the normal import. This fills the gap so the
+// results page can show real gaps-to-leader.
 //
-// Flags: --dry-run (report only), --fix-races (set S6 track/date + missing dates).
+// SAFETY — this is pure enrichment:
+//   • Writes `totalTimeMs` and nothing else.
+//   • Only fills rows where it is currently NULL (never overwrites).
+//   • Only fills rows with `penaltySeconds = 0`. A race time is only ever
+//     consulted for ordering when a round carries a time penalty (see
+//     classifyResults: the `!anyPenalty` branch keeps the stored order and never
+//     looks at totalTimeMs). Filling a penalised row is therefore the only case
+//     that could theoretically re-sort a field, so we skip it. The seed rounds
+//     carry no penalties at all, so in practice nothing can move — the standings
+//     self-check at the end proves it.
+//
+// Sources / round matching / driver matching are identical to
+// backfill-telemetry.mjs (date-window pairing for --remote, chronological for
+// --dir, fuzzy driver match restricted to the round's roster + OVERRIDES).
 //
 // IMPORTANT: run with the dev server STOPPED (SQLite write lock on Windows).
-// Only enrichment columns are written; the round's points/positions are the
-// authoritative stored values and are never modified.
 //
-//   node scripts/backfill-telemetry.mjs --season 5 --dir ../archive-material/5 --dry-run
-//   node scripts/backfill-telemetry.mjs --season 5 --dir ../archive-material/5
-//   node scripts/backfill-telemetry.mjs --season 6 --dir ../archive-material/6 --fix-races
-//   node scripts/backfill-telemetry.mjs --season 7 --remote
-//   node scripts/backfill-telemetry.mjs --season 7 --dir ../archive-material/7
+//   node scripts/backfill-racetime.mjs --season 7 --remote --dry-run
+//   node scripts/backfill-racetime.mjs --season 7 --remote
+//   node scripts/backfill-racetime.mjs --season 7 --dir ../backend/results-archive/season7
 // ---------------------------------------------------------------------------
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import prisma from "../src/lib/prisma.js";
-import { ensureAppSchema } from "../src/lib/ensureSchema.js";
 import { parseAcRaceJson } from "../src/services/acJsonParser.js";
 import { listRemoteResults, fetchRemoteResult } from "../src/services/emperorResults.js";
-import { saveDirect } from "../src/lib/resultsArchive.js";
-import { trackKeyFor, displayNameFor } from "../src/lib/trackKeys.js";
+import { trackKeyFor } from "../src/lib/trackKeys.js";
 import { getDriverStandings, applyDropScores } from "../src/services/standingsService.js";
 
 // Per-season AC-name -> driverId overrides for names fuzzy matching can't place.
-// Seeded for S7 from season7/generate-positions.mjs; extend after a --dry-run.
+// Kept in sync with backfill-telemetry.mjs (same drivers, same rounds).
 const OVERRIDES = {
-  5: {},
-  6: {},
   7: {
     "Manrry Cespedes": "manro45gt",
     Duck: "duck",
@@ -56,31 +56,23 @@ const OVERRIDES = {
   },
 };
 
-const TELEMETRY_COLS = [
-  "contacts", "envContacts", "cuts", "overtakes", "lapsLed", "laps",
-  "cleanLaps", "consistencyMs", "consistencyPct", "gamePenalties", "gamePenaltySeconds",
-];
-
 function parseArgs(argv) {
-  const args = { season: null, dir: null, remote: false, dryRun: false, fixRaces: false };
+  const args = { season: null, dir: null, remote: false, dryRun: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--season") args.season = Number(argv[++i]);
     else if (a === "--dir") args.dir = argv[++i];
     else if (a === "--remote") args.remote = true;
     else if (a === "--dry-run") args.dryRun = true;
-    else if (a === "--fix-races") args.fixRaces = true;
   }
   return args;
 }
 
-const isPlaceholderTrack = (t) => !t || /^round\s*\d+$/i.test(t.trim());
-
-// Collect { json, date, track } from a folder, newest-... no, oldest first.
+// Collect { json, date, track } from a folder, oldest first.
 function collectFromDir(dir) {
   const abs = resolve(dir);
   if (!existsSync(abs)) throw new Error(`--dir not found: ${abs}`);
-  const files = readdirSync(abs).filter((f) => /RACE.*\.json$/i.test(f));
+  const files = readdirSync(abs).filter((f) => /\.json$/i.test(f));
   const out = [];
   for (const f of files) {
     try {
@@ -116,14 +108,15 @@ async function collectFromRemote(fromDate, toDate) {
   return out;
 }
 
-// Resolve every AC entry in one file to a result-row driverId for this race.
-function matchRound(json, race, roster, overrideMap) {
-  // Candidates = drivers who actually have a result row in this round.
+// Resolve every AC entry with a valid time to a result-row driverId for this
+// race. `rowState` maps driverId -> { totalTimeMs, penaltySeconds } so the
+// dry-run can report exactly which rows would be filled.
+function matchRound(json, race, roster, overrideMap, rowState) {
   const rowDriverIds = new Set(race.results.map((r) => r.driverId));
   const candidates = roster.filter((d) => rowDriverIds.has(d.id));
   const parsed = parseAcRaceJson(json, candidates);
 
-  const matched = []; // { driverId, telemetry, grid, bestLapMs }
+  const matched = []; // { driverId, acName, totalTimeMs, fillable }
   const seen = new Set();
   const unmatched = [];
   for (const en of parsed.entries) {
@@ -131,68 +124,42 @@ function matchRound(json, race, roster, overrideMap) {
     let driverId = overrideMap[en.acDriverName];
     if (!driverId || !rowDriverIds.has(driverId)) driverId = en.suggestedDriverId;
     if (!driverId || !rowDriverIds.has(driverId)) {
-      // A real entrant (ran laps / has a time) we couldn't place is a problem.
       if ((en.laps || en.numLaps || 0) > 0 || en.totalTimeMs != null) unmatched.push(en.acDriverName);
       continue;
     }
     if (seen.has(driverId)) continue; // never double-map
     seen.add(driverId);
-    matched.push({
-      driverId,
-      acName: en.acDriverName,
-      telemetry: {
-        contacts: en.contacts,
-        envContacts: en.envContacts,
-        cuts: en.cuts,
-        overtakes: en.overtakes,
-        lapsLed: en.lapsLed,
-        laps: en.laps,
-        cleanLaps: en.cleanLaps,
-        consistencyMs: en.consistencyMs,
-        gamePenalties: en.gamePenalties,
-        gamePenaltySeconds: en.gamePenaltySeconds,
-      },
-      grid: en.grid ?? null,
-      bestLapMs: Number.isFinite(en.bestLap) && en.bestLap > 0 && en.bestLap <= 1800000 ? en.bestLap : null,
-    });
+    if (en.totalTimeMs == null) continue; // no usable time -> nothing to write
+    const state = rowState.get(driverId) || {};
+    const fillable = state.totalTimeMs == null && (state.penaltySeconds || 0) === 0;
+    matched.push({ driverId, acName: en.acDriverName, totalTimeMs: en.totalTimeMs, fillable });
   }
   return { matched, unmatched: [...new Set(unmatched)] };
 }
 
 async function writeRound(race, matched) {
+  let filled = 0;
   for (const m of matched) {
-    const sets = [];
-    const vals = [];
-    for (const col of TELEMETRY_COLS) {
-      const v = m.telemetry[col];
-      if (v != null) {
-        sets.push(`"${col}" = ?`);
-        vals.push(v);
-      }
-    }
-    // grid / bestLap are profile-only enrichment; safe to fill (never totalTime,
-    // to avoid any penalty re-sort). Only fill when currently empty.
-    if (m.grid != null) sets.push(`"grid" = COALESCE("grid", ?)`), vals.push(m.grid);
-    if (m.bestLapMs != null) sets.push(`"bestLapMs" = COALESCE("bestLapMs", ?)`), vals.push(m.bestLapMs);
-    if (!sets.length) continue;
-    await prisma.$executeRawUnsafe(
-      `UPDATE "RaceResult" SET ${sets.join(", ")} WHERE "raceId" = ? AND "driverId" = ?`,
-      ...vals,
+    // The WHERE clause is the real guard: only an empty, unpenalised row is
+    // touched. COALESCE would also work, but this way `changes` counts real fills.
+    const changed = await prisma.$executeRawUnsafe(
+      `UPDATE "RaceResult" SET "totalTimeMs" = ?
+         WHERE "raceId" = ? AND "driverId" = ? AND "totalTimeMs" IS NULL AND "penaltySeconds" = 0`,
+      m.totalTimeMs,
       race.id,
       m.driverId
     );
+    filled += Number(changed) || 0;
   }
+  return filled;
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.season || (!args.dir && !args.remote)) {
-    console.error("Usage: --season <N> (--dir <path> | --remote) [--dry-run] [--fix-races]");
+    console.error("Usage: --season <N> (--dir <path> | --remote) [--dry-run]");
     process.exit(1);
   }
-  // Ensure the telemetry columns exist before writing. Skipped on --dry-run so a
-  // dry-run stays purely read-only (safe to run while the dev server is up).
-  if (!args.dryRun) await ensureAppSchema(prisma);
 
   const season = await prisma.season.findFirst({ where: { number: args.season } });
   if (!season) throw new Error(`No season ${args.season} in the DB`);
@@ -201,7 +168,7 @@ async function main() {
   const races = await prisma.race.findMany({
     where: { seasonId: season.id, isSpecialEvent: false },
     orderBy: { number: "asc" },
-    include: { results: { select: { driverId: true } } },
+    include: { results: { select: { driverId: true, totalTimeMs: true, penaltySeconds: true } } },
   });
   const roster = await prisma.driver.findMany({
     where: { seasonId: season.id },
@@ -216,12 +183,9 @@ async function main() {
   const sources = args.dir ? collectFromDir(args.dir) : await collectFromRemote(from, to);
   console.log(`  ${sources.length} source JSON(s) collected`);
 
-  // Pair each source to a race.
-  const pairs = []; // { race, source }
+  // Pair each source to a race — identical logic to backfill-telemetry.mjs.
+  const pairs = [];
   if (args.remote) {
-    // One best source per RACE: within ±3 days AND (when both track names
-    // resolve) the same circuit. This stops a nearby session at a different
-    // track (or a special event) from being paired to the wrong round.
     const usedSources = new Set();
     for (const race of races) {
       if (!race.date) continue;
@@ -245,7 +209,6 @@ async function main() {
       }
     }
   } else {
-    // Chronological order = round order.
     if (sources.length !== races.length) {
       console.warn(`  ! ${sources.length} JSONs but ${races.length} races — pairing by order up to the shorter length`);
     }
@@ -253,8 +216,8 @@ async function main() {
     for (let i = 0; i < n; i++) pairs.push({ race: races[i], source: sources[i] });
   }
 
-  let wrote = 0;
-  let skipped = 0;
+  let filledTotal = 0;
+  let wouldFillTotal = 0;
   for (const { race, source } of pairs) {
     const jsonKey = trackKeyFor(source.track);
     const dbKey = trackKeyFor(race.track);
@@ -262,47 +225,28 @@ async function main() {
       console.warn(`  ! R${race.number}: track guard — JSON ${jsonKey} vs DB ${dbKey}. Check ordering.`);
     }
 
-    const { matched, unmatched } = matchRound(source.json, race, roster, overrideMap);
-    const label = `R${race.number} ${race.track}`;
+    const rowState = new Map(race.results.map((r) => [r.driverId, r]));
+    const { matched, unmatched } = matchRound(source.json, race, roster, overrideMap, rowState);
+    const wouldFill = matched.filter((m) => m.fillable).length;
+    const already = race.results.filter((r) => r.totalTimeMs != null).length;
+    wouldFillTotal += wouldFill;
+
     console.log(
-      `  ${label}: ${matched.length}/${race.results.length} rows matched` +
-        (unmatched.length ? `  · no telemetry for: ${unmatched.join(", ")}` : "")
+      `  R${race.number} ${race.track}: ${matched.length}/${race.results.length} rows matched` +
+        `  · would fill ${wouldFill} (already ${already})` +
+        (unmatched.length ? `  · no match for: ${unmatched.join(", ")}` : "")
     );
 
-    // The S5/S6 archive sheets used different handles than the AC files for some
-    // drivers (e.g. "DanielJ-MR setup" vs "Daniel Jelinek"). Those are left with
-    // null telemetry rather than risk misattributing one person's data to
-    // another — add confirmed identities to OVERRIDES[season] to fill them in.
-    // We still write every confident match; only a completely empty match (a
-    // pairing/ordering error) is skipped.
-    if (!matched.length) {
-      console.warn(`     ↳ skipped: nothing matched (check round pairing)`);
-      skipped++;
-      continue;
-    }
     if (args.dryRun) continue;
-
-    // Fix S6 placeholder tracks + fill any missing dates (never touches results).
-    if (args.fixRaces) {
-      const data = {};
-      if (isPlaceholderTrack(race.track) && jsonKey) data.track = displayNameFor(jsonKey);
-      if (!race.date && source.date) data.date = source.date;
-      if (Object.keys(data).length) await prisma.race.update({ where: { id: race.id }, data });
-    }
-
-    await writeRound(race, matched);
-    saveDirect(source.json, {
-      seasonNumber: season.number,
-      raceNumber: race.number,
-      track: jsonKey ? displayNameFor(jsonKey) : race.track,
-    });
-    wrote++;
+    filledTotal += await writeRound(race, matched);
   }
 
-  console.log(`\n  Rounds written: ${wrote}, skipped: ${skipped}${args.dryRun ? " (dry-run: nothing written)" : ""}`);
+  console.log(
+    `\n  ${args.dryRun ? `Would fill ${wouldFillTotal} race time(s) (dry-run: nothing written)` : `Race times filled: ${filledTotal}`}`
+  );
 
-  // Validation: prove the season's driver standings are unchanged (we only wrote
-  // enrichment columns, so the drop-adjusted totals must still equal the sheet).
+  // Validation: prove the season's driver standings are unchanged. We only wrote
+  // an enrichment column, so the drop-adjusted totals must still equal the sheet.
   if (!args.dryRun && season.finalStandings) {
     const official = JSON.parse(season.finalStandings).drivers || [];
     if (official.length) {

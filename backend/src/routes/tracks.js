@@ -11,6 +11,7 @@ import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest, resolveDriverId } from "../middleware/auth.js";
 import { groupKeyFor, trackKeyFor, displayNameFor, countryFor } from "../lib/trackKeys.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
+import { resolveSeries, seasonSeriesMap } from "../lib/series.js";
 import { getPersonGroups, getNameOverrides, getLinkedDriverIds } from "../lib/persons.js";
 import { telemetryForRaces } from "../lib/telemetryRead.js";
 import { readTrackInfo } from "../lib/trackInfo.js";
@@ -29,7 +30,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
     const groupKey = groupKeyFor(track);
     const isAdmin = isAdminRequest(req);
 
-    const [races, priv, groups, nameOverrides, info] = await Promise.all([
+    const [races, priv, groups, nameOverrides, info, series, bySeries] = await Promise.all([
       prisma.race.findMany({
         where: { isCompleted: true, isSpecialEvent: false },
         include: { season: { select: { id: true, number: true, name: true } } },
@@ -38,11 +39,18 @@ router.get("/history", optionalUser, async (req, res, next) => {
       getPersonGroups(prisma),
       getNameOverrides(prisma),
       readTrackInfo(prisma, groupKey),
+      // Track records are per SERIES (GT laps must not enter the F1 record
+      // book). ?series=<slug>; default = the active (primary) series.
+      resolveSeries(prisma, req.query.series, { includePrivate: isAdmin }),
+      seasonSeriesMap(prisma),
     ]);
 
-    // Races at this circuit, in public (non-private) seasons unless we're admin.
+    // Races at this circuit: this series' seasons only, and only public
+    // (non-private) ones unless we're admin.
+    const inSeries = (seasonId) =>
+      !series || bySeries.size === 0 || bySeries.get(seasonId) === series.id;
     const here = races.filter(
-      (r) => groupKeyFor(r.track) === groupKey && (isAdmin || !priv.has(r.seasonId))
+      (r) => groupKeyFor(r.track) === groupKey && (isAdmin || !priv.has(r.seasonId)) && inSeries(r.seasonId)
     );
     const raceIds = here.map((r) => r.id);
 

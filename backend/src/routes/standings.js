@@ -13,8 +13,10 @@ const router = Router();
 
 // Public reads, but a signed-in admin may point them at a PRIVATE (unpublished)
 // season to preview it on the real site; everyone else gets null -> no data.
+// ?series=<slug> scopes the season lookup to that series (default: the active
+// primary series), so every standings read is transitively series-scoped.
 function seasonOpts(req) {
-  return { includePrivate: isAdminRequest(req) };
+  return { includePrivate: isAdminRequest(req), series: req.query.series };
 }
 
 router.get("/drivers", async (req, res, next) => {

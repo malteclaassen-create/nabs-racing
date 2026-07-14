@@ -124,6 +124,8 @@ export async function getSeasonHonours(prisma, seasonId) {
     `SELECT rr."driverId" AS "driverId",
             SUM(COALESCE(rr."overtakes", 0)) AS "overtakes",
             COUNT(rr."overtakes") AS "ratedOt",
+            SUM(COALESCE(rr."lapsLed", 0)) AS "lapsLed",
+            COUNT(rr."lapsLed") AS "ratedLed",
             SUM(COALESCE(rr."contacts", 0)) AS "contacts",
             COUNT(rr."contacts") AS "ratedCt",
             COUNT(*) AS "starts"
@@ -135,12 +137,16 @@ export async function getSeasonHonours(prisma, seasonId) {
     seasonId
   );
   let mostOvertakes = null;
+  let mostLapsLed = null;
   let cleanest = null;
   for (const t of telRows) {
     const row = rows.find((x) => x.driverId === t.driverId);
     if (!row) continue;
     if (Number(t.ratedOt) > 0 && (!mostOvertakes || Number(t.overtakes) > mostOvertakes.count)) {
       mostOvertakes = { ...pickDriver(row), count: Number(t.overtakes) };
+    }
+    if (Number(t.ratedLed) > 0 && Number(t.lapsLed) > 0 && (!mostLapsLed || Number(t.lapsLed) > mostLapsLed.count)) {
+      mostLapsLed = { ...pickDriver(row), count: Number(t.lapsLed) };
     }
     if (Number(t.ratedCt) >= 3 && Number(t.starts) >= 3) {
       const rate = Number(t.contacts) / Number(t.ratedCt);
@@ -163,6 +169,7 @@ export async function getSeasonHonours(prisma, seasonId) {
     bestNewcomer: pickDriver(bestNewcomer),
     fastestLap,
     mostOvertakes,
+    mostLapsLed,
     cleanest,
   };
 }

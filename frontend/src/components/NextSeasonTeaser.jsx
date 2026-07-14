@@ -41,7 +41,7 @@ export default function NextSeasonTeaser() {
     <section className="reveal relative overflow-hidden rounded-2xl border border-border bg-card p-6 shadow-lg shadow-ink/5 dark:border-transparent dark:bg-ink dark:shadow-ink/20 sm:p-8">
       <div
         className="absolute inset-0 opacity-80 dark:opacity-70"
-        style={{ background: "radial-gradient(130% 140% at 85% 0%, rgba(244,175,198,0.28), transparent 55%)" }}
+        style={{ background: "radial-gradient(130% 140% at 85% 0%, rgb(var(--c-brand) / 0.28), transparent 55%)" }}
       />
       <div className="speed-hatch absolute inset-y-0 right-0 w-[30%] opacity-[0.12] dark:opacity-25"
         style={{ WebkitMaskImage: "linear-gradient(to left,#000 30%,transparent)", maskImage: "linear-gradient(to left,#000 30%,transparent)" }} />

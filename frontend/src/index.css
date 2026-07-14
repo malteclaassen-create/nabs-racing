@@ -15,7 +15,12 @@
   /* Card elevation — tuned per theme so widgets lift off the background. */
   --c-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 10px 26px -14px rgba(15, 23, 42, 0.28);
   --c-shadow-lift: 0 2px 6px rgba(15, 23, 42, 0.08), 0 18px 40px -16px rgba(15, 23, 42, 0.34);
-  --c-page-glow: radial-gradient(1200px 540px at 50% -10%, rgba(244, 175, 198, 0.16), transparent 70%);
+  /* Brand accent, raw RGB triple (NABS pink by default). Theme-independent —
+     the SAME value in :root and .dark, like the Tailwind `brand` colour it
+     feeds (see tailwind.config.js). A series can override this (and the
+     theme-aware eyebrow/accent below) via [data-series="..."] further down. */
+  --c-brand: 244 175 198;
+  --c-page-glow: radial-gradient(1200px 540px at 50% -10%, rgb(var(--c-brand) / 0.16), transparent 70%);
   /* Medal tones for TEXT/borders sitting on the card background. The bright
      gold/silver used for filled chips (MEDAL in ui.jsx) wash out as text on
      white, so light mode uses deeper tones; dark mode keeps the bright ones. */
@@ -43,12 +48,38 @@
   --c-faint: #58657b;
   --c-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 30px -16px rgba(0, 0, 0, 0.7);
   --c-shadow-lift: 0 2px 8px rgba(0, 0, 0, 0.5), 0 22px 48px -18px rgba(0, 0, 0, 0.8);
-  --c-page-glow: radial-gradient(1200px 560px at 50% -10%, rgba(244, 175, 198, 0.1), transparent 70%);
+  --c-page-glow: radial-gradient(1200px 560px at 50% -10%, rgb(var(--c-brand) / 0.1), transparent 70%);
   --medal-1: #eab308;
   --medal-2: #94a3b8;
   --medal-3: #c2410c;
   --c-eyebrow: #f4afc6;
   --c-accent: 244 175 198;
+}
+
+/* --- Per-series accent override -------------------------------------------
+   [data-series] is set on <html> by SeriesProvider (frontend/src/context/
+   SeriesContext.jsx) whenever a series is being viewed. With ONE series this
+   attribute exists but nothing below targets it, so the site looks exactly
+   like before. Sunday GT wears neon blue instead of NABS pink: --c-brand is
+   theme-independent (like the base token above), --c-eyebrow/--c-accent stay
+   themed for contrast the same way the default pink tokens do (deep tone on
+   white in light mode, the pale/neon tone in dark mode).
+   The second block's selector list covers BOTH cases where .dark applies:
+   the global theme toggle (class sits on the same <html> as [data-series])
+   AND a component that forces its own scoped dark look via a nested .dark
+   element (e.g. the always-dark home hero) — a plain ".dark" rule earlier in
+   this file would otherwise win there since it targets that element directly.
+   Add a new block here for each future series that wants its own accent. */
+[data-series="sunday-gt"] {
+  --c-brand: 109 224 252; /* #6de0fc */
+  --c-eyebrow: #0891b2; /* deep cyan-blue, readable on white (same relationship
+                            as --c-eyebrow's pink-600 to the pale brand pink) */
+  --c-accent: 8 145 178;
+}
+[data-series="sunday-gt"].dark,
+[data-series="sunday-gt"] .dark {
+  --c-eyebrow: #6de0fc;
+  --c-accent: 109 224 252;
 }
 
 /* Always reserve space for the vertical scrollbar so the centered layout never
@@ -84,7 +115,7 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(38% 42% at 18% 22%, rgba(244, 175, 198, 0.30), transparent 70%),
+    radial-gradient(38% 42% at 18% 22%, rgb(var(--c-brand) / 0.30), transparent 70%),
     radial-gradient(42% 46% at 82% 14%, rgba(66, 81, 168, 0.22), transparent 70%),
     radial-gradient(46% 48% at 72% 84%, rgba(56, 189, 248, 0.16), transparent 72%);
   filter: blur(30px) saturate(1.05);
@@ -534,7 +565,7 @@ body::before {
   bottom: 5px;
   height: 2px;
   border-radius: 2px;
-  background: linear-gradient(90deg, var(--c-brand, #f4afc6), #4251a8);
+  background: linear-gradient(90deg, rgb(var(--c-brand)), #4251a8);
   transform: scaleX(0);
   transform-origin: left;
   transition: transform 0.28s cubic-bezier(0.4, 0.1, 0.2, 1);
