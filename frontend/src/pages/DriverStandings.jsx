@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar, CountUp } from "../components/ui.jsx";
 import { useTilt } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
@@ -141,6 +142,7 @@ const TIER_FILTERS = [
 ];
 
 export default function DriverStandings() {
+  useSeasonParam(); // honour a ?season=N deep link (e.g. from the global search)
   const { data, loading, error } = useApi(useCallback(() => api.driverStandings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const { current: season, active } = useSeason();

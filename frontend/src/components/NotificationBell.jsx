@@ -62,6 +62,13 @@ function TypeIcon({ type }) {
           <path d="M8 21l-4-4 4-4M4 17h13" />
         </svg>
       );
+    case "CARD": // rating card with a star
+      return (
+        <svg {...common}>
+          <rect x="4" y="3" width="16" height="18" rx="2" />
+          <path d="M12 7.5l1.3 2.6 2.9.4-2.1 2 .5 2.9-2.6-1.4-2.6 1.4.5-2.9-2.1-2 2.9-.4z" />
+        </svg>
+      );
     default:
       return <BellIcon />;
   }

@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import { ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, MEDAL_TEXT, DriverAvatar, CountUp } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -126,6 +127,7 @@ function RoundBars({ raceNumbers, perRace, droppedPerRace, raceByNumber, color }
 }
 
 export default function TeamProfile() {
+  useSeasonParam(); // honour ?season=N (team pages are season-scoped)
   const { id } = useParams();
   const { data, loading, error } = useApi(
     useCallback(

@@ -199,6 +199,15 @@ model Driver {
   // from lib/cardEditions.js; null = classic). Per-row (a season award), not
   // person-wide like the photo. Raw SQL, same reason as cardPhotoPos.
   cardStyle     String?
+  // Optional card-only picture: a separate image just for the rating card
+  // (null = the card falls back to the profile photoUrl). Raw SQL like photoUrl.
+  cardPhotoUrl  String?
+  // Rating card animation switch: null = the edition's own baseline motion,
+  // 'off' = a fully still card. Self-service (Edit Driver Card). Raw SQL.
+  cardAnim      String?
+  // JSON array of edition keys this row has already been notified about (bell),
+  // so a newly-earned card pings once. First read seeds it silently. Raw SQL.
+  cardUnlocksNotified String?
   // Special league role, shown on the rating card and profile: null = regular
   // driver, 'safety' = safety car driver. Managed via raw SQL (ensureAppSchema),
   // migration driver_role.

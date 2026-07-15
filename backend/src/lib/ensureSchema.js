@@ -92,6 +92,24 @@ export async function ensureAppSchema(prisma) {
   // (a season award), not person-wide like the photo. Self-service on /profile.
   await addColumn(prisma, "Driver", "cardStyle", "TEXT");
 
+  // --- Optional card-only picture: a separate image just for the rating card,
+  // so a driver can keep one photo for their profile avatar and a different one
+  // (a nicer portrait) on the card. null = the card falls back to the profile
+  // picture. Self-service on /profile, raw SQL like photoUrl.
+  await addColumn(prisma, "Driver", "cardPhotoUrl", "TEXT");
+
+  // --- Rating card animation switch: null = the card keeps its edition's own
+  // baseline motion (glow band, sparkle, gloss sweep); 'off' = a fully still
+  // card (reuses the look-book's data-anim="none" state). Self-service on the
+  // Edit Driver Card page. Per-row like cardStyle.
+  await addColumn(prisma, "Driver", "cardAnim", "TEXT");
+
+  // --- Card-unlock notification bookkeeping: a JSON array of the edition keys
+  // this row has already been notified about, so newly-earned editions ping the
+  // driver's bell exactly once. First computation seeds it silently (no dump of
+  // a veteran's backlog). See lib/notifications.js notifyCardUnlocks.
+  await addColumn(prisma, "Driver", "cardUnlocksNotified", "TEXT");
+
   // --- Special league role, shown on the rating card and profile. null =
   // regular driver; 'safety' = safety car driver. Admin-set (Drivers tab).
   await addColumn(prisma, "Driver", "role", "TEXT");

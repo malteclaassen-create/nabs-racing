@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton, Skeleton } from "../components/ui.jsx";
 import { useTilt } from "../hooks/motion.js";
 import StandingsTable from "../components/StandingsTable.jsx";
@@ -112,6 +113,7 @@ function TierJump({ className = "" }) {
 }
 
 export default function Constructors() {
+  useSeasonParam(); // honour a ?season=N deep link (e.g. from the global search)
   const t1 = useApi(useCallback(() => api.t1Standings(), []));
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const teams = useApi(useCallback(() => api.teams(), []));

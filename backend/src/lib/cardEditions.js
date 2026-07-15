@@ -35,9 +35,6 @@ export const CARD_EDITIONS = [
   { key: "vice", name: "Vice", tagline: "P2 this season", req: { badge: "vice" } },
   { key: "bronze", name: "Bronze", tagline: "P3 this season", req: { badge: "third" } },
   { key: "teamchamp", name: "Team Champion", tagline: "Team title this season", req: { teamBadge: 1 } },
-
-  // title: the PREVIOUS season's seal (F1-correct: you race the #1 the year after)
-  { key: "defending", name: "Defending Champion", tagline: "Reigning titleholder", req: { badge: "champion", offset: -1 } },
 ];
 
 export const CARD_EDITION_KEYS = CARD_EDITIONS.map((e) => e.key);
@@ -91,6 +88,18 @@ export async function readCardEdition(prisma, driverId) {
     const rows = await prisma.$queryRaw`SELECT "cardStyle" FROM "Driver" WHERE "id" = ${driverId}`;
     const key = rows[0]?.cardStyle;
     return isKnownEdition(key) && key !== DEFAULT_CARD_EDITION ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+// The card animation switch for one row: "off" = a fully still card, null =
+// keep the edition's own baseline motion. Raw read, column-safe (anything other
+// than "off" reads as null/animated).
+export async function readCardAnim(prisma, driverId) {
+  try {
+    const rows = await prisma.$queryRaw`SELECT "cardAnim" FROM "Driver" WHERE "id" = ${driverId}`;
+    return rows[0]?.cardAnim === "off" ? "off" : null;
   } catch {
     return null;
   }

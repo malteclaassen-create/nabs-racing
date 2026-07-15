@@ -8,7 +8,7 @@ import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { COUNTRIES } from "../data/countries.js";
 import { SocialIcon, SOCIAL_META } from "../components/SocialLinks.jsx";
-import RatingCard, { cardPhotoFraming } from "../components/RatingCard.jsx";
+import RatingCard from "../components/RatingCard.jsx";
 import DriverProfile from "./DriverProfile.jsx";
 
 // The public profile shows at most this many stat tiles.
@@ -120,223 +120,6 @@ function DiscordLogin() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Card photo editor: the driver's OWN rating card as a live preview, with the
-// picture draggable right on the card and a zoom slider next to it. Writes
-// Driver.cardPhotoPos ({x,y,z}), which every card render site-wide then uses.
-// ---------------------------------------------------------------------------
-function CardPhotoEditor({ driver, rating, pos, setPos, onReset, resetting }) {
-  const boxRef = useRef(null);
-  const dragRef = useRef(null);
-  const [dragging, setDragging] = useState(false);
-  const p = cardPhotoFraming(pos);
-  const round1 = (n) => Math.round(n * 10) / 10;
-  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-
-  function onPointerDown(e) {
-    e.preventDefault();
-    // Keep receiving moves even when the pointer leaves the card mid-drag.
-    // Capture can be unavailable (e.g. synthetic events); dragging still works.
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      /* noop */
-    }
-    dragRef.current = { sx: e.clientX, sy: e.clientY, x: p.x, y: p.y };
-    setDragging(true);
-  }
-  function onPointerMove(e) {
-    const d = dragRef.current;
-    const box = boxRef.current?.getBoundingClientRect();
-    if (!d || !box) return;
-    // Dragging the picture right reveals more of its LEFT side, i.e. the focal
-    // point moves left — hence the minus. Zoomed in, the same hand movement
-    // should shift the focus less, so the delta is divided by the zoom.
-    const nx = clamp(d.x - (((e.clientX - d.sx) / box.width) * 100) / p.z, 0, 100);
-    const ny = clamp(d.y - (((e.clientY - d.sy) / box.height) * 100) / p.z, 0, 100);
-    setPos({ x: round1(nx), y: round1(ny), z: p.z });
-  }
-  function onPointerUp() {
-    dragRef.current = null;
-    setDragging(false);
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="relative">
-        <RatingCard driver={{ ...driver, photoPos: p }} rating={rating} />
-        {/* Invisible drag surface over the card's photo area (top two thirds). */}
-        <div
-          ref={boxRef}
-          role="slider"
-          aria-label="Drag to position your picture on the card"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          className="absolute left-0 top-0 h-[66%] w-full touch-none select-none"
-          style={{ cursor: dragging ? "grabbing" : "grab" }}
-          title="Drag to position your picture"
-        />
-      </div>
-      <label className="block">
-        <span className="mb-1.5 flex items-center justify-between font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
-          Zoom
-          <span className="tabular-nums text-light">{p.z.toFixed(2)}×</span>
-        </span>
-        <input
-          type="range"
-          min="1"
-          max="2.5"
-          step="0.05"
-          value={p.z}
-          onChange={(e) => setPos({ x: p.x, y: p.y, z: Number(e.target.value) })}
-          className="w-full"
-          style={{ accentColor: driver.team?.color || "#e5548f" }}
-          aria-label="Zoom"
-        />
-      </label>
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="text-light">Drag the picture on the card to position it.</span>
-        <button
-          type="button"
-          onClick={onReset}
-          disabled={resetting}
-          className="shrink-0 font-semibold text-light transition hover:text-dark"
-        >
-          Reset framing
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Swatch gradients per edition — mirror the CSS palettes in index.css
-// (.rcard-frame[data-edition=…]). Presentational only; "classic" falls back to
-// the driver's team colour, passed in.
-const EDITION_COLORS = {
-  nabs: ["#e5548f", "#ff8fbd"],
-  mono: ["#8b95a3", "#dfe5ec"],
-  rookie: ["#2f6d4f", "#6ec99a"],
-  veteran: ["#3f4a58", "#9fb0c4"],
-  legend: ["#171a21", "#e9bc42"],
-  winner: ["#1d2430", "#ffffff"],
-  dominator: ["#7a1220", "#ff6b6b"],
-  podium: ["#2a3a55", "#8fb6ff"],
-  poleman: ["#4c2a7a", "#b78cff"],
-  qualiking: ["#2a1a5e", "#c9a6ff"],
-  vice: ["#7e8a9a", "#eef2f7"],
-  bronze: ["#7e5426", "#e8c49a"],
-  teamchamp: ["#0e6b5a", "#62e0c4"],
-  champion: ["#a8770e", "#f8e08e"],
-  defending: ["#8a6410", "#f8e08e"],
-};
-
-function LockIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="5" y="11" width="14" height="9" rx="2" />
-      <path d="M8 11V8a4 4 0 018 0v3" />
-    </svg>
-  );
-}
-
-// Sort: free first, then unlocked, then locked by progress (share of the way
-// there) descending — the closest-to-earned locked ones surface first.
-function sortEditions(list) {
-  const progress = (e) => (e.need ? Math.min(1, (e.have || 0) / e.need) : e.unlocked ? 1 : 0);
-  const rank = (e) => (!e.requirement ? 0 : e.unlocked ? 1 : 2);
-  return [...list].sort((a, b) => rank(a) - rank(b) || progress(b) - progress(a));
-}
-
-// The card-edition picker: season chips + a swatch grid. Selecting an unlocked
-// swatch updates the live card preview above (for the current row) and stages
-// the change; the page's main Save persists it. Locked editions stay visible
-// with their progress so the goal is in sight.
-function CardEditionPicker({ seasons, activeDriverId, onPickSeason, editions, current, onPick, teamColor, loading }) {
-  const ordered = sortEditions(editions || []);
-  return (
-    <div className="border-t border-border pt-5">
-      <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Card edition</span>
-        <span className="text-xs text-light">
-          Pick your rating-card design. Most editions are earned through starts, wins, poles and titles.
-        </span>
-      </div>
-
-      {seasons.length > 1 && (
-        <div className="mb-3 flex flex-wrap gap-1.5">
-          {seasons.map((s) => (
-            <button
-              key={s.driverId}
-              type="button"
-              onClick={() => onPickSeason(s.driverId)}
-              className={`rounded-lg px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wide transition ${
-                s.driverId === activeDriverId ? "bg-brand text-ink" : "bg-surface2 text-light hover:text-dark"
-              }`}
-            >
-              S{s.seasonNumber}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {loading ? (
-        <p className="text-sm text-light">Loading editions…</p>
-      ) : (
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          {ordered.map((e) => {
-            const [c1, c2] = EDITION_COLORS[e.key] || [teamColor || "#3b4254", "#ffffff"];
-            const selected = (current || "classic") === e.key;
-            const locked = !e.unlocked;
-            return (
-              <button
-                key={e.key}
-                type="button"
-                disabled={locked}
-                aria-pressed={selected}
-                onClick={() => !locked && onPick(e.key)}
-                className={`relative flex items-center gap-2.5 rounded-xl border p-2.5 text-left transition ${
-                  selected
-                    ? "border-brand ring-2 ring-brand/40"
-                    : locked
-                    ? "cursor-not-allowed border-border opacity-70"
-                    : "border-border hover:border-brand/50"
-                }`}
-              >
-                <span
-                  className="h-9 w-9 shrink-0 rounded-lg ring-1 ring-black/10"
-                  style={{ background: `linear-gradient(135deg, ${c1}, ${c2})`, filter: locked ? "grayscale(0.7)" : undefined }}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1 font-display text-sm font-bold uppercase tracking-tight text-dark">
-                    {e.name}
-                    {locked && <span className="text-light"><LockIcon /></span>}
-                  </span>
-                  <span className="block truncate text-[11px] text-light">{e.tagline}</span>
-                  {locked && e.need != null && (
-                    <span className="mt-1 block">
-                      <span className="flex h-1 w-full overflow-hidden rounded-full bg-surface2">
-                        <span
-                          className="h-full rounded-full bg-brand/70"
-                          style={{ width: `${Math.min(100, Math.round(((e.have || 0) / e.need) * 100))}%` }}
-                        />
-                      </span>
-                      <span className="mt-0.5 block font-mono text-[10px] tabular-nums text-light">
-                        {e.have || 0} / {e.need}
-                      </span>
-                    </span>
-                  )}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // A labelled field wrapper for the editor form.
 function Field({ label, hint, children }) {
   return (
@@ -368,88 +151,21 @@ function ProfileEditor({ me, onDraftChange }) {
   const [error, setError] = useState(null);
   const [savedAt, setSavedAt] = useState(null);
 
-  // Rating card preview + photo framing. The rating only exists once the
-  // driver has raced; without it (or without a picture) the block stays away.
+  // A small read-only preview of the rating card lives here; ALL card editing
+  // (edition, picture, framing, animation) moved to the dedicated /profile/card
+  // page. The rating only exists once the driver has raced (safety-car drivers
+  // always get their card).
   const ratingRes = useApi(useCallback(() => api.driverRating(me.driverId).catch(() => null), [me.driverId]));
-  const [photoPos, setPhotoPos] = useState(me.photoPos || null);
-  const [posDirty, setPosDirty] = useState(false);
-  const [posSaving, setPosSaving] = useState(false);
-
-  // Card edition picker. Editions are per season row; the picker can target any
-  // of the person's seasons via chips, but the live card preview above is
-  // always the CURRENT row (the photo editor edits that one). Picks save
-  // immediately (like the photo reset), so `meCardStyle` drives the preview.
-  const [meCardStyle, setMeCardStyle] = useState(me.cardStyle || "classic");
-  const [cardSeasons, setCardSeasons] = useState([]);
-  const [pickerDriverId, setPickerDriverId] = useState(me.driverId);
-  const [editionsByDriver, setEditionsByDriver] = useState({});
-  const [editionsLoading, setEditionsLoading] = useState(true);
-  const [savedByDriver, setSavedByDriver] = useState({}); // other rows' picked styles
-
-  useEffect(() => {
-    let alive = true;
-    api.myCardSeasons().then((d) => alive && setCardSeasons(d?.seasons || [])).catch(() => {});
-    return () => { alive = false; };
-  }, []);
-
-  useEffect(() => {
-    if (editionsByDriver[pickerDriverId]) { setEditionsLoading(false); return; }
-    let alive = true;
-    setEditionsLoading(true);
-    api
-      .myCardEditions(pickerDriverId === me.driverId ? undefined : pickerDriverId)
-      .then((d) => alive && setEditionsByDriver((m) => ({ ...m, [pickerDriverId]: d?.editions || [] })))
-      .catch(() => {})
-      .finally(() => alive && setEditionsLoading(false));
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickerDriverId]);
-
-  const styleOf = (id) => {
-    if (id === me.driverId) return meCardStyle;
-    if (savedByDriver[id] != null) return savedByDriver[id];
-    return cardSeasons.find((s) => s.driverId === id)?.cardStyle || "classic";
-  };
-
-  async function pickStyle(key) {
-    const id = pickerDriverId;
-    const prev = styleOf(id);
-    if (id === me.driverId) setMeCardStyle(key);
-    else setSavedByDriver((m) => ({ ...m, [id]: key }));
-    setError(null);
-    try {
-      await api.setMyCardStyle(id, key === "classic" ? null : key);
-    } catch (err) {
-      setError(err.message);
-      if (id === me.driverId) setMeCardStyle(prev);
-      else setSavedByDriver((m) => ({ ...m, [id]: prev }));
-    }
-  }
-
-  // Resets the card framing immediately (no separate save button — the main
-  // "Save changes" persists a dragged/zoomed framing along with everything else).
-  async function resetCardPhoto() {
-    setError(null);
-    setPosSaving(true);
-    try {
-      await api.setMyCardPhoto(null);
-      setPhotoPos(null);
-      setPosDirty(false);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setPosSaving(false);
-    }
-  }
 
   const color = me.team?.color || "#888";
 
   // Report the current (unsaved) edits upward — the page's live preview of the
-  // public profile renders from this draft.
+  // public profile renders from this draft. Card fields aren't edited here, so
+  // the preview reads them from the saved profile (see MyProfile).
   useEffect(() => {
-    onDraftChange?.({ name, number, country, bio, socials, tiles, photoUrl, photoPos, cardStyle: meCardStyle });
+    onDraftChange?.({ name, number, country, bio, socials, tiles, photoUrl });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, number, country, bio, socials, tiles, photoUrl, photoPos, meCardStyle]);
+  }, [name, number, country, bio, socials, tiles, photoUrl]);
 
   async function onPickFile(e) {
     const file = e.target.files?.[0];
@@ -490,12 +206,6 @@ function ProfileEditor({ me, onDraftChange }) {
       await api.updateMyProfile({ name: name.trim(), number, bio, socials: cleanedSocials });
       await api.setMyCountry(country);
       await api.setMyTiles(tiles);
-      // A dragged/zoomed card framing rides along with the main save.
-      if (posDirty) {
-        const res = await api.setMyCardPhoto(photoPos);
-        setPhotoPos(res.photoPos);
-        setPosDirty(false);
-      }
       // Keep the nav chip / stored identity in sync with the new display name.
       const token = getUserToken();
       const stored = (() => {
@@ -647,12 +357,13 @@ function ProfileEditor({ me, onDraftChange }) {
             </div>
           </div>
 
-          {/* Driver card with drag-to-position + zoom; saved by the main button.
-              Safety car drivers get their card edition even without ratings. */}
-          {(ratingRes.data?.ratings || me.role === "safety") && photoUrl && (
-            <div className="mx-auto w-full max-w-[332px] lg:mx-0">
-              <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Your driver card</div>
-              <CardPhotoEditor
+          {/* Driver card: a read-only preview here; all editing lives on the
+              dedicated /profile/card page. Safety car drivers get their card
+              even without ratings. */}
+          {(ratingRes.data?.ratings || me.role === "safety") && (
+            <div className="mx-auto w-full max-w-[332px] space-y-3 lg:mx-0">
+              <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Your driver card</div>
+              <RatingCard
                 driver={{
                   id: me.driverId,
                   name,
@@ -660,38 +371,27 @@ function ProfileEditor({ me, onDraftChange }) {
                   country,
                   photoUrl,
                   tier: me.tier,
-                  role: me.role ?? null, // safety car drivers see their special card here too
+                  role: me.role ?? null,
                   team: me.team,
-                  // Live-preview the chosen card edition for this (current) row.
-                  cardStyle: meCardStyle,
-                  // Pin the card's footer to the driver's own season — without
-                  // this it would show whichever season the site switcher is on.
+                  // The card's SAVED look (edition/framing/picture/animation),
+                  // edited on /profile/card, not here.
+                  cardStyle: me.cardStyle,
+                  cardPhotoUrl: me.cardPhotoUrl,
+                  photoPos: me.photoPos,
+                  cardAnim: me.cardAnim,
                   seasonNumber: me.seasonNumber ?? null,
                 }}
                 rating={ratingRes.data}
-                pos={photoPos}
-                setPos={(p) => {
-                  setPhotoPos(p);
-                  setPosDirty(true);
-                }}
-                onReset={resetCardPhoto}
-                resetting={posSaving}
               />
+              <Link to="/profile/card" className="btn-secondary flex w-full items-center justify-center gap-1.5">
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+                </svg>
+                Edit driver card
+              </Link>
             </div>
           )}
         </div>
-
-        {/* Card edition picker — unlockable card designs, saved on pick. */}
-        <CardEditionPicker
-          seasons={cardSeasons}
-          activeDriverId={pickerDriverId}
-          onPickSeason={setPickerDriverId}
-          editions={editionsByDriver[pickerDriverId]}
-          current={styleOf(pickerDriverId)}
-          onPick={pickStyle}
-          teamColor={me.team?.color}
-          loading={editionsLoading && !editionsByDriver[pickerDriverId]}
-        />
 
         {/* Stat tiles — pick which of the six headline stats the public
             profile shows. Unticked tiles simply disappear from the page. */}
@@ -892,8 +592,12 @@ function MyProfile() {
                     socials: normalizeSocials(previewDraft.socials || {}),
                     profileTiles: previewDraft.tiles,
                     photoUrl: previewDraft.photoUrl,
-                    photoPos: previewDraft.photoPos,
-                    cardStyle: previewDraft.cardStyle,
+                    // Card look isn't edited here anymore (see /profile/card) —
+                    // preview it from the saved profile so it still renders right.
+                    photoPos: d.photoPos,
+                    cardStyle: d.cardStyle,
+                    cardPhotoUrl: d.cardPhotoUrl,
+                    cardAnim: d.cardAnim,
                   }
                 : {}
             }

@@ -14,6 +14,8 @@
 // ---------------------------------------------------------------------------
 import { randomUUID } from "crypto";
 import { raceKickoff } from "./raceKickoff.js";
+import { unlockStateFor, CARD_EDITIONS } from "./cardEditions.js";
+import { cardUnlockInputs } from "../services/driverProfileService.js";
 
 // Type keys the frontend maps to icons: RESULTS | REMINDER | DOWNLOAD | MARKET.
 // New kinds (achievements, card frames, ...) just add a key + an icon.
@@ -274,6 +276,101 @@ export async function notifySeatFilled(prisma, { offerId, raceId, reserve }) {
       recipientId: reserve.discordUserId,
       dedupeKey: `market-filled:${offerId}:${reserve.id}`,
     });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// --- card unlocks --------------------------------------------------------------
+// A driver earns an unlockable rating-card edition (a milestone hit, a title
+// sealed). We ping them once per edition, tracked in Driver.cardUnlocksNotified
+// (a JSON key array) so re-computing never re-pings. The FIRST computation for a
+// row seeds that array silently — a veteran opening the feature for the first
+// time must not get their whole backlog dumped into the bell.
+
+// key -> { name, tagline, earned } (earned = has an unlock requirement; the free
+// classic/nabs/mono editions are never "unlock news").
+const EDITION_META = new Map(CARD_EDITIONS.map((e) => [e.key, { name: e.name, tagline: e.tagline, earned: !!e.req }]));
+
+// Parse the stored notified-keys array. null column = never computed (seed);
+// unreadable/legacy = treat as an empty set (grow from here, never dump).
+function parseNotifiedKeys(raw) {
+  if (raw == null) return null;
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((k) => typeof k === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+// Reconcile one driver row's unlocked editions against what they've been
+// notified about, pinging the bell for anything genuinely new. `editions` (the
+// unlockStateFor array) can be passed in to avoid recomputing when the caller
+// already has it (the card-editions endpoint does).
+export async function notifyCardUnlocks(prisma, driverId, editions = null) {
+  try {
+    if (!driverId) return;
+    const rows = await prisma.$queryRaw`SELECT "discordUserId","cardUnlocksNotified" FROM "Driver" WHERE "id" = ${driverId}`;
+    const row = rows[0];
+    if (!row) return;
+
+    let list = editions;
+    if (!list) {
+      const inputs = await cardUnlockInputs(prisma, driverId);
+      if (!inputs) return;
+      list = unlockStateFor(inputs.stats, inputs.badges, inputs.teamBadges, inputs.seasonNumber);
+    }
+    const unlocked = list.filter((e) => e.unlocked).map((e) => e.key);
+
+    const stored = parseNotifiedKeys(row.cardUnlocksNotified);
+    // First-ever computation: seed silently, no backlog dump.
+    if (stored === null) {
+      await prisma.$executeRaw`UPDATE "Driver" SET "cardUnlocksNotified" = ${JSON.stringify(unlocked)} WHERE "id" = ${driverId}`;
+      return;
+    }
+
+    const storedSet = new Set(stored);
+    // Only EARNED editions are worth a ping (free ones were never locked).
+    const fresh = unlocked.filter((k) => !storedSet.has(k) && EDITION_META.get(k)?.earned);
+    if (row.discordUserId) {
+      for (const key of fresh) {
+        const meta = EDITION_META.get(key);
+        await dbCreateNotification(prisma, {
+          type: "CARD",
+          title: `Card unlocked: ${meta?.name || key}`,
+          body: meta ? `You've earned the ${meta.name} card edition (${meta.tagline}). Choose it on your driver card.` : null,
+          link: "/profile/card",
+          recipientId: row.discordUserId,
+          dedupeKey: `card-unlock:${driverId}:${key}`,
+        });
+      }
+    }
+    // Keep the stored set current regardless (so an unlock earned while unlinked
+    // isn't announced later once they log in).
+    const union = [...new Set([...stored, ...unlocked])];
+    if (union.length !== stored.length) {
+      await prisma.$executeRaw`UPDATE "Driver" SET "cardUnlocksNotified" = ${JSON.stringify(union)} WHERE "id" = ${driverId}`;
+    }
+  } catch {
+    /* best-effort: a notification must never fail the caller */
+  }
+}
+
+// Fan out card-unlock reconciliation across a season's drivers after results are
+// saved (the moment milestones tick over and, on the finale, titles seal). Only
+// linked drivers (a Discord login) can see a bell, so we skip the rest. Fire and
+// forget from the admin save path — never blocks or fails the commit.
+export async function notifyCardUnlocksForSeason(prisma, seasonId) {
+  try {
+    if (!seasonId) return;
+    const drivers = await prisma.driver.findMany({
+      where: { seasonId, discordUserId: { not: null } },
+      select: { id: true },
+    });
+    for (const d of drivers) {
+      await notifyCardUnlocks(prisma, d.id);
+    }
   } catch {
     /* best-effort */
   }

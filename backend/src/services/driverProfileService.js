@@ -19,7 +19,7 @@ import { readProfileTiles } from "../lib/profileTiles.js";
 import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
-import { readCardEdition } from "../lib/cardEditions.js";
+import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -342,6 +342,11 @@ export async function getDriverProfile(prisma, driverId) {
   const ownPhoto = driver.photoUrl || driver.discordAvatar || null;
   const effPhotoUrl = ownPhoto || idov?.photoUrl || null;
   const effPhotoPos = ownPhoto ? photoPos : parseCardPhotoPos(idov?.photoPos) || photoPos;
+  // Optional card-only picture for THIS row (raw column). null -> the card
+  // falls back to the profile photo (RatingCard handles the fallback).
+  const cardPhotoUrl = (
+    await prisma.$queryRaw`SELECT "cardPhotoUrl" FROM "Driver" WHERE "id" = ${driverId}`.catch(() => [])
+  )[0]?.cardPhotoUrl || null;
 
   const standingRow = standings.standings.find((r) => r.driverId === driverId);
   const resultByRaceId = new Map(results.map((r) => [r.raceId, r]));
@@ -584,6 +589,10 @@ export async function getDriverProfile(prisma, driverId) {
       // The unlockable card edition chosen for THIS row (null = classic). Per
       // row, not person-inherited like the photo — an award of this season.
       cardStyle: await readCardEdition(prisma, driverId),
+      // Card animation switch ("off" = a still card; null = baseline motion).
+      cardAnim: await readCardAnim(prisma, driverId),
+      // Optional card-only picture (null = the card uses photoUrl above).
+      cardPhotoUrl,
       socials: parseSocials(driver.socials),
       // Self-written "about me" line and the driver's pick of headline stat
       // tiles (null = show all) — both self-service on /profile.

@@ -41,7 +41,7 @@ import {
 } from "../lib/series.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import {
-  notifyResultsSaved, notifyDownloadAdded, notifySeatFilled,
+  notifyResultsSaved, notifyDownloadAdded, notifySeatFilled, notifyCardUnlocksForSeason,
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
 } from "../lib/notifications.js";
 import { UPLOADS_DIR, LOGS_DIR } from "../lib/dataDirs.js";
@@ -337,6 +337,9 @@ router.post("/races/commit", async (req, res, next) => {
     const saveSummary = await saveRaceResults(prisma, race.id, results);
     // Bell notification (deduped per race, so re-imports stay silent).
     if (results.length) notifyResultsSaved(prisma, race);
+    // New results can tip a driver over a card-unlock threshold (and the finale
+    // seals titles) — reconcile the season's linked drivers' bells.
+    if (results.length) notifyCardUnlocksForSeason(prisma, race.seasonId);
     // Move the raw JSON into its season folder so this round's telemetry can be
     // recomputed later. Best-effort: never fails the commit.
     if (archiveKey) {
@@ -677,6 +680,7 @@ router.put("/races/:id/results", async (req, res, next) => {
     // Bell notification (deduped per race: only the FIRST save of this round
     // pings the members, edits stay silent).
     if (results.length) notifyResultsSaved(prisma, race);
+    if (results.length) notifyCardUnlocksForSeason(prisma, race.seasonId);
     res.json({ ok: true });
   } catch (e) {
     next(e);

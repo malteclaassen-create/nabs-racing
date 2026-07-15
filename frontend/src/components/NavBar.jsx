@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
@@ -6,6 +6,7 @@ import Logo from "./Logo.jsx";
 import SeasonPicker from "./SeasonPicker.jsx";
 import SeriesSwitcher from "./SeriesSwitcher.jsx";
 import NotificationBell from "./NotificationBell.jsx";
+import GlobalSearch from "./GlobalSearch.jsx";
 import { DriverAvatar } from "./ui.jsx";
 
 // Auth-aware control that replaces the old "Sign Up" nav item: a "Log in" button
@@ -57,8 +58,9 @@ const SEASON_PAGES = ["/drivers", "/constructors", "/races"];
 function navLinks(p) {
   return [
     { to: p(""), label: "Home", end: true },
-    { to: p("/drivers"), label: "Drivers" },
-    { to: p("/constructors"), label: "Constructors" },
+    // Drivers + Constructors are folded into one "Standings" item with a
+    // hover flyout (see StandingsNav); on mobile they show as two links.
+    { standings: true, label: "Standings" },
     { to: p("/races"), label: "Races" },
     { to: p("/attendance"), label: "Attendance" },
     { to: p("/live"), label: "Live" },
@@ -75,12 +77,116 @@ const linkClass = ({ isActive }) =>
     isActive ? "bg-brand/20 text-dark ring-1 ring-inset ring-brand/50" : "text-medium hover:bg-surface2"
   }`;
 
+// The two pages the "Standings" item covers (matched with the series prefix
+// stripped, so it lights up inside every series).
+const STANDINGS_PAGES = ["/drivers", "/constructors"];
+
+function StandIcon({ d }) {
+  // overflow-visible so a stroke sitting right at the viewBox edge (the group
+  // icon's outer shoulder) is never clipped — not even mid-entrance-animation,
+  // when the menu card is briefly scaled/translated.
+  return <svg viewBox="0 0 24 24" className="h-4 w-4 overflow-visible" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
+}
+
+// "Standings" nav item: one entry that opens a flyout to Drivers / Constructors
+// on hover (and on click, for touch/keyboard). Highlighted while on either page.
+function StandingsNav({ seriesPath }) {
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const ref = useRef(null);
+  const closeTimer = useRef(null);
+  const pathNoSeries = location.pathname.replace(/^\/s\/[^/]+/, "") || "/";
+  const active = STANDINGS_PAGES.some((p) => pathNoSeries.startsWith(p));
+
+  // Hover open with a short close delay, so slipping off the button on the way
+  // down to the menu doesn't snap it shut (the transparent bridge below also
+  // keeps the pointer inside the hover region across the gap).
+  const cancelClose = () => { if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; } };
+  const openNow = () => { cancelClose(); setOpen(true); };
+  const closeSoon = () => { cancelClose(); closeTimer.current = setTimeout(() => setOpen(false), 140); };
+
+  useEffect(() => setOpen(false), [location.pathname]);
+  useEffect(() => () => cancelClose(), []);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey); };
+  }, [open]);
+
+  // One flyout row, styled to match the series/season switcher menus exactly:
+  // an icon badge (brand-filled while active), a display title, and a mono
+  // sub-line, with the same accent active ring and check mark.
+  const itemCls = ({ isActive }) =>
+    `flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition ${
+      isActive ? "bg-accent/10 ring-1 ring-inset ring-accent/40" : "hover:bg-surface2"
+    }`;
+  const row = (to, icon, title, sub) => (
+    <NavLink to={to} role="menuitem" className={itemCls}>
+      {({ isActive }) => (
+        <>
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isActive ? "bg-brand text-ink" : "bg-surface2 text-medium"}`}>
+            <StandIcon d={icon} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{title}</span>
+            <span className="mt-0.5 block truncate font-mono text-[11px] text-light">{sub}</span>
+          </span>
+          {isActive && (
+            <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-eyebrow" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 6" /></svg>
+          )}
+        </>
+      )}
+    </NavLink>
+  );
+
+  return (
+    <div ref={ref} className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`nav-link flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
+          active ? "bg-brand/20 text-dark ring-1 ring-inset ring-brand/50" : "text-medium hover:bg-surface2"
+        }`}
+      >
+        Standings
+        <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      {/* The menu stays mounted and fades/scales in and out (same transition as
+          the series & season switchers), so it matches them in look AND motion.
+          Closed, it's `invisible` + `pointer-events-none` so it captures nothing
+          and leaves no phantom hover zone below the button. The outer wrapper
+          starts flush with the button (top-full) and carries the visual gap as
+          TRANSPARENT padding, so the pointer never leaves the hover region on
+          the way down to the card. */}
+      <div className={`absolute left-0 top-full z-40 pt-2 ${open ? "" : "pointer-events-none"}`}>
+        <div
+          role="menu"
+          className={`w-64 origin-top-left rounded-2xl border border-border bg-card p-1.5 shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-150 ${
+            open ? "visible scale-100 opacity-100" : "invisible scale-[0.97] opacity-0"
+          }`}
+        >
+          {row(seriesPath("/drivers"), <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>, "Drivers", "Driver standings")}
+          {row(seriesPath("/constructors"), <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>, "Constructors", "Constructor standings")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function NavBar() {
   const { seriesList } = useSeries();
   const { seriesPath } = useSeriesPath();
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const links = navLinks(seriesPath);
+  // Handed to GlobalSearch so its expanded field + dropdown line up their left
+  // edge with the "Live" nav item.
+  const liveRef = useRef(null);
 
   // Close the mobile menu whenever the route changes.
   useEffect(() => setOpen(false), [location.pathname]);
@@ -145,11 +251,24 @@ export default function NavBar() {
 
         {/* Desktop nav */}
         <div className="hidden items-center gap-1 lg:flex">
-          {links.map((l) => (
-            <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
-              {l.label}
-            </NavLink>
-          ))}
+          {links.map((l) =>
+            l.standings ? (
+              <StandingsNav key="standings" seriesPath={seriesPath} />
+            ) : (
+              <NavLink
+                key={l.to}
+                to={l.to}
+                end={l.end}
+                className={linkClass}
+                ref={l.label === "Live" ? liveRef : undefined}
+              >
+                {l.label}
+              </NavLink>
+            )
+          )}
+          {/* Global search sits just left of the profile chip; expanded, it
+              reaches left to the "Live" item (liveRef) and its dropdown matches. */}
+          <GlobalSearch className="ml-1 mr-1" alignLeftRef={liveRef} />
           <AuthControl />
           {/* The bell replaced the gear here; Settings lives inside its menu. */}
           <NotificationBell className="ml-1 h-9 w-9" />
@@ -192,6 +311,10 @@ export default function NavBar() {
           <div className="nav-drop absolute inset-x-0 top-full z-30 origin-top border-t border-border bg-card shadow-xl shadow-ink/20">
             <div className="container-page flex flex-col gap-1 py-3">
               <AuthControl mobile />
+              {/* Search inside the mobile menu (full width). */}
+              <div className="px-2 py-1.5">
+                <GlobalSearch mobile />
+              </div>
               {/* Series first (page identity), season below it (page filter). */}
               {seriesList.length > 1 && (
                 <div className="px-2 py-1.5">
@@ -203,11 +326,19 @@ export default function NavBar() {
                   <SeasonPicker onPick={() => setOpen(false)} />
                 </div>
               )}
-              {links.map((l) => (
-                <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
-                  {l.label}
-                </NavLink>
-              ))}
+              {links.map((l) =>
+                l.standings ? (
+                  // No hover on touch — show both standings pages as links.
+                  [
+                    <NavLink key="m-drivers" to={seriesPath("/drivers")} className={linkClass}>Drivers</NavLink>,
+                    <NavLink key="m-constructors" to={seriesPath("/constructors")} className={linkClass}>Constructors</NavLink>,
+                  ]
+                ) : (
+                  <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
+                    {l.label}
+                  </NavLink>
+                )
+              )}
             </div>
           </div>
         </div>

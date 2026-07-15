@@ -45,3 +45,7 @@ archive-material/
 
 # Local dev tooling config (not part of the site)
 __pycache__/
+
+# local sqlite snapshots (never commit dev data)
+dev.db.backup-*
+dev.db.local-backup-*

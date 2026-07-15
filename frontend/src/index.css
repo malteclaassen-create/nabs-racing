@@ -532,7 +532,14 @@ body::before {
 
 /* --- Animated nav underline ---------------------------------------- */
 /* A brand underline that wipes in from the left on hover and stays lit for the
-   active route. Layered under the existing pill styles in NavBar. */
+   active route. Layered under the existing pill styles in NavBar.
+   The wipe animates `width`, NOT `transform: scaleX`, on purpose: a transform
+   promotes the pseudo to its own GPU layer on hover, and creating that layer
+   makes the browser re-snap the parent's text to the device-pixel grid at
+   fractional browser zoom (110/120/140%) — the label and chevron visibly
+   nudged sideways for a frame. A width wipe stays on the main thread with no
+   layer promotion, so the text never moves. The pseudo is absolutely
+   positioned, so animating its width can't reflow the label either. */
 .nav-link {
   position: relative;
 }
@@ -540,17 +547,16 @@ body::before {
   content: "";
   position: absolute;
   left: 12px;
-  right: 12px;
+  right: auto;
   bottom: 5px;
+  width: 0;
   height: 2px;
   border-radius: 2px;
   background: linear-gradient(90deg, rgb(var(--c-brand)), #4251a8);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 0.28s cubic-bezier(0.4, 0.1, 0.2, 1);
+  transition: width 0.28s cubic-bezier(0.4, 0.1, 0.2, 1);
 }
 .nav-link:hover::after {
-  transform: scaleX(1);
+  width: calc(100% - 24px);
 }
 /* Active route already wears the brand pill, so suppress the hover underline
    there to avoid doubling up the indicator. */
@@ -656,6 +662,17 @@ body::before {
 .proj-flash-down, .cascade > .proj-flash-down { animation: proj-flash-down 1.1s ease-out; }
 .fx-lite .proj-flash-up, .fx-lite .proj-flash-down { animation: none !important; }
 
+/* Global search results dropdown: a quick fade + small drop. Lite mode and
+   reduced motion skip it (rules below). */
+@keyframes search-pop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.search-pop {
+  transform-origin: top;
+  animation: search-pop-in 0.14s ease-out;
+}
+
 /* Count-up numbers shouldn't reflow as digits change width. */
 .tabular-nums { font-variant-numeric: tabular-nums; }
 
@@ -680,6 +697,7 @@ body::before {
   .nav-drop, .nav-scrim { animation: none !important; opacity: 1; transform: none; }
   .nav-season-dock { animation: none !important; transition: none !important; }
   .notif-pop { animation: none !important; }
+  .search-pop { animation: none !important; }
   .proj-flash-up, .proj-flash-down { animation: none !important; }
   .shine::after { display: none; }
   .tilt { transform: none !important; }
@@ -713,6 +731,7 @@ body::before {
 .fx-lite .nav-drop, .fx-lite .nav-scrim { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .nav-season-dock { animation: none !important; transition: none !important; }
 .fx-lite .notif-pop { animation: none !important; }
+.fx-lite .search-pop { animation: none !important; }
 .fx-lite .roll-col { transition: none !important; }
 .fx-lite .shine::after { display: none !important; }
 /* Lite means STILL: cards don't lean, lift or glide on hover either. The JS
@@ -769,6 +788,11 @@ body::before {
   mask-image: linear-gradient(180deg, #000 70%, transparent 100%); }
 .rcard-photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 22%;
   user-select: none; -webkit-user-drag: none; }
+/* Colour tint over the photo: mix-blend "color" keeps the picture's light and
+   shade but recolours it in the card's own --team, so a loud photo takes on the
+   edition's colour. Strength (opacity) set inline from the framing's `t`. */
+.rcard-tint { position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: var(--team); mix-blend-mode: color; }
 .rcard-mono { position: absolute; inset: 0 0 auto 0; height: 312px; z-index: 0; display: flex; align-items: center; justify-content: center;
   font-family: theme("fontFamily.display"); font-weight: 900; font-size: 150px; color: rgba(255, 255, 255, 0.9);
   background: radial-gradient(120% 90% at 50% 25%, color-mix(in srgb, var(--team) 60%, #06090e), #06090e 80%); }
@@ -804,9 +828,6 @@ body::before {
   font-family: theme("fontFamily.display"); text-shadow: 0 1px 1px rgba(0, 0, 0, 0.9), 0 2px 10px rgba(0, 0, 0, 0.45); }
 .rcard-rtg-l { font-size: 13px; font-weight: 700; letter-spacing: 0.32em; color: rgba(255, 255, 255, 0.92); margin-bottom: 4px; }
 .rcard-rtg-n { font-size: 76px; font-weight: 900; letter-spacing: -0.02em; }
-.rcard-tier { position: absolute; top: 21px; right: 19px; z-index: 5; font-size: 9px; font-weight: 800; letter-spacing: 0.14em;
-  padding: 4px 10px; border-radius: 999px; color: #fff;
-  background: color-mix(in srgb, var(--team) 80%, #000); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), 0 2px 8px rgba(0, 0, 0, 0.45); }
 
 .rcard-id { position: absolute; left: 22px; right: 22px; bottom: 104px; z-index: 5; }
 .rcard-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -855,13 +876,11 @@ body::before {
 .rcard-frame[data-edition="bronze"]    { --team: #7e5426; --team2: #e8c49a; }
 .rcard-frame[data-edition="teamchamp"] { --team: #0e6b5a; --team2: #62e0c4; }
 .rcard-frame[data-edition="champion"]  { --team: #a8770e; --team2: #f8e08e; }
-.rcard-frame[data-edition="defending"] { --team: #8a6410; --team2: #f8e08e; }
 
 /* Metal frames for the title editions — the podium seal's METALS as the frame
-   gradient, so card and seal share one language (gold champion/defending,
-   silver vice, bronze bronze). */
-.rcard-frame[data-edition="champion"],
-.rcard-frame[data-edition="defending"] {
+   gradient, so card and seal share one language (gold champion, silver vice,
+   bronze bronze). */
+.rcard-frame[data-edition="champion"] {
   background: linear-gradient(135deg, #fbe6a8 0%, #e9bc42 15%, #a8770e 39%, #4a3406 50%, #a8770e 61%, #e9bc42 85%, #fbe6a8 100%);
 }
 .rcard-frame[data-edition="vice"] {
@@ -871,26 +890,16 @@ body::before {
   background: linear-gradient(135deg, #f0d3b0 0%, #c08a4e 15%, #7e5426 39%, #3a2611 50%, #7e5426 61%, #c08a4e 85%, #f0d3b0 100%);
 }
 
-/* Faint laurel behind the RTG block on the metal editions (SVG from
-   RatingCard, geometry shared with ChampionBadge). --team2 tints it. */
-.rcard-wreath { position: absolute; top: 6px; left: 4px; width: 118px; height: 118px; z-index: 2;
+/* Faint laurel in the TOP-RIGHT corner on the metal editions (SVG from
+   RatingCard, geometry shared with ChampionBadge). --team2 tints it. Moved out
+   of the top-left/behind-RTG spot into the corner the tier plate used to own. */
+.rcard-wreath { position: absolute; top: 6px; right: 4px; width: 118px; height: 118px; z-index: 2;
   color: var(--team2); opacity: 0.16; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4)); }
-
-/* Reigning champion's "#1" plate — same optics as the tier plate, parked to
-   its left. */
-.rcard-num1 { position: absolute; top: 21px; right: 74px; z-index: 5; font-size: 9px; font-weight: 800; letter-spacing: 0.06em;
-  padding: 4px 8px; border-radius: 999px; color: #2a1e02;
-  background: linear-gradient(180deg, #f8e08e, #e9bc42 60%, #a8770e);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5), 0 2px 8px rgba(0,0,0,0.45); }
 
 /* legend — deeper black and a slower, golden sheen. */
 .rcard-frame[data-edition="legend"] .rcard { background: #04060a; }
 .rcard-frame[data-edition="legend"] .rcard-sheen {
   background: linear-gradient(105deg, transparent, rgba(233,188,66,0.22), transparent); animation-duration: 11s; }
-
-/* winner — a thin chequered strip riding the top edge of the stat bar. */
-.rcard-frame[data-edition="winner"] .rcard-stats::before { content: ""; position: absolute; left: 0; right: 0; top: -6px; height: 6px;
-  background: repeating-linear-gradient(90deg, #10151d 0 8px, #eef2f7 8px 16px); border-radius: 3px 3px 0 0; opacity: 0.9; }
 
 /* mono — drain the colour from the photo (the palette greys the chrome). */
 .rcard-frame[data-edition="mono"] .rcard-photo,
@@ -906,9 +915,193 @@ body::before {
   content: ""; position: absolute; top: -10%; right: 42%; width: 34%; height: 120%; transform: skewX(20deg);
   background: linear-gradient(90deg, transparent, rgba(183,140,255,0.16), transparent); filter: blur(5px); }
 
-/* The metal sheen override must still obey the site's motion switches. */
-@media (prefers-reduced-motion: reduce) { .rcard-frame[data-edition="legend"] .rcard-sheen { animation: none; } }
-.fx-lite .rcard-frame[data-edition="legend"] .rcard-sheen { animation: none !important; }
+/* --- Edition signatures: one distinctive touch each, so a card reads as its
+   edition at a glance, not just a recolour. Motifs/textures sit BELOW the
+   text layers (z 1–2); animated ones are gated with the rest at the end. --- */
+
+/* NABS — pink pinstripes + a soft brand glow from the top-left. */
+.rcard-frame[data-edition="nabs"] .rcard-streaks { opacity: 0.55;
+  background: repeating-linear-gradient(123deg, transparent 0 19px, color-mix(in srgb, var(--team) 42%, transparent) 19px 21px); }
+.rcard-frame[data-edition="nabs"] .rcard-grade::after { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(58% 42% at 22% 15%, color-mix(in srgb, var(--team2) 34%, transparent), transparent 68%); }
+
+/* Mono — cinema feel: fine scanlines and a harder black vignette. */
+.rcard-frame[data-edition="mono"] .rcard-streaks { opacity: 0.5; mix-blend-mode: overlay;
+  background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(255,255,255,0.04) 2px 3px); mask: none; -webkit-mask: none; }
+.rcard-frame[data-edition="mono"] .rcard-grade { background:
+    radial-gradient(56% 40% at 50% 12%, rgba(255,255,255,0.26), transparent 60%),
+    radial-gradient(125% 82% at 50% 26%, transparent 22%, rgba(0,0,0,0.72) 100%),
+    linear-gradient(180deg, rgba(0,0,0,0.32) 0, rgba(0,0,0,0) 22%, rgba(0,0,0,0.78) 66%, #000 100%); }
+
+/* Rookie — a fresh diagonal hatch + a green up-glow rising from the base. */
+.rcard-frame[data-edition="rookie"] .rcard-streaks { opacity: 0.4;
+  background: repeating-linear-gradient(-48deg, transparent 0 15px, color-mix(in srgb, var(--team2) 20%, transparent) 15px 18px); mask: none; -webkit-mask: none; }
+.rcard-frame[data-edition="rookie"] .rcard-grade::after { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(72% 42% at 50% 102%, color-mix(in srgb, var(--team2) 26%, transparent), transparent 60%); }
+
+/* Veteran — brushed steel: fine vertical grain with a slow horizontal glint. */
+.rcard-frame[data-edition="veteran"] .rcard-streaks { opacity: 0.6; mix-blend-mode: overlay;
+  background: repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 1px, transparent 1px 3px); mask: none; -webkit-mask: none; }
+.rcard-frame[data-edition="veteran"] .rcard-grade::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 32%, rgba(255,255,255,0.08) 50%, transparent 68%); }
+
+/* Legend — keep the gold sheen (favourite), add a faint gold crown of light. */
+.rcard-frame[data-edition="legend"] .rcard-grade::after { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(58% 44% at 50% 11%, rgba(233,188,66,0.20), transparent 60%); }
+
+/* Winner — a chequered flag dissolving out of the top-right corner. */
+.rcard-frame[data-edition="winner"] .rcard-grade::before { content: ""; position: absolute; top: 0; right: 0; width: 130px; height: 130px; opacity: 0.16;
+  background: repeating-conic-gradient(#fff 0 25%, transparent 0 50%) 0 0 / 22px 22px;
+  -webkit-mask: linear-gradient(225deg, #000 12%, transparent 58%); mask: linear-gradient(225deg, #000 12%, transparent 58%); }
+
+/* Dominator — an aggressive red pulse behind the RTG and slashed streaks. */
+.rcard-frame[data-edition="dominator"] .rcard-streaks { opacity: 0.5;
+  background: repeating-linear-gradient(58deg, transparent 0 25px, color-mix(in srgb, var(--team2) 22%, transparent) 25px 29px); mask: none; -webkit-mask: none; }
+.rcard-frame[data-edition="dominator"] .rcard-grade::after { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(50% 34% at 24% 15%, color-mix(in srgb, var(--team2) 44%, transparent), transparent 60%);
+  animation: rcard-domin 3.2s ease-in-out infinite; }
+@keyframes rcard-domin { 0%, 100% { opacity: 0.32; } 50% { opacity: 0.6; } }
+
+/* Podium — three ascending podium steps as a faint watermark, lower-left. */
+.rcard-frame[data-edition="podium"] .rcard-grade::before { content: ""; position: absolute; left: 20px; bottom: 122px; width: 80px; height: 48px; opacity: 0.2;
+  background:
+    linear-gradient(var(--team2), var(--team2)) 0 100% / 22px 30px no-repeat,
+    linear-gradient(var(--team2), var(--team2)) 29px 100% / 22px 48px no-repeat,
+    linear-gradient(var(--team2), var(--team2)) 58px 100% / 22px 20px no-repeat; }
+
+/* Poleman — a single bright light burst from the top edge. */
+.rcard-frame[data-edition="poleman"] .rcard-grade::before { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(40% 30% at 50% 0%, color-mix(in srgb, var(--team2) 42%, transparent), transparent 55%); }
+
+/* Quali King — royal burst plus a scatter of sparkles. */
+.rcard-frame[data-edition="qualiking"] .rcard-grade::before { content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(42% 32% at 50% 1%, color-mix(in srgb, var(--team2) 48%, transparent), transparent 55%),
+    radial-gradient(3px 3px at 22% 26%, rgba(255,255,255,0.75), transparent 60%),
+    radial-gradient(2px 2px at 78% 20%, rgba(255,255,255,0.65), transparent 60%),
+    radial-gradient(2px 2px at 63% 38%, rgba(255,255,255,0.55), transparent 60%),
+    radial-gradient(2px 2px at 34% 44%, rgba(255,255,255,0.5), transparent 60%); }
+
+/* Metal titles (champion/vice/bronze) — the gloss sweep takes the metal's own
+   colour, so the shimmer matches the frame and the wreath. */
+.rcard-frame[data-edition="champion"] .rcard-sheen { background: linear-gradient(105deg, transparent, rgba(248,224,142,0.30), transparent); }
+.rcard-frame[data-edition="vice"] .rcard-sheen { background: linear-gradient(105deg, transparent, rgba(238,242,247,0.32), transparent); }
+.rcard-frame[data-edition="bronze"] .rcard-sheen { background: linear-gradient(105deg, transparent, rgba(232,196,154,0.28), transparent); }
+
+/* Team Champion — a constructor-teal aura around the team watermark. */
+.rcard-frame[data-edition="teamchamp"] .rcard-grade::after { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(56% 42% at 68% 44%, color-mix(in srgb, var(--team2) 30%, transparent), transparent 62%); }
+
+/* --- Edition animations: beyond the shared left-to-right gloss sweep, each
+   lively edition gets its OWN kind of motion — a breathing glow, a twinkle, a
+   fluttering flag — so the grid doesn't all pulse in lockstep. All gated below. */
+@keyframes rcard-breathe  { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes rcard-twinkle  { 0%, 100% { opacity: 0.5; }  50% { opacity: 1; } }
+@keyframes rcard-wreath-tw { 0%, 100% { opacity: 0.12; } 50% { opacity: 0.24; } }
+@keyframes rcard-flag     { 0%, 100% { transform: translateX(0) skewX(0deg); opacity: 0.14; }
+                            50%      { transform: translateX(-3px) skewX(-2.5deg); opacity: 0.2; } }
+
+.rcard-frame[data-edition="poleman"]   .rcard-grade::before { animation: rcard-breathe 4.5s ease-in-out infinite; }
+.rcard-frame[data-edition="qualiking"] .rcard-grade::before { animation: rcard-twinkle 3.6s ease-in-out infinite; }
+.rcard-frame[data-edition="rookie"]    .rcard-grade::after  { animation: rcard-breathe 6s ease-in-out infinite; }
+.rcard-frame[data-edition="teamchamp"] .rcard-grade::after  { animation: rcard-breathe 5s ease-in-out infinite; }
+.rcard-frame[data-edition="winner"]    .rcard-grade::before { animation: rcard-flag 5s ease-in-out infinite; }
+.rcard-frame[data-edition="champion"]  .rcard-wreath,
+.rcard-frame[data-edition="vice"]      .rcard-wreath,
+.rcard-frame[data-edition="bronze"]    .rcard-wreath { animation: rcard-wreath-tw 4s ease-in-out infinite; }
+
+/* --- Animation-type switcher (preview look-book, data-anim on the frame).
+   When a type is forced, the edition's OWN motion is stilled and the generic
+   .rcard-fx layer carries the chosen animation, so every edition can be
+   compared under the same motion. Real cards never set data-anim. --- */
+.rcard-fx { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.rcard-frame[data-anim] .rcard-sheen,
+.rcard-frame[data-anim] .rcard-grade::before,
+.rcard-frame[data-anim] .rcard-grade::after,
+.rcard-frame[data-anim] .rcard-wreath { animation: none !important; }
+
+/* sweep — the classic diagonal gloss glide (a touch stronger than default). */
+.rcard-frame[data-anim="sweep"] .rcard-fx { inset: -40% auto auto -100%; width: 55%; height: 180%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,0.18), transparent); transform: skewX(-18deg);
+  animation: rcard-sweep 6s ease-in-out infinite; }
+/* flash — the same glide, faster and brighter. */
+.rcard-frame[data-anim="flash"] .rcard-fx { inset: -40% auto auto -100%; width: 45%; height: 180%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,0.30), transparent); transform: skewX(-18deg);
+  animation: rcard-sweep 3s ease-in-out infinite; }
+/* glow — a breathing halo from the top, tinted with the edition colour. */
+.rcard-frame[data-anim="glow"] .rcard-fx {
+  background: radial-gradient(58% 40% at 50% 12%, color-mix(in srgb, var(--team2) 42%, transparent), transparent 62%);
+  animation: rcard-breathe 3.4s ease-in-out infinite; }
+/* pulse — the whole card swells brighter and back. */
+.rcard-frame[data-anim="pulse"] .rcard-fx {
+  background: radial-gradient(64% 46% at 50% 22%, color-mix(in srgb, var(--team2) 30%, transparent), transparent 68%);
+  animation: rcard-pulse 2.6s ease-in-out infinite; }
+@keyframes rcard-pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.72; } }
+/* twinkle — a scatter of sparkles fading in and out. */
+.rcard-frame[data-anim="twinkle"] .rcard-fx {
+  background:
+    radial-gradient(3px 3px at 22% 26%, rgba(255,255,255,0.85), transparent 60%),
+    radial-gradient(2px 2px at 78% 20%, rgba(255,255,255,0.75), transparent 60%),
+    radial-gradient(2.5px 2.5px at 63% 38%, rgba(255,255,255,0.7), transparent 60%),
+    radial-gradient(2px 2px at 34% 46%, rgba(255,255,255,0.6), transparent 60%),
+    radial-gradient(2px 2px at 50% 15%, rgba(255,255,255,0.7), transparent 60%);
+  animation: rcard-twinkle 2.4s ease-in-out infinite; }
+/* none — a fully still card (the edition motion is already stilled above). */
+
+.fx-lite .rcard-fx,
+.fx-lite .rcard-frame[data-anim] .rcard-fx { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .rcard-fx { animation: none !important; } }
+
+/* Motion switches: every edition animation stops under reduced-motion / lite. */
+@media (prefers-reduced-motion: reduce) {
+  .rcard-frame[data-edition="legend"] .rcard-sheen,
+  .rcard-frame[data-edition="dominator"] .rcard-grade::after,
+  .rcard-frame[data-edition="poleman"] .rcard-grade::before,
+  .rcard-frame[data-edition="qualiking"] .rcard-grade::before,
+  .rcard-frame[data-edition="rookie"] .rcard-grade::after,
+  .rcard-frame[data-edition="teamchamp"] .rcard-grade::after,
+  .rcard-frame[data-edition="winner"] .rcard-grade::before,
+  .rcard-frame[data-edition="champion"] .rcard-wreath,
+  .rcard-frame[data-edition="vice"] .rcard-wreath,
+  .rcard-frame[data-edition="bronze"] .rcard-wreath { animation: none !important; }
+}
+.fx-lite .rcard-frame[data-edition="legend"] .rcard-sheen,
+.fx-lite .rcard-frame[data-edition="dominator"] .rcard-grade::after,
+.fx-lite .rcard-frame[data-edition="poleman"] .rcard-grade::before,
+.fx-lite .rcard-frame[data-edition="qualiking"] .rcard-grade::before,
+.fx-lite .rcard-frame[data-edition="rookie"] .rcard-grade::after,
+.fx-lite .rcard-frame[data-edition="teamchamp"] .rcard-grade::after,
+.fx-lite .rcard-frame[data-edition="winner"] .rcard-grade::before,
+.fx-lite .rcard-frame[data-edition="champion"] .rcard-wreath,
+.fx-lite .rcard-frame[data-edition="vice"] .rcard-wreath,
+.fx-lite .rcard-frame[data-edition="bronze"] .rcard-wreath { animation: none !important; }
+
+/* --- Card-edition picker: "lock removed" reveal ---------------------------- */
+/* When you open the Edit Driver Card page, editions you've newly earned (or, on
+   your first visit, everything already earned) play a one-shot reveal: the
+   swatch pops with a brand-ring flash while a padlock overlay lifts away. */
+@keyframes card-reveal-pop {
+  0% { transform: scale(0.92); box-shadow: 0 0 0 0 rgba(var(--c-brand), 0.55); }
+  45% { transform: scale(1.04); box-shadow: 0 0 0 7px rgba(var(--c-brand), 0.28); }
+  100% { transform: scale(1); box-shadow: 0 0 0 12px rgba(var(--c-brand), 0); }
+}
+.card-revealing { animation: card-reveal-pop 0.7s ease-out; }
+.card-reveal-lock {
+  position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
+  color: #fff; background: rgba(6, 9, 14, 0.55); border-radius: inherit; pointer-events: none;
+  animation: card-reveal-lock-out 0.9s cubic-bezier(0.4, 0.1, 0.2, 1) forwards;
+}
+@keyframes card-reveal-lock-out {
+  0% { opacity: 1; transform: scale(1) translateY(0) rotate(0); }
+  55% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.5) translateY(-8px) rotate(-14deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-revealing { animation: none !important; }
+  .card-reveal-lock { animation: none !important; opacity: 0; }
+}
+.fx-lite .card-revealing { animation: none !important; }
+.fx-lite .card-reveal-lock { display: none !important; }
 
 /* --- Settings drawer ----------------------------------------------------- */
 /* The drawer slides/fades both IN and OUT via a transform/opacity transition on

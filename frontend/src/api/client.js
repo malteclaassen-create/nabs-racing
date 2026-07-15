@@ -187,6 +187,10 @@ export const api = {
   seasons: () => request(`/seasons${seriesQ()}`, { auth: true }),
   // All visible racing series, switcher order (admins also get private ones).
   series: () => request("/series", { auth: true }),
+  // Global search across drivers/teams/races/seasons/series — NOT scoped to the
+  // current series/season (built without seriesQ/seasonQ on purpose). auth:true
+  // so a signed-in admin also gets private-season/series hits.
+  search: (q) => request(`/search?q=${encodeURIComponent(q)}`, { auth: true }),
   // The next ANNOUNCED upcoming season for the "Coming up" strip (or null).
   seasonTeaser: () => request(`/seasons/teaser${seriesQ()}`),
   // Live championship projection (only { active: true } while a league race is
@@ -221,8 +225,15 @@ export const api = {
   clearMyPhoto: () => request("/me/photo", { method: "DELETE", userAuth: true }),
   // Which headline stat tiles the public profile shows (null = all six).
   setMyTiles: (tiles) => request("/me/tiles", { method: "PUT", body: { tiles }, userAuth: true }),
-  // How the profile picture sits on the rating card ({x,y,z} or null = default).
+  // How the picture sits on the rating card ({x,y,z,s} or null = default).
   setMyCardPhoto: (pos) => request("/me/card-photo", { method: "PUT", body: { pos }, userAuth: true }),
+  // A separate card-only picture (falls back to the profile photo when unset).
+  uploadMyCardPhoto: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request("/me/card-photo-image", { method: "POST", body: fd, userAuth: true, form: true });
+  },
+  clearMyCardPhoto: () => request("/me/card-photo-image", { method: "DELETE", userAuth: true }),
   // Unlockable rating-card editions: the catalogue + unlock state for a row, the
   // person's season chips, and picking an edition (driverId = which season row).
   myCardEditions: (driverId) =>
@@ -230,6 +241,9 @@ export const api = {
   myCardSeasons: () => request("/me/card-seasons", { userAuth: true }),
   setMyCardStyle: (driverId, style) =>
     request("/me/card-style", { method: "PUT", body: { driverId, style }, userAuth: true }),
+  // Card animation switch: "off" = a still card, null = the edition's baseline motion.
+  setMyCardAnim: (driverId, anim) =>
+    request("/me/card-anim", { method: "PUT", body: { driverId, anim }, userAuth: true }),
 
   // driver market (identity from the Discord login). Season-scoped like
   // /events — without it, viewing another season shows that season's races

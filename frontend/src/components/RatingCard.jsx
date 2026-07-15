@@ -6,10 +6,10 @@ import { wreathLeaves } from "./ChampionBadge.jsx";
 
 const TIER = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
-// The metal editions (title cards) carry a faint laurel behind the RTG, so the
-// card speaks the same language as the podium seal. Reuse the seal's wreath
-// geometry rather than drawing a second one.
-const WREATH_EDITIONS = new Set(["champion", "vice", "bronze", "defending"]);
+// The metal editions (title cards) carry a faint laurel in the top-right
+// corner, so the card speaks the same language as the podium seal. Reuse the
+// seal's wreath geometry rather than drawing a second one.
+const WREATH_EDITIONS = new Set(["champion", "vice", "bronze"]);
 const WREATH = wreathLeaves();
 
 // Auto-fit the name to the card: shrink the font-size until the longest word
@@ -55,6 +55,12 @@ export function cardPhotoFraming(pos) {
     x: clampN(Number(pos?.x), 0, 100, 50),
     y: clampN(Number(pos?.y), 0, 100, 22),
     z: clampN(Number(pos?.z), 1, 3, 1),
+    // Saturation of the card photo (1 = full colour). Toning it down keeps a
+    // very colourful picture from drowning out the card edition.
+    s: clampN(Number(pos?.s), 0, 1, 1),
+    // Tint: how strongly the photo takes on the card edition's own colour
+    // (0 = untinted, 1 = a full duotone in the card colour).
+    t: clampN(Number(pos?.t), 0, 1, 0),
   };
 }
 
@@ -62,7 +68,10 @@ export function cardPhotoFraming(pos) {
 // country, photo + framing, team + team logo); `rating` supplies the numbers.
 // The team colour drives the whole card via the --team / --team2 custom
 // properties; all the visual layering lives in index.css (.rcard-*).
-export default function RatingCard({ driver, rating }) {
+// `anim` (preview only, from the /cards look-book) forces ONE animation type
+// onto the card via data-anim, so the different motions can be compared side by
+// side. Omitted / "baseline" = each edition keeps its own designed motion.
+export default function RatingCard({ driver, rating, anim }) {
   // Hooks run unconditionally (rules of hooks); harmless when we render null.
   const { ref: nameRef, size: nameSize } = useFitName(driver?.name || "");
   const { current: season, seasons } = useSeason();
@@ -85,6 +94,9 @@ export default function RatingCard({ driver, rating }) {
   const color = isSafety ? "#f59e0b" : driver.team?.color || "#3b4254";
   const initial = (driver.name || "?").trim().charAt(0).toUpperCase();
   const logo = driver.team?.logoUrl;
+  // The card can carry its OWN picture, separate from the profile avatar; it
+  // falls back to the profile photo when none is set.
+  const cardPhoto = driver.cardPhotoUrl || driver.photoUrl;
   // The chosen card edition. Safety-car drivers always keep their marshalling
   // amber edition; otherwise the driver's pick (null = classic). The design
   // lives in CSS keyed on data-edition — editions with a fixed palette define
@@ -93,24 +105,40 @@ export default function RatingCard({ driver, rating }) {
   // palette (inline styles outrank any selector) and the edition wouldn't tint.
   const edition = isSafety ? "safety" : driver?.cardStyle || "classic";
   const teamColored = edition === "classic" || edition === "safety";
+  // The tier badge now lives in the footer signature line (see .rcard-brand),
+  // not a top-right plate — the top-right corner is the wreath's home now.
+  const tierLabel = isSafety ? "SAFETY CAR" : TIER[driver.tier] ? TIER[driver.tier].toUpperCase() : null;
+  // Motion: the /cards look-book forces one type via `anim` ("baseline" = the
+  // edition's own designed motion). Real cards have no `anim`; there the driver's
+  // own on/off switch applies — cardAnim "off" reuses the look-book's fully-still
+  // "none" state (stills sheen, glow band, sparkle and wreath twinkle), while the
+  // baseline design (colours, wreath, layout) stays exactly as-is.
+  const animAttr = anim
+    ? anim !== "baseline" ? anim : undefined
+    : driver?.cardAnim === "off" ? "none" : undefined;
 
   return (
     <div
       className="rcard-frame"
       data-edition={edition}
+      data-anim={animAttr}
       style={teamColored ? { "--team": color, "--team2": `color-mix(in srgb, ${color} 52%, #ffffff)` } : undefined}
     >
       <div className="rcard">
-        {driver.photoUrl ? (
+        {cardPhoto ? (
           (() => {
-            const { x, y, z } = cardPhotoFraming(driver.photoPos);
+            const { x, y, z, s, t } = cardPhotoFraming(driver.photoPos);
+            const sat = s !== 1 ? `saturate(${s})` : undefined;
             return (
               <>
                 {/* blurred full-card continuation, so the photo has no hard bottom edge */}
-                <div className="rcard-photo-blur" style={{ backgroundImage: `url('${driver.photoUrl}')` }} />
+                <div
+                  className="rcard-photo-blur"
+                  style={{ backgroundImage: `url('${cardPhoto}')`, filter: s !== 1 ? `blur(26px) saturate(${1.3 * s}) brightness(0.72)` : undefined }}
+                />
                 <div className="rcard-photo">
                   <img
-                    src={driver.photoUrl}
+                    src={cardPhoto}
                     alt=""
                     draggable={false}
                     style={{
@@ -118,8 +146,13 @@ export default function RatingCard({ driver, rating }) {
                       // zoom around the chosen focal point, so zooming keeps it in view
                       transform: z !== 1 ? `scale(${z})` : undefined,
                       transformOrigin: `${x}% ${y}%`,
+                      filter: sat,
                     }}
                   />
+                  {/* Tint the photo toward the card's own colour (mix-blend
+                      "color" keeps the photo's shading but takes the card hue),
+                      so a loud picture harmonises with the edition. */}
+                  {t > 0 && <div className="rcard-tint" style={{ opacity: t }} />}
                 </div>
               </>
             );
@@ -142,21 +175,15 @@ export default function RatingCard({ driver, rating }) {
           </svg>
         )}
         <div className="rcard-sheen" />
+        {/* Generic effect layer — inert unless data-anim forces a motion type
+            (preview look-book). Real cards never set it. */}
+        <div className="rcard-fx" />
         <div className="rcard-innerline" />
 
         <div className="rcard-rtg">
           <span className="rcard-rtg-l">RTG</span>
           <span className="rcard-rtg-n">{g ? g.overall : "SC"}</span>
         </div>
-        {isSafety ? (
-          <div className="rcard-tier">SAFETY CAR</div>
-        ) : (
-          TIER[driver.tier] && <div className="rcard-tier">{TIER[driver.tier].toUpperCase()}</div>
-        )}
-        {/* Reigning champion's "#1" plate — same optics as the tier plate, just
-            to its left. Pure CSS otherwise (see .rcard-frame[data-edition]). */}
-        {edition === "defending" && <div className="rcard-num1" aria-label="Reigning champion">#1</div>}
-
         <div className="rcard-id">
           <div className="rcard-meta">
             <Flag code={countryFor(driver.id, driver.country)} w={22} h={16} />
@@ -177,7 +204,7 @@ export default function RatingCard({ driver, rating }) {
           <div className="rcard-stat"><span>PAC</span><b>{g ? g.pac : "–"}</b></div>
         </div>
 
-        <div className="rcard-brand"><span>NABS</span> RACING<i />{seasonLabel}</div>
+        <div className="rcard-brand"><span>NABS</span> RACING<i />{seasonLabel}{tierLabel && <><i />{tierLabel}</>}</div>
       </div>
     </div>
   );

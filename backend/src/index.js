@@ -20,6 +20,7 @@ import authRoutes from "./routes/auth.js";
 import discordAuthRoutes from "./routes/discordAuth.js";
 import downloadsRoutes from "./routes/downloads.js";
 import notificationsRoutes from "./routes/notifications.js";
+import searchRoutes from "./routes/search.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
 import { recordHit } from "./lib/traffic.js";
@@ -122,6 +123,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/auth/discord", discordAuthRoutes);
 app.use("/api/downloads", downloadsRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/search", searchRoutes);
 
 // Admin
 app.use("/api/admin", authRoutes); // /api/admin/login

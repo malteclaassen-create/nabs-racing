@@ -15,9 +15,10 @@ import { DEFAULT_PROFILE_TILES, PROFILE_TILE_KEYS, readProfileTiles } from "../l
 import { parseCardPhotoPos, readCardPhotoPos } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import {
-  unlockStateFor, isKnownEdition, readCardEdition, DEFAULT_CARD_EDITION,
+  unlockStateFor, isKnownEdition, readCardEdition, readCardAnim, DEFAULT_CARD_EDITION,
 } from "../lib/cardEditions.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
+import { notifyCardUnlocks } from "../lib/notifications.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const router = Router();
@@ -30,8 +31,22 @@ router.use(optionalUser);
 // show until a rebuild — but /api/* is proxied to the backend in both dev and
 // preview, so /api/uploads serves freshly uploaded avatars live over the tunnel.
 const AVATAR_DIR = join(UPLOADS_DIR, "avatars");
+// A separate folder for the optional card-only picture, so it never collides
+// with the profile avatar of the same driver.
+const CARD_DIR = join(UPLOADS_DIR, "cards");
 const IMG_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif" };
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+
+// The card-only picture lives in a raw-SQL column (cardPhotoUrl), so read it
+// straight from the DB — the generated client predates the column.
+async function readCardPhotoUrl(prisma, driverId) {
+  try {
+    const rows = await prisma.$queryRaw`SELECT "cardPhotoUrl" FROM "Driver" WHERE "id" = ${driverId}`;
+    return rows[0]?.cardPhotoUrl || null;
+  } catch {
+    return null;
+  }
+}
 
 // Resolve the logged-in driver id (fresh from the DB) or send a 401.
 // Returns null when not allowed.
@@ -78,12 +93,16 @@ router.get("/", async (req, res, next) => {
       // "reset to Discord picture" button on the profile page.
       photoUrl: driver.photoUrl || driver.discordAvatar || null,
       hasCustomPhoto: !!driver.photoUrl,
+      // Optional card-only picture (null = the card uses the profile photo).
+      cardPhotoUrl: await readCardPhotoUrl(prisma, driver.id),
       // Which public-profile stat tiles are shown; null = all (the default).
       profileTiles: await readProfileTiles(prisma, driver.id),
       // How the picture sits on the rating card; null = default framing.
       photoPos: await readCardPhotoPos(prisma, driver.id),
       // The chosen unlockable card edition for this row; null = classic.
       cardStyle: await readCardEdition(prisma, driver.id),
+      // Card animation switch; "off" = a still card, null = baseline motion.
+      cardAnim: await readCardAnim(prisma, driver.id),
       team: {
         id: driver.team.id,
         name: driver.team.name,
@@ -254,10 +273,11 @@ router.get("/card-editions", async (req, res, next) => {
     if (!driverId) return;
     const inputs = await cardUnlockInputs(prisma, driverId);
     if (!inputs) return res.status(404).json({ error: "Driver not found" });
-    res.json({
-      seasonNumber: inputs.seasonNumber,
-      editions: unlockStateFor(inputs.stats, inputs.badges, inputs.teamBadges, inputs.seasonNumber),
-    });
+    const editions = unlockStateFor(inputs.stats, inputs.badges, inputs.teamBadges, inputs.seasonNumber);
+    // Reconcile the bell while we have the fresh unlock state (seeds silently the
+    // first time; best-effort, never blocks the response meaningfully).
+    notifyCardUnlocks(prisma, driverId, editions);
+    res.json({ seasonNumber: inputs.seasonNumber, editions });
   } catch (e) {
     next(e);
   }
@@ -333,6 +353,23 @@ router.put("/card-style", async (req, res, next) => {
   }
 });
 
+// PUT /api/me/card-anim { driverId?, anim } -> the card animation switch for a
+// row. "off" = a still card; anything else (or null) = the edition's baseline
+// motion. Self-save like card-style; ownership re-checked via resolveOwnRow.
+router.put("/card-anim", async (req, res, next) => {
+  try {
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const driverId = await resolveOwnRow(req, res, actingId, req.body?.driverId);
+    if (!driverId) return;
+    const anim = req.body?.anim === "off" ? "off" : null;
+    await prisma.$executeRaw`UPDATE "Driver" SET "cardAnim" = ${anim} WHERE "id" = ${driverId}`;
+    res.json({ ok: true, cardAnim: anim });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // PUT /api/me/country { country }  -> set/clear the driver's own nationality.
 // `country` is an ISO 3166-1 alpha-2 code (e.g. "de"); "" clears it.
 const CODE = /^[a-z]{2}$/;
@@ -388,6 +425,41 @@ router.delete("/photo", async (req, res, next) => {
       select: { discordAvatar: true },
     });
     res.json({ ok: true, photoUrl: driver.discordAvatar || null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/me/card-photo-image (multipart: file=<image>) -> a card-ONLY
+// picture, separate from the profile avatar. null column = the card uses the
+// profile photo. Written via raw SQL (cardPhotoUrl is a raw column).
+router.post("/card-photo-image", upload.single("file"), async (req, res, next) => {
+  try {
+    const driverId = await requireDriver(req, res);
+    if (!driverId) return;
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = IMG_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Use a PNG, JPG, WEBP or GIF image" });
+
+    mkdirSync(CARD_DIR, { recursive: true });
+    const filename = `${driverId}${ext}`;
+    writeFileSync(join(CARD_DIR, filename), req.file.buffer);
+    const cardPhotoUrl = `/api/uploads/cards/${filename}?v=${Date.now()}`;
+    await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${cardPhotoUrl} WHERE "id" = ${driverId}`;
+    res.json({ ok: true, cardPhotoUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/me/card-photo-image -> drop the card-only picture, so the card
+// falls back to the profile photo again.
+router.delete("/card-photo-image", async (req, res, next) => {
+  try {
+    const driverId = await requireDriver(req, res);
+    if (!driverId) return;
+    await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${null} WHERE "id" = ${driverId}`;
+    res.json({ ok: true, cardPhotoUrl: null });
   } catch (e) {
     next(e);
   }
