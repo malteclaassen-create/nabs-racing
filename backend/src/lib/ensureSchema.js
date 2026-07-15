@@ -89,6 +89,17 @@ export async function ensureAppSchema(prisma) {
   // reactivating the driver clears the flag. Admin Drivers tab.
   await addColumn(prisma, "Driver", "hideFromStandings", "BOOLEAN NOT NULL DEFAULT 0");
 
+  // --- Steam GUID (SteamID64) captured from AC race-result imports (migration
+  // driver_steam_id). Stable per-person identity, preferred over fuzzy name
+  // matching on future imports (see acJsonParser + raceWriter). Unique PER
+  // SEASON: a driver has one row per season, so the same SteamID recurs once
+  // per season. SQLite treats NULLs as distinct, so the many rows without a
+  // captured GUID never collide on this index.
+  await addColumn(prisma, "Driver", "steamId", "TEXT");
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Driver_seasonId_steamId_key" ON "Driver"("seasonId", "steamId")`
+  );
+
   // --- Self-hosted traffic counter (admin Traffic tab). Aggregated page views
   // per day+path, plus anonymous daily-unique visitor markers (see lib/traffic.js
   // for the privacy story). Raw SQL tables like PersonLink below.

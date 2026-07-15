@@ -162,6 +162,16 @@ model Driver {
   isActive    Boolean  @default(true)
   // Linked Discord account id (set on first Discord login) -> forgery-proof RSVP
   discordUserId String? @unique
+  // Steam GUID (SteamID64) captured from AC race-result imports. A stable
+  // per-person identity, far more reliable than the fuzzy display-name match,
+  // so future imports prefer it (acJsonParser). Unique PER SEASON via
+  // @@unique below (a driver has one row per season, so the same SteamID
+  // legitimately recurs once per season); SQLite treats NULLs as distinct, so
+  // the many rows without a captured GUID never collide. Added via migration
+  // driver_steam_id AND ensureAppSchema — like role/hideFromStandings, the
+  // running dev server holds the generated-client lock so the column is created
+  // in raw SQL at boot and mirrored by the migration for production.
+  steamId       String?
   // Profile picture: admin-set URL takes priority, else the Discord avatar URL
   // captured on first Discord login (see discordAuth.js).
   photoUrl      String?
@@ -203,6 +213,7 @@ model Driver {
   seatInterests     SeatInterest[]
   createdAt   DateTime @default(now())
 
+  @@unique([seasonId, steamId])
   @@index([seasonId])
   @@index([teamId])
 }

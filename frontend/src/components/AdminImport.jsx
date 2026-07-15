@@ -71,6 +71,11 @@ export default function AdminImport({ onCommitted }) {
           // The safety car appears in the result file as a normal entrant; the
           // backend flags it so we can dim it and leave it unmapped.
           isSafetyCar: !!en.isSafetyCar,
+          // Steam GUID (SteamID64) and how the suggestion was made ("steam" =
+          // exact GUID, "name" = fuzzy). The GUID is forwarded on commit so the
+          // backend can capture it onto the driver for future auto-matching.
+          driverGuid: en.driverGuid ?? null,
+          matchedBy: en.matchedBy ?? null,
           // Telemetry parsed from the AC file; carried through to the saved
           // result so ratings/race facts update automatically.
           contacts: en.contacts ?? null,
@@ -138,6 +143,11 @@ export default function AdminImport({ onCommitted }) {
         status: r.status,
         subForTeamId: r.subForTeamId || null,
         penaltySeconds: Number(r.penaltySeconds) || 0,
+        // Steam GUID capture: the backend writes it onto Driver.steamId (only
+        // when empty; a mismatch is reported, never overwritten). Never for the
+        // safety car.
+        driverGuid: r.driverGuid ?? null,
+        isSafetyCar: !!r.isSafetyCar,
         // AC stores a huge sentinel for "no valid lap" — drop those.
         bestLapMs: r.bestLapMs > 0 && r.bestLapMs <= 1800000 ? r.bestLapMs : null,
         grid: r.grid ?? null,
@@ -182,7 +192,13 @@ export default function AdminImport({ onCommitted }) {
           throw err;
         }
       }
-      setDone(`Round ${res.number} saved. Standings recalculated.`);
+      const conflicts = res.steamIdConflicts || [];
+      const conflictNote = conflicts.length
+        ? ` Note: ${conflicts.length} Steam ID ${conflicts.length === 1 ? "conflict" : "conflicts"} left unchanged (${conflicts
+            .map((c) => c.name)
+            .join(", ")}) — check for a mis-mapping or a shared account.`
+        : "";
+      setDone(`Round ${res.number} saved. Standings recalculated.${conflictNote}`);
       setParsed(null);
       setRows([]);
       setRemoteId("");
@@ -375,6 +391,14 @@ export default function AdminImport({ onCommitted }) {
                               </option>
                             ))}
                           </select>
+                          {r.driverId && r.matchedBy === "steam" && (
+                            <div
+                              className="mt-1 font-mono text-[10px] uppercase tracking-wider text-emerald-600"
+                              title="Matched by Steam ID, not by name — a certain match"
+                            >
+                              ✓ matched by Steam ID
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <select

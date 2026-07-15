@@ -206,6 +206,27 @@ async function getSeatTakeovers(prismaClient, seasonId) {
 // ---------------------------------------------------------------------------
 // RACE IMPORT
 // ---------------------------------------------------------------------------
+
+// Enrich a season roster with each driver's stored Steam GUID so the parser can
+// do GUID-first matching. Read raw: the running dev server holds the generated
+// client lock, so `findMany` may not expose Driver.steamId until a restart, but
+// the column exists (migration + ensureAppSchema). Best-effort — on a fresh DB
+// without the column yet, matching simply falls back to names.
+async function attachSteamIds(drivers) {
+  if (!drivers.length) return drivers;
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "id", "steamId" FROM "Driver" WHERE "id" IN (${drivers.map(() => "?").join(", ")})`,
+      ...drivers.map((d) => d.id)
+    );
+    const byId = new Map(rows.map((r) => [r.id, r.steamId ?? null]));
+    for (const d of drivers) d.steamId = byId.get(d.id) ?? null;
+  } catch {
+    for (const d of drivers) d.steamId = d.steamId ?? null;
+  }
+  return drivers;
+}
+
 // POST /api/admin/races/import  (multipart: file=<AC json>)
 // Parses the JSON and returns a fuzzy-matched mapping for the admin to confirm.
 // Does NOT persist anything yet.
@@ -225,7 +246,7 @@ router.post("/races/import", upload.single("file"), async (req, res, next) => {
     // series param pins the lookup to the series the admin is editing, so an
     // import can never silently land in the wrong series.
     const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true, series: req.query.series });
-    const drivers = await prisma.driver.findMany({ where: { seasonId }, orderBy: { name: "asc" } });
+    const drivers = await attachSteamIds(await prisma.driver.findMany({ where: { seasonId }, orderBy: { name: "asc" } }));
     const parsed = parseAcRaceJson(json, drivers);
     // Keep the raw JSON so the round's telemetry can be recomputed later; the
     // key comes back with the parse and is moved into place on commit.
@@ -257,7 +278,7 @@ router.post("/results/remote/import", async (req, res, next) => {
     if (!id || !/^[A-Za-z0-9_]+$/.test(id)) return res.status(400).json({ error: "Valid result id required" });
     const json = await fetchRemoteResult(id);
     const seasonId = await resolveSeasonId(prisma, season, { includePrivate: true, series });
-    const drivers = await prisma.driver.findMany({ where: { seasonId }, orderBy: { name: "asc" } });
+    const drivers = await attachSteamIds(await prisma.driver.findMany({ where: { seasonId }, orderBy: { name: "asc" } }));
     const parsed = parseAcRaceJson(json, drivers);
     const archiveKey = stashIncoming(json);
     res.json({ ...parsed, archiveKey, seatTakeovers: await getSeatTakeovers(prisma, seasonId) });
@@ -313,7 +334,7 @@ router.post("/races/commit", async (req, res, next) => {
 
     // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
     await tryCreateBackup(prisma, `before-import-r${race.number}`);
-    await saveRaceResults(prisma, race.id, results);
+    const saveSummary = await saveRaceResults(prisma, race.id, results);
     // Bell notification (deduped per race, so re-imports stay silent).
     if (results.length) notifyResultsSaved(prisma, race);
     // Move the raw JSON into its season folder so this round's telemetry can be
@@ -326,7 +347,15 @@ router.post("/races/commit", async (req, res, next) => {
         track: race.track,
       });
     }
-    res.json({ ok: true, raceId: race.id, number: race.number });
+    // Steam GUID capture is best-effort; any confirmed mapping that would have
+    // changed an already-stored steamId (mis-map or shared account) is reported
+    // here rather than silently overwritten, so the admin can look into it.
+    res.json({
+      ok: true,
+      raceId: race.id,
+      number: race.number,
+      steamIdConflicts: saveSummary?.steamIdConflicts || [],
+    });
   } catch (e) {
     next(e);
   }

@@ -101,6 +101,51 @@ describe("parseAcRaceJson", () => {
   });
 });
 
+describe("parseAcRaceJson · Steam GUID matching", () => {
+  // Max's roster row carries a stored Steam GUID; the others have none.
+  const roster = [
+    { id: "lewis", name: "Lewis Hamilton", discordName: "lewis_h", teamId: "alpha", tier: 1 },
+    { id: "max", name: "Max Verstappen", discordName: "maxv", teamId: "bravo", tier: 1, steamId: "STEAM_MAX" },
+    { id: "charles", name: "Charles Leclerc", discordName: "charles16", teamId: "charlie", tier: 2 },
+  ];
+  const race = (result) => ({ Type: "RACE", TrackName: "spa", Result: result });
+
+  it("prefers an exact Steam GUID over a better-scoring name match", () => {
+    // The display name is a perfect match for Lewis, but the GUID belongs to
+    // Max — the GUID must win, with full confidence and matchedBy 'steam'.
+    const parsed = parseAcRaceJson(
+      race([{ DriverName: "Lewis Hamilton", DriverGuid: "STEAM_MAX", NumLaps: 20 }]),
+      roster
+    );
+    expect(parsed.entries[0].suggestedDriverId).toBe("max");
+    expect(parsed.entries[0].matchedBy).toBe("steam");
+  });
+
+  it("falls back to the name match when the GUID is unknown", () => {
+    const parsed = parseAcRaceJson(
+      race([{ DriverName: "Lewis Hamilton", DriverGuid: "STEAM_NOBODY", NumLaps: 20 }]),
+      roster
+    );
+    expect(parsed.entries[0].suggestedDriverId).toBe("lewis");
+    expect(parsed.entries[0].matchedBy).toBe("name");
+  });
+
+  it("behaves exactly as before when the entry has no GUID", () => {
+    const parsed = parseAcRaceJson(
+      race([
+        { DriverName: "Lewis Hamilton", NumLaps: 20 }, // clear name -> name match
+        { DriverName: "Zzqwxyv", NumLaps: 20 }, // nothing clears 0.55 -> no match
+      ]),
+      roster
+    );
+    expect(parsed.entries[0].driverGuid).toBeNull();
+    expect(parsed.entries[0].suggestedDriverId).toBe("lewis");
+    expect(parsed.entries[0].matchedBy).toBe("name");
+    expect(parsed.entries[1].suggestedDriverId).toBeNull();
+    expect(parsed.entries[1].matchedBy).toBeNull();
+  });
+});
+
 describe("countCarContacts", () => {
   const ev = (guid, other, ImpactSpeed, Timestamp) => ({
     Type: "COLLISION_WITH_CAR",

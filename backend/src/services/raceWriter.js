@@ -195,4 +195,89 @@ export async function saveRaceResults(prisma, raceId, results) {
       data: { isCompleted: true },
     });
   });
+
+  // Persist the Steam GUID from a confirmed AC import onto Driver.steamId. The
+  // GUID (SteamID64) is a stable per-person identity — far more reliable than
+  // the display name — so capturing it here lets a future import auto-map by ID
+  // (see acJsonParser). Runs AFTER the results transaction and is entirely
+  // best-effort: a steamId write must NEVER abort saving a race. Only the AC
+  // import supplies r.driverGuid; the manual results editor doesn't, so this is
+  // a no-op there. Raw SQL so it works even before the generated client is
+  // refreshed for the new column (same idiom as the telemetry columns above).
+  const steamIdConflicts = await reconcileSteamIds(prisma, results, drivers);
+  return { steamIdConflicts };
+}
+
+// Writes each confirmed entry's driverGuid onto its Driver.steamId, and returns
+// the conflicts the admin should see. Rules:
+//   * write only when the driver's steamId is null (first capture);
+//   * identical GUID -> nothing to do;
+//   * a GUID that would CHANGE an existing steamId is NOT overwritten (a
+//     mis-mapping or a shared account) — it's logged and returned as a conflict;
+//   * the safety car's GUID is never written;
+//   * a missing GUID is normal — skip it.
+// Every write is guarded so a failure (e.g. the @@unique([seasonId, steamId])
+// tripping on a shared account) is reported, never thrown.
+async function reconcileSteamIds(prisma, results, drivers) {
+  const conflicts = [];
+  const nameOf = new Map(drivers.map((d) => [d.id, d.name]));
+  const pending = results.filter((r) => r.driverGuid && !r.isSafetyCar && r.driverId);
+  if (!pending.length) return conflicts;
+
+  try {
+    // Current steamId for the mapped drivers (raw so it works pre-client-refresh).
+    const ids = [...new Set(pending.map((r) => r.driverId))];
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "id", "steamId" FROM "Driver" WHERE "id" IN (${ids.map(() => "?").join(", ")})`,
+      ...ids
+    );
+    const currentById = new Map(rows.map((r) => [r.id, r.steamId ?? null]));
+
+    for (const r of pending) {
+      const existing = currentById.get(r.driverId) ?? null;
+      if (existing === r.driverGuid) continue; // already captured, identical
+      if (existing != null) {
+        // Different GUID already stored — do not overwrite.
+        console.warn(
+          `steamId left unchanged for ${nameOf.get(r.driverId) || r.driverId}: stored ${existing} != import ${r.driverGuid}`
+        );
+        conflicts.push({
+          driverId: r.driverId,
+          name: nameOf.get(r.driverId) || r.driverId,
+          existing,
+          incoming: r.driverGuid,
+          reason: "would-change",
+        });
+        continue;
+      }
+      try {
+        await prisma.$executeRawUnsafe(
+          `UPDATE "Driver" SET "steamId" = ? WHERE "id" = ? AND "steamId" IS NULL`,
+          r.driverGuid,
+          r.driverId
+        );
+        // Keep the local view current so two entries in one import that map to
+        // the same driver don't double-write.
+        currentById.set(r.driverId, r.driverGuid);
+      } catch (e) {
+        // Most likely the @@unique([seasonId, steamId]) tripping: this GUID is
+        // already held by another driver in the same season (shared account or
+        // a mis-map). Report it; never abort the save.
+        console.error(
+          `steamId write failed for ${nameOf.get(r.driverId) || r.driverId} (${r.driverGuid}): ${e.message}`
+        );
+        conflicts.push({
+          driverId: r.driverId,
+          name: nameOf.get(r.driverId) || r.driverId,
+          incoming: r.driverGuid,
+          reason: "write-failed",
+        });
+      }
+    }
+  } catch (e) {
+    // The whole reconciliation is best-effort; a failure here (e.g. the column
+    // not existing yet on a fresh DB) must not surface as a failed import.
+    console.error("steamId reconciliation skipped:", e.message);
+  }
+  return conflicts;
 }

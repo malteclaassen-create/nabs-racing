@@ -88,6 +88,23 @@ export function parseAcRaceJson(json, drivers) {
       const best = suggestions[0];
       const guid = r.DriverGuid ?? null;
       const isSafetyCar = guid != null && safetyCarGuids.has(guid);
+      // GUID-first suggestion: a Steam GUID that exactly matches a roster
+      // driver's stored steamId is a certain identity (far more reliable than
+      // the fuzzy display name), so it wins over any name score. Otherwise fall
+      // back to the name similarity, unchanged. `matchedBy` lets the admin
+      // review show whether a row was matched by Steam ID or by a name guess.
+      const steamMatch = guid != null ? drivers.find((d) => d.steamId && d.steamId === guid) : null;
+      let suggestedDriverId = null;
+      let matchedBy = null;
+      if (isSafetyCar) {
+        // never auto-map the safety car
+      } else if (steamMatch) {
+        suggestedDriverId = steamMatch.id;
+        matchedBy = "steam";
+      } else if (best && best.score >= 0.55) {
+        suggestedDriverId = best.driverId;
+        matchedBy = "name";
+      }
       // Telemetry distilled from the whole file (laps + events), keyed by GUID.
       const tel = guid != null ? byGuid.get(guid) : null;
       return {
@@ -123,9 +140,12 @@ export function parseAcRaceJson(json, drivers) {
         disqualified: !!r.Disqualified,
         hasPenalty: !!r.HasPenalty,
         lapPenalty: r.LapPenalty ?? 0,
-        // suggested mapping (auto-filled, admin can override). Never auto-map
-        // the safety car.
-        suggestedDriverId: !isSafetyCar && best && best.score >= 0.55 ? best.driverId : null,
+        // suggested mapping (auto-filled, admin can override). Steam GUID wins
+        // over name; the safety car is never auto-mapped (see above).
+        suggestedDriverId,
+        // How the suggestion was made: "steam" (exact GUID), "name" (fuzzy) or
+        // null (no confident match / safety car).
+        matchedBy,
         suggestions,
       };
     });
