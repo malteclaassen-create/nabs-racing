@@ -145,6 +145,8 @@ model Team {
   results          RaceResult[]
   constructorScores ConstructorRaceScore[]
   seatOffers       SeatOffer[]
+
+  @@index([seasonId])
 }
 
 model Driver {
@@ -200,6 +202,9 @@ model Driver {
   seatOffersFilled  SeatOffer[]    @relation("SeatFilledBy")
   seatInterests     SeatInterest[]
   createdAt   DateTime @default(now())
+
+  @@index([seasonId])
+  @@index([teamId])
 }
 
 model Race {
@@ -257,6 +262,7 @@ model RaceRsvp {
   updatedAt DateTime @updatedAt
 
   @@unique([raceId, driverId])
+  @@index([driverId])
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +347,8 @@ model RaceResult {
   gamePenaltySeconds Float? // total in-game penalty seconds
 
   @@unique([raceId, driverId])
+  @@index([driverId])
+  @@index([subForTeamId])
 }
 
 // Per-race constructor totals (verified historical + computed at import time)
@@ -354,6 +362,7 @@ model ConstructorRaceScore {
   points Int    @default(0)
 
   @@unique([raceId, teamId, tier])
+  @@index([teamId])
 }
 
 model DriverSignup {
