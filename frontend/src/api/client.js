@@ -223,6 +223,13 @@ export const api = {
   setMyTiles: (tiles) => request("/me/tiles", { method: "PUT", body: { tiles }, userAuth: true }),
   // How the profile picture sits on the rating card ({x,y,z} or null = default).
   setMyCardPhoto: (pos) => request("/me/card-photo", { method: "PUT", body: { pos }, userAuth: true }),
+  // Unlockable rating-card editions: the catalogue + unlock state for a row, the
+  // person's season chips, and picking an edition (driverId = which season row).
+  myCardEditions: (driverId) =>
+    request(`/me/card-editions${driverId ? `?driverId=${encodeURIComponent(driverId)}` : ""}`, { userAuth: true }),
+  myCardSeasons: () => request("/me/card-seasons", { userAuth: true }),
+  setMyCardStyle: (driverId, style) =>
+    request("/me/card-style", { method: "PUT", body: { driverId, style }, userAuth: true }),
 
   // driver market (identity from the Discord login). Season-scoped like
   // /events — without it, viewing another season shows that season's races

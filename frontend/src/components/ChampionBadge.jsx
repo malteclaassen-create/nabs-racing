@@ -33,7 +33,7 @@ const TITLE_BY_TYPE = { champion: "Champion", vice: "2nd Place", third: "3rd Pla
 // The wreath, generated: two mirrored branches of tapered leaf ellipses along
 // a circle — open at the top (±34°), meeting at the bottom (±168°), each leaf
 // tilted 112° off its radius so it lies along the branch, leaning outward.
-function wreathLeaves() {
+export function wreathLeaves() {
   const leaves = [];
   const N = 7;
   for (const side of [1, -1]) {

@@ -211,6 +211,132 @@ function CardPhotoEditor({ driver, rating, pos, setPos, onReset, resetting }) {
   );
 }
 
+// Swatch gradients per edition — mirror the CSS palettes in index.css
+// (.rcard-frame[data-edition=…]). Presentational only; "classic" falls back to
+// the driver's team colour, passed in.
+const EDITION_COLORS = {
+  nabs: ["#e5548f", "#ff8fbd"],
+  mono: ["#8b95a3", "#dfe5ec"],
+  rookie: ["#2f6d4f", "#6ec99a"],
+  veteran: ["#3f4a58", "#9fb0c4"],
+  legend: ["#171a21", "#e9bc42"],
+  winner: ["#1d2430", "#ffffff"],
+  dominator: ["#7a1220", "#ff6b6b"],
+  podium: ["#2a3a55", "#8fb6ff"],
+  poleman: ["#4c2a7a", "#b78cff"],
+  qualiking: ["#2a1a5e", "#c9a6ff"],
+  vice: ["#7e8a9a", "#eef2f7"],
+  bronze: ["#7e5426", "#e8c49a"],
+  teamchamp: ["#0e6b5a", "#62e0c4"],
+  champion: ["#a8770e", "#f8e08e"],
+  defending: ["#8a6410", "#f8e08e"],
+};
+
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 018 0v3" />
+    </svg>
+  );
+}
+
+// Sort: free first, then unlocked, then locked by progress (share of the way
+// there) descending — the closest-to-earned locked ones surface first.
+function sortEditions(list) {
+  const progress = (e) => (e.need ? Math.min(1, (e.have || 0) / e.need) : e.unlocked ? 1 : 0);
+  const rank = (e) => (!e.requirement ? 0 : e.unlocked ? 1 : 2);
+  return [...list].sort((a, b) => rank(a) - rank(b) || progress(b) - progress(a));
+}
+
+// The card-edition picker: season chips + a swatch grid. Selecting an unlocked
+// swatch updates the live card preview above (for the current row) and stages
+// the change; the page's main Save persists it. Locked editions stay visible
+// with their progress so the goal is in sight.
+function CardEditionPicker({ seasons, activeDriverId, onPickSeason, editions, current, onPick, teamColor, loading }) {
+  const ordered = sortEditions(editions || []);
+  return (
+    <div className="border-t border-border pt-5">
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Card edition</span>
+        <span className="text-xs text-light">
+          Pick your rating-card design. Most editions are earned through starts, wins, poles and titles.
+        </span>
+      </div>
+
+      {seasons.length > 1 && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {seasons.map((s) => (
+            <button
+              key={s.driverId}
+              type="button"
+              onClick={() => onPickSeason(s.driverId)}
+              className={`rounded-lg px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wide transition ${
+                s.driverId === activeDriverId ? "bg-brand text-ink" : "bg-surface2 text-light hover:text-dark"
+              }`}
+            >
+              S{s.seasonNumber}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-light">Loading editions…</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+          {ordered.map((e) => {
+            const [c1, c2] = EDITION_COLORS[e.key] || [teamColor || "#3b4254", "#ffffff"];
+            const selected = (current || "classic") === e.key;
+            const locked = !e.unlocked;
+            return (
+              <button
+                key={e.key}
+                type="button"
+                disabled={locked}
+                aria-pressed={selected}
+                onClick={() => !locked && onPick(e.key)}
+                className={`relative flex items-center gap-2.5 rounded-xl border p-2.5 text-left transition ${
+                  selected
+                    ? "border-brand ring-2 ring-brand/40"
+                    : locked
+                    ? "cursor-not-allowed border-border opacity-70"
+                    : "border-border hover:border-brand/50"
+                }`}
+              >
+                <span
+                  className="h-9 w-9 shrink-0 rounded-lg ring-1 ring-black/10"
+                  style={{ background: `linear-gradient(135deg, ${c1}, ${c2})`, filter: locked ? "grayscale(0.7)" : undefined }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1 font-display text-sm font-bold uppercase tracking-tight text-dark">
+                    {e.name}
+                    {locked && <span className="text-light"><LockIcon /></span>}
+                  </span>
+                  <span className="block truncate text-[11px] text-light">{e.tagline}</span>
+                  {locked && e.need != null && (
+                    <span className="mt-1 block">
+                      <span className="flex h-1 w-full overflow-hidden rounded-full bg-surface2">
+                        <span
+                          className="h-full rounded-full bg-brand/70"
+                          style={{ width: `${Math.min(100, Math.round(((e.have || 0) / e.need) * 100))}%` }}
+                        />
+                      </span>
+                      <span className="mt-0.5 block font-mono text-[10px] tabular-nums text-light">
+                        {e.have || 0} / {e.need}
+                      </span>
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // A labelled field wrapper for the editor form.
 function Field({ label, hint, children }) {
   return (
@@ -249,6 +375,57 @@ function ProfileEditor({ me, onDraftChange }) {
   const [posDirty, setPosDirty] = useState(false);
   const [posSaving, setPosSaving] = useState(false);
 
+  // Card edition picker. Editions are per season row; the picker can target any
+  // of the person's seasons via chips, but the live card preview above is
+  // always the CURRENT row (the photo editor edits that one). Picks save
+  // immediately (like the photo reset), so `meCardStyle` drives the preview.
+  const [meCardStyle, setMeCardStyle] = useState(me.cardStyle || "classic");
+  const [cardSeasons, setCardSeasons] = useState([]);
+  const [pickerDriverId, setPickerDriverId] = useState(me.driverId);
+  const [editionsByDriver, setEditionsByDriver] = useState({});
+  const [editionsLoading, setEditionsLoading] = useState(true);
+  const [savedByDriver, setSavedByDriver] = useState({}); // other rows' picked styles
+
+  useEffect(() => {
+    let alive = true;
+    api.myCardSeasons().then((d) => alive && setCardSeasons(d?.seasons || [])).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (editionsByDriver[pickerDriverId]) { setEditionsLoading(false); return; }
+    let alive = true;
+    setEditionsLoading(true);
+    api
+      .myCardEditions(pickerDriverId === me.driverId ? undefined : pickerDriverId)
+      .then((d) => alive && setEditionsByDriver((m) => ({ ...m, [pickerDriverId]: d?.editions || [] })))
+      .catch(() => {})
+      .finally(() => alive && setEditionsLoading(false));
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickerDriverId]);
+
+  const styleOf = (id) => {
+    if (id === me.driverId) return meCardStyle;
+    if (savedByDriver[id] != null) return savedByDriver[id];
+    return cardSeasons.find((s) => s.driverId === id)?.cardStyle || "classic";
+  };
+
+  async function pickStyle(key) {
+    const id = pickerDriverId;
+    const prev = styleOf(id);
+    if (id === me.driverId) setMeCardStyle(key);
+    else setSavedByDriver((m) => ({ ...m, [id]: key }));
+    setError(null);
+    try {
+      await api.setMyCardStyle(id, key === "classic" ? null : key);
+    } catch (err) {
+      setError(err.message);
+      if (id === me.driverId) setMeCardStyle(prev);
+      else setSavedByDriver((m) => ({ ...m, [id]: prev }));
+    }
+  }
+
   // Resets the card framing immediately (no separate save button — the main
   // "Save changes" persists a dragged/zoomed framing along with everything else).
   async function resetCardPhoto() {
@@ -270,9 +447,9 @@ function ProfileEditor({ me, onDraftChange }) {
   // Report the current (unsaved) edits upward — the page's live preview of the
   // public profile renders from this draft.
   useEffect(() => {
-    onDraftChange?.({ name, number, country, bio, socials, tiles, photoUrl, photoPos });
+    onDraftChange?.({ name, number, country, bio, socials, tiles, photoUrl, photoPos, cardStyle: meCardStyle });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, number, country, bio, socials, tiles, photoUrl, photoPos]);
+  }, [name, number, country, bio, socials, tiles, photoUrl, photoPos, meCardStyle]);
 
   async function onPickFile(e) {
     const file = e.target.files?.[0];
@@ -485,6 +662,8 @@ function ProfileEditor({ me, onDraftChange }) {
                   tier: me.tier,
                   role: me.role ?? null, // safety car drivers see their special card here too
                   team: me.team,
+                  // Live-preview the chosen card edition for this (current) row.
+                  cardStyle: meCardStyle,
                   // Pin the card's footer to the driver's own season — without
                   // this it would show whichever season the site switcher is on.
                   seasonNumber: me.seasonNumber ?? null,
@@ -501,6 +680,18 @@ function ProfileEditor({ me, onDraftChange }) {
             </div>
           )}
         </div>
+
+        {/* Card edition picker — unlockable card designs, saved on pick. */}
+        <CardEditionPicker
+          seasons={cardSeasons}
+          activeDriverId={pickerDriverId}
+          onPickSeason={setPickerDriverId}
+          editions={editionsByDriver[pickerDriverId]}
+          current={styleOf(pickerDriverId)}
+          onPick={pickStyle}
+          teamColor={me.team?.color}
+          loading={editionsLoading && !editionsByDriver[pickerDriverId]}
+        />
 
         {/* Stat tiles — pick which of the six headline stats the public
             profile shows. Unticked tiles simply disappear from the page. */}
@@ -702,6 +893,7 @@ function MyProfile() {
                     profileTiles: previewDraft.tiles,
                     photoUrl: previewDraft.photoUrl,
                     photoPos: previewDraft.photoPos,
+                    cardStyle: previewDraft.cardStyle,
                   }
                 : {}
             }

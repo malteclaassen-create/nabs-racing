@@ -836,6 +836,80 @@ body::before {
 @media (prefers-reduced-motion: reduce) { .rcard-sheen { animation: none; } }
 .fx-lite .rcard-sheen { animation: none !important; }
 
+/* --- Card editions: unlockable alternative palettes. The card stays
+   structurally identical; only --team/--team2 (plus a few character extras)
+   change, so the frame gradient, streaks, dot and brand line all recolour with
+   no extra JS. Keyed on data-edition set in RatingCard.jsx. Safety keeps its
+   own amber (set inline), and "classic" is simply the absence of an override. */
+.rcard-frame[data-edition="nabs"]      { --team: #e5548f; --team2: #ff8fbd; }
+.rcard-frame[data-edition="mono"]      { --team: #8b95a3; --team2: #dfe5ec; }
+.rcard-frame[data-edition="rookie"]    { --team: #2f6d4f; --team2: #6ec99a; }
+.rcard-frame[data-edition="veteran"]   { --team: #3f4a58; --team2: #9fb0c4; }
+.rcard-frame[data-edition="legend"]    { --team: #171a21; --team2: #e9bc42; }
+.rcard-frame[data-edition="winner"]    { --team: #1d2430; --team2: #ffffff; }
+.rcard-frame[data-edition="dominator"] { --team: #7a1220; --team2: #ff6b6b; }
+.rcard-frame[data-edition="podium"]    { --team: #2a3a55; --team2: #8fb6ff; }
+.rcard-frame[data-edition="poleman"]   { --team: #4c2a7a; --team2: #b78cff; }
+.rcard-frame[data-edition="qualiking"] { --team: #2a1a5e; --team2: #c9a6ff; }
+.rcard-frame[data-edition="vice"]      { --team: #7e8a9a; --team2: #eef2f7; }
+.rcard-frame[data-edition="bronze"]    { --team: #7e5426; --team2: #e8c49a; }
+.rcard-frame[data-edition="teamchamp"] { --team: #0e6b5a; --team2: #62e0c4; }
+.rcard-frame[data-edition="champion"]  { --team: #a8770e; --team2: #f8e08e; }
+.rcard-frame[data-edition="defending"] { --team: #8a6410; --team2: #f8e08e; }
+
+/* Metal frames for the title editions — the podium seal's METALS as the frame
+   gradient, so card and seal share one language (gold champion/defending,
+   silver vice, bronze bronze). */
+.rcard-frame[data-edition="champion"],
+.rcard-frame[data-edition="defending"] {
+  background: linear-gradient(135deg, #fbe6a8 0%, #e9bc42 15%, #a8770e 39%, #4a3406 50%, #a8770e 61%, #e9bc42 85%, #fbe6a8 100%);
+}
+.rcard-frame[data-edition="vice"] {
+  background: linear-gradient(135deg, #f4f7fb 0%, #b9c2cf 15%, #7e8a9a 39%, #2c333c 50%, #7e8a9a 61%, #b9c2cf 85%, #f4f7fb 100%);
+}
+.rcard-frame[data-edition="bronze"] {
+  background: linear-gradient(135deg, #f0d3b0 0%, #c08a4e 15%, #7e5426 39%, #3a2611 50%, #7e5426 61%, #c08a4e 85%, #f0d3b0 100%);
+}
+
+/* Faint laurel behind the RTG block on the metal editions (SVG from
+   RatingCard, geometry shared with ChampionBadge). --team2 tints it. */
+.rcard-wreath { position: absolute; top: 6px; left: 4px; width: 118px; height: 118px; z-index: 2;
+  color: var(--team2); opacity: 0.16; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4)); }
+
+/* Reigning champion's "#1" plate — same optics as the tier plate, parked to
+   its left. */
+.rcard-num1 { position: absolute; top: 21px; right: 74px; z-index: 5; font-size: 9px; font-weight: 800; letter-spacing: 0.06em;
+  padding: 4px 8px; border-radius: 999px; color: #2a1e02;
+  background: linear-gradient(180deg, #f8e08e, #e9bc42 60%, #a8770e);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5), 0 2px 8px rgba(0,0,0,0.45); }
+
+/* legend — deeper black and a slower, golden sheen. */
+.rcard-frame[data-edition="legend"] .rcard { background: #04060a; }
+.rcard-frame[data-edition="legend"] .rcard-sheen {
+  background: linear-gradient(105deg, transparent, rgba(233,188,66,0.22), transparent); animation-duration: 11s; }
+
+/* winner — a thin chequered strip riding the top edge of the stat bar. */
+.rcard-frame[data-edition="winner"] .rcard-stats::before { content: ""; position: absolute; left: 0; right: 0; top: -6px; height: 6px;
+  background: repeating-linear-gradient(90deg, #10151d 0 8px, #eef2f7 8px 16px); border-radius: 3px 3px 0 0; opacity: 0.9; }
+
+/* mono — drain the colour from the photo (the palette greys the chrome). */
+.rcard-frame[data-edition="mono"] .rcard-photo,
+.rcard-frame[data-edition="mono"] .rcard-photo-blur { filter: saturate(0); }
+.rcard-frame[data-edition="mono"] .rcard-photo-blur { filter: blur(26px) saturate(0) brightness(0.72); }
+
+/* poleman / qualiking — a brighter light ray, mirrored by a second one. */
+.rcard-frame[data-edition="poleman"] .rcard-ray,
+.rcard-frame[data-edition="qualiking"] .rcard-ray {
+  background: linear-gradient(90deg, transparent, rgba(199,166,255,0.28), transparent); }
+.rcard-frame[data-edition="poleman"] .rcard-grade::after,
+.rcard-frame[data-edition="qualiking"] .rcard-grade::after {
+  content: ""; position: absolute; top: -10%; right: 42%; width: 34%; height: 120%; transform: skewX(20deg);
+  background: linear-gradient(90deg, transparent, rgba(183,140,255,0.16), transparent); filter: blur(5px); }
+
+/* The metal sheen override must still obey the site's motion switches. */
+@media (prefers-reduced-motion: reduce) { .rcard-frame[data-edition="legend"] .rcard-sheen { animation: none; } }
+.fx-lite .rcard-frame[data-edition="legend"] .rcard-sheen { animation: none !important; }
+
 /* --- Settings drawer ----------------------------------------------------- */
 /* The drawer slides/fades both IN and OUT via a transform/opacity transition on
    its `settings-anim` elements (driven by a `show` state in SettingsPanel, so it

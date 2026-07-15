@@ -2,8 +2,15 @@ import { useLayoutEffect, useRef, useState } from "react";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { wreathLeaves } from "./ChampionBadge.jsx";
 
 const TIER = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
+
+// The metal editions (title cards) carry a faint laurel behind the RTG, so the
+// card speaks the same language as the podium seal. Reuse the seal's wreath
+// geometry rather than drawing a second one.
+const WREATH_EDITIONS = new Set(["champion", "vice", "bronze", "defending"]);
+const WREATH = wreathLeaves();
 
 // Auto-fit the name to the card: shrink the font-size until the longest word
 // fits the available width, so long single-word names (e.g. "JadenDMotorports")
@@ -78,11 +85,20 @@ export default function RatingCard({ driver, rating }) {
   const color = isSafety ? "#f59e0b" : driver.team?.color || "#3b4254";
   const initial = (driver.name || "?").trim().charAt(0).toUpperCase();
   const logo = driver.team?.logoUrl;
+  // The chosen card edition. Safety-car drivers always keep their marshalling
+  // amber edition; otherwise the driver's pick (null = classic). The design
+  // lives in CSS keyed on data-edition — editions with a fixed palette define
+  // --team/--team2 there. We only set those vars INLINE for the team-coloured
+  // editions (classic + safety); an inline value would otherwise beat the CSS
+  // palette (inline styles outrank any selector) and the edition wouldn't tint.
+  const edition = isSafety ? "safety" : driver?.cardStyle || "classic";
+  const teamColored = edition === "classic" || edition === "safety";
 
   return (
     <div
       className="rcard-frame"
-      style={{ "--team": color, "--team2": `color-mix(in srgb, ${color} 52%, #ffffff)` }}
+      data-edition={edition}
+      style={teamColored ? { "--team": color, "--team2": `color-mix(in srgb, ${color} 52%, #ffffff)` } : undefined}
     >
       <div className="rcard">
         {driver.photoUrl ? (
@@ -116,6 +132,15 @@ export default function RatingCard({ driver, rating }) {
         <div className="rcard-ray" />
         <div className="rcard-grade" />
         {logo && <div className="rcard-wm"><img src={logo} alt="" /></div>}
+        {WREATH_EDITIONS.has(edition) && (
+          <svg className="rcard-wreath" viewBox="0 0 24 24" aria-hidden="true">
+            <g fill="currentColor">
+              {WREATH.map((l) => (
+                <ellipse key={l.key} cx={l.x} cy={l.y} rx={l.rx} ry={l.ry} transform={`rotate(${l.rot} ${l.x} ${l.y})`} />
+              ))}
+            </g>
+          </svg>
+        )}
         <div className="rcard-sheen" />
         <div className="rcard-innerline" />
 
@@ -128,6 +153,9 @@ export default function RatingCard({ driver, rating }) {
         ) : (
           TIER[driver.tier] && <div className="rcard-tier">{TIER[driver.tier].toUpperCase()}</div>
         )}
+        {/* Reigning champion's "#1" plate — same optics as the tier plate, just
+            to its left. Pure CSS otherwise (see .rcard-frame[data-edition]). */}
+        {edition === "defending" && <div className="rcard-num1" aria-label="Reigning champion">#1</div>}
 
         <div className="rcard-id">
           <div className="rcard-meta">

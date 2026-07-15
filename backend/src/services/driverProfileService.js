@@ -19,6 +19,7 @@ import { readProfileTiles } from "../lib/profileTiles.js";
 import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
+import { readCardEdition } from "../lib/cardEditions.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -31,7 +32,10 @@ function avg(nums) {
 // seasons); private seasons and special events are excluded, exactly like the
 // career table. Telemetry keys stay null-safe: seasons without telemetry simply
 // don't contribute, and if NO round has any, the telemetry tiles hide.
-async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds) {
+// `seasonFilter`, when given, is a Set of the seasonIds that may contribute —
+// used by the card editions to cap the career at "seasons <= N of this series"
+// while everything else keeps the full all-time view.
+async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilter = null) {
   const results = await prisma.raceResult.findMany({
     where: { driverId: { in: linkedIds } },
     include: { race: { select: { seasonId: true, isSpecialEvent: true, isCompleted: true, track: true, number: true } } },
@@ -42,7 +46,8 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds) {
       !r.race.isSpecialEvent &&
       r.race.isCompleted &&
       r.race.seasonId &&
-      !privateSeasonIds.has(r.race.seasonId)
+      !privateSeasonIds.has(r.race.seasonId) &&
+      (!seasonFilter || seasonFilter.has(r.race.seasonId))
   );
 
   const starts = rows.filter((r) => r.status !== "DNS");
@@ -230,6 +235,82 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
     { seasons: 0, points: 0, starts: 0, wins: 0, podiums: 0 }
   );
   return { career: { seasons: merged, totals }, otherSeries };
+}
+
+// Everything unlockStateFor (lib/cardEditions.js) needs to judge one driver
+// row's card editions: the row's season number N, the person's career stats
+// capped at seasons <= N of THIS series, and the person's podium/team seals
+// (own series, live-complete rule). Milestone stats are person-wide (linked
+// rows) so "50 starts" survives a season/handle change; titles stay per-season.
+export async function cardUnlockInputs(prisma, driverId) {
+  const driver = await prisma.driver.findUnique({ where: { id: driverId }, include: { season: true } });
+  if (!driver) return null;
+  const n = driver.season?.number ?? null;
+  const ownSeasonId = driver.seasonId;
+
+  const [linkedIdsAll, bySeriesMap, privateRows] = await Promise.all([
+    getLinkedDriverIds(prisma, driverId),
+    seasonSeriesMap(prisma),
+    prisma.$queryRawUnsafe(`SELECT "id" FROM "Season" WHERE "isPublic" = 0`).catch(() => []),
+  ]);
+  const ownSeriesId = bySeriesMap.get(ownSeasonId) ?? null;
+  const privateSeasonIds = new Set(privateRows.map((r) => r.id));
+
+  // The person's rows in THIS series (public seasons) with their season numbers.
+  const linkedRows =
+    linkedIdsAll.length > 1
+      ? await prisma.driver.findMany({ where: { id: { in: linkedIdsAll } }, include: { team: true, season: true } })
+      : [driver.team ? driver : await prisma.driver.findUnique({ where: { id: driverId }, include: { team: true, season: true } })];
+  const ownSeriesRows = linkedRows.filter(
+    (r) => (bySeriesMap.get(r.seasonId) ?? null) === ownSeriesId && !privateSeasonIds.has(r.seasonId)
+  );
+
+  // Milestone stats: person-wide over seasons <= N of this series.
+  const seasonFilter = new Set(
+    ownSeriesRows.filter((r) => (r.season?.number ?? Infinity) <= (n ?? -Infinity)).map((r) => r.seasonId)
+  );
+  const rawStats = await buildAllTimeStats(
+    prisma,
+    ownSeriesRows.map((r) => r.id),
+    privateSeasonIds,
+    seasonFilter
+  );
+  const stats = {
+    starts: rawStats.starts,
+    wins: rawStats.wins,
+    podiums: rawStats.podiums,
+    poles: rawStats.polePositions,
+  };
+
+  // Titles: the person's driver + team podium seals, per season, using the same
+  // live-complete rule as the profile shelf (a title counts once its season is
+  // done). Passed UNFILTERED — unlockStateFor matches the season number itself.
+  const active = await getActiveSeason(prisma, ownSeriesId);
+  const activeComplete = active ? await isSeasonComplete(prisma, active.id) : false;
+  const isConcluded = (num) => seasonConcluded(num, active?.number ?? null, activeComplete);
+
+  const BADGE_TYPE = { 1: "champion", 2: "vice", 3: "third" };
+  const badges = [];
+  const teamBadges = [];
+  for (const row of ownSeriesRows) {
+    const num = row.season?.number ?? null;
+    if (num == null || !isConcluded(num)) continue;
+    const dst = await getDriverStandings(prisma, row.seasonId);
+    const drow = dst.standings.find((x) => x.driverId === row.id);
+    if (drow && drow.position >= 1 && drow.position <= 3) {
+      badges.push({ type: BADGE_TYPE[drow.position], position: drow.position, seasonNumber: num });
+    }
+    const tier = row.team?.tier;
+    if (tier === 1 || tier === 2) {
+      const table = await (tier === 1 ? getT1ConstructorStandings : getT2ConstructorStandings)(prisma, row.seasonId);
+      const trow = (table?.standings || []).find((t) => t.teamId === row.team.id);
+      if (trow && trow.position >= 1 && trow.position <= 3) {
+        teamBadges.push({ position: trow.position, seasonNumber: num });
+      }
+    }
+  }
+
+  return { seasonNumber: n, stats, badges, teamBadges };
 }
 
 export async function getDriverProfile(prisma, driverId) {
@@ -500,6 +581,9 @@ export async function getDriverProfile(prisma, driverId) {
       photoUrl: effPhotoUrl,
       // How the picture sits on the rating card (null = default framing).
       photoPos: effPhotoPos,
+      // The unlockable card edition chosen for THIS row (null = classic). Per
+      // row, not person-inherited like the photo — an award of this season.
+      cardStyle: await readCardEdition(prisma, driverId),
       socials: parseSocials(driver.socials),
       // Self-written "about me" line and the driver's pick of headline stat
       // tiles (null = show all) — both self-service on /profile.

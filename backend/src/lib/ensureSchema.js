@@ -87,6 +87,11 @@ export async function ensureAppSchema(prisma) {
   // (JSON {"x":0-100,"y":0-100,"z":1-3}; null = default). Self-service.
   await addColumn(prisma, "Driver", "cardPhotoPos", "TEXT");
 
+  // --- Rating card edition: which unlockable card design the driver chose for
+  // THIS season row (a key from lib/cardEditions.js; null = classic). Per-row
+  // (a season award), not person-wide like the photo. Self-service on /profile.
+  await addColumn(prisma, "Driver", "cardStyle", "TEXT");
+
   // --- Special league role, shown on the rating card and profile. null =
   // regular driver; 'safety' = safety car driver. Admin-set (Drivers tab).
   await addColumn(prisma, "Driver", "role", "TEXT");

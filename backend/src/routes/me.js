@@ -14,6 +14,10 @@ import { parseSocials, serializeSocials } from "../lib/socials.js";
 import { DEFAULT_PROFILE_TILES, PROFILE_TILE_KEYS, readProfileTiles } from "../lib/profileTiles.js";
 import { parseCardPhotoPos, readCardPhotoPos } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
+import {
+  unlockStateFor, isKnownEdition, readCardEdition, DEFAULT_CARD_EDITION,
+} from "../lib/cardEditions.js";
+import { cardUnlockInputs } from "../services/driverProfileService.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const router = Router();
@@ -78,6 +82,8 @@ router.get("/", async (req, res, next) => {
       profileTiles: await readProfileTiles(prisma, driver.id),
       // How the picture sits on the rating card; null = default framing.
       photoPos: await readCardPhotoPos(prisma, driver.id),
+      // The chosen unlockable card edition for this row; null = classic.
+      cardStyle: await readCardEdition(prisma, driver.id),
       team: {
         id: driver.team.id,
         name: driver.team.name,
@@ -215,6 +221,113 @@ router.put("/card-photo", async (req, res, next) => {
     }
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoPos" = ${value} WHERE "id" = ${driverId}`;
     res.json({ ok: true, photoPos: value ? JSON.parse(value) : null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Rating card editions -----------------------------------------------------
+// The driver picks an unlockable card design (lib/cardEditions.js) PER season
+// row. `driverId` in the request must belong to the logged-in person (checked
+// against getLinkedDriverIds) — never trust a foreign row id from the body.
+
+// Resolve the row to act on: the given driverId when it belongs to the acting
+// person, else the acting row itself. Returns null + sends 403 on a foreign id.
+async function resolveOwnRow(req, res, actingId, wantedId) {
+  if (!wantedId || wantedId === actingId) return actingId;
+  const linked = await getLinkedDriverIds(prisma, actingId);
+  if (!linked.includes(wantedId)) {
+    res.status(403).json({ error: "That driver row isn't yours" });
+    return null;
+  }
+  return wantedId;
+}
+
+// GET /api/me/card-editions?driverId= -> { seasonNumber, editions: [...] }
+// The full catalogue with unlock state + progress for the picker. Without
+// driverId = the acting row.
+router.get("/card-editions", async (req, res, next) => {
+  try {
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const driverId = await resolveOwnRow(req, res, actingId, req.query.driverId);
+    if (!driverId) return;
+    const inputs = await cardUnlockInputs(prisma, driverId);
+    if (!inputs) return res.status(404).json({ error: "Driver not found" });
+    res.json({
+      seasonNumber: inputs.seasonNumber,
+      editions: unlockStateFor(inputs.stats, inputs.badges, inputs.teamBadges, inputs.seasonNumber),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/me/card-seasons -> the person's linked rows for the picker's season
+// chips: [{ driverId, seasonNumber, seasonName, cardStyle }], newest first.
+// Private seasons are excluded (a hidden season has no public card).
+router.get("/card-seasons", async (req, res, next) => {
+  try {
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const linkedIds = await getLinkedDriverIds(prisma, actingId);
+    const [rows, privateRows] = await Promise.all([
+      prisma.driver.findMany({
+        where: { id: { in: linkedIds } },
+        include: { season: { select: { number: true, name: true } } },
+      }),
+      prisma.$queryRawUnsafe(`SELECT "id" FROM "Season" WHERE "isPublic" = 0`).catch(() => []),
+    ]);
+    const privateSeasonIds = new Set(privateRows.map((r) => r.id));
+    // cardStyle lives in a raw-SQL column -> one raw read for all linked rows.
+    const placeholders = linkedIds.map(() => "?").join(",");
+    const styleRows = linkedIds.length
+      ? await prisma.$queryRawUnsafe(`SELECT "id","cardStyle" FROM "Driver" WHERE "id" IN (${placeholders})`, ...linkedIds)
+      : [];
+    const styleById = new Map(
+      styleRows.map((r) => [r.id, isKnownEdition(r.cardStyle) && r.cardStyle !== DEFAULT_CARD_EDITION ? r.cardStyle : null])
+    );
+    const seasons = rows
+      .filter((r) => r.season?.number != null && !privateSeasonIds.has(r.seasonId))
+      .map((r) => ({
+        driverId: r.id,
+        seasonNumber: r.season.number,
+        seasonName: r.season.name,
+        cardStyle: styleById.get(r.id) ?? null,
+      }))
+      .sort((a, b) => b.seasonNumber - a.seasonNumber);
+    res.json({ seasons });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/me/card-style { driverId?, style } -> pick a card edition for a row.
+// null / "classic" clears the column. Unknown key -> 400. A locked edition ->
+// 403: the unlock is re-checked server-side, never trusting the client.
+router.put("/card-style", async (req, res, next) => {
+  try {
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const driverId = await resolveOwnRow(req, res, actingId, req.body?.driverId);
+    if (!driverId) return;
+    const style = req.body?.style;
+
+    if (style == null || style === DEFAULT_CARD_EDITION) {
+      await prisma.$executeRaw`UPDATE "Driver" SET "cardStyle" = ${null} WHERE "id" = ${driverId}`;
+      return res.json({ ok: true, cardStyle: null });
+    }
+    if (!isKnownEdition(style)) return res.status(400).json({ error: "Unknown card edition" });
+
+    const inputs = await cardUnlockInputs(prisma, driverId);
+    if (!inputs) return res.status(404).json({ error: "Driver not found" });
+    const state = unlockStateFor(inputs.stats, inputs.badges, inputs.teamBadges, inputs.seasonNumber);
+    const entry = state.find((e) => e.key === style);
+    if (!entry?.unlocked) {
+      return res.status(403).json({ error: "This edition isn't unlocked yet" });
+    }
+    await prisma.$executeRaw`UPDATE "Driver" SET "cardStyle" = ${style} WHERE "id" = ${driverId}`;
+    res.json({ ok: true, cardStyle: style });
   } catch (e) {
     next(e);
   }
