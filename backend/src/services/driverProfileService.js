@@ -18,6 +18,7 @@ import { telemetryForDriver } from "../lib/telemetryRead.js";
 import { readProfileTiles } from "../lib/profileTiles.js";
 import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
+import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -309,6 +310,13 @@ export async function getDriverProfile(prisma, driverId) {
     getActiveSeason(prisma, ownSeriesId),
     prisma.season.findMany({ select: { id: true, number: true, game: true } }),
   ]);
+  // A season's honours (podium seals) show as soon as it's COMPLETE — every
+  // championship round run — not only once the next season starts (see
+  // lib/seasonComplete.js). The reigning champion gets their seal on the day of
+  // the finale. Only the active season needs the live check; archived seasons
+  // are always behind it.
+  const activeComplete = activeSeasonRow ? await isSeasonComplete(prisma, activeSeasonRow.id) : false;
+  const concluded = (num) => seasonConcluded(num, activeSeasonRow?.number ?? null, activeComplete);
   // Season numbers only mean something inside one series -> the game lookup
   // for badge popovers is restricted to this series' seasons.
   const gameByNumber = new Map(
@@ -334,16 +342,12 @@ export async function getDriverProfile(prisma, driverId) {
     });
   };
   const ownSeasonNumber = driver.season?.number ?? null;
-  const ownConcluded =
-    ownSeasonNumber != null &&
-    activeSeasonRow &&
-    (ownSeasonNumber < activeSeasonRow.number ||
-      (standings.raceNumbers.length > 0 && races.length >= standings.raceNumbers.length));
+  const ownConcluded = concluded(ownSeasonNumber);
   if (ownConcluded && standingRow?.position >= 1 && standingRow.position <= 3) {
     addBadge(standingRow.position, ownSeasonNumber, driver.season?.name, standingRow.total);
   }
   for (const s of career?.seasons || []) {
-    if (s.position >= 1 && s.position <= 3 && s.starts > 0 && activeSeasonRow && s.seasonNumber != null && s.seasonNumber < activeSeasonRow.number) {
+    if (s.position >= 1 && s.position <= 3 && s.starts > 0 && concluded(s.seasonNumber)) {
       addBadge(s.position, s.seasonNumber, s.seasonName, s.points);
     }
   }
@@ -378,11 +382,8 @@ export async function getDriverProfile(prisma, driverId) {
     const tier = row.team.tier;
     if (num == null || (tier !== 1 && tier !== 2)) continue;
     // Same "concluded" rule as the driver seals: seasons behind the active
-    // one, or the person's own season once every round has been run.
-    const concluded =
-      activeSeasonRow &&
-      (num < activeSeasonRow.number || (row.seasonId === seasonId && ownConcluded));
-    if (!concluded) continue;
+    // one, or the active season once every round has been run.
+    if (!concluded(num)) continue;
     const table = await constructorTable(row.seasonId, tier);
     const trow = (table?.standings || []).find((t) => t.teamId === row.team.id);
     const pos = trow?.position;

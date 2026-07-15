@@ -10,6 +10,7 @@ import {
   getT2ConstructorStandings,
 } from "./standingsService.js";
 import { getPersonGroups } from "../lib/persons.js";
+import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
 
 function norm(s) {
   return (s || "")
@@ -47,9 +48,9 @@ export async function getSeasonHonours(prisma, seasonId) {
     prisma.driver.findMany({ where: { seasonId }, select: { id: true, discordName: true } }),
   ]);
 
-  const rounds = races.filter((r) => r.number != null);
-  const completed = rounds.filter((r) => r.isCompleted);
-  const complete = rounds.length > 0 && completed.length === rounds.length;
+  // Shared "season finished" rule (see lib/seasonComplete.js) — the same one
+  // the profile badge shelf and the card editions use.
+  const complete = seasonCompleteFromRaces(races);
   const rows = standings.standings || [];
 
   // Team champions per tier (a single-class season simply has no T2 entry).
