@@ -5,6 +5,7 @@ import { api } from "./api/client.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
 import { SeriesProvider, useSeries, useSeriesPath } from "./context/SeriesContext.jsx";
 import NavBar from "./components/NavBar.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Logo from "./components/Logo.jsx";
 import SocialLinks, { useSocial, SocialIcon } from "./components/SocialLinks.jsx";
 import { useAuth } from "./hooks/useAuth.js";
@@ -107,6 +108,10 @@ function AppRoutes() {
   }
   return (
     <main key={season ?? "loading"} className="container-page w-full flex-1 py-10">
+      {/* Per-route crash guard: a page that throws shows a fallback here while
+          the NavBar/Footer (outside this component) and every other route keep
+          working. resetKey clears the error the moment the path changes. */}
+      <ErrorBoundary resetKey={location.pathname}>
       {/* Keyed on the path so each navigation replays the fade-in entrance. */}
       <div key={location.pathname} className="page-in">
       <Routes location={location}>
@@ -159,6 +164,7 @@ function AppRoutes() {
         <Route path="*" element={<NotFound />} />
       </Routes>
       </div>
+      </ErrorBoundary>
     </main>
   );
 }
