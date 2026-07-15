@@ -31,6 +31,13 @@ export async function ensureAppSchema(prisma) {
   await addColumn(prisma, "RaceResult", "gamePenalties", "INTEGER"); // in-game penalty count
   await addColumn(prisma, "RaceResult", "gamePenaltySeconds", "REAL"); // in-game penalty seconds
 
+  // --- Qualifying best lap (ms). NOT populated yet: the AC pipeline currently
+  // imports RACE JSONs only. Reserved for a future qualifying-session import so
+  // PAC can add the sheet's "gap to pole" component (pole = the race's min
+  // qualiTimeMs). Read via raw SQL in careerRatingService; null everywhere
+  // until the quali files arrive, so the PAC component stays inert (weight 0).
+  await addColumn(prisma, "RaceResult", "qualiTimeMs", "INTEGER");
+
   // --- Phase 6: admin-picked Driver of the Day for a completed race.
   await addColumn(prisma, "Race", "driverOfTheDayId", "TEXT");
   // Who made the pick (the league's streamer decides each round). Free text.

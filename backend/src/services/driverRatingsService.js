@@ -1,21 +1,27 @@
 // ---------------------------------------------------------------------------
 // Driver Ratings service — EA-/F1-25-style rating cards, computed automatically
-// from a season's real race data. Every driver gets four sub-ratings plus an
-// overall:
+// from real race data. Every driver gets four sub-ratings plus an overall:
 //
-//   EXP  Experience  — how many races the driver has under their belt
-//   PAC  Pace        — raw speed: best-lap pace vs the field + qualifying (grid)
+//   EXP  Experience  — CAREER formula (admin's sheet, confirmed 2026-07-15):
+//                      over the last-7-finished-seasons window, 45% race
+//                      starts (60 = full), 45% championship results (recency-
+//                      weighted, 60/40 drivers/constructors, position-value
+//                      curves incl. per-tier tables), 5% finishing >= 95%
+//                      (all-or-nothing), 5% seasons active. Absolute scale,
+//                      floor 35 up to 99 — NOT relative to the field.
+//   PAC  Pace        — career window too: average grid slot (our only
+//                      qualifying signal), average best-race-lap gap, and the
+//                      simresults consistency %, percentile-ranked against the
+//                      season's regulars and mapped onto a 50–99 band.
 //   RAC  Racecraft   — race result: finishing position, places gained, podiums
 //   AWA  Awareness   — cleanliness/consistency: finish rate, few DNFs, low spread
 //                      (displayed as AWA; the internal key stays `aha`)
 //   RTG  Overall     — weighted blend of the four (RAC + PAC weigh most)
 //
-// All four are RELATIVE to the season's field: we rank each driver against the
-// pack of regulars and map that rank onto a 60–93 band, so the grid looks like
-// the official cards (best ~90+, backmarkers ~60s) instead of clumping in the
-// middle. Low-sample drivers (a reserve with one or two outings) are pulled
-// toward the field average ("shrinkage") so a single lucky/unlucky race can't
-// rocket them to 90 or sink them to 60, and they are flagged `provisional`.
+// RAC and AWA stay RELATIVE to the rated season's field: percentile-ranked
+// against the regulars, mapped onto the shared band. Low-sample drivers are
+// pulled toward the field average ("shrinkage") so a single lucky/unlucky race
+// can't rocket them to 90 or sink them to 60; they are flagged `provisional`.
 //
 // Pure read service in the style of standingsService / driverProfileService:
 // no DB writes, recomputes on every call, so it always reflects the latest
@@ -23,6 +29,7 @@
 // ---------------------------------------------------------------------------
 import { telemetryBySeason } from "../lib/telemetryRead.js";
 import { readRatingWeights } from "../lib/ratingWeights.js";
+import { getCareerInputs } from "./careerRatingService.js";
 
 // --- tunables (kept together so the curve is easy to adjust) ----------------
 const BAND_LOW = 58; // worst-in-field maps here
@@ -32,41 +39,84 @@ const NO_SHRINK_ABOVE = 6; // a real regular (>= this many samples) isn't shrunk
 //                            so a dominant driver isn't dragged back to the mean
 const MIN_STARTS_REF = 3; // a "regular": sets the scale everyone is measured on
 const PROVISIONAL_BELOW = 3; // fewer starts than this -> rating shown as provisional
-// Experience saturates: once a driver has raced this share of the season's run
-// rounds they count as a seasoned regular (full EXP), so missing a race or two
-// no longer tanks the score. Below it, EXP scales down toward the reserves.
-const FULL_XP_SHARE = 0.7;
 
 // How the overall RTG is blended from the four sub-ratings.
 const RTG_WEIGHTS = { rac: 0.35, pac: 0.3, aha: 0.2, exp: 0.15 };
-// How each sub-rating is blended from its underlying percentile components.
-const PAC_WEIGHTS = { lap: 0.65, grid: 0.35 };
+// Pace components (career window): quali = average grid slot, bestLap =
+// average best-race-lap gap, consistency = simresults %, poleGap = average gap
+// to the qualifying pole TIME. poleGap is the sheet's fourth component but
+// needs qualifying times we don't import yet, so it ships at weight 0 (inert)
+// and the admin raises it once a quali-session import populates qualiTimeMs.
+const PAC_WEIGHTS = { quali: 1, bestLap: 1, consistency: 1, poleGap: 0 };
 // Racecraft: finishing position, places gained, on-track overtakes and podiums.
 const RAC_WEIGHTS = { finish: 0.45, gained: 0.2, overtakes: 0.15, podium: 0.2 };
 // Awareness/discipline: reliability (finishing, few DNFs), lap consistency, and
 // staying out of trouble (car contacts, off-track/env hits, in-game penalties).
 // `cuts` is available as a tunable but defaults to 0 (old seasons log no cuts).
 const AHA_WEIGHTS = { finishRate: 0.25, dnf: 0.15, consistency: 0.25, contacts: 0.15, env: 0.1, penalties: 0.1, cuts: 0 };
-// A dominant driver (high win share) gets a small boost on top of the blended
-// overall, so a season's runaway leader reads ~99 instead of capping in the low
-// 90s. boost = max * min(1, winShare / fullAt).
-const DOMINANCE = { max: 6, fullAt: 0.6 };
+
+// The career window both EXP and PAC look at: the last N finished seasons of
+// the rated season's series, with recency weights (percent, newest first).
+const WINDOW_DEFAULTS = { seasons: 7, recency: [25, 20, 20, 15, 10, 5, 5] };
+
+// The EXP formula (admin's sheet). All percent values; weight groups are
+// normalised at read time, so partial edits stay safe.
+const EXP_DEFAULTS = {
+  // The four building blocks: starts / championship / finishing / activity.
+  weights: { starts: 45, championship: 45, finishing: 5, activity: 5 },
+  // Starts needed in the window for full marks on the starts block.
+  fullStarts: 60,
+  // Finishing block is all-or-nothing: finish rate >= this percent -> full.
+  finishThreshold: 95,
+  // Within one season's championship block: drivers vs constructors table.
+  split: { drivers: 60, constructors: 40 },
+  // Drivers' standings value by position (percent, P1 first). Beyond the
+  // table's end the last value applies.
+  driverCurve: [100, 75, 50, 40, 37.6, 35.1, 32.7, 30.2, 27.8, 25.4, 22.9, 20.5, 18.1, 15.6, 13.2, 10.8, 8.3, 5.9, 3.4, 1],
+  // Constructors' standings value by position. Pre-tier seasons (one class)
+  // use one table; tiered seasons pick the tier table matching the number of
+  // teams in that tier (the sheet defines them per field size). A tier-2
+  // title is deliberately worth half a tier-1 title.
+  constructors: {
+    preTier: [100, 75, 50, 40, 33.5, 27, 20.5, 14, 7.5, 1],
+    tier1: [
+      { teams: 6, values: [100, 80, 60, 50, 40, 10] },
+      { teams: 5, values: [100, 80, 60, 40, 10] },
+    ],
+    tier2: [{ teams: 5, values: [50, 40, 30, 20, 10] }],
+  },
+};
+
+// EXP is absolute (floor..99); PAC spans 50..99 per the sheet.
+const EXP_BAND = { low: 35, high: 99 };
+const PAC_BAND = { low: 50, high: 99 };
 
 // All knobs in one place, so the admin tuning panel can read the defaults and
-// pass back overrides. `band` is the visible 0–99 range shared by every stat;
-// `bands` optionally overrides floor/ceiling PER sub-rating (e.g. Experience
-// spanning 40–99 while the rest keep the shared band). The rest are the blend
-// weights for the overall and each sub-rating.
+// pass back overrides. `band` is the visible 0–99 range shared by RAC/AWA;
+// `bands` overrides floor/ceiling PER sub-rating — EXP and PAC default to the
+// sheet's absolute scales (35–99 / 50–99). The rest are the blend weights for
+// the overall and each sub-rating, plus the career window and EXP formula.
 export const RATING_DEFAULTS = {
   band: { low: BAND_LOW, high: BAND_HIGH },
   bands: {
-    exp: { low: BAND_LOW, high: BAND_HIGH },
-    pac: { low: BAND_LOW, high: BAND_HIGH },
+    exp: { ...EXP_BAND },
+    pac: { ...PAC_BAND },
     rac: { low: BAND_LOW, high: BAND_HIGH },
     aha: { low: BAND_LOW, high: BAND_HIGH },
   },
-  fullXpShare: FULL_XP_SHARE,
-  dominance: { ...DOMINANCE },
+  window: { seasons: WINDOW_DEFAULTS.seasons, recency: [...WINDOW_DEFAULTS.recency] },
+  exp: {
+    weights: { ...EXP_DEFAULTS.weights },
+    fullStarts: EXP_DEFAULTS.fullStarts,
+    finishThreshold: EXP_DEFAULTS.finishThreshold,
+    split: { ...EXP_DEFAULTS.split },
+    driverCurve: [...EXP_DEFAULTS.driverCurve],
+    constructors: {
+      preTier: [...EXP_DEFAULTS.constructors.preTier],
+      tier1: EXP_DEFAULTS.constructors.tier1.map((t) => ({ teams: t.teams, values: [...t.values] })),
+      tier2: EXP_DEFAULTS.constructors.tier2.map((t) => ({ teams: t.teams, values: [...t.values] })),
+    },
+  },
   rtg: { ...RTG_WEIGHTS },
   pac: { ...PAC_WEIGHTS },
   rac: { ...RAC_WEIGHTS },
@@ -93,41 +143,73 @@ function numOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+// A percent curve from admin input: array of finite numbers clamped 0..100.
+// Anything unusable falls back to the default curve.
+function resolveCurve(input, fallback) {
+  if (!Array.isArray(input)) return [...fallback];
+  const clean = input.map((v) => Number(v)).filter((v) => Number.isFinite(v));
+  if (!clean.length) return [...fallback];
+  return clean.map((v) => Math.max(0, Math.min(100, v)));
+}
+
+// Per-team-count constructor tables: [{ teams, values }] with sane bounds.
+function resolveTierTables(input, fallback) {
+  if (!Array.isArray(input)) return fallback.map((t) => ({ teams: t.teams, values: [...t.values] }));
+  const clean = input
+    .map((t) => ({
+      teams: Math.max(2, Math.min(30, Math.round(Number(t?.teams)) || 0)),
+      values: resolveCurve(t?.values, []),
+    }))
+    .filter((t) => t.teams >= 2 && t.values.length > 0);
+  return clean.length ? clean : fallback.map((t) => ({ teams: t.teams, values: [...t.values] }));
+}
+
 export function resolveConfig(opts = {}) {
   const low = numOrNull(opts.band?.low);
   const high = numOrNull(opts.band?.high);
-  const domMax = Number(opts.dominance?.max);
-  const domFullAt = Number(opts.dominance?.fullAt);
   const band = {
     low: low ?? BAND_LOW,
     high: high ?? BAND_HIGH,
   };
-  // Per-stat floor/ceiling: anything not set explicitly inherits the shared
-  // band, so the admin can e.g. give only Experience a wider spread.
-  const bandFor = (key) => ({
-    low: numOrNull(opts.bands?.[key]?.low) ?? band.low,
-    high: numOrNull(opts.bands?.[key]?.high) ?? band.high,
+  // Per-stat floor/ceiling. RAC/AWA inherit the shared band; EXP and PAC have
+  // their own absolute scales from the formula sheet (35–99 / 50–99) unless
+  // the admin explicitly overrides them.
+  const bandFor = (key, base = band) => ({
+    low: numOrNull(opts.bands?.[key]?.low) ?? base.low,
+    high: numOrNull(opts.bands?.[key]?.high) ?? base.high,
   });
+
+  const windowSeasons = Math.max(1, Math.min(20, Math.round(numOrNull(opts.window?.seasons) ?? WINDOW_DEFAULTS.seasons)));
+  const recency = resolveCurve(opts.window?.recency, WINDOW_DEFAULTS.recency);
+
+  const exp = {
+    weights: normalizeGroup(opts.exp?.weights, EXP_DEFAULTS.weights),
+    fullStarts: Math.max(1, numOrNull(opts.exp?.fullStarts) ?? EXP_DEFAULTS.fullStarts),
+    finishThreshold: Math.max(0, Math.min(100, numOrNull(opts.exp?.finishThreshold) ?? EXP_DEFAULTS.finishThreshold)),
+    split: normalizeGroup(opts.exp?.split, EXP_DEFAULTS.split),
+    driverCurve: resolveCurve(opts.exp?.driverCurve, EXP_DEFAULTS.driverCurve),
+    constructors: {
+      preTier: resolveCurve(opts.exp?.constructors?.preTier, EXP_DEFAULTS.constructors.preTier),
+      tier1: resolveTierTables(opts.exp?.constructors?.tier1, EXP_DEFAULTS.constructors.tier1),
+      tier2: resolveTierTables(opts.exp?.constructors?.tier2, EXP_DEFAULTS.constructors.tier2),
+    },
+  };
+
   return {
     band,
-    bands: { exp: bandFor("exp"), pac: bandFor("pac"), rac: bandFor("rac"), aha: bandFor("aha") },
-    fullXpShare: Number.isFinite(Number(opts.fullXpShare)) ? Number(opts.fullXpShare) : FULL_XP_SHARE,
-    dominance: {
-      max: Number.isFinite(domMax) ? domMax : DOMINANCE.max,
-      fullAt: Number.isFinite(domFullAt) && domFullAt > 0 ? domFullAt : DOMINANCE.fullAt,
+    bands: {
+      exp: bandFor("exp", EXP_BAND),
+      pac: bandFor("pac", PAC_BAND),
+      rac: bandFor("rac"),
+      aha: bandFor("aha"),
     },
+    window: { seasons: windowSeasons, recency },
+    exp,
     rtg: normalizeGroup(opts.rtg, RTG_WEIGHTS),
     pac: normalizeGroup(opts.pac, PAC_WEIGHTS),
     rac: normalizeGroup(opts.rac, RAC_WEIGHTS),
     aha: normalizeGroup(opts.aha, AHA_WEIGHTS),
   };
-}
-
-// Small overall boost for a runaway leader. Pure/exported for testing.
-export function dominanceBoost(wins, racesRun, dominance = DOMINANCE) {
-  if (!racesRun || racesRun < 1) return 0;
-  const winShare = wins / racesRun;
-  return Math.round(dominance.max * Math.min(1, winShare / dominance.fullAt));
 }
 
 // --- small stats helpers ----------------------------------------------------
@@ -230,16 +312,18 @@ function rawMetrics(driver, results, raceMeta) {
 }
 
 // ---------------------------------------------------------------------------
-// `opts` may override any of the tunables (see RATING_DEFAULTS): `band`,
-// `fullXpShare`, and the `rtg` / `pac` / `rac` / `aha` weight groups. Each weight
-// group is normalised, so partial or unnormalised input is fine. Omitted -> the
-// defaults above. Used by the admin tuning panel to preview different curves.
+// `opts` may override any of the tunables (see RATING_DEFAULTS): `band`/`bands`,
+// the career `window`, the `exp` formula block, and the `rtg` / `pac` / `rac` /
+// `aha` weight groups. Each weight group is normalised, so partial or
+// unnormalised input is fine. Omitted -> the defaults above. Used by the admin
+// tuning panel to preview different curves.
 export async function getDriverRatings(prisma, seasonId, opts = {}) {
   // Persisted admin weights are the baseline; explicit opts (the admin preview)
   // override them group-by-group. Both fall through to RATING_DEFAULTS.
   const saved = (await readRatingWeights(prisma)) || {};
   const cfg = resolveConfig({ ...saved, ...opts });
-  const [drivers, races, results, telemetry] = await Promise.all([
+  const [season, drivers, races, results, telemetry] = await Promise.all([
+    prisma.season.findUnique({ where: { id: seasonId } }),
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({
       where: { seasonId, isSpecialEvent: false, isCompleted: true },
@@ -248,6 +332,10 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     prisma.raceResult.findMany({ where: { race: { seasonId } } }),
     telemetryBySeason(prisma, seasonId),
   ]);
+  if (!season) return [];
+
+  // Career window inputs (EXP formula + PAC signals), per rated driver row.
+  const career = await getCareerInputs(prisma, season, drivers, cfg);
 
   const completedRaceIds = new Set(races.map((r) => r.id));
   const liveResults = results.filter((r) => completedRaceIds.has(r.raceId));
@@ -293,9 +381,6 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     }
   }
 
-  // Races needed to count as a fully seasoned regular (EXP saturates here).
-  const fullXp = Math.max(4, Math.round(races.length * cfg.fullXpShare));
-
   // Per-race reference numbers used to normalise pace/finish within each round.
   const raceMeta = new Map();
   for (const race of races) {
@@ -320,7 +405,8 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     .filter((x) => x.m.starts >= 1);
 
   // Attach per-start telemetry rates (null when this driver has no backfilled
-  // data for that signal, so it drops to a neutral percentile).
+  // data for that signal, so it drops to a neutral percentile), plus the
+  // career-window pace signals EXP/PAC run on.
   for (const { driver, m } of raw) {
     const c = contactsById.get(driver.id);
     m.contactsRate = c && c.rated > 0 && m.starts ? c.total / m.starts : null;
@@ -330,6 +416,15 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     m.penaltyRate = t && t.ratedPen > 0 && m.starts ? t.gamePen / m.starts : null;
     m.cutsRate = t && t.consDen > 0 && m.starts ? t.cuts / m.starts : null;
     m.lapConsistencyMs = t && t.consDen > 0 ? t.consNum / t.consDen : null;
+    const cw = career.get(driver.id);
+    m.careerGridNorm = cw?.pace.avgGridNorm ?? null;
+    m.nCareerGrid = cw?.pace.nGrid ?? 0;
+    m.careerLapGap = cw?.pace.avgLapGap ?? null;
+    m.nCareerLap = cw?.pace.nLap ?? 0;
+    m.careerConsistency = cw?.pace.avgConsistency ?? null;
+    m.nCareerCons = cw?.pace.nCons ?? 0;
+    m.careerPoleGap = cw?.pace.avgPoleGap ?? null;
+    m.nCareerPole = cw?.pace.nPole ?? 0;
   }
 
   // The reference field = the regulars (>= MIN_STARTS_REF). Their distribution
@@ -340,8 +435,10 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
   const refField = ref.length >= 3 ? ref : raw.map((x) => x.m);
 
   const refMean = {
-    lapGap: mean(refField.map((m) => m.avgLapGap).filter((x) => x != null)),
-    gridNorm: mean(refField.map((m) => m.avgGridNorm).filter((x) => x != null)),
+    lapGap: mean(refField.map((m) => m.careerLapGap).filter((x) => x != null)),
+    gridNorm: mean(refField.map((m) => m.careerGridNorm).filter((x) => x != null)),
+    consistency: mean(refField.map((m) => m.careerConsistency).filter((x) => x != null)),
+    poleGap: mean(refField.map((m) => m.careerPoleGap).filter((x) => x != null)),
     finishNorm: mean(refField.map((m) => m.avgFinishNorm).filter((x) => x != null)),
     gained: mean(refField.map((m) => m.avgGained).filter((x) => x != null)),
     finishRate: mean(refField.map((m) => m.finishRate).filter((x) => x != null)),
@@ -357,8 +454,14 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
   // Reference distributions (after the same shrinkage we apply per driver), so a
   // driver is compared like-for-like against the regulars.
   const refDist = {
-    lapGap: refField.map((m) => shrink(m.avgLapGap, m.nLap, refMean.lapGap)),
-    gridNorm: refField.map((m) => shrink(m.avgGridNorm, m.nGrid, refMean.gridNorm)),
+    lapGap: refField.map((m) => shrink(m.careerLapGap, m.nCareerLap, refMean.lapGap)),
+    gridNorm: refField.map((m) => shrink(m.careerGridNorm, m.nCareerGrid, refMean.gridNorm)),
+    consistency: refField
+      .map((m) => (m.careerConsistency != null ? shrink(m.careerConsistency, m.nCareerCons, refMean.consistency) : null))
+      .filter((x) => x != null),
+    poleGap: refField
+      .map((m) => (m.careerPoleGap != null ? shrink(m.careerPoleGap, m.nCareerPole, refMean.poleGap) : null))
+      .filter((x) => x != null),
     finishNorm: refField.map((m) => shrink(m.avgFinishNorm, m.nFinish, refMean.finishNorm)),
     gained: refField.map((m) => shrink(m.avgGained, m.nGained, refMean.gained)),
     finishRate: refField.map((m) => shrink(m.finishRate, m.starts, refMean.finishRate)),
@@ -375,8 +478,19 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
 
   const rows = raw.map(({ driver, m }) => {
     // Shrink each driver's raw value toward the field, then rank it.
-    const pLap = percentile(shrink(m.avgLapGap, m.nLap, refMean.lapGap), refDist.lapGap, false);
-    const pGrid = percentile(shrink(m.avgGridNorm, m.nGrid, refMean.gridNorm), refDist.gridNorm, false);
+    // PACE runs on the career-window signals (grid = our qualifying, best-lap
+    // gap, consistency %); everything else stays season-scoped.
+    const pLap = percentile(shrink(m.careerLapGap, m.nCareerLap, refMean.lapGap), refDist.lapGap, false);
+    const pGrid = percentile(shrink(m.careerGridNorm, m.nCareerGrid, refMean.gridNorm), refDist.gridNorm, false);
+    const pCons =
+      m.careerConsistency != null && refDist.consistency.length
+        ? percentile(shrink(m.careerConsistency, m.nCareerCons, refMean.consistency), refDist.consistency, true)
+        : 0.5;
+    // Gap to pole (lower = faster). Neutral until quali times are imported.
+    const pPole =
+      m.careerPoleGap != null && refDist.poleGap.length
+        ? percentile(shrink(m.careerPoleGap, m.nCareerPole, refMean.poleGap), refDist.poleGap, false)
+        : 0.5;
     const pFinish = percentile(shrink(m.avgFinishNorm, m.nFinish, refMean.finishNorm), refDist.finishNorm, false);
     const pGained = percentile(shrink(m.avgGained, m.nGained, refMean.gained), refDist.gained, true);
     const pPodium = percentile(shrink(m.podiumRate, m.starts, refMean.podiumRate), refDist.podiumRate, true);
@@ -404,11 +518,22 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     const pCuts = m.cutsRate != null
       ? percentile(shrink(m.cutsRate, m.starts, refMean.cutsRate), refDist.cutsRate, false)
       : 0.5;
-    // Experience is absolute & saturating (not a percentile): at `fullXp`+ races
-    // you're a full-marks regular, so missing a round or two barely moves it.
-    const expPct = Math.min(1, m.starts / fullXp);
+    // EXPERIENCE — the admin's career formula, absolute (no percentile):
+    // starts toward 60, recency-weighted championship record, all-or-nothing
+    // finishing block, and share of window seasons raced. The 35..99 scale
+    // comes from bands.exp via clampRating below.
+    const cw = career.get(driver.id);
+    const startsPct = cw ? Math.min(1, cw.starts / cfg.exp.fullStarts) : 0;
+    const champPct = cw ? cw.champPct : 0;
+    const finishingPct = cw && cw.finishRate != null ? (cw.finishRate * 100 >= cfg.exp.finishThreshold ? 1 : 0) : 0;
+    const activityPct = cw && cw.windowSize ? cw.activeSeasons / cw.windowSize : 0;
+    const expPct =
+      cfg.exp.weights.starts * startsPct +
+      cfg.exp.weights.championship * champPct +
+      cfg.exp.weights.finishing * finishingPct +
+      cfg.exp.weights.activity * activityPct;
 
-    const pacPct = cfg.pac.lap * pLap + cfg.pac.grid * pGrid;
+    const pacPct = cfg.pac.quali * pGrid + cfg.pac.bestLap * pLap + cfg.pac.consistency * pCons + cfg.pac.poleGap * pPole;
     const racPct =
       cfg.rac.finish * pFinish + cfg.rac.gained * pGained + cfg.rac.overtakes * pOvertakes + cfg.rac.podium * pPodium;
     const ahaPct =
@@ -424,11 +549,10 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     const rac = clampRating(racPct, cfg.bands.rac);
     const aha = clampRating(ahaPct, cfg.bands.aha);
     const exp = clampRating(expPct, cfg.bands.exp);
-    // Blended overall, then a small dominance boost so a runaway leader reads
-    // ~99 rather than capping in the low 90s.
+    // The overall is purely the weighted blend of the four sub-ratings.
     const blended =
       cfg.rtg.rac * rac + cfg.rtg.pac * pac + cfg.rtg.aha * aha + cfg.rtg.exp * exp;
-    const overall = Math.min(99, Math.round(blended) + dominanceBoost(m.wins, races.length, cfg.dominance));
+    const overall = Math.min(99, Math.round(blended));
 
     return {
       driverId: driver.id,
@@ -446,6 +570,19 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
       envContacts: telById.get(driver.id)?.ratedEnv ? telById.get(driver.id).env : null,
       gamePenalties: telById.get(driver.id)?.ratedPen ? telById.get(driver.id).gamePen : null,
       provisional: m.starts < PROVISIONAL_BELOW,
+      // Career-window inputs behind EXP/PAC, for the admin table and the
+      // profile breakdown (starts toward fullStarts, championship score,
+      // finish rate vs the threshold, seasons raced in the window).
+      career: cw
+        ? {
+            starts: cw.starts,
+            finishes: cw.finishes,
+            finishRate: cw.finishRate,
+            activeSeasons: cw.activeSeasons,
+            windowSize: cw.windowSize,
+            champPct: Math.round(cw.champPct * 1000) / 1000,
+          }
+        : null,
       ratings: { overall, exp, pac, rac, aha },
     };
   });

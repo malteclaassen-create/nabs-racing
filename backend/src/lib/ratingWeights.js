@@ -2,8 +2,9 @@
 // Persisted driver-rating weights. The admin ratings panel used to be a preview
 // sandbox only; this stores a chosen set of weights in the Setting table so the
 // public ratings actually use them. Shape mirrors RATING_DEFAULTS in
-// driverRatingsService.js (band, dominance, fullXpShare, and the rtg/pac/rac/aha
-// weight groups). Values are sanitised to plain numbers with hard caps.
+// driverRatingsService.js (band, bands, the career window, the EXP
+// formula block, and the rtg/pac/rac/aha weight groups). Values are sanitised
+// to plain numbers with hard caps; curves/tables to bounded numeric arrays.
 // ---------------------------------------------------------------------------
 const RATING_WEIGHTS_KEY = "rating_weights";
 
@@ -49,18 +50,38 @@ export function sanitizeRatingWeights(input) {
   }
   if (Object.keys(bands).length) out.bands = bands;
 
-  const dom = {};
-  const max = clampNum(input.dominance?.max, 0, 20);
-  const fullAt = clampNum(input.dominance?.fullAt, 0.05, 1);
-  if (max != null) dom.max = max;
-  if (fullAt != null) dom.fullAt = fullAt;
-  if (Object.keys(dom).length) out.dominance = dom;
+  // Career window: size + recency curve (percent, newest season first).
+  const window = {};
+  const winSeasons = clampNum(input.window?.seasons, 1, 20);
+  if (winSeasons != null) window.seasons = Math.round(winSeasons);
+  const recency = sanitizeCurve(input.window?.recency, 20);
+  if (recency) window.recency = recency;
+  if (Object.keys(window).length) out.window = window;
 
-  const fxs = clampNum(input.fullXpShare, 0.1, 1);
-  if (fxs != null) out.fullXpShare = fxs;
+  // EXP formula block.
+  const exp = {};
+  const expWeights = sanitizeGroup(input.exp?.weights, ["starts", "championship", "finishing", "activity"]);
+  if (expWeights) exp.weights = expWeights;
+  const fullStarts = clampNum(input.exp?.fullStarts, 1, 500);
+  if (fullStarts != null) exp.fullStarts = Math.round(fullStarts);
+  const finishThreshold = clampNum(input.exp?.finishThreshold, 0, 100);
+  if (finishThreshold != null) exp.finishThreshold = finishThreshold;
+  const split = sanitizeGroup(input.exp?.split, ["drivers", "constructors"]);
+  if (split) exp.split = split;
+  const driverCurve = sanitizeCurve(input.exp?.driverCurve, 40);
+  if (driverCurve) exp.driverCurve = driverCurve;
+  const constructors = {};
+  const preTier = sanitizeCurve(input.exp?.constructors?.preTier, 40);
+  if (preTier) constructors.preTier = preTier;
+  const tier1 = sanitizeTierTables(input.exp?.constructors?.tier1);
+  if (tier1) constructors.tier1 = tier1;
+  const tier2 = sanitizeTierTables(input.exp?.constructors?.tier2);
+  if (tier2) constructors.tier2 = tier2;
+  if (Object.keys(constructors).length) exp.constructors = constructors;
+  if (Object.keys(exp).length) out.exp = exp;
 
   const rtg = sanitizeGroup(input.rtg, ["rac", "pac", "aha", "exp"]);
-  const pac = sanitizeGroup(input.pac, ["lap", "grid"]);
+  const pac = sanitizeGroup(input.pac, ["quali", "bestLap", "consistency", "poleGap"]);
   const rac = sanitizeGroup(input.rac, ["finish", "gained", "overtakes", "podium"]);
   const aha = sanitizeGroup(input.aha, ["finishRate", "dnf", "consistency", "contacts", "env", "penalties", "cuts"]);
   if (rtg) out.rtg = rtg;
@@ -69,6 +90,32 @@ export function sanitizeRatingWeights(input) {
   if (aha) out.aha = aha;
 
   return Object.keys(out).length ? out : null;
+}
+
+// A percent curve: bounded numeric array (0..100 each), capped in length.
+// Returns undefined when nothing usable was sent.
+function sanitizeCurve(input, maxLen) {
+  if (!Array.isArray(input)) return undefined;
+  const clean = input
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v))
+    .map((v) => Math.max(0, Math.min(100, v)))
+    .slice(0, maxLen);
+  return clean.length ? clean : undefined;
+}
+
+// Constructor tables per team count: [{ teams, values }], both bounded.
+function sanitizeTierTables(input) {
+  if (!Array.isArray(input)) return undefined;
+  const clean = input
+    .map((t) => {
+      const teams = clampNum(t?.teams, 2, 30);
+      const values = sanitizeCurve(t?.values, 30);
+      return teams != null && values ? { teams: Math.round(teams), values } : null;
+    })
+    .filter(Boolean)
+    .slice(0, 10);
+  return clean.length ? clean : undefined;
 }
 
 export async function readRatingWeights(prisma) {

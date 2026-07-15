@@ -383,7 +383,7 @@ router.post("/races/preview", async (req, res, next) => {
 });
 
 // POST /api/admin/ratings/preview
-// Body: { weights?: { band, fullXpShare, rtg, pac, rac, aha }, season? }
+// Body: { weights?: { band, bands, window, exp, rtg, pac, rac, aha }, season? }
 // Returns the driver ratings computed with the supplied weights (or the defaults
 // when omitted), plus the defaults so the tuning panel can initialise itself.
 // Read-only — nothing is persisted.
