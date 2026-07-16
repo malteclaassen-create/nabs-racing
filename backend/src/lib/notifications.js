@@ -376,6 +376,59 @@ export async function notifyCardUnlocksForSeason(prisma, seasonId) {
   }
 }
 
+// One-time catch-up: when the unlockable-card feature first ships, drivers who
+// ALREADY earned editions never got told (the per-driver seed is silent by
+// design). So exactly once, post a single personal "you've unlocked N designs"
+// note per person with a linked login and at least one earned edition. Guarded
+// by a Setting flag so it runs once ever, and deduped per person (card-intro:
+// <discordId>) so a re-run — or the same person logging in again — never
+// doubles it. Best-effort; never blocks boot. Future NEW unlocks still ping
+// individually via notifyCardUnlocks (a different dedupeKey namespace).
+export async function backfillCardIntro(prisma) {
+  const FLAG = "card_intro_done";
+  try {
+    const done = await prisma.setting.findUnique({ where: { key: FLAG } }).catch(() => null);
+    if (done) return;
+
+    const drivers = await prisma.driver.findMany({
+      where: { discordUserId: { not: null } },
+      include: { season: { select: { number: true } } },
+    });
+    // One row per person: the newest season they have (most milestones apply
+    // there), so the count in the message is the fullest.
+    const newestByUser = new Map();
+    for (const d of drivers) {
+      const n = d.season?.number ?? -1;
+      const cur = newestByUser.get(d.discordUserId);
+      if (!cur || n > cur.n) newestByUser.set(d.discordUserId, { id: d.id, discordId: d.discordUserId, n });
+    }
+
+    for (const { id, discordId } of newestByUser.values()) {
+      try {
+        const inputs = await cardUnlockInputs(prisma, id);
+        if (!inputs) continue;
+        const state = unlockStateFor(inputs.stats, inputs.badges, inputs.teamBadges, inputs.seasonNumber);
+        const earned = state.filter((e) => e.unlocked && e.requirement).length;
+        if (earned < 1) continue; // nothing special earned yet — no catch-up
+        await dbCreateNotification(prisma, {
+          type: "CARD",
+          title: "Your rating card can be customised now",
+          body: `You've already unlocked ${earned} card ${earned === 1 ? "design" : "designs"}. Pick your favourite on your driver card.`,
+          link: "/profile/card",
+          recipientId: discordId,
+          dedupeKey: `card-intro:${discordId}`,
+        });
+      } catch {
+        /* one driver's failure must not abort the whole backfill */
+      }
+    }
+
+    await prisma.setting.upsert({ where: { key: FLAG }, update: { value: "1" }, create: { key: FLAG, value: "1" } });
+  } catch {
+    /* best-effort: a catch-up must never take the server down */
+  }
+}
+
 // --- race reminders ------------------------------------------------------------
 // No cron needed: whenever anyone asks the bell for data, upcoming championship
 // races of the active public seasons get their (deduped) reminder broadcasts.

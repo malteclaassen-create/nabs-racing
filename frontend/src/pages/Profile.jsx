@@ -16,7 +16,8 @@ const MAX_TILES = 9;
 
 // The platforms a driver can self-link (Discord is their login identity, not a
 // link). Pulled from the shared SOCIAL_META so icons/labels stay in sync.
-const SOCIAL_FIELDS = SOCIAL_META.filter((m) => m.key !== "discord");
+// Patreon is a LEAGUE link (footer / Live page), not a per-driver platform.
+const SOCIAL_FIELDS = SOCIAL_META.filter((m) => m.key !== "discord" && m.key !== "patreon");
 const SOCIAL_PLACEHOLDER = {
   twitch: "https://twitch.tv/yourname",
   youtube: "https://youtube.com/@yourname",

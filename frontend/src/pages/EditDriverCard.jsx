@@ -3,8 +3,9 @@ import { Link, Navigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
-import { Spinner, ErrorBox, PageHeader } from "../components/ui.jsx";
+import { Spinner, ErrorBox, PageHeader, Skeleton } from "../components/ui.jsx";
 import { CardPhotoEditor, CardEditionPicker } from "../components/CardEditor.jsx";
+import RatingCard from "../components/RatingCard.jsx";
 
 // ---------------------------------------------------------------------------
 // /profile/card — a focused page to edit ONLY the driver's rating card: pick an
@@ -139,6 +140,25 @@ function CardEditor({ me }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickerDriverId]);
 
+  // Preview data for an OLD season row (a picker chip other than the current
+  // one): that row's public profile + rating, fetched once and cached, so the
+  // card on the left shows THAT season's card while you restyle it.
+  const [previewByDriver, setPreviewByDriver] = useState({});
+  useEffect(() => {
+    if (pickerDriverId === me.driverId || previewByDriver[pickerDriverId]) return;
+    let alive = true;
+    Promise.all([
+      api.driverProfile(pickerDriverId),
+      api.driverRating(pickerDriverId).catch(() => null),
+    ])
+      .then(([prof, rating]) => {
+        if (alive) setPreviewByDriver((m) => ({ ...m, [pickerDriverId]: { driver: prof.driver, rating } }));
+      })
+      .catch((err) => alive && setError(err.message));
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickerDriverId]);
+
   const styleOf = (id) => {
     if (id === me.driverId) return meCardStyle;
     if (savedByDriver[id] != null) return savedByDriver[id];
@@ -179,9 +199,35 @@ function CardEditor({ me }) {
     <div className="space-y-6">
       {error && <ErrorBox message={error} />}
       <div className="grid gap-8 lg:grid-cols-[332px_minmax(0,1fr)]">
-        {/* Left: the live card + framing + animation switch. */}
+        {/* Left: the live card + framing + animation switch. When an OLD
+            season's chip is picked on the right, the current card gives way to
+            a preview of THAT season's card (edition picks show live on it);
+            picture and framing are only editable on the current card. */}
         <div className="mx-auto w-full max-w-[332px] space-y-4 lg:mx-0">
-          {canPreview ? (
+          {pickerDriverId !== me.driverId ? (
+            previewByDriver[pickerDriverId] ? (
+              previewByDriver[pickerDriverId].rating?.ratings ||
+              previewByDriver[pickerDriverId].driver.role === "safety" ? (
+                <>
+                  <RatingCard
+                    driver={{ ...previewByDriver[pickerDriverId].driver, cardStyle: styleOf(pickerDriverId) }}
+                    rating={previewByDriver[pickerDriverId].rating}
+                  />
+                  <p className="text-xs leading-relaxed text-light">
+                    Season {cardSeasons.find((s) => s.driverId === pickerDriverId)?.seasonNumber} card — pick its
+                    edition on the right. Picture, framing and animation are edited on your current card.
+                  </p>
+                </>
+              ) : (
+                <div className="card p-5 text-sm text-light">
+                  No card for this season yet — it appears once you've raced a round. You can still pick its
+                  edition on the right.
+                </div>
+              )
+            ) : (
+              <Skeleton className="h-[440px] w-full rounded-2xl" />
+            )
+          ) : canPreview ? (
             <CardPhotoEditor
               driver={driver}
               rating={ratingRes.data}
@@ -200,7 +246,10 @@ function CardEditor({ me }) {
             </div>
           )}
 
-          {/* Animation switch: keep the edition's baseline motion, or freeze it. */}
+          {/* Animation switch: keep the edition's baseline motion, or freeze it.
+              Acts on the CURRENT card only, so it hides on an old season's preview. */}
+          {pickerDriverId === me.driverId && (
+          <>
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
             <div className="min-w-0">
               <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Card animation</div>
@@ -222,6 +271,8 @@ function CardEditor({ me }) {
           <p className="text-right font-mono text-[10px] uppercase tracking-wide text-light">
             {posState === "saving" ? "Saving framing…" : posState === "saved" ? "Framing saved" : " "}
           </p>
+          </>
+          )}
         </div>
 
         {/* Right: the edition picker. */}
@@ -267,7 +318,7 @@ export default function EditDriverCard() {
       <PageHeader
         eyebrow="Your profile"
         title="Edit Driver Card"
-        subtitle="Choose your card edition, set the picture and how it sits, and switch the animation on or off."
+        subtitle="Choose your card edition, set the picture and how it sits, and switch the animation on or off. Every change saves by itself, so there is no save button."
         right={<BackLink />}
       />
       <EditDriverCardInner />

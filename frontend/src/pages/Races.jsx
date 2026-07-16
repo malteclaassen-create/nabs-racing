@@ -359,30 +359,34 @@ export default function Races() {
 
   return (
     <div className="space-y-12">
-      <PageHeader eyebrow="Schedule & Results" title="Races" />
-
-      {/* Session-type switcher: drives BOTH the explorer below (rail + detail)
-          and the calendar grid further down, so picking a type shows every
-          view of it — not just the calendar cards. */}
-      <div className="reveal inline-flex rounded-xl border border-border bg-card p-1">
-        <button type="button" onClick={() => selectTab("rounds")} className={tabCls(tab === "rounds")}>
-          Championship
-          <span className="ml-1.5 opacity-70">{rounds.length}</span>
-        </button>
-        {/* Training sessions get their own clearly-labelled group — the tab
-            only appears once a session is scheduled, so a league without
-            trainings keeps today's two-tab page. */}
-        {trainings.length > 0 && (
-          <button type="button" onClick={() => selectTab("training")} className={tabCls(tab === "training")}>
-            Training / Sessions
-            <span className="ml-1.5 opacity-70">{trainings.length}</span>
-          </button>
-        )}
-        <button type="button" onClick={() => selectTab("se")} className={tabCls(tab === "se")}>
-          Special Events
-          <span className="ml-1.5 opacity-70">{specials.length}</span>
-        </button>
-      </div>
+      {/* Session-type switcher sits in the header's top-right corner: it drives
+          BOTH the explorer below (rail + detail) and the calendar grid further
+          down, so picking a type shows every view of it. */}
+      <PageHeader
+        eyebrow="Schedule & Results"
+        title="Races"
+        right={
+          <div className="inline-flex flex-wrap rounded-xl border border-border bg-card p-1">
+            <button type="button" onClick={() => selectTab("rounds")} className={tabCls(tab === "rounds")}>
+              Championship
+              <span className="ml-1.5 opacity-70">{rounds.length}</span>
+            </button>
+            {/* Training sessions get their own clearly-labelled group — the tab
+                only appears once a session is scheduled, so a league without
+                trainings keeps today's two-tab page. */}
+            {trainings.length > 0 && (
+              <button type="button" onClick={() => selectTab("training")} className={tabCls(tab === "training")}>
+                Training / Sessions
+                <span className="ml-1.5 opacity-70">{trainings.length}</span>
+              </button>
+            )}
+            <button type="button" onClick={() => selectTab("se")} className={tabCls(tab === "se")}>
+              Special Events
+              <span className="ml-1.5 opacity-70">{specials.length}</span>
+            </button>
+          </div>
+        }
+      />
 
       {/* Results explorer: race list (left), and on the right the selected
           race's results (completed) or sign-up + info (upcoming) — for

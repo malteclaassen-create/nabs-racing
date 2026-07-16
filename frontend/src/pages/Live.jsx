@@ -9,6 +9,7 @@ import LiveTrackMap from "../components/LiveTrackMap.jsx";
 import TyreStrategy, { TyreBadge } from "../components/TyreStrategy.jsx";
 import { circuitForLive } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
+import { SocialIcon, useSocial } from "../components/SocialLinks.jsx";
 import {
   makeDriverMatcher,
   formatLap,
@@ -42,34 +43,33 @@ function useIsNarrow() {
   return narrow;
 }
 
-function LiveBadge({ live }) {
-  const color = live ? "#22c55e" : "#f59e0b";
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wider">
-      <span className="relative flex h-2.5 w-2.5">
-        {live && (
-          <span
-            className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
-            style={{ backgroundColor: color }}
-          />
-        )}
-        <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-      </span>
-      <span style={{ color }}>{live ? "Live" : "Reconnecting"}</span>
-    </span>
-  );
-}
-
-// Live-ticking session countdown: re-syncs to the server value each board tick,
-// then counts down locally between snapshots (which arrive only every ~30s).
-function Countdown({ baseMs, receivedAt }) {
+// Live-ticking session countdown. Counts down locally every second; server
+// snapshots only arrive every ~30s and their remaining-time can lag behind the
+// clock, so blindly re-syncing on each snapshot made the display jump BACK up
+// and oscillate in ~30s steps. Instead the projected end time is a monotonic
+// anchor: a new snapshot only moves it EARLIER (we were too optimistic), or
+// later by a big margin (>60s — the session was extended or is a new one).
+// `resetKey` (session identity) drops the anchor entirely on a session change.
+function Countdown({ baseMs, receivedAt, resetKey }) {
   const [now, setNow] = useState(Date.now());
+  const endRef = useRef(null);
+  const keyRef = useRef(resetKey);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-  if (baseMs == null) return <span className="font-mono tabular-nums text-dark">—</span>;
-  const remaining = baseMs - (now - receivedAt);
+  if (baseMs == null) {
+    endRef.current = null;
+    return <span className="font-mono tabular-nums text-dark">—</span>;
+  }
+  const candidate = receivedAt + baseMs; // this snapshot's projected end time
+  if (keyRef.current !== resetKey || endRef.current == null) {
+    keyRef.current = resetKey;
+    endRef.current = candidate;
+  } else if (candidate < endRef.current || candidate - endRef.current > 60_000) {
+    endRef.current = candidate;
+  }
+  const remaining = endRef.current - now;
   return <span className="font-mono tabular-nums text-dark">{formatCountdown(remaining)}</span>;
 }
 
@@ -123,7 +123,11 @@ function SessionHeader({ session, receivedAt }) {
 
         <Stat label="Time Left">
           <span className="text-xl font-bold sm:text-2xl">
-            <Countdown baseMs={session.remainingMs} receivedAt={receivedAt} />
+            <Countdown
+              baseMs={session.remainingMs}
+              receivedAt={receivedAt}
+              resetKey={`${session.type}|${session.sessionIndex}|${session.trackName}`}
+            />
           </span>
         </Stat>
 
@@ -674,15 +678,27 @@ function ExternalIcon() {
   );
 }
 
-// The two admin-configured external buttons. "Full live timing" always shows
-// (it has a sensible default); "Join in Content Manager" appears only once an
-// admin has pasted the running server's CM deep link.
-function ExternalButtons({ links }) {
+// The admin-configured external buttons. Left: "Join in Content Manager"
+// (appears only once an admin has pasted the running server's CM deep link)
+// then "Full live timing" (always shows — it has a sensible default). Right,
+// on the same row: the league's Patreon (from the social links, when set).
+function ExternalButtons({ links, patreonUrl }) {
   const timing = links?.liveTimingUrl;
   const join = links?.cmJoinUrl;
-  if (!timing && !join) return null;
+  if (!timing && !join && !patreonUrl) return null;
   return (
-    <div className="mb-6 flex flex-wrap gap-2.5">
+    <div className="mb-6 flex flex-wrap items-center gap-2.5">
+      {join && (
+        <a
+          href={join}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/25 transition hover:brightness-105"
+        >
+          <ExternalIcon />
+          Join in Content Manager
+        </a>
+      )}
       {timing && (
         <a
           href={timing}
@@ -694,15 +710,15 @@ function ExternalButtons({ links }) {
           Full live timing
         </a>
       )}
-      {join && (
+      {patreonUrl && (
         <a
-          href={join}
+          href={patreonUrl}
           target="_blank"
           rel="noreferrer noopener"
-          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/25 transition hover:brightness-105"
+          className="ml-auto inline-flex items-center gap-2 rounded-xl border border-[#FF424D]/40 bg-[#FF424D]/10 px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-[#FF424D] transition hover:bg-[#FF424D]/20"
         >
-          <ExternalIcon />
-          Join in Content Manager
+          <SocialIcon name="patreon" className="h-4 w-4" />
+          Support us on Patreon
         </a>
       )}
     </div>
@@ -960,6 +976,8 @@ export default function Live() {
   const match = useMemo(() => makeDriverMatcher(teams), [teams]);
   // Admin-configured external buttons (server-manager live timing + CM join).
   const { data: extLinks } = useApi(useCallback(() => api.liveLinks(), []));
+  // League social links — the Patreon button on the buttons row uses them.
+  const social = useSocial();
   // Timing ⇄ Strategy switch (the track map sits above both).
   const [view, setView] = useState("timing");
 
@@ -1007,19 +1025,16 @@ export default function Live() {
 
   return (
     <div>
+      {/* No live/offline badge up here — the session card below already tells
+          the story; only the admin-facing Demo pill remains. */}
       <PageHeader
         eyebrow="Real-time"
         title="Live Timing"
-        right={
-          <span className="flex items-center gap-2">
-            {board?.demo && <span className="pill bg-amber-500/15 text-amber-600">Demo</span>}
-            <LiveBadge live={connected} />
-          </span>
-        }
+        right={board?.demo ? <span className="pill bg-amber-500/15 text-amber-600">Demo</span> : undefined}
       />
 
-      {/* External buttons (server-manager live timing + Content Manager join). */}
-      <ExternalButtons links={extLinks} />
+      {/* External buttons (CM join + server-manager live timing, Patreon right). */}
+      <ExternalButtons links={extLinks} patreonUrl={social.data?.patreon} />
 
       {!session ? (
         <div className="card flex flex-col items-center justify-center gap-3 py-20 text-center">

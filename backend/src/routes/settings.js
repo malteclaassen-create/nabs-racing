@@ -9,7 +9,7 @@ import { readWelcomeFaq } from "../lib/welcomeFaq.js";
 const router = Router();
 
 // The social platforms the site knows how to render an icon for.
-export const SOCIAL_KEYS = ["discord", "twitch", "youtube", "instagram", "tiktok", "x"];
+export const SOCIAL_KEYS = ["discord", "twitch", "youtube", "instagram", "tiktok", "x", "patreon"];
 
 // Live Timing page external links (admin-managed under these Setting keys).
 // The full live-timing default is derived from the same upstream origin the

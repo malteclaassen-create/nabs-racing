@@ -896,7 +896,60 @@ export default function Home() {
             className="col-span-2 sm:col-span-1"
           />
         </section>
-      ) : !isPast && myRow ? (
+      ) : (
+        <div className="space-y-8">
+          {/* Season-wide numbers stay visible for everyone. A linked driver's
+              personal band renders BENEATH them — it used to replace them,
+              which made the season stats vanish as soon as you were logged in. */}
+          <div className="space-y-5">
+            {!isPast && myRow && <h3 className="section-title">Season at a Glance</h3>}
+            <section className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <NumberTile
+                index={0}
+                to="/races"
+                label="Rounds Done"
+                value={completedRaces.length}
+                sub={`of ${totalRounds || "—"}`}
+                icon="calendar"
+                accent="#0ea5e9"
+              />
+              <NumberTile index={1} to="/drivers" label="Drivers" value={driverCount} sub="on the grid" icon="users" accent="#7c3aed" />
+              <NumberTile
+                index={2}
+                to="/constructors"
+                label="Constructors"
+                value={constructorCount}
+                sub="teams scoring"
+                icon="shield"
+                accent="#0d9488"
+              />
+              {/* same trick as the personal band: the last two tiles stretch so 5
+                  tiles close the 2- and 3-column rows without a hole */}
+              <NumberTile
+                index={3}
+                to={leader ? `/drivers/${leader.driverId}` : undefined}
+                label={isPast || seasonOver ? "Champion" : "Leader"}
+                value={leader?.total ?? "—"}
+                sub={leader?.name || "TBA"}
+                icon="trophy"
+                accent={leader?.team?.color || "#d97706"}
+                className="sm:col-span-2 lg:col-span-1"
+              />
+              <NumberTile
+                index={4}
+                to="/drivers"
+                label="Title Gap"
+                value={titleGap > 0 ? titleGap : "Level"}
+                prefix={titleGap > 0 ? "+" : ""}
+                sub="P1 to P2"
+                icon="trend"
+                accent="#d97706"
+                className="col-span-2 sm:col-span-1"
+              />
+            </section>
+          </div>
+
+          {!isPast && myRow && (
         <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="section-title">Personal Season</h3>
@@ -1003,51 +1056,8 @@ export default function Home() {
             />
           </section>
         </div>
-      ) : (
-        <section className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <NumberTile
-            index={0}
-            to="/races"
-            label="Rounds Done"
-            value={completedRaces.length}
-            sub={`of ${totalRounds || "—"}`}
-            icon="calendar"
-            accent="#0ea5e9"
-          />
-          <NumberTile index={1} to="/drivers" label="Drivers" value={driverCount} sub="on the grid" icon="users" accent="#7c3aed" />
-          <NumberTile
-            index={2}
-            to="/constructors"
-            label="Constructors"
-            value={constructorCount}
-            sub="teams scoring"
-            icon="shield"
-            accent="#0d9488"
-          />
-          {/* same trick as the personal band: the last two tiles stretch so 5
-              tiles close the 2- and 3-column rows without a hole */}
-          <NumberTile
-            index={3}
-            to={leader ? `/drivers/${leader.driverId}` : undefined}
-            label="Leader"
-            value={leader?.total ?? "—"}
-            sub={leader?.name || "TBA"}
-            icon="trophy"
-            accent={leader?.team?.color || "#d97706"}
-            className="sm:col-span-2 lg:col-span-1"
-          />
-          <NumberTile
-            index={4}
-            to="/drivers"
-            label="Title Gap"
-            value={titleGap > 0 ? titleGap : "Level"}
-            prefix={titleGap > 0 ? "+" : ""}
-            sub="P1 to P2"
-            icon="trend"
-            accent="#d97706"
-            className="col-span-2 sm:col-span-1"
-          />
-        </section>
+          )}
+        </div>
       )}
 
       {/* =============== NEXT SEASON (active season, transition only) ======== */}

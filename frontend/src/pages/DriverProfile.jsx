@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
+import { useSeason } from "../context/SeasonContext.jsx";
+import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import {
   ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp,
 } from "../components/ui.jsx";
@@ -11,6 +13,7 @@ import TeamLogo from "../components/TeamLogo.jsx";
 import SocialLinks from "../components/SocialLinks.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx";
+import { SettingsDrawer, GearIcon } from "../components/SettingsPanel.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { circuitFor } from "../data/circuits.js";
 
@@ -299,7 +302,7 @@ function CareerBlock({ career, otherSeries }) {
               <tr key={s.driverId} style={{ "--i": Math.min(i, 16) }} className="transition hover:bg-surface2">
                 <td className="px-5 py-3">
                   <Link
-                    to={`/drivers/${s.driverId}`}
+                    to={`/drivers/${s.driverId}${s.seasonNumber != null ? `?season=${s.seasonNumber}` : ""}`}
                     className="font-display font-bold uppercase tracking-tight text-dark hover:text-brand"
                   >
                     {s.seasonName || `Season ${s.seasonNumber}`}
@@ -1078,9 +1081,36 @@ export default function DriverProfile({ previewId, preview }) {
   const id = previewId || routeId;
   const navigate = useNavigate();
   const { user: authedUser } = useAuth();
+  // Drawer for the site settings button shown on one's OWN profile.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { data, loading, error } = useApi(
     useCallback(() => Promise.all([api.driverProfile(id), api.driverRating(id)]), [id])
   );
+
+  // Honour a ?season=N deep link (search results / career-table links): steer
+  // the season switcher to the row's own season before the sync below runs.
+  useSeasonParam();
+  const { season, setSeason } = useSeason();
+  const [searchParams] = useSearchParams();
+  const pendingSeasonParam = searchParams.get("season") != null;
+
+  // Keep the profile and the NavBar season switcher in step. When they
+  // disagree (the visitor just used the switcher, or arrived on an archived
+  // row without a ?season hint):
+  //   · this driver has a linked row in the selected season → go to THAT page,
+  //   · otherwise snap the switcher to this profile's season.
+  useEffect(() => {
+    if (previewId || !data || pendingSeasonParam) return;
+    const prof = data[0];
+    const own = prof?.driver?.seasonNumber;
+    if (season == null || own == null || season === own) return;
+    const row = (prof.career?.seasons || []).find((s) => s.seasonNumber === season);
+    if (row && row.driverId !== prof.driver.id) {
+      navigate(`/drivers/${row.driverId}?season=${season}`, { replace: true });
+    } else {
+      setSeason(own);
+    }
+  }, [previewId, data, season, pendingSeasonParam, navigate, setSeason]);
 
   if (loading)
     return (
@@ -1115,13 +1145,25 @@ export default function DriverProfile({ previewId, preview }) {
   return (
     <div className="content-in space-y-6">
       {isOwnProfile && (
-        <div className="-mb-2 flex justify-end">
+        <div className="-mb-2 flex justify-end gap-2">
           <Link to="/profile" className="btn-secondary inline-flex items-center gap-1.5">
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
             </svg>
             Edit my profile
           </Link>
+          {/* Site settings (theme + graphics) live here now — the bell menu
+              used to carry them. */}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="btn-secondary inline-flex items-center gap-1.5"
+            title="Site settings"
+          >
+            <GearIcon />
+            Settings
+          </button>
+          <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
         </div>
       )}
       {LAYOUT === "classic" ? (

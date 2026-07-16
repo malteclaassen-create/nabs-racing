@@ -2,14 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
-import { SettingsDrawer, GearIcon } from "./SettingsPanel.jsx";
 
-// The bell in the nav bar: took over the old gear slot, so its menu also
-// carries the "Settings" row that opens the settings drawer. Logged-in
-// members see league notifications (results, race day, downloads, driver
-// market); the unread count polls once a minute, opening the panel loads the
-// list and marks everything seen. Logged-out visitors still get the bell —
-// it explains the feature and keeps Settings reachable.
+// The bell in the nav bar. Logged-in members see league notifications
+// (results, race day, downloads, driver market); the unread count polls once
+// a minute, opening the panel loads the list and marks everything seen.
+// Logged-out visitors still get the bell — it explains the feature. Settings
+// moved to the driver's own public profile page (next to "Edit my profile").
 
 function BellIcon() {
   return (
@@ -91,7 +89,6 @@ export default function NotificationBell({ className = "" }) {
   const { isLoggedIn } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState(null); // null = not loaded yet
   const [loading, setLoading] = useState(false);
@@ -147,11 +144,6 @@ export default function NotificationBell({ className = "" }) {
   function onItemClick(n) {
     close();
     if (n.link) navigate(n.link);
-  }
-
-  function openSettings() {
-    close();
-    setSettingsOpen(true);
   }
 
   return (
@@ -224,23 +216,9 @@ export default function NotificationBell({ className = "" }) {
                 </ul>
               )}
             </div>
-
-            {/* Settings moved in here when the bell took the gear's nav slot. */}
-            <button
-              type="button"
-              onClick={openSettings}
-              className="flex w-full items-center gap-2.5 border-t border-border px-4 py-3 text-sm font-semibold text-medium transition hover:bg-surface2"
-            >
-              <span className="text-light">
-                <GearIcon />
-              </span>
-              Settings
-            </button>
           </div>
         </>
       )}
-
-      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

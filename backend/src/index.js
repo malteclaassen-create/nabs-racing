@@ -29,13 +29,17 @@ import { isAdminRequest } from "./middleware/auth.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
+import { backfillCardIntro } from "./lib/notifications.js";
 import { UPLOADS_DIR } from "./lib/dataDirs.js";
 
 // Schema upkeep that runs outside `prisma migrate` (raw SQL — see the comment
 // in lib/downloads.js). Idempotent, so it's safe on every boot. Chained so the
-// app-wide columns/tables exist before the download tables' backfill runs.
+// app-wide columns/tables exist before the download tables' backfill runs, and
+// the one-time card-unlock catch-up (guarded by its own flag) runs last, once
+// the columns it reads are guaranteed to exist.
 ensureAppSchema(prisma)
   .then(() => ensureDownloadTables(prisma))
+  .then(() => backfillCardIntro(prisma))
   .catch((e) => console.error("schema upkeep:", e));
 
 const app = express();
