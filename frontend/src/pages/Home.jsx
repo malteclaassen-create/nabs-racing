@@ -898,11 +898,12 @@ export default function Home() {
         </section>
       ) : (
         <div className="space-y-8">
-          {/* Season-wide numbers stay visible for everyone. A linked driver's
-              personal band renders BENEATH them — it used to replace them,
-              which made the season stats vanish as soon as you were logged in. */}
+          {/* One numbers band, not two: a linked driver gets their PERSONAL
+              band (the hero + Season Honours already tell the season's story),
+              everyone else the season-wide numbers. Two near-identical 5-tile
+              rows stacked on top of each other read as clutter. */}
+          {!(!isPast && myRow) && (
           <div className="space-y-5">
-            {!isPast && myRow && <h3 className="section-title">Season at a Glance</h3>}
             <section className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <NumberTile
                 index={0}
@@ -948,6 +949,7 @@ export default function Home() {
               />
             </section>
           </div>
+          )}
 
           {!isPast && myRow && (
         <div className="space-y-5">

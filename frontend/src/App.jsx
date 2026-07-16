@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Routes, Route, Navigate, Link, useLocation, useParams } from "react-router-dom";
+import { Routes, Route, Navigate, Link, useLocation, useParams, useNavigationType } from "react-router-dom";
 import { useScrollReveal } from "./hooks/useScrollReveal.js";
 import { api } from "./api/client.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
@@ -94,6 +94,16 @@ function AppRoutes() {
   const { season } = useSeason();
   const { active, loaded, unknownSlug } = useSeries();
   const location = useLocation();
+  const navigationType = useNavigationType();
+  // Jump to the top on every page NAVIGATION. Without this the old page's
+  // scroll offset carries over, and since the incoming page is only a short
+  // loading skeleton for a moment, the view clamps to the page's end — the
+  // footer flashes into view until the real content pushes it back down.
+  // Back/forward (POP) keeps the browser's own scroll restoration; changing
+  // only the query string (e.g. ?race=… on Races) doesn't scroll either.
+  useEffect(() => {
+    if (navigationType !== "POP") window.scrollTo(0, 0);
+  }, [location.pathname, navigationType]);
   // Anonymous page-view beacon for the admin Traffic tab. Fire-and-forget;
   // admin/auth paths are skipped here AND server-side.
   useEffect(() => {
@@ -109,7 +119,11 @@ function AppRoutes() {
     return <Navigate to={`/s/${active.slug}${rest}${location.search}`} replace />;
   }
   return (
-    <main key={season ?? "loading"} className="container-page w-full flex-1 py-10">
+    // min-h-screen on the content itself (not just flex-1): while a page is
+    // still a short loading skeleton, the column would otherwise end exactly
+    // at the viewport's bottom edge and the footer flashed into view for a
+    // beat on every navigation. This keeps it below the fold from the start.
+    <main key={season ?? "loading"} className="container-page min-h-screen w-full flex-1 py-10">
       {/* Per-route crash guard: a page that throws shows a fallback here while
           the NavBar/Footer (outside this component) and every other route keep
           working. resetKey clears the error the moment the path changes. */}

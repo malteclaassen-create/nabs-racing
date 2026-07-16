@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useParams, Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -1074,6 +1074,13 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
   );
 }
 
+// The person's season → row-id map, remembered per row id across the page
+// remount a season switch causes. With it, the fresh mount can redirect to the
+// right season's row in its FIRST render — without it the page first reloaded
+// the OLD row (skeleton), then navigated and loaded again (second skeleton),
+// which read as a stuttering double transition.
+const careerRowsByDriver = new Map(); // driverId -> Map(seasonNumber -> driverId)
+
 // `previewId` + `preview` turn the page into the LIVE PREVIEW embedded on the
 // private /profile editor: the id comes from the prop instead of the route,
 // and `preview` (unsaved edits: name, bio, tiles, photo framing, …) overlays
@@ -1111,6 +1118,26 @@ export default function DriverProfile({ previewId, preview }) {
       navigate(`/drivers/${row.driverId}?season=${season}`, { replace: true });
     }
   }, [previewId, data, season, pendingSeasonParam, navigate]);
+
+  // Remember the person's season → row map for every one of their rows, so
+  // the NEXT season switch can redirect instantly (see careerRowsByDriver).
+  useEffect(() => {
+    const prof = data?.[0];
+    if (!prof) return;
+    const rows = prof.career?.seasons?.length
+      ? prof.career.seasons
+      : [{ driverId: prof.driver.id, seasonNumber: prof.driver.seasonNumber }];
+    const map = new Map(rows.filter((s) => s.seasonNumber != null).map((s) => [s.seasonNumber, s.driverId]));
+    for (const rowId of map.values()) careerRowsByDriver.set(rowId, map);
+  }, [data]);
+
+  // Instant redirect on a fresh mount after a season switch: if we already
+  // know this person's row for the selected season, go there before fetching
+  // anything — no wrong-row skeleton, no double page transition.
+  const cachedTarget = !previewId && season != null ? careerRowsByDriver.get(id)?.get(season) : null;
+  if (cachedTarget && cachedTarget !== id && !pendingSeasonParam) {
+    return <Navigate to={`/drivers/${cachedTarget}?season=${season}`} replace />;
+  }
 
   if (loading)
     return (
