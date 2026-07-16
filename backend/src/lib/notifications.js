@@ -446,7 +446,7 @@ const FEATURE_ANNOUNCEMENTS = [
     dedupeKey: "feature:cards-view",
     type: "NEWS",
     title: "New: the field as driver cards",
-    body: "The driver standings got a Cards view — everyone's rating card in championship order, with each driver's own edition and picture.",
+    body: "The driver standings got a Cards view: everyone's rating card in championship order, with each driver's own edition and picture.",
     link: "/drivers",
   },
 ];
@@ -455,6 +455,12 @@ export async function announceFeatures(prisma) {
   for (const a of FEATURE_ANNOUNCEMENTS) {
     try {
       await dbCreateNotification(prisma, a); // broadcast: recipientId null
+      // Keep an already-posted announcement's wording in sync with the array,
+      // so a copy fix here reaches bells that got the old text (the dedupe
+      // key makes the INSERT above a no-op in that case).
+      await prisma.$executeRaw`
+        UPDATE "Notification" SET "title" = ${a.title}, "body" = ${a.body}, "link" = ${a.link}
+        WHERE "dedupeKey" = ${a.dedupeKey}`;
     } catch {
       /* best-effort */
     }
