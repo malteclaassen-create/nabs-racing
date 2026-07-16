@@ -935,9 +935,11 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
             the card keeps its own height and floats mid-row with equal space
             above and below, instead of its frame stretching down. */}
         <div className="flex items-center justify-center">
-          {/* safety car drivers get their card even with no races (no rating) */}
+          {/* safety car drivers get their card even with no races (no rating).
+              `explain`: hovering/tapping EXP·RAC·AWA·PAC pops a note on how
+              that value is computed. */}
           {rating || driver.role === "safety" ? (
-            <RatingCard driver={driver} rating={rating} />
+            <RatingCard driver={driver} rating={rating} explain />
           ) : (
             <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={160} className="text-6xl" />
           )}
@@ -1090,15 +1092,15 @@ export default function DriverProfile({ previewId, preview }) {
   // Honour a ?season=N deep link (search results / career-table links): steer
   // the season switcher to the row's own season before the sync below runs.
   useSeasonParam();
-  const { season, setSeason } = useSeason();
+  const { season, current: currentSeason } = useSeason();
   const [searchParams] = useSearchParams();
   const pendingSeasonParam = searchParams.get("season") != null;
 
   // Keep the profile and the NavBar season switcher in step. When they
   // disagree (the visitor just used the switcher, or arrived on an archived
-  // row without a ?season hint):
-  //   · this driver has a linked row in the selected season → go to THAT page,
-  //   · otherwise snap the switcher to this profile's season.
+  // row without a ?season hint): if this driver has a linked row in the
+  // selected season, go to THAT page. Seasons they did NOT race stay put and
+  // render a "didn't race this season" notice instead (below).
   useEffect(() => {
     if (previewId || !data || pendingSeasonParam) return;
     const prof = data[0];
@@ -1107,10 +1109,8 @@ export default function DriverProfile({ previewId, preview }) {
     const row = (prof.career?.seasons || []).find((s) => s.seasonNumber === season);
     if (row && row.driverId !== prof.driver.id) {
       navigate(`/drivers/${row.driverId}?season=${season}`, { replace: true });
-    } else {
-      setSeason(own);
     }
-  }, [previewId, data, season, pendingSeasonParam, navigate, setSeason]);
+  }, [previewId, data, season, pendingSeasonParam, navigate]);
 
   if (loading)
     return (
@@ -1140,32 +1140,88 @@ export default function DriverProfile({ previewId, preview }) {
   // The nav chip leads HERE (the public page) — so the page returns the
   // favour: the owner gets a button through to the private editor. Hidden in
   // the /profile live preview, which would otherwise show it to no purpose.
-  const isOwnProfile = !previewId && authedUser?.driverId === driver.id;
+  // "Own" means ANY of the person's linked season rows, so the buttons stay
+  // put while browsing one's own archive seasons too.
+  const isOwnProfile =
+    !previewId &&
+    !!authedUser?.driverId &&
+    (authedUser.driverId === driver.id ||
+      (p.career?.seasons || []).some((s) => s.driverId === authedUser.driverId));
+
+  const ownControls = isOwnProfile && (
+    <div className="-mb-2 flex justify-end gap-2">
+      <Link to="/profile" className="btn-secondary inline-flex items-center gap-1.5">
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+        </svg>
+        Edit my profile
+      </Link>
+      {/* Site settings (theme + graphics) live here now — the bell menu
+          used to carry them. */}
+      <button
+        type="button"
+        onClick={() => setSettingsOpen(true)}
+        className="btn-secondary inline-flex items-center gap-1.5"
+        title="Site settings"
+      >
+        <GearIcon />
+        Settings
+      </button>
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </div>
+  );
+
+  // The switcher points at a season this person has NO row in: keep the
+  // switcher where the visitor put it and say so, instead of silently
+  // snapping back (or showing another season's numbers under this label).
+  const racedSeasons = p.career?.seasons?.length
+    ? p.career.seasons
+    : [{ driverId: driver.id, seasonNumber: driver.seasonNumber, seasonName: null }];
+  const notInSeason =
+    !previewId &&
+    !pendingSeasonParam &&
+    season != null &&
+    driver.seasonNumber != null &&
+    season !== driver.seasonNumber &&
+    !racedSeasons.some((s) => s.seasonNumber === season);
+  if (notInSeason) {
+    const seasonLabel = currentSeason?.name || `Season ${season}`;
+    return (
+      <div className="content-in space-y-6">
+        {ownControls}
+        <div className="card flex flex-col items-center gap-4 px-6 py-14 text-center">
+          <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={72} />
+          <div>
+            <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-3xl">
+              {driver.name}
+            </h1>
+            <p className="mt-2 text-sm text-medium">didn&rsquo;t race in {seasonLabel}.</p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            <span className="mr-1 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Raced in</span>
+            {[...racedSeasons]
+              .sort((a, b) => (b.seasonNumber ?? 0) - (a.seasonNumber ?? 0))
+              .map((s) => (
+                <Link
+                  key={s.driverId}
+                  to={`/drivers/${s.driverId}?season=${s.seasonNumber}`}
+                  className="rounded-lg bg-surface2 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wide text-medium transition hover:bg-brand hover:text-ink"
+                >
+                  S{s.seasonNumber}
+                </Link>
+              ))}
+          </div>
+          <Link to="/drivers" className="text-sm font-semibold text-primary hover:underline">
+            All drivers of {seasonLabel} →
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="content-in space-y-6">
-      {isOwnProfile && (
-        <div className="-mb-2 flex justify-end gap-2">
-          <Link to="/profile" className="btn-secondary inline-flex items-center gap-1.5">
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-            </svg>
-            Edit my profile
-          </Link>
-          {/* Site settings (theme + graphics) live here now — the bell menu
-              used to carry them. */}
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            className="btn-secondary inline-flex items-center gap-1.5"
-            title="Site settings"
-          >
-            <GearIcon />
-            Settings
-          </button>
-          <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-        </div>
-      )}
+      {ownControls}
       {LAYOUT === "classic" ? (
         <>
           {/* Classic hero banner */}

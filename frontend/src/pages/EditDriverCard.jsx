@@ -5,7 +5,6 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { Spinner, ErrorBox, PageHeader, Skeleton } from "../components/ui.jsx";
 import { CardPhotoEditor, CardEditionPicker } from "../components/CardEditor.jsx";
-import RatingCard from "../components/RatingCard.jsx";
 
 // ---------------------------------------------------------------------------
 // /profile/card — a focused page to edit ONLY the driver's rating card: pick an
@@ -32,88 +31,7 @@ function CardEditor({ me }) {
   // without a rating payload; everyone else needs to have raced.
   const ratingRes = useApi(useCallback(() => api.driverRating(me.driverId).catch(() => null), [me.driverId]));
 
-  // Framing (x/y/z/s/t). Dragged/zoomed/tuned live, then auto-saved shortly
-  // after the last change (no page Save button on this focused page).
-  const [photoPos, setPhotoPos] = useState(me.photoPos || null);
-  const [posDirty, setPosDirty] = useState(false);
-  const [posState, setPosState] = useState("idle"); // idle | saving | saved
-  useEffect(() => {
-    if (!posDirty) return;
-    const t = setTimeout(async () => {
-      setPosState("saving");
-      try {
-        const res = await api.setMyCardPhoto(photoPos);
-        setPhotoPos(res.photoPos);
-        setPosDirty(false);
-        setPosState("saved");
-      } catch (err) {
-        setError(err.message);
-        setPosState("idle");
-      }
-    }, 700);
-    return () => clearTimeout(t);
-  }, [photoPos, posDirty]);
-
-  async function resetCardPhoto() {
-    setError(null);
-    try {
-      await api.setMyCardPhoto(null);
-      setPhotoPos(null);
-      setPosDirty(false);
-      setPosState("idle");
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  // Separate card-only picture.
-  const [cardPhotoUrl, setCardPhotoUrl] = useState(me.cardPhotoUrl || null);
-  const [cardUploading, setCardUploading] = useState(false);
-  async function onPickCardPhoto(e) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setError(null);
-    setCardUploading(true);
-    try {
-      const res = await api.uploadMyCardPhoto(file);
-      setCardPhotoUrl(res.cardPhotoUrl);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setCardUploading(false);
-    }
-  }
-  async function resetCardPhotoImage() {
-    setError(null);
-    setCardUploading(true);
-    try {
-      await api.clearMyCardPhoto();
-      setCardPhotoUrl(null);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setCardUploading(false);
-    }
-  }
-
-  // Card animation on/off (self-saves on toggle). "off" = a fully still card.
-  const [cardAnim, setCardAnim] = useState(me.cardAnim === "off" ? "off" : null);
-  async function toggleAnim() {
-    const next = cardAnim === "off" ? null : "off";
-    const prev = cardAnim;
-    setCardAnim(next);
-    setError(null);
-    try {
-      await api.setMyCardAnim(me.driverId, next);
-    } catch (err) {
-      setError(err.message);
-      setCardAnim(prev);
-    }
-  }
-
-  // Edition picker: per-season-row, self-saving on pick. The preview card above
-  // always shows the CURRENT row's chosen edition.
+  // Edition picker: per-season-row, self-saving on pick.
   const [meCardStyle, setMeCardStyle] = useState(me.cardStyle || "classic");
   const [cardSeasons, setCardSeasons] = useState([]);
   const [pickerDriverId, setPickerDriverId] = useState(me.driverId);
@@ -165,6 +83,124 @@ function CardEditor({ me }) {
     return cardSeasons.find((s) => s.driverId === id)?.cardStyle || "classic";
   };
 
+  // --- Per-row picture / framing / animation editing -----------------------
+  // EVERY season row is fully editable, not just the current one: the stored
+  // values come from `me` (current row) or the fetched preview (old rows), and
+  // local overlays keyed by row id carry edits until they self-save.
+  const isMe = pickerDriverId === me.driverId;
+  const rowPreview = previewByDriver[pickerDriverId];
+  // Stored (server) values for the selected row.
+  const stored = isMe
+    ? { photoPos: me.photoPos || null, cardPhotoUrl: me.cardPhotoUrl || null, cardAnim: me.cardAnim ?? null }
+    : rowPreview
+    ? {
+        photoPos: rowPreview.driver.photoPos || null,
+        cardPhotoUrl: rowPreview.driver.cardPhotoUrl || null,
+        cardAnim: rowPreview.driver.cardAnim ?? null,
+      }
+    : null;
+
+  const [posByRow, setPosByRow] = useState({}); // row id -> framing overlay
+  const [photoByRow, setPhotoByRow] = useState({}); // row id -> card picture overlay
+  const [animByRow, setAnimByRow] = useState({}); // row id -> "off" | null overlay
+  const [posEdit, setPosEdit] = useState(null); // { id, pos } debounced save
+  const [posState, setPosState] = useState("idle"); // idle | saving | saved
+  const [cardUploading, setCardUploading] = useState(false);
+
+  const photoPos = posByRow[pickerDriverId] !== undefined ? posByRow[pickerDriverId] : stored?.photoPos ?? null;
+  const cardPhotoUrl =
+    photoByRow[pickerDriverId] !== undefined ? photoByRow[pickerDriverId] : stored?.cardPhotoUrl ?? null;
+  const cardAnim =
+    (animByRow[pickerDriverId] !== undefined ? animByRow[pickerDriverId] : stored?.cardAnim) === "off"
+      ? "off"
+      : null;
+
+  // Framing auto-saves shortly after the last change. The pending edit carries
+  // its OWN row id, so switching season chips mid-debounce still saves to the
+  // row that was edited.
+  useEffect(() => {
+    if (!posEdit) return;
+    const t = setTimeout(async () => {
+      setPosState("saving");
+      try {
+        const res = await api.setMyCardPhoto(posEdit.pos, posEdit.id === me.driverId ? undefined : posEdit.id);
+        setPosByRow((m) => ({ ...m, [posEdit.id]: res.photoPos }));
+        setPosEdit(null);
+        setPosState("saved");
+      } catch (err) {
+        setError(err.message);
+        setPosState("idle");
+      }
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posEdit]);
+
+  function editPos(p) {
+    const id = pickerDriverId;
+    setPosByRow((m) => ({ ...m, [id]: p }));
+    setPosEdit({ id, pos: p });
+  }
+
+  async function resetCardPhoto() {
+    const id = pickerDriverId;
+    setError(null);
+    try {
+      await api.setMyCardPhoto(null, isMe ? undefined : id);
+      setPosByRow((m) => ({ ...m, [id]: null }));
+      setPosEdit(null);
+      setPosState("idle");
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function onPickCardPhoto(e) {
+    const id = pickerDriverId;
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    setCardUploading(true);
+    try {
+      const res = await api.uploadMyCardPhoto(file, isMe ? undefined : id);
+      setPhotoByRow((m) => ({ ...m, [id]: res.cardPhotoUrl }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCardUploading(false);
+    }
+  }
+
+  async function resetCardPhotoImage() {
+    const id = pickerDriverId;
+    setError(null);
+    setCardUploading(true);
+    try {
+      await api.clearMyCardPhoto(isMe ? undefined : id);
+      setPhotoByRow((m) => ({ ...m, [id]: null }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCardUploading(false);
+    }
+  }
+
+  // Card animation on/off (self-saves on toggle). "off" = a fully still card.
+  async function toggleAnim() {
+    const id = pickerDriverId;
+    const prev = cardAnim;
+    const next = prev === "off" ? null : "off";
+    setAnimByRow((m) => ({ ...m, [id]: next }));
+    setError(null);
+    try {
+      await api.setMyCardAnim(id, next);
+    } catch (err) {
+      setError(err.message);
+      setAnimByRow((m) => ({ ...m, [id]: prev }));
+    }
+  }
+
   async function pickStyle(key) {
     const id = pickerDriverId;
     const prev = styleOf(id);
@@ -180,75 +216,72 @@ function CardEditor({ me }) {
     }
   }
 
-  const canPreview = ratingRes.data?.ratings || me.role === "safety";
-  const driver = {
-    id: me.driverId,
-    name: me.name,
-    number: me.number ?? null,
-    country: me.country || "",
-    photoUrl: me.photoUrl,
-    tier: me.tier,
-    role: me.role ?? null,
-    team: me.team,
-    cardStyle: meCardStyle,
-    cardAnim,
-    seasonNumber: me.seasonNumber ?? null,
-  };
+  // The selected row's identity + rating for the editor card on the left.
+  const editorDriver = isMe
+    ? {
+        id: me.driverId,
+        name: me.name,
+        number: me.number ?? null,
+        country: me.country || "",
+        photoUrl: me.photoUrl,
+        tier: me.tier,
+        role: me.role ?? null,
+        team: me.team,
+        cardStyle: meCardStyle,
+        cardAnim,
+        seasonNumber: me.seasonNumber ?? null,
+      }
+    : rowPreview
+    ? { ...rowPreview.driver, cardStyle: styleOf(pickerDriverId), cardAnim }
+    : null;
+  const editorRating = isMe ? ratingRes.data : rowPreview?.rating;
+  const rowHasCard = !!(editorRating?.ratings || editorDriver?.role === "safety");
+  const rowSeasonNumber = isMe
+    ? me.seasonNumber
+    : cardSeasons.find((s) => s.driverId === pickerDriverId)?.seasonNumber;
 
   return (
     <div className="space-y-6">
       {error && <ErrorBox message={error} />}
       <div className="grid gap-8 lg:grid-cols-[332px_minmax(0,1fr)]">
-        {/* Left: the live card + framing + animation switch. When an OLD
-            season's chip is picked on the right, the current card gives way to
-            a preview of THAT season's card (edition picks show live on it);
-            picture and framing are only editable on the current card. */}
+        {/* Left: the live card + framing + animation switch for WHICHEVER
+            season chip is picked on the right — every season's card is fully
+            editable on its own (edition, picture, framing, animation). */}
         <div className="mx-auto w-full max-w-[332px] space-y-4 lg:mx-0">
-          {pickerDriverId !== me.driverId ? (
-            previewByDriver[pickerDriverId] ? (
-              previewByDriver[pickerDriverId].rating?.ratings ||
-              previewByDriver[pickerDriverId].driver.role === "safety" ? (
-                <>
-                  <RatingCard
-                    driver={{ ...previewByDriver[pickerDriverId].driver, cardStyle: styleOf(pickerDriverId) }}
-                    rating={previewByDriver[pickerDriverId].rating}
-                  />
-                  <p className="text-xs leading-relaxed text-light">
-                    Season {cardSeasons.find((s) => s.driverId === pickerDriverId)?.seasonNumber} card — pick its
-                    edition on the right. Picture, framing and animation are edited on your current card.
-                  </p>
-                </>
-              ) : (
-                <div className="card p-5 text-sm text-light">
-                  No card for this season yet — it appears once you've raced a round. You can still pick its
-                  edition on the right.
-                </div>
-              )
-            ) : (
-              <Skeleton className="h-[440px] w-full rounded-2xl" />
-            )
-          ) : canPreview ? (
-            <CardPhotoEditor
-              driver={driver}
-              rating={ratingRes.data}
-              pos={photoPos}
-              setPos={(p) => { setPhotoPos(p); setPosDirty(true); }}
-              onReset={resetCardPhoto}
-              resetting={posState === "saving"}
-              cardPhotoUrl={cardPhotoUrl}
-              onPickCardPhoto={onPickCardPhoto}
-              onResetCardPhoto={resetCardPhotoImage}
-              cardUploading={cardUploading}
-            />
+          {!isMe && !rowPreview ? (
+            <Skeleton className="h-[440px] w-full rounded-2xl" />
+          ) : rowHasCard ? (
+            <>
+              <CardPhotoEditor
+                driver={editorDriver}
+                rating={editorRating}
+                pos={photoPos}
+                setPos={editPos}
+                onReset={resetCardPhoto}
+                resetting={posState === "saving"}
+                cardPhotoUrl={cardPhotoUrl}
+                onPickCardPhoto={onPickCardPhoto}
+                onResetCardPhoto={resetCardPhotoImage}
+                cardUploading={cardUploading}
+              />
+              {!isMe && rowSeasonNumber != null && (
+                <p className="text-xs leading-relaxed text-light">
+                  You&rsquo;re editing your Season {rowSeasonNumber} card — edition, picture, framing and
+                  animation apply to this season only.
+                </p>
+              )}
+            </>
           ) : (
             <div className="card p-5 text-sm text-light">
-              Your rating card appears once you've raced a round this season. You can still pick an edition on the right.
+              {isMe
+                ? "Your rating card appears once you've raced a round this season. You can still pick an edition on the right."
+                : "No card for this season yet — it appears once you've raced a round. You can still pick its edition on the right."}
             </div>
           )}
 
           {/* Animation switch: keep the edition's baseline motion, or freeze it.
-              Acts on the CURRENT card only, so it hides on an old season's preview. */}
-          {pickerDriverId === me.driverId && (
+              Per season row, like everything else on this page. */}
+          {rowHasCard && (
           <>
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
             <div className="min-w-0">

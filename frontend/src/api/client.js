@@ -226,14 +226,21 @@ export const api = {
   // Which headline stat tiles the public profile shows (null = all six).
   setMyTiles: (tiles) => request("/me/tiles", { method: "PUT", body: { tiles }, userAuth: true }),
   // How the picture sits on the rating card ({x,y,z,s} or null = default).
-  setMyCardPhoto: (pos) => request("/me/card-photo", { method: "PUT", body: { pos }, userAuth: true }),
+  // driverId targets one of the person's own season rows (default: current).
+  setMyCardPhoto: (pos, driverId) =>
+    request("/me/card-photo", { method: "PUT", body: { pos, driverId }, userAuth: true }),
   // A separate card-only picture (falls back to the profile photo when unset).
-  uploadMyCardPhoto: (file) => {
+  uploadMyCardPhoto: (file, driverId) => {
     const fd = new FormData();
     fd.append("file", file);
+    if (driverId) fd.append("driverId", driverId);
     return request("/me/card-photo-image", { method: "POST", body: fd, userAuth: true, form: true });
   },
-  clearMyCardPhoto: () => request("/me/card-photo-image", { method: "DELETE", userAuth: true }),
+  clearMyCardPhoto: (driverId) =>
+    request(`/me/card-photo-image${driverId ? `?driverId=${encodeURIComponent(driverId)}` : ""}`, {
+      method: "DELETE",
+      userAuth: true,
+    }),
   // Unlockable rating-card editions: the catalogue + unlock state for a row, the
   // person's season chips, and picking an edition (driverId = which season row).
   myCardEditions: (driverId) =>

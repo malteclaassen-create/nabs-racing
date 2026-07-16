@@ -223,13 +223,16 @@ router.put("/tiles", async (req, res, next) => {
   }
 });
 
-// PUT /api/me/card-photo { pos: {x,y,z} | null } -> how the profile picture
+// PUT /api/me/card-photo { pos: {x,y,z} | null, driverId? } -> how the picture
 // sits on the driver rating card (focal point % + zoom). null = back to the
 // default framing. Values are clamped server-side, so a broken client can
-// never park the photo off the card.
+// never park the photo off the card. `driverId` targets one of the person's
+// OWN linked season rows (each season's card frames independently).
 router.put("/card-photo", async (req, res, next) => {
   try {
-    const driverId = await requireDriver(req, res);
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const driverId = await resolveOwnRow(req, res, actingId, req.body?.driverId);
     if (!driverId) return;
     const raw = req.body?.pos;
     let value = null;
@@ -430,12 +433,15 @@ router.delete("/photo", async (req, res, next) => {
   }
 });
 
-// POST /api/me/card-photo-image (multipart: file=<image>) -> a card-ONLY
-// picture, separate from the profile avatar. null column = the card uses the
-// profile photo. Written via raw SQL (cardPhotoUrl is a raw column).
+// POST /api/me/card-photo-image (multipart: file=<image>, driverId?) -> a
+// card-ONLY picture, separate from the profile avatar. null column = the card
+// uses the profile photo. Written via raw SQL (cardPhotoUrl is a raw column).
+// `driverId` (a form field) targets one of the person's own season rows.
 router.post("/card-photo-image", upload.single("file"), async (req, res, next) => {
   try {
-    const driverId = await requireDriver(req, res);
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const driverId = await resolveOwnRow(req, res, actingId, req.body?.driverId);
     if (!driverId) return;
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = IMG_EXT[req.file.mimetype];
@@ -452,11 +458,13 @@ router.post("/card-photo-image", upload.single("file"), async (req, res, next) =
   }
 });
 
-// DELETE /api/me/card-photo-image -> drop the card-only picture, so the card
-// falls back to the profile photo again.
+// DELETE /api/me/card-photo-image?driverId= -> drop the card-only picture, so
+// the card falls back to the profile photo again. `driverId` as above.
 router.delete("/card-photo-image", async (req, res, next) => {
   try {
-    const driverId = await requireDriver(req, res);
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const driverId = await resolveOwnRow(req, res, actingId, req.query?.driverId);
     if (!driverId) return;
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${null} WHERE "id" = ${driverId}`;
     res.json({ ok: true, cardPhotoUrl: null });

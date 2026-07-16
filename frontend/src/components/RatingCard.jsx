@@ -64,6 +64,38 @@ export function cardPhotoFraming(pos) {
   };
 }
 
+// Plain-words explanation of each sub-rating, shown on the public profile when
+// `explain` is on (hover/tap a value). RAC and AWA carry a "still being tuned"
+// note on purpose — the admins are still refining those two formulas.
+const RATING_INFO = {
+  exp: {
+    code: "EXP",
+    label: "Experience",
+    text:
+      "Career experience over your last seven finished seasons: race starts (45%), championship results for you and your teams (45%), plus small bonuses for finishing nearly every race and for seasons raced. An absolute scale — not compared to the rest of the field.",
+  },
+  rac: {
+    code: "RAC",
+    label: "Racecraft",
+    text:
+      "How you race, measured on this season and ranked against the field: finishing positions (45%), places gained from your grid slot (20%), podiums (20%) and on-track overtakes (15%).",
+    tuning: true,
+  },
+  aha: {
+    code: "AWA",
+    label: "Awareness",
+    text:
+      "Staying out of trouble, ranked against the field: finish rate, few DNFs, consistent lap times, and how rarely you collect car contacts, off-tracks and penalties.",
+    tuning: true,
+  },
+  pac: {
+    code: "PAC",
+    label: "Pace",
+    text:
+      "Raw speed over the career window: your average grid slot, your gap to the best race laps, and how consistent your lap times are — ranked against the season's regulars.",
+  },
+};
+
 // FIFA-/EA-style driver rating card. `driver` supplies identity (name, number,
 // country, photo + framing, team + team logo); `rating` supplies the numbers.
 // The team colour drives the whole card via the --team / --team2 custom
@@ -71,10 +103,14 @@ export function cardPhotoFraming(pos) {
 // `anim` (preview only, from the /cards look-book) forces ONE animation type
 // onto the card via data-anim, so the different motions can be compared side by
 // side. Omitted / "baseline" = each edition keeps its own designed motion.
-export default function RatingCard({ driver, rating, anim }) {
+// `explain` (the public profile) makes the four sub-values interactive: hover
+// or tap one and a small panel pops open UNDER the card explaining how that
+// value is computed (the card clips its own overflow, so it can't pop inside).
+export default function RatingCard({ driver, rating, anim, explain = false }) {
   // Hooks run unconditionally (rules of hooks); harmless when we render null.
   const { ref: nameRef, size: nameSize } = useFitName(driver?.name || "");
   const { current: season, seasons } = useSeason();
+  const [info, setInfo] = useState(null); // "exp" | "rac" | "aha" | "pac" | null
   // Card footer brand line, e.g. "NABS RACING · SEASON 4" — the DRIVER's own
   // season when known (the ratings are per-season, so an archive driver's card
   // must not claim the season currently being viewed), else the viewed one.
@@ -117,7 +153,7 @@ export default function RatingCard({ driver, rating, anim }) {
     ? anim !== "baseline" ? anim : undefined
     : driver?.cardAnim === "off" ? "none" : undefined;
 
-  return (
+  const card = (
     <div
       className="rcard-frame"
       data-edition={edition}
@@ -197,15 +233,51 @@ export default function RatingCard({ driver, rating, anim }) {
         </div>
 
         <div className="rcard-stats">
-          <div className="rcard-stat"><span>EXP</span><b>{g ? g.exp : "–"}</b></div>
-          <div className="rcard-stat"><span>RAC</span><b>{g ? g.rac : "–"}</b></div>
           {/* internal key stays `aha`; the league's display code is AWA */}
-          <div className="rcard-stat"><span>AWA</span><b>{g ? g.aha : "–"}</b></div>
-          <div className="rcard-stat"><span>PAC</span><b>{g ? g.pac : "–"}</b></div>
+          {["exp", "rac", "aha", "pac"].map((k) => (
+            <div
+              key={k}
+              className="rcard-stat"
+              style={explain ? { cursor: "help" } : undefined}
+              onMouseEnter={explain ? () => setInfo(k) : undefined}
+              onMouseLeave={explain ? () => setInfo(null) : undefined}
+              onClick={explain ? () => setInfo((cur) => (cur === k ? null : k)) : undefined}
+            >
+              <span>{RATING_INFO[k].code}</span>
+              <b>{g ? g[k] : "–"}</b>
+            </div>
+          ))}
         </div>
 
         <div className="rcard-brand"><span>NABS</span> RACING<i />{seasonLabel}{tierLabel && <><i />{tierLabel}</>}</div>
       </div>
+    </div>
+  );
+
+  if (!explain) return card;
+  // Explain mode: a relative wrapper hosts the pop-open panel OUTSIDE the
+  // chamfer-clipped frame, floating just below the card.
+  return (
+    <div className="relative">
+      {card}
+      {info && RATING_INFO[info] && (
+        <div className="pop-in absolute inset-x-0 top-full z-30 mt-2 rounded-xl border border-border bg-card p-4 text-left shadow-2xl shadow-ink/20">
+          <div className="flex items-baseline gap-2">
+            <span className="font-display text-sm font-black uppercase tracking-tight text-dark">
+              {RATING_INFO[info].label}
+            </span>
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+              {RATING_INFO[info].code}
+            </span>
+          </div>
+          <p className="mt-1.5 text-xs leading-relaxed text-medium">{RATING_INFO[info].text}</p>
+          {RATING_INFO[info].tuning && (
+            <p className="mt-1.5 text-[11px] font-semibold leading-relaxed text-amber-600 dark:text-amber-400">
+              This formula is still being fine-tuned — the exact maths may change.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

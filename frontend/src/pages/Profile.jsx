@@ -384,12 +384,22 @@ function ProfileEditor({ me, onDraftChange }) {
                 }}
                 rating={ratingRes.data}
               />
-              <Link to="/profile/card" className="btn-secondary flex w-full items-center justify-center gap-1.5">
+              {/* THE call to action of this column — bright brand button (with
+                  the site's shine sweep) so nobody misses that the card itself
+                  is editable, plus a one-line teaser of what's in there. */}
+              <Link
+                to="/profile/card"
+                className="shine group flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/25 transition hover:brightness-105"
+              >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
                 </svg>
                 Edit driver card
+                <span className="transition group-hover:translate-x-0.5">→</span>
               </Link>
+              <p className="text-center text-xs text-light">
+                Unlockable designs, your picture, framing and animation — for every season you raced.
+              </p>
             </div>
           )}
         </div>
