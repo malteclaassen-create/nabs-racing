@@ -255,13 +255,15 @@ export default function RatingCard({ driver, rating, anim, explain = false }) {
   );
 
   if (!explain) return card;
-  // Explain mode: a relative wrapper hosts the pop-open panel OUTSIDE the
-  // chamfer-clipped frame, floating just below the card.
+  // Explain mode: a relative wrapper hosts the pop-open panel. It overlays the
+  // LOWER PART OF THE CARD itself (not below it) — profile layouts clip
+  // overflow around the card, so anything floating outside its footprint
+  // would be cut off or land behind the next section.
   return (
     <div className="relative">
       {card}
       {info && RATING_INFO[info] && (
-        <div className="pop-in absolute inset-x-0 top-full z-30 mt-2 rounded-xl border border-border bg-card p-4 text-left shadow-2xl shadow-ink/20">
+        <div className="pop-in pointer-events-none absolute inset-x-2 bottom-[4.5rem] z-30 rounded-xl border border-border bg-card p-4 text-left shadow-2xl shadow-ink/40">
           <div className="flex items-baseline gap-2">
             <span className="font-display text-sm font-black uppercase tracking-tight text-dark">
               {RATING_INFO[info].label}
