@@ -56,6 +56,7 @@ function toState(defaults, saved) {
       split: { ...dExp.split, ...(sExp.split || {}) },
       fullStarts: String(sExp.fullStarts ?? dExp.fullStarts),
       finishThreshold: String(sExp.finishThreshold ?? dExp.finishThreshold),
+      progression: String(sExp.progression ?? dExp.progression ?? 1),
       driverCurve: listToText(sExp.driverCurve ?? dExp.driverCurve),
       preTier: listToText(sExp.constructors?.preTier ?? dExp.constructors.preTier),
       tier1: (sExp.constructors?.tier1 ?? dExp.constructors.tier1).map((t) => ({
@@ -92,6 +93,7 @@ function toWeights(f) {
       split: f.exp.split,
       fullStarts: numOr(f.exp.fullStarts, undefined),
       finishThreshold: numOr(f.exp.finishThreshold, undefined),
+      progression: numOr(f.exp.progression, undefined),
       driverCurve: parseList(f.exp.driverCurve).nums,
       constructors: {
         preTier: parseList(f.exp.preTier).nums,
@@ -367,6 +369,16 @@ export default function AdminRatings() {
               <div className="flex flex-wrap items-center gap-4 border-t border-border pt-3">
                 <NumField label="Full marks at" min="1" max="500" value={form.exp.fullStarts} onChange={(v) => setExp("fullStarts", v)} suffix="starts" />
                 <NumField label="Finishing block needs" min="0" max="100" value={form.exp.finishThreshold} onChange={(v) => setExp("finishThreshold", v)} suffix="% finished (all-or-nothing)" />
+              </div>
+              <div className="flex flex-wrap items-center gap-4 border-t border-border pt-3">
+                <NumField label="Progression curve" min="0.1" max="3" step="0.05" value={form.exp.progression} onChange={(v) => setExp("progression", v)} suffix="exponent" />
+                <p className="max-w-md text-xs leading-relaxed text-light">
+                  Below 1 the early points come fast and the last ones keep getting harder (0.6 = the default
+                  curve); 1 = linear, above 1 flips it. The EXP floor and ceiling (
+                  {form.bands.exp.low || defaults?.bands?.exp?.low || 35}–
+                  {form.bands.exp.high || defaults?.bands?.exp?.high || 99}, set in the spreads below) never
+                  move; only the path between them bends.
+                </p>
               </div>
               <div className="border-t border-border pt-3">
                 <div className="mb-2 text-sm font-semibold text-medium">Championship block: drivers vs constructors</div>

@@ -85,6 +85,13 @@ const EXP_DEFAULTS = {
     ],
     tier2: [{ teams: 5, values: [50, 40, 30, 20, 10] }],
   },
+  // Progression curve: the raw 0..1 EXP score is raised to this exponent
+  // before it maps onto the 35..99 band. Below 1 the curve is concave —
+  // newcomers climb quickly out of the floor while the last points toward 99
+  // keep getting harder (the "multiplier that shrinks as you gain XP").
+  // 1 = linear (off). The 35 floor and the 99 ceiling stay exactly where
+  // they are; only the path between them bends.
+  progression: 0.6,
 };
 
 // EXP is absolute (floor..99); PAC spans 50..99 per the sheet.
@@ -116,6 +123,7 @@ export const RATING_DEFAULTS = {
       tier1: EXP_DEFAULTS.constructors.tier1.map((t) => ({ teams: t.teams, values: [...t.values] })),
       tier2: EXP_DEFAULTS.constructors.tier2.map((t) => ({ teams: t.teams, values: [...t.values] })),
     },
+    progression: EXP_DEFAULTS.progression,
   },
   rtg: { ...RTG_WEIGHTS },
   pac: { ...PAC_WEIGHTS },
@@ -193,6 +201,9 @@ export function resolveConfig(opts = {}) {
       tier1: resolveTierTables(opts.exp?.constructors?.tier1, EXP_DEFAULTS.constructors.tier1),
       tier2: resolveTierTables(opts.exp?.constructors?.tier2, EXP_DEFAULTS.constructors.tier2),
     },
+    // Exponent on the raw 0..1 score (1 = linear). Clamped to a sane range so
+    // a typo can't flatten everyone onto the floor or the ceiling.
+    progression: Math.max(0.1, Math.min(3, numOrNull(opts.exp?.progression) ?? EXP_DEFAULTS.progression)),
   };
 
   return {
@@ -527,11 +538,15 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     const champPct = cw ? cw.champPct : 0;
     const finishingPct = cw && cw.finishRate != null ? (cw.finishRate * 100 >= cfg.exp.finishThreshold ? 1 : 0) : 0;
     const activityPct = cw && cw.windowSize ? cw.activeSeasons / cw.windowSize : 0;
-    const expPct =
+    const expRaw =
       cfg.exp.weights.starts * startsPct +
       cfg.exp.weights.championship * champPct +
       cfg.exp.weights.finishing * finishingPct +
       cfg.exp.weights.activity * activityPct;
+    // Progression curve (exp.progression < 1 = concave): early experience
+    // lifts the rating quickly off the floor, the last points toward 99 come
+    // ever slower. Floor and ceiling themselves don't move (0->0, 1->1).
+    const expPct = Math.pow(Math.max(0, Math.min(1, expRaw)), cfg.exp.progression);
 
     const pacPct = cfg.pac.quali * pGrid + cfg.pac.bestLap * pLap + cfg.pac.consistency * pCons + cfg.pac.poleGap * pPole;
     const racPct =

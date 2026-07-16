@@ -66,6 +66,9 @@ export function sanitizeRatingWeights(input) {
   if (fullStarts != null) exp.fullStarts = Math.round(fullStarts);
   const finishThreshold = clampNum(input.exp?.finishThreshold, 0, 100);
   if (finishThreshold != null) exp.finishThreshold = finishThreshold;
+  // Progression-curve exponent (1 = linear); same bounds as resolveConfig.
+  const progression = clampNum(input.exp?.progression, 0.1, 3);
+  if (progression != null) exp.progression = progression;
   const split = sanitizeGroup(input.exp?.split, ["drivers", "constructors"]);
   if (split) exp.split = split;
   const driverCurve = sanitizeCurve(input.exp?.driverCurve, 40);
