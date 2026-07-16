@@ -4,6 +4,7 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton } from "../components/ui.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
 import RaceResults from "../components/RaceResults.jsx";
 import RaceFacts from "../components/RaceFacts.jsx";
 import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
@@ -342,8 +343,6 @@ export default function Races() {
   // The race currently open in the explorer. Completed -> results table;
   // upcoming -> the UpcomingRacePanel (countdown, circuit map, track record).
   const selectedRace = (races || []).find((r) => r.id === selectedId);
-  const tabCls = (active) =>
-    `rounded-lg px-4 py-2 text-sm font-bold transition ${active ? "bg-brand text-ink shadow" : "text-light hover:text-dark"}`;
 
   // Switching tabs re-points the explorer at a sensible race of the NEW type —
   // same heuristic as the initial pick (most recent completed, else next
@@ -366,25 +365,21 @@ export default function Races() {
         eyebrow="Schedule & Results"
         title="Races"
         right={
-          <div className="inline-flex flex-wrap rounded-xl border border-border bg-card p-1">
-            <button type="button" onClick={() => selectTab("rounds")} className={tabCls(tab === "rounds")}>
-              Championship
-              <span className="ml-1.5 opacity-70">{rounds.length}</span>
-            </button>
-            {/* Training sessions get their own clearly-labelled group — the tab
-                only appears once a session is scheduled, so a league without
-                trainings keeps today's two-tab page. */}
-            {trainings.length > 0 && (
-              <button type="button" onClick={() => selectTab("training")} className={tabCls(tab === "training")}>
-                Training / Sessions
-                <span className="ml-1.5 opacity-70">{trainings.length}</span>
-              </button>
-            )}
-            <button type="button" onClick={() => selectTab("se")} className={tabCls(tab === "se")}>
-              Special Events
-              <span className="ml-1.5 opacity-70">{specials.length}</span>
-            </button>
-          </div>
+          <SlidingTabs
+            btnClassName="px-4 py-2 text-sm"
+            items={[
+              { key: "rounds", label: <>Championship<span className="ml-1.5 opacity-70">{rounds.length}</span></> },
+              // Training sessions get their own clearly-labelled group — the tab
+              // only appears once a session is scheduled, so a league without
+              // trainings keeps today's two-tab page.
+              ...(trainings.length > 0
+                ? [{ key: "training", label: <>Training / Sessions<span className="ml-1.5 opacity-70">{trainings.length}</span></> }]
+                : []),
+              { key: "se", label: <>Special Events<span className="ml-1.5 opacity-70">{specials.length}</span></> },
+            ]}
+            value={tab}
+            onChange={selectTab}
+          />
         }
       />
 

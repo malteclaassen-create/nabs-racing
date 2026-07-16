@@ -60,6 +60,13 @@ function TypeIcon({ type }) {
           <path d="M8 21l-4-4 4-4M4 17h13" />
         </svg>
       );
+    case "NEWS": // megaphone — feature announcements
+      return (
+        <svg {...common}>
+          <path d="M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1z" />
+          <path d="M14 8a4 4 0 010 8M17 5a8 8 0 010 14" />
+        </svg>
+      );
     case "CARD": // rating card with a star
       return (
         <svg {...common}>

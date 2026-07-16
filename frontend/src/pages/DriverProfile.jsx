@@ -14,6 +14,7 @@ import SocialLinks from "../components/SocialLinks.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx";
 import { SettingsDrawer, GearIcon } from "../components/SettingsPanel.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { circuitFor } from "../data/circuits.js";
 
@@ -911,17 +912,6 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
       )}
     </>
   );
-  const scopeBtn = (key, label) => (
-    <button
-      type="button"
-      onClick={() => setScope(key)}
-      className={`rounded-md px-2.5 py-1 text-xs font-bold transition ${
-        (key === "all") === showAll ? "bg-brand text-ink" : "text-light hover:text-dark"
-      }`}
-    >
-      {label}
-    </button>
-  );
   return (
     <div className="reveal card relative overflow-hidden p-5 sm:p-6">
       {/* team-colour top strip + faint wash tie the panel to the card frame */}
@@ -1060,10 +1050,17 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                 <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
                   {showAll ? `All-time · ${career.totals.seasons} seasons` : "This season"}
                 </span>
-                <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
-                  {scopeBtn("season", "Season")}
-                  {scopeBtn("all", "All-time")}
-                </div>
+                <SlidingTabs
+                  wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
+                  btnClassName="px-2.5 py-1 text-xs"
+                  pillClassName="rounded-md bg-brand"
+                  items={[
+                    { key: "season", label: "Season" },
+                    { key: "all", label: "All-time" },
+                  ]}
+                  value={showAll ? "all" : "season"}
+                  onChange={setScope}
+                />
               </div>
             )}
             <StatTiles stats={shown} visible={driver.profileTiles} className="grid-cols-2 sm:grid-cols-3" />

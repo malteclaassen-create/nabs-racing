@@ -17,6 +17,7 @@ import DriverStandings from "./pages/DriverStandings.jsx";
 import DriverProfile from "./pages/DriverProfile.jsx";
 import Constructors from "./pages/Constructors.jsx";
 import TeamProfile from "./pages/TeamProfile.jsx";
+import HallOfFame from "./pages/HallOfFame.jsx";
 import Races from "./pages/Races.jsx";
 import Attendance from "./pages/Attendance.jsx";
 import Live from "./pages/Live.jsx";
@@ -140,6 +141,7 @@ function AppRoutes() {
         <Route path="/s/:seriesSlug/constructors/:id" element={<TeamProfile />} />
         <Route path="/s/:seriesSlug/teams" element={<Constructors />} />
         <Route path="/s/:seriesSlug/teams/:id" element={<TeamProfile />} />
+        <Route path="/s/:seriesSlug/records" element={<HallOfFame />} />
         <Route path="/s/:seriesSlug/races" element={<Races />} />
         <Route path="/s/:seriesSlug/results" element={<Races />} />
         <Route path="/s/:seriesSlug/calendar" element={<Races />} />
@@ -155,6 +157,7 @@ function AppRoutes() {
         <Route path="/constructors/:id" element={<ToSeries sub="/constructors/:id" />} />
         <Route path="/teams" element={<ToSeries sub="/teams" />} />
         <Route path="/teams/:id" element={<ToSeries sub="/teams/:id" />} />
+        <Route path="/records" element={<ToSeries sub="/records" />} />
         <Route path="/races" element={<ToSeries sub="/races" />} />
         <Route path="/results" element={<ToSeries sub="/results" />} />
         <Route path="/calendar" element={<ToSeries sub="/calendar" />} />

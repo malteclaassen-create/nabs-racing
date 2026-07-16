@@ -854,6 +854,18 @@ body::before {
 .rcard-brand span { color: color-mix(in srgb, var(--team2) 80%, #fff); }
 .rcard-brand i { width: 3px; height: 3px; border-radius: 50%; background: rgba(255, 255, 255, 0.32); }
 
+/* Standings "Cards" view: the frame fills its grid cell (a touch narrower than
+   the native 332px when four share a row) and the card keeps its proportions
+   via aspect-ratio instead of the fixed pixel height. */
+.rcard-fit .rcard-frame { width: 100%; }
+.rcard-fit .rcard { height: auto; aspect-ratio: 332 / 470; }
+/* Only cards in (or near) the viewport are painted/animated: with 70+ cards on
+   the page, layers like the sheen sweep and glow otherwise all animate at
+   once and scrolling stutters. contain-intrinsic-size reserves each card's
+   footprint (cell width x aspect ratio ~ 401px + the standing line) so the
+   scrollbar doesn't jump as cards enter. */
+.rcard-fit > * { content-visibility: auto; contain-intrinsic-size: auto 440px; }
+
 @media (prefers-reduced-motion: reduce) { .rcard-sheen { animation: none; } }
 .fx-lite .rcard-sheen { animation: none !important; }
 

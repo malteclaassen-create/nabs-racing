@@ -9,6 +9,7 @@ import {
   DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
 import { getSeasonScoring } from "./seasonService.js";
+import { invalidateRecordsCache } from "./recordsService.js";
 
 // Rejects obviously broken input BEFORE anything is written, with messages an
 // admin can act on. Throws a 400-flagged error (the express error handler
@@ -205,6 +206,9 @@ export async function saveRaceResults(prisma, raceId, results) {
   // a no-op there. Raw SQL so it works even before the generated client is
   // refreshed for the new column (same idiom as the telemetry columns above).
   const steamIdConflicts = await reconcileSteamIds(prisma, results, drivers);
+  // New results move the all-time records — drop the Hall of Fame cache so the
+  // page reflects the round immediately instead of after the cache TTL.
+  invalidateRecordsCache();
   return { steamIdConflicts };
 }
 

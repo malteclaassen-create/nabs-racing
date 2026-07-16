@@ -29,7 +29,7 @@ import { isAdminRequest } from "./middleware/auth.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
-import { backfillCardIntro } from "./lib/notifications.js";
+import { backfillCardIntro, announceFeatures } from "./lib/notifications.js";
 import { UPLOADS_DIR } from "./lib/dataDirs.js";
 
 // Schema upkeep that runs outside `prisma migrate` (raw SQL — see the comment
@@ -40,6 +40,8 @@ import { UPLOADS_DIR } from "./lib/dataDirs.js";
 ensureAppSchema(prisma)
   .then(() => ensureDownloadTables(prisma))
   .then(() => backfillCardIntro(prisma))
+  // One-off feature announcements (broadcasts, deduped so reboots never repeat).
+  .then(() => announceFeatures(prisma))
   .catch((e) => console.error("schema upkeep:", e));
 
 const app = express();

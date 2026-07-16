@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { PageHeader } from "../components/ui.jsx";
 import RatingCard from "../components/RatingCard.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
 
 // A no-login preview of every rating-card edition — a design reference so the
 // look of each unlockable card can be checked without earning it or signing in.
@@ -165,21 +166,14 @@ export default function CardGallery() {
       {/* Animation-type switcher — try each motion across the whole grid. */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Animation</span>
-        <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-card p-1">
-          {ANIMS.map((a) => (
-            <button
-              key={a.key}
-              type="button"
-              onClick={() => setAnim(a.key)}
-              aria-pressed={anim === a.key}
-              className={`rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
-                anim === a.key ? "bg-brand text-ink" : "text-light hover:text-dark"
-              }`}
-            >
-              {a.label}
-            </button>
-          ))}
-        </div>
+        <SlidingTabs
+          wrapClassName="inline-flex flex-wrap rounded-lg border border-border bg-card p-1"
+          btnClassName="px-3 py-1.5 text-xs uppercase tracking-wide"
+          pillClassName="rounded-md bg-brand"
+          items={ANIMS.map((a) => ({ key: a.key, label: a.label }))}
+          value={anim}
+          onChange={setAnim}
+        />
         <span className="text-xs text-light">
           {anim === "baseline" ? "Each edition’s own motion." : "Forced on every card, for comparison."}
         </span>

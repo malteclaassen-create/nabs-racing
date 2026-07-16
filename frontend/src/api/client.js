@@ -168,6 +168,10 @@ export const api = {
   driverStandings: (season) => request(`/standings/drivers${seasonParam(season)}`, { auth: true }),
   // End-of-season honours (champion, awards) for the finished-season home hero.
   seasonHonours: (season) => request(`/standings/honours${seasonParam(season)}`, { auth: true }),
+  // Every rated driver of the season incl. card look — the standings "Cards" view.
+  seasonRatings: (season) => request(`/standings/ratings${seasonParam(season)}`, { auth: true }),
+  // All-time records of the viewed series (Hall of Fame page). Series-scoped.
+  seriesRecords: () => request(`/standings/records${seriesQ()}`, { auth: true }),
   // Races of an EXPLICIT season (e.g. the next-season teaser), regardless of
   // the season the site is currently viewing (within the current series).
   racesFor: (n) => request(`/races${seasonParam(n)}`, { auth: true }),

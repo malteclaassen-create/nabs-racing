@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -9,6 +9,8 @@ import { useTilt } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import StandingsTable from "../components/StandingsTable.jsx";
+import RatingCard from "../components/RatingCard.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
 import { countryFor } from "../data/driverCountries.js";
 
 function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champion = false }) {
@@ -141,17 +143,55 @@ const TIER_FILTERS = [
   { id: "0", label: "Reserves" },
 ];
 
+// The page remounts on every season switch (App keys the content on the
+// season), which used to reset the view/filters to their defaults — switching
+// from the Season 7 cards to Season 6 dumped you back into the list. These
+// tiny sessionStorage-backed states survive the remount (and navigation away
+// and back), so the page reopens exactly how you left it. Per tab on purpose.
+function usePersistentState(key, initial) {
+  const [value, setValue] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(key);
+      return raw != null ? JSON.parse(raw) : initial;
+    } catch {
+      return initial;
+    }
+  });
+  const set = (v) => {
+    setValue(v);
+    try {
+      sessionStorage.setItem(key, JSON.stringify(v));
+    } catch {
+      /* private mode etc. — the pick simply won't persist */
+    }
+  };
+  return [value, set];
+}
+
 export default function DriverStandings() {
   useSeasonParam(); // honour a ?season=N deep link (e.g. from the global search)
   const { data, loading, error } = useApi(useCallback(() => api.driverStandings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const { current: season, active } = useSeason();
-  const [onlyScoring, setOnlyScoring] = useState(false);
-  const [tier, setTier] = useState("all");
+  const [onlyScoring, setOnlyScoring] = usePersistentState("nabs.standings.onlyScoring", false);
+  const [tier, setTier] = usePersistentState("nabs.standings.tier", "all");
   // "list" = the ranked cards/rows; "grid" = the per-round points matrix (same
-  // table the Constructors page uses), so you can read each driver's haul at
-  // every race. Only offered when the season actually has rounds.
-  const [view, setView] = useState("list");
+  // table the Constructors page uses); "cards" = the whole field as their
+  // actual driver rating cards, in championship order.
+  const [view, setView] = usePersistentState("nabs.standings.view", "list");
+
+  // Ratings (incl. each driver's card look) are only fetched once the Cards
+  // view is opened — the list/matrix don't need them.
+  const [cardData, setCardData] = useState(null);
+  useEffect(() => {
+    if (view !== "cards" || cardData) return;
+    let alive = true;
+    api
+      .seasonRatings()
+      .then((d) => alive && setCardData(d || { ratings: [] }))
+      .catch(() => alive && setCardData({ ratings: [] }));
+    return () => { alive = false; };
+  }, [view, cardData]);
 
   if (loading)
     return (
@@ -217,22 +257,9 @@ export default function DriverStandings() {
   // back to the list regardless of what's selected.
   const activeView = hasRounds ? view : "list";
 
-  const segCls = (active) =>
-    `rounded-lg px-3.5 py-2 text-sm font-bold transition ${
-      active ? "bg-brand text-ink shadow" : "text-light hover:text-dark"
-    }`;
-
   return (
     <div className="content-in">
-      <PageHeader
-        eyebrow="Championship"
-        title="Driver Standings"
-        subtitle={
-          multiTier
-            ? "All drivers, from Tier 1 and Tier 2 to the reserves, ranked by total points."
-            : "All drivers ranked by total points."
-        }
-      />
+      <PageHeader eyebrow="Championship" title="Driver Standings" />
 
       {top3.length > 0 && (
         // 3-across only from lg: at md widths the cards get so narrow the
@@ -254,26 +281,25 @@ export default function DriverStandings() {
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         {multiTier ? (
-          <div className="inline-flex rounded-xl border border-border bg-card p-1">
-            {tierFilters.map((t) => (
-              <button key={t.id} type="button" onClick={() => setTier(t.id)} className={segCls(activeTier === t.id)}>
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <SlidingTabs
+            items={tierFilters.map((t) => ({ key: t.id, label: t.label }))}
+            value={activeTier}
+            onChange={setTier}
+          />
         ) : (
           <span />
         )}
         <div className="flex flex-wrap items-center gap-3">
           {hasRounds && (
-            <div className="inline-flex rounded-xl border border-border bg-card p-1">
-              <button type="button" onClick={() => setView("list")} className={segCls(activeView === "list")}>
-                List
-              </button>
-              <button type="button" onClick={() => setView("grid")} className={segCls(activeView === "grid")}>
-                By round
-              </button>
-            </div>
+            <SlidingTabs
+              items={[
+                { key: "list", label: "List" },
+                { key: "grid", label: "By round" },
+                { key: "cards", label: "Cards" },
+              ]}
+              value={activeView}
+              onChange={setView}
+            />
           )}
           <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-medium">
             <input
@@ -302,6 +328,74 @@ export default function DriverStandings() {
 
       {rows.length === 0 ? (
         <div className="card p-8 text-center text-medium">No drivers match this filter.</div>
+      ) : activeView === "cards" ? (
+        // The field as their actual rating cards, in championship order of the
+        // current filter view. Drivers without a card yet (no race this season)
+        // simply don't appear; the note below says so.
+        !cardData ? (
+          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3" style={{ justifyItems: "center" }}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-[470px] w-[332px] max-w-full rounded-2xl" />
+            ))}
+          </div>
+        ) : (() => {
+          const ratingById = new Map(cardData.ratings.map((r) => [r.driverId, r]));
+          const withCards = rows.filter((d) => ratingById.has(d.driverId));
+          if (withCards.length === 0)
+            return <div className="card p-8 text-center text-medium">No rating cards yet — they appear once drivers have raced.</div>;
+          return (
+            <div>
+              <div className="rcard-fit cascade grid gap-x-4 gap-y-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" style={{ justifyItems: "center" }}>
+                {withCards.map((d, i) => {
+                  const r = ratingById.get(d.driverId);
+                  return (
+                    <div key={d.driverId} className="w-full max-w-[332px]" style={{ "--i": Math.min(i, 16) }}>
+                      {/* Standing line ABOVE the card — plain text, no box:
+                          rank (medal-coloured on the podium) + gap, points right. */}
+                      <div className="mb-2 flex items-end justify-between px-1">
+                        <span className="flex items-center gap-2.5">
+                          <Rank position={d.position} />
+                          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+                            {d.position === 1 ? (seasonDecided ? "Champion" : "Leader") : `−${leaderTotal - d.total} pts`}
+                          </span>
+                        </span>
+                        <span className="font-display text-xl font-black leading-none tabular-nums text-dark">
+                          {d.total}
+                          <span className="ml-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light">pts</span>
+                        </span>
+                      </div>
+                      <Link to={`/drivers/${d.driverId}`} className="block transition hover:-translate-y-1">
+                        <RatingCard
+                          driver={{
+                            id: d.driverId,
+                            name: d.name,
+                            number: r.number,
+                            country: d.country || r.country,
+                            photoUrl: d.photoUrl || r.photoUrl,
+                            tier: d.tier,
+                            role: r.role,
+                            team: d.team,
+                            cardStyle: r.cardStyle,
+                            cardAnim: r.cardAnim,
+                            photoPos: r.photoPos,
+                            cardPhotoUrl: r.cardPhotoUrl,
+                            seasonNumber: cardData.seasonNumber,
+                          }}
+                          rating={r}
+                        />
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+              {withCards.length < rows.length && (
+                <p className="mt-6 text-center text-xs text-light">
+                  {rows.length - withCards.length} of {rows.length} drivers have no card yet (no race this season).
+                </p>
+              )}
+            </div>
+          );
+        })()
       ) : activeView === "grid" ? (
         <StandingsTable
           variant="driver"

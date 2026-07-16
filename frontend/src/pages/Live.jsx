@@ -10,6 +10,7 @@ import TyreStrategy, { TyreBadge } from "../components/TyreStrategy.jsx";
 import { circuitForLive } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { SocialIcon, useSocial } from "../components/SocialLinks.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
 import {
   makeDriverMatcher,
   formatLap,
@@ -729,35 +730,29 @@ function ExternalButtons({ links, patreonUrl }) {
 // toggle. "Standings" (the live championship projection) only exists on league
 // race days — it joins the switch with a pulsing dot so it gets noticed.
 function ViewSwitch({ view, setView, hasStandings }) {
-  const btn = (key, label, dot = false) => (
-    <button
-      key={key}
-      type="button"
-      onClick={() => setView(key)}
-      className={`flex items-center gap-1.5 rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
-        view === key ? "bg-brand text-ink" : "text-light hover:text-dark"
-      }`}
-      aria-pressed={view === key}
-    >
-      {dot && (
-        <span className="relative flex h-2 w-2">
-          <span
-            className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${
-              view === key ? "bg-ink" : "bg-brand"
-            }`}
-          />
-          <span className={`relative inline-flex h-2 w-2 rounded-full ${view === key ? "bg-ink" : "bg-brand"}`} />
-        </span>
-      )}
-      {label}
-    </button>
+  const dot = (
+    <span className="relative mr-1.5 inline-flex h-2 w-2">
+      <span
+        className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${
+          view === "standings" ? "bg-ink" : "bg-brand"
+        }`}
+      />
+      <span className={`relative inline-flex h-2 w-2 rounded-full ${view === "standings" ? "bg-ink" : "bg-brand"}`} />
+    </span>
   );
   return (
-    <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
-      {btn("timing", "Timing")}
-      {btn("strategy", "Strategy")}
-      {hasStandings && btn("standings", "Standings", true)}
-    </div>
+    <SlidingTabs
+      wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
+      btnClassName="px-4 py-1.5 text-xs uppercase tracking-wide"
+      pillClassName="rounded-md bg-brand"
+      items={[
+        { key: "timing", label: "Timing" },
+        { key: "strategy", label: "Strategy" },
+        ...(hasStandings ? [{ key: "standings", label: <span className="inline-flex items-center">{dot}Standings</span> }] : []),
+      ]}
+      value={view}
+      onChange={setView}
+    />
   );
 }
 

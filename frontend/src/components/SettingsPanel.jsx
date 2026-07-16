@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "../hooks/useTheme.js";
 import { useGraphics } from "../hooks/useGraphics.js";
+import SlidingTabs from "./SlidingTabs.jsx";
 
 export function GearIcon() {
   return (
@@ -41,24 +42,27 @@ function FeatherIcon() {
   );
 }
 
-// A small two/three-option segmented control.
+// A small two/three-option segmented control (sliding active pill).
 function Segmented({ value, options, onChange }) {
   return (
-    <div className="flex rounded-xl border border-border bg-surface2 p-1">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-            value === o.value ? "bg-card text-dark shadow-sm ring-1 ring-border" : "text-light hover:text-medium"
-          }`}
-        >
-          {o.icon}
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <SlidingTabs
+      wrapClassName="flex rounded-xl border border-border bg-surface2 p-1"
+      btnClassName="flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold"
+      pillClassName="rounded-lg bg-card shadow-sm ring-1 ring-border"
+      activeClassName="text-dark"
+      idleClassName="text-light hover:text-medium"
+      items={options.map((o) => ({
+        key: o.value,
+        label: (
+          <span className="inline-flex items-center gap-1.5">
+            {o.icon}
+            {o.label}
+          </span>
+        ),
+      }))}
+      value={value}
+      onChange={onChange}
+    />
   );
 }
 

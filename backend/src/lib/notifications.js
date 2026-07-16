@@ -429,6 +429,38 @@ export async function backfillCardIntro(prisma) {
   }
 }
 
+// --- feature announcements ------------------------------------------------------
+// One-off "look what's new" broadcasts to every member's bell. Each entry runs
+// exactly once ever — the dedupeKey's unique index makes re-running a no-op —
+// so shipping the NEXT announcement is just another array entry. Best-effort
+// at boot, like the card-intro backfill.
+const FEATURE_ANNOUNCEMENTS = [
+  {
+    dedupeKey: "feature:hall-of-fame",
+    type: "NEWS",
+    title: "New: Hall of Fame",
+    body: "All-time records are live: every champion, single-season records and the career top 10s. Find it under Standings.",
+    link: "/records",
+  },
+  {
+    dedupeKey: "feature:cards-view",
+    type: "NEWS",
+    title: "New: the field as driver cards",
+    body: "The driver standings got a Cards view — everyone's rating card in championship order, with each driver's own edition and picture.",
+    link: "/drivers",
+  },
+];
+
+export async function announceFeatures(prisma) {
+  for (const a of FEATURE_ANNOUNCEMENTS) {
+    try {
+      await dbCreateNotification(prisma, a); // broadcast: recipientId null
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
 // --- race reminders ------------------------------------------------------------
 // No cron needed: whenever anyone asks the bell for data, upcoming championship
 // races of the active public seasons get their (deduped) reminder broadcasts.

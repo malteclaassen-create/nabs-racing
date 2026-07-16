@@ -8,6 +8,7 @@ import SeriesSwitcher from "./SeriesSwitcher.jsx";
 import NotificationBell from "./NotificationBell.jsx";
 import GlobalSearch from "./GlobalSearch.jsx";
 import { DriverAvatar } from "./ui.jsx";
+import { useSlidingHighlight } from "./SlidingTabs.jsx";
 
 // Auth-aware control that replaces the old "Sign Up" nav item: a "Log in" button
 // when logged out, or the driver's avatar + name when in. The chip links to the
@@ -77,9 +78,17 @@ const linkClass = ({ isActive }) =>
     isActive ? "bg-brand/20 text-dark ring-1 ring-inset ring-brand/50" : "text-medium hover:bg-surface2"
   }`;
 
+// Desktop variant: the active page's highlight is ONE pill that GLIDES between
+// the items (see the sliding span in the desktop nav), so the item itself only
+// switches its text colour and carries the `is-active` marker the pill follows.
+const desktopLinkClass = ({ isActive }) =>
+  `nav-link relative flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
+    isActive ? "is-active text-dark" : "text-medium hover:bg-surface2"
+  }`;
+
 // The two pages the "Standings" item covers (matched with the series prefix
 // stripped, so it lights up inside every series).
-const STANDINGS_PAGES = ["/drivers", "/constructors"];
+const STANDINGS_PAGES = ["/drivers", "/constructors", "/records"];
 
 function StandIcon({ d }) {
   // overflow-visible so a stroke sitting right at the viewBox edge (the group
@@ -150,7 +159,7 @@ function StandingsNav({ seriesPath }) {
         aria-haspopup="menu"
         aria-expanded={open}
         className={`nav-link flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
-          active ? "bg-brand/20 text-dark ring-1 ring-inset ring-brand/50" : "text-medium hover:bg-surface2"
+          active ? "is-active text-dark" : "text-medium hover:bg-surface2"
         }`}
       >
         Standings
@@ -172,6 +181,7 @@ function StandingsNav({ seriesPath }) {
         >
           {row(seriesPath("/drivers"), <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>, "Drivers", "Driver standings")}
           {row(seriesPath("/constructors"), <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>, "Constructors", "Constructor standings")}
+          {row(seriesPath("/records"), <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>, "Hall of Fame", "All-time records")}
         </div>
       </div>
     </div>
@@ -187,6 +197,9 @@ export default function NavBar() {
   // Handed to GlobalSearch so its expanded field + dropdown line up their left
   // edge with the "Live" nav item.
   const liveRef = useRef(null);
+  // The gliding active-page pill of the desktop nav (follows `.is-active`).
+  const desktopNavRef = useRef(null);
+  const navPill = useSlidingHighlight(desktopNavRef, [location.pathname]);
 
   // Close the mobile menu whenever the route changes.
   useEffect(() => setOpen(false), [location.pathname]);
@@ -249,8 +262,17 @@ export default function NavBar() {
           )}
         </div>
 
-        {/* Desktop nav */}
-        <div className="hidden items-center gap-1 lg:flex">
+        {/* Desktop nav — the active page's pill highlight GLIDES between the
+            items instead of jumping (one absolutely-positioned pill follows
+            whichever item carries `.is-active`). */}
+        <div ref={desktopNavRef} className="relative hidden items-center gap-1 lg:flex">
+          {navPill && (
+            <span
+              aria-hidden
+              className="absolute rounded-lg bg-brand/20 ring-1 ring-inset ring-brand/50 transition-[left,top,width,height] duration-300 ease-out"
+              style={{ left: navPill.left, top: navPill.top, width: navPill.width, height: navPill.height }}
+            />
+          )}
           {links.map((l) =>
             l.standings ? (
               <StandingsNav key="standings" seriesPath={seriesPath} />
@@ -259,7 +281,7 @@ export default function NavBar() {
                 key={l.to}
                 to={l.to}
                 end={l.end}
-                className={linkClass}
+                className={desktopLinkClass}
                 ref={l.label === "Live" ? liveRef : undefined}
               >
                 {l.label}
@@ -332,6 +354,7 @@ export default function NavBar() {
                   [
                     <NavLink key="m-drivers" to={seriesPath("/drivers")} className={linkClass}>Drivers</NavLink>,
                     <NavLink key="m-constructors" to={seriesPath("/constructors")} className={linkClass}>Constructors</NavLink>,
+                    <NavLink key="m-records" to={seriesPath("/records")} className={linkClass}>Hall of Fame</NavLink>,
                   ]
                 ) : (
                   <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>

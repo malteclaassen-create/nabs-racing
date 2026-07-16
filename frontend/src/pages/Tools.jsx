@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/ui.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
 
 // ---------------------------------------------------------------------------
 // /tools — race-prep calculators for members. Deliberately NOT in the main
@@ -132,25 +133,17 @@ function FuelCalculator({ store, update }) {
   const recommended =
     exact != null ? Math.ceil((raceLaps + (formation ? 1 : 0)) * perLap * (1 + Math.max(0, marginPct) / 100)) : null;
 
-  const modeBtn = (m, label) => (
-    <button
-      type="button"
-      onClick={() => update({ fuelMode: m })}
-      aria-pressed={mode === m}
-      className={`rounded-lg px-3.5 py-1.5 text-sm font-bold transition ${
-        mode === m ? "bg-brand text-ink shadow" : "text-light hover:text-dark"
-      }`}
-    >
-      {label}
-    </button>
-  );
-
   return (
     <ToolCard title="Fuel calculator" subtitle="How many liters to put in for the race.">
-      <div className="inline-flex rounded-xl border border-border bg-card p-1">
-        {modeBtn("laps", "I know the laps")}
-        {modeBtn("time", "Timed race")}
-      </div>
+      <SlidingTabs
+        btnClassName="px-3.5 py-1.5 text-sm"
+        items={[
+          { key: "laps", label: "I know the laps" },
+          { key: "time", label: "Timed race" },
+        ]}
+        value={mode}
+        onChange={(m) => update({ fuelMode: m })}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         {mode === "laps" ? (

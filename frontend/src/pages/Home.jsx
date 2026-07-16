@@ -18,6 +18,7 @@ import { fmtRaceTime } from "../utils/raceTime.js";
 import { heroFor, heroOnError, carFor, carModelFor } from "../utils/heroImage.js";
 import Car3D from "../components/Car3D.jsx";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
 
@@ -958,22 +959,17 @@ export default function Home() {
             {showTierToggle && (
               <div className="flex items-center gap-2">
                 <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Ranking</span>
-                <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setTierView(false)}
-                    className={`rounded-md px-2.5 py-1 text-xs font-bold transition ${!useTier ? "bg-brand text-ink" : "text-light hover:text-dark"}`}
-                  >
-                    Overall
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTierView(true)}
-                    className={`rounded-md px-2.5 py-1 text-xs font-bold transition ${useTier ? "bg-brand text-ink" : "text-light hover:text-dark"}`}
-                  >
-                    Tier {myTier}
-                  </button>
-                </div>
+                <SlidingTabs
+                  wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
+                  btnClassName="px-2.5 py-1 text-xs"
+                  pillClassName="rounded-md bg-brand"
+                  items={[
+                    { key: "overall", label: "Overall" },
+                    { key: "tier", label: `Tier ${myTier}` },
+                  ]}
+                  value={useTier ? "tier" : "overall"}
+                  onChange={(k) => setTierView(k === "tier")}
+                />
               </div>
             )}
           </div>
