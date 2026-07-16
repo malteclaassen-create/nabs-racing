@@ -51,6 +51,8 @@ export async function getSeasonHonours(prisma, seasonId) {
   // Shared "season finished" rule (see lib/seasonComplete.js) — the same one
   // the profile badge shelf and the card editions use.
   const complete = seasonCompleteFromRaces(races);
+  // Championship rounds (numbered) — trainings/one-offs don't count here.
+  const rounds = races.filter((r) => r.number != null);
   const rows = standings.standings || [];
 
   // Team champions per tier (a single-class season simply has no T2 entry).
