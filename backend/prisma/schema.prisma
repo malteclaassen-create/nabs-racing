@@ -249,6 +249,12 @@ model Race {
   seasonId    String?
   season      Season?      @relation(fields: [seasonId], references: [id])
   track       String
+  // Country of the circuit (ISO 3166-1 alpha-2, lowercase) — the one source of
+  // truth for the track flag. Backfilled at boot from the static circuit table
+  // and editable per circuit in the admin Tracks tab (fans out to all races of
+  // that circuit). Managed via raw SQL (ensureAppSchema + lib/raceCountries.js)
+  // like `type` above; mirrored by migration race_country for production.
+  country     String?
   date        DateTime?
   isCompleted Boolean      @default(false)
   capacity    Int          @default(40) // grid size (Apollo "Accepted (n/40)")

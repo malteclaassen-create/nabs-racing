@@ -286,7 +286,7 @@ function Rules({ content, tokens }) {
     Array.isArray(season?.pointsTable) && season.pointsTable.length ? season.pointsTable : DEFAULT_POINTS;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-7 sm:space-y-10">
       {/* ------------------- the championship format ------------------- */}
       <section className="reveal space-y-4">
         <SectionHeading eyebrow="The rules" title="How the championship works" />
@@ -386,7 +386,7 @@ export default function Downloads() {
   };
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-8 sm:space-y-12">
       <PageHeader
         eyebrow="Drivers' handbook"
         title="Race Info"

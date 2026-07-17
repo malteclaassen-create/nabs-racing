@@ -12,7 +12,7 @@ import Podium from "../components/Podium.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
-import { circuitFor } from "../data/circuits.js";
+import { circuitFor, flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 import { heroFor, heroOnError, carFor, carModelFor } from "../utils/heroImage.js";
@@ -253,7 +253,7 @@ export default function Home() {
 
   if (drivers.loading || t1.loading || t2.loading || races.loading)
     return (
-      <div className="space-y-12">
+      <div className="space-y-8 sm:space-y-12">
         <Skeleton className="h-[460px] w-full rounded-[1.75rem]" />
         <div className="grid gap-4 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -271,8 +271,8 @@ export default function Home() {
     .slice(0, 3);
   const nextDate = nextRace?.date ? new Date(nextRace.date) : null;
   const roundNo = lastRace?.number ?? completedRaces.length;
-  const lastCircuit = circuitFor(lastRace?.track);
-  const nextCircuit = circuitFor(nextRace?.track);
+  const lastCircuit = flagFor(lastRace?.track, lastRace?.country);
+  const nextCircuit = flagFor(nextRace?.track, nextRace?.country);
   const completedNumbers = completedRaces.map((r) => r.number).sort((a, b) => a - b);
   // Championship rounds in this season (excludes non-scoring special events).
   const totalRounds = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null).length;

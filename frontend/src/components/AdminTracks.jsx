@@ -3,7 +3,9 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Notice } from "./ui.jsx";
 import { trackKey, circuitFor } from "../data/circuits.js";
+import { COUNTRIES } from "../data/countries.js";
 import CircuitMap from "./CircuitMap.jsx";
+import Flag from "./Flag.jsx";
 
 // Admin "Tracks" tab: per-circuit fun facts and an optional custom map image,
 // layered on top of the computed track history shown on the upcoming-race panel
@@ -13,6 +15,7 @@ export default function AdminTracks() {
   const [selected, setSelected] = useState(""); // track display name
   const [facts, setFacts] = useState([]);
   const [mapImageUrl, setMapImageUrl] = useState(null);
+  const [country, setCountry] = useState(""); // effective flag code ("" = none)
   const [mapRotation, setMapRotation] = useState(0);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -41,6 +44,7 @@ export default function AdminTracks() {
         setFacts(d.facts?.length ? d.facts : [{ label: "", value: "" }]);
         setMapImageUrl(d.mapImageUrl || null);
         setMapRotation(d.mapRotation || 0);
+        setCountry(d.country || "");
       })
       .catch((e) => setError(e.message));
   }, [key]);
@@ -56,6 +60,9 @@ export default function AdminTracks() {
     try {
       const content = { facts: facts.filter((f) => f.label.trim() || f.value.trim()), mapImageUrl, mapRotation };
       await api.saveTrackInfo(key, content);
+      // Flag country lives on the races themselves (all seasons of this
+      // circuit), not in the info blob.
+      await api.saveTrackCountry(key, country || null);
       setMsg("Track info saved.");
     } catch (e) {
       setError(e.message);
@@ -117,6 +124,22 @@ export default function AdminTracks() {
 
       {key && (
         <div className="card space-y-4 p-5">
+          <div>
+            <div className="mb-2 font-mono text-xs font-bold uppercase tracking-widest text-light">Country flag</div>
+            <p className="mb-2 text-sm text-light">
+              Which country's flag shows next to this circuit, on every page and in every season it was raced.
+            </p>
+            <div className="flex items-center gap-3">
+              {country ? <Flag code={country} w={26} h={19} /> : <span className="font-mono text-xs text-faint">no flag</span>}
+              <select className="input max-w-xs" value={country} onChange={(e) => setCountry(e.target.value)}>
+                <option value="">No flag</option>
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div>
             <div className="mb-2 font-mono text-xs font-bold uppercase tracking-widest text-light">Custom facts</div>
             <div className="space-y-2">

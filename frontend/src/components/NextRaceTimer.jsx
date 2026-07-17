@@ -4,7 +4,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import Flag from "./Flag.jsx";
 import { RollingNumber } from "./ui.jsx";
-import { circuitFor } from "../data/circuits.js";
+import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 
 // Compact, broadcast-style next-race countdown chip.
@@ -35,7 +35,7 @@ export default function NextRaceTimer({ className = "", compact = false }) {
 
   if (!nextRace) return null;
 
-  const circuit = circuitFor(nextRace.track);
+  const circuit = flagFor(nextRace.track, nextRace.country);
   const remaining = target ? target.getTime() - now : null;
   const live = remaining != null && remaining <= 0;
 

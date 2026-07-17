@@ -10,7 +10,7 @@ import RaceFacts from "../components/RaceFacts.jsx";
 import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
-import { circuitFor } from "../data/circuits.js";
+import { circuitFor, flagFor } from "../data/circuits.js";
 import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 
 // The calendar is built entirely from the season's races (DB), so it stays in
@@ -67,23 +67,35 @@ function RoundRail({ races, selectedId, onSelect }) {
   // from round 1. No-op when the rail is the vertical sidebar (lg+), where the
   // strip doesn't overflow horizontally.
   useEffect(() => {
-    const c = scrollerRef.current;
-    const a = activeRef.current;
-    if (!c || !a) return;
-    if (c.scrollWidth <= c.clientWidth) return; // vertical sidebar / fits
-    const cRect = c.getBoundingClientRect();
-    const aRect = a.getBoundingClientRect();
-    const delta = aRect.left - cRect.left - (c.clientWidth / 2 - a.clientWidth / 2);
-    c.scrollTo({ left: c.scrollLeft + delta, behavior: "auto" });
+    const centre = () => {
+      const c = scrollerRef.current;
+      const a = activeRef.current;
+      if (!c || !a) return;
+      if (c.scrollWidth <= c.clientWidth) return; // vertical sidebar / fits
+      const cRect = c.getBoundingClientRect();
+      const aRect = a.getBoundingClientRect();
+      const delta = aRect.left - cRect.left - (c.clientWidth / 2 - a.clientWidth / 2);
+      c.scrollTo({ left: c.scrollLeft + delta, behavior: "auto" });
+    };
+    // Twice: once after paint, once after the display font has loaded — the
+    // buttons widen with it, which used to leave the strip parked on round 1.
+    const raf = requestAnimationFrame(centre);
+    const t = setTimeout(centre, 350);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
   }, [selectedId, races]);
 
   return (
     <div
       ref={scrollerRef}
-      className="scrollbar-slim flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0"
+      // The mask fades both edges below lg, so a clipped chip reads as "this
+      // scrolls" instead of looking broken.
+      className="scrollbar-slim flex gap-2 overflow-x-auto pb-2 [mask-image:linear-gradient(to_right,transparent,black_18px,black_calc(100%_-_18px),transparent)] lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:[mask-image:none]"
     >
       {races.map((r) => {
-        const c = circuitFor(r.track);
+        const flag = flagFor(r.track, r.country);
         const active = r.id === selectedId;
         const done = r.isCompleted;
         const border = active
@@ -103,7 +115,7 @@ function RoundRail({ races, selectedId, onSelect }) {
             <span className={`font-display text-lg font-black leading-none tabular-nums ${active ? "text-dark" : done ? "text-emerald-600" : "text-faint group-hover:text-light"}`}>
               {r.number != null ? String(r.number).padStart(2, "0") : kindOf(r) === "TRAINING" ? "TR" : "SE"}
             </span>
-            {c && <Flag code={c.country} title={c.countryName} />}
+            {flag && <Flag code={flag.country} title={flag.countryName} />}
             <span className="flex min-w-0 flex-col leading-tight">
               <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{r.track}</span>
               <span className={`flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider ${done ? "text-emerald-600" : "text-light"}`}>
@@ -141,6 +153,7 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
   const e = { number: r.number, track: r.track, date: r.date };
   // Training sessions run on real circuits, so their outline still draws.
   const circuit = se ? null : circuitFor(r.track);
+  const flag = se ? null : flagFor(r.track, r.country);
   const done = !!r.isCompleted;
   const clickable = done && kind === "CHAMPIONSHIP";
   const dbRace = r;
@@ -188,11 +201,38 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
           {pill}
         </div>
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2.5">
-            {circuit && <Flag code={circuit.country} title={circuit.countryName} />}
-            <h4 className={`font-display text-xl font-extrabold uppercase tracking-tight ${training ? "text-sky-600" : se ? "text-emerald-600" : "text-dark"}`}>
-              {e.track}
-            </h4>
+          {/* Mirrored rows: track name (left) ↔ winner name (right), then
+              date/time (left) ↔ winner's team (right) — the two card halves
+              read as the same layout. */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              {flag && <Flag code={flag.country} title={flag.countryName} />}
+              <h4 className={`truncate font-display text-xl font-extrabold uppercase tracking-tight ${training ? "text-sky-600" : se ? "text-emerald-600" : "text-dark"}`}>
+                {e.track}
+              </h4>
+            </div>
+            {done && r.winner && (
+              <div
+                className="flex min-w-0 max-w-[48%] shrink-0 items-center gap-2.5"
+                title={`Winner: ${r.winner.name}${r.winner.team ? ` · ${r.winner.team.name}` : ""}`}
+              >
+                <div className="min-w-0 text-right">
+                  <div className="font-mono text-[9px] font-bold uppercase tracking-widest text-light">Winner</div>
+                  <div className="truncate font-display text-base font-extrabold uppercase leading-tight tracking-tight text-dark">
+                    {r.winner.name}
+                  </div>
+                </div>
+                {r.winner.photoUrl && (
+                  <img
+                    src={r.winner.photoUrl}
+                    alt=""
+                    loading="lazy"
+                    className="h-8 w-8 shrink-0 rounded-full border-2 object-cover"
+                    style={{ borderColor: r.winner.team?.color || "var(--c-border)" }}
+                  />
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-end justify-between gap-2">
             <div>
@@ -200,6 +240,14 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
               <div className="font-mono text-xs text-light">{e.date ? fmtRaceTime(e.date) : "Time TBA"}</div>
             </div>
             {isNext && !done && <Countdown date={e.date} />}
+            {done && r.winner?.team && (
+              <div
+                className="min-w-0 max-w-[48%] truncate text-right font-mono text-xs font-bold uppercase tracking-wider"
+                style={{ color: r.winner.team.color || "var(--c-light)" }}
+              >
+                {r.winner.team.name}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -357,7 +405,7 @@ export default function Races() {
   }
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-8 sm:space-y-12">
       {/* Session-type switcher sits in the header's top-right corner: it drives
           BOTH the explorer below (rail + detail) and the calendar grid further
           down, so picking a type shows every view of it. */}
@@ -366,7 +414,7 @@ export default function Races() {
         title="Races"
         right={
           <SlidingTabs
-            btnClassName="px-4 py-2 text-sm"
+            btnClassName="px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm"
             items={[
               { key: "rounds", label: <>Championship<span className="ml-1.5 opacity-70">{rounds.length}</span></> },
               // Training sessions get their own clearly-labelled group — the tab
@@ -415,8 +463,13 @@ export default function Races() {
                     <div>
                       <div className="mb-4">
                         <div className="flex h-8 items-center gap-3">
-                          {circuitFor(detail.race.track) && (
-                            <Flag code={circuitFor(detail.race.track).country} title={circuitFor(detail.race.track).countryName} w={26} h={19} />
+                          {flagFor(detail.race.track, detail.race.country) && (
+                            <Flag
+                              code={flagFor(detail.race.track, detail.race.country).country}
+                              title={flagFor(detail.race.track, detail.race.country).countryName}
+                              w={26}
+                              h={19}
+                            />
                           )}
                           <h2 className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
                             {detail.race.number != null && <span className="text-light">R{detail.race.number}</span>} {detail.race.track}

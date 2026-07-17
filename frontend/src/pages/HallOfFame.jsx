@@ -19,7 +19,7 @@ function SectionHead({ eyebrow, title, right }) {
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <div className="font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-eyebrow">{eyebrow}</div>
+        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-eyebrow sm:text-[11px] sm:tracking-[0.25em]">{eyebrow}</div>
         <h2 className="mt-1 font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-3xl">{title}</h2>
       </div>
       {right}
@@ -42,7 +42,7 @@ function DriverChampions({ champions }) {
           className="pointer-events-none absolute inset-0 opacity-[0.1]"
           style={{ background: `radial-gradient(110% 150% at 90% 0%, ${MEDAL[0]}, transparent 55%)` }}
         />
-        <div className="relative flex flex-wrap items-center gap-6">
+        <div className="relative flex flex-wrap items-center gap-4 sm:gap-6">
           <DriverAvatar
             name={latest.driver.name}
             photoUrl={latest.driver.photoUrl}
@@ -51,11 +51,11 @@ function DriverChampions({ champions }) {
             className="text-3xl ring-2 ring-[color:var(--medal-1)]"
           />
           <div className="min-w-0 flex-1">
-            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.25em]" style={{ color: MEDAL_TEXT[0] }}>
+            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] sm:text-[11px] sm:tracking-[0.25em]" style={{ color: MEDAL_TEXT[0] }}>
               Reigning champion · {latest.seasonName || `Season ${latest.seasonNumber}`}
             </div>
-            <div className="mt-1.5 flex items-center gap-3">
-              <span className="truncate font-display text-4xl font-black uppercase tracking-tight text-dark sm:text-5xl">
+            <div className="mt-1.5 flex items-center gap-2 sm:gap-3">
+              <span className="truncate font-display text-[26px] font-black uppercase leading-tight tracking-tight text-dark sm:text-5xl">
                 {latest.driver.name}
               </span>
               <Flag code={countryFor(latest.driver.driverId, latest.driver.country)} w={30} h={22} />
@@ -74,11 +74,13 @@ function DriverChampions({ champions }) {
               </div>
             )}
           </div>
-          <div className="shrink-0 text-right">
-            <div className="font-display text-6xl font-black leading-none tabular-nums" style={{ color: MEDAL_TEXT[0] }}>
+          {/* On phones the number takes its own full row (baseline with the
+              unit) — as a fixed right column it crushed the name to a letter. */}
+          <div className="flex w-full items-baseline gap-2 sm:block sm:w-auto sm:shrink-0 sm:text-right">
+            <div className="font-display text-4xl font-black leading-none tabular-nums sm:text-6xl" style={{ color: MEDAL_TEXT[0] }}>
               <CountUp end={latest.points} />
             </div>
-            <div className="mt-1 font-mono text-[11px] font-bold uppercase tracking-wider text-light">points</div>
+            <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-light sm:mt-1">points</div>
           </div>
         </div>
       </Link>
@@ -90,9 +92,9 @@ function DriverChampions({ champions }) {
             key={c.seasonNumber}
             to={`/drivers/${c.driver.driverId}?season=${c.seasonNumber}`}
             style={{ "--i": Math.min(i, 16) }}
-            className="group flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-4 transition hover:bg-surface2 sm:px-8"
+            className="group flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-4 transition hover:bg-surface2 sm:gap-x-5 sm:px-8"
           >
-            <span className="w-16 shrink-0 font-display text-2xl font-black uppercase leading-none tracking-tight text-faint">
+            <span className="w-9 shrink-0 font-display text-xl font-black uppercase leading-none tracking-tight text-faint sm:w-16 sm:text-2xl">
               S{c.seasonNumber}
             </span>
             <DriverAvatar name={c.driver.name} photoUrl={c.driver.photoUrl} color={c.driver.team?.color || MEDAL[0]} size={44} />
@@ -103,7 +105,7 @@ function DriverChampions({ champions }) {
               <Flag code={countryFor(c.driver.driverId, c.driver.country)} w={22} h={16} />
             </span>
             <span className="shrink-0 text-right">
-              <span className="font-display text-2xl font-black tabular-nums text-dark">
+              <span className="font-display text-xl font-black tabular-nums text-dark sm:text-2xl">
                 <CountUp end={c.points} />
               </span>
               <span className="ml-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light">pts</span>
@@ -128,7 +130,7 @@ function TeamChampions({ champions }) {
           className="pointer-events-none absolute inset-0 opacity-[0.1]"
           style={{ background: `radial-gradient(110% 150% at 90% 0%, ${MEDAL[0]}, transparent 55%)` }}
         />
-        <div className="relative font-mono text-[11px] font-bold uppercase tracking-[0.25em]" style={{ color: MEDAL_TEXT[0] }}>
+        <div className="relative font-mono text-[10px] font-bold uppercase tracking-[0.14em] sm:text-[11px] sm:tracking-[0.25em]" style={{ color: MEDAL_TEXT[0] }}>
           Reigning team champions · {latest.seasonName || `Season ${latest.seasonNumber}`}
         </div>
         <div className="relative mt-4 grid gap-4 sm:grid-cols-2">
@@ -246,7 +248,7 @@ function TopListPanel({ lists }) {
       {/* the record holder of the picked category, celebrated big */}
       <Link
         to={`/drivers/${leader.driverId}${leader.seasonNumber != null ? `?season=${leader.seasonNumber}` : ""}`}
-        className="relative flex flex-wrap items-center gap-6 overflow-hidden border-b border-border p-6 transition hover:bg-surface2 sm:p-8"
+        className="relative flex flex-wrap items-center gap-4 overflow-hidden border-b border-border p-5 transition hover:bg-surface2 sm:gap-6 sm:p-8"
       >
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.1]"
@@ -254,22 +256,23 @@ function TopListPanel({ lists }) {
         />
         <DriverAvatar name={leader.name} photoUrl={leader.photoUrl} color={leader.team?.color || "#64748b"} size={76} className="text-2xl" />
         <span className="relative min-w-0 flex-1">
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.25em]" style={{ color: MEDAL_TEXT[0] }}>
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] sm:text-[11px] sm:tracking-[0.25em]" style={{ color: MEDAL_TEXT[0] }}>
             {list.label}
           </span>
           <span className="mt-1 flex items-center gap-3">
-            <span className="truncate font-display text-3xl font-black uppercase tracking-tight text-dark sm:text-4xl">
+            <span className="truncate font-display text-2xl font-black uppercase tracking-tight text-dark sm:text-4xl">
               {leader.name}
             </span>
             <Flag code={countryFor(leader.driverId, leader.country)} w={26} h={19} />
           </span>
           {list.note && <span className="mt-1 block font-mono text-[10px] uppercase tracking-wider text-light">{list.note}</span>}
         </span>
-        <span className="relative shrink-0 text-right">
-          <span className="font-display text-6xl font-black leading-none tabular-nums text-dark">
+        {/* Full-width row on phones — as a fixed right column it starved the name. */}
+        <span className="relative flex w-full items-baseline gap-2 sm:block sm:w-auto sm:shrink-0 sm:text-right">
+          <span className="font-display text-4xl font-black leading-none tabular-nums text-dark sm:text-6xl">
             <CountUp end={leader.value} />
           </span>
-          {list.unit && <span className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">{list.unit}</span>}
+          {list.unit && <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light sm:block">{list.unit}</span>}
         </span>
       </Link>
 
@@ -284,7 +287,7 @@ function TopListPanel({ lists }) {
               key={r.driverId}
               to={`/drivers/${r.driverId}${r.seasonNumber != null ? `?season=${r.seasonNumber}` : ""}`}
               style={{ "--i": Math.min(i, 16) }}
-              className="flex items-center gap-4 px-5 py-3 transition hover:bg-surface2 sm:px-8"
+              className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface2 sm:gap-4 sm:px-8"
             >
               <span className="w-7 shrink-0 text-center font-display text-lg font-black tabular-nums">
                 <span style={rank <= 3 ? { color: MEDAL_TEXT[rank - 1] } : undefined} className={rank <= 3 ? "" : "text-light"}>
@@ -306,7 +309,7 @@ function TopListPanel({ lists }) {
                   />
                 </span>
               </span>
-              <span className="shrink-0 font-display text-2xl font-black tabular-nums text-dark">
+              <span className="shrink-0 font-display text-xl font-black tabular-nums text-dark sm:text-2xl">
                 <CountUp end={r.value} />
               </span>
             </Link>
@@ -347,7 +350,7 @@ export default function HallOfFame() {
   const activeList = data.lists.find((l) => l.key === activeListKey);
 
   return (
-    <div className="content-in space-y-14">
+    <div className="content-in space-y-9 sm:space-y-14">
       <PageHeader eyebrow="All-time" title="Hall of Fame" />
 
       {/* champions first — drivers ⇄ teams */}

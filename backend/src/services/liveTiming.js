@@ -614,7 +614,10 @@ function getDemoBoard() {
       inPits,
       bestLapMs: 80000 + idx * 180,
       lastLapMs: 80500 + idx * 200,
-      lastLapAt: Date.now() - 3000,
+      // Each car crossed the line when ITS current lap began (spline progress),
+      // so the "current lap" clocks tick apart like a real field — one shared
+      // timestamp made every clock run in lockstep.
+      lastLapAt: Date.now() - Math.round(spline * (80500 + idx * 200)),
       lapCount: c.lapBase + lapsDone,
       topSpeed: 330 - idx,
       sectors: [null, null, null],
@@ -624,10 +627,21 @@ function getDemoBoard() {
       drs: false,
       deltaSelfMs: null,
       spline,
-      racePosition: idx + 1,
-      position: idx + 1,
+      // Filled in below from actual race progress, so the demo has real
+      // overtakes (exercises the Driving-Now / projection flip animations).
+      racePosition: 0,
+      position: 0,
       gapToBestMs: idx === 0 ? 0 : idx * 300,
+      _prog: prog,
     };
+  });
+  // Order by distance covered — the cars run at slightly different speeds, so
+  // the running order genuinely changes over time, like a real race.
+  entries.sort((a, b) => b._prog - a._prog);
+  entries.forEach((e, i) => {
+    e.position = i + 1;
+    e.racePosition = i + 1;
+    delete e._prog;
   });
   return {
     ok: true,

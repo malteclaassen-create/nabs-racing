@@ -7,7 +7,7 @@ import { ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, MEDAL_TEXT, DriverAv
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import PointsChart from "../components/PointsChart.jsx";
-import { circuitFor } from "../data/circuits.js";
+import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
@@ -72,7 +72,7 @@ function RoundBars({ raceNumbers, perRace, droppedPerRace, raceByNumber, color }
           const counted = pts - droppedPts;
           const allDropped = pts > 0 && counted === 0;
           const isBest = n === bestRound && pts > 0;
-          const circ = race ? circuitFor(race.track) : null;
+          const circ = race ? flagFor(race.track, race.country) : null;
           const h = done ? Math.max(4, Math.round((pts / maxPts) * 120)) : 0;
           // Counting share solid, dropped share faded (hard-stop gradient from
           // the bottom, so the faded part sits on top of the bar).

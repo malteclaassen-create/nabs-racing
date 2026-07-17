@@ -122,7 +122,7 @@ export default function Constructors() {
 
   if (t1.loading || t2.loading || teams.loading)
     return (
-      <div className="space-y-14">
+      <div className="space-y-9 sm:space-y-14">
         <PageHeaderSkeleton />
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="space-y-5">

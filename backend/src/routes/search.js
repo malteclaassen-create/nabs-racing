@@ -15,6 +15,7 @@ import { isAdminRequest } from "../middleware/auth.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { dbListSeries, seasonSeriesMap } from "../lib/series.js";
 import { getPersonGroups, getNameOverrides } from "../lib/persons.js";
+import { readRaceCountries, staticCountryFor, countryNameOf } from "../lib/raceCountries.js";
 
 const router = Router();
 
@@ -52,7 +53,7 @@ async function loadDataset(isAdmin) {
 
   const [drivers, teams, races, seasons, series, seasonSeries, priv, groups, nameOv] = await Promise.all([
     prisma.driver.findMany({
-      select: { id: true, name: true, discordName: true, seasonId: true, photoUrl: true, discordAvatar: true },
+      select: { id: true, name: true, discordName: true, seasonId: true, photoUrl: true, discordAvatar: true, country: true },
     }),
     prisma.team.findMany({ select: { id: true, name: true, color: true, logoUrl: true, tier: true, seasonId: true } }),
     prisma.race.findMany({
@@ -87,7 +88,14 @@ async function loadDataset(isAdmin) {
   // newest row (a coming-soon or private next season would otherwise win).
   const activeSeasonIds = new Set(seasons.filter((s) => s.isActive).map((s) => s.id));
 
-  const data = { drivers, teams, races, seasons, series, seasonById, seasonVisible, seriesOf, groups, nameOv, activeSeasonIds };
+  // Track flag country per race (stored code, else the static circuit table) —
+  // lets "france" surface every race at a French circuit.
+  const storedCountries = await readRaceCountries(prisma, races.map((r) => r.id));
+  const raceCountry = new Map(
+    races.map((r) => [r.id, storedCountries.get(r.id) || staticCountryFor(r.track) || null])
+  );
+
+  const data = { drivers, teams, races, seasons, series, seasonById, seasonVisible, seriesOf, groups, nameOv, activeSeasonIds, raceCountry };
   cache[slot] = { at: Date.now(), data };
   return data;
 }
@@ -98,9 +106,21 @@ router.get("/", async (req, res, next) => {
     if (q.length < 1) return res.json({ query: q, groups: [] });
 
     const isAdmin = isAdminRequest(req);
-    const { drivers, teams, races, seasons, series, seasonById, seasonVisible, seriesOf, groups, nameOv, activeSeasonIds } =
+    const { drivers, teams, races, seasons, series, seasonById, seasonVisible, seriesOf, groups, nameOv, activeSeasonIds, raceCountry } =
       await loadDataset(isAdmin);
     const numberOf = (seasonId) => seasonById.get(seasonId)?.number ?? null;
+
+    // Country matching: the English name matches like any label ("fran" finds
+    // France), the two-letter code only on an exact hit ("fr"), so short
+    // queries don't drown everything in flag matches. Scored below a direct
+    // name hit so e.g. the driver "France" would still outrank French tracks.
+    const countryScore = (code, term) => {
+      if (!code) return -1;
+      const t = norm(term);
+      if (t === code) return 65;
+      const sc = scoreMatch(countryNameOf(code), term);
+      return sc >= 60 ? 55 : -1;
+    };
 
     // --- Drivers: dedupe by PERSON, link to their newest visible row (career
     // profile). A match on any of the person's rows (incl. a former name)
@@ -113,7 +133,9 @@ router.get("/", async (req, res, next) => {
         scoreMatch(ov?.displayName || d.name, q),
         scoreMatch(d.name, q),
         scoreMatch(d.discordName, q),
-        ov?.formerName ? scoreMatch(ov.formerName, q) : -1
+        ov?.formerName ? scoreMatch(ov.formerName, q) : -1,
+        // Self-set nationality: "france" lists the French drivers too.
+        countryScore(d.country, q)
       );
       if (sc < 0) continue;
       const person = groups.byDriver.get(d.id) || d.id;
@@ -199,7 +221,12 @@ router.get("/", async (req, res, next) => {
     const raceItems = [];
     for (const r of races) {
       if (!seasonVisible(r.seasonId)) continue;
-      const sc = best(scoreMatch(r.track, q), r.number != null ? scoreMatch(`round ${r.number}`, q) : -1);
+      const country = raceCountry.get(r.id) || null;
+      const sc = best(
+        scoreMatch(r.track, q),
+        r.number != null ? scoreMatch(`round ${r.number}`, q) : -1,
+        countryScore(country, q)
+      );
       if (sc < 0) continue;
       const sr = seriesOf(r.seasonId);
       if (!sr) continue;
@@ -210,6 +237,7 @@ router.get("/", async (req, res, next) => {
         type: "race",
         id: r.id,
         label: r.track,
+        country,
         sublabel: [kind, seasonName].filter(Boolean).join(" · "),
         link: `/s/${sr.slug}/races?race=${r.id}${num != null ? `&season=${num}` : ""}`,
         score: sc + (num || 0) * 0.1,

@@ -29,6 +29,7 @@ import {
 import { stashIncoming, archiveCommitted } from "../lib/resultsArchive.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
+import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq, writeWelcomeFaq } from "../lib/welcomeFaq.js";
@@ -325,11 +326,14 @@ router.post("/races/commit", async (req, res, next) => {
           seasonId: targetSeasonId,
         },
       });
+      await seedRaceCountry(prisma, race.id, race.track);
     } else {
+      const renamed = track && track !== race.track;
       race = await prisma.race.update({
         where: { id: race.id },
         data: { track: track || race.track, date: date ? new Date(date) : race.date },
       });
+      if (renamed) await seedRaceCountry(prisma, race.id, race.track);
     }
 
     // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
@@ -1396,6 +1400,7 @@ router.post("/events", async (req, res, next) => {
         info: extras.info ?? null,
       },
     });
+    await seedRaceCountry(prisma, race.id, race.track);
     race.type = await writeRaceType(prisma, race.id, type);
     await writeRaceFormat(race.id, extras);
     res.status(201).json(race);
@@ -1449,6 +1454,7 @@ router.put("/events/:id", async (req, res, next) => {
       data.number = n;
     }
     const updated = await prisma.race.update({ where: { id: race.id }, data });
+    if (data.track && data.track !== race.track) await seedRaceCountry(prisma, race.id, updated.track);
     if (type !== undefined) updated.type = await writeRaceType(prisma, race.id, type);
     await writeRaceFormat(race.id, extras);
     // The Discord post mirrors these details — keep an already-announced
@@ -2138,9 +2144,29 @@ router.get("/tracks/:key/info", async (req, res, next) => {
   try {
     const key = safeTrackKey(req.params.key);
     if (!key) return res.status(400).json({ error: "Invalid track key" });
-    res.json(await readTrackInfo(prisma, key));
+    const [info, countries] = await Promise.all([readTrackInfo(prisma, key), readTrackCountries(prisma)]);
+    // Effective flag country: admin-stored code on the races, else the static
+    // circuit table. countrySource tells the UI whether it's an override.
+    res.json({
+      ...info,
+      country: countries[key] || staticCountryFor(key) || null,
+      countryStored: countries[key] || null,
+    });
   } catch (e) {
     next(e);
+  }
+});
+
+// PUT /api/admin/tracks/:key/country { country: "gb" | null } — set the flag
+// country of every race at this circuit, across all seasons.
+router.put("/tracks/:key/country", async (req, res, next) => {
+  try {
+    const key = safeTrackKey(req.params.key);
+    if (!key) return res.status(400).json({ error: "Invalid track key" });
+    const updated = await writeTrackCountry(prisma, key, req.body?.country ?? null);
+    res.json({ ok: true, updated });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 

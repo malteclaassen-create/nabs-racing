@@ -16,7 +16,7 @@ import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx"
 import { SettingsDrawer, GearIcon } from "../components/SettingsPanel.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { countryFor } from "../data/driverCountries.js";
-import { circuitFor } from "../data/circuits.js";
+import { flagFor } from "../data/circuits.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
@@ -162,10 +162,12 @@ const TILE_DEFS = (stats) => [
   },
   { key: "avgGrid", icon: "grid", label: "Avg Grid", value: stats.avgGrid != null ? `P${stats.avgGrid}` : "–", sub: "qualifying" },
   {
-    key: "fastestLap", icon: "gauge", label: "Fastest Lap",
-    value: stats.fastestLap ? fmtLapMs(stats.fastestLap.bestLapMs) : "–",
-    sub: stats.fastestLap ? `${stats.fastestLap.track} · R${stats.fastestLap.number}` : "",
-    available: !!stats.fastestLap,
+    // Headline = how many rounds this driver set the race's overall fastest
+    // lap; the personal-best time lives on as the subtitle.
+    key: "fastestLap", icon: "gauge", label: "Fastest Laps",
+    value: stats.fastestLaps ?? 0,
+    sub: stats.fastestLap ? `best ${fmtLapMs(stats.fastestLap.bestLapMs)} · ${stats.fastestLap.track}` : "",
+    available: !!stats.fastestLap || (stats.fastestLaps ?? 0) > 0,
   },
   { key: "overtakes", icon: "swap", label: "Overtakes", value: stats.overtakes, sub: "on-track passes", available: stats.overtakes != null },
   { key: "lapsLed", icon: "lead", label: "Laps Led", value: stats.lapsLed, sub: "laps out front", available: stats.lapsLed != null },
@@ -1352,7 +1354,7 @@ export default function DriverProfile({ previewId, preview }) {
                       <td className="px-5 py-3 font-mono font-bold tabular-nums text-light">{r.number}</td>
                       <td className="px-2 py-3">
                         <div className="flex items-center gap-2.5">
-                          <Flag code={circuitFor(r.track)?.country} w={22} h={16} />
+                          <Flag code={flagFor(r.track)?.country} w={22} h={16} />
                           <span className="font-display font-bold uppercase tracking-tight text-dark transition group-hover:text-brand">{r.track}</span>
                         </div>
                       </td>

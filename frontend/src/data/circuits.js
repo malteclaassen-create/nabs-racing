@@ -466,6 +466,47 @@ export function canonicalTrack(track) {
   return track;
 }
 
+// ---------------------------------------------------------------------------
+// Track flag resolution. The DB (Race.country, admin-editable per circuit) is
+// the source of truth; the static CIRCUITS table above is the fallback for
+// anything the server hasn't stamped yet. App.jsx loads the stored overrides
+// once at boot (GET /api/tracks/countries) so circuit-less tracks (e.g.
+// Donington) get their flag site-wide too.
+// ---------------------------------------------------------------------------
+let COUNTRY_OVERRIDES = {}; // trackKey -> ISO alpha-2
+
+export function setTrackCountryOverrides(map) {
+  COUNTRY_OVERRIDES = map && typeof map === "object" ? map : {};
+}
+
+const REGION_NAMES = (() => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" });
+  } catch {
+    return null;
+  }
+})();
+
+// "gb" -> "United Kingdom" (falls back to the upper-cased code).
+export function countryNameOf(code) {
+  if (!code) return "";
+  try {
+    return REGION_NAMES?.of(code.toUpperCase()) || code.toUpperCase();
+  } catch {
+    return code.toUpperCase();
+  }
+}
+
+// Flag data for a track: an explicit code from a race payload wins, then the
+// admin override map, then the static circuit table. null = no flag known.
+export function flagFor(track, dbCountry) {
+  const c = circuitFor(track);
+  const code = dbCountry || COUNTRY_OVERRIDES[trackKey(track)] || c?.country || null;
+  // `circuit` (the real-world circuit name) rides along for callers that show
+  // it next to the flag — same shape as a CIRCUITS entry, minus the geometry.
+  return code ? { country: code, countryName: countryNameOf(code), circuit: c?.circuit } : null;
+}
+
 // Stable grouping key for a track, matching the backend's groupKeyFor: a
 // canonical CIRCUITS key when known, else the normalized string. Used to address
 // per-track admin settings (fun facts / map image).

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { DriverAvatar } from "./ui.jsx";
 import Flag from "./Flag.jsx";
-import { circuitFor } from "../data/circuits.js";
+import { flagFor } from "../data/circuits.js";
 
 // The left-hand icon/mark for a result: a driver's avatar, a team logo/colour,
 // a race's circuit flag, or a small type glyph for seasons/series.
@@ -19,7 +19,7 @@ function ResultMark({ item }) {
     );
   }
   if (item.type === "race") {
-    const country = circuitFor(item.label)?.country;
+    const country = item.country || flagFor(item.label)?.country;
     if (country) return <Flag code={country} w={24} h={17} />;
   }
   const p = { viewBox: "0 0 24 24", className: "h-4 w-4 text-medium", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };

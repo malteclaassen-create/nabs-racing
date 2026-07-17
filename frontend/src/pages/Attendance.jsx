@@ -8,7 +8,7 @@ import RaceSignupCard from "../components/RaceSignupCard.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import Flag from "../components/Flag.jsx";
-import { circuitFor } from "../data/circuits.js";
+import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 
 const MAX_LAP_MS = 1_800_000;
@@ -121,7 +121,7 @@ export default function Attendance() {
   // Personal history at the selected track.
   const hist = useApi(useCallback(() => (ev ? api.trackHistory(ev.track) : Promise.resolve(null)), [ev?.track]));
 
-  const circuit = ev ? circuitFor(ev.track) : null;
+  const circuit = ev ? flagFor(ev.track, ev.country) : null;
 
   return (
     <div className="content-in space-y-6">

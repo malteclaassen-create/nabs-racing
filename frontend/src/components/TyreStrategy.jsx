@@ -32,13 +32,18 @@ export function TyreBadge({ t, size = 20, className = "" }) {
         backgroundColor: t.color,
         boxShadow: "0 0 0 2px rgba(10,15,30,0.55)",
         color: inkOn(t),
-        fontSize: Math.round(size * (String(t.label).length > 1 ? 0.44 : 0.54)),
+        fontSize: Math.round(size * (String(t.label).length > 1 ? 0.5 : 0.62)),
         lineHeight: 1,
       }}
       title={t.name}
       aria-label={t.name}
     >
-      {t.label}
+      {/* Uppercase glyphs sit a touch high in the mono font's em-box; a tiny
+          shift centres SINGLE letters optically. Multi-letter labels ("SS")
+          render at a smaller size where the same nudge read as too low. */}
+      <span style={String(t.label).length > 1 ? undefined : { transform: `translateY(${Math.max(0.5, size * 0.03)}px)` }}>
+        {t.label}
+      </span>
     </span>
   );
 }
@@ -240,13 +245,17 @@ export default function TyreStrategy({ entries, matchFn, raceLaps }) {
               {/* current compound as the F1 tyre mark + laps on the set —
                   phones drop the column (the discs on the line carry it) so the
                   track itself keeps usable width */}
-              <div className="hidden w-16 shrink-0 flex-col items-end gap-1 sm:flex">
-                {cur ? (
-                  <TyreBadge t={cur} size={28} />
-                ) : (
-                  <span className="font-mono text-xs text-faint">–</span>
-                )}
-                <span className="font-mono text-xs tabular-nums text-light">L{curLaps}</span>
+              <div className="hidden w-16 shrink-0 justify-end sm:flex">
+                {/* the lap count sits centred UNDER the disc, not on the
+                    column's right edge next to it */}
+                <div className="flex flex-col items-center gap-1">
+                  {cur ? (
+                    <TyreBadge t={cur} size={28} />
+                  ) : (
+                    <span className="font-mono text-xs text-faint">–</span>
+                  )}
+                  <span className="font-mono text-xs tabular-nums text-light">L{curLaps}</span>
+                </div>
               </div>
             </div>
           );

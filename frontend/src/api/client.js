@@ -181,6 +181,9 @@ export const api = {
   t2Standings: (season) => request(`/standings/constructors/t2${seasonParam(season)}`, { auth: true }),
   races: (season) => request(`/races${seasonParam(season)}`, { auth: true }),
   raceResults: (id) => request(`/races/${id}/results`, { auth: true }),
+  // Admin-stored track flag countries ({ trackKey: "gb", ... }), loaded once at
+  // app boot and layered over the static circuit table (circuits.js flagFor).
+  trackCountries: () => request(`/tracks/countries`),
   // Track history across the series' seasons (userAuth so a member gets their own record).
   trackHistory: (track) =>
     request(
@@ -483,6 +486,7 @@ export const api = {
 
   // Track info (admin): fun facts + custom map image per circuit
   adminTrackInfo: (key) => request(`/admin/tracks/${key}/info`, { auth: true }),
+  saveTrackCountry: (key, country) => request(`/admin/tracks/${key}/country`, { method: "PUT", body: { country }, auth: true }),
   saveTrackInfo: (key, content) => request(`/admin/tracks/${key}/info`, { method: "PUT", body: { content }, auth: true }),
   uploadTrackMap: (key, file) => {
     const fd = new FormData();

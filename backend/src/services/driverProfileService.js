@@ -26,6 +26,31 @@ function avg(nums) {
   return Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10;
 }
 
+// Laps beyond 30 minutes are import artefacts, not real flying laps.
+const MAX_LAP_MS = 1_800_000;
+const isLap = (ms) => ms != null && ms > 0 && ms <= MAX_LAP_MS;
+
+// How many of the given result rows held their RACE's overall fastest lap —
+// i.e. the number of rounds where this driver set the fastest lap of anyone.
+// Needs the full field per race (a driver's own rows only know their own
+// laps), so it loads every result of the races involved. Ties count for both.
+async function countFastestLaps(prisma, ownRows) {
+  const withLap = ownRows.filter((r) => isLap(r.bestLapMs));
+  const raceIds = [...new Set(withLap.map((r) => r.raceId))];
+  if (!raceIds.length) return 0;
+  const field = await prisma.raceResult.findMany({
+    where: { raceId: { in: raceIds } },
+    select: { raceId: true, bestLapMs: true },
+  });
+  const minByRace = new Map();
+  for (const r of field) {
+    if (!isLap(r.bestLapMs)) continue;
+    const m = minByRace.get(r.raceId);
+    if (m == null || r.bestLapMs < m) minByRace.set(r.raceId, r.bestLapMs);
+  }
+  return withLap.filter((r) => r.bestLapMs === minByRace.get(r.raceId)).length;
+}
+
 // All-time stats across a person's linked driver rows — the same shape as the
 // per-season `stats` object, so the profile's stat tiles can swap between the
 // two with a toggle. Only built when a career exists (driver linked across
@@ -65,6 +90,7 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilt
       fastest = { bestLapMs: r.bestLapMs, track: r.race.track, number: r.race.number };
     }
   }
+  const fastestLaps = await countFastestLaps(prisma, rows);
 
   // Telemetry across every linked row (per-driver reads, merged).
   let overtakesTotal = 0, contactsTotal = 0, lapsLedTotal = 0, consNum = 0, consDen = 0, gamePenSecTotal = 0;
@@ -108,6 +134,7 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilt
     winRate: starts.length ? Math.round((wins / starts.length) * 100) : 0,
     podiumRate: starts.length ? Math.round((podiums / starts.length) * 100) : 0,
     fastestLap: fastest,
+    fastestLaps,
     overtakes: anyTelemetry ? overtakesTotal : null,
     contacts: anyTelemetry ? contactsTotal : null,
     lapsLed: anyTelemetry ? lapsLedTotal : null,
@@ -559,13 +586,19 @@ export async function getDriverProfile(prisma, driverId) {
     .filter((r) => r.grid != null && r.position != null)
     .map((r) => r.grid - r.position);
 
-  // Fastest lap across the season.
+  // Fastest lap across the season: personal best (for the tile's subtitle) and
+  // the count of rounds where this driver set the race's overall fastest lap.
   let fastest = null;
   for (const r of perRace) {
     if (r.bestLapMs && (!fastest || r.bestLapMs < fastest.bestLapMs)) {
       fastest = { bestLapMs: r.bestLapMs, track: r.track, number: r.number };
     }
   }
+  const seasonRaceIds = new Set(races.map((r) => r.id));
+  const fastestLaps = await countFastestLaps(
+    prisma,
+    results.filter((r) => seasonRaceIds.has(r.raceId))
+  );
 
   const wins = finishes.filter((r) => r.position === 1).length;
   const podiums = finishes.filter((r) => r.position <= 3).length;
@@ -671,6 +704,7 @@ export async function getDriverProfile(prisma, driverId) {
       winRate: starts.length ? Math.round((wins / starts.length) * 100) : 0,
       podiumRate: starts.length ? Math.round((podiums / starts.length) * 100) : 0,
       fastestLap: fastest,
+      fastestLaps,
       // AC telemetry aggregates (null when no round has telemetry yet, so the
       // profile hides these tiles for position-only archive seasons).
       overtakes: anyTelemetry ? overtakesTotal : null,

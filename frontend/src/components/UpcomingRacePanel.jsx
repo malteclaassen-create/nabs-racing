@@ -5,7 +5,7 @@ import { useApi } from "../hooks/useApi.js";
 import CircuitMap from "./CircuitMap.jsx";
 import Flag from "./Flag.jsx";
 import RaceCountdown from "./RaceCountdown.jsx";
-import { circuitFor } from "../data/circuits.js";
+import { circuitFor, flagFor } from "../data/circuits.js";
 import { exportSvgToPng } from "../utils/svgExport.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 
@@ -66,7 +66,8 @@ function CardHeader({ title, children }) {
 export default function UpcomingRacePanel({ race }) {
   const mapRef = useRef(null);
   const { data: history, loading } = useApi(useCallback(() => api.trackHistory(race.track), [race.track]));
-  const circuit = circuitFor(race.track);
+  const circuit = circuitFor(race.track); // outline (for the map card)
+  const flag = flagFor(race.track, race.country); // flag can exist without an outline
   // Training sessions have RSVP like a round; special events are announcement-
   // only (no attendance feature to sign up for) — see backend routes/events.js.
   const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
@@ -96,7 +97,7 @@ export default function UpcomingRacePanel({ race }) {
         <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
-              {circuit && <Flag code={circuit.country} w={26} h={19} />}
+              {flag && <Flag code={flag.country} w={26} h={19} />}
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
                 {eyebrow}
               </span>

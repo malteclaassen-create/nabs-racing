@@ -249,7 +249,7 @@ function DriverCell({ e, match, showLiveDot }) {
 function OnTrackRow({ e, match, index = 0 }) {
   const deltaCls = e.deltaSelfMs == null ? "text-light" : e.deltaSelfMs < 0 ? "text-emerald-600" : "text-amber-600";
   return (
-    <tr style={{ "--i": Math.min(index, 16) }} className="border-b border-border last:border-0 transition hover:bg-surface2">
+    <tr data-flip-id={e.guid} style={{ "--i": Math.min(index, 16) }} className="border-b border-border last:border-0 transition hover:bg-surface2">
       <td className="py-3 pl-5 pr-2 text-center">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums text-medium">
           {e.position}
@@ -259,7 +259,13 @@ function OnTrackRow({ e, match, index = 0 }) {
         <DriverCell e={e} match={match} />
       </td>
       <td className="hidden py-3 pr-4 text-center sm:table-cell">
-        {e.tyre && <span className="pill bg-surface2 text-medium">{e.tyre}</span>}
+        {/* Same compound chips as the strategy view — the raw server strings
+            were a mix of "Medium", "Soft" and bare letter codes. */}
+        {e.tyre && (
+          <span className="inline-grid place-items-center align-middle" title={tyreCompound(e.tyre).name}>
+            <TyreBadge t={tyreCompound(e.tyre)} size={22} />
+          </span>
+        )}
       </td>
       <td className="py-3 pr-4 text-right text-base">
         <CurrentLap lastLapAt={e.lastLapAt} inPits={e.inPits} />
@@ -355,7 +361,11 @@ function Row({ e, match, index = 0 }) {
         <span className="font-mono text-sm text-medium">{e.lapCount}</span>
       </td>
       <td className="hidden py-3 pr-4 text-center lg:table-cell">
-        {e.tyre && <span className="pill bg-surface2 text-medium">{e.tyre}</span>}
+        {e.tyre && (
+          <span className="inline-grid place-items-center align-middle" title={tyreCompound(e.tyre).name}>
+            <TyreBadge t={tyreCompound(e.tyre)} size={22} />
+          </span>
+        )}
       </td>
       <td className="hidden py-3 pr-4 text-right xl:table-cell">
         <span className="font-mono text-sm tabular-nums text-light">{e.topSpeed || "—"}</span>
@@ -546,7 +556,9 @@ function ChampionshipProjection({ data }) {
                 {!standalone && <th className="w-16 py-3 text-center"></th>}
                 <th className="py-3 pl-1">Driver</th>
                 <th className="py-3 pr-4 text-center">Race</th>
-                {!standalone && <th className="py-3 pr-4 text-right">Before</th>}
+                {/* standalone: the championship standing is context only (the
+                    race isn't scored) — but it keeps the table informative */}
+                <th className="py-3 pr-4 text-right">{standalone ? "Standings" : "Before"}</th>
                 <th className="py-3 pr-5 text-right">{standalone ? "Pts" : "After"}</th>
               </tr>
             </thead>
@@ -600,20 +612,22 @@ function ChampionshipProjection({ data }) {
                       <span className="font-mono text-xs text-faint">—</span>
                     )}
                   </td>
-                  {!standalone && (
-                    <td className="py-3 pr-4 text-right">
-                      {d.currentPosition != null ? (
-                        <span
-                          className="font-mono text-sm tabular-nums text-light"
-                          title={`Before this race: P${d.currentPosition} with ${d.currentTotal} points`}
-                        >
-                          P{d.currentPosition} · {d.currentTotal}
-                        </span>
-                      ) : (
-                        <span className="font-mono text-xs text-faint">–</span>
-                      )}
-                    </td>
-                  )}
+                  <td className="py-3 pr-4 text-right">
+                    {d.currentPosition != null ? (
+                      <span
+                        className="font-mono text-sm tabular-nums text-light"
+                        title={
+                          standalone
+                            ? `Championship standing: P${d.currentPosition} with ${d.currentTotal} points (this race is not scored)`
+                            : `Before this race: P${d.currentPosition} with ${d.currentTotal} points`
+                        }
+                      >
+                        P{d.currentPosition} · {d.currentTotal}
+                      </span>
+                    ) : (
+                      <span className="font-mono text-xs text-faint">–</span>
+                    )}
+                  </td>
                   <td className="py-3 pr-5 text-right">
                     <span className="font-mono text-base font-bold tabular-nums text-dark sm:text-lg">{d.total}</span>
                     {d.gained > 0 && (
@@ -687,14 +701,19 @@ function ExternalButtons({ links, patreonUrl }) {
   const timing = links?.liveTimingUrl;
   const join = links?.cmJoinUrl;
   if (!timing && !join && !patreonUrl) return null;
+  // Lives in the PAGE HEADER's right slot (same height as the title), so the
+  // actual content starts right below. One shared size; phones stack them
+  // full-width under the title (the header handles the stacking).
+  const base =
+    "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold uppercase tracking-wide transition sm:w-auto";
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-2.5">
+    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-2.5">
       {join && (
         <a
           href={join}
           target="_blank"
           rel="noreferrer noopener"
-          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/25 transition hover:brightness-105"
+          className={`${base} bg-brand text-ink shadow-lg shadow-brand/25 hover:brightness-105`}
         >
           <ExternalIcon />
           Join in Content Manager
@@ -705,7 +724,7 @@ function ExternalButtons({ links, patreonUrl }) {
           href={timing}
           target="_blank"
           rel="noreferrer noopener"
-          className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-dark transition hover:bg-surface2"
+          className={`${base} border border-border bg-card text-dark hover:bg-surface2`}
         >
           <ExternalIcon />
           Full live timing
@@ -716,7 +735,7 @@ function ExternalButtons({ links, patreonUrl }) {
           href={patreonUrl}
           target="_blank"
           rel="noreferrer noopener"
-          className="ml-auto inline-flex items-center gap-2 rounded-xl border border-[#FF424D]/40 bg-[#FF424D]/10 px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-[#FF424D] transition hover:bg-[#FF424D]/20"
+          className={`${base} border border-[#FF424D]/40 bg-[#FF424D]/10 text-[#FF424D] hover:bg-[#FF424D]/20`}
         >
           <SocialIcon name="patreon" className="h-4 w-4" />
           Support us on Patreon
@@ -813,20 +832,21 @@ function TrackMapSection({ session, entries, match, className = "" }) {
 // packed server never turns the page into one endless table; the map column
 // next door stays in proportion. Empty state (nobody out) keeps the panel
 // instead of vanishing.
-function DrivingNowSection({ onTrack, match, className = "" }) {
+function DrivingNowSection({ onTrack, match, flip = false, className = "" }) {
+  // During a RACE an overtake FLIP-glides the two rows into their new slots
+  // (green flash = gained, red = lost) instead of the order snapping — the
+  // same useFlipList the championship projection uses, with the same lite-
+  // graphics/reduced-motion opt-out. Practice/quali keep the plain re-sort:
+  // there the order is a leaderboard, not on-track position.
+  const bodyRef = useRef(null);
+  const offRef = useRef(null);
+  useFlipList(flip ? bodyRef : offRef, onTrack.map((e) => e.guid).join("|"));
   return (
     <section className={`reveal card flex flex-col overflow-hidden ${className}`}>
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
         <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Driving now</span>
-        {onTrack.length > 0 ? (
-          <span className="inline-flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-wider text-emerald-600">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-            </span>
-            {onTrack.length} live
-          </span>
-        ) : (
+        {/* No live counter up here — the track-map card says "N on track". */}
+        {onTrack.length === 0 && (
           <span className="font-mono text-[11px] uppercase tracking-wider text-light">Nobody out</span>
         )}
       </div>
@@ -850,8 +870,11 @@ function DrivingNowSection({ onTrack, match, className = "" }) {
                 ))}
               </tr>
             </thead>
-            {/* cascade: rows rise in one after another, like the standings tables */}
-            <tbody className="cascade">
+            {/* No cascade here (matching the projection table): a websocket
+                hiccup or reorder remounts rows, which REPLAYED the entrance
+                fade over the whole field mid-session. The FLIP glide is the
+                only movement. */}
+            <tbody ref={bodyRef}>
               {onTrack.map((e, i) => (
                 <OnTrackRow key={e.guid} e={e} match={match(e.name)} index={i} />
               ))}
@@ -1025,14 +1048,18 @@ export default function Live() {
       <PageHeader
         eyebrow="Real-time"
         title="Live Timing"
-        right={board?.demo ? <span className="pill bg-amber-500/15 text-amber-600">Demo</span> : undefined}
+        // The external buttons share the title's row (right-aligned), so the
+        // session card moves up to just under the header.
+        right={
+          <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+            {board?.demo && <span className="pill bg-amber-500/15 text-amber-600">Demo</span>}
+            <ExternalButtons links={extLinks} patreonUrl={social.data?.patreon} />
+          </div>
+        }
       />
 
-      {/* External buttons (CM join + server-manager live timing, Patreon right). */}
-      <ExternalButtons links={extLinks} patreonUrl={social.data?.patreon} />
-
       {!session ? (
-        <div className="card flex flex-col items-center justify-center gap-3 py-20 text-center">
+        <div className="card flex flex-col items-center justify-center gap-3 py-12 text-center sm:py-20">
           <span className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand" />
           <p className="font-mono text-sm uppercase tracking-wider text-light">
             {socketState === "open" ? "Waiting for the server…" : "Connecting to the server…"}
@@ -1056,6 +1083,7 @@ export default function Live() {
             <DrivingNowSection
               onTrack={onTrack}
               match={match}
+              flip={session.type === "Race"}
               className="lg:col-span-3 lg:col-start-1 lg:row-start-1"
             />
           </div>

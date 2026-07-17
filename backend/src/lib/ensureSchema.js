@@ -58,6 +58,23 @@ export async function ensureAppSchema(prisma) {
     `UPDATE "Race" SET "type" = 'SPECIAL' WHERE "isSpecialEvent" = 1 AND "type" = 'CHAMPIONSHIP'`
   );
 
+  // --- Track flag country (migration race_country): ISO alpha-2 per race, the
+  // one source of truth for track flags. Backfill only fills NULLs from the
+  // static circuit table (+ known outline-less tracks), so admin edits stick.
+  await addColumn(prisma, "Race", "country", "TEXT");
+  {
+    const { staticCountryFor } = await import("./raceCountries.js");
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "id", "track" FROM "Race" WHERE "country" IS NULL`
+    );
+    for (const r of rows) {
+      const code = staticCountryFor(r.track);
+      if (code) {
+        await prisma.$executeRawUnsafe(`UPDATE "Race" SET "country" = ? WHERE "id" = ?`, code, r.id);
+      }
+    }
+  }
+
   // --- Phase 5: team-level drop rule. null = legacy behaviour (teams inherit
   // each driver's own dropped rounds); 0 = no team drop; N = drop the N lowest
   // single-driver round contributions from each team's total.

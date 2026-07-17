@@ -89,7 +89,7 @@ function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = fals
     <Link
       to={`/drivers/${d.driverId}`}
       style={{ "--i": index }}
-      className={`flex items-center gap-3 px-4 py-3 transition sm:gap-4 sm:px-5 ${
+      className={`flex items-center gap-2.5 px-3 py-3 transition sm:gap-4 sm:px-5 ${
         champion ? (decided ? "row-gold" : "row-leader") : "hover:bg-surface2"
       }`}
     >
@@ -103,7 +103,13 @@ function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = fals
             {d.name}
           </span>
           <Flag code={countryFor(d.driverId, d.country)} />
-          {showTier && <TierBadge tier={d.tier} />}
+          {/* On phones the badge stole the name's room (even short names were
+              cut) — the tier filter tabs above cover that info there. */}
+          {showTier && (
+            <span className="hidden sm:inline-flex">
+              <TierBadge tier={d.tier} />
+            </span>
+          )}
           {!d.isActive && <span className="pill bg-surface2 text-light">inactive</span>}
         </div>
         <TeamLogo
@@ -124,7 +130,7 @@ function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = fals
         </div>
       </div>
 
-      <div className="w-14 shrink-0 text-right sm:w-20">
+      <div className="w-12 shrink-0 text-right sm:w-20">
         <div className="font-mono text-lg font-bold tabular-nums text-dark sm:text-xl">{d.total}</div>
         <div className="font-mono text-[11px] tabular-nums text-light">
           {isLeader ? "leader" : `−${gap}`}

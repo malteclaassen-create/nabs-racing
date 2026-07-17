@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useParams, useNavigationType } from "react-router-dom";
 import { useScrollReveal } from "./hooks/useScrollReveal.js";
 import { api } from "./api/client.js";
+import { setTrackCountryOverrides } from "./data/circuits.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
 import { SeriesProvider, useSeries, useSeriesPath } from "./context/SeriesContext.jsx";
 import NavBar from "./components/NavBar.jsx";
@@ -313,6 +314,11 @@ function SeriesScopedApp() {
 export default function App() {
   useScrollReveal();
   useEffect(() => applyPreviewFromUrl(), []);
+  // Admin-stored track flag countries, layered over the static circuit table
+  // so edited (or circuit-less) tracks show the right flag site-wide.
+  useEffect(() => {
+    api.trackCountries().then(setTrackCountryOverrides).catch(() => {});
+  }, []);
   return (
     <SeriesProvider>
       <SeriesScopedApp />

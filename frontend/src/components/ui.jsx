@@ -263,15 +263,17 @@ export function CardHead({ eyebrow, title, children }) {
 // brand-pink mono eyebrow, display-font uppercase title, hairline rule.
 export function PageHeader({ index, eyebrow, title, subtitle, right }) {
   return (
-    <div className="mb-8 border-b border-border pb-5">
-      <div className="flex items-end justify-between gap-4">
+    <div className="mb-6 border-b border-border pb-5 sm:mb-8">
+      {/* On phones `right` (filters, pills) gets its own row under the title —
+          side by side it collided with the title on narrow screens. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div className="flex items-end gap-4">
           {index && (
             <span className="font-display text-4xl font-black leading-none text-faint">{index}</span>
           )}
           <div>
             {eyebrow && (
-              <div className="font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+              <div className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-eyebrow sm:text-[13px] sm:tracking-[0.2em]">
                 {eyebrow}
               </div>
             )}

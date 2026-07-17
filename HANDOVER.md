@@ -104,6 +104,20 @@ whenever the code changes.
    need it in the next step.
 10. Click **Deploy** (or wait for the automatic redeploy). The build should
     now go green. The site is online but the Discord login does not work yet.
+11. **Custom domain (nabsracing.com):** still under **Settings -> Networking**,
+    click **Add Custom Domain**, enter `nabsracing.com` (just the name, no
+    `https://`) and pick port **4000**. Add `www.nabsracing.com` the same way.
+    Railway then shows the DNS records (CNAME) to set at the place where the
+    domain was bought. HTTPS certificates come automatically once DNS points
+    at Railway. Afterwards set the two variables to fixed values:
+
+    ```
+    CORS_ORIGIN=https://nabsracing.com
+    DISCORD_REDIRECT_URI=https://nabsracing.com/auth/discord/callback
+    ```
+
+    and add `https://nabsracing.com/auth/discord/callback` as a second
+    redirect in the Discord developer portal (Step 3).
 
 ## Step 3 - Your own Discord app for the login
 
@@ -176,9 +190,9 @@ After the data move, go through this list once:
    is public knowledge from the seed data.
 4. Download a first full backup: **Admin -> Health -> Download full backup**.
    Keep that zip somewhere safe outside the server.
-5. Ask Malte to update the link-preview image address in the code (the
-   `og:image` lines) to your new domain, so links posted on Discord show the
-   preview picture. That is a one-line code change on his side.
+5. The link-preview address in the code (the `og:image` lines) is already set
+   to `nabsracing.com`. If the site ever moves to a different domain, ask
+   Malte to update it - a one-line code change on his side.
 6. Post the new address on your Discord server and tell everyone to log in
    once.
 

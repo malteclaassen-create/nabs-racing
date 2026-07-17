@@ -205,8 +205,13 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
     const { pointsTable } = await getSeasonScoring(prisma, season);
     const table = pointsTable || DEFAULT_POINTS_TABLE;
     const byId = new Map(drivers.map((d) => [d.id, d]));
+    // Championship context per driver ("P4 · 213 pts") — display only, this
+    // race still scores nothing. Fills the otherwise sparse standalone table.
+    const curStandings = await getDriverStandings(prisma, season.id);
+    const curById = new Map(curStandings.standings.map((r) => [r.driverId, r]));
     const row = (driverId, position, { dnf } = {}) => {
       const d = byId.get(driverId);
+      const cur = curById.get(driverId);
       return {
         driverId,
         name: d?.name || "?",
@@ -219,10 +224,10 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
         total: dnf ? 0 : getPointsForPosition(position, table),
         livePosition: dnf ? null : position,
         dnf: !!dnf,
-        // Delta fields exist for shape parity; a one-off race has no "current"
-        // table to move against.
-        currentPosition: null,
-        currentTotal: 0,
+        // Championship standing as CONTEXT (the race pays nothing into it);
+        // gained/move stay zero — there is no table to move against.
+        currentPosition: cur?.position ?? null,
+        currentTotal: cur?.total ?? 0,
         gained: 0,
         move: 0,
       };

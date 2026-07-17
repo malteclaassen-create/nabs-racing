@@ -9,14 +9,26 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest, resolveDriverId } from "../middleware/auth.js";
-import { groupKeyFor, trackKeyFor, displayNameFor, countryFor } from "../lib/trackKeys.js";
+import { groupKeyFor, trackKeyFor, displayNameFor } from "../lib/trackKeys.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { resolveSeries, seasonSeriesMap } from "../lib/series.js";
 import { getPersonGroups, getNameOverrides, getLinkedDriverIds } from "../lib/persons.js";
 import { telemetryForRaces } from "../lib/telemetryRead.js";
 import { readTrackInfo } from "../lib/trackInfo.js";
+import { readTrackCountries, staticCountryFor } from "../lib/raceCountries.js";
 
 const router = Router();
+
+// GET /api/tracks/countries -> { <trackKey>: "gb", ... } — every admin-stored
+// track country. The frontend loads this once and layers it over its static
+// circuit table, so edited/unknown-circuit flags show site-wide.
+router.get("/countries", async (_req, res, next) => {
+  try {
+    res.json(await readTrackCountries(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
 
 const MAX_LAP_MS = 1_800_000;
 const isLap = (ms) => ms != null && ms > 0 && ms <= MAX_LAP_MS;
@@ -54,11 +66,14 @@ router.get("/history", optionalUser, async (req, res, next) => {
     );
     const raceIds = here.map((r) => r.id);
 
+    // Flag country: admin-stored code on the races wins over the static table.
+    const dbCountry = (await readTrackCountries(prisma))[groupKey] || null;
+
     if (!raceIds.length) {
       return res.json({
         track: key ? displayNameFor(key) : track,
         key: groupKey,
-        country: countryFor(track),
+        country: dbCountry || staticCountryFor(track),
         stats: {},
         editions: [],
         customFacts: info.facts,
@@ -188,7 +203,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
     res.json({
       track: key ? displayNameFor(key) : track,
       key: groupKey,
-      country: countryFor(track),
+      country: dbCountry || staticCountryFor(track),
       stats,
       editions,
       customFacts: info.facts,

@@ -8,8 +8,52 @@ import { telemetryForRace } from "../lib/telemetryRead.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
 import { dbReplaysByRace } from "../lib/downloads.js";
+import { readRaceCountries, staticCountryFor } from "../lib/raceCountries.js";
 
 const router = Router();
+
+// Winner (P1 after penalties/DSQ) of each completed race, for the calendar
+// cards. Uses the exact same derived-results path as the results endpoint
+// (applyPenalties -> contiguous reclassification), so steward decisions are
+// respected. Historical points-only rounds (no recorded positions) fall back
+// to the highest-scoring finisher.
+async function raceWinners(races) {
+  const ids = races.filter((r) => r.isCompleted).map((r) => r.id);
+  if (!ids.length) return new Map();
+  const [results, nameOverrides] = await Promise.all([
+    prisma.raceResult.findMany({
+      where: { raceId: { in: ids } },
+      include: { driver: { include: { team: true } }, subForTeam: true },
+    }),
+    getNameOverrides(prisma),
+  ]);
+  const byRace = new Map();
+  for (const r of results) {
+    if (!byRace.has(r.raceId)) byRace.set(r.raceId, []);
+    byRace.get(r.raceId).push(r);
+  }
+  const winners = new Map();
+  for (const [raceId, rows] of byRace) {
+    const applied = applyPenalties(rows);
+    const finished = applied.filter((r) => r.status === "FINISHED");
+    let win = finished.find((r) => r.position === 1);
+    if (!win && finished.length && applied.every((r) => r.position == null)) {
+      // points-only archive round: best stored points wins
+      win = [...finished].sort((a, b) => (b.points ?? 0) - (a.points ?? 0))[0];
+      if ((win?.points ?? 0) <= 0) win = null;
+    }
+    if (!win) continue;
+    const team = win.subForTeam || win.driver.team;
+    const ov = nameOverrides.get(win.driverId);
+    winners.set(raceId, {
+      driverId: win.driverId,
+      name: ov?.displayName || win.driver.name,
+      photoUrl: win.driver.photoUrl || win.driver.discordAvatar || null,
+      team: team ? { id: team.id, name: team.name, color: team.color, logoUrl: team.logoUrl } : null,
+    });
+  }
+  return winners;
+}
 
 // GET /api/races -> list of all races in the selected (default: active) season.
 // An admin may target a private season (site preview); the public can't.
@@ -27,16 +71,19 @@ router.get("/", async (req, res, next) => {
     // Session format + race type (raw-SQL columns) for the upcoming-race panel
     // and the calendar's grouping, and any published replay downloads so the
     // calendar can offer a Replay button.
-    const [format, types, replays] = await Promise.all([
+    const [format, types, replays, winners, countries] = await Promise.all([
       readRaceFormat(prisma, races.map((r) => r.id)),
       readRaceTypes(prisma, races.map((r) => r.id)),
       dbReplaysByRace(prisma, races.map((r) => r.id)),
+      raceWinners(races),
+      readRaceCountries(prisma, races.map((r) => r.id)),
     ]);
     res.json(
       races.map((r) => ({
         id: r.id,
         number: r.number,
         track: r.track,
+        country: countries.get(r.id) || staticCountryFor(r.track),
         date: r.date,
         isCompleted: r.isCompleted,
         isSpecialEvent: r.isSpecialEvent,
@@ -46,6 +93,7 @@ router.get("/", async (req, res, next) => {
         qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
         raceLaps: format.get(r.id)?.raceLaps ?? null,
         replayDownloadId: replays.get(r.id) || null,
+        winner: winners.get(r.id) || null,
       }))
     );
   } catch (e) {
@@ -203,6 +251,7 @@ router.get("/:id/results", async (req, res, next) => {
         id: race.id,
         number: race.number,
         track: race.track,
+        country: (await readRaceCountries(prisma, [race.id])).get(race.id) || staticCountryFor(race.track),
         date: race.date,
         isCompleted: race.isCompleted,
         info: race.info || null,

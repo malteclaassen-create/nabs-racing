@@ -8,7 +8,7 @@ import { useParallax, useTilt, useMagnetic } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
-import { circuitFor } from "../data/circuits.js";
+import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 import { heroFor, heroOnError } from "../utils/heroImage.js";
@@ -157,7 +157,7 @@ export default function Welcome() {
   const top3 = standings.slice(0, 3);
   const driverCount = standings.length;
   const teamCount = (t1.data?.standings?.length || 0) + (t2.data?.standings?.length || 0);
-  const nextCircuit = circuitFor(nextRace?.track);
+  const nextCircuit = flagFor(nextRace?.track, nextRace?.country);
 
   // Season-aware copy: everything below adapts to the season being shown, so
   // the page needs no edits when a new season (new game, new rules) starts.
@@ -215,7 +215,7 @@ export default function Welcome() {
 
   if (loading)
     return (
-      <div className="space-y-12">
+      <div className="space-y-8 sm:space-y-12">
         <Skeleton className="h-[520px] w-full rounded-[1.75rem]" />
         <div className="grid gap-4 sm:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-2xl" />)}
