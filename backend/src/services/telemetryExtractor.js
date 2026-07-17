@@ -260,6 +260,49 @@ export function extractTelemetry(json, opts = {}) {
     if (r?.DriverGuid && Number(r.BestLap) > 0) bestLapByGuid.set(r.DriverGuid, Number(r.BestLap));
   }
 
+  // Field-wide safety-car laps (median of everyone's lap n far above the race
+  // median): those are slow for EVERYONE, so they must not read as pit stops.
+  const maxLapCount = Math.max(0, ...[...lapsByGuid.values()].map((a) => a.length));
+  const allTimesPool = [];
+  for (const a of lapsByGuid.values())
+    for (const l of a) {
+      const t = Number(l.LapTime);
+      if (Number.isFinite(t) && t > 0) allTimesPool.push(t);
+    }
+  const raceMedian = medianOf(allTimesPool);
+  const scLapNums = new Set();
+  for (let n = 1; n <= maxLapCount; n++) {
+    const ts = [];
+    for (const a of lapsByGuid.values()) {
+      const t = a[n - 1] ? Number(a[n - 1].LapTime) : 0;
+      if (Number.isFinite(t) && t > 0) ts.push(t);
+    }
+    if (raceMedian > 0 && ts.length && medianOf(ts) > raceMedian * SC_LAP_FACTOR) scLapNums.add(n);
+  }
+
+  // Calibrate what a pit stop actually costs in THIS race from the stops we
+  // can see for certain — the ones with a compound change (the slower of the
+  // two boundary laps vs the driver's own median). Same-compound stops must
+  // then lose a comparable amount, which keeps ordinary driver mistakes
+  // (a spin costs 5-20s, a stop 30s+) from reading as pit stops.
+  const pitLossSamples = [];
+  for (const arr of lapsByGuid.values()) {
+    const med = medianOf(arr.map((l) => Number(l.LapTime)).filter((t) => Number.isFinite(t) && t > 0));
+    if (!med) continue;
+    for (let i = 1; i < arr.length; i++) {
+      const prevT = String(arr[i - 1].Tyre || "").trim();
+      const curT = String(arr[i].Tyre || "").trim();
+      if (prevT && curT && prevT !== curT) {
+        const slower = Math.max(Number(arr[i - 1].LapTime) || 0, Number(arr[i].LapTime) || 0);
+        if (slower - med > 5000) pitLossSamples.push(slower - med);
+      }
+    }
+  }
+  const typicalPitLoss = pitLossSamples.length ? medianOf(pitLossSamples) : null;
+  // Threshold for a same-compound stop: at least the usual 25s over the own
+  // median, raised towards the race's real pit loss when we know it.
+  const pitDeltaMin = typicalPitLoss ? Math.max(PIT_LAP_EXTRA_MS, typicalPitLoss * 0.6) : PIT_LAP_EXTRA_MS;
+
   const metrics = new Map();
   for (const [guid, arr] of lapsByGuid) {
     const times = arr.map((l) => Number(l.LapTime)).filter((t) => Number.isFinite(t) && t > 0);
@@ -282,16 +325,40 @@ export function extractTelemetry(json, opts = {}) {
         consistencyPct = Math.round((100 - ((avg - best) / best) * 100) * 100) / 100;
       }
     }
-    // Tyre stints: consecutive laps on the same compound, in completion order
-    // (the file is chronological). A lap without a Tyre field continues the
-    // running stint. Powers the strategy expander on stored race results.
+    // Tyre stints, in completion order (the file is chronological). A stint
+    // ends on a COMPOUND CHANGE — or, since the file carries no pit flag, on a
+    // detected same-compound stop: a lap far slower than the driver's own
+    // median (same rule the overtake logic uses for pit laps), unless the
+    // whole field was slow there (safety car). The split lands AFTER the slow
+    // in-lap, so "M -> M" two-stoppers show two stops instead of one long run.
+    const median = medianOf(times);
     const stints = [];
-    for (const l of arr) {
+    let lastSplitIdx = -Infinity;
+    let pendingPitSplit = false;
+    arr.forEach((l, i) => {
       const t = String(l.Tyre || "").trim();
       const last = stints[stints.length - 1];
-      if (last && (!t || t === last.tyre)) last.laps += 1;
-      else stints.push({ tyre: t || "?", laps: 1 });
-    }
+      const changed = !!(last && t && last.tyre !== "?" && t !== last.tyre);
+      // The heuristic pit split only fires when no compound change marks the
+      // stop anyway (and not right after one — that's the same stop).
+      const pitSplit = pendingPitSplit && !changed && i - lastSplitIdx > 1;
+      if (!last) {
+        stints.push({ tyre: t || "?", laps: 1 });
+        lastSplitIdx = i;
+      } else if (changed || pitSplit) {
+        stints.push({ tyre: t || last.tyre, laps: 1 });
+        lastSplitIdx = i;
+      } else {
+        last.laps += 1;
+        if (last.tyre === "?" && t) last.tyre = t;
+      }
+      const lt = Number(l.LapTime) || 0;
+      const delta = median > 0 ? lt - median : 0;
+      // A lap with track cuts is far more likely an off-track excursion than a
+      // stop — only a clearly pit-sized loss overrules that.
+      const looksLikeMistake = Number(l.Cuts) > 0 && (!typicalPitLoss || delta < typicalPitLoss);
+      pendingPitSplit = delta >= pitDeltaMin && !scLapNums.has(i + 1) && !looksLikeMistake;
+    });
 
     metrics.set(guid, {
       laps: arr.length,
