@@ -897,7 +897,10 @@ function EditResults() {
   // backup first; standings recompute themselves from the remaining rounds.
   async function deleteRace() {
     const race = (races || []).find((r) => r.id === raceId);
-    const label = race ? `Round ${race.number} · ${race.track}` : "this race";
+    const kind = race ? race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP") : null;
+    const label = race
+      ? `${kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${race.number}`} · ${race.track}`
+      : "this race";
     if (
       !window.confirm(
         `Delete ${label} and ALL its results?\n\nStandings will recalculate without this round. A backup is saved automatically, so it can be restored if this was a mistake.`
@@ -941,11 +944,23 @@ function EditResults() {
         <label className="text-sm font-semibold text-medium">Race</label>
         <select className="input max-w-xs" value={raceId} onChange={(e) => setRaceId(e.target.value)}>
           <option value="">Select a round…</option>
-          {(races || []).filter((r) => !r.isSpecialEvent).map((r) => (
-            <option key={r.id} value={r.id}>
-              Round {r.number} · {r.track}
-            </option>
-          ))}
+          {/* Championship rounds always; trainings/events join once they have
+              stored results (that's what there is to edit or delete). */}
+          {(races || [])
+            .filter((r) => {
+              const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+              return kind === "CHAMPIONSHIP" || r.resultCount > 0;
+            })
+            .map((r) => {
+              const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+              const label =
+                kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${r.number}`;
+              return (
+                <option key={r.id} value={r.id}>
+                  {label} · {r.track}
+                </option>
+              );
+            })}
         </select>
       </div>
 
