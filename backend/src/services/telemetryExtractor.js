@@ -260,31 +260,30 @@ export function extractTelemetry(json, opts = {}) {
     if (r?.DriverGuid && Number(r.BestLap) > 0) bestLapByGuid.set(r.DriverGuid, Number(r.BestLap));
   }
 
-  // Field-wide safety-car laps (median of everyone's lap n far above the race
-  // median): those are slow for EVERYONE, so they must not read as pit stops.
+  // Per-lap FIELD BASELINE: the 25th percentile of everyone's lap-n time, i.e.
+  // the clean pace ON THAT LAP. Under a safety car the baseline rises with the
+  // field, so a car merely trundling behind the SC shows ~zero delta while a
+  // car that dived into the pits still sticks out — stops made under SC (very
+  // common) stay detectable, and SC laps alone never read as stops.
   const maxLapCount = Math.max(0, ...[...lapsByGuid.values()].map((a) => a.length));
-  const allTimesPool = [];
-  for (const a of lapsByGuid.values())
-    for (const l of a) {
-      const t = Number(l.LapTime);
-      if (Number.isFinite(t) && t > 0) allTimesPool.push(t);
-    }
-  const raceMedian = medianOf(allTimesPool);
-  const scLapNums = new Set();
+  const lapBaseline = [];
   for (let n = 1; n <= maxLapCount; n++) {
     const ts = [];
     for (const a of lapsByGuid.values()) {
       const t = a[n - 1] ? Number(a[n - 1].LapTime) : 0;
       if (Number.isFinite(t) && t > 0) ts.push(t);
     }
-    if (raceMedian > 0 && ts.length && medianOf(ts) > raceMedian * SC_LAP_FACTOR) scLapNums.add(n);
+    ts.sort((x, y) => x - y);
+    lapBaseline[n] = ts.length ? ts[Math.floor((ts.length - 1) * 0.25)] : 0;
   }
 
   // Calibrate what a pit stop actually costs in THIS race from the stops we
   // can see for certain — the ones with a compound change (the slower of the
-  // two boundary laps vs the driver's own median). Same-compound stops must
-  // then lose a comparable amount, which keeps ordinary driver mistakes
-  // (a spin costs 5-20s, a stop 30s+) from reading as pit stops.
+  // two boundary laps vs that lap's baseline). Same-compound stops must then
+  // lose a comparable amount, which keeps ordinary driver mistakes from
+  // reading as pit stops. (League tracks differ a lot: ~20s at Monza, 30s+
+  // elsewhere — a fixed threshold missed real stops.)
+  const refFor = (ownMedian, lapNum) => Math.max(lapBaseline[lapNum] || 0, ownMedian);
   const pitLossSamples = [];
   for (const arr of lapsByGuid.values()) {
     const med = medianOf(arr.map((l) => Number(l.LapTime)).filter((t) => Number.isFinite(t) && t > 0));
@@ -293,15 +292,18 @@ export function extractTelemetry(json, opts = {}) {
       const prevT = String(arr[i - 1].Tyre || "").trim();
       const curT = String(arr[i].Tyre || "").trim();
       if (prevT && curT && prevT !== curT) {
-        const slower = Math.max(Number(arr[i - 1].LapTime) || 0, Number(arr[i].LapTime) || 0);
-        if (slower - med > 5000) pitLossSamples.push(slower - med);
+        const dPrev = (Number(arr[i - 1].LapTime) || 0) - refFor(med, i);
+        const dCur = (Number(arr[i].LapTime) || 0) - refFor(med, i + 1);
+        const delta = Math.max(dPrev, dCur);
+        if (delta > 5000) pitLossSamples.push(delta);
       }
     }
   }
   const typicalPitLoss = pitLossSamples.length ? medianOf(pitLossSamples) : null;
-  // Threshold for a same-compound stop: at least the usual 25s over the own
-  // median, raised towards the race's real pit loss when we know it.
-  const pitDeltaMin = typicalPitLoss ? Math.max(PIT_LAP_EXTRA_MS, typicalPitLoss * 0.6) : PIT_LAP_EXTRA_MS;
+  // Threshold for a same-compound stop: ~70% of the race's real pit loss, but
+  // never under 14s (against small mistakes); without calibration stops (no
+  // compound change anywhere) fall back to the conservative 25s rule.
+  const pitDeltaMin = typicalPitLoss ? Math.max(15000, typicalPitLoss * 0.8) : PIT_LAP_EXTRA_MS;
 
   const metrics = new Map();
   for (const [guid, arr] of lapsByGuid) {
@@ -340,8 +342,9 @@ export function extractTelemetry(json, opts = {}) {
       const last = stints[stints.length - 1];
       const changed = !!(last && t && last.tyre !== "?" && t !== last.tyre);
       // The heuristic pit split only fires when no compound change marks the
-      // stop anyway (and not right after one — that's the same stop).
-      const pitSplit = pendingPitSplit && !changed && i - lastSplitIdx > 1;
+      // stop anyway, and never within 3 laps of the previous split — nobody
+      // pits twice that quickly, but a messy phase produces several slow laps.
+      const pitSplit = pendingPitSplit && !changed && i - lastSplitIdx >= 3;
       if (!last) {
         stints.push({ tyre: t || "?", laps: 1 });
         lastSplitIdx = i;
@@ -353,11 +356,11 @@ export function extractTelemetry(json, opts = {}) {
         if (last.tyre === "?" && t) last.tyre = t;
       }
       const lt = Number(l.LapTime) || 0;
-      const delta = median > 0 ? lt - median : 0;
+      const delta = median > 0 ? lt - refFor(median, i + 1) : 0;
       // A lap with track cuts is far more likely an off-track excursion than a
-      // stop — only a clearly pit-sized loss overrules that.
-      const looksLikeMistake = Number(l.Cuts) > 0 && (!typicalPitLoss || delta < typicalPitLoss);
-      pendingPitSplit = delta >= pitDeltaMin && !scLapNums.has(i + 1) && !looksLikeMistake;
+      // stop — only a loss clearly ABOVE the usual pit loss overrules that.
+      const looksLikeMistake = Number(l.Cuts) > 0 && (!typicalPitLoss || delta < typicalPitLoss * 1.2);
+      pendingPitSplit = delta >= pitDeltaMin && !looksLikeMistake;
     });
 
     metrics.set(guid, {

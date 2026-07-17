@@ -191,7 +191,7 @@ written and the first deploy goes green.
    `${{RAILWAY_PUBLIC_DOMAIN}}` is filled in by Railway with the real address
    at runtime, so you don't need to know the domain in advance - and it keeps
    working if you attach a custom domain later. Railway sets `PORT` by itself.
-5. Under *Settings -> Networking* click **Generate Domain** (port 4000 if it
+5. Under *Settings -> Networking* click **Generate Domain** (port 8080 if it
    asks). Deploy. Afterwards add the redirect URL in the Discord developer
    portal as in step 5 above - Discord needs the spelled-out address
    (`https://<the-generated-domain>/auth/discord/callback`), it cannot use

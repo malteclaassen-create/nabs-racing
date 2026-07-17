@@ -99,14 +99,18 @@ whenever the code changes.
    Leave the two `${{RAILWAY_PUBLIC_DOMAIN}}` lines exactly as they are -
    Railway fills in the real address by itself.
 9. Go to **Settings -> Networking** and click **Generate Domain** (pick port
-   4000 if it asks). This gives the site its public address, something like
+   **8080** if it asks - that is the port Railway assigns to the app via the
+   PORT variable; 4000 is only the local dev port and answers nothing here).
+   This gives the site its public address, something like
    `nabs-racing-production.up.railway.app`. **Write this address down**, you
    need it in the next step.
 10. Click **Deploy** (or wait for the automatic redeploy). The build should
     now go green. The site is online but the Discord login does not work yet.
 11. **Custom domain (nabsracing.com):** still under **Settings -> Networking**,
     click **Add Custom Domain**, enter `nabsracing.com` (just the name, no
-    `https://`) and pick port **4000**. Add `www.nabsracing.com` the same way.
+    `https://`) and pick port **8080** (the Railway-assigned PORT — a wrong
+    port here shows as "Application failed to respond"). Add
+    `www.nabsracing.com` the same way if the plan allows a third domain.
     Railway then shows the DNS records (CNAME) to set at the place where the
     domain was bought. HTTPS certificates come automatically once DNS points
     at Railway. Afterwards set the two variables to fixed values:
