@@ -127,6 +127,8 @@ export function parseAcRaceJson(json, drivers) {
         cleanLaps: tel ? tel.cleanLaps : null,
         consistencyMs: tel ? tel.consistencyMs : null,
         consistencyPct: tel ? tel.consistencyPct : null,
+        // Tyre stints ([{tyre, laps}]) for the strategy expander on results.
+        stints: tel ? tel.stints : null,
         gamePenalties: tel ? tel.gamePenalties : null,
         gamePenaltySeconds: tel ? tel.gamePenaltySeconds : null,
         carModel: r.CarModel,

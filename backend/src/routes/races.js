@@ -196,6 +196,7 @@ router.get("/:id/results", async (req, res, next) => {
           cleanLaps: tel.cleanLaps ?? null,
           consistencyMs: tel.consistencyMs ?? null,
           consistencyPct: tel.consistencyPct ?? null,
+          stints: tel.stints ?? null,
           gamePenalties: tel.gamePenalties ?? null,
           gamePenaltySeconds: tel.gamePenaltySeconds ?? null,
           team: {

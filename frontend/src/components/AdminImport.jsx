@@ -30,6 +30,18 @@ export default function AdminImport({ onCommitted }) {
   const [parsed, setParsed] = useState(null);
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState({ number: "", track: "", date: "" });
+  // Where the result goes: "round" = a championship round (by number), or the
+  // id of an existing training/special race of the season (those carry no
+  // round number and never score, but their results become viewable).
+  const [target, setTarget] = useState("round");
+  const seasonRaces = useApi(useCallback(() => api.races(currentSeason?.number), [currentSeason?.number]));
+  const nonChampRaces = useMemo(
+    () =>
+      (seasonRaces.data || []).filter(
+        (r) => (r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP")) !== "CHAMPIONSHIP"
+      ),
+    [seasonRaces.data]
+  );
   const [remoteId, setRemoteId] = useState("");
   const [remoteQuery, setRemoteQuery] = useState("");
   const [error, setError] = useState(null);
@@ -89,6 +101,7 @@ export default function AdminImport({ onCommitted }) {
           consistencyPct: en.consistencyPct ?? null,
           gamePenalties: en.gamePenalties ?? null,
           gamePenaltySeconds: en.gamePenaltySeconds ?? null,
+          stints: en.stints ?? null,
           suggestions: en.suggestions,
         };
       })
@@ -130,7 +143,7 @@ export default function AdminImport({ onCommitted }) {
 
   async function commit() {
     setError(null);
-    if (!meta.number) return setError("Enter a round number.");
+    if (target === "round" && !meta.number) return setError("Enter a round number.");
     const mapped = rows.filter((r) => r.driverId);
     const dupes = mapped.map((r) => r.driverId).filter((id, i, a) => a.indexOf(id) !== i);
     if (dupes.length) return setError("A driver is mapped to more than one entry.");
@@ -163,9 +176,10 @@ export default function AdminImport({ onCommitted }) {
         consistencyPct: r.consistencyPct ?? null,
         gamePenalties: r.gamePenalties ?? null,
         gamePenaltySeconds: r.gamePenaltySeconds ?? null,
+        stints: r.stints ?? null,
       }));
       const body = {
-        number: Number(meta.number),
+        ...(target === "round" ? { number: Number(meta.number) } : { raceId: target }),
         track: meta.track,
         date: meta.date || null,
         // Save into the season the admin is editing (the season switcher),
@@ -198,7 +212,11 @@ export default function AdminImport({ onCommitted }) {
             .map((c) => c.name)
             .join(", ")}) — check for a mis-mapping or a shared account.`
         : "";
-      setDone(`Round ${res.number} saved. Standings recalculated.${conflictNote}`);
+      setDone(
+        res.number != null
+          ? `Round ${res.number} saved. Standings recalculated.${conflictNote}`
+          : `Training/event results saved (not scored).${conflictNote}`
+      );
       setParsed(null);
       setRows([]);
       setRemoteId("");
@@ -314,16 +332,34 @@ export default function AdminImport({ onCommitted }) {
       {parsed && (
         <div className="space-y-4">
           <div className="card grid gap-4 p-5 sm:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-medium">Round #</label>
-              <input
-                className="input"
-                type="number"
-                value={meta.number}
-                onChange={(e) => setMeta((m) => ({ ...m, number: e.target.value }))}
-                placeholder="10"
-              />
-            </div>
+            {nonChampRaces.length > 0 && (
+              <div className="sm:col-span-3">
+                <label className="mb-1 block text-sm font-semibold text-medium">Save as</label>
+                <select className="input max-w-md" value={target} onChange={(e) => setTarget(e.target.value)}>
+                  <option value="round">Championship round (scored, by round number)</option>
+                  {nonChampRaces.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {(r.type === "TRAINING" ? "Training" : "Event") + ` · ${r.track}` + (r.date ? ` · ${new Date(r.date).toLocaleDateString("en-GB")}` : "") + (r.resultCount > 0 ? " (has results)" : "")}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-light">
+                  Training/event results are stored and viewable on the Races page, but never count towards any standings.
+                </p>
+              </div>
+            )}
+            {target === "round" && (
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-medium">Round #</label>
+                <input
+                  className="input"
+                  type="number"
+                  value={meta.number}
+                  onChange={(e) => setMeta((m) => ({ ...m, number: e.target.value }))}
+                  placeholder="10"
+                />
+              </div>
+            )}
             <div>
               <label className="mb-1 block text-sm font-semibold text-medium">Track</label>
               <input

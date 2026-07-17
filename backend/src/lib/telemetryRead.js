@@ -12,9 +12,21 @@
 const COLS = [
   "contacts", "envContacts", "cuts", "overtakes", "lapsLed", "laps",
   "cleanLaps", "consistencyMs", "consistencyPct", "gamePenalties", "gamePenaltySeconds",
+  "stints",
 ];
 
 const num = (v) => (v == null ? null : Number(v));
+
+// stints is stored as JSON text ([{tyre, laps}]); anything unparseable = null.
+function parseStints(v) {
+  if (!v || typeof v !== "string") return null;
+  try {
+    const arr = JSON.parse(v);
+    return Array.isArray(arr) && arr.length ? arr : null;
+  } catch {
+    return null;
+  }
+}
 
 function shape(r) {
   return {
@@ -29,6 +41,7 @@ function shape(r) {
     consistencyPct: num(r.consistencyPct),
     gamePenalties: num(r.gamePenalties),
     gamePenaltySeconds: num(r.gamePenaltySeconds),
+    stints: parseStints(r.stints),
   };
 }
 

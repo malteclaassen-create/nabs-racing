@@ -160,6 +160,14 @@ export default function AdminNotifications() {
             </label>
           ))}
         </div>
+        <div className="mt-2 divide-y divide-border">
+          <ToggleRow
+            label="Remind for training sessions too"
+            help="The reminders above also fire for scheduled training sessions (results notifications cover trainings either way)."
+            value={form.trainingReminders !== false}
+            onChange={(v) => set("trainingReminders", v)}
+          />
+        </div>
       </div>
 
       <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">

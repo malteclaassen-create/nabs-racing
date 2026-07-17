@@ -96,6 +96,7 @@ export async function saveRaceResults(prisma, raceId, results) {
   const TELEMETRY_COLS = [
     "contacts", "envContacts", "cuts", "overtakes", "lapsLed", "laps",
     "cleanLaps", "consistencyMs", "consistencyPct", "gamePenalties", "gamePenaltySeconds",
+    "stints",
   ];
   const existing = await prisma.$queryRawUnsafe(
     `SELECT "driverId", "grid", "bestLapMs", "totalTimeMs", ${TELEMETRY_COLS.map((c) => `"${c}"`).join(", ")} FROM "RaceResult" WHERE "raceId" = ?`,
@@ -148,7 +149,10 @@ export async function saveRaceResults(prisma, raceId, results) {
       const sets = [];
       const vals = [];
       for (const col of TELEMETRY_COLS) {
-        const val = keep(r[col], prev[col]);
+        let val = keep(r[col], prev[col]);
+        // stints is a TEXT column carrying JSON — the import hands it over as
+        // an array, the preserved previous value is already a string.
+        if (col === "stints" && val != null && typeof val !== "string") val = JSON.stringify(val);
         if (val != null) {
           sets.push(`"${col}" = ?`);
           vals.push(val);

@@ -1,7 +1,10 @@
+import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { StatusPill, Rank, TierBadge } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
+import { TyreBadge } from "./TyreStrategy.jsx";
+import { tyreCompound } from "../data/liveTiming.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
 
@@ -32,6 +35,16 @@ function fmtLap(ms) {
 
 export default function RaceResults({ race, results }) {
   const detailed = race.hasPositions;
+  // Which drivers' tyre strategies are folded open (rows with stint data from
+  // the AC import are clickable; older rounds simply have none).
+  const [openStints, setOpenStints] = useState(() => new Set());
+  const toggleStints = (driverId) =>
+    setOpenStints((prev) => {
+      const next = new Set(prev);
+      if (next.has(driverId)) next.delete(driverId);
+      else next.add(driverId);
+      return next;
+    });
 
   const lapRows = results.filter((r) => isLap(r.bestLapMs));
   const hasLaps = lapRows.length > 0;
@@ -96,11 +109,26 @@ export default function RaceResults({ race, results }) {
               const tier = r.tier ?? r.team?.tier;
               const isFastest = r.driverId === fastestDriverId;
               const gridDelta = r.grid != null && r.position != null ? r.grid - r.position : null;
+              const hasStints = Array.isArray(r.stints) && r.stints.length > 0;
+              const stintsOpen = hasStints && openStints.has(r.driverId);
+              // Total column count for the expander row's colSpan.
+              const colCount =
+                2 + // driver + pts
+                1 + // team (sm+)
+                (detailed ? 1 : 0) +
+                (detailed && hasGrid ? 1 : 0) +
+                (detailed && hasTimes ? 1 : 0) +
+                (detailed && hasLaps ? 1 : 0) +
+                (detailed ? 1 : 0);
               return (
+                <Fragment key={r.driverId}>
                 <tr
-                  key={r.driverId}
                   style={{ "--i": Math.min(i, 16) }}
-                  className="border-b border-border transition odd:bg-surface2/30 last:border-0 hover:bg-surface2"
+                  onClick={hasStints ? () => toggleStints(r.driverId) : undefined}
+                  title={hasStints ? "Show tyre strategy" : undefined}
+                  className={`border-b border-border transition odd:bg-surface2/30 last:border-0 hover:bg-surface2 ${
+                    hasStints ? "cursor-pointer" : ""
+                  }`}
                 >
                   {detailed && (
                     <td className="px-3 py-3.5 text-center">
@@ -144,6 +172,7 @@ export default function RaceResults({ race, results }) {
                         />
                         <Link
                           to={`/drivers/${r.driverId}`}
+                          onClick={(e) => e.stopPropagation()}
                           className="font-display text-base font-bold uppercase tracking-tight text-dark transition hover:text-brand"
                           title={r.formerName ? `Raced as ${r.formerName}` : undefined}
                         >
@@ -170,6 +199,20 @@ export default function RaceResults({ race, results }) {
                           +{r.penaltySeconds}s pen
                         </span>
                       )}
+                      {hasStints && (
+                        <svg
+                          viewBox="0 0 24 24"
+                          className={`h-3.5 w-3.5 shrink-0 text-light transition-transform ${stintsOpen ? "rotate-90" : ""}`}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M9 6l6 6-6 6" />
+                        </svg>
+                      )}
                     </div>
                     {/* phones: race time as a sub-line, since the Time column
                         doesn't fit next to the points there */}
@@ -184,7 +227,7 @@ export default function RaceResults({ race, results }) {
                     {(() => {
                       const t = r.effectiveTeam || r.team;
                       return (
-                        <Link to={`/teams/${t.id}`} className="inline-flex transition hover:opacity-80">
+                        <Link to={`/teams/${t.id}`} onClick={(e) => e.stopPropagation()} className="inline-flex transition hover:opacity-80">
                           <TeamLogo
                             id={t.id}
                             name={t.name}
@@ -251,6 +294,37 @@ export default function RaceResults({ race, results }) {
                     )}
                   </td>
                 </tr>
+                {stintsOpen && (
+                  <tr className="border-b border-border bg-surface2/40 last:border-0">
+                    <td colSpan={colCount} className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:pl-4">
+                        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-light">
+                          Tyre strategy
+                        </span>
+                        {r.stints.map((s, idx) => {
+                          const t = tyreCompound(s.tyre);
+                          return (
+                            <span key={idx} className="flex items-center gap-1.5">
+                              {idx > 0 && (
+                                <svg viewBox="0 0 24 24" className="h-3 w-3 text-faint" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M5 12h14M13 6l6 6-6 6" />
+                                </svg>
+                              )}
+                              <TyreBadge t={t} size={22} />
+                              <span className="font-mono text-xs tabular-nums text-medium">
+                                {s.laps} {s.laps === 1 ? "lap" : "laps"}
+                              </span>
+                            </span>
+                          );
+                        })}
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-light">
+                          · {r.stints.length - 1} {r.stints.length - 1 === 1 ? "stop" : "stops"}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>

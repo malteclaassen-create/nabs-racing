@@ -249,7 +249,13 @@ function DriverCell({ e, match, showLiveDot }) {
 function OnTrackRow({ e, match, index = 0 }) {
   const deltaCls = e.deltaSelfMs == null ? "text-light" : e.deltaSelfMs < 0 ? "text-emerald-600" : "text-amber-600";
   return (
-    <tr data-flip-id={e.guid} style={{ "--i": Math.min(index, 16) }} className="border-b border-border last:border-0 transition hover:bg-surface2">
+    <tr
+      data-flip-id={e.guid}
+      style={{ "--i": Math.min(index, 16) }}
+      // A leaver (race sessions keep them listed so the finishing order holds)
+      // dims but stays in their slot.
+      className={`border-b border-border last:border-0 transition hover:bg-surface2 ${e.onTrack ? "" : "opacity-55"}`}
+    >
       <td className="py-3 pl-5 pr-2 text-center">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums text-medium">
           {e.position}
@@ -268,7 +274,11 @@ function OnTrackRow({ e, match, index = 0 }) {
         )}
       </td>
       <td className="py-3 pr-4 text-right text-base">
-        <CurrentLap lastLapAt={e.lastLapAt} inPits={e.inPits} />
+        {e.onTrack ? (
+          <CurrentLap lastLapAt={e.lastLapAt} inPits={e.inPits} />
+        ) : (
+          <span className="pill bg-surface2 font-mono text-light">Left</span>
+        )}
       </td>
       <td className="hidden py-3 pr-4 text-right sm:table-cell">
         <span className={`font-mono text-sm tabular-nums ${deltaCls}`}>{formatDelta(e.deltaSelfMs)}</span>
@@ -1081,7 +1091,13 @@ export default function Live() {
               <PitLaneSection entries={entries} match={match} className="flex-1" />
             </div>
             <DrivingNowSection
-              onTrack={onTrack}
+              // In a race, drivers who left the server (post-race exodus) stay
+              // listed in their final slot, dimmed — the result holds.
+              onTrack={
+                session.type === "Race"
+                  ? entries.filter((e) => e.onTrack || (e.lapCount || 0) > 0)
+                  : onTrack
+              }
               match={match}
               flip={session.type === "Race"}
               className="lg:col-span-3 lg:col-start-1 lg:row-start-1"

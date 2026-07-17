@@ -38,6 +38,11 @@ export async function ensureAppSchema(prisma) {
   // until the quali files arrive, so the PAC component stays inert (weight 0).
   await addColumn(prisma, "RaceResult", "qualiTimeMs", "INTEGER");
 
+  // --- Tyre stints (migration result_stints): JSON [{tyre, laps}] distilled
+  // from the AC result file's per-lap Tyre field. Feeds the expandable
+  // strategy row on stored race results. null = imported before this existed.
+  await addColumn(prisma, "RaceResult", "stints", "TEXT");
+
   // --- Phase 6: admin-picked Driver of the Day for a completed race.
   await addColumn(prisma, "Race", "driverOfTheDayId", "TEXT");
   // Who made the pick (the league's streamer decides each round). Free text.

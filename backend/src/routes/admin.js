@@ -294,25 +294,38 @@ router.post("/results/remote/import", async (req, res, next) => {
 // Creates or updates the race, then stores results + recomputes constructor scores.
 router.post("/races/commit", async (req, res, next) => {
   try {
-    const { number, track, date, results, seasonId, archiveKey } = req.body || {};
-    if (!number || !Array.isArray(results)) {
-      return res.status(400).json({ error: "number and results[] required" });
+    const { number, track, date, results, seasonId, archiveKey, raceId } = req.body || {};
+    if (!Array.isArray(results)) {
+      return res.status(400).json({ error: "results[] required" });
+    }
+    // Target: a round NUMBER (championship, may be created on the fly) or an
+    // EXISTING race by id — that's how training/special sessions get their
+    // results (they carry no round number). isSpecialEvent stays untouched, so
+    // a training race can never leak into the standings via an import.
+    if (!raceId && !number) {
+      return res.status(400).json({ error: "number (championship round) or raceId (training/event) required" });
     }
 
     // Explicit seasonId wins; the fallback resolves the active season of the
     // series the admin is editing (never a foreign series' active season).
     const targetSeasonId =
       seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
-    let race = await prisma.race.findFirst({
-      where: { number: Number(number), seasonId: targetSeasonId },
-      include: { _count: { select: { results: true } } },
-    });
+    let race = raceId
+      ? await prisma.race.findFirst({
+          where: { id: String(raceId) },
+          include: { _count: { select: { results: true } } },
+        })
+      : await prisma.race.findFirst({
+          where: { number: Number(number), seasonId: targetSeasonId },
+          include: { _count: { select: { results: true } } },
+        });
+    if (raceId && !race) return res.status(404).json({ error: "Race not found" });
 
     // Overwrite guard: committing over a round that already has stored results
     // replaces them entirely. Require an explicit confirmation from the UI.
     if (race && race._count.results > 0 && !req.body.overwrite) {
       return res.status(409).json({
-        error: `Round ${race.number} already has ${race._count.results} stored results. Confirm to overwrite them.`,
+        error: `${race.number != null ? `Round ${race.number}` : race.track} already has ${race._count.results} stored results. Confirm to overwrite them.`,
         needsConfirm: true,
       });
     }
@@ -337,7 +350,7 @@ router.post("/races/commit", async (req, res, next) => {
     }
 
     // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
-    await tryCreateBackup(prisma, `before-import-r${race.number}`);
+    await tryCreateBackup(prisma, `before-import-${race.number != null ? `r${race.number}` : "training"}`);
     const saveSummary = await saveRaceResults(prisma, race.id, results);
     // Bell notification (deduped per race, so re-imports stay silent).
     if (results.length) notifyResultsSaved(prisma, race);
@@ -347,7 +360,7 @@ router.post("/races/commit", async (req, res, next) => {
     // Move the raw JSON into its season folder so this round's telemetry can be
     // recomputed later. Best-effort: never fails the commit.
     if (archiveKey) {
-      const season = await prisma.season.findUnique({ where: { id: targetSeasonId } });
+      const season = await prisma.season.findUnique({ where: { id: race.seasonId || targetSeasonId } });
       archiveCommitted(archiveKey, {
         seasonNumber: season?.number ?? null,
         raceNumber: race.number,

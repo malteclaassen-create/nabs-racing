@@ -14,6 +14,7 @@
 // ---------------------------------------------------------------------------
 import { randomUUID } from "crypto";
 import { raceKickoff } from "./raceKickoff.js";
+import { readRaceTypes } from "./raceTypes.js";
 import { unlockStateFor, CARD_EDITIONS } from "./cardEditions.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
 
@@ -93,6 +94,7 @@ export const NOTIFY_DEFAULTS = {
   seatOffers: "reserves", // who hears about seat offers: "reserves" | "all" | "off"
   seatFilled: true, // personal "you got the seat" note to the picked reserve
   reminders: [24], // race reminders, hours before kickoff
+  trainingReminders: true, // do the reminders above also cover training sessions?
 };
 
 export function sanitizeNotifySettings(input) {
@@ -105,6 +107,7 @@ export function sanitizeNotifySettings(input) {
     reminders: REMINDER_OFFSETS.filter((h) =>
       (Array.isArray(o.reminders) ? o.reminders : NOTIFY_DEFAULTS.reminders).map(Number).includes(h)
     ),
+    trainingReminders: o.trainingReminders !== false,
   };
 }
 
@@ -490,17 +493,21 @@ const berlinWeekday = (t) =>
   new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", weekday: "long" }).format(t);
 
 // Title/body for one reminder, phrased by how far out it actually fires.
-function reminderText(race, kick, now) {
+function reminderText(race, kick, now, isTraining = false) {
   const hoursOut = (kick.getTime() - now) / 3_600_000;
   const time = `${berlinTime(kick)} German time`;
+  const label = isTraining ? "Training session" : roundName(race);
   if (hoursOut <= 6) {
-    return { title: `Starting soon: ${roundName(race)} at ${race.track}`, body: `Lights out at ${time}.` };
+    return { title: `Starting soon: ${label} at ${race.track}`, body: `Lights out at ${time}.` };
   }
   if (berlinDay(kick) === berlinDay(new Date(now))) {
-    return { title: `Race day: ${roundName(race)} at ${race.track}`, body: `Lights out at ${time}.` };
+    return {
+      title: `${isTraining ? "Training today" : "Race day"}: ${label} at ${race.track}`,
+      body: `Lights out at ${time}.`,
+    };
   }
   return {
-    title: `Coming up: ${roundName(race)} at ${race.track}`,
+    title: `Coming up: ${label} at ${race.track}`,
     body: `${berlinWeekday(kick)} at ${time}.`,
   };
 }
@@ -511,17 +518,23 @@ export async function ensureRaceReminders(prisma) {
   remindersCheckedAt = now;
   try {
     // Enabled offsets, largest first; each fires in (next smaller, itself].
-    const offsets = [...(await readNotifySettings(prisma)).reminders].sort((a, b) => b - a);
+    const settings = await readNotifySettings(prisma);
+    const offsets = [...settings.reminders].sort((a, b) => b - a);
     if (offsets.length) {
+      // Championship rounds always; TRAINING sessions too unless the admin
+      // switched them off. SPECIAL events stay announcement-only.
       const races = await prisma.race.findMany({
         where: {
           isCompleted: false,
-          isSpecialEvent: false,
           date: { not: null },
           season: { isActive: true },
         },
       });
+      const types = await readRaceTypes(prisma, races.map((r) => r.id));
       for (const race of races) {
+        const type = types.get(race.id) || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+        if (type === "SPECIAL") continue;
+        if (type === "TRAINING" && !settings.trainingReminders) continue;
         const kick = raceKickoff(race.date);
         if (!kick) continue;
         const dt = kick.getTime() - now;
@@ -534,7 +547,7 @@ export async function ensureRaceReminders(prisma) {
         const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
         await dbCreateNotification(prisma, {
           type: "REMINDER",
-          ...reminderText(race, kick, now),
+          ...reminderText(race, kick, now, type === "TRAINING"),
           link: `${prefix}/races`,
           dedupeKey: `reminder:${race.id}:${offsets[idx]}`,
         });

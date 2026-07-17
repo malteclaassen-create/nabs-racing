@@ -46,6 +46,10 @@ let reconnectDelay = 1000;
 
 let status = null; // latest EventType 200 Message (full snapshot)
 const liveByCar = new Map(); // CarID -> latest EventType 53 telemetry
+// guid -> last known race position, so a driver who leaves the server right
+// after the flag keeps their slot on the board instead of vanishing to the
+// bottom. Cleared with the stint history on a session change.
+const lastRacePosByGuid = new Map();
 let lastMessageAt = 0;
 
 const nsToMs = (ns) => (typeof ns === "number" && ns > 0 ? Math.round(ns / 1e6) : null);
@@ -199,12 +203,39 @@ function sessionKeyOf(si, ti) {
   return `${si?.Track || ti?.name || ""}|${si?.CurrentSessionIndex ?? 0}|${si?.Name || ""}`;
 }
 
+// Canonical compound key, mirroring the frontend's compoundKey: the upstream
+// flips between short codes and long names for the SAME rubber ("M" one
+// snapshot, "Medium" the next, depending on which field is populated), which
+// used to open a ghost stint on every flip — that's the doubled discs on the
+// strategy graphic. Unknown compounds fall back to the stripped string.
+const TYRE_SHORT = {
+  hs: "hypersoft", us: "ultrasoft", ss: "supersoft", sh: "superhard",
+  s: "soft", m: "medium", h: "hard", i: "intermediate", in: "intermediate",
+  int: "intermediate", inter: "intermediate", w: "wet", wet: "wet",
+};
+function tyreKey(name) {
+  const n = String(name || "").toLowerCase().replace(/[^a-z]/g, "");
+  if (!n) return "";
+  if (TYRE_SHORT[n]) return TYRE_SHORT[n];
+  if (n.includes("inter")) return "intermediate";
+  if (n.includes("wet")) return "wet";
+  if (n.includes("hyper")) return "hypersoft";
+  if (n.includes("ultra")) return "ultrasoft";
+  if (n.includes("super") && n.includes("soft")) return "supersoft";
+  if (n.includes("super") && n.includes("hard")) return "superhard";
+  if (n.includes("soft")) return "soft";
+  if (n.includes("medium")) return "medium";
+  if (n.includes("hard")) return "hard";
+  return n;
+}
+
 function accumulateStints(msg) {
   if (!msg) return;
   const si = msg.SessionInfo || {};
   const key = sessionKeyOf(si, msg.TrackInfo || {});
   if (key !== stintSessionKey) {
     stintsByGuid.clear();
+    lastRacePosByGuid.clear();
     stintSessionKey = key;
   }
   // In Practice/Qualifying a driver teleports back to the pits to end a run and
@@ -240,7 +271,7 @@ function accumulateStints(msg) {
 
     const cur = st.stints[st.stints.length - 1];
     const pitted = pits > st.lastPits;
-    const tyreChanged = cur && tyre && cur.tyre && cur.tyre !== "?" && norm(tyre) !== norm(cur.tyre);
+    const tyreChanged = cur && tyre && cur.tyre && cur.tyre !== "?" && tyreKey(tyre) !== tyreKey(cur.tyre);
     if (inPits && !cur) {
       // Sitting in the pits with no active stint: keep the row empty until the
       // driver rejoins the track (covers both a fresh session and a post-reset).
@@ -261,7 +292,19 @@ function accumulateStints(msg) {
 function stintsFor(guid) {
   const st = stintsByGuid.get(guid);
   if (!st) return [];
-  return st.stints.map((s) => ({ tyre: s.tyre, laps: Math.max(1, (s.toLap - s.fromLap) + 1) }));
+  const out = [];
+  for (const s of st.stints) {
+    const prev = out[out.length - 1];
+    // Repair pass for histories accumulated before the tyreKey fix (and any
+    // remaining flip artefact): a same-compound stint that opens on the very
+    // lap the previous one ended is a ghost split, not a real stop — merge.
+    if (prev && tyreKey(prev._tyre) === tyreKey(s.tyre) && s.fromLap <= prev._toLap) {
+      prev._toLap = Math.max(prev._toLap, s.toLap);
+      continue;
+    }
+    out.push({ tyre: s.tyre, _tyre: s.tyre, _fromLap: s.fromLap, _toLap: s.toLap });
+  }
+  return out.map((s) => ({ tyre: s.tyre, laps: Math.max(1, (s._toLap - s._fromLap) + 1) }));
 }
 
 function sessionTypeName(t) {
@@ -300,9 +343,20 @@ function connectUpstream() {
       return;
     }
     switch (msg.EventType) {
-      case 200: // full snapshot — refreshes lap times; reset stale telemetry
+      case 200: // full snapshot — refreshes lap times
         status = msg.Message;
-        liveByCar.clear();
+        // Keep the per-car telemetry across snapshots — clearing it here
+        // blanked every map dot for a beat (pos gone until each car's next
+        // ET53). Only drop cars that actually left the server.
+        {
+          const alive = new Set();
+          for (const d of Object.values(status?.ConnectedDrivers?.Drivers || {})) {
+            if (typeof d?.CarInfo?.CarID === "number") alive.add(d.CarInfo.CarID);
+          }
+          for (const id of [...liveByCar.keys()]) {
+            if (!alive.has(id)) liveByCar.delete(id);
+          }
+        }
         accumulateStints(status); // grow the per-driver tyre-stint history
         ensureTrackMap(status?.SessionInfo || {}); // (re)load the real map on track change
         break;
@@ -366,6 +420,8 @@ function buildEntry(guid, d, onTrack) {
   const ci = d.CarInfo || {};
   const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
   const live = onTrack ? liveByCar.get(ci.CarID) || {} : {};
+  const racePos = live.RacePosition ?? d.RacePosition ?? null;
+  if (onTrack && racePos != null) lastRacePosByGuid.set(guid, racePos);
   return {
     guid,
     name: ci.DriverName || "—",
@@ -401,10 +457,10 @@ function buildEntry(guid, d, onTrack) {
     // cars carry live telemetry, so it's null otherwise; rounded to keep the board
     // lean. The frontend projects it onto map.png with the ini's calibration.
     pos: onTrack && live.Pos ? { x: round1(live.Pos.X), z: round1(live.Pos.Z) } : null,
-    // Race-session running order (from the high-frequency telemetry; null in
-    // practice/quali or for cars that left). The championship projection sorts
-    // by this, NOT by the board's hot-lap ranking below.
-    racePosition: live.RacePosition ?? d.RacePosition ?? null,
+    // Race-session running order (from the high-frequency telemetry). A car
+    // that left the server keeps its LAST known position (see lastRacePosByGuid)
+    // so the finishing order survives the post-race exodus for a while.
+    racePosition: racePos ?? lastRacePosByGuid.get(guid) ?? null,
   };
 }
 
@@ -432,13 +488,32 @@ export function getBoard() {
   }
   const entries = [...byGuid.values()];
 
-  // Hot-lap ranking: fastest best lap first; drivers without a lap go last.
-  entries.sort((a, b) => {
-    if (a.bestLapMs && b.bestLapMs) return a.bestLapMs - b.bestLapMs;
-    if (a.bestLapMs) return -1;
-    if (b.bestLapMs) return 1;
-    return (b.lapCount || 0) - (a.lapCount || 0);
-  });
+  // Ranking. A RACE orders by the actual running order (telemetry
+  // RacePosition, held for leavers) — sorting a race by best lap made the
+  // board's leader flip on every quick lap. Other sessions keep the hot-lap
+  // ranking: fastest best lap first; drivers without a lap go last.
+  const isRace = si.Type === 3;
+  if (isRace) {
+    entries.sort((a, b) => {
+      if (a.racePosition != null && b.racePosition != null) {
+        if (a.racePosition !== b.racePosition) return a.racePosition - b.racePosition;
+        // Same slot (the sim re-issues a leaver's position to the next car):
+        // more laps first, then the car still on the server.
+        if ((a.lapCount || 0) !== (b.lapCount || 0)) return (b.lapCount || 0) - (a.lapCount || 0);
+        return a.onTrack === b.onTrack ? 0 : a.onTrack ? -1 : 1;
+      }
+      if (a.racePosition != null) return -1;
+      if (b.racePosition != null) return 1;
+      return (b.lapCount || 0) - (a.lapCount || 0) || (b.spline || 0) - (a.spline || 0);
+    });
+  } else {
+    entries.sort((a, b) => {
+      if (a.bestLapMs && b.bestLapMs) return a.bestLapMs - b.bestLapMs;
+      if (a.bestLapMs) return -1;
+      if (b.bestLapMs) return 1;
+      return (b.lapCount || 0) - (a.lapCount || 0);
+    });
+  }
   // Sector colours: the upstream per-lap "IsBest" flag is unreliable (it can
   // mark a sector best that's since been beaten on another lap). Recompute
   // "purple" against the session's actual best sector times (top-level

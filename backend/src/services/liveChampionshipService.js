@@ -149,10 +149,12 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
     const entries = (board.entries || []).filter((e) => (e.lapCount || 0) > 0);
     if (entries.length === 0) return off("not-started");
 
-    // Live race order: telemetry RacePosition for cars still on the server;
-    // cars without one (telemetry not seen yet) fall back behind, by laps.
-    const running = entries.filter((e) => e.onTrack);
-    const retired = entries.filter((e) => !e.onTrack);
+    // Live race order: telemetry RacePosition for cars still on the server.
+    // A driver who LEFT but still carries a (held) race position — the winner
+    // logging off right after the flag — stays classified instead of dropping
+    // to the DNF block. Cars without any position fall back behind, by laps.
+    const running = entries.filter((e) => e.onTrack || e.racePosition != null);
+    const retired = entries.filter((e) => !e.onTrack && e.racePosition == null);
     running.sort((a, b) => {
       if (a.racePosition != null && b.racePosition != null) return a.racePosition - b.racePosition;
       if (a.racePosition != null) return -1;

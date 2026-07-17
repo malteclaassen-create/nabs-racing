@@ -155,7 +155,8 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
   const circuit = se ? null : circuitFor(r.track);
   const flag = se ? null : flagFor(r.track, r.country);
   const done = !!r.isCompleted;
-  const clickable = done && kind === "CHAMPIONSHIP";
+  // Trainings with imported results open like a round (not scored, but viewable).
+  const clickable = done && (kind === "CHAMPIONSHIP" || (kind === "TRAINING" && r.resultCount > 0));
   const dbRace = r;
 
   const tone = training ? SKY : se || done ? EMERALD : isNext ? BRAND : null;

@@ -282,12 +282,24 @@ export function extractTelemetry(json, opts = {}) {
         consistencyPct = Math.round((100 - ((avg - best) / best) * 100) * 100) / 100;
       }
     }
+    // Tyre stints: consecutive laps on the same compound, in completion order
+    // (the file is chronological). A lap without a Tyre field continues the
+    // running stint. Powers the strategy expander on stored race results.
+    const stints = [];
+    for (const l of arr) {
+      const t = String(l.Tyre || "").trim();
+      const last = stints[stints.length - 1];
+      if (last && (!t || t === last.tyre)) last.laps += 1;
+      else stints.push({ tyre: t || "?", laps: 1 });
+    }
+
     metrics.set(guid, {
       laps: arr.length,
       cuts,
       cleanLaps: clean.length,
       consistencyMs: clean.length >= 3 ? Math.round(stdev(clean)) : null,
       consistencyPct,
+      stints,
     });
   }
 
@@ -324,6 +336,7 @@ export function extractTelemetry(json, opts = {}) {
       cleanLaps: m ? m.cleanLaps : null,
       consistencyMs: m ? m.consistencyMs : null,
       consistencyPct: m ? m.consistencyPct : null,
+      stints: m && m.stints?.length ? m.stints : null,
       gamePenalties: pen.count,
       gamePenaltySeconds: Math.round(pen.seconds * 1000) / 1000,
     });

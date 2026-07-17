@@ -379,6 +379,10 @@ model RaceResult {
   consistencyPct     Float? // simresults-style consistency % (avg racing lap vs best lap)
   gamePenalties      Int?  // count of in-game (AC) penalties issued
   gamePenaltySeconds Float? // total in-game penalty seconds
+  // Tyre stints (JSON [{tyre, laps}], migration result_stints) distilled from
+  // the AC file's per-lap Tyre field — the strategy expander on stored
+  // results. Raw-SQL managed like the telemetry columns above.
+  stints             String?
 
   @@unique([raceId, driverId])
   @@index([driverId])
