@@ -220,6 +220,19 @@ export function CardsSkeleton({ count = 8, cols = "sm:grid-cols-2 lg:grid-cols-3
   );
 }
 
+// Friendly empty state: a clear title + hint (plus optional extra content),
+// instead of a bare grey sentence. Used wherever a page or filter comes up
+// with nothing.
+export function EmptyState({ title, hint, children, className = "" }) {
+  return (
+    <div className={`card flex flex-col items-center px-6 py-12 text-center ${className}`}>
+      <div className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{title}</div>
+      {hint && <p className="mt-1.5 max-w-md text-sm leading-relaxed text-medium">{hint}</p>}
+      {children}
+    </div>
+  );
+}
+
 export function ErrorBox({ message }) {
   return (
     <div className="card border-red-500/30 bg-red-500/10 p-4 text-sm font-medium text-red-600">

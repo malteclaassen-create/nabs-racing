@@ -38,6 +38,13 @@ export async function ensureAppSchema(prisma) {
   // until the quali files arrive, so the PAC component stays inert (weight 0).
   await addColumn(prisma, "RaceResult", "qualiTimeMs", "INTEGER");
 
+  // --- Full qualifying classification (migration race_quali_json): JSON blob
+  // per race from the AC QUALIFY result file — {track, date, entries: [...]}.
+  // A blob rather than rows because a quali entrant may have no RaceResult at
+  // all (qualified, did not start). Matched drivers' laps also populate
+  // RaceResult.qualiTimeMs above. Shown as the Qualifying tab on race results.
+  await addColumn(prisma, "Race", "qualiJson", "TEXT");
+
   // --- Tyre stints (migration result_stints): JSON [{tyre, laps}] distilled
   // from the AC result file's per-lap Tyre field. Feeds the expandable
   // strategy row on stored race results. null = imported before this existed.
@@ -100,6 +107,11 @@ export async function ensureAppSchema(prisma) {
   // --- Admin-uploaded hero photo override for the Home/Welcome main card.
   // null = fall back to the static /heroes/s<number>.jpg drop-in convention.
   await addColumn(prisma, "Season", "heroImageUrl", "TEXT");
+
+  // --- Admin-uploaded car image for the "coming soon" hero panel (migration
+  // season_car_image). null = the static /cars/s<number>.jpg convention; if
+  // that's missing too the panel disappears entirely (no placeholder).
+  await addColumn(prisma, "Season", "carImageUrl", "TEXT");
 
   // --- Profile tiles: which of the six headline stat tiles a driver shows on
   // their public profile. JSON array of tile keys; null = all of them.

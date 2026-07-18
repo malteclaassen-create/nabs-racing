@@ -47,8 +47,8 @@ export default function SlidingTabs({
       {pill && (
         <span
           aria-hidden
-          className={`absolute ${pillClassName} transition-[left,top,width,height] duration-300 ease-out`}
-          style={{ left: pill.left, top: pill.top, width: pill.width, height: pill.height }}
+          className={`absolute left-0 top-0 will-change-transform ${pillClassName} transition-[transform,width,height] duration-300 ease-out`}
+          style={{ transform: `translate(${pill.left}px, ${pill.top}px)`, width: pill.width, height: pill.height }}
         />
       )}
       {items.map((it) => (

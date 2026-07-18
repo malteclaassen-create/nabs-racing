@@ -243,6 +243,39 @@ router.get("/:id/results", async (req, res, next) => {
       /* column missing pre-migration */
     }
 
+    // Qualifying classification (raw-SQL blob, see ensureAppSchema): enriched
+    // at read time with the roster's current name/team/country so renames and
+    // person links stay honoured. Entrants without a roster match render under
+    // their AC name, team-less. null = no quali imported for this race.
+    let quali = null;
+    try {
+      const qr = await prisma.$queryRawUnsafe(`SELECT "qualiJson" FROM "Race" WHERE "id" = ?`, race.id);
+      if (qr[0]?.qualiJson) {
+        const blob = JSON.parse(qr[0].qualiJson);
+        const driverById = new Map(drivers.map((d) => [d.id, d]));
+        const pole = (blob.entries || []).find((e) => e.bestLapMs != null)?.bestLapMs ?? null;
+        quali = (blob.entries || []).map((e) => {
+          const d = e.driverId ? driverById.get(e.driverId) : null;
+          const ov = e.driverId ? nameOverrides.get(e.driverId) : null;
+          const team = d ? teamById.get(d.teamId) : null;
+          return {
+            position: e.position,
+            driverId: d ? e.driverId : null,
+            name: ov?.displayName || d?.name || e.name || e.acDriverName,
+            country: d?.country || null,
+            bestLapMs: e.bestLapMs ?? null,
+            gapMs: e.bestLapMs != null && pole != null && e.bestLapMs > pole ? e.bestLapMs - pole : null,
+            carModel: e.carModel ?? null,
+            team: team
+              ? { id: team.id, name: team.name, color: team.color, tier: team.tier, logoUrl: team.logoUrl }
+              : null,
+          };
+        });
+      }
+    } catch {
+      /* column missing pre-migration */
+    }
+
     // Session format + details, so the admin race editor can round-trip them,
     // plus the round's published replay (if any) for the Replay button.
     const format = (await readRaceFormat(prisma, [race.id])).get(race.id) || {};
@@ -263,6 +296,7 @@ router.get("/:id/results", async (req, res, next) => {
         driverOfTheDay,
       },
       results: rows,
+      quali,
     });
   } catch (e) {
     next(e);

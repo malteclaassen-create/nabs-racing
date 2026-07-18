@@ -80,7 +80,7 @@ router.get("/", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / heroImageUrl aren't in the
       // generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic", "heroImageUrl" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic", "heroImageUrl", "carImageUrl" FROM "Season"`).catch(() => []),
       getPrivateSeasonIds(prisma),
       seasonSeriesMap(prisma),
     ]);
@@ -101,6 +101,7 @@ router.get("/", async (req, res, next) => {
           teamDropMode: extra.teamDropMode === "rounds" ? "rounds" : null,
           isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
           heroImageUrl: extra.heroImageUrl || null,
+          carImageUrl: extra.carImageUrl || null,
         };
       })
     );

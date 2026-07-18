@@ -188,6 +188,49 @@ function StandingsNav({ seriesPath }) {
   );
 }
 
+// The rainbow accent line doubles as the page's scroll indicator (the native
+// scrollbar is hidden, see index.css): a full-width gradient strip slides in
+// from the left as you scroll, so the colours reveal instead of stretching.
+// Updated via transform in a rAF-throttled passive scroll handler — no React
+// re-renders, no layout work, compositor-only motion.
+function ScrollProgressLine() {
+  const innerRef = useRef(null);
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const doc = document.documentElement;
+      const max = doc.scrollHeight - doc.clientHeight;
+      // Unscrollable pages show the full line, like the old static accent.
+      const p = max > 4 ? Math.min(1, doc.scrollTop / max) : 1;
+      if (innerRef.current) innerRef.current.style.transform = `translateX(${(p - 1) * 100}%)`;
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    // Content growing/shrinking (data loading in, route changes) moves the
+    // scroll range without a scroll event — watch the body's size too.
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(onScroll) : null;
+    ro?.observe(document.body);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      ro?.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+  return (
+    <div className="h-1 w-full overflow-hidden">
+      <div
+        ref={innerRef}
+        className="h-full w-full bg-gradient-to-r from-primary via-amber-500 to-sky-600 will-change-transform"
+        style={{ transform: "translateX(-100%)" }}
+      />
+    </div>
+  );
+}
+
 export default function NavBar() {
   const { seriesList } = useSeries();
   const { seriesPath } = useSeriesPath();
@@ -232,8 +275,8 @@ export default function NavBar() {
           this for a solid page-coloured backdrop (see .nav-backdrop rules). */}
       <div aria-hidden className="nav-backdrop nav-fade pointer-events-none absolute inset-x-0 top-0 h-[84px] bg-card/95 backdrop-blur" />
       <div className="relative">
-        {/* team-colour accent line */}
-        <div className="h-1 w-full bg-gradient-to-r from-primary via-amber-500 to-sky-600" />
+        {/* team-colour accent line = scroll progress indicator */}
+        <ScrollProgressLine />
         <nav className="container-page flex h-20 items-center justify-between">
         {/* Logo + season pill share the left edge so the pill hugs the wordmark
             rather than floating out toward the centre. The line under the
@@ -269,8 +312,8 @@ export default function NavBar() {
           {navPill && (
             <span
               aria-hidden
-              className="absolute rounded-lg bg-brand/20 ring-1 ring-inset ring-brand/50 transition-[left,top,width,height] duration-300 ease-out"
-              style={{ left: navPill.left, top: navPill.top, width: navPill.width, height: navPill.height }}
+              className="absolute left-0 top-0 will-change-transform rounded-lg bg-brand/20 ring-1 ring-inset ring-brand/50 transition-[transform,width,height] duration-300 ease-out"
+              style={{ transform: `translate(${navPill.left}px, ${navPill.top}px)`, width: navPill.width, height: navPill.height }}
             />
           )}
           {links.map((l) =>

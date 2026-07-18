@@ -454,6 +454,16 @@ const FEATURE_ANNOUNCEMENTS = [
   },
 ];
 
+// Drafted but NOT shipped yet (the admin wants to time the announcement):
+// move this entry into FEATURE_ANNOUNCEMENTS above when it should go out.
+// {
+//   dedupeKey: "feature:quali-title-fight",
+//   type: "NEWS",
+//   title: "New: qualifying results & title fight",
+//   body: "Races can now show the full qualifying classification with pole times next to the race result. The driver standings mark who moved up or down after every round, and while the title is still open the home page tracks who can mathematically win it.",
+//   link: "/races",
+// },
+
 export async function announceFeatures(prisma) {
   for (const a of FEATURE_ANNOUNCEMENTS) {
     try {

@@ -32,18 +32,28 @@ export function TyreBadge({ t, size = 20, className = "" }) {
         backgroundColor: t.color,
         boxShadow: "0 0 0 2px rgba(10,15,30,0.55)",
         color: inkOn(t),
-        fontSize: Math.round(size * (String(t.label).length > 1 ? 0.5 : 0.62)),
-        lineHeight: 1,
       }}
       title={t.name}
       aria-label={t.name}
     >
-      {/* Uppercase glyphs sit a touch high in the mono font's em-box; a tiny
-          shift centres SINGLE letters optically. Multi-letter labels ("SS")
-          render at a smaller size where the same nudge read as too low. */}
-      <span style={String(t.label).length > 1 ? undefined : { transform: `translateY(${Math.max(0.5, size * 0.03)}px)` }}>
-        {t.label}
-      </span>
+      {/* The glyph is SVG text with textAnchor=middle: mathematically centred
+          at every browser zoom. (As a flexbox-centred span, the mono glyph's
+          advance width rounded differently at 100% zoom and the letter sat a
+          hair off-centre.) dominantBaseline=central already puts the glyph's
+          true middle on y — no extra nudge (a +4 nudge read as "too low"). */}
+      <svg viewBox="0 0 100 100" className="h-full w-full" aria-hidden="true">
+        <text
+          x="50"
+          y="50"
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill="currentColor"
+          fontSize={String(t.label).length > 1 ? 50 : 62}
+          fontWeight="900"
+        >
+          {t.label}
+        </text>
+      </svg>
     </span>
   );
 }

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
-import { ErrorBox, PageHeader, TableSkeleton } from "../components/ui.jsx";
+import { ErrorBox, PageHeader, TableSkeleton, EmptyState } from "../components/ui.jsx";
 import RaceSignupCard from "../components/RaceSignupCard.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
@@ -130,10 +130,9 @@ export default function Attendance() {
       {events.loading && <TableSkeleton rows={6} />}
 
       {!events.loading && list.length === 0 && (
-        <div className="card p-10 text-center">
-          <p className="text-medium">Nothing on the calendar right now. The next race will show up here as soon as it is scheduled.</p>
+        <EmptyState title="Nothing on the calendar" hint="The next race will show up here as soon as it is scheduled.">
           <Link to="/races" className="mt-3 inline-block text-sm font-semibold text-primary hover:underline">See the calendar →</Link>
-        </div>
+        </EmptyState>
       )}
 
       {ev && (

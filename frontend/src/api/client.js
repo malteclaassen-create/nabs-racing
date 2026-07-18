@@ -203,7 +203,7 @@ export const api = {
   // Live championship projection (only { active: true } while a league race is
   // running). auth:true so an admin's ?simulate demo request is recognised.
   liveChampionship: (simulate = false) =>
-    request(`/live/championship${simulate ? "?simulate=1" : ""}`, { auth: true }),
+    request(`/live/championship${seriesQ()}${simulate ? (seriesQ() ? "&" : "?") + "simulate=1" : ""}`, { auth: true }),
 
   // events / RSVP (public; scoped to the viewed season, default active)
   events: () => request(`/events${seasonQ()}`, { auth: true }),
@@ -304,6 +304,9 @@ export const api = {
   liveLinks: () => request("/settings/live"),
   getLiveLinks: () => request("/admin/live-links", { auth: true }),
   setLiveLinks: (body) => request("/admin/live-links", { method: "PUT", body, auth: true }),
+  // Which race server each series' live page follows.
+  getLiveServers: () => request("/admin/live-servers", { auth: true }),
+  setLiveServers: (map) => request("/admin/live-servers", { method: "PUT", body: { map }, auth: true }),
 
   // discord login. The redirect URI is derived from the current origin so login
   // works on localhost and over a tunnel without changing the backend .env.
@@ -329,6 +332,16 @@ export const api = {
   importRemoteResult: (id) =>
     request("/admin/results/remote/import", { method: "POST", body: { id, season: getSelectedSeason(), ...seriesBody() }, auth: true }),
   commitRace: (body) => request("/admin/races/commit", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
+  // Attach a qualifying JSON to an existing race (auto-matched, no review step).
+  importQuali: (raceId, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/races/${raceId}/quali`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  deleteQuali: (raceId) => request(`/admin/races/${raceId}/quali`, { method: "DELETE", auth: true }),
+  // Same attach, but the QUALIFY JSON comes straight from the race server.
+  importRemoteQuali: (raceId, remoteId) =>
+    request(`/admin/races/${raceId}/quali`, { method: "POST", body: { remoteId }, auth: true }),
   editResults: (id, results) =>
     request(`/admin/races/${id}/results`, { method: "PUT", body: { results }, auth: true }),
   setDriverOfTheDay: (raceId, driverId, pickedBy) =>
@@ -400,6 +413,13 @@ export const api = {
     return request(`/admin/seasons/${id}/hero`, { method: "POST", body: fd, auth: true, form: true });
   },
   clearSeasonHero: (id) => request(`/admin/seasons/${id}/hero`, { method: "DELETE", auth: true }),
+  // Car image for the "coming soon" hero panel, per season.
+  uploadSeasonCar: (id, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/seasons/${id}/car`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  clearSeasonCar: (id) => request(`/admin/seasons/${id}/car`, { method: "DELETE", auth: true }),
 
   // health (admin): integrity check, backups, activity log
   integrity: () => request(`/admin/integrity${seasonQ()}`, { auth: true }),

@@ -5,7 +5,7 @@ import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync } fr
 import { join, extname, basename } from "path";
 import prisma from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
-import { parseAcRaceJson } from "../services/acJsonParser.js";
+import { parseAcRaceJson, parseAcQualiJson } from "../services/acJsonParser.js";
 import { listRemoteResults, fetchRemoteResult } from "../services/emperorResults.js";
 import { saveRaceResults } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
@@ -18,7 +18,7 @@ import { createBackup, tryCreateBackup, listBackups, createFullBackupZip } from 
 import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
 import { parseFormatNumber } from "../lib/raceFormat.js";
 import { RACE_TYPES, writeRaceType } from "../lib/raceTypes.js";
-import { writeSeasonHero } from "../lib/seasonHero.js";
+import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
 import {
@@ -46,6 +46,7 @@ import {
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
 } from "../lib/notifications.js";
 import { UPLOADS_DIR, LOGS_DIR } from "../lib/dataDirs.js";
+import { LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap } from "../lib/liveServers.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -381,6 +382,110 @@ router.post("/races/commit", async (req, res, next) => {
   }
 });
 
+// POST /api/admin/races/:id/quali  (multipart: file=<AC QUALIFY json>)
+// Attaches a qualifying classification to an EXISTING race: parses the QUALIFY
+// JSON, auto-matches entrants against the race's season roster (Steam GUID
+// first, fuzzy name as fallback), stores the classification as a blob on the
+// race and each matched driver's best lap in RaceResult.qualiTimeMs. Unmatched
+// entrants stay in the classification under their AC name (they may have
+// qualified but never started). Re-uploading replaces the previous quali.
+router.post("/races/:id/quali", upload.single("file"), async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+
+    let json;
+    if (req.file) {
+      json = JSON.parse(req.file.buffer.toString("utf-8"));
+    } else if (req.body && req.body.remoteId) {
+      // Pull the QUALIFY session straight from the AC Server Manager (same
+      // source as the remote race import).
+      if (!/^[A-Za-z0-9_]+$/.test(String(req.body.remoteId))) {
+        return res.status(400).json({ error: "Valid result id required" });
+      }
+      json = await fetchRemoteResult(String(req.body.remoteId));
+    } else if (req.body && req.body.json) {
+      json = typeof req.body.json === "string" ? JSON.parse(req.body.json) : req.body.json;
+    } else {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const drivers = await attachSteamIds(
+      await prisma.driver.findMany({ where: { seasonId: race.seasonId }, orderBy: { name: "asc" } })
+    );
+    const parsed = parseAcQualiJson(json, drivers);
+
+    const nameOf = new Map(drivers.map((d) => [d.id, d.name]));
+    const blob = {
+      track: parsed.track ?? null,
+      date: parsed.date ?? null,
+      entries: parsed.entries.map((e) => ({
+        position: e.position,
+        driverId: e.suggestedDriverId,
+        // Snapshot the matched roster name (or the raw AC name) so the tab can
+        // render even if the roster row is renamed/removed later.
+        name: e.suggestedDriverId ? nameOf.get(e.suggestedDriverId) : e.acDriverName,
+        acDriverName: e.acDriverName,
+        bestLapMs: e.bestLapMs,
+        carModel: e.carModel,
+        matchedBy: e.matchedBy,
+      })),
+    };
+
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Race" SET "qualiJson" = ? WHERE "id" = ?`,
+      JSON.stringify(blob),
+      race.id
+    );
+
+    // Best-effort: matched entrants who also have a stored race result get
+    // their qualiTimeMs set (feeds the ratings' gap-to-pole later). Cleared
+    // first so a re-upload never leaves stale laps behind.
+    try {
+      await prisma.$executeRawUnsafe(`UPDATE "RaceResult" SET "qualiTimeMs" = NULL WHERE "raceId" = ?`, race.id);
+      for (const e of blob.entries) {
+        if (e.driverId && e.bestLapMs != null) {
+          await prisma.$executeRawUnsafe(
+            `UPDATE "RaceResult" SET "qualiTimeMs" = ? WHERE "raceId" = ? AND "driverId" = ?`,
+            e.bestLapMs,
+            race.id,
+            e.driverId
+          );
+        }
+      }
+    } catch (e) {
+      console.error("qualiTimeMs write skipped:", e.message);
+    }
+
+    res.json({
+      ok: true,
+      raceId: race.id,
+      entries: blob.entries.length,
+      matched: blob.entries.filter((e) => e.driverId).length,
+      unmatched: blob.entries.filter((e) => !e.driverId).map((e) => e.acDriverName),
+    });
+  } catch (e) {
+    if (e instanceof SyntaxError) return res.status(400).json({ error: "Invalid JSON file" });
+    if (e.message && e.message.startsWith("Invalid AC")) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+// DELETE /api/admin/races/:id/quali — remove a race's qualifying classification.
+router.delete("/races/:id/quali", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "qualiJson" = NULL WHERE "id" = ?`, race.id);
+    await prisma
+      .$executeRawUnsafe(`UPDATE "RaceResult" SET "qualiTimeMs" = NULL WHERE "raceId" = ?`, race.id)
+      .catch(() => {});
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /api/admin/races/preview
 // Body: { raceId? , number?, results: [...], seasonId? }
 // Computes the would-be round result + driver/constructor standings for the
@@ -676,6 +781,38 @@ router.put("/live-links", async (req, res, next) => {
       await prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
     }
     res.json(await readLiveLinks(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// LIVE RACE SERVERS (which server each series' live page follows)
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/live-servers -> the configured race servers, every series,
+// and the current series → server assignment (missing entry = first server).
+router.get("/live-servers", async (req, res, next) => {
+  try {
+    const [series, map] = await Promise.all([dbListSeries(prisma), readLiveServerMap(prisma)]);
+    res.json({
+      servers: LIVE_SERVERS.map((s) => ({ key: s.key, name: s.name, origin: s.origin })),
+      defaultKey: DEFAULT_SERVER_KEY,
+      series: series.map((s) => ({ slug: s.slug, name: s.name })),
+      map,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/live-servers  { map: { seriesSlug: serverKey } }
+// Takes effect for newly opened live pages/sockets (a viewer mid-session picks
+// it up on their next reconnect or reload).
+router.put("/live-servers", async (req, res, next) => {
+  try {
+    const map = await writeLiveServerMap(prisma, req.body?.map || {});
+    res.json({ ok: true, map });
   } catch (e) {
     next(e);
   }
@@ -1696,7 +1833,7 @@ router.get("/seasons", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / isAnnounced / heroImageUrl
       // aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic", "isAnnounced", "heroImageUrl" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic", "isAnnounced", "heroImageUrl", "carImageUrl" FROM "Season"`).catch(() => []),
       seasonSeriesMap(prisma),
       dbListSeries(prisma, { includePrivate: true }),
     ]);
@@ -1725,6 +1862,7 @@ router.get("/seasons", async (req, res, next) => {
             isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
             isAnnounced: !!Number(extra.isAnnounced ?? 0),
             heroImageUrl: extra.heroImageUrl || null,
+            carImageUrl: extra.carImageUrl || null,
           };
         })
     );
@@ -2082,6 +2220,41 @@ router.delete("/seasons/:id/hero", async (req, res, next) => {
     const season = await prisma.season.findUnique({ where: { id: req.params.id } });
     if (!season) return res.status(404).json({ error: "Season not found" });
     await writeSeasonHero(prisma, season.id, null);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/seasons/:id/car  (multipart: file=<image>)
+// Uploads (or replaces) the season's car image, shown in the "coming soon"
+// hero panel. Same mechanics as the hero photo above.
+router.post("/seasons/:id/car", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = LOGO_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG or WEBP)" });
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+
+    mkdirSync(SEASONS_DIR, { recursive: true });
+    const filename = `${season.id}-car${ext}`;
+    writeFileSync(join(SEASONS_DIR, filename), req.file.buffer);
+    const carImageUrl = `/api/uploads/seasons/${filename}?v=${Date.now()}`;
+    await writeSeasonCar(prisma, season.id, carImageUrl);
+    res.json({ ok: true, carImageUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/seasons/:id/car -> clear the override (falls back to the
+// static /cars/s<number>.jpg convention; without that the panel just stays away).
+router.delete("/seasons/:id/car", async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    await writeSeasonCar(prisma, season.id, null);
     res.json({ ok: true });
   } catch (e) {
     next(e);

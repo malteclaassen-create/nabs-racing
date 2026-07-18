@@ -53,12 +53,19 @@ function FactRow({ fact }) {
       <div className="min-w-0 flex-1">
         <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">{fact.label}</div>
         <div className="flex items-center gap-1.5">
-          <Link
-            to={`/drivers/${fact.driverId}`}
-            className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark transition hover:text-brand"
-          >
-            {fact.name}
-          </Link>
+          {/* no driver id = a quali entrant outside the roster — plain text */}
+          {fact.driverId ? (
+            <Link
+              to={`/drivers/${fact.driverId}`}
+              className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark transition hover:text-brand"
+            >
+              {fact.name}
+            </Link>
+          ) : (
+            <span className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark">
+              {fact.name}
+            </span>
+          )}
           {fact.country && <Flag code={fact.country} w={16} h={12} />}
         </div>
       </div>
@@ -107,7 +114,7 @@ function DriverOfTheDay({ row, name, pickedBy }) {
   );
 }
 
-export default function RaceFacts({ race, results }) {
+export default function RaceFacts({ race, results, quali = null }) {
   const finished = results.filter((r) => (!r.status || r.status === "FINISHED") && r.position != null);
   const rowById = new Map(results.map((r) => [r.driverId, r]));
   const winner = finished.find((r) => r.position === 1) || null;
@@ -198,12 +205,24 @@ export default function RaceFacts({ race, results }) {
       hint: "Laps spent leading at the start/finish line (estimated from lap-by-lap order; grid lap excluded, safety-car laps counted)." });
   }
 
-  // Pole position (grid P1) — note when the pole sitter didn't win.
-  const pole = results.find((r) => r.grid === 1);
-  if (pole) {
+  // Pole position — with an imported qualifying, the fact shows the REAL pole
+  // lap time (and the pole sitter comes from the quali classification, which
+  // also covers rounds without stored grid data). Without one it falls back to
+  // grid P1 with the old wording.
+  const qPole = Array.isArray(quali) ? quali.find((q) => q.position === 1 && isLap(q.bestLapMs)) : null;
+  if (qPole) {
     facts.push({ key: "pole", label: "Pole position", icon: "flag",
-      driverId: pole.driverId, name: pole.name, country: countryFor(pole.driverId, pole.country),
-      value: winner && pole.driverId === winner.driverId ? "Led from lights to flag" : "Started P1" });
+      driverId: qPole.driverId, name: qPole.name,
+      country: qPole.driverId ? countryFor(qPole.driverId, qPole.country) : null,
+      value: fmtLap(qPole.bestLapMs),
+      hint: "Fastest lap of the qualifying session." });
+  } else {
+    const pole = results.find((r) => r.grid === 1);
+    if (pole) {
+      facts.push({ key: "pole", label: "Pole position", icon: "flag",
+        driverId: pole.driverId, name: pole.name, country: countryFor(pole.driverId, pole.country),
+        value: winner && pole.driverId === winner.driverId ? "Led from lights to flag" : "Started P1" });
+    }
   }
 
   // Most car-to-car contacts (from AC telemetry). The estimated overtake count

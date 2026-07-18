@@ -18,3 +18,8 @@
 export async function writeSeasonHero(prisma, seasonId, url) {
   await prisma.$executeRawUnsafe(`UPDATE "Season" SET "heroImageUrl" = ? WHERE "id" = ?`, url, seasonId);
 }
+
+// Same pattern for the season's car image (the "coming soon" hero panel).
+export async function writeSeasonCar(prisma, seasonId, url) {
+  await prisma.$executeRawUnsafe(`UPDATE "Season" SET "carImageUrl" = ? WHERE "id" = ?`, url, seasonId);
+}

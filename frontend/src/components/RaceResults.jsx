@@ -33,8 +33,114 @@ function fmtLap(ms) {
   return `${m}:${String(s).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
 }
 
-export default function RaceResults({ race, results }) {
+// Qualifying classification table — deliberately the same visual language as
+// the race table (same row rhythm, colours, type sizes, cascade entrance):
+// Pos | Driver | Team | Time | Gap (to pole). Entrants without a roster match
+// (qualified but never raced/registered) render under their AC name, unlinked.
+function QualiTable({ rows }) {
+  return (
+    <div className="card overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="border-b border-border bg-surface2/50 text-left font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+              <th className="w-14 px-3 py-3 text-center">Pos</th>
+              <th className="px-3 py-3">Driver</th>
+              <th className="hidden px-3 py-3 sm:table-cell">Team</th>
+              <th className="hidden px-3 py-3 text-right md:table-cell">Time</th>
+              <th className="hidden px-3 py-3 text-right md:table-cell">Gap</th>
+            </tr>
+          </thead>
+          {/* cascade: rows rise in one after another, like the race table */}
+          <tbody className="cascade">
+            {rows.map((r, i) => {
+              const pole = r.position === 1 && isLap(r.bestLapMs);
+              return (
+                <tr
+                  key={`${r.position}-${r.name}`}
+                  style={{ "--i": Math.min(i, 16) }}
+                  className="border-b border-border transition odd:bg-surface2/30 last:border-0 hover:bg-surface2"
+                >
+                  <td className="px-3 py-3.5 text-center">
+                    <Rank position={r.position} />
+                  </td>
+                  <td className="px-3 py-3.5">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <span
+                          className="h-7 w-1.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: r.team?.color || "var(--c-border)" }}
+                        />
+                        {r.driverId ? (
+                          <Link
+                            to={`/drivers/${r.driverId}`}
+                            className="font-display text-base font-bold uppercase tracking-tight text-dark transition hover:text-brand"
+                          >
+                            {r.name}
+                          </Link>
+                        ) : (
+                          <span className="font-display text-base font-bold uppercase tracking-tight text-dark">
+                            {r.name}
+                          </span>
+                        )}
+                        {r.driverId && <Flag code={countryFor(r.driverId, r.country)} />}
+                      </span>
+                      {pole && (
+                        <span className="pill bg-purple-500/15 text-purple-500" title="Pole position">
+                          Pole
+                        </span>
+                      )}
+                    </div>
+                    {/* phones: the lap time as a sub-line, like the race time */}
+                    {isLap(r.bestLapMs) && (
+                      <div className="mt-1 pl-4 font-mono text-xs tabular-nums text-light md:hidden">
+                        {fmtLap(r.bestLapMs)}
+                        {r.gapMs != null ? ` (${fmtGap(r.gapMs)})` : ""}
+                      </div>
+                    )}
+                  </td>
+                  <td className="hidden px-3 py-3.5 sm:table-cell">
+                    {r.team ? (
+                      <Link to={`/teams/${r.team.id}`} className="inline-flex transition hover:opacity-80">
+                        <TeamLogo
+                          id={r.team.id}
+                          name={r.team.name}
+                          color={r.team.color}
+                          logoUrl={r.team.logoUrl}
+                          size={20}
+                          showName
+                          nameClassName="truncate text-sm text-medium"
+                        />
+                      </Link>
+                    ) : (
+                      <span className="font-mono text-faint">—</span>
+                    )}
+                  </td>
+                  <td
+                    className={`hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums md:table-cell ${
+                      pole ? "font-bold text-purple-500" : "text-medium"
+                    }`}
+                  >
+                    {fmtLap(r.bestLapMs) || <span className="text-faint">—</span>}
+                  </td>
+                  <td className="hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums text-medium md:table-cell">
+                    {r.gapMs != null ? fmtGap(r.gapMs) : <span className="text-faint">—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// `session` ("race" | "quali") is owned by the caller — the switcher lives in
+// the round header row on the Races page, not inside this component.
+export default function RaceResults({ race, results, quali = null, session = "race" }) {
   const detailed = race.hasPositions;
+  const hasQuali = Array.isArray(quali) && quali.length > 0;
   // Which drivers' tyre strategies are folded open (rows with stint data from
   // the AC import are clickable; older rounds simply have none).
   const [openStints, setOpenStints] = useState(() => new Set());
@@ -76,6 +182,8 @@ export default function RaceResults({ race, results }) {
     // say how many), so fall back to the car's own race time.
     return gap > 0 ? fmtGap(gap) : fmtDuration(ms);
   }
+
+  if (hasQuali && session === "quali") return <QualiTable rows={quali} />;
 
   return (
     <div className="card overflow-hidden">

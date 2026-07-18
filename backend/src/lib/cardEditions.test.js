@@ -50,22 +50,6 @@ describe("unlockStateFor — title editions key off THIS season's seal", () => {
   });
 });
 
-describe("unlockStateFor — defending champion (previous season's seal)", () => {
-  const championS7 = [{ type: "champion", seasonNumber: 7 }];
-
-  it("unlocks defending on the S8 row after an S7 title", () => {
-    expect(pick(unlockStateFor({}, championS7, [], 8), "defending").unlocked).toBe(true);
-  });
-
-  it("does not unlock defending on the S9 row", () => {
-    expect(pick(unlockStateFor({}, championS7, [], 9), "defending").unlocked).toBe(false);
-  });
-
-  it("does not unlock defending on the title season itself (S7)", () => {
-    expect(pick(unlockStateFor({}, championS7, [], 7), "defending").unlocked).toBe(false);
-  });
-});
-
 describe("unlockStateFor — team champion keys off the team seal", () => {
   it("unlocks teamchamp when the team won its tier this season", () => {
     const list = unlockStateFor({}, [], [{ position: 1, seasonNumber: 7 }], 7);

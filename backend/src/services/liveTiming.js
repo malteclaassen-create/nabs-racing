@@ -1,12 +1,19 @@
 // Live timing relay for the Assetto Corsa Server Manager.
 //
-// The server manager (https://nabs1.emperorservers.com) streams its live data
-// over a WebSocket at /api/race-control, but it rejects cross-origin browsers
-// (403 unless the Origin header matches its own host). So we cannot connect
-// from the browser directly. Instead this backend holds a single upstream
-// connection (with the right Origin), keeps the latest state in memory, and
-// re-broadcasts a clean, throttled "timing board" to our own frontend clients
-// over /api/live/ws.
+// The server manager (e.g. https://nabs1.emperorservers.com) streams its live
+// data over a WebSocket at /api/race-control, but it rejects cross-origin
+// browsers (403 unless the Origin header matches its own host). So we cannot
+// connect from the browser directly. Instead this backend holds one upstream
+// connection PER RACE SERVER (with the right Origin), keeps each server's
+// latest state in memory, and re-broadcasts a clean, throttled "timing board"
+// to our own frontend clients over /api/live/ws.
+//
+// Multi-server: the league runs more than one server (see lib/liveServers.js).
+// Every configured server gets its own relay (all the per-session state below
+// lives in a per-relay closure); which server a CLIENT follows is decided by
+// the series it passes on the WS URL (?series=<slug>), via the admin-managed
+// series → server assignment. No series/param = the first server, exactly the
+// old single-server behaviour.
 //
 // Upstream protocol (reverse-engineered from server-manager.js v2.4.15):
 //   EventType 200 — full status snapshot (sent on connect + every ~30s).
@@ -18,9 +25,8 @@
 //   EventType 57  — chat (ignored).
 import { WebSocketServer, WebSocket } from "ws";
 import prisma from "../lib/prisma.js";
+import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries } from "../lib/liveServers.js";
 
-const UPSTREAM_URL = process.env.LIVE_TIMING_WS || "wss://nabs1.emperorservers.com/api/race-control";
-const UPSTREAM_ORIGIN = process.env.LIVE_TIMING_ORIGIN || "https://nabs1.emperorservers.com";
 const BROADCAST_MS = 700; // how often we push a fresh board to frontend clients
 // Quiet servers (nobody on track) only send the full snapshot every ~30s and
 // no per-car telemetry in between, so the stale threshold must sit comfortably
@@ -40,35 +46,11 @@ const DEMO_ENABLED =
   (process.env.NODE_ENV !== "production" && !ON_RAILWAY);
 const DEMO_RACE_LAPS = 30; // the fabricated race's distance (drives the strategy axis)
 
-let upstream = null;
-let reconnectTimer = null;
-let reconnectDelay = 1000;
-
-let status = null; // latest EventType 200 Message (full snapshot)
-const liveByCar = new Map(); // CarID -> latest EventType 53 telemetry
-// guid -> last known race position, so a driver who leaves the server right
-// after the flag keeps their slot on the board instead of vanishing to the
-// bottom. Cleared with the stint history on a session change.
-const lastRacePosByGuid = new Map();
-let lastMessageAt = 0;
-
 const nsToMs = (ns) => (typeof ns === "number" && ns > 0 ? Math.round(ns / 1e6) : null);
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const round1 = (v) => (typeof v === "number" ? Math.round(v * 10) / 10 : null);
 
-// ---- Track map assets -------------------------------------------------------
-// The server manager publicly serves each track's overhead map (the very PNG its
-// own live map draws on) plus a calibration ini. We proxy the PNG through our own
-// origin and hand the frontend the calibration, so cars can be placed at their
-// REAL world positions (from ET53's Pos) instead of the stylised-spline guess.
-// Fetched once per track — on the first snapshot and whenever Track/TrackConfig
-// changes — and cached in memory. Any failure just leaves map=null and the
-// frontend falls back to the stylised outline; the relay never crashes over it.
-const CONTENT_BASE = UPSTREAM_ORIGIN.replace(/\/+$/, "") + "/content/tracks";
 const PNG_SIG = "89504e47"; // first four bytes of every PNG
-
-let trackMap = null; // { key, calib:{width,height,scaleFactor,xOffset,zOffset,ver}|null, png:Buffer|null }
-let trackMapKey = null; // the "Track|TrackConfig" we last (started to) fetch for
 
 const mapKeyOf = (si) => `${si?.Track || ""}|${si?.TrackConfig || ""}`;
 
@@ -111,94 +93,6 @@ function parseMapIni(text) {
   return { width, height, scaleFactor, xOffset: xOffset ?? 0, zOffset: zOffset ?? 0, padding: padding ?? 0 };
 }
 
-// Fetch + cache the PNG and calibration for one track. The upstream layout isn't
-// perfectly consistent (ini sometimes under /data/, png with or without the
-// config folder), so we probe a few candidate paths defensively with GET.
-async function loadTrackMap(track, config) {
-  const key = `${track}|${config}`;
-  const enc = encodeURIComponent;
-  const cfgBase = config ? `${CONTENT_BASE}/${enc(track)}/${enc(config)}` : `${CONTENT_BASE}/${enc(track)}`;
-  const noCfgBase = `${CONTENT_BASE}/${enc(track)}`;
-  const iniUrls = [`${cfgBase}/data/map.ini`, `${cfgBase}/map.ini`, `${noCfgBase}/data/map.ini`, `${noCfgBase}/map.ini`];
-  const pngUrls = [`${cfgBase}/map.png`, `${cfgBase}/data/map.png`, `${noCfgBase}/map.png`];
-
-  let calib = null;
-  for (const u of iniUrls) {
-    calib = parseMapIni(await fetchUpstream(u, 6000, "text"));
-    if (calib) break;
-  }
-  let png = null;
-  for (const u of pngUrls) {
-    const buf = await fetchUpstream(u, 8000, "buf");
-    if (buf && buf.length > 1000 && buf.slice(0, 4).toString("hex") === PNG_SIG) {
-      png = buf;
-      break;
-    }
-  }
-
-  // A usable map needs both the image and its calibration; otherwise mark this
-  // track as "no real map" so we don't keep retrying every snapshot.
-  if (png && calib && trackMapKey === key) {
-    trackMap = { key, calib: { ...calib, ver: shortHash(key) }, png };
-    console.log(`[live] track map ready: ${key} (${calib.width}x${calib.height})`);
-  } else if (trackMapKey === key) {
-    trackMap = { key, calib: null, png: null };
-    console.log(`[live] no real track map for ${key} (falling back to outline)`);
-  }
-}
-
-// Kick off a (re)fetch when the session's track changes. Fire-and-forget: the
-// board reports map=null until it resolves, then picks it up on the next tick.
-function ensureTrackMap(si) {
-  if (!si?.Track) return;
-  const key = mapKeyOf(si);
-  if (key === trackMapKey) return; // already loaded / loading this track
-  trackMapKey = key;
-  trackMap = null; // drop the previous track's map while the new one loads
-  loadTrackMap(si.Track, si.TrackConfig || "").catch((e) => {
-    if (trackMapKey === key) trackMap = { key, calib: null, png: null };
-    console.log("[live] track map fetch error:", e?.message || e);
-  });
-}
-
-// The cached PNG for the current track (served at /api/live/map.png), or null.
-export function getTrackMapPng() {
-  return trackMap?.png || null;
-}
-
-// Calibration to ship on the board, only when it matches the live session's track.
-// The snapshot's own TrackMapData is authoritative when present — it is exactly
-// what the server manager's live map projects with (offset_x/offset_y/
-// scale_factor/padding) — so it overrides the parsed ini values; the ini stays
-// as the fallback for older managers that don't send it.
-function currentMapCalib(si, tmd) {
-  const base = trackMap && trackMap.key === mapKeyOf(si) ? trackMap.calib : null;
-  if (!base) return null; // no cached PNG -> no real map, whatever the snapshot says
-  if (tmd && Number(tmd.scale_factor) > 0) {
-    return {
-      ...base,
-      width: Number(tmd.width) > 0 ? Number(tmd.width) : base.width,
-      height: Number(tmd.height) > 0 ? Number(tmd.height) : base.height,
-      scaleFactor: Number(tmd.scale_factor),
-      xOffset: Number.isFinite(Number(tmd.offset_x)) ? Number(tmd.offset_x) : base.xOffset,
-      zOffset: Number.isFinite(Number(tmd.offset_y)) ? Number(tmd.offset_y) : base.zOffset,
-      padding: Number.isFinite(Number(tmd.padding)) ? Number(tmd.padding) : base.padding ?? 0,
-    };
-  }
-  return base;
-}
-
-// ---- Tyre stint history -----------------------------------------------------
-// The board's per-lap `tyre` is the BEST-LAP tyre, not the one currently fitted,
-// so the strategy view can't be built from a single frame. We accumulate a
-// per-driver stint list in memory across the session instead: a new stint opens
-// on a pit stop (NumPits rises) or a compound change, and the current stint's
-// lap span grows as the driver completes laps. Everything is reverse-engineered
-// from the upstream snapshot, so every field is null-checked. Reset whenever the
-// session changes (a different track / session index / name on EventType 200).
-const stintsByGuid = new Map(); // guid -> { stints:[{tyre,fromLap,toLap}], lastPits }
-let stintSessionKey = null;
-
 function sessionKeyOf(si, ti) {
   return `${si?.Track || ti?.name || ""}|${si?.CurrentSessionIndex ?? 0}|${si?.Name || ""}`;
 }
@@ -229,168 +123,8 @@ function tyreKey(name) {
   return n;
 }
 
-function accumulateStints(msg) {
-  if (!msg) return;
-  const si = msg.SessionInfo || {};
-  const key = sessionKeyOf(si, msg.TrackInfo || {});
-  if (key !== stintSessionKey) {
-    stintsByGuid.clear();
-    lastRacePosByGuid.clear();
-    stintSessionKey = key;
-  }
-  // In Practice/Qualifying a driver teleports back to the pits to end a run and
-  // start fresh; in a Race a pit stop just opens the next stint. So resets only
-  // apply outside a race (Type 3 = Race).
-  const isRace = si.Type === 3;
-  const connected = msg.ConnectedDrivers?.Drivers || {};
-  for (const [guid, d] of Object.entries(connected)) {
-    const ci = d.CarInfo || {};
-    if (ci.IsSpectator) continue;
-    const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
-    const lap = Math.max(1, car?.NumLaps ?? d.TotalNumLaps ?? 1);
-    const tyre = ci.Tyres || car?.TyreBestLap || "";
-    const pits = d.NumPits ?? car?.NumPits ?? 0;
-    const inPits = !!(d.IsInPits ?? false);
-    let st = stintsByGuid.get(guid);
-    if (!st) {
-      // First sight: seed the pit-edge tracker from the current state so a driver
-      // already sitting in the pits at session start isn't treated as a "return"
-      // (no spurious reset, and no stint opened until they actually head out).
-      st = { stints: [], lastPits: pits, lastInPits: inPits };
-      stintsByGuid.set(guid, st);
-    }
-    // Practice/Quali return to the pits: wipe this driver's history once, on the
-    // transition onto pit road, so their next run's stints start from zero. The
-    // lap counter doesn't reset upstream, but stints are laps-delta based, so the
-    // next stint simply re-anchors from wherever the lap count is now.
-    if (!isRace && inPits && !st.lastInPits) {
-      st.stints = [];
-      st.lastPits = pits; // re-anchor: the return itself isn't a fresh pit stop
-    }
-    st.lastInPits = inPits;
-
-    const cur = st.stints[st.stints.length - 1];
-    const pitted = pits > st.lastPits;
-    const tyreChanged = cur && tyre && cur.tyre && cur.tyre !== "?" && tyreKey(tyre) !== tyreKey(cur.tyre);
-    if (inPits && !cur) {
-      // Sitting in the pits with no active stint: keep the row empty until the
-      // driver rejoins the track (covers both a fresh session and a post-reset).
-    } else if (!cur) {
-      st.stints.push({ tyre: tyre || "?", fromLap: lap, toLap: lap });
-    } else if (pitted || tyreChanged) {
-      cur.toLap = lap;
-      st.stints.push({ tyre: tyre || cur.tyre, fromLap: lap, toLap: lap });
-    } else {
-      if (lap > cur.toLap) cur.toLap = lap;
-      if ((!cur.tyre || cur.tyre === "?") && tyre) cur.tyre = tyre;
-    }
-    st.lastPits = pits;
-  }
-}
-
-// The stint list a board entry ships: [{ tyre, laps }] plus the live compound.
-function stintsFor(guid) {
-  const st = stintsByGuid.get(guid);
-  if (!st) return [];
-  const out = [];
-  for (const s of st.stints) {
-    const prev = out[out.length - 1];
-    // Repair pass for histories accumulated before the tyreKey fix (and any
-    // remaining flip artefact): a same-compound stint that opens on the very
-    // lap the previous one ended is a ghost split, not a real stop — merge.
-    if (prev && tyreKey(prev._tyre) === tyreKey(s.tyre) && s.fromLap <= prev._toLap) {
-      prev._toLap = Math.max(prev._toLap, s.toLap);
-      continue;
-    }
-    out.push({ tyre: s.tyre, _tyre: s.tyre, _fromLap: s.fromLap, _toLap: s.toLap });
-  }
-  return out.map((s) => ({ tyre: s.tyre, laps: Math.max(1, (s._toLap - s._fromLap) + 1) }));
-}
-
 function sessionTypeName(t) {
   return { 0: "Booking", 1: "Practice", 2: "Qualifying", 3: "Race" }[t] || "Session";
-}
-
-// Test hook: the stint accumulator carries module-level state, so tests drive it
-// through simulated snapshots and reset between cases (see liveTiming.test.js).
-export const __testing = {
-  accumulateStints,
-  stintsFor,
-  reset() {
-    stintsByGuid.clear();
-    stintSessionKey = null;
-  },
-};
-
-function upstreamOpen() {
-  return upstream && upstream.readyState === WebSocket.OPEN;
-}
-
-function connectUpstream() {
-  upstream = new WebSocket(UPSTREAM_URL, { headers: { Origin: UPSTREAM_ORIGIN } });
-
-  upstream.on("open", () => {
-    reconnectDelay = 1000;
-    console.log("[live] upstream connected:", UPSTREAM_URL);
-  });
-
-  upstream.on("message", (buf) => {
-    lastMessageAt = Date.now();
-    let msg;
-    try {
-      msg = JSON.parse(buf.toString());
-    } catch {
-      return;
-    }
-    switch (msg.EventType) {
-      case 200: // full snapshot — refreshes lap times
-        status = msg.Message;
-        // Keep the per-car telemetry across snapshots — clearing it here
-        // blanked every map dot for a beat (pos gone until each car's next
-        // ET53). Only drop cars that actually left the server.
-        {
-          const alive = new Set();
-          for (const d of Object.values(status?.ConnectedDrivers?.Drivers || {})) {
-            if (typeof d?.CarInfo?.CarID === "number") alive.add(d.CarInfo.CarID);
-          }
-          for (const id of [...liveByCar.keys()]) {
-            if (!alive.has(id)) liveByCar.delete(id);
-          }
-        }
-        accumulateStints(status); // grow the per-driver tyre-stint history
-        ensureTrackMap(status?.SessionInfo || {}); // (re)load the real map on track change
-        break;
-      case 53: // per-car telemetry
-        if (msg.Message && typeof msg.Message.CarID === "number") {
-          liveByCar.set(msg.Message.CarID, msg.Message);
-        }
-        break;
-      default:
-        break;
-    }
-  });
-
-  upstream.on("close", () => {
-    console.log("[live] upstream closed; reconnecting…");
-    scheduleReconnect();
-  });
-  upstream.on("error", (e) => {
-    console.log("[live] upstream error:", e.message);
-    try {
-      upstream.close();
-    } catch {
-      /* noop */
-    }
-  });
-}
-
-function scheduleReconnect() {
-  if (reconnectTimer) return;
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    reconnectDelay = Math.min(reconnectDelay * 2, 15000); // backoff, capped
-    connectUpstream();
-  }, reconnectDelay);
 }
 
 // Pull the three best-lap sector boxes (with colour flags) off a car record.
@@ -416,160 +150,462 @@ function potentialOf(bestSplits) {
   return Math.round(arr.reduce((a, x) => a + x.SplitTime, 0) / 1e6);
 }
 
-function buildEntry(guid, d, onTrack) {
-  const ci = d.CarInfo || {};
-  const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
-  const live = onTrack ? liveByCar.get(ci.CarID) || {} : {};
-  const racePos = live.RacePosition ?? d.RacePosition ?? null;
-  if (onTrack && racePos != null) lastRacePosByGuid.set(guid, racePos);
-  return {
-    guid,
-    name: ci.DriverName || "—",
-    initials: ci.DriverInitials || "",
-    raceNumber: ci.RaceNumber ?? null,
-    carModel: ci.CarModel || "",
-    carName: ci.CarName || car?.CarName || "",
-    carSkin: ci.CarSkin || "",
-    tyre: car?.TyreBestLap || ci.Tyres || "",
-    // The tyre fitted RIGHT NOW (for the strategy view), as opposed to `tyre`
-    // above which is the best-lap compound. Prefer a live telemetry field if the
-    // upstream carries one, else the CarInfo's current tyre, else the best-lap
-    // one as a last resort. All reverse-engineered, so fall through defensively.
-    currentTyre: (onTrack ? live.Tyre ?? live.Tyres : null) ?? ci.Tyres ?? car?.TyreBestLap ?? null,
-    stints: stintsFor(guid),
-    onTrack,
-    bestLapMs: car ? nsToMs(car.BestLap) : null,
-    lastLapMs: car ? nsToMs(car.LastLap) : null,
-    // epoch ms of the last completed lap — frontend ticks the live current-lap
-    // clock from here (now - lastLapAt) for on-track drivers.
-    lastLapAt: car?.LastLapCompletedTime ? Date.parse(car.LastLapCompletedTime) || null : null,
-    lapCount: car?.NumLaps ?? d.TotalNumLaps ?? 0,
-    topSpeed: car && car.TopSpeedBestLap ? Math.round(car.TopSpeedBestLap) : null,
-    sectors: sectorsOf(car?.BestLapSplits),
-    potentialMs: potentialOf(car?.BestSplits),
-    inPits: live.IsInPits ?? d.IsInPits ?? false,
-    numPits: live.NumPits ?? d.NumPits ?? 0,
-    ping: live.Ping ?? d.Ping ?? null,
-    drs: live.DRSActive ?? d.DRSActive ?? false,
-    deltaSelfMs: onTrack ? live.DeltaToSelf ?? d.DeltaToSelf ?? null : null,
-    spline: live.NormalisedSplinePos ?? d.NormalisedSplinePos ?? 0,
-    // Real world position (X/Z ground plane) for the real-map dots. Only on-track
-    // cars carry live telemetry, so it's null otherwise; rounded to keep the board
-    // lean. The frontend projects it onto map.png with the ini's calibration.
-    pos: onTrack && live.Pos ? { x: round1(live.Pos.X), z: round1(live.Pos.Z) } : null,
-    // Race-session running order (from the high-frequency telemetry). A car
-    // that left the server keeps its LAST known position (see lastRacePosByGuid)
-    // so the finishing order survives the post-race exodus for a while.
-    racePosition: racePos ?? lastRacePosByGuid.get(guid) ?? null,
-  };
-}
+// ---------------------------------------------------------------------------
+// One relay per race server: upstream socket, snapshot state, track map cache
+// and tyre-stint history all live in this closure — nothing is shared between
+// servers, so two series following two servers never bleed into each other.
+// ---------------------------------------------------------------------------
+function createRelay(server) {
+  const tag = `[live:${server.key}]`;
+  const CONTENT_BASE = server.origin.replace(/\/+$/, "") + "/content/tracks";
 
-// Build the clean board we hand to the frontend.
-export function getBoard() {
-  if (!status) {
-    return { ok: false, connected: upstreamOpen(), session: null, entries: [], updatedAt: Date.now() };
-  }
-  const si = status.SessionInfo || {};
-  const ti = status.TrackInfo || {};
-  const connected = status.ConnectedDrivers?.Drivers || {};
-  const disconnected = status.DisconnectedDrivers?.Drivers || {};
-  const sessionBestMs = nsToMs(status.BestLap);
+  let upstream = null;
+  let reconnectTimer = null;
+  let reconnectDelay = 1000;
 
-  // Merge stored (disconnected) + on-track (connected) drivers, keyed by GUID;
-  // a currently-connected entry overrides its stored counterpart.
-  const byGuid = new Map();
-  for (const [guid, d] of Object.entries(disconnected)) {
-    if (d.CarInfo?.IsSpectator) continue;
-    byGuid.set(guid, buildEntry(guid, d, false));
-  }
-  for (const [guid, d] of Object.entries(connected)) {
-    if (d.CarInfo?.IsSpectator) continue;
-    byGuid.set(guid, buildEntry(guid, d, true));
-  }
-  const entries = [...byGuid.values()];
+  let status = null; // latest EventType 200 Message (full snapshot)
+  const liveByCar = new Map(); // CarID -> latest EventType 53 telemetry
+  // guid -> last known race position, so a driver who leaves the server right
+  // after the flag keeps their slot on the board instead of vanishing to the
+  // bottom. Cleared with the stint history on a session change.
+  const lastRacePosByGuid = new Map();
+  let lastMessageAt = 0;
 
-  // Ranking. A RACE orders by the actual running order (telemetry
-  // RacePosition, held for leavers) — sorting a race by best lap made the
-  // board's leader flip on every quick lap. Other sessions keep the hot-lap
-  // ranking: fastest best lap first; drivers without a lap go last.
-  const isRace = si.Type === 3;
-  if (isRace) {
-    entries.sort((a, b) => {
-      if (a.racePosition != null && b.racePosition != null) {
-        if (a.racePosition !== b.racePosition) return a.racePosition - b.racePosition;
-        // Same slot (the sim re-issues a leaver's position to the next car):
-        // more laps first, then the car still on the server.
-        if ((a.lapCount || 0) !== (b.lapCount || 0)) return (b.lapCount || 0) - (a.lapCount || 0);
-        return a.onTrack === b.onTrack ? 0 : a.onTrack ? -1 : 1;
+  // ---- Track map assets -----------------------------------------------------
+  // The server manager publicly serves each track's overhead map (the very PNG
+  // its own live map draws on) plus a calibration ini. We proxy the PNG through
+  // our own origin and hand the frontend the calibration, so cars can be placed
+  // at their REAL world positions (from ET53's Pos). Fetched once per track and
+  // cached in memory; failures just leave map=null (stylised-outline fallback).
+  let trackMap = null; // { key, calib, png } | null
+  let trackMapKey = null; // the "Track|TrackConfig" we last (started to) fetch for
+
+  async function loadTrackMap(track, config) {
+    const key = `${track}|${config}`;
+    const enc = encodeURIComponent;
+    const cfgBase = config ? `${CONTENT_BASE}/${enc(track)}/${enc(config)}` : `${CONTENT_BASE}/${enc(track)}`;
+    const noCfgBase = `${CONTENT_BASE}/${enc(track)}`;
+    const iniUrls = [`${cfgBase}/data/map.ini`, `${cfgBase}/map.ini`, `${noCfgBase}/data/map.ini`, `${noCfgBase}/map.ini`];
+    const pngUrls = [`${cfgBase}/map.png`, `${cfgBase}/data/map.png`, `${noCfgBase}/map.png`];
+
+    let calib = null;
+    for (const u of iniUrls) {
+      calib = parseMapIni(await fetchUpstream(u, 6000, "text"));
+      if (calib) break;
+    }
+    let png = null;
+    for (const u of pngUrls) {
+      const buf = await fetchUpstream(u, 8000, "buf");
+      if (buf && buf.length > 1000 && buf.slice(0, 4).toString("hex") === PNG_SIG) {
+        png = buf;
+        break;
       }
-      if (a.racePosition != null) return -1;
-      if (b.racePosition != null) return 1;
-      return (b.lapCount || 0) - (a.lapCount || 0) || (b.spline || 0) - (a.spline || 0);
-    });
-  } else {
-    entries.sort((a, b) => {
-      if (a.bestLapMs && b.bestLapMs) return a.bestLapMs - b.bestLapMs;
-      if (a.bestLapMs) return -1;
-      if (b.bestLapMs) return 1;
-      return (b.lapCount || 0) - (a.lapCount || 0);
-    });
+    }
+
+    // A usable map needs both the image and its calibration; otherwise mark this
+    // track as "no real map" so we don't keep retrying every snapshot.
+    if (png && calib && trackMapKey === key) {
+      trackMap = { key, calib: { ...calib, ver: shortHash(`${server.key}|${key}`) }, png };
+      console.log(`${tag} track map ready: ${key} (${calib.width}x${calib.height})`);
+    } else if (trackMapKey === key) {
+      trackMap = { key, calib: null, png: null };
+      console.log(`${tag} no real track map for ${key} (falling back to outline)`);
+    }
   }
-  // Sector colours: the upstream per-lap "IsBest" flag is unreliable (it can
-  // mark a sector best that's since been beaten on another lap). Recompute
-  // "purple" against the session's actual best sector times (top-level
-  // BestSplits); "green" (driver's own best sector) keeps the IsDriversBest flag.
-  const sessionBestSectors = Array.isArray(status.BestSplits)
-    ? [0, 1, 2].map((i) => (status.BestSplits[i] ? nsToMs(status.BestSplits[i].SplitTime) : null))
-    : [null, null, null];
-  for (const e of entries) {
-    e.sectors.forEach((s, i) => {
-      if (s) s.best = sessionBestSectors[i] != null && s.ms === sessionBestSectors[i];
+
+  // Kick off a (re)fetch when the session's track changes. Fire-and-forget: the
+  // board reports map=null until it resolves, then picks it up on the next tick.
+  function ensureTrackMap(si) {
+    if (!si?.Track) return;
+    const key = mapKeyOf(si);
+    if (key === trackMapKey) return; // already loaded / loading this track
+    trackMapKey = key;
+    trackMap = null; // drop the previous track's map while the new one loads
+    loadTrackMap(si.Track, si.TrackConfig || "").catch((e) => {
+      if (trackMapKey === key) trackMap = { key, calib: null, png: null };
+      console.log(`${tag} track map fetch error:`, e?.message || e);
     });
   }
 
-  // Gap is measured against the current leader's best lap (P1 = 0.000).
-  const leaderBestMs = entries.find((e) => e.bestLapMs)?.bestLapMs || null;
-  entries.forEach((e, i) => {
-    e.position = i + 1;
-    e.gapToBestMs = e.bestLapMs && leaderBestMs ? e.bestLapMs - leaderBestMs : null;
-  });
+  // Calibration to ship on the board, only when it matches the live session's
+  // track. The snapshot's own TrackMapData is authoritative when present — it
+  // is exactly what the server manager's live map projects with — so it
+  // overrides the parsed ini values; the ini stays as the fallback for older
+  // managers that don't send it.
+  function currentMapCalib(si, tmd) {
+    const base = trackMap && trackMap.key === mapKeyOf(si) ? trackMap.calib : null;
+    if (!base) return null; // no cached PNG -> no real map, whatever the snapshot says
+    if (tmd && Number(tmd.scale_factor) > 0) {
+      return {
+        ...base,
+        width: Number(tmd.width) > 0 ? Number(tmd.width) : base.width,
+        height: Number(tmd.height) > 0 ? Number(tmd.height) : base.height,
+        scaleFactor: Number(tmd.scale_factor),
+        xOffset: Number.isFinite(Number(tmd.offset_x)) ? Number(tmd.offset_x) : base.xOffset,
+        zOffset: Number.isFinite(Number(tmd.offset_y)) ? Number(tmd.offset_y) : base.zOffset,
+        padding: Number.isFinite(Number(tmd.padding)) ? Number(tmd.padding) : base.padding ?? 0,
+      };
+    }
+    return base;
+  }
 
-  // Session remaining time (Time is in minutes; ElapsedMilliseconds from the
-  // last full snapshot). Frontend ticks it down locally between snapshots.
-  const remainingMs =
-    si.Time > 0 ? Math.max(0, si.Time * 60000 - (si.ElapsedMilliseconds || 0)) : null;
+  // ---- Tyre stint history ---------------------------------------------------
+  // The board's per-lap `tyre` is the BEST-LAP tyre, not the one currently
+  // fitted, so the strategy view can't be built from a single frame. We
+  // accumulate a per-driver stint list in memory across the session instead: a
+  // new stint opens on a pit stop (NumPits rises) or a compound change, and the
+  // current stint's lap span grows as the driver completes laps. Everything is
+  // reverse-engineered from the upstream snapshot, so every field is
+  // null-checked. Reset whenever the session changes.
+  const stintsByGuid = new Map(); // guid -> { stints:[{tyre,fromLap,toLap}], lastPits }
+  let stintSessionKey = null;
+
+  function accumulateStints(msg) {
+    if (!msg) return;
+    const si = msg.SessionInfo || {};
+    const key = sessionKeyOf(si, msg.TrackInfo || {});
+    if (key !== stintSessionKey) {
+      stintsByGuid.clear();
+      lastRacePosByGuid.clear();
+      stintSessionKey = key;
+    }
+    // In Practice/Qualifying a driver teleports back to the pits to end a run and
+    // start fresh; in a Race a pit stop just opens the next stint. So resets only
+    // apply outside a race (Type 3 = Race).
+    const isRace = si.Type === 3;
+    const connected = msg.ConnectedDrivers?.Drivers || {};
+    for (const [guid, d] of Object.entries(connected)) {
+      const ci = d.CarInfo || {};
+      if (ci.IsSpectator) continue;
+      const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
+      const lap = Math.max(1, car?.NumLaps ?? d.TotalNumLaps ?? 1);
+      const tyre = ci.Tyres || car?.TyreBestLap || "";
+      const pits = d.NumPits ?? car?.NumPits ?? 0;
+      const inPits = !!(d.IsInPits ?? false);
+      let st = stintsByGuid.get(guid);
+      if (!st) {
+        // First sight: seed the pit-edge tracker from the current state so a driver
+        // already sitting in the pits at session start isn't treated as a "return"
+        // (no spurious reset, and no stint opened until they actually head out).
+        st = { stints: [], lastPits: pits, lastInPits: inPits };
+        stintsByGuid.set(guid, st);
+      }
+      // Practice/Quali return to the pits: wipe this driver's history once, on the
+      // transition onto pit road, so their next run's stints start from zero. The
+      // lap counter doesn't reset upstream, but stints are laps-delta based, so the
+      // next stint simply re-anchors from wherever the lap count is now.
+      if (!isRace && inPits && !st.lastInPits) {
+        st.stints = [];
+        st.lastPits = pits; // re-anchor: the return itself isn't a fresh pit stop
+      }
+      st.lastInPits = inPits;
+
+      const cur = st.stints[st.stints.length - 1];
+      const pitted = pits > st.lastPits;
+      const tyreChanged = cur && tyre && cur.tyre && cur.tyre !== "?" && tyreKey(tyre) !== tyreKey(cur.tyre);
+      if (inPits && !cur) {
+        // Sitting in the pits with no active stint: keep the row empty until the
+        // driver rejoins the track (covers both a fresh session and a post-reset).
+      } else if (!cur) {
+        st.stints.push({ tyre: tyre || "?", fromLap: lap, toLap: lap });
+      } else if (pitted || tyreChanged) {
+        cur.toLap = lap;
+        st.stints.push({ tyre: tyre || cur.tyre, fromLap: lap, toLap: lap });
+      } else {
+        if (lap > cur.toLap) cur.toLap = lap;
+        if ((!cur.tyre || cur.tyre === "?") && tyre) cur.tyre = tyre;
+      }
+      st.lastPits = pits;
+    }
+  }
+
+  // The stint list a board entry ships: [{ tyre, laps }] plus the live compound.
+  function stintsFor(guid) {
+    const st = stintsByGuid.get(guid);
+    if (!st) return [];
+    const out = [];
+    for (const s of st.stints) {
+      const prev = out[out.length - 1];
+      // Repair pass for histories accumulated before the tyreKey fix (and any
+      // remaining flip artefact): a same-compound stint that opens on the very
+      // lap the previous one ended is a ghost split, not a real stop — merge.
+      if (prev && tyreKey(prev._tyre) === tyreKey(s.tyre) && s.fromLap <= prev._toLap) {
+        prev._toLap = Math.max(prev._toLap, s.toLap);
+        continue;
+      }
+      out.push({ tyre: s.tyre, _tyre: s.tyre, _fromLap: s.fromLap, _toLap: s.toLap });
+    }
+    return out.map((s) => ({ tyre: s.tyre, laps: Math.max(1, (s._toLap - s._fromLap) + 1) }));
+  }
+
+  function upstreamOpen() {
+    return upstream && upstream.readyState === WebSocket.OPEN;
+  }
+
+  function connectUpstream() {
+    upstream = new WebSocket(server.ws, { headers: { Origin: server.origin } });
+
+    upstream.on("open", () => {
+      reconnectDelay = 1000;
+      console.log(`${tag} upstream connected:`, server.ws);
+    });
+
+    upstream.on("message", (buf) => {
+      lastMessageAt = Date.now();
+      let msg;
+      try {
+        msg = JSON.parse(buf.toString());
+      } catch {
+        return;
+      }
+      switch (msg.EventType) {
+        case 200: // full snapshot — refreshes lap times
+          status = msg.Message;
+          // Keep the per-car telemetry across snapshots — clearing it here
+          // blanked every map dot for a beat (pos gone until each car's next
+          // ET53). Only drop cars that actually left the server.
+          {
+            const alive = new Set();
+            for (const d of Object.values(status?.ConnectedDrivers?.Drivers || {})) {
+              if (typeof d?.CarInfo?.CarID === "number") alive.add(d.CarInfo.CarID);
+            }
+            for (const id of [...liveByCar.keys()]) {
+              if (!alive.has(id)) liveByCar.delete(id);
+            }
+          }
+          accumulateStints(status); // grow the per-driver tyre-stint history
+          ensureTrackMap(status?.SessionInfo || {}); // (re)load the real map on track change
+          break;
+        case 53: // per-car telemetry
+          if (msg.Message && typeof msg.Message.CarID === "number") {
+            liveByCar.set(msg.Message.CarID, msg.Message);
+          }
+          break;
+        default:
+          break;
+      }
+    });
+
+    upstream.on("close", () => {
+      console.log(`${tag} upstream closed; reconnecting…`);
+      scheduleReconnect();
+    });
+    upstream.on("error", (e) => {
+      console.log(`${tag} upstream error:`, e.message);
+      try {
+        upstream.close();
+      } catch {
+        /* noop */
+      }
+    });
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      reconnectDelay = Math.min(reconnectDelay * 2, 15000); // backoff, capped
+      connectUpstream();
+    }, reconnectDelay);
+  }
+
+  function buildEntry(guid, d, onTrack) {
+    const ci = d.CarInfo || {};
+    const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
+    const live = onTrack ? liveByCar.get(ci.CarID) || {} : {};
+    const racePos = live.RacePosition ?? d.RacePosition ?? null;
+    if (onTrack && racePos != null) lastRacePosByGuid.set(guid, racePos);
+    return {
+      guid,
+      name: ci.DriverName || "—",
+      initials: ci.DriverInitials || "",
+      raceNumber: ci.RaceNumber ?? null,
+      carModel: ci.CarModel || "",
+      carName: ci.CarName || car?.CarName || "",
+      carSkin: ci.CarSkin || "",
+      tyre: car?.TyreBestLap || ci.Tyres || "",
+      // The tyre fitted RIGHT NOW (for the strategy view), as opposed to `tyre`
+      // above which is the best-lap compound. Prefer a live telemetry field if the
+      // upstream carries one, else the CarInfo's current tyre, else the best-lap
+      // one as a last resort. All reverse-engineered, so fall through defensively.
+      currentTyre: (onTrack ? live.Tyre ?? live.Tyres : null) ?? ci.Tyres ?? car?.TyreBestLap ?? null,
+      stints: stintsFor(guid),
+      onTrack,
+      bestLapMs: car ? nsToMs(car.BestLap) : null,
+      lastLapMs: car ? nsToMs(car.LastLap) : null,
+      // epoch ms of the last completed lap — frontend ticks the live current-lap
+      // clock from here (now - lastLapAt) for on-track drivers.
+      lastLapAt: car?.LastLapCompletedTime ? Date.parse(car.LastLapCompletedTime) || null : null,
+      lapCount: car?.NumLaps ?? d.TotalNumLaps ?? 0,
+      topSpeed: car && car.TopSpeedBestLap ? Math.round(car.TopSpeedBestLap) : null,
+      sectors: sectorsOf(car?.BestLapSplits),
+      potentialMs: potentialOf(car?.BestSplits),
+      inPits: live.IsInPits ?? d.IsInPits ?? false,
+      numPits: live.NumPits ?? d.NumPits ?? 0,
+      ping: live.Ping ?? d.Ping ?? null,
+      drs: live.DRSActive ?? d.DRSActive ?? false,
+      deltaSelfMs: onTrack ? live.DeltaToSelf ?? d.DeltaToSelf ?? null : null,
+      spline: live.NormalisedSplinePos ?? d.NormalisedSplinePos ?? 0,
+      // Real world position (X/Z ground plane) for the real-map dots. Only on-track
+      // cars carry live telemetry, so it's null otherwise; rounded to keep the board
+      // lean. The frontend projects it onto map.png with the ini's calibration.
+      pos: onTrack && live.Pos ? { x: round1(live.Pos.X), z: round1(live.Pos.Z) } : null,
+      // Race-session running order (from the high-frequency telemetry). A car
+      // that left the server keeps its LAST known position (see lastRacePosByGuid)
+      // so the finishing order survives the post-race exodus for a while.
+      racePosition: racePos ?? lastRacePosByGuid.get(guid) ?? null,
+    };
+  }
+
+  // Build the clean board we hand to the frontend.
+  function getBoard() {
+    if (!status) {
+      return { ok: false, connected: upstreamOpen(), server: server.key, session: null, entries: [], updatedAt: Date.now() };
+    }
+    const si = status.SessionInfo || {};
+    const ti = status.TrackInfo || {};
+    const connected = status.ConnectedDrivers?.Drivers || {};
+    const disconnected = status.DisconnectedDrivers?.Drivers || {};
+    const sessionBestMs = nsToMs(status.BestLap);
+
+    // Merge stored (disconnected) + on-track (connected) drivers, keyed by GUID;
+    // a currently-connected entry overrides its stored counterpart.
+    const byGuid = new Map();
+    for (const [guid, d] of Object.entries(disconnected)) {
+      if (d.CarInfo?.IsSpectator) continue;
+      byGuid.set(guid, buildEntry(guid, d, false));
+    }
+    for (const [guid, d] of Object.entries(connected)) {
+      if (d.CarInfo?.IsSpectator) continue;
+      byGuid.set(guid, buildEntry(guid, d, true));
+    }
+    const entries = [...byGuid.values()];
+
+    // Ranking. A RACE orders by the actual running order (telemetry
+    // RacePosition, held for leavers) — sorting a race by best lap made the
+    // board's leader flip on every quick lap. Other sessions keep the hot-lap
+    // ranking: fastest best lap first; drivers without a lap go last.
+    const isRace = si.Type === 3;
+    if (isRace) {
+      entries.sort((a, b) => {
+        if (a.racePosition != null && b.racePosition != null) {
+          if (a.racePosition !== b.racePosition) return a.racePosition - b.racePosition;
+          // Same slot (the sim re-issues a leaver's position to the next car):
+          // more laps first, then the car still on the server.
+          if ((a.lapCount || 0) !== (b.lapCount || 0)) return (b.lapCount || 0) - (a.lapCount || 0);
+          return a.onTrack === b.onTrack ? 0 : a.onTrack ? -1 : 1;
+        }
+        if (a.racePosition != null) return -1;
+        if (b.racePosition != null) return 1;
+        return (b.lapCount || 0) - (a.lapCount || 0) || (b.spline || 0) - (a.spline || 0);
+      });
+    } else {
+      entries.sort((a, b) => {
+        if (a.bestLapMs && b.bestLapMs) return a.bestLapMs - b.bestLapMs;
+        if (a.bestLapMs) return -1;
+        if (b.bestLapMs) return 1;
+        return (b.lapCount || 0) - (a.lapCount || 0);
+      });
+    }
+    // Sector colours: the upstream per-lap "IsBest" flag is unreliable (it can
+    // mark a sector best that's since been beaten on another lap). Recompute
+    // "purple" against the session's actual best sector times (top-level
+    // BestSplits); "green" (driver's own best sector) keeps the IsDriversBest flag.
+    const sessionBestSectors = Array.isArray(status.BestSplits)
+      ? [0, 1, 2].map((i) => (status.BestSplits[i] ? nsToMs(status.BestSplits[i].SplitTime) : null))
+      : [null, null, null];
+    for (const e of entries) {
+      e.sectors.forEach((s, i) => {
+        if (s) s.best = sessionBestSectors[i] != null && s.ms === sessionBestSectors[i];
+      });
+    }
+
+    // Gap is measured against the current leader's best lap (P1 = 0.000).
+    const leaderBestMs = entries.find((e) => e.bestLapMs)?.bestLapMs || null;
+    entries.forEach((e, i) => {
+      e.position = i + 1;
+      e.gapToBestMs = e.bestLapMs && leaderBestMs ? e.bestLapMs - leaderBestMs : null;
+    });
+
+    // Session remaining time (Time is in minutes; ElapsedMilliseconds from the
+    // last full snapshot). Frontend ticks it down locally between snapshots.
+    const remainingMs =
+      si.Time > 0 ? Math.max(0, si.Time * 60000 - (si.ElapsedMilliseconds || 0)) : null;
+
+    return {
+      ok: true,
+      connected: upstreamOpen(),
+      server: server.key,
+      stale: Date.now() - lastMessageAt > STALE_MS,
+      session: {
+        type: sessionTypeName(si.Type),
+        name: si.Name || "",
+        serverName: si.ServerName || "",
+        track: si.Track || "",
+        trackName: ti.name || si.Track || "",
+        country: ti.country || "",
+        ambientTemp: si.AmbientTemp ?? null,
+        roadTemp: si.RoadTemp ?? null,
+        weather: si.WeatherGraphics || "",
+        bestLapMs: leaderBestMs ?? sessionBestMs,
+        driverCount: entries.length,
+        onTrackCount: entries.filter((e) => e.onTrack).length,
+        sessionIndex: si.CurrentSessionIndex ?? 0,
+        sessionCount: si.SessionCount ?? 1,
+        remainingMs,
+        // Lap-based sessions (races) carry their distance; the strategy view sizes
+        // its shared axis off this so bars read as "of the race", not "of the leader".
+        raceLaps: si.Laps > 0 ? si.Laps : null,
+        // Real overhead-map calibration when available (see loadTrackMap); null
+        // tells the frontend to fall back to the stylised circuit outline.
+        map: currentMapCalib(si, status.TrackMapData),
+      },
+      entries,
+      updatedAt: Date.now(),
+    };
+  }
 
   return {
-    ok: true,
-    connected: upstreamOpen(),
-    stale: Date.now() - lastMessageAt > STALE_MS,
-    session: {
-      type: sessionTypeName(si.Type),
-      name: si.Name || "",
-      serverName: si.ServerName || "",
-      track: si.Track || "",
-      trackName: ti.name || si.Track || "",
-      country: ti.country || "",
-      ambientTemp: si.AmbientTemp ?? null,
-      roadTemp: si.RoadTemp ?? null,
-      weather: si.WeatherGraphics || "",
-      bestLapMs: leaderBestMs ?? sessionBestMs,
-      driverCount: entries.length,
-      onTrackCount: entries.filter((e) => e.onTrack).length,
-      sessionIndex: si.CurrentSessionIndex ?? 0,
-      sessionCount: si.SessionCount ?? 1,
-      remainingMs,
-      // Lap-based sessions (races) carry their distance; the strategy view sizes
-      // its shared axis off this so bars read as "of the race", not "of the leader".
-      raceLaps: si.Laps > 0 ? si.Laps : null,
-      // Real overhead-map calibration when available (see loadTrackMap); null
-      // tells the frontend to fall back to the stylised circuit outline.
-      map: currentMapCalib(si, status.TrackMapData),
+    key: server.key,
+    connect: connectUpstream,
+    getBoard,
+    getTrackMapPng: () => trackMap?.png || null,
+    // Test hooks (state is per-relay, so tests drive an unconnected instance).
+    __accumulateStints: accumulateStints,
+    __stintsFor: stintsFor,
+    __reset() {
+      stintsByGuid.clear();
+      stintSessionKey = null;
     },
-    entries,
-    updatedAt: Date.now(),
   };
 }
+
+// All configured relays, keyed by server key. Created up front (no sockets yet
+// — initLiveTiming connects them), so REST reads before init don't crash.
+const relays = new Map(LIVE_SERVERS.map((s) => [s.key, createRelay(s)]));
+
+function relayFor(key) {
+  return relays.get(key) || relays.get(DEFAULT_SERVER_KEY);
+}
+
+// Public board read. `serverKey` optional — default: the first server (the old
+// single-server behaviour).
+export function getBoard(serverKey) {
+  return relayFor(serverKey).getBoard();
+}
+
+export function getTrackMapPng(serverKey) {
+  return relayFor(serverKey).getTrackMapPng();
+}
+
+// Test hook: the stint accumulator carries per-relay state; tests drive a
+// dedicated detached relay (never connected) and reset between cases.
+const testRelay = createRelay({ key: "test", origin: "https://test.invalid", ws: "wss://test.invalid" });
+export const __testing = {
+  accumulateStints: testRelay.__accumulateStints,
+  stintsFor: testRelay.__stintsFor,
+  reset: testRelay.__reset,
+};
 
 // ---- Demo board -------------------------------------------------------------
 // A fabricated session so the map + strategy views can be demonstrated with no
@@ -611,9 +647,8 @@ async function ensureDemoState() {
   demoBuilding = true;
   let roster = [];
   try {
-    // The live relay serves the PRIMARY series' race server, so the demo grid
-    // uses that series' active roster (several seasons can be active now —
-    // one per series).
+    // The demo grid uses the primary series' active roster (several seasons can
+    // be active now — one per series).
     const { getActiveSeason } = await import("./seasonService.js");
     const active = await getActiveSeason(prisma);
     const drivers = await prisma.driver.findMany({
@@ -751,18 +786,32 @@ function wantsDemo(req) {
   return DEMO_ENABLED && /[?&]demo=1/.test(req?.url || "");
 }
 
-// Attach the frontend-facing WebSocket and start the upstream connection.
+// The series slug a client asked for on the WS URL (?series=<slug>), if any.
+function seriesOf(req) {
+  const m = /[?&]series=([a-z0-9-]+)/i.exec(req?.url || "");
+  return m ? m[1].toLowerCase() : null;
+}
+
+// Attach the frontend-facing WebSocket and start the upstream connections.
 export function initLiveTiming(server) {
-  connectUpstream();
+  for (const r of relays.values()) r.connect();
 
   const wss = new WebSocketServer({ server, path: "/api/live/ws" });
 
   wss.on("connection", async (ws, req) => {
     ws.isDemo = wantsDemo(req);
     if (ws.isDemo) await ensureDemoState();
+    // Which race server this client follows: resolved once, from the series it
+    // passes on the URL (admin-managed assignment; default = first server).
+    ws.serverKey = DEFAULT_SERVER_KEY;
+    try {
+      ws.serverKey = await serverKeyForSeries(prisma, seriesOf(req));
+    } catch {
+      /* settings unreadable — stay on the default server */
+    }
     // send a snapshot immediately so the board paints without waiting a tick
     try {
-      ws.send(JSON.stringify(ws.isDemo ? getDemoBoard() : getBoard()));
+      ws.send(JSON.stringify(ws.isDemo ? getDemoBoard() : getBoard(ws.serverKey)));
     } catch {
       /* noop */
     }
@@ -770,8 +819,9 @@ export function initLiveTiming(server) {
 
   setInterval(() => {
     if (wss.clients.size === 0) return;
-    // Build each variant at most once per tick (real vs. demo), then fan out.
-    let realJson = null;
+    // Build each variant at most once per tick (demo + one per server), then
+    // fan out to the clients following it.
+    const jsonByKey = new Map();
     let demoJson = null;
     for (const c of wss.clients) {
       if (c.readyState !== WebSocket.OPEN) continue;
@@ -779,11 +829,15 @@ export function initLiveTiming(server) {
         demoJson ??= JSON.stringify(getDemoBoard());
         c.send(demoJson);
       } else {
-        realJson ??= JSON.stringify(getBoard());
-        c.send(realJson);
+        const key = c.serverKey || DEFAULT_SERVER_KEY;
+        if (!jsonByKey.has(key)) jsonByKey.set(key, JSON.stringify(getBoard(key)));
+        c.send(jsonByKey.get(key));
       }
     }
   }, BROADCAST_MS);
 
-  console.log("[live] frontend WS ready on /api/live/ws" + (DEMO_ENABLED ? " (demo available via ?demo=1)" : ""));
+  console.log(
+    `[live] frontend WS ready on /api/live/ws (servers: ${LIVE_SERVERS.map((s) => s.key).join(", ")})` +
+      (DEMO_ENABLED ? " (demo available via ?demo=1)" : "")
+  );
 }

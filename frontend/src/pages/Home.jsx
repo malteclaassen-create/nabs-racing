@@ -4,7 +4,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { Skeleton, TableSkeleton, CountUp, Rank, MEDAL_TEXT } from "../components/ui.jsx";
+import { Skeleton, TableSkeleton, CountUp, Rank, MEDAL_TEXT, DriverAvatar } from "../components/ui.jsx";
 import { useParallax, useMagnetic } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import PointsChart from "../components/PointsChart.jsx";
@@ -35,6 +35,117 @@ const TILE_ICONS = {
   users: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M22 21v-2a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8",
   calendar: "M4 6a2 2 0 012-2h12a2 2 0 012 2v13a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 3v4M16 3v4",
 };
+
+// The championship battle while the title is still open: everyone who can
+// still mathematically catch the leader, their gaps, and how many points are
+// left on the table. Disappears once the maths (or the calendar) settle it.
+//
+// "Still in it" is EXACT under the season's drop rule: a chaser survives when
+// their best-case final total (maximum points in every remaining round, then
+// the N worst rounds dropped) at least matches the leader's guaranteed floor
+// (zero in every remaining round, same drop rule). The per-round maximum is
+// the best single-round haul seen this season.
+function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, totalRounds, tableMax = 0 }) {
+  const completedCount = completedNumbers.length;
+  const remaining = totalRounds - completedCount;
+  if (remaining <= 0 || completedCount < 1 || standings.length < 2) return null;
+
+  const done = new Set(completedNumbers);
+  // Points a round can pay at most: the season's OWN points table (P1's score —
+  // admin-editable per season, so a rule change flows straight in here), or,
+  // when the season runs on the league default (no stored table), the best
+  // single-round haul actually seen. The observed value also wins if official/
+  // bonus points ever exceeded the table.
+  const maxPerRound = Math.max(
+    tableMax || 0,
+    ...standings.flatMap((d) =>
+      Object.entries(d.perRace || {})
+        .filter(([n]) => done.has(Number(n)))
+        .map(([, r]) => r?.points || 0)
+    )
+  );
+  if (!maxPerRound) return null;
+
+  const dropN = Math.min(dropWorst ?? 0, raceNumbers.length);
+  const dropSum = (vals) => vals.sort((a, b) => a - b).slice(dropN).reduce((s, v) => s + v, 0);
+  // Current standing under the drop rule with the remaining rounds still at 0.
+  // Recomputed (not read from d.total) so the demo's rewound rounds are
+  // consistent too; on the live season this equals the server total.
+  const floorTotal = (d) =>
+    dropSum(raceNumbers.map((n) => (done.has(n) ? d.perRace?.[n]?.points ?? 0 : 0)));
+  // Best possible final total: max points in every remaining round, then drop.
+  const maxFinal = (d) =>
+    dropSum(raceNumbers.map((n) => (done.has(n) ? d.perRace?.[n]?.points ?? 0 : maxPerRound)));
+
+  const rows = standings
+    .map((d) => ({ d, cur: floorTotal(d) }))
+    .sort((a, b) => b.cur - a.cur);
+  const leader = rows[0];
+  if (!leader.cur) return null;
+  const contenders = rows.filter((r) => r === leader || maxFinal(r.d) >= leader.cur).slice(0, 4);
+  if (contenders.length < 2) return null;
+  const potential = remaining * maxPerRound;
+  return (
+    <section className="reveal space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <h3 className="section-title">Title fight</h3>
+        <span className="font-mono text-xs font-bold uppercase tracking-wider text-light">
+          {remaining} {remaining === 1 ? "round" : "rounds"} to go · up to {potential} pts on the table
+        </span>
+      </div>
+      <div className="cascade card divide-y divide-border overflow-hidden">
+        {contenders.map(({ d, cur }, i) => {
+          const gap = leader.cur - cur;
+          // Full bar = level with the leader; empty = the gap eats the whole
+          // remaining points pool. How alive their shot still is.
+          const pct = Math.max(6, Math.round((1 - gap / potential) * 100));
+          return (
+            <Link
+              key={d.driverId}
+              to={`/drivers/${d.driverId}`}
+              style={{ "--i": i }}
+              className="flex items-center gap-2.5 px-3 py-3 transition hover:bg-surface2 sm:gap-4 sm:px-5"
+            >
+              {/* rank from the recomputed order (matters in the rewound demo) */}
+              <Rank position={i + 1} />
+              <DriverAvatar name={d.name} photoUrl={d.photoUrl} color={d.team.color} size={36} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-display text-base font-bold uppercase tracking-tight text-dark sm:text-lg">
+                    {d.name}
+                  </span>
+                  <Flag code={countryFor(d.driverId, d.country)} />
+                </div>
+                <TeamLogo
+                  id={d.team.id}
+                  name={d.team.name}
+                  color={d.team.color}
+                  logoUrl={d.team.logoUrl}
+                  size={16}
+                  showName
+                  nameClassName="truncate text-xs text-light sm:text-sm"
+                />
+              </div>
+              <div className="hidden w-28 shrink-0 sm:block lg:w-44">
+                <div className="h-1.5 overflow-hidden rounded-full bg-border">
+                  <div className="bar-fill h-full rounded-full" style={{ "--w": `${pct}%`, backgroundColor: d.team.color }} />
+                </div>
+              </div>
+              <div className="w-14 shrink-0 text-right sm:w-20">
+                <div className="font-mono text-lg font-bold tabular-nums text-dark sm:text-xl">
+                  <CountUp end={cur} />
+                </div>
+                <div className="font-mono text-[11px] tabular-nums text-light">
+                  {gap === 0 ? "leader" : `−${gap}`}
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 function fmtFull(d) {
   if (!d) return "Date TBA";
@@ -92,7 +203,9 @@ function HonourCell({ label, to, name, stat, note, driverId, country, team, clas
       </div>
       {stat && (
         <div className="shrink-0 text-right sm:text-left lg:text-right">
-          <div className="font-display text-3xl font-black tabular-nums leading-none text-dark">{stat}</div>
+          <div className="font-display text-3xl font-black tabular-nums leading-none text-dark">
+            {typeof stat === "number" ? <CountUp end={stat} /> : stat}
+          </div>
           {note && (
             <div className="mt-1.5 max-w-[9rem] font-mono text-[10px] font-bold uppercase leading-relaxed tracking-wider text-light">
               {note}
@@ -114,6 +227,8 @@ function CarReveal({ season }) {
   const [ok, setOk] = useState(false);
   // null = probing for the GLB, true = use 3D, false = fall back to the JPG
   const [use3d, setUse3d] = useState(null);
+  // null = probing whether the car image exists, true/false = probe verdict.
+  const [hasImg, setHasImg] = useState(null);
   const src = carFor(season);
   const modelSrc = carModelFor(season);
 
@@ -139,6 +254,35 @@ function CarReveal({ season }) {
     };
   }, [modelSrc]);
 
+  // Probe the flat car shot the same way, so a season WITHOUT any car renders
+  // no panel at all instead of a "coming soon" placeholder box.
+  useEffect(() => {
+    let cancelled = false;
+    setHasImg(null);
+    if (!src) {
+      setHasImg(false);
+      return;
+    }
+    fetch(src, { method: "HEAD" })
+      .then((res) => {
+        const type = res.headers.get("content-type") || "";
+        if (!cancelled) setHasImg(res.ok && !type.includes("text/html"));
+      })
+      .catch(() => {
+        if (!cancelled) setHasImg(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+
+  // Nothing to show (and nothing still probing): drop the panel entirely —
+  // the announcement text simply fills the hero on its own.
+  if (use3d === false && hasImg === false) return null;
+  // Still probing: hold the space quietly (no placeholder copy) to avoid a
+  // one-frame layout jump when the car pops in.
+  const probing = use3d === null || (use3d === false && hasImg === null);
+
   const showCar = ok || use3d === true;
   const alt = season?.name ? `The ${season.name} car` : "The season's car";
   return (
@@ -151,12 +295,9 @@ function CarReveal({ season }) {
       style={{ animationDelay: "0.24s" }}
     >
       <div className="speed-hatch absolute inset-0 opacity-20" />
-      {!showCar && (
-        <div className="relative text-center">
-          <div className="font-display text-2xl font-black uppercase tracking-tight text-white/70">Car reveal</div>
-          <div className="mt-1 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-white/40">Coming soon</div>
-        </div>
-      )}
+      {/* no "coming soon" placeholder copy — while probing the panel just sits
+          quietly with the hatch until the car (2D or 3D) is confirmed */}
+      {probing && <span aria-hidden className="absolute inset-0" />}
       {use3d === true && (
         <Car3D src={modelSrc} poster={src || undefined} alt={alt} onFail={() => setUse3d(false)} />
       )}
@@ -226,6 +367,9 @@ export default function Home() {
   // celebration + honours board, fed by /standings/honours.
   const seasonOver =
     !isPast && !isUpcomingSeason && champRaces.length > 0 && champRaces.every((r) => r.isCompleted);
+
+  // Dev-only (?demo=1): preview the title-fight widget on a finished season.
+  const demoFight = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
 
   useEffect(() => {
     if (lastRace?.id) api.raceResults(lastRace.id).then(setLatest).catch(() => {});
@@ -470,8 +614,6 @@ export default function Home() {
             maskImage: "linear-gradient(to left, #000 35%, transparent 100%)",
           }}
         />
-        {/* brand accent rail */}
-        <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-brand via-brand/40 to-transparent" />
 
         <div className="relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
           {seasonOver || isPast ? (
@@ -482,15 +624,22 @@ export default function Home() {
                to the season switcher. The live finale hands back to the normal
                hero when the next season starts. */
             <div className="flex flex-1 flex-col justify-center gap-7">
-              <div
-                className="hero-anim text-center font-mono text-xl font-bold uppercase tracking-[0.3em] text-eyebrow sm:text-2xl"
-                style={{ animationDelay: "0.05s" }}
-              >
-                {season?.name} complete
+              {/* Title card, matching the other hero variants exactly: the same
+                  eyebrow row (mono, accent colour, hairlines) and the same big
+                  display headline. Gold stays reserved for the champion. */}
+              <div className="hero-anim text-center" style={{ animationDelay: "0.05s" }}>
+                <div className="flex items-center justify-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow">
+                  <span className="h-px w-10 bg-accent/50" />
+                  <span>Championship complete</span>
+                  <span className="h-px w-10 bg-accent/50" />
+                </div>
+                <div className="mt-4 font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-white sm:text-7xl">
+                  {season?.name}
+                </div>
               </div>
-              <div className="hero-anim" style={{ animationDelay: "0.16s" }}>
-                <Podium entries={heroPodium} />
-              </div>
+              {/* No hero-anim wrapper here: the podium columns stagger their
+                  own entrances (P3 → P2 → champion, see .podium-col). */}
+              <Podium entries={heroPodium} />
               <div className="hero-anim flex flex-wrap justify-center gap-3" style={{ animationDelay: "0.34s" }}>
                 <Link
                   to="/drivers"
@@ -588,7 +737,7 @@ export default function Home() {
 
             {/* podium strip — latest-race (or last-season) top 3 */}
             {leftPodium.length > 0 && (
-              <div className="hero-anim mt-8 grid max-w-2xl gap-2 sm:grid-cols-3" style={{ animationDelay: "0.28s" }}>
+              <div className="mt-8 grid max-w-2xl gap-2 sm:grid-cols-3">
                 {leftPodium.map((p, i) => (
                   <Link
                     key={p.driverId}
@@ -596,11 +745,20 @@ export default function Home() {
                     // In "last season" mode these are previous-season drivers, so
                     // drop the whole site down to that season as we open them.
                     onClick={showPrevChamps && prevSeason ? () => setSeason(prevSeason.number) : undefined}
-                    className="shine group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
+                    // Each card rises on its own beat (P1 first), instead of the
+                    // whole strip fading in as one block.
+                    style={{ animationDelay: `${0.26 + i * 0.14}s` }}
+                    className="hero-anim shine group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
                   >
                     <span
                       className="absolute left-0 top-0 h-full w-1"
                       style={{ backgroundColor: MEDAL[i] }}
+                    />
+                    {/* faint medal tint bleeding in from the rank bar */}
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0"
+                      style={{ background: `linear-gradient(90deg, ${MEDAL[i]}26, transparent 55%)` }}
                     />
                     <span
                       className="font-display text-2xl font-black tabular-nums"
@@ -729,6 +887,24 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ===================== TITLE FIGHT (running seasons) ================= */}
+      {/* Dev-only preview (?demo=1, like the live demo): shows the widget on a
+          finished season by pretending the last two rounds are still to come. */}
+      {(demoFight || (!isPast && !seasonOver && !showComingSoonHero)) && (
+        <TitleFight
+          standings={standings}
+          raceNumbers={drivers.data?.raceNumbers || []}
+          dropWorst={drivers.data?.dropWorst ?? 0}
+          // P1's score from this season's points table (admin-editable); the
+          // widget falls back to the best observed round when none is stored.
+          tableMax={Array.isArray(season?.pointsTable) ? season.pointsTable[0] : 0}
+          totalRounds={totalRounds}
+          // Demo rewinds the last two rounds, so gaps/totals/aliveness are all
+          // computed as of that earlier point in the season.
+          completedNumbers={demoFight ? completedNumbers.slice(0, -2) : completedNumbers}
+        />
+      )}
+
       {/* ===================== SEASON HONOURS (finished seasons) ============= */}
       {/* The awards of a completed season — the live finale and every archived
           season alike — in the site's quiet hairline-grid language. Awards an
@@ -741,19 +917,8 @@ export default function Home() {
         // the right) plus a small `note` explaining it — new awards just follow
         // the same two-field pattern and land in the layout automatically.
         const cells = [];
-        if (honours.viceChampion) {
-          cells.push({
-            key: "vice",
-            label: "2nd place",
-            to: `/drivers/${honours.viceChampion.driverId}`,
-            name: honours.viceChampion.name,
-            stat: honours.viceChampion.points,
-            note: "points",
-            driverId: honours.viceChampion.driverId,
-            country: honours.viceChampion.country,
-            team: honours.viceChampion.team,
-          });
-        }
+        // (No 2nd-place cell on purpose: the podium above already shows P2,
+        // and without it the usual award set closes a clean 2×3 grid.)
         for (const t of honours.teamChampions || []) {
           cells.push({
             key: `team${t.tier}`,
@@ -1269,7 +1434,9 @@ function DriversTable({ rows, leaderTotal, decided = false }) {
                 </td>
                 <td className="py-4 pr-5 text-right">
                   <div className="flex flex-col items-end gap-1.5">
-                    <span className="font-mono text-lg font-bold tabular-nums text-dark sm:text-xl">{d.total}</span>
+                    <span className="font-mono text-lg font-bold tabular-nums text-dark sm:text-xl">
+                      <CountUp end={d.total} duration={900} />
+                    </span>
                     <span className="hidden h-1 w-20 overflow-hidden rounded-full bg-border sm:block">
                       <span
                         className="bar-fill block h-full rounded-full"
@@ -1325,7 +1492,9 @@ function ConstructorTable({ rows, decided = false }) {
                   </Link>
                 </td>
                 <td className="py-4 pr-5 text-right">
-                  <span className="font-mono text-lg font-bold tabular-nums text-dark sm:text-xl">{t.total}</span>
+                  <span className="font-mono text-lg font-bold tabular-nums text-dark sm:text-xl">
+                    <CountUp end={t.total} duration={900} />
+                  </span>
                   <span className="ml-1 text-xs font-semibold text-light">PTS</span>
                 </td>
               </tr>

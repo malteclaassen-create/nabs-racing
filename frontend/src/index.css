@@ -61,10 +61,15 @@
   --c-accent: var(--c-accent-dark-dynamic, 244 175 198);
 }
 
-/* Always reserve space for the vertical scrollbar so the centered layout never
-   shifts sideways when switching between short and tall pages (e.g. admin tabs). */
+/* The native scrollbar is hidden site-wide: the rainbow accent line under the
+   nav doubles as the scroll indicator (see ScrollProgressLine in NavBar.jsx).
+   No scrollbar also means no gutter, so the old scrollbar-gutter reservation
+   against layout shift is no longer needed. Scrolling itself is untouched. */
 html {
-  scrollbar-gutter: stable;
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+  display: none;
 }
 
 /* Sticky-nav backdrop: fade its bottom edge out over a short distance so the
@@ -93,13 +98,15 @@ body::before {
   inset: -25%;
   z-index: -1;
   pointer-events: none;
+  /* No filter: blur() here on purpose — a live 30px blur over a 150%-viewport
+     fixed layer made mobile scrolling/zooming stutter. The gradients carry the
+     softness themselves (they already fade to transparent over a long run). */
   background:
-    radial-gradient(38% 42% at 18% 22%, rgb(var(--c-brand) / 0.30), transparent 70%),
-    radial-gradient(42% 46% at 82% 14%, rgba(66, 81, 168, 0.22), transparent 70%),
-    radial-gradient(46% 48% at 72% 84%, rgba(56, 189, 248, 0.16), transparent 72%);
-  filter: blur(30px) saturate(1.05);
+    radial-gradient(44% 48% at 18% 22%, rgb(var(--c-brand) / 0.26), transparent 74%),
+    radial-gradient(48% 52% at 82% 14%, rgba(66, 81, 168, 0.19), transparent 74%),
+    radial-gradient(52% 54% at 72% 84%, rgba(56, 189, 248, 0.14), transparent 76%);
   animation: aurora-drift 26s ease-in-out infinite alternate;
-  will-change: transform, opacity;
+  will-change: transform;
 }
 /* Dark mode keeps a clean, solid background (no drifting blooms) — the aurora
    stays in light mode only. */
@@ -461,6 +468,59 @@ body::before {
   animation: hero-zoom 7s ease-out both;
 }
 
+/* --- Podium entrance ------------------------------------------------ */
+/* The championship podium stages itself like a ceremony: the floor line
+   draws first, then each pedestal grows up out of the floor (P3 → P2 →
+   champion; revealed via clip-path so nothing stretches), and each driver
+   drops onto their pedestal with a tiny settle-bounce just after it lands.
+   The "Champion" chip pops in last. Delays live in --pd per column. */
+@keyframes podium-floor-draw {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.podium-floor {
+  animation: podium-floor-draw 0.5s cubic-bezier(0.33, 0.1, 0.25, 1) both;
+}
+@keyframes podium-ped-grow {
+  from { clip-path: inset(100% 0 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+.podium-ped {
+  animation: podium-ped-grow 0.55s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+  animation-delay: var(--pd, 0s);
+}
+@keyframes podium-driver-in {
+  0%   { opacity: 0; transform: translateY(30px); }
+  55%  { opacity: 1; }
+  78%  { transform: translateY(-4px); }
+  100% { opacity: 1; transform: none; }
+}
+.podium-driver {
+  animation: podium-driver-in 0.65s cubic-bezier(0.3, 0.6, 0.35, 1) both;
+  animation-delay: calc(var(--pd, 0s) + 0.16s);
+}
+@keyframes champ-pop {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.7); }
+  70%  { opacity: 1; transform: translateY(-2px) scale(1.06); }
+  100% { opacity: 1; transform: none; }
+}
+.champ-chip {
+  animation: champ-pop 0.5s cubic-bezier(0.34, 1.4, 0.5, 1) both;
+  animation-delay: var(--pd, 0s);
+}
+
+/* Loading placeholders that only appear when loading actually takes a while:
+   invisible for the first beat, then fading in. On a fast (local) API the data
+   arrives inside the invisible window, so nothing ever flashes behind the real
+   content — that brief skeleton pop was visible when switching to Races. */
+@keyframes defer-in {
+  0%, 55% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.defer-in {
+  animation: defer-in 0.5s ease both;
+}
+
 /* Animated brand gradient used for accent rails / glints. */
 @keyframes gradient-pan {
   0% { background-position: 0% 50%; }
@@ -694,6 +754,7 @@ body::before {
   .bar-rise { height: var(--h, 0) !important; animation: none !important; }
   .hero-anim, .hero-zoom, .gradient-anim, .glow-pulse, .float-bob,
   .scroll-cue, .page-in, .content-in { animation: none !important; opacity: 1; transform: none; }
+  .podium-floor, .podium-ped, .podium-driver, .champ-chip { animation: none !important; opacity: 1; transform: none; clip-path: none; }
   .nav-drop, .nav-scrim { animation: none !important; opacity: 1; transform: none; }
   .nav-season-dock { animation: none !important; transition: none !important; }
   .notif-pop { animation: none !important; }
@@ -725,6 +786,7 @@ body::before {
 .fx-lite .cascade > * { opacity: 1 !important; animation: none !important; }
 .fx-lite .bar-fill { width: var(--w, 0) !important; animation: none !important; }
 .fx-lite .bar-rise { height: var(--h, 0) !important; animation: none !important; }
+.fx-lite .podium-floor, .fx-lite .podium-ped, .fx-lite .podium-driver, .fx-lite .champ-chip { animation: none !important; opacity: 1; transform: none; clip-path: none; }
 .fx-lite .hero-anim, .fx-lite .hero-zoom, .fx-lite .gradient-anim,
 .fx-lite .glow-pulse, .fx-lite .float-bob, .fx-lite .scroll-cue,
 .fx-lite .page-in, .fx-lite .content-in { animation: none !important; opacity: 1; transform: none; }
@@ -748,6 +810,22 @@ body::before {
 /* Without blur the nav bar has nothing behind its text, so lite mode swaps the
    blurred backdrop for a solid page-coloured one (no fade-out mask) and lets
    the content scroll underneath a clean hairline. */
+/* Phones/tablets: the sticky bar's backdrop blur must re-blur whatever scrolls
+   beneath it on EVERY frame, which costs real scroll smoothness on mobile GPUs.
+   Without blur the semi-transparent bar would let content shimmer through the
+   nav text, so (like fx-lite) it becomes a SOLID page-coloured bar with a clean
+   hairline instead of the fade-out mask. */
+@media (max-width: 1023px) {
+  .nav-backdrop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: var(--c-bg);
+    -webkit-mask-image: none;
+    mask-image: none;
+    border-bottom: 1px solid var(--c-border);
+  }
+}
+
 .fx-lite .nav-backdrop {
   background-color: var(--c-bg) !important;
   -webkit-mask-image: none !important;

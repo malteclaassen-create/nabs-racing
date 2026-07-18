@@ -334,6 +334,11 @@ export default function Races() {
     }
   }, [races, selectedId, wantRaceId]);
 
+  // Race | Qualifying view of the selected round (the switcher sits in the
+  // round header row); every newly picked race starts on the race result.
+  const [session, setSession] = useState("race");
+  useEffect(() => setSession("race"), [selectedId]);
+
   useEffect(() => {
     if (!selectedId) return;
     setDetailLoading(true);
@@ -352,7 +357,9 @@ export default function Races() {
 
   if (loading)
     return (
-      <div>
+      // defer-in: on a fast load the skeletons never become visible, so nothing
+      // flashes behind the real page for a few milliseconds.
+      <div className="defer-in">
         <PageHeaderSkeleton />
         <div className="mb-7 flex gap-2 overflow-hidden">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -458,10 +465,20 @@ export default function Races() {
                 <UpcomingRacePanel race={selectedRace} />
               ) : (
                 <>
-                  {detailLoading && <TableSkeleton rows={10} />}
-                  {detailError && <ErrorBox message={detailError} />}
-                  {detail && !detailLoading && (
-                    <div>
+                  {/* The previous round's table stays up while the next one
+                      loads (slightly dimmed) — swapping in a shorter skeleton
+                      made everything below jump up for a beat on each switch. */}
+                  {detailLoading && !detail && (
+                    <div className="defer-in">
+                      <TableSkeleton rows={10} />
+                    </div>
+                  )}
+                  {detailError && !detailLoading && <ErrorBox message={detailError} />}
+                  {detail && (
+                    // Keyed on the race: the cascade entrance replays for each
+                    // newly loaded round (the stale round keeps its layout
+                    // until the new one is ready).
+                    <div key={detail.race.id} className={detailLoading ? "opacity-60 transition-opacity" : "transition-opacity"}>
                       <div className="mb-4">
                         <div className="flex h-8 items-center gap-3">
                           {flagFor(detail.race.track, detail.race.country) && (
@@ -476,6 +493,22 @@ export default function Races() {
                             {detail.race.number != null && <span className="text-light">R{detail.race.number}</span>} {detail.race.track}
                           </h2>
                           <span className="ml-auto flex shrink-0 items-center gap-3">
+                            {/* Race | Qualifying switch, inline with the round
+                                title so the header stays one tidy row. Only for
+                                rounds with an imported qualifying. */}
+                            {detail.quali?.length > 0 && (
+                              <SlidingTabs
+                                wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
+                                btnClassName="px-2.5 py-1 text-[11px]"
+                                pillClassName="rounded-md bg-brand shadow"
+                                items={[
+                                  { key: "race", label: "Race" },
+                                  { key: "quali", label: "Quali" },
+                                ]}
+                                value={session}
+                                onChange={setSession}
+                              />
+                            )}
                             {/* replay of this round, registered in the admin Downloads tab */}
                             {detail.race.replayDownloadId && (
                               <Link
@@ -505,8 +538,8 @@ export default function Races() {
                           </p>
                         )}
                       </div>
-                      <RaceResults race={detail.race} results={detail.results} />
-                      {detail.race.hasPositions && <RaceFacts race={detail.race} results={detail.results} />}
+                      <RaceResults race={detail.race} results={detail.results} quali={detail.quali} session={session} />
+                      {detail.race.hasPositions && <RaceFacts race={detail.race} results={detail.results} quali={detail.quali} />}
                     </div>
                   )}
                 </>

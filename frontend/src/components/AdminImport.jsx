@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
@@ -21,6 +21,8 @@ export default function AdminImport({ onCommitted }) {
   const { current: currentSeason } = useSeason();
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const remote = useApi(useCallback(() => api.remoteResults("RACE"), []));
+  // QUALIFY sessions on the server — for the auto-found qualifying row below.
+  const remoteQuali = useApi(useCallback(() => api.remoteResults("QUALIFY"), []));
   const drivers = useMemo(
     () => (teams || []).flatMap((t) => t.drivers.map((d) => ({ ...d, team: t }))),
     [teams]
@@ -47,6 +49,82 @@ export default function AdminImport({ onCommitted }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
+  // Optional qualifying JSON riding along with the race import: uploaded to the
+  // committed race right after the results save (auto-matched, no review step).
+  const [qualiFile, setQualiFile] = useState(null);
+  // Standalone quali attach (for past races): target race + file + status.
+  const [qualiRaceId, setQualiRaceId] = useState("");
+  const [qualiBusy, setQualiBusy] = useState(false);
+  const [qualiNote, setQualiNote] = useState(null);
+  // The server-side option of the standalone attach: picking a stored race
+  // auto-suggests the matching QUALIFY session (same circuit, same day —
+  // preferring the newest that day). Falls back to a track-only match for
+  // races whose stored date is missing.
+  const [qualiAttachRemoteId, setQualiAttachRemoteId] = useState("");
+  const [qualiAttachAuto, setQualiAttachAuto] = useState(false);
+  useEffect(() => {
+    const race = (seasonRaces.data || []).find((r) => r.id === qualiRaceId);
+    if (!race) {
+      setQualiAttachRemoteId("");
+      setQualiAttachAuto(false);
+      return;
+    }
+    const sameTrack = (remoteQuali.data?.results || []).filter(
+      (q) => canonicalTrack(q.trackShort) === race.track || (q.trackShort || "").toLowerCase() === (race.track || "").toLowerCase()
+    );
+    const sameDay = race.date
+      ? sameTrack.filter((q) => q.date && q.date.slice(0, 10) === String(race.date).slice(0, 10))
+      : [];
+    const pick = (sameDay.length ? sameDay : sameTrack).sort((a, b) => (b.ts || 0) - (a.ts || 0))[0];
+    setQualiAttachRemoteId(pick?.id || "");
+    setQualiAttachAuto(!!pick);
+  }, [qualiRaceId, seasonRaces.data, remoteQuali.data]);
+
+  async function attachRemoteQuali() {
+    if (!qualiRaceId || !qualiAttachRemoteId) return;
+    setQualiNote(null);
+    setQualiBusy(true);
+    try {
+      setQualiNote({ kind: "success", text: qualiSummary(await api.importRemoteQuali(qualiRaceId, qualiAttachRemoteId)) });
+    } catch (err) {
+      setQualiNote({ kind: "error", text: err.message });
+    } finally {
+      setQualiBusy(false);
+    }
+  }
+
+  // One line summarising what a quali upload did, reused by both paths.
+  const qualiSummary = (res) =>
+    `Qualifying saved (${res.matched}/${res.entries} matched${
+      res.unmatched?.length ? `; unmatched: ${res.unmatched.join(", ")}` : ""
+    }).`;
+
+  // Remote qualifying, auto-found: picking a race on the server looks for the
+  // QUALIFY session of the same event — same circuit, and the closest session
+  // in the 6 hours before the race started (quali runs right before the race
+  // on race night). The admin can always override or clear the pick.
+  const [qualiRemoteId, setQualiRemoteId] = useState("");
+  const [qualiAuto, setQualiAuto] = useState(false);
+  useEffect(() => {
+    const race = (remote.data?.results || []).find((r) => r.id === remoteId);
+    if (!race) {
+      setQualiRemoteId("");
+      setQualiAuto(false);
+      return;
+    }
+    const cands = (remoteQuali.data?.results || [])
+      .filter(
+        (q) =>
+          q.trackShort === race.trackShort &&
+          q.ts != null &&
+          race.ts != null &&
+          q.ts <= race.ts &&
+          race.ts - q.ts < 6 * 3600 * 1000
+      )
+      .sort((a, b) => b.ts - a.ts);
+    setQualiRemoteId(cands[0]?.id || "");
+    setQualiAuto(!!cands[0]);
+  }, [remoteId, remote.data, remoteQuali.data]);
 
   // Shared: turn a parsed AC result (from upload or server) into the review form.
   function applyParsed(res) {
@@ -206,6 +284,23 @@ export default function AdminImport({ onCommitted }) {
           throw err;
         }
       }
+      // The optional quali rides along: attach it to the race that was just
+      // committed — an uploaded file wins over the remote pick. Its failure
+      // must never read as a failed race import.
+      let qualiMsg = "";
+      if ((qualiFile || qualiRemoteId) && res.raceId) {
+        try {
+          const qres = qualiFile
+            ? await api.importQuali(res.raceId, qualiFile)
+            : await api.importRemoteQuali(res.raceId, qualiRemoteId);
+          qualiMsg = ` ${qualiSummary(qres)}`;
+        } catch (err) {
+          qualiMsg = ` Qualifying NOT saved: ${err.message}`;
+        }
+        setQualiFile(null);
+        setQualiRemoteId("");
+        setQualiAuto(false);
+      }
       const conflicts = res.steamIdConflicts || [];
       const conflictNote = conflicts.length
         ? ` Note: ${conflicts.length} Steam ID ${conflicts.length === 1 ? "conflict" : "conflicts"} left unchanged (${conflicts
@@ -214,8 +309,8 @@ export default function AdminImport({ onCommitted }) {
         : "";
       setDone(
         res.number != null
-          ? `Round ${res.number} saved. Standings recalculated.${conflictNote}`
-          : `Training/event results saved (not scored).${conflictNote}`
+          ? `Round ${res.number} saved. Standings recalculated.${qualiMsg}${conflictNote}`
+          : `Training/event results saved (not scored).${qualiMsg}${conflictNote}`
       );
       setParsed(null);
       setRows([]);
@@ -296,6 +391,31 @@ export default function AdminImport({ onCommitted }) {
                   {busy ? "Loading…" : "Load"}
                 </button>
               </div>
+              {/* second row: the qualifying session, auto-found for the picked
+                  race (same circuit, right before the start). Saved together
+                  with the race on confirm. */}
+              {remoteId && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    className="input max-w-sm"
+                    value={qualiRemoteId}
+                    onChange={(e) => { setQualiRemoteId(e.target.value); setQualiAuto(false); }}
+                    disabled={remoteQuali.loading || busy}
+                  >
+                    <option value="">
+                      {remoteQuali.loading ? "Looking for qualifying…" : "No qualifying session"}
+                    </option>
+                    {(remoteQuali.data?.results || []).map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {fmtRemote(q)}
+                      </option>
+                    ))}
+                  </select>
+                  {qualiAuto && qualiRemoteId && (
+                    <span className="pill bg-emerald-500/15 text-emerald-600">qualifying auto-found</span>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -323,6 +443,84 @@ export default function AdminImport({ onCommitted }) {
             className="mt-3 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark"
           />
         </div>
+      </div>
+
+      {/* Qualifying for a race that's already stored (past rounds included):
+          pick the race, upload the QUALIFY JSON, done — matching is automatic,
+          re-uploading replaces the previous classification. */}
+      <div className="card space-y-3 p-5">
+        <CardHead eyebrow="Optional" title="Add qualifying to a stored race" />
+        <p className="text-sm text-light">
+          Attach the AC QUALIFY result JSON to any race of this season, including past rounds. The race then
+          shows a Qualifying tab next to its result. Entrants are matched automatically by Steam ID, then name.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            className="input max-w-md"
+            value={qualiRaceId}
+            onChange={(e) => { setQualiRaceId(e.target.value); setQualiNote(null); }}
+            disabled={qualiBusy}
+          >
+            <option value="">Choose a race…</option>
+            {(seasonRaces.data || []).map((r) => (
+              <option key={r.id} value={r.id}>
+                {(r.number != null ? `Round ${r.number}` : r.type === "TRAINING" ? "Training" : "Event") +
+                  ` · ${r.track}` +
+                  (r.date ? ` · ${new Date(r.date).toLocaleDateString("en-GB")}` : "")}
+              </option>
+            ))}
+          </select>
+          <input
+            type="file"
+            accept="application/json,.json"
+            disabled={!qualiRaceId || qualiBusy}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file || !qualiRaceId) return;
+              setQualiNote(null);
+              setQualiBusy(true);
+              try {
+                setQualiNote({ kind: "success", text: qualiSummary(await api.importQuali(qualiRaceId, file)) });
+              } catch (err) {
+                setQualiNote({ kind: "error", text: err.message });
+              } finally {
+                setQualiBusy(false);
+              }
+            }}
+            className="block text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark file:disabled:opacity-50"
+          />
+        </div>
+        {/* …or straight from the race server: the matching QUALIFY session is
+            auto-found for the picked race (same circuit, same day). */}
+        {qualiRaceId && !remoteQuali.error && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">or from the server:</span>
+            <select
+              className="input max-w-sm"
+              value={qualiAttachRemoteId}
+              onChange={(e) => { setQualiAttachRemoteId(e.target.value); setQualiAttachAuto(false); }}
+              disabled={remoteQuali.loading || qualiBusy}
+            >
+              <option value="">
+                {remoteQuali.loading ? "Looking for qualifying…" : "Choose a qualifying session…"}
+              </option>
+              {(remoteQuali.data?.results || []).map((q) => (
+                <option key={q.id} value={q.id}>
+                  {fmtRemote(q)}
+                </option>
+              ))}
+            </select>
+            {qualiAttachAuto && qualiAttachRemoteId && (
+              <span className="pill bg-emerald-500/15 text-emerald-600">auto-found</span>
+            )}
+            <button className="btn-primary" onClick={attachRemoteQuali} disabled={!qualiAttachRemoteId || qualiBusy}>
+              {qualiBusy ? "Saving…" : "Attach"}
+            </button>
+          </div>
+        )}
+        {qualiBusy && <p className="text-sm text-light">Uploading…</p>}
+        {qualiNote && <Notice kind={qualiNote.kind}>{qualiNote.text}</Notice>}
       </div>
 
       {busy && !parsed && <p className="text-sm text-light">Working…</p>}
@@ -376,6 +574,21 @@ export default function AdminImport({ onCommitted }) {
                 value={meta.date}
                 onChange={(e) => setMeta((m) => ({ ...m, date: e.target.value }))}
               />
+            </div>
+            <div className="sm:col-span-3">
+              <label className="mb-1 block text-sm font-semibold text-medium">
+                Qualifying JSON <span className="font-normal text-light">(optional)</span>
+              </label>
+              <input
+                type="file"
+                accept="application/json,.json"
+                onChange={(e) => setQualiFile(e.target.files?.[0] || null)}
+                className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-surface2 file:px-4 file:py-2 file:font-semibold file:text-dark hover:file:bg-border"
+              />
+              <p className="mt-1 text-xs text-light">
+                The AC QUALIFY result JSON of the same event. Saved together with the race: entrants are matched
+                automatically (Steam ID first, then name) and the race gets a Qualifying tab on the Races page.
+              </p>
             </div>
           </div>
 

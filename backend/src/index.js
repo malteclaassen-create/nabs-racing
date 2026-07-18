@@ -23,6 +23,7 @@ import notificationsRoutes from "./routes/notifications.js";
 import searchRoutes from "./routes/search.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
+import { serverKeyForSeries } from "./lib/liveServers.js";
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest } from "./middleware/auth.js";
@@ -87,14 +88,18 @@ app.use("/api/uploads", express.static(UPLOADS_DIR, {
 
 // Live timing (Assetto Corsa Server Manager relay). REST snapshot for fallback/
 // debugging; the live stream is the WebSocket at /api/live/ws (set up below).
-app.get("/api/live/timing", (req, res) => res.json(getBoard()));
+// Every live read resolves WHICH race server through the series it's for
+// (?series=<slug>, admin-assigned; none = the first server).
+app.get("/api/live/timing", async (req, res) =>
+  res.json(getBoard(await serverKeyForSeries(prisma, req.query.series)))
+);
 
 // The real overhead track map (proxied + cached from the server manager's public
 // content), drawn under the live car dots. 404 until a track with a usable map is
 // loaded; the frontend then falls back to the stylised outline. The ?v= token in
 // the board's session.map busts the browser cache when the track changes.
-app.get("/api/live/map.png", (req, res) => {
-  const png = getTrackMapPng();
+app.get("/api/live/map.png", async (req, res) => {
+  const png = getTrackMapPng(await serverKeyForSeries(prisma, req.query.series));
   if (!png) return res.status(404).json({ error: "No track map" });
   res.setHeader("Content-Type", "image/png");
   res.setHeader("Cache-Control", "public, max-age=300");
@@ -108,7 +113,8 @@ app.get("/api/live/map.png", (req, res) => {
 app.get("/api/live/championship", async (req, res, next) => {
   try {
     const simulate = req.query.simulate === "1" && isAdminRequest(req);
-    res.json(await buildLiveChampionship(prisma, getBoard(), { simulate }));
+    const board = getBoard(await serverKeyForSeries(prisma, req.query.series));
+    res.json(await buildLiveChampionship(prisma, board, { simulate }));
   } catch (e) {
     next(e);
   }

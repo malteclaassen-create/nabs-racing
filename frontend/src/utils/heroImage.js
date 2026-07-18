@@ -12,9 +12,11 @@ export function heroFor(season) {
 }
 
 // Per-season car image (an Assetto Corsa showroom shot of the season's mod on
-// a black background) at public/cars/s<number>.jpg. Same drop-a-file
-// convention as the hero photos; seasons without one show no car.
+// a black background). Admin upload (Season.carImageUrl) wins; else the
+// public/cars/s<number>.jpg drop-a-file convention. Seasons with neither show
+// no car panel at all (no placeholder — see CarReveal).
 export function carFor(season) {
+  if (season?.carImageUrl) return season.carImageUrl;
   return season?.number ? `/cars/s${season.number}.jpg` : null;
 }
 

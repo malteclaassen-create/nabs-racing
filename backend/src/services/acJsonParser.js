@@ -161,4 +161,67 @@ export function parseAcRaceJson(json, drivers) {
   };
 }
 
+// Parse an AC QUALIFY result JSON into a matchable classification. Same
+// GUID-first / fuzzy-name matching as the race parser, but the payload is much
+// smaller: position + best lap is all a quali classification needs. Entries
+// without a valid lap (garage sitters) sink to the bottom, unclassified.
+export function parseAcQualiJson(json, drivers) {
+  if (!json || json.Type !== "QUALIFY" || !Array.isArray(json.Result)) {
+    throw new Error("Invalid AC qualifying JSON: expected Type=QUALIFY with Result[]");
+  }
+
+  const MAX_LAP_MS = 1_800_000; // AC stores a huge sentinel for "no lap set"
+  const lapOf = (r) => (Number.isFinite(r.BestLap) && r.BestLap > 0 && r.BestLap <= MAX_LAP_MS ? r.BestLap : null);
+
+  const entries = json.Result
+    .map((r) => {
+      const guid = r.DriverGuid ?? null;
+      const steamMatch = guid != null ? drivers.find((d) => d.steamId && d.steamId === guid) : null;
+      const suggestions = drivers
+        .map((d) => ({ driver: d, score: similarity(r.DriverName, d) }))
+        .sort((x, y) => y.score - x.score)
+        .slice(0, 5)
+        .map((s) => ({
+          driverId: s.driver.id,
+          name: s.driver.name,
+          score: Math.round(s.score * 100) / 100,
+        }));
+      const best = suggestions[0];
+      let suggestedDriverId = null;
+      let matchedBy = null;
+      if (steamMatch) {
+        suggestedDriverId = steamMatch.id;
+        matchedBy = "steam";
+      } else if (best && best.score >= 0.55) {
+        suggestedDriverId = best.driverId;
+        matchedBy = "name";
+      }
+      return {
+        acDriverName: r.DriverName,
+        driverGuid: guid,
+        bestLapMs: lapOf(r),
+        carModel: r.CarModel ?? null,
+        suggestedDriverId,
+        matchedBy,
+        suggestions,
+      };
+    })
+    // Classify by best lap (laps first, fastest on pole), garage sitters last
+    // in file order. AC files are usually pre-sorted, but don't rely on it.
+    .sort((a, b) => {
+      if (a.bestLapMs != null && b.bestLapMs != null) return a.bestLapMs - b.bestLapMs;
+      if (a.bestLapMs != null || b.bestLapMs != null) return a.bestLapMs != null ? -1 : 1;
+      return 0;
+    })
+    .map((e, i) => ({ ...e, position: i + 1 }));
+
+  return {
+    type: json.Type,
+    track: json.TrackName,
+    date: json.Date ? new Date(json.Date) : null,
+    eventName: json.EventName ?? null,
+    entries,
+  };
+}
+
 export { levenshtein, similarity, normalize };

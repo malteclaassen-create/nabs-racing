@@ -119,6 +119,10 @@ model Season {
   // shared /hero.jpg (see frontend/src/utils/heroImage.js). Managed via raw
   // SQL (ensureAppSchema) so it's writable with the dev server up.
   heroImageUrl String?
+  // Admin-uploaded car image for the "coming soon" hero panel. null = the
+  // static /cars/s<number>.jpg convention; missing too -> no panel at all.
+  // Managed via raw SQL (ensureAppSchema); migration season_car_image.
+  carImageUrl String?
   createdAt DateTime @default(now())
 
   teams   Team[]
@@ -271,6 +275,12 @@ model Race {
   // Who made the Driver of the Day pick (the league's streamer decides each
   // round). Free text, shown under the pick on the results view.
   driverOfTheDayBy String?
+  // Full qualifying classification from the AC QUALIFY result JSON — a JSON
+  // blob {track, date, entries: [{position, driverId, name, bestLapMs,
+  // carModel}]}, because a quali entrant may have no RaceResult row at all.
+  // Managed via raw SQL (ensureAppSchema); migration race_quali_json. Matched
+  // drivers' laps also land in RaceResult.qualiTimeMs.
+  qualiJson   String?
   // Discord webhook message id for the live RSVP/event post (Apollo-style).
   discordMessageId String?
   results     RaceResult[]

@@ -298,7 +298,15 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, className 
         <g transform={rotated ? `translate(${H} 0) rotate(90)` : undefined}>
           {/* The camera group, driven per-frame by useSmoothCars. */}
           <g ref={camRef}>
-            <image href={`/api/live/map.png?v=${map.ver || 0}`} width={W} height={H} />
+            {/* series param → the map of the race server THIS series follows */}
+            <image
+              href={`/api/live/map.png?v=${map.ver || 0}${(() => {
+                const slug = /^\/s\/([^/]+)/.exec(window.location.pathname)?.[1];
+                return slug ? `&series=${encodeURIComponent(slug)}` : "";
+              })()}`}
+              width={W}
+              height={H}
+            />
             {dots.map((d) => (
               <CarDot
                 key={d.guid}

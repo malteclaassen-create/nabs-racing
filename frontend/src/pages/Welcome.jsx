@@ -369,12 +369,26 @@ export default function Welcome() {
               const status = s.isActive ? "live" : s.number > activeNumber ? "next" : "done";
               return (
                 <div key={s.id} className="card shine relative w-full overflow-hidden p-5 sm:w-64" style={{ "--i": i }}>
+                  {/* the season's own hero photo (admin upload or the static
+                      /heroes/s<n>.jpg), washed back behind the card content; a
+                      season without one just stays a plain card */}
+                  <img
+                    src={heroFor(s)}
+                    alt=""
+                    loading="lazy"
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    className="absolute inset-0 h-full w-full object-cover opacity-30 dark:opacity-25"
+                  />
+                  <span
+                    aria-hidden
+                    className="absolute inset-0 bg-gradient-to-t from-card via-card/75 to-card/20"
+                  />
                   <span
                     className={`absolute inset-x-0 top-0 h-1 ${
                       status === "live" ? "bg-brand" : status === "next" ? "bg-sky-400" : "bg-border"
                     }`}
                   />
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="relative flex items-start justify-between gap-3">
                     <span className="font-display text-3xl font-black leading-none text-faint">
                       S{s.number}
                     </span>
@@ -395,10 +409,10 @@ export default function Welcome() {
                       </span>
                     )}
                   </div>
-                  <div className="mt-3 font-display text-lg font-extrabold uppercase tracking-tight text-dark">
+                  <div className="relative mt-3 font-display text-lg font-extrabold uppercase tracking-tight text-dark">
                     {/^\d+$/.test(String(s.name).trim()) ? `Season ${s.name}` : s.name}
                   </div>
-                  <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+                  <div className="relative mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
                     {s.game || "Era to be announced"}
                   </div>
                 </div>

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { MEDAL, MEDAL_TEXT, DriverAvatar } from "./ui.jsx";
+import { MEDAL, MEDAL_TEXT, DriverAvatar, CountUp } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
@@ -22,25 +22,38 @@ export default function Podium({ entries = [] }) {
 
   return (
     <div className="relative flex items-end justify-center gap-2.5 pb-px sm:gap-4">
-      {/* the floor the pedestals stand on */}
-      <div className="pointer-events-none absolute inset-x-2 bottom-0 h-px bg-gradient-to-r from-transparent via-ink/30 to-transparent dark:via-white/25" />
+      {/* the floor the pedestals stand on — draws in from the centre first */}
+      <div className="podium-floor pointer-events-none absolute inset-x-2 bottom-0 h-px bg-gradient-to-r from-transparent via-ink/30 to-transparent dark:via-white/25" />
       {columns.map(({ e, rank }) => {
         const color = MEDAL[rank]; // bright fill (chip, avatar ring)
         const tone = MEDAL_TEXT[rank]; // theme-aware text/border tone
         const cfg = CFG[rank];
         const champ = rank === 0;
+        // Build-up drama: P3 rises first, P2 next, the champion last (the
+        // chip pops in after the column has landed). Delays via --pd.
+        const delay = { 0: "0.55s", 1: "0.3s", 2: "0.1s" }[rank];
         return (
-          <div key={e.driverId} className="flex w-1/3 max-w-[13.5rem] flex-col items-center">
+          <div
+            key={e.driverId}
+            className="relative flex w-1/3 max-w-[13.5rem] flex-col items-center"
+            style={{ "--pd": delay }}
+          >
             {champ && (
               <span
-                className="mb-2.5 rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-ink"
-                style={{ backgroundColor: color }}
+                className="champ-chip mb-2.5 flex items-center gap-1.5 rounded-full px-3.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-ink shadow-md shadow-black/30"
+                style={{
+                  background: `linear-gradient(180deg, color-mix(in srgb, ${color} 45%, #fff), ${color} 60%, color-mix(in srgb, ${color} 72%, #5c430a))`,
+                  "--pd": "1.05s",
+                }}
               >
+                <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
+                  <path d="M3 8l4.5 3.5L12 5l4.5 6.5L21 8l-1.6 9.5a1 1 0 01-1 .83H5.6a1 1 0 01-1-.83L3 8z" />
+                </svg>
                 Champion
               </span>
             )}
 
-            <Link to={`/drivers/${e.driverId}`} className="group flex w-full flex-col items-center text-center">
+            <Link to={`/drivers/${e.driverId}`} className="podium-driver group flex w-full flex-col items-center text-center">
               {/* plain avatar — the medal colour lives in the pedestal and the
                   points, a coloured ring around the photo was one accent too many */}
               <DriverAvatar name={e.name} photoUrl={e.photoUrl} color="#232833" size={cfg.avatar} />
@@ -64,7 +77,7 @@ export default function Podium({ entries = [] }) {
               )}
 
               <span className="mt-2 font-display text-xl font-black leading-none tabular-nums sm:text-2xl" style={{ color: tone }}>
-                {e.total}
+                <CountUp end={e.total} />
                 <span className="ml-1 align-middle text-[10px] font-bold text-ink/45 dark:text-white/45">PTS</span>
               </span>
             </Link>
@@ -73,7 +86,7 @@ export default function Podium({ entries = [] }) {
                 tint correct on both themes), with a FILLED rank medallion — same
                 treatment as the Rank chips in every table, so it reads on white. */}
             <div
-              className={`mt-3 flex w-full items-center justify-center rounded-t-lg border-t-[3px] ring-1 ring-ink/10 dark:ring-white/10 ${cfg.h}`}
+              className={`podium-ped mt-3 flex w-full items-center justify-center rounded-t-lg border-t-[3px] ring-1 ring-ink/10 dark:ring-white/10 ${cfg.h}`}
               style={{
                 borderColor: tone,
                 background: `linear-gradient(180deg, color-mix(in srgb, ${tone} 18%, var(--c-card)), color-mix(in srgb, ${tone} 4%, var(--c-card)))`,

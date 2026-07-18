@@ -20,8 +20,15 @@ export function useLiveTiming() {
       const base = import.meta.env.VITE_API_BASE || `${proto}//${window.location.host}`;
       // Forward the page's ?demo=1 so the backend can send the fabricated demo
       // board (dev/opt-in only there — a real visitor's plain URL never gets it).
-      const demo = new URLSearchParams(window.location.search).has("demo") ? "?demo=1" : "";
-      const url = base.replace(/^http/, "ws") + "/api/live/ws" + demo;
+      // The series slug from the /s/<slug> URL rides along too, so the backend
+      // relays the race server ASSIGNED to this series (admin Live tab); no
+      // slug = the default series on the first server.
+      const params = new URLSearchParams();
+      if (new URLSearchParams(window.location.search).has("demo")) params.set("demo", "1");
+      const slug = /^\/s\/([^/]+)/.exec(window.location.pathname)?.[1];
+      if (slug) params.set("series", slug);
+      const qs = params.toString();
+      const url = base.replace(/^http/, "ws") + "/api/live/ws" + (qs ? `?${qs}` : "");
 
       let ws;
       try {

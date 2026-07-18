@@ -19,25 +19,53 @@ import RacePreview from "../components/RacePreview.jsx";
 import { SOCIAL_META } from "../components/SocialLinks.jsx";
 import { fmtTimeCell } from "../utils/raceDuration.js";
 
-const TABS = [
-  { id: "seasons", label: "Seasons" },
-  { id: "teams", label: "Teams" },
-  { id: "import", label: "Import Race" },
-  { id: "edit", label: "Edit Results" },
-  { id: "ratings", label: "Ratings" },
-  { id: "discord", label: "Races & Events" },
-  { id: "market", label: "Driver Market" },
-  { id: "drivers", label: "Drivers" },
-  { id: "members", label: "Members" },
-  { id: "notify", label: "Notifications" },
-  { id: "social", label: "Social Links" },
-  { id: "tracks", label: "Tracks" },
-  { id: "raceinfo", label: "Race Info" },
-  { id: "faq", label: "Home FAQ" },
-  { id: "downloads", label: "Downloads" },
-  { id: "traffic", label: "Traffic" },
-  { id: "health", label: "Health" },
-  { id: "pin", label: "Change PIN" },
+// The admin's tabs, clustered by what they're for — same ids (and therefore
+// the same components and hand-offs) as the old flat strip, just grouped so
+// the 18 entries read as five small menus instead of one long row.
+const TAB_GROUPS = [
+  {
+    label: "Race weekend",
+    tabs: [
+      { id: "discord", label: "Races & Events" },
+      { id: "import", label: "Import Race" },
+      { id: "edit", label: "Edit Results" },
+    ],
+  },
+  {
+    label: "League",
+    tabs: [
+      { id: "seasons", label: "Seasons" },
+      { id: "teams", label: "Teams" },
+      { id: "drivers", label: "Drivers" },
+      { id: "market", label: "Driver Market" },
+      { id: "ratings", label: "Ratings" },
+    ],
+  },
+  {
+    label: "Community",
+    tabs: [
+      { id: "members", label: "Members" },
+      { id: "notify", label: "Notifications" },
+      { id: "downloads", label: "Downloads" },
+      { id: "social", label: "Social & Live" },
+    ],
+  },
+  {
+    label: "Site content",
+    tabs: [
+      { id: "tracks", label: "Tracks" },
+      { id: "raceinfo", label: "Race Info" },
+      { id: "faq", label: "Home FAQ" },
+    ],
+  },
+  {
+    label: "System",
+    tabs: [
+      { id: "traffic", label: "Traffic" },
+      { id: "health", label: "Health" },
+      { id: "pin", label: "Change PIN" },
+    ],
+  },
 ];
 
 // Prominent bar at the top of the admin: shows WHICH series + season every
@@ -210,19 +238,28 @@ export default function Admin() {
 
       <AdminSeasonBar tab={tab} />
 
-      <div className="mb-6 flex flex-wrap gap-1 border-b border-border">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`-mb-px rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition ${
-              tab === t.id
-                ? "border-primary text-primary"
-                : "border-transparent text-light hover:text-medium"
-            }`}
-          >
-            {t.label}
-          </button>
+      <div className="mb-6 flex flex-wrap gap-x-7 gap-y-3 border-b border-border">
+        {TAB_GROUPS.map((g) => (
+          <div key={g.label}>
+            <div className="mb-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
+              {g.label}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {g.tabs.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`-mb-px rounded-t-lg border-b-2 px-3 py-2 text-sm font-semibold transition ${
+                    tab === t.id
+                      ? "border-primary text-primary"
+                      : "border-transparent text-light hover:text-medium"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
 
@@ -250,6 +287,7 @@ export default function Admin() {
           <div className="space-y-4">
             <SocialAdmin />
             <LiveLinksAdmin />
+            <LiveServersAdmin />
           </div>
         )}
         {tab === "tracks" && <AdminTracks />}
@@ -668,6 +706,80 @@ function LiveLinksAdmin() {
       </div>
       <button className="btn-primary" onClick={save} disabled={busy}>
         {busy ? "Saving…" : "Save links"}
+      </button>
+    </div>
+  );
+}
+
+// --- LIVE RACE SERVERS ------------------------------------------------------
+// The league runs more than one race server; this picks which one each SERIES'
+// live page follows. Viewers pick the change up on their next reload.
+function LiveServersAdmin() {
+  const { data, loading, error } = useApi(useCallback(() => api.getLiveServers(), []));
+  const [map, setMap] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    if (data) setMap(data.map || {});
+  }, [data]);
+
+  if (loading || !map) return <div className="card p-5 text-sm text-light">Loading…</div>;
+  if (error) return <ErrorBox message={error} />;
+
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    setSaved(false);
+    try {
+      const res = await api.setLiveServers(map);
+      setMap(res.map || {});
+      setSaved(true);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card space-y-5 p-5">
+      <CardHead eyebrow="Live Timing" title="Race server per series" />
+      <p className="text-sm text-light">
+        Which race server each series&rsquo; Live page follows. Open live pages pick a change up on their next
+        reload.
+      </p>
+      {err && <Notice kind="error">{err}</Notice>}
+      {saved && <Notice kind="success">Saved.</Notice>}
+      <div className="space-y-3">
+        {(data.series || []).map((s) => (
+          <div key={s.slug} className="flex flex-wrap items-center gap-3">
+            <span className="w-48 truncate text-sm font-semibold text-dark">{s.name}</span>
+            <select
+              className="input max-w-xs"
+              value={map[s.slug] || data.defaultKey}
+              onChange={(e) => {
+                const v = e.target.value;
+                setMap((m) => {
+                  const next = { ...m };
+                  if (v === data.defaultKey) delete next[s.slug];
+                  else next[s.slug] = v;
+                  return next;
+                });
+              }}
+            >
+              {(data.servers || []).map((srv) => (
+                <option key={srv.key} value={srv.key}>
+                  {srv.name} ({srv.origin.replace(/^https?:\/\//, "")})
+                </option>
+              ))}
+            </select>
+          </div>
+        ))}
+      </div>
+      <button className="btn-primary" onClick={save} disabled={busy}>
+        {busy ? "Saving…" : "Save servers"}
       </button>
     </div>
   );
@@ -1907,6 +2019,60 @@ function SeasonHero({ season, onSaved, onError }) {
   );
 }
 
+// Car image for the season's "coming soon" hero panel (the showroom shot of
+// the new mod). Without one (and without a static /cars/s<n>.jpg) the panel
+// simply doesn't render — no placeholder.
+function SeasonCar({ season, onSaved, onError }) {
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      await api.uploadSeasonCar(season.id, file);
+      onSaved(`Car image updated for ${season.name}.`);
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  async function clear() {
+    if (!window.confirm(`Remove ${season.name}'s car image? Without one the coming-soon hero shows no car panel.`)) return;
+    setBusy(true);
+    try {
+      await api.clearSeasonCar(season.id);
+      onSaved(`Car image removed for ${season.name}.`);
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="font-semibold text-light">Car image</span>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={pick}
+      />
+      <button type="button" className="btn-secondary px-3 py-1 text-xs" disabled={busy}
+        onClick={() => fileRef.current?.click()}>
+        {season.carImageUrl ? "Replace" : "Upload"}
+      </button>
+      {season.carImageUrl && (
+        <button type="button" className="font-semibold text-light transition hover:text-rose-500" disabled={busy}
+          onClick={clear}>
+          Remove
+        </button>
+      )}
+      <span className="text-light" title="Shown beside the season announcement while the season hasn't started. Best on a dark/black background.">
+        Shown in the coming-soon hero; no image = no panel
+      </span>
+    </div>
+  );
+}
+
 // Per-season scoring editor: how many worst rounds are dropped (0 = none) and
 // the points-per-position table (empty = league default).
 function SeasonScoring({ season, onSaved, onError }) {
@@ -2188,6 +2354,7 @@ function Seasons({ gotoRaces }) {
                 </div>
               </div>
               <SeasonHero season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+              <SeasonCar season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
               <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.pointsTable || ""}`} season={s}
                 onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
               {/* clone teams (or the full roster) from another season */}

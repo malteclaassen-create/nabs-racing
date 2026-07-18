@@ -4,7 +4,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
-import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar, CountUp } from "../components/ui.jsx";
+import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar, CountUp, EmptyState } from "../components/ui.jsx";
 import { useTilt } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -81,7 +81,29 @@ function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champi
   );
 }
 
-function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = false, decided = false }) {
+// Movement since the previous round: green up-arrow, red down-arrow, or a
+// quiet dash for no change. `delta` is null while there's nothing to compare.
+function PosDelta({ delta }) {
+  if (delta == null) return null;
+  if (delta === 0)
+    return <span className="hidden w-7 shrink-0 text-center font-mono text-[11px] font-bold text-light/60 sm:block">–</span>;
+  const up = delta > 0;
+  return (
+    <span
+      className={`hidden w-7 shrink-0 items-center justify-center gap-0.5 font-mono text-[11px] font-bold tabular-nums sm:flex ${
+        up ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+      }`}
+      title={`${up ? "Up" : "Down"} ${Math.abs(delta)} since the last round`}
+    >
+      <svg viewBox="0 0 10 10" className="h-2 w-2" fill="currentColor" aria-hidden="true">
+        {up ? <path d="M5 1l4 7H1z" /> : <path d="M5 9L1 2h8z" />}
+      </svg>
+      {Math.abs(delta)}
+    </span>
+  );
+}
+
+function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = false, decided = false, delta = null }) {
   const isLeader = d.position === 1;
   const gap = leaderTotal - d.total;
   const pct = d.total > 0 && leaderTotal > 0 ? Math.max(4, (d.total / leaderTotal) * 100) : 0;
@@ -94,6 +116,7 @@ function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = fals
       }`}
     >
       <Rank position={d.position} />
+      <PosDelta delta={delta} />
       <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: d.team.color }} />
       <DriverAvatar name={d.name} photoUrl={d.photoUrl} color={d.team.color} size={36} />
 
@@ -131,7 +154,9 @@ function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = fals
       </div>
 
       <div className="w-12 shrink-0 text-right sm:w-20">
-        <div className="font-mono text-lg font-bold tabular-nums text-dark sm:text-xl">{d.total}</div>
+        <div className="font-mono text-lg font-bold tabular-nums text-dark sm:text-xl">
+          <CountUp end={d.total} duration={900} />
+        </div>
         <div className="font-mono text-[11px] tabular-nums text-light">
           {isLeader ? "leader" : `−${gap}`}
         </div>
@@ -258,6 +283,28 @@ export default function DriverStandings() {
       championIds.add(rows[0].driverId);
     }
   }
+  // Position movement vs. the standings BEFORE the most recent round, computed
+  // within the current view (same tier filter, same re-ranking) with the same
+  // drop-worst rule the season total uses. Only while the title race runs —
+  // archive tables stay quiet.
+  // Dev-only (?demo=1): preview the arrows on a finished season too.
+  const demoArrows = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
+  const deltaById = new Map();
+  if (!seasonDecided || demoArrows) {
+    const playedRounds = data.raceNumbers.filter((n) => all.some((r) => r.perRace[n] != null));
+    if (playedRounds.length >= 2) {
+      const lastRound = Math.max(...playedRounds);
+      const prevRounds = data.raceNumbers.filter((n) => n !== lastRound);
+      const dropN = data.dropWorst ?? 0;
+      const prevTotal = (r) => {
+        const vals = prevRounds.map((n) => r.perRace[n]?.points ?? 0).sort((a, b) => a - b);
+        return vals.slice(Math.min(dropN, vals.length)).reduce((s, v) => s + v, 0);
+      };
+      const prevOrder = [...rows].sort((a, b) => prevTotal(b) - prevTotal(a) || a.name.localeCompare(b.name));
+      prevOrder.forEach((r, i) => deltaById.set(r.driverId, i + 1 - r.position));
+    }
+  }
+
   const scopeLabel = activeTier === "all" ? "drivers" : TIER_FILTERS.find((t) => t.id === activeTier).label;
   // The per-round matrix needs actual rounds; archived totals-only seasons fall
   // back to the list regardless of what's selected.
@@ -333,7 +380,7 @@ export default function DriverStandings() {
       </div>
 
       {rows.length === 0 ? (
-        <div className="card p-8 text-center text-medium">No drivers match this filter.</div>
+        <EmptyState title="No drivers here" hint="Nobody matches this filter yet. Try another tier, or include drivers without points." />
       ) : activeView === "cards" ? (
         // The field as their actual rating cards, in championship order of the
         // current filter view. Drivers without a card yet (no race this season)
@@ -348,7 +395,7 @@ export default function DriverStandings() {
           const ratingById = new Map(cardData.ratings.map((r) => [r.driverId, r]));
           const withCards = rows.filter((d) => ratingById.has(d.driverId));
           if (withCards.length === 0)
-            return <div className="card p-8 text-center text-medium">No rating cards yet — they appear once drivers have raced.</div>;
+            return <EmptyState title="No rating cards yet" hint="Cards appear as soon as drivers have raced this season." />;
           return (
             <div>
               <div className="rcard-fit cascade grid gap-x-4 gap-y-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" style={{ justifyItems: "center" }}>
@@ -422,6 +469,7 @@ export default function DriverStandings() {
               showTier={multiTier}
               champion={championIds.has(d.driverId)}
               decided={seasonDecided}
+              delta={deltaById.has(d.driverId) ? deltaById.get(d.driverId) : null}
             />
           ))}
         </div>
