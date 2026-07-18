@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import SlidingTabs from "../components/SlidingTabs.jsx";
+import { SettingsDrawer } from "../components/SettingsPanel.jsx";
+import { CockpitPanels, COCKPIT_TABS } from "./Cockpit.jsx";
+import Tools from "./Tools.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth, getUserToken, saveUser } from "../hooks/useAuth.js";
@@ -502,9 +506,34 @@ function CopyProfileLink({ driverId }) {
   );
 }
 
+// The member bar top right: the two real tabs of this page (Edit Profile,
+// Achievements) plus jump-offs (race tools, settings drawer, admin). The
+// public page gets its own separate button next to the bar. Synced to ?tab=
+// so bell links and bookmarks land on the right section.
+function memberTabs(isAdmin) {
+  return [
+    { key: "profile", label: "Edit Profile" },
+    ...COCKPIT_TABS,
+    { key: "tools", label: "Race Tools" },
+    { key: "settings", label: "Settings" },
+    ...(isAdmin ? [{ key: "admin", label: "Admin" }] : []),
+  ];
+}
+
 function MyProfile() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const me = useApi(useCallback(() => api.me(), []));
+  const [params, setParams] = useSearchParams();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const tab = ["profile", "tools", ...COCKPIT_TABS.map((t) => t.key)].includes(params.get("tab"))
+    ? params.get("tab")
+    : "profile";
+  const setTab = (key) => {
+    if (key === "settings") return setSettingsOpen(true); // drawer, not a page section
+    if (key === "admin") return navigate("/admin");
+    setParams(key === "profile" ? {} : { tab: key }, { replace: true });
+  };
 
   // Current (unsaved) editor draft -> debounced into the live preview of the
   // public page at the bottom, so typing doesn't re-render the whole preview
@@ -549,22 +578,33 @@ function MyProfile() {
         eyebrow="Your profile"
         title="My Profile"
         right={
-          <div className="flex flex-wrap items-center gap-2">
-            <Link to={`/drivers/${d.driverId}`} className="btn-secondary">
+          <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+            {/* the public page opens separately, everything else lives in the bar */}
+            <Link to={`/drivers/${d.driverId}`} className="btn-secondary whitespace-nowrap">
               Public profile →
             </Link>
-            <CopyProfileLink driverId={d.driverId} />
-            <Link to="/tools" title="Fuel calculator, practice pace and pit strategy" className="btn-secondary">
-              Race tools
-            </Link>
-            {user?.isAdmin && (
-              <Link to="/admin" className="btn-primary">Admin area</Link>
-            )}
-            <button className="btn-secondary" onClick={logout}>Sign out</button>
+            <div className="max-w-full overflow-x-auto pb-0.5">
+              <SlidingTabs
+                items={memberTabs(!!user?.isAdmin)}
+                // While the settings drawer is open the pill sits on Settings,
+                // and glides back to the section underneath when it closes.
+                value={settingsOpen ? "settings" : tab}
+                onChange={setTab}
+                wrapClassName="inline-flex flex-nowrap rounded-xl border border-border bg-card p-1"
+                btnClassName="whitespace-nowrap px-3 py-1.5 text-[13px]"
+              />
+            </div>
           </div>
         }
       />
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
+      {tab === "tools" ? (
+        <Tools embedded />
+      ) : tab !== "profile" ? (
+        <CockpitPanels tab={tab} onTab={setTab} />
+      ) : (
+        <>
       <ProfileEditor me={d} onDraftChange={setDraft} />
 
       {/* Live preview of the PUBLIC driver page, overlaid with the unsaved
@@ -615,6 +655,8 @@ function MyProfile() {
           />
         </div>
       </section>
+        </>
+      )}
     </div>
   );
 }

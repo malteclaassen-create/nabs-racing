@@ -74,6 +74,13 @@ function TypeIcon({ type }) {
           <path d="M12 7.5l1.3 2.6 2.9.4-2.1 2 .5 2.9-2.6-1.4-2.6 1.4.5-2.9-2.1-2 2.9-.4z" />
         </svg>
       );
+    case "AWARD": // laurel medal — achievement unlocks (Cockpit)
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="9" r="5" />
+          <path d="M9.5 13.5L8 21l4-2 4 2-1.5-7.5" />
+        </svg>
+      );
     default:
       return <BellIcon />;
   }

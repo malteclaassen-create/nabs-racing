@@ -12,6 +12,7 @@ import tracksRoutes from "./routes/tracks.js";
 import eventsRoutes from "./routes/events.js";
 import marketRoutes from "./routes/market.js";
 import meRoutes from "./routes/me.js";
+import cockpitRoutes from "./routes/cockpit.js";
 import teamsRoutes from "./routes/teams.js";
 import seasonsRoutes from "./routes/seasons.js";
 import seriesRoutes from "./routes/series.js";
@@ -127,6 +128,7 @@ app.use("/api/races", racesRoutes);
 app.use("/api/tracks", tracksRoutes);
 app.use("/api/events", eventsRoutes);
 app.use("/api/market", marketRoutes);
+app.use("/api/me/cockpit", cockpitRoutes); // before /api/me: the more specific mount wins
 app.use("/api/me", meRoutes);
 app.use("/api/teams", teamsRoutes);
 app.use("/api/seasons", seasonsRoutes);

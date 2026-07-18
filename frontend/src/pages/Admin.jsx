@@ -4,7 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { PageHeader, ErrorBox, Notice, CardHead } from "../components/ui.jsx";
+import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar } from "../components/ui.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
 import AdminRatings from "../components/AdminRatings.jsx";
@@ -1005,6 +1005,36 @@ function EditResults() {
     }
   }
 
+  // Wipe only the stored RESULTS of the round — the race itself (date, track,
+  // sign-ups, quali) stays on the calendar as "not run yet". Backup first.
+  async function clearResults() {
+    const race = (races || []).find((r) => r.id === raceId);
+    const kind = race ? race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP") : null;
+    const label = race
+      ? `${kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${race.number}`} · ${race.track}`
+      : "this race";
+    if (
+      !window.confirm(
+        `Delete only the RESULTS of ${label}?\n\nThe race stays on the calendar as "not run yet"; standings recalculate without it. A backup is saved automatically first.`
+      )
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      await api.clearRaceResults(raceId);
+      setRaceId("");
+      setRows([]);
+      setMsg(`Results of ${label} deleted. The race is back on the calendar as upcoming.`);
+      reloadRaces();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Remove the whole round, results included. The backend writes an automatic
   // backup first; standings recompute themselves from the remaining rounds.
   async function deleteRace() {
@@ -1264,22 +1294,41 @@ function EditResults() {
       )}
 
       {raceId && (
-        <div className="card flex flex-wrap items-center justify-between gap-3 border-red-500/40 p-4">
-          <div className="min-w-0">
-            <div className="text-sm font-bold text-dark">Delete this race</div>
-            <p className="text-xs text-light">
-              Removes the round with all its results; the championship recalculates without it. A backup is
-              saved automatically first. Linked replay downloads stay available, they just lose the race link.
-            </p>
+        <div className="card divide-y divide-border border-red-500/40">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-dark">Delete results only</div>
+              <p className="text-xs text-light">
+                Wipes the stored classification, but the race itself stays on the calendar (date, sign-ups
+                and qualifying included) — ready for a fresh import. A backup is saved automatically first.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary shrink-0 border-red-500/50 text-red-500 hover:bg-red-500/10"
+              disabled={busy}
+              onClick={clearResults}
+            >
+              Delete results
+            </button>
           </div>
-          <button
-            type="button"
-            className="btn-secondary shrink-0 border-red-500/50 text-red-500 hover:bg-red-500/10"
-            disabled={busy}
-            onClick={deleteRace}
-          >
-            Delete race
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-dark">Delete this race</div>
+              <p className="text-xs text-light">
+                Removes the round with all its results; the championship recalculates without it. A backup is
+                saved automatically first. Linked replay downloads stay available, they just lose the race link.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary shrink-0 border-red-500/50 text-red-500 hover:bg-red-500/10"
+              disabled={busy}
+              onClick={deleteRace}
+            >
+              Delete race
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -1432,14 +1481,80 @@ function DiscordResultsPost({ raceId }) {
 }
 
 // --- DRIVERS ---------------------------------------------------------------
+// Search-to-add field under each team: type a few letters, pick a person from
+// the series' all-time driver database, and they land in this team of the
+// edited season — identity (photo, flag, Steam ID) and career link included.
+function DbSeatSearch({ team, db, rosterNames, onAdded, onError }) {
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+  const query = q.trim().toLowerCase();
+  const hits = query
+    ? (db || [])
+        .filter((e) => e.name.toLowerCase().includes(query) && !rosterNames.has(e.name.trim().toLowerCase()))
+        .slice(0, 6)
+    : [];
+  async function add(entry) {
+    setBusy(true);
+    try {
+      await api.addDriverFromDb(entry.sourceDriverId, team.id);
+      setQ("");
+      onAdded(`${entry.name} added to ${team.name}.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="relative mt-1.5">
+      <input
+        className="input w-full py-1.5 text-xs"
+        placeholder={`Add to ${team.name} from the driver database…`}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        disabled={busy || !db}
+      />
+      {hits.length > 0 && (
+        <ul className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-xl shadow-ink/10">
+          {hits.map((e) => (
+            <li key={e.key}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => add(e)}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition hover:bg-surface2"
+              >
+                <DriverAvatar name={e.name} photoUrl={e.photoUrl} size={24} />
+                <span className="min-w-0 flex-1 truncate font-semibold text-dark">{e.name}</span>
+                <span className="shrink-0 font-mono text-[10px] text-faint">
+                  {e.lastTeamName ? `${e.lastTeamName} · ` : ""}S{e.lastSeasonNumber} · {e.starts} starts
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {query && db && hits.length === 0 && (
+        <div className="absolute inset-x-0 top-full z-20 mt-1 rounded-lg border border-border bg-card px-3 py-2 text-xs text-light shadow-xl">
+          Nobody in the database matches (or they're already on this season's roster). Use "Add driver" for a brand-new name.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Drivers() {
   const { data: teams, reload } = useApi(useCallback(() => api.teams(), []));
+  // The series-wide driver database feeding the per-team search fields.
+  const driverDb = useApi(useCallback(() => api.adminDriverDb(), []));
   // Known login accounts, to verify hand-entered Discord IDs on the spot.
   const { data: membersData } = useApi(useCallback(() => api.adminMembers(), []));
   const [form, setForm] = useState({ name: "", discordName: "", teamId: "", tier: 2 });
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Which team's roster is unfolded — one at a time keeps the list scannable.
+  const [openTeam, setOpenTeam] = useState(null);
 
   const accounts = new Map(((membersData && membersData.members) || []).map((m) => [String(m.discordId), m]));
   const allDrivers = (teams || []).flatMap((t) => t.drivers.map((d) => ({ ...d, teamName: t.name })));
@@ -1525,16 +1640,37 @@ function Drivers() {
           post @mention them, even before their first login. (Discord: Settings → Advanced → Developer Mode, then
           right-click the user → Copy User ID.)
         </p>
-        <div className="space-y-5">
+        <div className="divide-y divide-border border-y border-border">
           {teamGroups.map((t) => (
             <div key={t.id}>
-              <div className="mb-1.5 flex items-center gap-2">
+              {/* one compact row per team — click to open the roster + search */}
+              <button
+                type="button"
+                onClick={() => setOpenTeam(openTeam === t.id ? null : t.id)}
+                className="flex w-full items-center gap-2.5 py-2.5 text-left transition hover:bg-surface2/60"
+              >
                 <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={20} />
                 <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">{t.name}</span>
-                <span className="text-xs text-light">{TIER_LABEL[t.tier]} · {t.drivers.length}</span>
-              </div>
-              <ul className="divide-y divide-border border-t border-border">
-                {t.drivers.length === 0 && <li className="py-2 text-xs text-light">No drivers.</li>}
+                <span className="text-xs text-light">{TIER_LABEL[t.tier]}</span>
+                <span className="min-w-0 flex-1 truncate text-right text-xs text-faint">
+                  {t.drivers.length === 0 ? "empty" : t.drivers.map((d) => d.name).join(", ")}
+                </span>
+                <span className="shrink-0 rounded-md bg-surface2 px-1.5 py-0.5 font-mono text-[11px] font-bold tabular-nums text-medium">
+                  {t.drivers.length}
+                </span>
+                <svg viewBox="0 0 24 24" className={`h-4 w-4 shrink-0 text-faint transition-transform ${openTeam === t.id ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+              </button>
+              {openTeam === t.id && (
+              <div className="pb-3">
+              <DbSeatSearch
+                team={t}
+                db={driverDb.data?.entries}
+                rosterNames={new Set(allDrivers.map((d) => d.name.trim().toLowerCase()))}
+                onAdded={(m) => { setMsg(m); setError(null); reload(); driverDb.reload(); }}
+                onError={(m) => { setError(m); setMsg(null); }}
+              />
+              <ul className="mt-1.5 divide-y divide-border border-t border-border">
+                {t.drivers.length === 0 && <li className="py-2 text-xs text-light">No drivers yet — add one with the search above.</li>}
                 {t.drivers.map((d) => (
                   <li key={d.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
                     <span className={`min-w-0 flex-1 truncate font-semibold ${d.isActive ? "text-dark" : "text-light line-through"}`}>
@@ -1579,6 +1715,8 @@ function Drivers() {
                   </li>
                 ))}
               </ul>
+              </div>
+              )}
             </div>
           ))}
         </div>
@@ -1600,11 +1738,14 @@ function DriverDiscordId({ d, busy, accounts, onSave }) {
   useEffect(() => setVal(d.discordUserId || ""), [d.discordUserId]);
   const dirty = val.trim() !== (d.discordUserId || "");
   const acct = val.trim() ? accounts?.get(val.trim()) : null;
+  // The person's ID inherited from a linked season row: login and mentions
+  // already use it, so "not set" would be misleading — show where it lives.
+  const inherited = !d.discordUserId && !!d.inheritedDiscordUserId;
   return (
     <span className="flex w-full flex-wrap items-center gap-2">
       <input
         className="input w-52 py-1 font-mono text-xs"
-        placeholder="Discord user ID (not set)"
+        placeholder={inherited ? `${d.inheritedDiscordUserId} (inherited)` : "Discord user ID (not set)"}
         title="The 17-20 digit Discord user ID. In Discord: Settings → Advanced → Developer Mode on, then right-click the user → Copy User ID. Used to link their login and to @mention them in results posts."
         value={val}
         onChange={(e) => setVal(e.target.value.trim())}
@@ -1615,6 +1756,14 @@ function DriverDiscordId({ d, busy, accounts, onSave }) {
           title={`This ID belongs to the login of ${acct.displayName || acct.username}`}
         >
           = @{acct.username}
+        </span>
+      )}
+      {inherited && !val.trim() && (
+        <span
+          className="font-mono text-[10px] font-bold text-emerald-600"
+          title="The ID is stored on one of this person's earlier season rows and works here too (login, @mentions). Saving it in this field moves it onto this season's row."
+        >
+          ✓ linked via earlier season
         </span>
       )}
       {val.trim() && !acct && !dirty && (

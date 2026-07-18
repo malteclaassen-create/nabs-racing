@@ -20,6 +20,7 @@ import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
+import { achievementMeta } from "../lib/achievements.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -375,6 +376,19 @@ export async function getDriverProfile(prisma, driverId) {
     await prisma.$queryRaw`SELECT "cardPhotoUrl" FROM "Driver" WHERE "id" = ${driverId}`.catch(() => [])
   )[0]?.cardPhotoUrl || null;
 
+  // Achievements the driver pinned in their Cockpit (validated at save time,
+  // so showing them is just a key -> catalogue lookup). Raw column; [].
+  const pinnedAchievements = await prisma
+    .$queryRaw`SELECT "achievementsPinned" FROM "Driver" WHERE "id" = ${driverId}`
+    .then((rows) => {
+      const parsed = rows[0]?.achievementsPinned ? JSON.parse(rows[0].achievementsPinned) : null;
+      return (Array.isArray(parsed) ? parsed : [])
+        .map((key) => achievementMeta(key))
+        .filter(Boolean)
+        .map((a) => ({ key: a.key, cat: a.cat, name: a.name, tagline: a.tagline }));
+    })
+    .catch(() => []);
+
   const standingRow = standings.standings.find((r) => r.driverId === driverId);
   const resultByRaceId = new Map(results.map((r) => [r.raceId, r]));
   const nameOv = nameOverrides.get(driverId);
@@ -645,6 +659,8 @@ export async function getDriverProfile(prisma, driverId) {
     // Same shape as `stats`, aggregated across every linked season (null when
     // there's only one season — the toggle then has nothing to switch to).
     allTime,
+    // Achievements pinned from the private Cockpit: [{ key, name, tagline }].
+    pinnedAchievements,
     // Earned championship seals: [{ type, seasonNumber, seasonName }].
     badges,
     // Constructor seals for the teams this person drove for: [{ type,

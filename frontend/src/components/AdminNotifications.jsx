@@ -29,6 +29,63 @@ function ToggleRow({ label, help, value, onChange }) {
 // Labels for the reminder offsets the backend offers (hours before kickoff).
 const OFFSET_LABELS = { 72: "3 days before", 24: "1 day before", 6: "6 hours before", 1: "1 hour before" };
 
+const STATUS_LABELS = { ACCEPTED: "Accepted", DECLINED: "Declined", TENTATIVE: "Tentative" };
+
+// Manual "please answer the attendance" nudge for one upcoming race. Separate
+// from the settings form on purpose: it's an action, not a setting.
+function AttendanceNudge() {
+  const events = useApi(useCallback(() => api.events(), []));
+  const [raceId, setRaceId] = useState("");
+  const [state, setState] = useState(null); // {ok, text}
+  const [busy, setBusy] = useState(false);
+  const list = events.data || [];
+  const selected = raceId || list[0]?.id || "";
+
+  async function send() {
+    if (!selected) return;
+    setBusy(true);
+    setState(null);
+    try {
+      await api.adminAttendancePing(selected);
+      setState({ ok: true, text: "Sent. Every member's bell has the nudge now." });
+    } catch (e) {
+      setState({ ok: false, text: e.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!list.length) return null;
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="mb-2 text-sm font-semibold text-dark">Send a nudge now</div>
+      <p className="mb-3 text-xs leading-relaxed text-light">
+        Posts a &ldquo;please confirm or update your attendance&rdquo; note to everyone&rsquo;s
+        bell for the chosen race. Works any number of times — use it when the list looks thin.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={selected}
+          onChange={(e) => { setRaceId(e.target.value); setState(null); }}
+          className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark"
+        >
+          {list.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.type === "TRAINING" ? "Training" : `Round ${e.number}`} · {e.track}
+            </option>
+          ))}
+        </select>
+        <button onClick={send} disabled={busy || !selected} className="btn-secondary">
+          {busy ? "Sending…" : "Send nudge"}
+        </button>
+      </div>
+      {state && (
+        <p className={`mt-2 text-sm font-medium ${state.ok ? "text-emerald-600" : "text-red-500"}`}>{state.text}</p>
+      )}
+    </div>
+  );
+}
+
 export default function AdminNotifications() {
   const { data, loading, error } = useApi(useCallback(() => api.adminNotificationSettings(), []));
   const [form, setForm] = useState(null);
@@ -137,7 +194,7 @@ export default function AdminNotifications() {
         <h3 className={`${labelCls} mb-1`}>Race reminders</h3>
         <p className="mb-3 text-xs leading-relaxed text-light">
           When members get reminded of an upcoming championship round (everyone; based on the
-          race&rsquo;s kickoff time, the usual Friday 19:00 German time when no time is set).
+          race&rsquo;s kickoff time, the usual Friday 19:00 CET/CEST when no time is set).
           Pick as many as you like. Each fires once per race; none selected turns reminders off.
         </p>
         <div className="flex flex-wrap gap-2">
@@ -168,6 +225,91 @@ export default function AdminNotifications() {
             onChange={(v) => set("trainingReminders", v)}
           />
         </div>
+      </div>
+
+      <div className="card p-5">
+        <h3 className={`${labelCls} mb-1`}>Attendance sign-up</h3>
+        <p className="mb-3 text-xs leading-relaxed text-light">
+          When the Attendance page starts taking answers for a race, and what it shows.
+        </p>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-dark">
+          <span className="font-semibold">Sign-up opens</span>
+          <select
+            value={form.attendanceOpenDays ?? ""}
+            onChange={(e) => set("attendanceOpenDays", e.target.value === "" ? null : Number(e.target.value))}
+            className="rounded-lg border border-border bg-card px-3 py-2"
+          >
+            <option value="">always (no window)</option>
+            {[1, 2, 3, 4, 5, 6, 7, 10, 14].map((d) => (
+              <option key={d} value={d}>{d} {d === 1 ? "day" : "days"} before race day</option>
+            ))}
+          </select>
+          {form.attendanceOpenDays != null && (
+            <>
+              <span className="font-semibold">at</span>
+              <select
+                value={form.attendanceOpenHour ?? 8}
+                onChange={(e) => set("attendanceOpenHour", Number(e.target.value))}
+                className="rounded-lg border border-border bg-card px-3 py-2"
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
+                ))}
+              </select>
+              <span className="text-light">CET/CEST (league time)</span>
+            </>
+          )}
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-light">
+          Example: a Friday race with &ldquo;5 days, 08:00&rdquo; opens the Sunday before at 08:00.
+          Before that, the page shows when the sign-up opens (in each visitor&rsquo;s own timezone)
+          and takes no answers. While it&rsquo;s closed the Attendance item also stays out of the
+          navigation, and it leaves again once the race&rsquo;s result is saved.
+        </p>
+        {form.attendanceOpenDays != null && (
+          <div className="mt-1 divide-y divide-border">
+            <ToggleRow
+              label="Announce when the sign-up opens"
+              help="Everyone's bell gets a note the moment a race's sign-up window opens."
+              value={form.attendanceOpenNotify !== false}
+              onChange={(v) => set("attendanceOpenNotify", v)}
+            />
+          </div>
+        )}
+        <div className="mt-4 border-t border-border pt-4">
+          <div className="mb-2 text-sm font-semibold text-dark">Answers shown on the page</div>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(STATUS_LABELS).map(([key, label]) => {
+              const on = !Array.isArray(form.attendanceShow) || form.attendanceShow.includes(key);
+              return (
+                <label
+                  key={key}
+                  className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                    on ? "border-primary/60 bg-primary/10 text-dark" : "border-border text-medium hover:bg-surface2"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-[var(--c-primary,#db2777)]"
+                    checked={on}
+                    onChange={() => {
+                      const cur = Array.isArray(form.attendanceShow)
+                        ? form.attendanceShow
+                        : Object.keys(STATUS_LABELS);
+                      set("attendanceShow", on ? cur.filter((s) => s !== key) : [...cur, key]);
+                    }}
+                  />
+                  {label}
+                </label>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-light">
+            Hidden columns disappear from the Attendance page for everyone (answering still works
+            for all three). Hiding everything falls back to showing all.
+          </p>
+        </div>
+        <AttendanceNudge />
       </div>
 
       <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">

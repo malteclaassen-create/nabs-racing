@@ -851,7 +851,9 @@ function PracticeStrategy({ store, update }) {
   );
 }
 
-export default function Tools() {
+// `embedded`: rendered as a section inside the /profile member bar — the page
+// around it already has a header, so this skips its own.
+export default function Tools({ embedded = false }) {
   const [store, setStore] = useState(loadStore);
   useEffect(() => {
     try {
@@ -863,12 +865,14 @@ export default function Tools() {
   const update = (patch) => setStore((s) => ({ ...s, ...patch }));
 
   return (
-    <div className="content-in space-y-6">
-      <PageHeader
-        eyebrow="Race prep"
-        title="Tools"
-        subtitle="Fuel and strategy helpers for the next race. Everything stays on your device."
-      />
+    <div className={embedded ? "space-y-6" : "content-in space-y-6"}>
+      {!embedded && (
+        <PageHeader
+          eyebrow="Race prep"
+          title="Tools"
+          subtitle="Fuel and strategy helpers for the next race. Everything stays on your device."
+        />
+      )}
       <FuelCalculator store={store} update={update} />
       <PracticeStrategy store={store} update={update} />
       <div>

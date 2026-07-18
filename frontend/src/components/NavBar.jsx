@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
+import { api } from "../api/client.js";
 import Logo from "./Logo.jsx";
 import SeasonPicker from "./SeasonPicker.jsx";
 import SeriesSwitcher from "./SeriesSwitcher.jsx";
@@ -236,7 +237,36 @@ export default function NavBar() {
   const { seriesPath } = useSeriesPath();
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const links = navLinks(seriesPath);
+
+  // The Attendance item only earns its nav slot while a race is actually
+  // taking answers: the sign-up window is open (always, when no window is
+  // configured) and the result isn't saved yet. Checked per series, and
+  // re-checked on every route change so saving a result or a window opening
+  // is picked up on the next click without a reload.
+  // Seeded from the last known answer (localStorage) so a reload doesn't
+  // flash the item in or out while the request is in flight.
+  const seriesSlug = location.pathname.startsWith("/s/") ? location.pathname.split("/")[2] : "";
+  const attCacheKey = `nav-attendance-open:${seriesSlug}`;
+  const [attendanceOpen, setAttendanceOpen] = useState(() => {
+    try { return localStorage.getItem(attCacheKey) === "1"; } catch { return false; }
+  });
+  // Switching series: show that series' remembered answer until the fresh one lands.
+  useEffect(() => {
+    try { setAttendanceOpen(localStorage.getItem(attCacheKey) === "1"); } catch { /* private mode */ }
+  }, [attCacheKey]);
+  useEffect(() => {
+    let alive = true;
+    api.attendanceOpen()
+      .then((r) => {
+        if (!alive) return;
+        setAttendanceOpen(!!r?.open);
+        try { localStorage.setItem(attCacheKey, r?.open ? "1" : "0"); } catch { /* private mode */ }
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [attCacheKey, location.pathname]);
+
+  const links = navLinks(seriesPath).filter((l) => l.label !== "Attendance" || attendanceOpen);
   // Handed to GlobalSearch so its expanded field + dropdown line up their left
   // edge with the "Live" nav item.
   const liveRef = useRef(null);

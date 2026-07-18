@@ -144,6 +144,16 @@ export async function ensureAppSchema(prisma) {
   // a veteran's backlog). See lib/notifications.js notifyCardUnlocks.
   await addColumn(prisma, "Driver", "cardUnlocksNotified", "TEXT");
 
+  // --- Cockpit (private driver area): self-set season goals as a JSON array
+  // ([{id, text, metric?, target?}]) — private to the driver, per season row.
+  await addColumn(prisma, "Driver", "cockpitGoals", "TEXT");
+  // Achievements a driver pinned onto their PUBLIC profile (JSON key array,
+  // max 3). null = nothing pinned.
+  await addColumn(prisma, "Driver", "achievementsPinned", "TEXT");
+  // Achievement-unlock bookkeeping, exactly like cardUnlocksNotified: the keys
+  // already announced via the bell; the first computation seeds silently.
+  await addColumn(prisma, "Driver", "achievementsNotified", "TEXT");
+
   // --- Special league role, shown on the rating card and profile. null =
   // regular driver; 'safety' = safety car driver. Admin-set (Drivers tab).
   await addColumn(prisma, "Driver", "role", "TEXT");

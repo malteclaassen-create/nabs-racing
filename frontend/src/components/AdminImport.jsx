@@ -19,7 +19,7 @@ function fmtRemote(r) {
 
 export default function AdminImport({ onCommitted }) {
   const { current: currentSeason } = useSeason();
-  const { data: teams } = useApi(useCallback(() => api.teams(), []));
+  const { data: teams, reload: reloadTeams } = useApi(useCallback(() => api.teams(), []));
   const remote = useApi(useCallback(() => api.remoteResults("RACE"), []));
   // QUALIFY sessions on the server — for the auto-found qualifying row below.
   const remoteQuali = useApi(useCallback(() => api.remoteResults("QUALIFY"), []));
@@ -217,6 +217,49 @@ export default function AdminImport({ onCommitted }) {
 
   function setRow(i, patch) {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  }
+
+  // An entrant who isn't on this season's roster yet but clearly raced: create
+  // them on the spot (into the reserve pool by default) and map the row to the
+  // fresh driver. A KNOWN person (same Steam GUID or same name in the series'
+  // driver database) is added via from-db, so identity, Discord link and
+  // career carry over — only a genuinely new name gets a blank row. This is
+  // the "only add people who actually raced" workflow.
+  const [creatingRow, setCreatingRow] = useState(null);
+  async function createFromRow(i) {
+    const r = rows[i];
+    if (!r?.acDriverName) return;
+    const reserve = (teams || []).find((t) => t.tier === 0) || (teams || [])[0];
+    if (!reserve) return setError("No team to create the driver in — create teams first.");
+    setCreatingRow(i);
+    setError(null);
+    try {
+      let known = null;
+      try {
+        const db = await api.adminDriverDb();
+        known = (db.entries || []).find(
+          (e) =>
+            (r.driverGuid && e.steamId && e.steamId === r.driverGuid) ||
+            e.name.trim().toLowerCase() === r.acDriverName.trim().toLowerCase()
+        );
+      } catch {
+        /* database unreachable: fall through to a fresh row */
+      }
+      const d = known
+        ? await api.addDriverFromDb(known.sourceDriverId, reserve.id)
+        : await api.createDriver({
+            name: r.acDriverName.trim(),
+            discordName: r.acDriverName.trim(),
+            teamId: reserve.id,
+            tier: reserve.tier,
+          });
+      setRow(i, { driverId: d.id });
+      reloadTeams(); // the new driver appears in every row's picker
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreatingRow(null);
+    }
   }
 
   async function commit() {
@@ -640,6 +683,17 @@ export default function AdminImport({ onCommitted }) {
                               </option>
                             ))}
                           </select>
+                          {!r.driverId && !r.isSafetyCar && (
+                            <button
+                              type="button"
+                              className="mt-1 text-xs font-semibold text-primary hover:underline disabled:opacity-50"
+                              disabled={busy || creatingRow != null}
+                              title="Creates this entrant as a new driver in the reserve pool and maps the row to them. Move them into a team later in the Drivers tab."
+                              onClick={() => createFromRow(i)}
+                            >
+                              {creatingRow === i ? "Creating…" : `+ Create "${r.acDriverName}" as new driver`}
+                            </button>
+                          )}
                           {r.driverId && r.matchedBy === "steam" && (
                             <div
                               className="mt-1 font-mono text-[10px] uppercase tracking-wider text-emerald-600"

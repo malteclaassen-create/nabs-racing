@@ -13,7 +13,6 @@ import TeamLogo from "../components/TeamLogo.jsx";
 import SocialLinks from "../components/SocialLinks.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx";
-import { SettingsDrawer, GearIcon } from "../components/SettingsPanel.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { flagFor } from "../data/circuits.js";
@@ -852,7 +851,42 @@ function ClassicHero({ driver, championship, color }) {
 // championship standing and the six headline stats are packed in beside it on a
 // light panel that echoes the card's team-colour frame and fills its full
 // height, so nothing reads as empty. No dark hero, no rating breakdown.
-function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges, teamBadges }) {
+// Pinned-achievement medallion for the trophy shelf: a trophy tile in the
+// achievement category's colour, with the same hover popover the podium seals
+// use — the name big, the "how you earn it" line underneath.
+const ACH_CAT_COLORS = {
+  milestones: "#ec4899",
+  speed: "#38bdf8",
+  racecraft: "#a78bfa",
+  consistency: "#34d399",
+  special: "#f59e0b",
+};
+
+function AchievementBadge({ name, tagline, cat }) {
+  const color = ACH_CAT_COLORS[cat] || "#ec4899";
+  return (
+    <span
+      className="group relative inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-dark"
+      role="img"
+      aria-label={`Achievement: ${name}`}
+    >
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" style={{ color }} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="9" r="5" />
+        <path d="M9.5 13.5L8 21l4-2 4 2-1.5-7.5" />
+      </svg>
+      {name}
+      <span
+        role="tooltip"
+        className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 w-max max-w-[14rem] -translate-x-1/2 translate-y-1 whitespace-normal rounded-lg border border-border bg-card px-3 py-2 text-left opacity-0 shadow-xl shadow-ink/20 transition duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"
+      >
+        <span className="block whitespace-nowrap font-display text-xs font-extrabold uppercase tracking-tight text-dark">{name}</span>
+        <span className="mt-0.5 block text-[11px] font-normal leading-snug text-light">{tagline}</span>
+      </span>
+    </span>
+  );
+}
+
+function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges, teamBadges, pinnedAchievements }) {
   // Season ⇄ All-time switch for the headline numbers. Only offered when the
   // driver actually spans several seasons (allTime comes with the career).
   const [scope, setScope] = useState("season");
@@ -1047,6 +1081,15 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
           {/* headline stats — bottom-anchored so they fill the space beside the
               card. Linked multi-season drivers get the Season ⇄ All-time switch. */}
           <div className="mt-5 lg:mt-auto lg:pt-5">
+            {/* pinned achievements (self-chosen in the private area, max 3) sit
+                right above the stats heading; hovering explains each one */}
+            {(pinnedAchievements || []).length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center justify-center gap-2 lg:justify-start">
+                {pinnedAchievements.map((a) => (
+                  <AchievementBadge key={a.key} name={a.name} tagline={a.tagline} cat={a.cat} />
+                ))}
+              </div>
+            )}
             {allTime && (
               <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
@@ -1090,7 +1133,6 @@ export default function DriverProfile({ previewId, preview }) {
   const navigate = useNavigate();
   const { user: authedUser } = useAuth();
   // Drawer for the site settings button shown on one's OWN profile.
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const { data, loading, error } = useApi(
     useCallback(() => Promise.all([api.driverProfile(id), api.driverRating(id)]), [id])
   );
@@ -1182,18 +1224,7 @@ export default function DriverProfile({ previewId, preview }) {
         </svg>
         Edit my profile
       </Link>
-      {/* Site settings (theme + graphics) live here now — the bell menu
-          used to carry them. */}
-      <button
-        type="button"
-        onClick={() => setSettingsOpen(true)}
-        className="btn-secondary inline-flex items-center gap-1.5"
-        title="Site settings"
-      >
-        <GearIcon />
-        Settings
-      </button>
-      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {/* Site settings moved into the /profile member bar — no gear here. */}
     </div>
   );
 
@@ -1280,12 +1311,16 @@ export default function DriverProfile({ previewId, preview }) {
           career={p.career}
           badges={p.badges}
           teamBadges={p.teamBadges}
+          pinnedAchievements={p.pinnedAchievements}
         />
       )}
 
       {/* The per-season AC telemetry (overtakes, consistency, contacts,
           penalties) is deliberately NOT shown here — it feeds the rating
           calculation and the per-round Race Facts instead. */}
+
+      {/* Pinned achievements render INSIDE the CardHeader (above the stats
+          heading) — no standalone row here anymore. */}
 
       {/* Season form + Head to head */}
       <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">

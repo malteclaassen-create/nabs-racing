@@ -37,7 +37,21 @@ function fmtLap(ms) {
 // the race table (same row rhythm, colours, type sizes, cascade entrance):
 // Pos | Driver | Team | Time | Gap (to pole). Entrants without a roster match
 // (qualified but never raced/registered) render under their AC name, unlinked.
+// Sectors as m:ss.mmm would be noise — quali sectors read best as ss.mmm.
+function fmtSector(ms) {
+  if (ms == null || !isFinite(ms) || ms <= 0) return null;
+  const s = Math.floor(ms / 1000);
+  return `${s}.${String(ms % 1000).padStart(3, "0")}`;
+}
+
 function QualiTable({ rows }) {
+  // Sector columns only exist when the import carried them (older blobs
+  // don't). The field's best time in each sector is tinted purple.
+  const hasSectors = rows.some((r) => Array.isArray(r.sectors));
+  const bestSector = [0, 1, 2].map((i) => {
+    const vals = rows.map((r) => r.sectors?.[i]).filter((v) => v > 0);
+    return vals.length ? Math.min(...vals) : null;
+  });
   return (
     <div className="card overflow-hidden">
       <div className="overflow-x-auto">
@@ -47,6 +61,9 @@ function QualiTable({ rows }) {
               <th className="w-14 px-3 py-3 text-center">Pos</th>
               <th className="px-3 py-3">Driver</th>
               <th className="hidden px-3 py-3 sm:table-cell">Team</th>
+              {hasSectors && <th className="hidden px-3 py-3 text-right lg:table-cell">S1</th>}
+              {hasSectors && <th className="hidden px-3 py-3 text-right lg:table-cell">S2</th>}
+              {hasSectors && <th className="hidden px-3 py-3 text-right lg:table-cell">S3</th>}
               <th className="hidden px-3 py-3 text-right md:table-cell">Time</th>
               <th className="hidden px-3 py-3 text-right md:table-cell">Gap</th>
             </tr>
@@ -116,6 +133,22 @@ function QualiTable({ rows }) {
                       <span className="font-mono text-faint">—</span>
                     )}
                   </td>
+                  {hasSectors &&
+                    [0, 1, 2].map((si) => {
+                      const v = r.sectors?.[si];
+                      const isBest = v != null && bestSector[si] != null && v === bestSector[si];
+                      return (
+                        <td
+                          key={si}
+                          className={`hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums lg:table-cell ${
+                            isBest ? "font-bold text-purple-500" : "text-light"
+                          }`}
+                          title={isBest ? "Fastest sector of the session" : undefined}
+                        >
+                          {fmtSector(v) || <span className="text-faint">—</span>}
+                        </td>
+                      );
+                    })}
                   <td
                     className={`hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums md:table-cell ${
                       pole ? "font-bold text-purple-500" : "text-medium"

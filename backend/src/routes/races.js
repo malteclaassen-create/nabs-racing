@@ -264,6 +264,9 @@ router.get("/:id/results", async (req, res, next) => {
             name: ov?.displayName || d?.name || e.name || e.acDriverName,
             country: d?.country || null,
             bestLapMs: e.bestLapMs ?? null,
+            // Sector times of the best lap ([s1,s2,s3] ms) — imports before
+            // this feature simply have none and the columns hide.
+            sectors: Array.isArray(e.sectors) && e.sectors.length === 3 ? e.sectors : null,
             gapMs: e.bestLapMs != null && pole != null && e.bestLapMs > pole ? e.bestLapMs - pole : null,
             carModel: e.carModel ?? null,
             team: team

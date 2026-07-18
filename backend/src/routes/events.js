@@ -2,27 +2,51 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { syncRaceToDiscord } from "../services/discordService.js";
 import { optionalUser, resolveDriverId, isAdminRequest } from "../middleware/auth.js";
-import { resolveSeasonId } from "../services/seasonService.js";
+import { resolveSeasonId, getPrivateSeasonIds } from "../services/seasonService.js";
+import { resolveSeries, seasonIdsOfSeries } from "../lib/series.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
 import { seasonRowForDriver } from "../lib/persons.js";
+import { readNotifySettings, attendanceOpensAt } from "../lib/notifications.js";
 
 const router = Router();
 const VALID = ["ACCEPTED", "DECLINED", "TENTATIVE"];
+
+// Season ids whose upcoming races the events feature covers. An explicit
+// ?season keeps the old single-season behaviour; otherwise EVERY season of the
+// viewed series the caller may see counts (private ones admin-only) — so next
+// season's races can already take sign-ups while the current season finishes.
+export async function eventSeasonIds(prisma, req) {
+  const admin = isAdminRequest(req);
+  if (req.query.season) {
+    const id = await resolveSeasonId(prisma, req.query.season, {
+      includePrivate: admin,
+      series: req.query.series,
+    });
+    return id ? [id] : [];
+  }
+  const series = await resolveSeries(prisma, req.query.series, { includePrivate: admin });
+  const ids = series ? (await seasonIdsOfSeries(prisma, series.id)).map((s) => s.id) : [];
+  if (!ids.length) {
+    // Unmigrated single-series data: fall back to the active season.
+    const id = await resolveSeasonId(prisma, undefined, { includePrivate: admin });
+    return id ? [id] : [];
+  }
+  if (admin) return ids;
+  const priv = await getPrivateSeasonIds(prisma);
+  return ids.filter((i) => !priv.has(i));
+}
 
 // GET /api/events -> upcoming races (not completed) with RSVP lists.
 // Season-scoped (default: the active season) so events never mix seasons.
 // An admin may target a private season (site preview); the public can't.
 router.get("/", async (req, res, next) => {
   try {
-    const seasonId = await resolveSeasonId(prisma, req.query.season, {
-      includePrivate: isAdminRequest(req),
-      series: req.query.series,
-    });
+    const seasonIds = await eventSeasonIds(prisma, req);
     // Championship rounds AND training sessions get RSVP (training is exactly
     // what session planning needs); special events stay announcement-only.
     const allUpcoming = await prisma.race.findMany({
-      where: { isCompleted: false, seasonId },
+      where: { isCompleted: false, seasonId: { in: seasonIds } },
       orderBy: [{ number: "asc" }, { date: "asc" }],
       include: {
         rsvps: { include: { driver: { include: { team: true } } } },
@@ -34,6 +58,9 @@ router.get("/", async (req, res, next) => {
 
     // Session format (raw-SQL columns) for the attendance hero.
     const format = await readRaceFormat(prisma, races.map((r) => r.id));
+
+    // Sign-up gating + which answer columns the page shows (admin-configured).
+    const notify = await readNotifySettings(prisma);
 
     const events = races.map((race) => {
       const grouped = { ACCEPTED: [], DECLINED: [], TENTATIVE: [] };
@@ -56,6 +83,8 @@ router.get("/", async (req, res, next) => {
         info: race.info,
         qualiMinutes: format.get(race.id)?.qualiMinutes ?? null,
         raceLaps: format.get(race.id)?.raceLaps ?? null,
+        attendanceOpensAt: attendanceOpensAt(race, notify)?.toISOString() ?? null,
+        visibleStatuses: notify.attendanceShow,
         counts: {
           ACCEPTED: grouped.ACCEPTED.length,
           DECLINED: grouped.DECLINED.length,
@@ -66,6 +95,33 @@ router.get("/", async (req, res, next) => {
     });
 
     res.json(events);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/events/open -> { open } — is any upcoming race currently taking
+// attendance answers? Drives whether the nav bar shows the Attendance item:
+// it appears when a sign-up window opens (or a race is scheduled, with no
+// window configured) and leaves again once the race's result is saved
+// (isCompleted takes it out of the upcoming set).
+router.get("/open", async (req, res, next) => {
+  try {
+    const seasonIds = await eventSeasonIds(prisma, req);
+    const upcoming = await prisma.race.findMany({
+      where: { isCompleted: false, seasonId: { in: seasonIds } },
+      select: { id: true, date: true, isSpecialEvent: true },
+    });
+    const types = await readRaceTypes(prisma, upcoming.map((r) => r.id));
+    const notify = await readNotifySettings(prisma);
+    const now = Date.now();
+    const open = upcoming.some((r) => {
+      const type = types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+      if (type === "SPECIAL") return false;
+      const opens = attendanceOpensAt(r, notify);
+      return !opens || opens.getTime() <= now;
+    });
+    res.json({ open });
   } catch (e) {
     next(e);
   }
@@ -85,6 +141,17 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
     if (!race) return res.status(404).json({ error: "Race not found" });
     if (race.isCompleted) return res.status(400).json({ error: "Race already completed" });
+
+    // The sign-up window (admin-configured) is enforced here too, so the
+    // buttons can't be worked around via the API before it opens.
+    const opens = attendanceOpensAt(race, await readNotifySettings(prisma));
+    if (opens && opens.getTime() > Date.now()) {
+      const when = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "UTC", weekday: "short", day: "2-digit", month: "short",
+        hour: "2-digit", minute: "2-digit",
+      }).format(opens);
+      return res.status(403).json({ error: `Sign-up isn't open yet. It opens ${when} UTC` });
+    }
 
     // RSVP as the person's row in the RACE's season — the login may still
     // point at another season's row (e.g. answering next season's opener

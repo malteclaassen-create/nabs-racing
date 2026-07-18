@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "../hooks/useTheme.js";
 import { useGraphics } from "../hooks/useGraphics.js";
+import { useAuth } from "../hooks/useAuth.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 
 export function GearIcon() {
@@ -74,6 +75,7 @@ export function SettingsDrawer({ open, onClose }) {
   const [show, setShow] = useState(false); // animated into place
   const { theme, toggle } = useTheme();
   const { mode, setMode } = useGraphics();
+  const { user, isLoggedIn, logout } = useAuth();
 
   useEffect(() => {
     if (open) {
@@ -152,6 +154,26 @@ export function SettingsDrawer({ open, onClose }) {
                     machines or when your browser&rsquo;s hardware acceleration is off.
                   </p>
                 </section>
+
+                {/* Account: the sign-out moved here from the profile header. */}
+                {isLoggedIn && (
+                  <section>
+                    <h3 className="mb-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Account</h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        logout();
+                        closePanel();
+                      }}
+                      className="flex w-full items-center justify-between rounded-xl border border-border bg-surface2 px-4 py-3 text-sm font-semibold text-dark transition hover:border-red-400/60 hover:text-red-500"
+                    >
+                      <span>Sign out{user?.driverName ? ` (${user.driverName})` : ""}</span>
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+                      </svg>
+                    </button>
+                  </section>
+                )}
               </div>
             </aside>
           </div>,

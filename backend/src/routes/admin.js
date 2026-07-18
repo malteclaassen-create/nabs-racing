@@ -34,7 +34,7 @@ import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq, writeWelcomeFaq } from "../lib/welcomeFaq.js";
 import { dbListMembers, dbGetMember, dbSetBanned, shapeMember } from "../lib/members.js";
-import { dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds } from "../lib/persons.js";
+import { dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups } from "../lib/persons.js";
 import {
   dbListSeries, dbCreateSeries, dbUpdateSeries, dbActivateSeries, dbDeleteSeries,
   getSeriesById, resolveSeries, seasonIdsOfSeries, seasonSeriesMap, setSeasonSeries,
@@ -44,6 +44,7 @@ import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import {
   notifyResultsSaved, notifyDownloadAdded, notifySeatFilled, notifyCardUnlocksForSeason,
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
+  sendAttendancePing,
 } from "../lib/notifications.js";
 import { UPLOADS_DIR, LOGS_DIR } from "../lib/dataDirs.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap } from "../lib/liveServers.js";
@@ -416,6 +417,22 @@ router.post("/races/:id/quali", upload.single("file"), async (req, res, next) =>
     const parsed = parseAcQualiJson(json, drivers);
 
     const nameOf = new Map(drivers.map((d) => [d.id, d.name]));
+    // The three sector times of each entrant's BEST lap, looked up in the
+    // session's raw lap list (the classification itself only carries the
+    // total). Keyed by AC name; missing/imcomplete laps simply have none.
+    const sectorsByName = new Map();
+    for (const r of json.Result || []) {
+      if (!r?.DriverGuid || !Number.isFinite(r.BestLap) || r.BestLap <= 0) continue;
+      const lap = (json.Laps || []).find(
+        (l) =>
+          l.DriverGuid === r.DriverGuid &&
+          l.LapTime === r.BestLap &&
+          Array.isArray(l.Sectors) &&
+          l.Sectors.length === 3 &&
+          l.Sectors.every((s) => s > 0)
+      );
+      if (lap) sectorsByName.set(r.DriverName, lap.Sectors);
+    }
     const blob = {
       track: parsed.track ?? null,
       date: parsed.date ?? null,
@@ -427,6 +444,7 @@ router.post("/races/:id/quali", upload.single("file"), async (req, res, next) =>
         name: e.suggestedDriverId ? nameOf.get(e.suggestedDriverId) : e.acDriverName,
         acDriverName: e.acDriverName,
         bestLapMs: e.bestLapMs,
+        sectors: sectorsByName.get(e.acDriverName) ?? null,
         carModel: e.carModel,
         matchedBy: e.matchedBy,
       })),
@@ -569,6 +587,17 @@ router.put("/notification-settings", async (req, res, next) => {
     res.json({ ok: true, settings: await writeNotifySettings(prisma, req.body?.settings) });
   } catch (e) {
     next(e);
+  }
+});
+
+// POST /api/admin/races/:id/attendance-ping -> broadcast a manual "please
+// answer the attendance" nudge for one upcoming race. Repeatable on purpose.
+router.post("/races/:id/attendance-ping", async (req, res) => {
+  try {
+    await sendAttendancePing(prisma, req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message || "Failed to send" });
   }
 });
 
@@ -918,6 +947,154 @@ router.post("/drivers", async (req, res, next) => {
   }
 });
 
+// GET /api/admin/driver-db?series= — the series' all-time driver DATABASE:
+// one entry per PERSON across every season (person links first, same name as
+// fallback), with identity, last team/season and career starts. Powers the
+// roster builder's search fields: build a new season by picking people from
+// here instead of cloning a whole roster of maybe-no-shows.
+router.get("/driver-db", async (req, res, next) => {
+  try {
+    const series = await resolveSeries(prisma, req.query.series, { includePrivate: true });
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    // seasonIdsOfSeries returns {id, number} rows — we only need the ids here.
+    const seasonIds = (await seasonIdsOfSeries(prisma, series.id)).map((s) => s.id ?? s);
+    const [drivers, persons] = await Promise.all([
+      prisma.driver.findMany({
+        where: { seasonId: { in: seasonIds } },
+        include: { team: { select: { name: true } }, season: { select: { number: true } } },
+      }),
+      getPersonGroups(prisma),
+    ]);
+    // steamId is a raw column the generated client may not know — attach raw.
+    await attachSteamIds(drivers);
+    // Career starts per row (DNS excluded) — summed per person below.
+    const startRows = await prisma.raceResult.groupBy({
+      by: ["driverId"],
+      where: { driverId: { in: drivers.map((d) => d.id) }, status: { not: "DNS" } },
+      _count: { driverId: true },
+    });
+    const startsById = new Map(startRows.map((r) => [r.driverId, r._count.driverId]));
+
+    const groups = new Map(); // person key -> rows (newest season first)
+    for (const d of drivers) {
+      const key = persons.byDriver.get(d.id) || `name:${d.name.trim().toLowerCase()}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(d);
+    }
+    const entries = [...groups.entries()].map(([key, rows]) => {
+      rows.sort((a, b) => (b.season?.number ?? 0) - (a.season?.number ?? 0));
+      const newest = rows[0];
+      return {
+        key,
+        name: newest.name,
+        country: newest.country || null,
+        photoUrl: newest.photoUrl || newest.discordAvatar || null,
+        steamId: rows.find((r) => r.steamId)?.steamId || null,
+        discordUserId: rows.find((r) => r.discordUserId)?.discordUserId || null,
+        sourceDriverId: newest.id,
+        lastSeasonNumber: newest.season?.number ?? null,
+        lastTeamName: newest.team?.name ?? null,
+        starts: rows.reduce((s, r) => s + (startsById.get(r.id) || 0), 0),
+        // Which seasons the person already has a row in (the builder greys
+        // those out for the season being edited).
+        rows: rows.map((r) => ({ seasonNumber: r.season?.number ?? null, driverId: r.id })),
+      };
+    });
+    entries.sort((a, b) => b.starts - a.starts || a.name.localeCompare(b.name));
+    res.json({ entries });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/drivers/from-db { sourceDriverId, teamId } — put a person
+// from the database into a team of the team's season: a fresh row cloned from
+// their newest identity (photo, flag, number, Steam ID for import matching),
+// person-linked to the source so career stats and seals carry over. The
+// Discord id is NOT copied (unique across seasons; it moves on login or via
+// the Drivers tab, same as always).
+router.post("/drivers/from-db", async (req, res, next) => {
+  try {
+    const { sourceDriverId, teamId } = req.body || {};
+    if (!sourceDriverId || !teamId) return res.status(400).json({ error: "sourceDriverId and teamId required" });
+    const [source, team] = await Promise.all([
+      prisma.driver.findUnique({ where: { id: sourceDriverId } }),
+      prisma.team.findUnique({ where: { id: teamId }, include: { season: { select: { id: true, number: true } } } }),
+    ]);
+    if (!source) return res.status(404).json({ error: "Source driver not found" });
+    if (!team?.season) return res.status(404).json({ error: "Team not found" });
+    await attachSteamIds([source]);
+
+    // Already on this season's roster (any linked row, or a same-name row)?
+    const linked = await getLinkedDriverIds(prisma, source.id);
+    const clash = await prisma.driver.findFirst({
+      where: {
+        seasonId: team.season.id,
+        OR: [{ id: { in: linked } }, { name: { equals: source.name } }],
+      },
+      include: { team: { select: { name: true } } },
+    });
+    if (clash) {
+      return res.status(409).json({ error: `${clash.name} is already on this season's roster (${clash.team?.name || "no team"}).` });
+    }
+
+    let id = `${source.id.replace(/_s\d+$/, "")}_s${team.season.number}`;
+    if (await prisma.driver.findUnique({ where: { id } })) id = await uniqueDriverId(source.name);
+    const driver = await prisma.driver.create({
+      data: {
+        id,
+        name: source.name,
+        discordName: source.discordName,
+        teamId: team.id,
+        tier: team.tier,
+        isActive: true,
+        seasonId: team.season.id,
+        country: source.country,
+        photoUrl: source.photoUrl,
+        discordAvatar: source.discordAvatar,
+        bio: source.bio,
+        number: source.number,
+        socials: source.socials,
+      },
+    });
+    // Steam ID for import auto-matching — a raw column (ensureAppSchema), so
+    // it's written raw after the create. The source row may predate GUID
+    // capture, so ANY of the person's linked rows can donate theirs. A
+    // same-season duplicate just stays empty (the import captures it again).
+    let steamId = source.steamId || null;
+    if (!steamId && linked.length) {
+      const rows = await prisma
+        .$queryRawUnsafe(
+          `SELECT "steamId" FROM "Driver" WHERE "id" IN (${linked.map(() => "?").join(",")}) AND "steamId" IS NOT NULL LIMIT 1`,
+          ...linked
+        )
+        .catch(() => []);
+      steamId = rows[0]?.steamId || null;
+    }
+    // Unlinked archive rows of the same name can donate too (the database
+    // groups by name when no person link exists yet).
+    if (!steamId) {
+      const rows = await prisma
+        .$queryRawUnsafe(
+          `SELECT "steamId" FROM "Driver" WHERE lower("name") = lower(?) AND "steamId" IS NOT NULL LIMIT 1`,
+          source.name
+        )
+        .catch(() => []);
+      steamId = rows[0]?.steamId || null;
+    }
+    if (steamId) {
+      await prisma
+        .$executeRawUnsafe(`UPDATE "Driver" SET "steamId" = ? WHERE "id" = ?`, steamId, driver.id)
+        .catch(() => {});
+    }
+    await dbLinkDrivers(prisma, [source.id, driver.id]);
+    res.status(201).json({ ...driver, teamName: team.name });
+  } catch (e) {
+    if (e.code === "P2002") return res.status(409).json({ error: "A driver with this Steam ID already exists in that season." });
+    next(e);
+  }
+});
+
 router.put("/drivers/:id", async (req, res, next) => {
   try {
     const { name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role, hideFromStandings } = req.body || {};
@@ -972,6 +1149,36 @@ router.put("/drivers/:id", async (req, res, next) => {
       ? await prisma.driver.update({ where: { id: req.params.id }, data })
       : await prisma.driver.findUnique({ where: { id: req.params.id } });
     if (!driver) return res.status(404).json({ error: "Driver not found" });
+
+    // Saving a Discord ID makes it count in EVERY season: the ID itself lives
+    // on this one row (unique), but all of the person's other season rows are
+    // person-linked automatically — same Steam ID or same name, as long as no
+    // OTHER Discord account has claimed them. Login handover, results-post
+    // mentions and career stats then follow the person everywhere without
+    // re-entering the ID per season. Best-effort: a linking hiccup must never
+    // fail the save itself.
+    if (data.discordUserId) {
+      try {
+        const own = [driver];
+        await attachSteamIds(own);
+        const steamId = own[0].steamId || null;
+        const twins = await prisma.$queryRawUnsafe(
+          `SELECT "id", "discordUserId" FROM "Driver"
+            WHERE "id" != ?
+              AND (lower("name") = lower(?)${steamId ? ` OR "steamId" = ?` : ""})`,
+          driver.id,
+          driver.name,
+          ...(steamId ? [steamId] : [])
+        );
+        const already = new Set(await getLinkedDriverIds(prisma, driver.id));
+        const fresh = twins
+          .filter((t) => !already.has(t.id) && (!t.discordUserId || t.discordUserId === data.discordUserId))
+          .map((t) => t.id);
+        if (fresh.length) await dbLinkDrivers(prisma, [driver.id, ...fresh]);
+      } catch {
+        /* best-effort */
+      }
+    }
     if (role !== undefined) {
       driver.role = await writeDriverRole(prisma, driver.id, role);
     }
@@ -1635,6 +1842,40 @@ router.post("/events/:id/announce", async (req, res, next) => {
 // attached to it — results, constructor scores, RSVPs, seat offers. Standings
 // recompute themselves from the remaining rounds. Replay downloads pointing at
 // the race survive; they just lose their race link.
+// DELETE /api/admin/races/:id/results — wipe ONLY the stored results of a
+// round: the race itself (date, track, sign-ups, quali) stays on the calendar
+// as if the results were never imported. Standings recalculate without it.
+// A backup is written first, exactly like the full delete.
+router.delete("/races/:id/results", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({
+      where: { id: req.params.id },
+      include: { _count: { select: { results: true } } },
+    });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    if (race._count.results === 0) {
+      return res.status(409).json({ error: "This race has no stored results." });
+    }
+    await tryCreateBackup(prisma, `before-clear-results-r${race.number ?? "x"}`);
+    await prisma.$transaction([
+      prisma.raceResult.deleteMany({ where: { raceId: race.id } }),
+      prisma.constructorRaceScore.deleteMany({ where: { raceId: race.id } }),
+      // Back to "not run yet": the calendar card flips to upcoming and the
+      // fan-favourite pick belongs to the deleted classification.
+      prisma.race.update({ where: { id: race.id }, data: { isCompleted: false } }),
+    ]);
+    await prisma
+      .$executeRawUnsafe(
+        `UPDATE "Race" SET "driverOfTheDayId" = NULL, "driverOfTheDayBy" = NULL WHERE "id" = ?`,
+        race.id
+      )
+      .catch(() => {});
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.delete("/events/:id", async (req, res, next) => {
   try {
     const race = await prisma.race.findUnique({

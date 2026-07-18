@@ -21,6 +21,26 @@ export default function DiscordCallback() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    // DEV-ONLY shortcut: a pre-signed user token in ?devToken= logs straight in
+    // (used when the Discord OAuth redirect can't reach localhost). Dead code in
+    // any production build — import.meta.env.DEV is false there and the branch
+    // is stripped; the token itself is still verified by the backend anyway.
+    const devToken = import.meta.env.DEV ? params.get("devToken") : null;
+    if (devToken) {
+      try {
+        const p = JSON.parse(atob(devToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+        saveUser(devToken, {
+          discordId: p.discordId,
+          discordName: p.discordName,
+          driverId: p.driverId || null,
+          driverName: p.driverName || null,
+        });
+        navigate("/cockpit", { replace: true });
+      } catch {
+        setError("Invalid dev token.");
+      }
+      return;
+    }
     const code = params.get("code");
     if (!code) {
       setError("No code received from Discord.");

@@ -206,7 +206,11 @@ export const api = {
     request(`/live/championship${seriesQ()}${simulate ? (seriesQ() ? "&" : "?") + "simulate=1" : ""}`, { auth: true }),
 
   // events / RSVP (public; scoped to the viewed season, default active)
-  events: () => request(`/events${seasonQ()}`, { auth: true }),
+  // Attendance is about UPCOMING races, so these deliberately ignore the
+  // season switcher (series only): next season's sign-ups must show while the
+  // current season is still the one being viewed.
+  events: () => request(`/events${seriesQ()}`, { auth: true }),
+  attendanceOpen: () => request(`/events/open${seriesQ()}`, { auth: true }),
   rsvp: (raceId, driverId, status) =>
     request(`/events/${raceId}/rsvp`, { method: "POST", body: { driverId, status }, userAuth: true }),
   removeRsvp: (raceId, driverId) =>
@@ -219,6 +223,8 @@ export const api = {
   adminNotificationSettings: () => request("/admin/notification-settings", { auth: true }),
   saveNotificationSettings: (settings) =>
     request("/admin/notification-settings", { method: "PUT", body: { settings }, auth: true }),
+  adminAttendancePing: (raceId) =>
+    request(`/admin/races/${raceId}/attendance-ping`, { method: "POST", auth: true }),
 
   // logged-in driver self-service
   me: () => request("/me", { userAuth: true }),
@@ -259,10 +265,23 @@ export const api = {
   setMyCardAnim: (driverId, anim) =>
     request("/me/card-anim", { method: "PUT", body: { driverId, anim }, userAuth: true }),
 
+  // the private Cockpit (member-only, always about the logged-in driver)
+  cockpitOverview: () => request("/me/cockpit/overview", { userAuth: true }),
+  cockpitSeason: () => request("/me/cockpit/season", { userAuth: true }),
+  cockpitTracks: () => request("/me/cockpit/tracks", { userAuth: true }),
+  cockpitCareer: () => request("/me/cockpit/career", { userAuth: true }),
+  cockpitDuels: () => request("/me/cockpit/duels", { userAuth: true }),
+  cockpitAchievements: () => request("/me/cockpit/achievements", { userAuth: true }),
+  cockpitRaces: () => request("/me/cockpit/races", { userAuth: true }),
+  cockpitInsights: () => request("/me/cockpit/insights", { userAuth: true }),
+  cockpitRaceAnalysis: (raceId) => request(`/me/cockpit/race/${raceId}`, { userAuth: true }),
+  saveCockpitGoals: (goals) => request("/me/cockpit/goals", { method: "PUT", body: { goals }, userAuth: true }),
+  saveCockpitPins: (keys) => request("/me/cockpit/pins", { method: "PUT", body: { keys }, userAuth: true }),
+
   // driver market (identity from the Discord login). Season-scoped like
   // /events — without it, viewing another season shows that season's races
   // but the market of the ACTIVE one (the "Offer my seat" button vanished).
-  market: () => request(`/market${seasonQ()}`, { userAuth: true }),
+  market: () => request(`/market${seriesQ()}`, { userAuth: true }),
   offerSeat: (raceId) => request("/market/offer", { method: "POST", body: { raceId }, userAuth: true }),
   withdrawOffer: (offerId) => request(`/market/offer/${offerId}`, { method: "DELETE", userAuth: true }),
   expressInterest: (offerId) =>
@@ -356,6 +375,11 @@ export const api = {
   saveRatingsWeights: (weights) =>
     request("/admin/ratings/weights", { method: "PUT", body: { weights }, auth: true }),
   createDriver: (body) => request("/admin/drivers", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
+  // The series' all-time driver database (one entry per person) + adding one
+  // of those people into a team of the currently edited season.
+  adminDriverDb: () => request(`/admin/driver-db${seriesQ()}`, { auth: true }),
+  addDriverFromDb: (sourceDriverId, teamId) =>
+    request("/admin/drivers/from-db", { method: "POST", body: { sourceDriverId, teamId }, auth: true }),
   updateDriver: (id, body) => request(`/admin/drivers/${id}`, { method: "PUT", body, auth: true }),
   changePin: (newPin) =>
     request("/admin/settings/pin", { method: "PUT", body: { newPin }, auth: true }),
@@ -378,6 +402,8 @@ export const api = {
   // the backend writes a backup first.
   deleteEvent: (id, { force = false } = {}) =>
     request(`/admin/events/${id}${force ? "?force=1" : ""}`, { method: "DELETE", auth: true }),
+  // Wipe only a round's stored results — the race stays on the calendar.
+  clearRaceResults: (id) => request(`/admin/races/${id}/results`, { method: "DELETE", auth: true }),
 
   // series (admin) — the level above seasons. The slug is set at creation and
   // never changes (URL identity); renames only touch the name.

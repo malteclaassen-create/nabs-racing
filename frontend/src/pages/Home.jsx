@@ -289,12 +289,13 @@ function CarReveal({ season }) {
     <div
       /* once the car is up, the panel goes solid near-black so both the blend
          cutout and the 3D stage stay clean no matter the hero photo behind */
-      className={`hero-car-slot hero-anim relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/12 lg:w-[42%] ${
-        showCar ? "bg-[#05070c]" : "bg-white/[0.04]"
+      className={`hero-car-slot hero-anim relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-2xl border border-black/10 dark:border-white/12 lg:w-[42%] ${
+        showCar ? "bg-[#05070c]" : "bg-black/[0.04] dark:bg-white/[0.04]"
       }`}
       style={{ animationDelay: "0.24s" }}
     >
-      <div className="speed-hatch absolute inset-0 opacity-20" />
+      {/* white hatch once the car's dark stage is up; theme-aware before */}
+      <div className={`${showCar ? "speed-hatch" : "hero-hatch"} absolute inset-0 opacity-20`} />
       {/* no "coming soon" placeholder copy — while probing the panel just sits
           quietly with the hatch until the car (2D or 3D) is confirmed */}
       {probing && <span aria-hidden className="absolute inset-0" />}
@@ -581,12 +582,10 @@ export default function Home() {
       {/* ===================== LEAD FEATURE ===================== */}
       {/* `reveal` (without an inline delay) makes the hero the first stop of the
           top-to-bottom page build; the hero-anim children then stagger inside. */}
-      {/* The hero is ALWAYS the dark card, on both themes: a translucent white
-          scrim over the dark photo turns to grey mush in light mode, so instead
-          of a light variant the section carries its own `dark` class — every
-          dark: style inside applies regardless of the site theme (darkMode is
-          class-based), and light mode gets the exact card it looks best as. */}
-      <section className="dark reveal relative overflow-hidden rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-white/10">
+      {/* The hero follows the site theme: dark mode keeps the classic dark
+          card, light mode gets a proper WHITE version — white scrims over the
+          photo and ink text (the inner elements carry light+dark variants). */}
+      <section className="reveal relative overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10">
         <img
           ref={heroImgRef}
           key={heroFor(season)}
@@ -595,20 +594,24 @@ export default function Home() {
           onError={heroOnError}
           className="absolute inset-0 h-full w-full scale-[1.12] object-cover object-center will-change-transform"
         />
-        {/* Backdrop scrim — dark in both themes. The archive scrim reaches
-            further across so the centred podium sits on solid ground. */}
+        {/* Backdrop scrim — white in light mode, dark in dark mode. The archive
+            scrim reaches further across so the centred podium sits on solid
+            ground. The light scrim runs slightly stronger: ink text needs more
+            ground on a photo than white text does. */}
         <div
           className={`absolute inset-0 bg-gradient-to-tr ${
-            isPast ? "from-ink via-ink/80 to-ink/10" : "from-ink via-ink/75 to-ink/0"
+            isPast
+              ? "from-white via-white/85 to-white/15 dark:from-ink dark:via-ink/80 dark:to-ink/10"
+              : "from-white via-white/80 to-white/5 dark:from-ink dark:via-ink/75 dark:to-ink/0"
           }`}
         />
         <div
-          className={`absolute inset-0 bg-gradient-to-t from-ink/95 to-transparent ${
-            isPast ? "via-ink/20" : "via-transparent"
+          className={`absolute inset-0 bg-gradient-to-t from-white/95 to-transparent dark:from-ink/95 ${
+            isPast ? "via-white/25 dark:via-ink/20" : "via-transparent"
           }`}
         />
         <div
-          className="speed-hatch absolute inset-y-0 right-0 w-[18%]"
+          className="hero-hatch absolute inset-y-0 right-0 w-[18%]"
           style={{
             WebkitMaskImage: "linear-gradient(to left, #000 35%, transparent 100%)",
             maskImage: "linear-gradient(to left, #000 35%, transparent 100%)",
@@ -633,7 +636,7 @@ export default function Home() {
                   <span>Championship complete</span>
                   <span className="h-px w-10 bg-accent/50" />
                 </div>
-                <div className="mt-4 font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-white sm:text-7xl">
+                <div className="mt-4 font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl">
                   {season?.name}
                 </div>
               </div>
@@ -650,7 +653,7 @@ export default function Home() {
                 </Link>
                 <Link
                   to="/constructors"
-                  className="inline-flex items-center rounded-lg border border-white/20 bg-white/5 px-6 py-3 text-sm font-bold uppercase tracking-wide text-white backdrop-blur-sm transition hover:bg-white/15"
+                  className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
                 >
                   Constructors
                 </Link>
@@ -668,30 +671,30 @@ export default function Home() {
                   <span className="live-dot inline-block h-2 w-2 rounded-full bg-brand" />
                   {comingSoonCopy.eyebrow}
                 </div>
-                <h1 className="hero-anim font-display text-4xl font-black uppercase leading-[0.95] tracking-tight text-white sm:text-6xl" style={{ animationDelay: "0.12s" }}>
+                <h1 className="hero-anim font-display text-4xl font-black uppercase leading-[0.95] tracking-tight text-ink dark:text-white sm:text-6xl" style={{ animationDelay: "0.12s" }}>
                   {season?.name}
                 </h1>
                 {season?.game && (
-                  <div className="hero-anim font-mono text-sm font-bold uppercase tracking-wider text-white/60" style={{ animationDelay: "0.16s" }}>
+                  <div className="hero-anim font-mono text-sm font-bold uppercase tracking-wider text-ink/60 dark:text-white/60" style={{ animationDelay: "0.16s" }}>
                     {season.game}
                   </div>
                 )}
-                <p className="hero-anim max-w-lg text-base leading-relaxed text-white/75" style={{ animationDelay: "0.2s" }}>
+                <p className="hero-anim max-w-lg text-base leading-relaxed text-ink/75 dark:text-white/75" style={{ animationDelay: "0.2s" }}>
                   {comingSoonCopy.blurb}
                 </p>
                 {/* Big countdown to the opener — the same broadcast clock the
                     next-race panel uses, so race day reads the same site-wide. */}
                 {nextRace?.date && (
                   <div className="hero-anim max-w-md" style={{ animationDelay: "0.26s" }}>
-                    <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/55">
+                    <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-ink/55 dark:text-white/55">
                       Season opener · Round {nextRace.number}{nextRace.track ? ` · ${nextRace.track}` : ""}
                     </div>
                     <RaceCountdown date={nextRace.date} className="mt-3" />
-                    <div className="mt-3 flex items-center justify-center gap-2 font-mono text-xs uppercase tracking-wider text-white/60">
-                      <span className="font-bold text-white/85">
+                    <div className="mt-3 flex items-center justify-center gap-2 font-mono text-xs uppercase tracking-wider text-ink/60 dark:text-white/60">
+                      <span className="font-bold text-ink/85 dark:text-white/85">
                         {new Date(nextRace.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
                       </span>
-                      <span className="h-3 w-px bg-white/25" />
+                      <span className="h-3 w-px bg-ink/25 dark:bg-white/25" />
                       <span>{fmtRaceTime(nextRace.date)}</span>
                     </div>
                   </div>

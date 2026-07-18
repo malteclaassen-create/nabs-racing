@@ -188,6 +188,22 @@ body::before {
 
 /* --- Home / editorial accents -------------------------------------- */
 /* Diagonal speed hatching, used as a subtle texture behind hero edges. */
+/* Theme-aware hatch for the Home hero: ink stripes on the white card, the
+   usual white stripes on the dark one. */
+.hero-hatch {
+  --hatch-c: rgba(15, 20, 30, 0.07);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--hatch-c) 0,
+    var(--hatch-c) 2px,
+    transparent 2px,
+    transparent 9px
+  );
+}
+.dark .hero-hatch {
+  --hatch-c: rgba(255, 255, 255, 0.06);
+}
+
 .speed-hatch {
   background-image: repeating-linear-gradient(
     -45deg,

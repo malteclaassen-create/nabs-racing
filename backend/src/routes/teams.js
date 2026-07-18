@@ -2,7 +2,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { isAdminRequest } from "../middleware/auth.js";
-import { getNameOverrides } from "../lib/persons.js";
+import { getNameOverrides, discordIdsForDrivers } from "../lib/persons.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 
 const router = Router();
@@ -38,6 +38,11 @@ router.get("/", async (req, res, next) => {
         .catch(() => []);
       hiddenSet = new Set(hiddenRows.map((r) => r.id));
     }
+    // The person's EFFECTIVE Discord id: the literal value lives on one row
+    // per person (unique), but login and mentions inherit it through the
+    // person links — so the admin Drivers tab should show it too instead of a
+    // misleading "not set" on a fresh season row.
+    const effectiveDiscord = await discordIdsForDrivers(prisma, allIds).catch(() => new Map());
     // Archive rosters show the person's current name with a "raced as" note.
     // No-op for the active season (its own row already carries the current name).
     for (const t of teams) {
@@ -49,6 +54,9 @@ router.get("/", async (req, res, next) => {
         }
         d.role = roles.get(d.id) || null;
         d.hideFromStandings = hiddenSet.has(d.id);
+        // Inherited from a linked season row (own column empty).
+        const eff = effectiveDiscord.get(d.id) || null;
+        d.inheritedDiscordUserId = !d.discordUserId && eff ? eff : null;
       }
     }
     res.json(teams);

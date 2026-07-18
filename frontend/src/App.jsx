@@ -25,6 +25,7 @@ import Live from "./pages/Live.jsx";
 import Downloads from "./pages/Downloads.jsx";
 import Tools from "./pages/Tools.jsx";
 import Profile from "./pages/Profile.jsx";
+import Cockpit from "./pages/Cockpit.jsx";
 import EditDriverCard from "./pages/EditDriverCard.jsx";
 import DiscordCallback from "./pages/DiscordCallback.jsx";
 import Admin from "./pages/Admin.jsx";
@@ -171,6 +172,8 @@ function AppRoutes() {
             upcoming-race panel and the private profile. */}
         <Route path="/tools" element={<Tools />} />
         <Route path="/profile" element={<Profile />} />
+        {/* The member's private driver area (login required). */}
+        <Route path="/cockpit" element={<Cockpit />} />
         {/* Focused editor for just the driver's rating card (linked from /profile). */}
         <Route path="/profile/card" element={<EditDriverCard />} />
         {/* No-login design preview of every card edition. Not in the nav. */}

@@ -11,6 +11,7 @@ import prisma from "../lib/prisma.js";
 import { optionalUser, resolveDriverId, isAdminRequest } from "../middleware/auth.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { seasonRowForDriver } from "../lib/persons.js";
+import { eventSeasonIds } from "./events.js";
 import { notifySeatOffered, notifySeatFilled } from "../lib/notifications.js";
 
 const router = Router();
@@ -88,14 +89,13 @@ const offerInclude = {
 // interest" / "pick a reserve").
 router.get("/", async (req, res, next) => {
   try {
-    // The market only deals in upcoming races, i.e. the active season.
-    // (Admins may preview a private season's market; the public can't.)
-    const seasonId = await resolveSeasonId(prisma, req.query.season, {
-      includePrivate: isAdminRequest(req),
-      series: req.query.series,
-    });
+    // The market deals in upcoming races — like the events list, that spans
+    // every visible season of the series (next season's races can already
+    // trade seats while the current one finishes). Same season resolution as
+    // routes/events.js, so the Attendance page's two data sources line up.
+    const seasonIds = await eventSeasonIds(prisma, req);
     const races = await prisma.race.findMany({
-      where: { isCompleted: false, isSpecialEvent: false, seasonId },
+      where: { isCompleted: false, isSpecialEvent: false, seasonId: { in: seasonIds } },
       orderBy: { number: "asc" },
       include: {
         seatOffers: {
@@ -106,36 +106,44 @@ router.get("/", async (req, res, next) => {
       },
     });
 
-    // The caller's market context IN THIS SEASON: their login may point at
-    // another season's row, so map it to this season's roster (person link /
-    // unclaimed name match — same rules as the login's season handover).
-    let me = null;
+    // The caller's market context PER SEASON: whether they hold a real seat
+    // (or are a reserve) can differ between this season's and next season's
+    // roster, so each race carries the context of ITS season. The top-level
+    // `me` (the viewed/active season's row) stays for the page-level bits.
+    const meBySeason = new Map();
     const myDriverId = await resolveDriverId(prisma, req.user);
     if (myDriverId) {
       const base = await prisma.driver.findUnique({
         where: { id: myDriverId },
         include: { team: true },
       });
-      const d = await seasonRowForDriver(prisma, base, seasonId, req.user?.discordId);
-      if (d) {
-        me = {
-          driverId: d.id,
-          name: d.name,
-          teamId: d.teamId,
-          tier: d.team?.tier ?? d.tier,
-          canOffer: hasRealSeat(d),
-          isReserve: isReserve(d),
-        };
+      for (const sid of new Set(races.map((r) => r.seasonId))) {
+        const d = base && (await seasonRowForDriver(prisma, base, sid, req.user?.discordId));
+        if (d) {
+          meBySeason.set(sid, {
+            driverId: d.id,
+            name: d.name,
+            teamId: d.teamId,
+            tier: d.team?.tier ?? d.tier,
+            canOffer: hasRealSeat(d),
+            isReserve: isReserve(d),
+          });
+        }
       }
     }
+    const activeSeasonId = await resolveSeasonId(prisma, req.query.season, {
+      includePrivate: isAdminRequest(req),
+      series: req.query.series,
+    });
 
     res.json({
-      me,
+      me: meBySeason.get(activeSeasonId) || meBySeason.values().next().value || null,
       races: races.map((race) => ({
         id: race.id,
         number: race.number,
         track: race.track,
         date: race.date,
+        me: meBySeason.get(race.seasonId) || null,
         offers: race.seatOffers.map(shapeOffer),
       })),
     });

@@ -88,6 +88,8 @@ export const NOTIFY_SETTINGS_KEY = "notification_settings";
 // The reminder offsets the admin can enable (hours before kickoff).
 export const REMINDER_OFFSETS = [72, 24, 6, 1];
 
+export const ATTENDANCE_STATUSES = ["ACCEPTED", "DECLINED", "TENTATIVE"];
+
 export const NOTIFY_DEFAULTS = {
   results: true, // "results are in" broadcast
   downloads: true, // "new download" broadcast
@@ -95,6 +97,10 @@ export const NOTIFY_DEFAULTS = {
   seatFilled: true, // personal "you got the seat" note to the picked reserve
   reminders: [24], // race reminders, hours before kickoff
   trainingReminders: true, // do the reminders above also cover training sessions?
+  attendanceOpenDays: null, // sign-up opens N days before race day (null = always open)
+  attendanceOpenHour: 8, // ... at this hour, German time
+  attendanceOpenNotify: true, // broadcast the moment the sign-up opens
+  attendanceShow: [...ATTENDANCE_STATUSES], // which answer columns the page shows
 };
 
 export function sanitizeNotifySettings(input) {
@@ -108,7 +114,49 @@ export function sanitizeNotifySettings(input) {
       (Array.isArray(o.reminders) ? o.reminders : NOTIFY_DEFAULTS.reminders).map(Number).includes(h)
     ),
     trainingReminders: o.trainingReminders !== false,
+    attendanceOpenDays:
+      Number.isFinite(Number(o.attendanceOpenDays)) && Number(o.attendanceOpenDays) >= 1
+        ? Math.min(21, Math.round(Number(o.attendanceOpenDays)))
+        : null,
+    attendanceOpenHour:
+      Number.isFinite(Number(o.attendanceOpenHour)) && Number(o.attendanceOpenHour) >= 0 && Number(o.attendanceOpenHour) <= 23
+        ? Math.round(Number(o.attendanceOpenHour))
+        : NOTIFY_DEFAULTS.attendanceOpenHour,
+    attendanceOpenNotify: o.attendanceOpenNotify !== false,
+    attendanceShow: (() => {
+      const arr = Array.isArray(o.attendanceShow)
+        ? ATTENDANCE_STATUSES.filter((s) => o.attendanceShow.includes(s))
+        : [...ATTENDANCE_STATUSES];
+      // Hiding every column would make the page pointless — fall back to all.
+      return arr.length ? arr : [...ATTENDANCE_STATUSES];
+    })(),
   };
+}
+
+// When the sign-up for a race opens: N days before the race DAY (not the exact
+// kickoff instant), at the configured hour German time — so "5 days, 8:00" for
+// a Friday-evening race means Sunday 08:00. null = no gate, always open.
+export function attendanceOpensAt(race, settings) {
+  if (!settings?.attendanceOpenDays) return null;
+  const kick = raceKickoff(race?.date);
+  if (!kick) return null;
+  // The race's calendar day in Berlin, walked back N days (UTC-noon anchor so
+  // DST shifts can't move the calendar date).
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", dateStyle: "short" })
+    .format(kick)
+    .split("-")
+    .map(Number);
+  const anchor = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12));
+  anchor.setUTCDate(anchor.getUTCDate() - settings.attendanceOpenDays);
+  // That day at the configured Berlin wall-clock hour (try both DST offsets).
+  const h = settings.attendanceOpenHour;
+  for (const offset of [2, 1]) {
+    const t = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), anchor.getUTCDate(), h - offset));
+    if (Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(t)) === h) {
+      return t;
+    }
+  }
+  return new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), anchor.getUTCDate(), h - 1));
 }
 
 const SETTINGS_CACHE_MS = 30_000;
@@ -284,6 +332,28 @@ export async function notifySeatFilled(prisma, { offerId, raceId, reserve }) {
   }
 }
 
+// --- manual attendance nudge ------------------------------------------------
+// The admin's "poke everyone" button: a broadcast asking members to answer (or
+// update) the attendance for one race. Deliberately NOT deduped per race — the
+// admin decides when a fresh nudge is warranted, so every press posts anew
+// (timestamp in the dedupeKey). Unlike the automatic triggers this THROWS on
+// bad input: the admin pressed a button and deserves a real error message.
+export async function sendAttendancePing(prisma, raceId) {
+  const race = await prisma.race.findUnique({ where: { id: raceId } });
+  if (!race) throw Object.assign(new Error("Race not found"), { status: 404 });
+  if (race.isCompleted) throw Object.assign(new Error("Race already completed"), { status: 400 });
+  const types = await readRaceTypes(prisma, [race.id]);
+  const isTraining = (types.get(race.id) || "CHAMPIONSHIP") === "TRAINING";
+  const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
+  await dbCreateNotification(prisma, {
+    type: "REMINDER",
+    title: `Attendance check: ${isTraining ? "training session" : roundName(race)} at ${race.track}`,
+    body: "Please confirm or update whether you're racing — every answer helps the planning.",
+    link: `${prefix}/attendance?race=${race.id}`,
+    dedupeKey: `attendance-ping:${race.id}:${Date.now()}`,
+  });
+}
+
 // --- card unlocks --------------------------------------------------------------
 // A driver earns an unlockable rating-card edition (a milestone hit, a title
 // sealed). We ping them once per edition, tracked in Driver.cardUnlocksNotified
@@ -432,6 +502,49 @@ export async function backfillCardIntro(prisma) {
   }
 }
 
+// --- achievement unlocks --------------------------------------------------------
+// Same pattern as the card unlocks above: reconcile the computed achievement
+// state against Driver.achievementsNotified, ping the bell only for genuinely
+// new ones, and seed silently on the first-ever computation so a veteran's
+// backlog never floods the bell.
+export async function notifyAchievements(prisma, driverId, state) {
+  try {
+    if (!driverId || !Array.isArray(state)) return;
+    const rows = await prisma.$queryRaw`SELECT "discordUserId","achievementsNotified" FROM "Driver" WHERE "id" = ${driverId}`;
+    const row = rows[0];
+    if (!row) return;
+
+    const unlocked = state.filter((a) => a.unlocked).map((a) => a.key);
+    const stored = parseNotifiedKeys(row.achievementsNotified);
+    if (stored === null) {
+      await prisma.$executeRaw`UPDATE "Driver" SET "achievementsNotified" = ${JSON.stringify(unlocked)} WHERE "id" = ${driverId}`;
+      return;
+    }
+    const storedSet = new Set(stored);
+    const fresh = unlocked.filter((k) => !storedSet.has(k));
+    if (row.discordUserId) {
+      const metaByKey = new Map(state.map((a) => [a.key, a]));
+      for (const key of fresh) {
+        const a = metaByKey.get(key);
+        await dbCreateNotification(prisma, {
+          type: "AWARD",
+          title: `Achievement unlocked: ${a?.name || key}`,
+          body: a?.tagline ? `${a.tagline} — see it in your Cockpit.` : null,
+          link: "/cockpit?tab=achievements",
+          recipientId: row.discordUserId,
+          dedupeKey: `achievement:${driverId}:${key}`,
+        });
+      }
+    }
+    const union = [...new Set([...stored, ...unlocked])];
+    if (union.length !== stored.length) {
+      await prisma.$executeRaw`UPDATE "Driver" SET "achievementsNotified" = ${JSON.stringify(union)} WHERE "id" = ${driverId}`;
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
 // --- feature announcements ------------------------------------------------------
 // One-off "look what's new" broadcasts to every member's bell. Each entry runs
 // exactly once ever — the dedupeKey's unique index makes re-running a no-op —
@@ -452,17 +565,28 @@ const FEATURE_ANNOUNCEMENTS = [
     body: "The driver standings got a Cards view: everyone's rating card in championship order, with each driver's own edition and picture.",
     link: "/drivers",
   },
+  {
+    dedupeKey: "feature:achievements",
+    type: "NEWS",
+    title: "New: achievements",
+    body: "Your career now earns you achievements: milestones, race-day feats and a few hidden ones to discover. Unlock them and pin up to three favourites to your public profile.",
+    link: "/profile?tab=achievements",
+  },
+  {
+    dedupeKey: "feature:quali-title-fight",
+    type: "NEWS",
+    title: "New: qualifying results & title fight",
+    body: "Races can now show the full qualifying classification with pole times next to the race result. The driver standings mark who moved up or down after every round, and while the title is still open the home page tracks who can mathematically win it.",
+    link: "/races",
+  },
+  {
+    dedupeKey: "feature:attendance-window",
+    type: "NEWS",
+    title: "Attendance works a little differently now",
+    body: "Sign-up for a race opens a few days before the event and you'll get a notification here the moment it does. The Attendance button only shows in the menu while a sign-up is open. You can already answer for next season's races too.",
+    link: "/attendance",
+  },
 ];
-
-// Drafted but NOT shipped yet (the admin wants to time the announcement):
-// move this entry into FEATURE_ANNOUNCEMENTS above when it should go out.
-// {
-//   dedupeKey: "feature:quali-title-fight",
-//   type: "NEWS",
-//   title: "New: qualifying results & title fight",
-//   body: "Races can now show the full qualifying classification with pole times next to the race result. The driver standings mark who moved up or down after every round, and while the title is still open the home page tracks who can mathematically win it.",
-//   link: "/races",
-// },
 
 export async function announceFeatures(prisma) {
   for (const a of FEATURE_ANNOUNCEMENTS) {
@@ -491,11 +615,14 @@ export async function announceFeatures(prisma) {
 const REMINDER_CHECK_MS = 5 * 60 * 1000;
 let remindersCheckedAt = 0;
 
+// League time with its abbreviation ("20:00 CEST") — reads neutrally for an
+// international audience, unlike spelling out "German time".
 const berlinTime = (t) =>
   new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Berlin",
     hour: "2-digit",
     minute: "2-digit",
+    timeZoneName: "short",
   }).format(t);
 const berlinDay = (t) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", dateStyle: "short" }).format(t);
@@ -505,7 +632,7 @@ const berlinWeekday = (t) =>
 // Title/body for one reminder, phrased by how far out it actually fires.
 function reminderText(race, kick, now, isTraining = false) {
   const hoursOut = (kick.getTime() - now) / 3_600_000;
-  const time = `${berlinTime(kick)} German time`;
+  const time = berlinTime(kick);
   const label = isTraining ? "Training session" : roundName(race);
   if (hoursOut <= 6) {
     return { title: `Starting soon: ${label} at ${race.track}`, body: `Lights out at ${time}.` };
@@ -530,7 +657,8 @@ export async function ensureRaceReminders(prisma) {
     // Enabled offsets, largest first; each fires in (next smaller, itself].
     const settings = await readNotifySettings(prisma);
     const offsets = [...settings.reminders].sort((a, b) => b - a);
-    if (offsets.length) {
+    const announceOpening = !!settings.attendanceOpenDays && settings.attendanceOpenNotify;
+    if (offsets.length || announceOpening) {
       // Championship rounds always; TRAINING sessions too unless the admin
       // switched them off. SPECIAL events stay announcement-only.
       const races = await prisma.race.findMany({
@@ -549,6 +677,24 @@ export async function ensureRaceReminders(prisma) {
         if (!kick) continue;
         const dt = kick.getTime() - now;
         if (dt <= 0) continue;
+
+        // "Attendance is open" broadcast: fires (once) as soon as the sign-up
+        // window opens, until kickoff. Deduped per race, so enabling the gate
+        // late never double-posts.
+        if (announceOpening) {
+          const opens = attendanceOpensAt(race, settings);
+          if (opens && opens.getTime() <= now && (await seasonIsPublic(prisma, race.seasonId))) {
+            const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
+            await dbCreateNotification(prisma, {
+              type: "REMINDER",
+              title: `Sign-up open: ${type === "TRAINING" ? "training session" : roundName(race)} at ${race.track}`,
+              body: `Attendance for ${race.track} is open now. Let us know if you're on the grid.`,
+              link: `${prefix}/attendance?race=${race.id}`,
+              dedupeKey: `attendance-open:${race.id}`,
+            });
+          }
+        }
+
         const idx = offsets.findIndex(
           (h, i) => dt <= h * 3_600_000 && (i === offsets.length - 1 || dt > offsets[i + 1] * 3_600_000)
         );

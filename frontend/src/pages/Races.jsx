@@ -335,9 +335,11 @@ export default function Races() {
   }, [races, selectedId, wantRaceId]);
 
   // Race | Qualifying view of the selected round (the switcher sits in the
-  // round header row); every newly picked race starts on the race result.
+  // round header row). The choice is STICKY across race switches on purpose:
+  // browsing qualifying results round by round shouldn't need re-flipping the
+  // toggle every time. A round without quali simply falls back to the race
+  // table (RaceResults handles that) until one with quali is picked again.
   const [session, setSession] = useState("race");
-  useEffect(() => setSession("race"), [selectedId]);
 
   useEffect(() => {
     if (!selectedId) return;

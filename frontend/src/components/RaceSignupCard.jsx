@@ -66,6 +66,22 @@ export default function RaceSignupCard({
   const capacity = ev.capacity ?? 40;
   const accepted = ev.rsvps.ACCEPTED.length;
 
+  // Sign-up window (admin-configured): before it opens, the buttons make way
+  // for a note saying when. Which answer columns show is also the admin's call.
+  const opensAt = ev.attendanceOpensAt ? new Date(ev.attendanceOpensAt) : null;
+  const locked = opensAt && opensAt.getTime() > Date.now();
+  const visible = ["ACCEPTED", "DECLINED", "TENTATIVE"].filter(
+    (s) => !Array.isArray(ev.visibleStatuses) || ev.visibleStatuses.includes(s)
+  );
+  // Shown in the viewer's own timezone with its abbreviation ("08:00 CEST"),
+  // matching how the site presents kickoff times everywhere else.
+  const opensLabel =
+    opensAt &&
+    opensAt.toLocaleString("en-GB", {
+      weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+      timeZoneName: "short",
+    });
+
   return (
     <div className="card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-border px-5 py-4">
@@ -75,7 +91,16 @@ export default function RaceSignupCard({
             Are you on the grid?
           </p>
         </div>
-        {canSignUp ? (
+        {locked ? (
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-surface2/60 px-3 py-2 text-sm font-semibold text-medium">
+            <svg viewBox="0 0 24 24" className="h-4 w-4 text-light" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="5" y="11" width="14" height="9" rx="2" />
+              <path d="M8 11V8a4 4 0 118 0v3" />
+            </svg>
+            Sign-up opens {opensLabel}
+          </div>
+        ) : canSignUp ? (
           <div className="flex flex-wrap gap-2">
             {Object.entries(STATUS_UI).map(([status, ui]) => {
               const active = myStatus === status;
@@ -112,6 +137,7 @@ export default function RaceSignupCard({
       </div>
 
       {/* grid fill: how many of the available seats are taken */}
+      {!locked && visible.includes("ACCEPTED") && (
       <div className="border-b border-border px-5 py-3">
         <div className="flex items-center justify-between font-mono text-[10px] font-bold uppercase tracking-wider text-light">
           <span>Grid</span>
@@ -124,9 +150,16 @@ export default function RaceSignupCard({
           />
         </div>
       </div>
+      )}
 
-      <div className="grid gap-4 p-5 sm:grid-cols-3">
-        {["ACCEPTED", "DECLINED", "TENTATIVE"].map((status) => (
+      {locked ? (
+        <div className="p-5 text-sm leading-relaxed text-light">
+          The attendance list opens {opensLabel}. You&rsquo;ll find the sign-up
+          buttons and everyone&rsquo;s answers right here once it does.
+        </div>
+      ) : (
+      <div className={`grid gap-4 p-5 ${visible.length === 1 ? "" : visible.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+        {visible.map((status) => (
           <div key={status}>
             <div className="mb-2 flex items-center gap-1.5 font-mono text-xs font-bold uppercase tracking-wider text-medium">
               <StatusIcon d={STATUS_UI[status].icon} className={`h-3.5 w-3.5 ${STATUS_UI[status].idleIcon}`} />
@@ -148,8 +181,14 @@ export default function RaceSignupCard({
           </div>
         ))}
       </div>
+      )}
 
-      <SeatMarket race={marketRace} me={me} reload={reloadMarket} />
+      {/* the market context of the RACE's season (a member can be full-time in
+          one season and a reserve in the next). When the payload carries a
+          per-race context, use it EVEN IF null — null means "not on that
+          season's roster", and falling back to the viewed season's context
+          would show actions the server then refuses. */}
+      <SeatMarket race={marketRace} me={marketRace && "me" in marketRace ? marketRace.me : me} reload={reloadMarket} />
     </div>
   );
 }
