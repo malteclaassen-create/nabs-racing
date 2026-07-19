@@ -11,9 +11,9 @@ import { countryFor } from "../data/driverCountries.js";
 // cap + number (flat — no gradients/blur/glow).
 const COLUMN_ORDER = [1, 0, 2]; // entry index for each visual column
 const CFG = {
-  0: { h: "h-24 sm:h-32", avatar: 82, name: "text-lg sm:text-2xl" },
-  1: { h: "h-16 sm:h-24", avatar: 60, name: "text-sm sm:text-lg" },
-  2: { h: "h-12 sm:h-20", avatar: 56, name: "text-sm sm:text-lg" },
+  0: { h: "h-24 sm:h-32", avatar: 82, name: "text-base sm:text-2xl" },
+  1: { h: "h-16 sm:h-24", avatar: 60, name: "text-xs sm:text-lg" },
+  2: { h: "h-12 sm:h-20", avatar: 56, name: "text-xs sm:text-lg" },
 };
 
 export default function Podium({ entries = [] }) {
@@ -58,8 +58,8 @@ export default function Podium({ entries = [] }) {
                   points, a coloured ring around the photo was one accent too many */}
               <DriverAvatar name={e.name} photoUrl={e.photoUrl} color="#232833" size={cfg.avatar} />
 
-              <span className={`mt-3 flex max-w-full items-center justify-center gap-1.5 font-display font-black uppercase leading-none tracking-tight text-ink transition group-hover:text-brand dark:text-white ${cfg.name}`}>
-                <span className="truncate">{e.name}</span>
+              <span className={`mt-3 flex max-w-full items-center justify-center gap-1.5 font-display font-black uppercase leading-tight tracking-tight text-ink transition group-hover:text-brand dark:text-white ${cfg.name}`}>
+                <span className="min-w-0 break-words">{e.name}</span>
                 <Flag code={countryFor(e.driverId, e.country)} w={champ ? 18 : 15} h={champ ? 13 : 11} />
               </span>
 

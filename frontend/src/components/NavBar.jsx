@@ -70,15 +70,6 @@ function navLinks(p) {
   ];
 }
 
-const linkClass = ({ isActive }) =>
-  // The active ring is INSET on purpose: an outset 1px ring sits outside the
-  // pill and can round away to nothing on one edge at fractional browser zoom
-  // (e.g. 90%), which made the pill look cut off at the bottom. Inside the
-  // pill, a lost edge just melts into the tinted background instead.
-  `nav-link flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
-    isActive ? "bg-brand/20 text-dark ring-1 ring-inset ring-brand/50" : "text-medium hover:bg-surface2"
-  }`;
-
 // Desktop variant: the active page's highlight is ONE pill that GLIDES between
 // the items (see the sliding span in the desktop nav), so the item itself only
 // switches its text colour and carries the `is-active` marker the pill follows.
@@ -86,6 +77,58 @@ const desktopLinkClass = ({ isActive }) =>
   `nav-link relative flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
     isActive ? "is-active text-dark" : "text-medium hover:bg-surface2"
   }`;
+
+// Mobile menu row: a quiet line-list item with a small stroke icon, so the
+// pages stop reading as one indistinguishable text column. Colour only with
+// meaning: the active page gets the usual brand tint, everything else is calm.
+function MobileRow({ to, end, icon, label, sub }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        `flex items-center gap-3 rounded-lg px-2 py-2.5 transition ${
+          isActive ? "bg-brand/20 ring-1 ring-inset ring-brand/50" : "hover:bg-surface2"
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${isActive ? "bg-brand text-ink" : "bg-surface2 text-medium"}`}>
+            <StandIcon d={icon} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className={`block truncate text-sm font-semibold ${isActive ? "text-dark" : "text-medium"}`}>{label}</span>
+            {sub && <span className="mt-0.5 block truncate font-mono text-[10px] text-light">{sub}</span>}
+          </span>
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+// Section eyebrow inside the mobile menu — same mono label style as the page
+// eyebrows, with a hairline running out to the right edge.
+function MobileMenuLabel({ children }) {
+  return (
+    <div className="flex items-center gap-3 px-2 pb-1 pt-4">
+      <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">{children}</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+// Stroke icons for the mobile menu rows (24×24 viewBox, drawn by StandIcon).
+const NAV_ICONS = {
+  home: <><path d="M3 10.5L12 3l9 7.5" /><path d="M5 9.5V21h5v-6h4v6h5V9.5" /></>,
+  races: <><path d="M5 3v18" /><path d="M5 4h13l-3 4 3 4H5" /></>,
+  attendance: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /><path d="M9 15l2 2 4-4" /></>,
+  live: <><circle cx="12" cy="12" r="2.5" /><path d="M7.5 7.5a6.5 6.5 0 000 9M16.5 7.5a6.5 6.5 0 010 9" /><path d="M4.7 4.7a10.5 10.5 0 000 14.6M19.3 4.7a10.5 10.5 0 010 14.6" /></>,
+  info: <><path d="M6 3h9l4 4v14H6z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h6" /></>,
+  drivers: <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>,
+  constructors: <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>,
+  records: <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>,
+};
 
 // The two pages the "Standings" item covers (matched with the series prefix
 // stripped, so it lights up inside every series).
@@ -403,38 +446,47 @@ export default function NavBar() {
             onClick={() => setOpen(false)}
             className="nav-scrim fixed inset-x-0 bottom-0 top-[84px] z-20 bg-ink/40 backdrop-blur-sm"
           />
-          <div className="nav-drop absolute inset-x-0 top-full z-30 origin-top border-t border-border bg-card shadow-xl shadow-ink/20">
-            <div className="container-page flex flex-col gap-1 py-3">
+          <div className="nav-drop absolute inset-x-0 top-full z-30 max-h-[calc(100dvh-96px)] origin-top overflow-y-auto border-t border-border bg-card shadow-xl shadow-ink/20">
+            <div className="container-page flex flex-col py-3">
+              {/* You-stuff first: profile chip + search side by side conceptually,
+                  then the context pickers, then the pages in labelled groups. */}
               <AuthControl mobile />
-              {/* Search inside the mobile menu (full width). */}
-              <div className="px-2 py-1.5">
+              <div className="px-2 pb-1 pt-2">
                 <GlobalSearch mobile />
               </div>
+
               {/* Series first (page identity), season below it (page filter). */}
-              {seriesList.length > 1 && (
-                <div className="px-2 py-1.5">
-                  <SeriesSwitcher mobile onPick={() => setOpen(false)} />
-                </div>
+              {(seriesList.length > 1 || onSeasonPage) && (
+                <>
+                  <MobileMenuLabel>Series &amp; season</MobileMenuLabel>
+                  {seriesList.length > 1 && (
+                    <div className="px-2 py-1">
+                      <SeriesSwitcher mobile onPick={() => setOpen(false)} />
+                    </div>
+                  )}
+                  {onSeasonPage && (
+                    <div className="px-2 py-1">
+                      <SeasonPicker onPick={() => setOpen(false)} />
+                    </div>
+                  )}
+                </>
               )}
-              {onSeasonPage && (
-                <div className="px-2 py-1.5">
-                  <SeasonPicker onPick={() => setOpen(false)} />
-                </div>
+
+              <MobileMenuLabel>League</MobileMenuLabel>
+              <MobileRow to={seriesPath("")} end icon={NAV_ICONS.home} label="Home" />
+              <MobileRow to={seriesPath("/races")} icon={NAV_ICONS.races} label="Races" sub="Calendar & results" />
+              {attendanceOpen && (
+                <MobileRow to={seriesPath("/attendance")} icon={NAV_ICONS.attendance} label="Attendance" sub="Race sign-up" />
               )}
-              {links.map((l) =>
-                l.standings ? (
-                  // No hover on touch — show both standings pages as links.
-                  [
-                    <NavLink key="m-drivers" to={seriesPath("/drivers")} className={linkClass}>Drivers</NavLink>,
-                    <NavLink key="m-constructors" to={seriesPath("/constructors")} className={linkClass}>Constructors</NavLink>,
-                    <NavLink key="m-records" to={seriesPath("/records")} className={linkClass}>Hall of Fame</NavLink>,
-                  ]
-                ) : (
-                  <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
-                    {l.label}
-                  </NavLink>
-                )
-              )}
+              <MobileRow to={seriesPath("/live")} icon={NAV_ICONS.live} label="Live" sub="Live timing" />
+
+              <MobileMenuLabel>Standings</MobileMenuLabel>
+              <MobileRow to={seriesPath("/drivers")} icon={NAV_ICONS.drivers} label="Drivers" />
+              <MobileRow to={seriesPath("/constructors")} icon={NAV_ICONS.constructors} label="Constructors" />
+              <MobileRow to={seriesPath("/records")} icon={NAV_ICONS.records} label="Hall of Fame" sub="All-time records" />
+
+              <MobileMenuLabel>More</MobileMenuLabel>
+              <MobileRow to="/downloads" icon={NAV_ICONS.info} label="Race Info" sub="Rules & downloads" />
             </div>
           </div>
         </div>

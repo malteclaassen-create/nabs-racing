@@ -12,7 +12,9 @@ export const MEDAL_TEXT = ["var(--medal-1)", "var(--medal-2)", "var(--medal-3)"]
 // Falls straight to the final value when motion is reduced. `prefix`/`suffix`
 // wrap the number (e.g. "+", "pts"); non-numeric stats should just render plain.
 export function CountUp({ end, prefix = "", suffix = "", duration = 1200, decimals = 0, className = "" }) {
-  const [ref, inView] = useInView();
+  // Pre-trigger a little below the viewport so the count-up is already running
+  // when the number scrolls in — a standing "0" at the bottom edge looks broken.
+  const [ref, inView] = useInView({ rootMargin: "0px 0px 20% 0px" });
   const target = Number(end);
   const [n, setN] = useState(0);
 
