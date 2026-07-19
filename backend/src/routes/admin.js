@@ -33,7 +33,8 @@ import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFo
 import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq, writeWelcomeFaq } from "../lib/welcomeFaq.js";
-import { dbListMembers, dbGetMember, dbSetBanned, shapeMember } from "../lib/members.js";
+import { dbListMembers, dbGetMember, dbSetBanned, dbClearRaceRequest, shapeMember } from "../lib/members.js";
+import { ensureReservePool } from "../lib/reservePool.js";
 import { dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups } from "../lib/persons.js";
 import {
   dbListSeries, dbCreateSeries, dbUpdateSeries, dbActivateSeries, dbDeleteSeries,
@@ -929,6 +930,36 @@ router.post("/drivers", async (req, res, next) => {
         team?.seasonId ||
         (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
     }
+    // Same person twice in one season is almost always a mistake (e.g. the
+    // attendance sign-up already auto-created them in the Reserve pool). A
+    // same-name row in the target season therefore needs an explicit confirm
+    // (`force`) — the error names the team so the admin can simply move the
+    // existing row instead of creating a twin.
+    const dupe = await prisma.driver.findFirst({
+      where: { seasonId: resolvedSeasonId, name: { equals: name } },
+      include: { team: { select: { name: true, tier: true } } },
+    });
+    // Same name sitting in the Reserve pool (e.g. auto-created by an
+    // attendance sign-up): the target team gets THAT row moved over instead
+    // of a twin, so their sign-ups and links survive on the same entry.
+    const targetTeam = await prisma.team.findUnique({ where: { id: teamId }, select: { tier: true, name: true } });
+    const reserveMove = dupe && dupe.team?.tier === 0 && targetTeam && targetTeam.tier !== 0;
+    if (dupe && !req.body?.force) {
+      return res.status(409).json({
+        error: reserveMove
+          ? `${dupe.name} is already in this season's Reserve pool. Confirm to move that entry into ${targetTeam.name} (their sign-ups are kept) instead of creating a duplicate.`
+          : `${dupe.name} is already on this season's roster (${dupe.team?.name || "no team"}). ` +
+            `Move that entry to the right team instead of creating a second one, or confirm to create a true namesake.`,
+        needsConfirm: true,
+      });
+    }
+    if (reserveMove) {
+      const moved = await prisma.driver.update({
+        where: { id: dupe.id },
+        data: { teamId, tier: targetTeam.tier, isActive: true },
+      });
+      return res.status(200).json({ ...moved, movedFromReserve: true });
+    }
     const driver = await prisma.driver.create({
       data: {
         id: driverId,
@@ -1032,9 +1063,19 @@ router.post("/drivers/from-db", async (req, res, next) => {
         seasonId: team.season.id,
         OR: [{ id: { in: linked } }, { name: { equals: source.name } }],
       },
-      include: { team: { select: { name: true } } },
+      include: { team: { select: { name: true, tier: true } } },
     });
     if (clash) {
+      // In the Reserve pool (e.g. auto-created by an attendance sign-up):
+      // MOVE that row into the team instead of creating a twin — their
+      // sign-ups, market entries and links all ride along on the same row.
+      if (clash.team?.tier === 0 && team.tier !== 0) {
+        const moved = await prisma.driver.update({
+          where: { id: clash.id },
+          data: { teamId: team.id, tier: team.tier, isActive: true },
+        });
+        return res.status(200).json({ ...moved, movedFromReserve: true });
+      }
       return res.status(409).json({ error: `${clash.name} is already on this season's roster (${clash.team?.name || "no team"}).` });
     }
 
@@ -1203,6 +1244,180 @@ router.put("/drivers/:id", async (req, res, next) => {
   }
 });
 
+// DELETE /api/admin/drivers/:id -> remove ONE driver row from ITS season (the
+// other seasons' rows of the same person stay). Guard rails:
+//   - a row with race results can never be deleted (fix the results first, or
+//     set the driver inactive / hidden instead) — deleting would corrupt
+//     standings and history.
+//   - attendance answers and driver-market entries DO go with the row; the
+//     first call reports exactly what would be lost (needsConfirm) and the
+//     admin retries with ?force=1 to proceed.
+router.delete("/drivers/:id", async (req, res, next) => {
+  try {
+    const driver = await prisma.driver.findUnique({
+      where: { id: req.params.id },
+      include: {
+        season: { select: { name: true } },
+        team: { select: { name: true, tier: true } },
+        _count: {
+          select: { results: true, rsvps: true, seatInterests: true, seatOffersOffered: true, seatOffersFilled: true },
+        },
+      },
+    });
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
+
+    const c = driver._count;
+    if (c.results > 0) {
+      return res.status(409).json({
+        error:
+          `${driver.name} has ${c.results} race result(s) in ${driver.season?.name || "this season"} and cannot be deleted. ` +
+          `Remove the results first (Edit Results), or set the driver Inactive / hidden from standings instead.`,
+      });
+    }
+
+    // A TEAM driver with attendance answers is never truly deleted: their
+    // sign-ups are real intent (they may well race), so "removing" them from
+    // the team DEMOTES the row to the season's Reserve pool instead — the
+    // answers, market entries and person links all survive. Only a row
+    // without answers (or one already in the Reserve pool, after an explicit
+    // confirm with the numbers) is actually deleted.
+    const demote = c.rsvps > 0 && driver.team?.tier !== 0 && driver.seasonId;
+
+    if (!req.query.force) {
+      if (demote) {
+        return res.status(409).json({
+          error:
+            `${driver.name} (${driver.team?.name || "no team"}, ${driver.season?.name || "unknown season"}) has ` +
+            `${c.rsvps} attendance answer(s), so they won't be deleted. They'll be moved to the Reserve pool instead, ` +
+            `keeping their answers and market entries. Continue?`,
+          needsConfirm: true,
+        });
+      }
+      const bits = [];
+      if (c.rsvps > 0) bits.push(`${c.rsvps} attendance answer(s)`);
+      if (c.seatInterests > 0) bits.push(`${c.seatInterests} driver-market interest entr${c.seatInterests === 1 ? "y" : "ies"}`);
+      if (c.seatOffersOffered > 0) bits.push(`${c.seatOffersOffered} seat offer(s) they made`);
+      if (c.seatOffersFilled > 0) bits.push(`${c.seatOffersFilled} seat(s) they were picked to fill (those offers reopen)`);
+      return res.status(409).json({
+        error:
+          `Remove ${driver.name} (${driver.team?.name || "no team"}, ${driver.season?.name || "unknown season"})?` +
+          (bits.length ? ` This also deletes ${bits.join(", ")}.` : " No attendance answers or market entries hang on this entry.") +
+          " Their entries in other seasons are not touched.",
+        needsConfirm: true,
+      });
+    }
+
+    if (demote) {
+      const pool = await ensureReservePool(prisma, driver.seasonId);
+      if (!pool) return res.status(409).json({ error: "Season not found" });
+      await prisma.$transaction([
+        // A demoted driver no longer holds a seat, so any offer THEY made is
+        // cancelled (their interests as a reserve stay).
+        prisma.seatOffer.updateMany({ where: { driverId: driver.id, status: "OPEN" }, data: { status: "CANCELLED" } }),
+        prisma.driver.update({ where: { id: driver.id }, data: { teamId: pool.id, tier: 0 } }),
+      ]);
+      return res.json({ ok: true, demoted: true, keptRsvps: c.rsvps });
+    }
+
+    // Person-link first (raw table without FK cascade), then everything that
+    // references the row, then the row itself.
+    await dbUnlinkDriver(prisma, driver.id);
+    await prisma.$transaction([
+      prisma.raceRsvp.deleteMany({ where: { driverId: driver.id } }),
+      prisma.seatInterest.deleteMany({ where: { driverId: driver.id } }),
+      // Offers they made: drop them (any interests cascade with the offer).
+      prisma.seatOffer.deleteMany({ where: { driverId: driver.id } }),
+      // Offers they were chosen to FILL belong to another driver — keep those,
+      // just un-pick the deleted reserve so the seat reads open again.
+      prisma.seatOffer.updateMany({ where: { filledById: driver.id }, data: { filledById: null, status: "OPEN" } }),
+      prisma.driver.delete({ where: { id: driver.id } }),
+    ]);
+    res.json({ ok: true, removed: { rsvps: c.rsvps, seatInterests: c.seatInterests, seatOffers: c.seatOffersOffered } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/drivers/bulk-delete -> remove SEVERAL driver rows at once
+// (same rules as the single delete above). Two-step like the single route:
+// without force it only reports what would happen — per driver, including who
+// is blocked by race results — and the UI shows that as ONE confirm; with
+// force it deletes every deletable row and returns what was removed/skipped.
+router.post("/drivers/bulk-delete", async (req, res, next) => {
+  try {
+    const ids = [...new Set((req.body?.ids || []).map(String))].filter(Boolean);
+    if (!ids.length) return res.status(400).json({ error: "No drivers selected" });
+
+    const rows = await prisma.driver.findMany({
+      where: { id: { in: ids } },
+      include: {
+        season: { select: { name: true } },
+        team: { select: { name: true, tier: true } },
+        _count: {
+          select: { results: true, rsvps: true, seatInterests: true, seatOffersOffered: true, seatOffersFilled: true },
+        },
+      },
+    });
+    if (!rows.length) return res.status(404).json({ error: "None of the selected drivers exist (already removed?)" });
+
+    // Same rule as the single delete: a TEAM driver with attendance answers
+    // is demoted to the Reserve pool (answers survive) instead of deleted.
+    const isDemote = (d) => d._count.results === 0 && d._count.rsvps > 0 && d.team?.tier !== 0 && d.seasonId;
+    const report = rows.map((d) => ({
+      id: d.id,
+      name: d.name,
+      team: d.team?.name || null,
+      season: d.season?.name || null,
+      blocked: d._count.results > 0,
+      demote: isDemote(d),
+      results: d._count.results,
+      rsvps: d._count.rsvps,
+      marketEntries: d._count.seatInterests + d._count.seatOffersOffered,
+      seatsToReopen: d._count.seatOffersFilled,
+    }));
+
+    if (!req.body?.force) {
+      return res.status(409).json({ needsConfirm: true, drivers: report });
+    }
+
+    const demoted = [];
+    const deleted = [];
+    for (const d of rows) {
+      if (d._count.results > 0) continue;
+      if (isDemote(d)) {
+        const pool = await ensureReservePool(prisma, d.seasonId);
+        if (!pool) continue;
+        await prisma.$transaction([
+          prisma.seatOffer.updateMany({ where: { driverId: d.id, status: "OPEN" }, data: { status: "CANCELLED" } }),
+          prisma.driver.update({ where: { id: d.id }, data: { teamId: pool.id, tier: 0 } }),
+        ]);
+        demoted.push(d.name);
+        continue;
+      }
+      // Same order as the single delete: person-link first (raw table, no FK),
+      // then dependents, then the row. One transaction per driver keeps a
+      // mid-list failure from voiding the deletions already done.
+      await dbUnlinkDriver(prisma, d.id);
+      await prisma.$transaction([
+        prisma.raceRsvp.deleteMany({ where: { driverId: d.id } }),
+        prisma.seatInterest.deleteMany({ where: { driverId: d.id } }),
+        prisma.seatOffer.deleteMany({ where: { driverId: d.id } }),
+        prisma.seatOffer.updateMany({ where: { filledById: d.id }, data: { filledById: null, status: "OPEN" } }),
+        prisma.driver.delete({ where: { id: d.id } }),
+      ]);
+      deleted.push(d.name);
+    }
+    res.json({
+      ok: true,
+      removed: deleted,
+      demoted,
+      blocked: rows.filter((d) => d._count.results > 0).map((d) => d.name),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // MEMBERS (Discord login accounts)
 // Every Discord account that has ever logged in — linked to a roster driver or
@@ -1323,6 +1538,8 @@ router.post("/members/:discordId/link", async (req, res, next) => {
         data: { discordUserId: req.params.discordId, discordAvatar: account.avatarUrl ?? undefined },
       }),
     ]);
+    // Linked = their "I want to race" hand-raise (if any) is answered.
+    await dbClearRaceRequest(prisma, req.params.discordId);
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -1366,6 +1583,8 @@ router.post("/members/:discordId/create-driver", async (req, res, next) => {
         },
       }),
     ]);
+    // A fresh driver answers their "I want to race" hand-raise (if any).
+    await dbClearRaceRequest(prisma, req.params.discordId);
     res.status(201).json({ ok: true, driver });
   } catch (e) {
     next(e);

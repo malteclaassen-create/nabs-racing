@@ -56,6 +56,9 @@ export default function RaceSignupCard({
   reloadMarket,
   driverId,
   canSignUp,
+  isLoggedIn,
+  raceRequest,
+  onRequestSeat,
   busy,
   onSetStatus,
   onClear,
@@ -129,6 +132,29 @@ export default function RaceSignupCard({
               </button>
             )}
           </div>
+        ) : isLoggedIn ? (
+          // Logged in, but no driver profile anywhere: they can't RSVP yet,
+          // but they can raise a hand — the league admin gets it in the
+          // Members tab and can create their driver from there.
+          raceRequest?.pending ? (
+            <div className="text-sm leading-relaxed text-medium">
+              <span className="font-semibold text-emerald-600">Request sent.</span> The league admin will set up your
+              driver profile and get back to you. Once that's done, the sign-up buttons appear here.
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => onRequestSeat?.(ev.id)}
+                disabled={busy === `${ev.id}:request`}
+                className="btn-primary"
+              >
+                I want to race
+              </button>
+              <span className="text-sm text-light">
+                You haven't raced with us yet — ask for a seat and the admin will set you up.
+              </span>
+            </div>
+          )
         ) : (
           <Link to="/profile" className="text-sm font-semibold text-primary hover:underline">
             Log in to respond

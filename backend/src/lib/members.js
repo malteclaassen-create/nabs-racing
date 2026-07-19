@@ -24,7 +24,26 @@ export function shapeMember(r) {
     firstLoginAt: r.firstLoginAt,
     lastLoginAt: r.lastLoginAt,
     loginCount: Number(r.loginCount) || 0,
+    // "I want to race" hand-raise from the Attendance page (accounts without
+    // a driver profile). Cleared once the account is linked / gets a driver.
+    raceRequestAt: r.raceRequestAt ?? null,
+    raceRequestText: r.raceRequestText ?? null,
   };
+}
+
+export async function dbSetRaceRequest(prisma, discordId, text) {
+  await prisma.$executeRaw`
+    UPDATE "MemberAccount" SET
+      "raceRequestAt" = ${new Date().toISOString()},
+      "raceRequestText" = ${text ?? null}
+    WHERE "discordId" = ${discordId}`;
+  return dbGetMember(prisma, discordId);
+}
+
+export async function dbClearRaceRequest(prisma, discordId) {
+  await prisma.$executeRaw`
+    UPDATE "MemberAccount" SET "raceRequestAt" = NULL, "raceRequestText" = NULL
+    WHERE "discordId" = ${discordId}`;
 }
 
 export async function dbGetMember(prisma, discordId) {

@@ -6,7 +6,8 @@ import { resolveSeasonId, getPrivateSeasonIds } from "../services/seasonService.
 import { resolveSeries, seasonIdsOfSeries } from "../lib/series.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
-import { seasonRowForDriver } from "../lib/persons.js";
+import { seasonRowForDriver, dbLinkDrivers } from "../lib/persons.js";
+import { ensureReservePool } from "../lib/reservePool.js";
 import { readNotifySettings, attendanceOpensAt } from "../lib/notifications.js";
 
 const router = Router();
@@ -35,6 +36,50 @@ export async function eventSeasonIds(prisma, req) {
   if (admin) return ids;
   const priv = await getPrivateSeasonIds(prisma);
   return ids.filter((i) => !priv.has(i));
+}
+
+// Create a Reserve-pool row for `base` (the login's linked driver row from
+// another season) in `seasonId`, person-linked so career stats, login and
+// @mentions keep following the same human. Used by the RSVP below: a member
+// who has driven for us before may always sign up, even before the admin has
+// put them on the new season's roster. Returns null only if the season is
+// missing (deleted mid-request).
+async function addToReservePool(prisma, base, seasonId) {
+  const season = await prisma.season.findUnique({ where: { id: seasonId }, select: { id: true, number: true } });
+  if (!season) return null;
+  const pool = await ensureReservePool(prisma, season.id);
+  if (!pool) return null;
+
+  // Season-suffixed id like the roster clone uses; uniquified just in case.
+  let id = `${base.id}_s${season.number}`;
+  if (await prisma.driver.findUnique({ where: { id } })) id = `${id}_${Date.now().toString(36)}`;
+
+  const driver = await prisma.driver.create({
+    data: {
+      id,
+      name: base.name,
+      discordName: base.discordName,
+      teamId: pool.id,
+      tier: 0,
+      isActive: true,
+      seasonId: season.id,
+      // Identity travels with the person (same fields as the roster clone);
+      // the Discord id itself stays on the login's row — the person link
+      // below is what makes login and mentions reach this row too.
+      country: base.country,
+      photoUrl: base.photoUrl,
+      discordAvatar: base.discordAvatar,
+      bio: base.bio,
+      number: base.number,
+      socials: base.socials,
+    },
+  });
+  try {
+    await dbLinkDrivers(prisma, [base.id, driver.id]);
+  } catch {
+    /* linking is best-effort; the RSVP itself must not fail on it */
+  }
+  return driver;
 }
 
 // GET /api/events -> upcoming races (not completed) with RSVP lists.
@@ -158,7 +203,14 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // before ever logging in again after the season switch).
     const base = await prisma.driver.findUnique({ where: { id: driverId } });
     if (!base) return res.status(404).json({ error: "Driver not found" });
-    const driver = await seasonRowForDriver(prisma, base, race.seasonId, req.user?.discordId);
+    let driver = await seasonRowForDriver(prisma, base, race.seasonId, req.user?.discordId);
+    // Known member, but no row in the race's season yet (e.g. next season's
+    // roster is still being built): let them sign up anyway. Their login is
+    // already tied to a real driver of this series, so we add them to the
+    // season's Reserve pool on the spot — the admin then sees the sign-up AND
+    // the person in the roster, and the race import checks who actually drove.
+    // Accounts never linked to any driver still can't RSVP (the 401 above).
+    if (!driver) driver = await addToReservePool(prisma, base, race.seasonId);
     if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
 
     await prisma.raceRsvp.upsert({

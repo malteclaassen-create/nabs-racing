@@ -19,6 +19,7 @@ import {
 } from "../lib/cardEditions.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
 import { notifyCardUnlocks } from "../lib/notifications.js";
+import { dbGetMember, dbSetRaceRequest } from "../lib/members.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const router = Router();
@@ -468,6 +469,54 @@ router.delete("/card-photo-image", async (req, res, next) => {
     if (!driverId) return;
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${null} WHERE "id" = ${driverId}`;
     res.json({ ok: true, cardPhotoUrl: null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- "I want to race" hand-raise -------------------------------------------
+// A logged-in Discord account that has NO driver profile anywhere (never raced
+// with us, nothing to link) can ask for a seat from the Attendance page. The
+// request lands on the account row and shows up in the admin Members tab
+// ("Needs attention"), where one click creates their driver. Accounts that DO
+// resolve to a driver don't need this — their sign-up buttons work directly.
+
+// GET /api/me/race-request -> { linked, pending, text }
+router.get("/race-request", async (req, res, next) => {
+  try {
+    if (!req.user?.discordId) return res.status(401).json({ error: "Sign in with Discord first" });
+    const linked = !!(await resolveDriverId(prisma, req.user));
+    const acct = await dbGetMember(prisma, req.user.discordId);
+    res.json({ linked, pending: !!acct?.raceRequestAt, text: acct?.raceRequestText || null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/me/race-request { raceId? } -> raise the hand (idempotent).
+router.post("/race-request", async (req, res, next) => {
+  try {
+    if (!req.user?.discordId) return res.status(401).json({ error: "Sign in with Discord first" });
+    if (await resolveDriverId(prisma, req.user)) {
+      return res.status(409).json({ error: "Your account is already connected to a driver — use the sign-up buttons directly." });
+    }
+    const acct = await dbGetMember(prisma, req.user.discordId);
+    if (!acct) return res.status(404).json({ error: "Account not found" });
+    // Remember WHICH race they raised their hand for (nice context for the admin).
+    let text = null;
+    if (req.body?.raceId) {
+      const race = await prisma.race.findUnique({
+        where: { id: String(req.body.raceId) },
+        select: { track: true, number: true, season: { select: { name: true } } },
+      });
+      if (race) {
+        text = [race.number != null ? `Round ${race.number}` : null, race.track, race.season?.name]
+          .filter(Boolean)
+          .join(" · ");
+      }
+    }
+    await dbSetRaceRequest(prisma, req.user.discordId, text);
+    res.json({ ok: true, pending: true, text });
   } catch (e) {
     next(e);
   }

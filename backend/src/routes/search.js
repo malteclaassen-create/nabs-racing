@@ -13,7 +13,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
-import { dbListSeries, seasonSeriesMap } from "../lib/series.js";
+import { dbListSeries, seasonSeriesMap, resolveSeries } from "../lib/series.js";
 import { getPersonGroups, getNameOverrides } from "../lib/persons.js";
 import { readRaceCountries, staticCountryFor, countryNameOf } from "../lib/raceCountries.js";
 
@@ -294,6 +294,120 @@ router.get("/", async (req, res, next) => {
       .map(({ top, ...g }) => g);
 
     res.json({ query: q, groups: groupsOut });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Admin all-time search (the admin "All time" tab). Unlike the public search
+// above, this returns EVERY matching row individually — a driver who raced in
+// five seasons shows up five times, each row carrying its season — so the
+// admin can jump straight to the right season to edit it. Scoped to one
+// series (the one the admin is currently editing), private seasons included.
+// ---------------------------------------------------------------------------
+router.get("/admin", async (req, res, next) => {
+  try {
+    if (!isAdminRequest(req)) return res.status(403).json({ error: "Admin only" });
+    const q = String(req.query.q || "").trim();
+    const series = await resolveSeries(prisma, req.query.series || null, { includePrivate: true });
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    if (q.length < 1) return res.json({ query: q, drivers: [], teams: [], races: [] });
+
+    // Every season of this series (legacy null-series seasons are assigned to
+    // the default series at boot, so seriesId is effectively always set).
+    const seasons = await prisma.season.findMany({
+      where: { seriesId: series.id },
+      select: { id: true, number: true, name: true, isActive: true },
+    });
+    const seasonById = new Map(seasons.map((s) => [s.id, s]));
+    const ids = seasons.map((s) => s.id);
+
+    const [drivers, teams, races, nameOv] = await Promise.all([
+      prisma.driver.findMany({
+        where: { seasonId: { in: ids } },
+        select: {
+          id: true, name: true, discordName: true, seasonId: true, tier: true,
+          photoUrl: true, discordAvatar: true,
+          team: { select: { id: true, name: true, color: true, logoUrl: true } },
+        },
+      }),
+      prisma.team.findMany({
+        where: { seasonId: { in: ids } },
+        select: { id: true, name: true, color: true, logoUrl: true, tier: true, seasonId: true },
+      }),
+      prisma.race.findMany({
+        where: { seasonId: { in: ids } },
+        select: { id: true, number: true, track: true, date: true, seasonId: true, isSpecialEvent: true, isCompleted: true },
+      }),
+      getNameOverrides(prisma),
+    ]);
+
+    const storedCountries = await readRaceCountries(prisma, races.map((r) => r.id));
+    const seasonLabel = (sid) => {
+      const s = seasonById.get(sid);
+      if (!s) return { number: null, name: "" };
+      return { number: s.number, name: /^\d+$/.test((s.name || "").trim()) ? `Season ${s.number}` : s.name, isActive: !!s.isActive };
+    };
+
+    const cap = (items) =>
+      items.sort((a, b) => b.score - a.score || (b.seasonNumber || 0) - (a.seasonNumber || 0)).slice(0, 60).map(({ score, ...r }) => r);
+
+    const driverItems = [];
+    for (const d of drivers) {
+      const ov = nameOv.get(d.id);
+      const sc = best(
+        scoreMatch(ov?.displayName || d.name, q),
+        scoreMatch(d.name, q),
+        scoreMatch(d.discordName, q),
+        ov?.formerName ? scoreMatch(ov.formerName, q) : -1
+      );
+      if (sc < 0) continue;
+      const s = seasonLabel(d.seasonId);
+      driverItems.push({
+        id: d.id,
+        name: ov?.displayName || d.name,
+        discordName: d.discordName,
+        photoUrl: d.photoUrl || d.discordAvatar || null,
+        tier: d.tier,
+        teamName: d.team?.name || null,
+        teamColor: d.team?.color || null,
+        seasonNumber: s.number,
+        seasonName: s.name,
+        seasonActive: s.isActive || false,
+        score: sc,
+      });
+    }
+
+    const teamItems = [];
+    for (const t of teams) {
+      const sc = scoreMatch(t.name, q);
+      if (sc < 0) continue;
+      const s = seasonLabel(t.seasonId);
+      teamItems.push({
+        id: t.id, name: t.name, color: t.color, logoUrl: t.logoUrl, tier: t.tier,
+        seasonNumber: s.number, seasonName: s.name, seasonActive: s.isActive || false, score: sc,
+      });
+    }
+
+    const raceItems = [];
+    for (const r of races) {
+      const country = storedCountries.get(r.id) || staticCountryFor(r.track) || null;
+      const sc = best(
+        scoreMatch(r.track, q),
+        r.number != null ? scoreMatch(`round ${r.number}`, q) : -1,
+        countryNameOf(country) ? scoreMatch(countryNameOf(country), q) : -1
+      );
+      if (sc < 0) continue;
+      const s = seasonLabel(r.seasonId);
+      raceItems.push({
+        id: r.id, track: r.track, number: r.number, date: r.date, country,
+        isSpecialEvent: r.isSpecialEvent, isCompleted: r.isCompleted,
+        seasonNumber: s.number, seasonName: s.name, seasonActive: s.isActive || false, score: sc,
+      });
+    }
+
+    res.json({ query: q, drivers: cap(driverItems), teams: cap(teamItems), races: cap(raceItems) });
   } catch (e) {
     next(e);
   }

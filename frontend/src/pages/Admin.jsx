@@ -15,6 +15,7 @@ import AdminTracks from "../components/AdminTracks.jsx";
 import AdminHealth from "../components/AdminHealth.jsx";
 import AdminMembers from "../components/AdminMembers.jsx";
 import AdminNotifications from "../components/AdminNotifications.jsx";
+import AdminAllTime from "../components/AdminAllTime.jsx";
 import RacePreview from "../components/RacePreview.jsx";
 import { SOCIAL_META } from "../components/SocialLinks.jsx";
 import { fmtTimeCell } from "../utils/raceDuration.js";
@@ -39,6 +40,7 @@ const TAB_GROUPS = [
       { id: "drivers", label: "Drivers" },
       { id: "market", label: "Driver Market" },
       { id: "ratings", label: "Ratings" },
+      { id: "alltime", label: "All time" },
     ],
   },
   {
@@ -193,7 +195,7 @@ export default function Admin() {
   useEffect(() => {
     sessionStorage.removeItem("nabs_admin_tab");
   }, []);
-  const { setSeason } = useSeason();
+  const { season, setSeason } = useSeason();
 
   // If any admin request reports an expired/invalid token, bounce to the login.
   useEffect(() => {
@@ -275,6 +277,22 @@ export default function Admin() {
           />
         )}
         {tab === "teams" && <Teams />}
+        {tab === "alltime" && (
+          <AdminAllTime
+            // Jump from a search hit to the tab that edits it. A hit in another
+            // season switches the global season first (which remounts the page,
+            // so the target tab is stashed to survive it); a hit in the season
+            // already being edited just changes the tab.
+            gotoTab={(t, seasonNumber) => {
+              if (seasonNumber != null && seasonNumber !== season) {
+                sessionStorage.setItem("nabs_admin_tab", t);
+                setSeason(seasonNumber);
+              } else {
+                setTab(t);
+              }
+            }}
+          />
+        )}
         {tab === "import" && <AdminImport />}
         {tab === "edit" && <EditResults />}
         {tab === "ratings" && <AdminRatings />}
@@ -1484,7 +1502,7 @@ function DiscordResultsPost({ raceId }) {
 // Search-to-add field under each team: type a few letters, pick a person from
 // the series' all-time driver database, and they land in this team of the
 // edited season — identity (photo, flag, Steam ID) and career link included.
-function DbSeatSearch({ team, db, rosterNames, onAdded, onError }) {
+function DbSeatSearch({ team, db, rosterNames, onAdded, onError, autoFocus = false, placeholder }) {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const query = q.trim().toLowerCase();
@@ -1496,9 +1514,13 @@ function DbSeatSearch({ team, db, rosterNames, onAdded, onError }) {
   async function add(entry) {
     setBusy(true);
     try {
-      await api.addDriverFromDb(entry.sourceDriverId, team.id);
+      const res = await api.addDriverFromDb(entry.sourceDriverId, team.id);
       setQ("");
-      onAdded(`${entry.name} added to ${team.name}.`);
+      onAdded(
+        res?.movedFromReserve
+          ? `${entry.name} moved from the Reserve pool to ${team.name} (sign-ups kept).`
+          : `${entry.name} added to ${team.name}.`
+      );
     } catch (err) {
       onError(err.message);
     } finally {
@@ -1509,8 +1531,9 @@ function DbSeatSearch({ team, db, rosterNames, onAdded, onError }) {
     <div className="relative mt-1.5">
       <input
         className="input w-full py-1.5 text-xs"
-        placeholder={`Add to ${team.name} from the driver database…`}
+        placeholder={placeholder || `Add to ${team.name} from the driver database…`}
         value={q}
+        autoFocus={autoFocus}
         onChange={(e) => setQ(e.target.value)}
         disabled={busy || !db}
       />
@@ -1555,6 +1578,8 @@ function Drivers() {
   const [busy, setBusy] = useState(false);
   // Which team's roster is unfolded — one at a time keeps the list scannable.
   const [openTeam, setOpenTeam] = useState(null);
+  // Ticked drivers for bulk removal (ids survive folding teams open/closed).
+  const [selected, setSelected] = useState(() => new Set());
 
   const accounts = new Map(((membersData && membersData.members) || []).map((m) => [String(m.discordId), m]));
   const allDrivers = (teams || []).flatMap((t) => t.drivers.map((d) => ({ ...d, teamName: t.name })));
@@ -1566,17 +1591,36 @@ function Drivers() {
     setMsg(null);
     try {
       // The permanent technical id is generated server-side from the name.
-      await api.createDriver({
+      const body = {
         name: form.name.trim(),
         discordName: form.discordName.trim() || form.name.trim(),
         teamId: form.teamId,
         tier: Number(form.tier),
-      });
+      };
+      await api.createDriver(body);
       setMsg(`Driver ${form.name} created.`);
       setForm({ name: "", discordName: "", teamId: "", tier: 2 });
       reload();
     } catch (err) {
-      setError(err.message);
+      // Same name already on this season's roster (often the Reserve row the
+      // attendance sign-up auto-created): the backend asks before creating a
+      // twin — usually the right move is to move the existing entry instead.
+      if (err.data?.needsConfirm) {
+        if (window.confirm(err.message)) {
+          try {
+            await api.createDriver({
+              name: form.name.trim(),
+              discordName: form.discordName.trim() || form.name.trim(),
+              teamId: form.teamId,
+              tier: Number(form.tier),
+              force: true,
+            });
+            setMsg(`Driver ${form.name} created.`);
+            setForm({ name: "", discordName: "", teamId: "", tier: 2 });
+            reload();
+          } catch (e2) { setError(e2.message); }
+        }
+      } else setError(err.message);
     } finally {
       setBusy(false);
     }
@@ -1586,6 +1630,103 @@ function Drivers() {
     setBusy(true); setError(null); setMsg(null);
     try { await api.updateDriver(d.id, patch); reload(); }
     catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  // Remove a driver row from THIS season. The backend refuses outright when the
+  // row has race results, and otherwise answers with a summary of what hangs on
+  // it (attendance answers, market entries) — that summary IS the confirm text,
+  // so the admin decides with the real numbers in front of them.
+  async function removeDriver(d) {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.deleteDriver(d.id);
+      setMsg(`${d.name} removed from this season.`);
+      reload(); driverDb.reload();
+    } catch (err) {
+      if (err.data?.needsConfirm) {
+        if (window.confirm(err.message)) {
+          try {
+            const out = await api.deleteDriver(d.id, true);
+            setMsg(
+              out.demoted
+                ? `${d.name} moved to the Reserve pool — their attendance answers are kept.`
+                : `${d.name} removed from this season.`
+            );
+            reload(); driverDb.reload();
+          } catch (e2) { setError(e2.message); }
+        }
+      } else setError(err.message);
+    } finally { setBusy(false); }
+  }
+
+  // Tick/untick a whole team's roster in one go (feeds the same bulk-removal
+  // bar as the single checkboxes).
+  function toggleTeam(t) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const all = t.drivers.every((d) => next.has(d.id));
+      t.drivers.forEach((d) => (all ? next.delete(d.id) : next.add(d.id)));
+      return next;
+    });
+  }
+
+  function toggleSelected(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  // Bulk removal: first call reports per driver what would happen; that report
+  // becomes ONE confirm for the whole batch. Drivers with race results are
+  // named as protected and simply skipped, so mixing them in is harmless.
+  async function removeSelected() {
+    const ids = [...selected];
+    if (!ids.length) return;
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.bulkDeleteDrivers(ids);
+    } catch (err) {
+      if (err.data?.needsConfirm && err.data.drivers) {
+        const rows = err.data.drivers;
+        const blocked = rows.filter((r) => r.blocked);
+        const going = rows.filter((r) => !r.blocked);
+        const lines = going.map((r) => {
+          if (r.demote)
+            return `• ${r.name} (${r.team || "no team"}): has ${r.rsvps} attendance answer(s), so they move to the Reserve pool instead (answers kept)`;
+          const bits = [];
+          if (r.rsvps > 0) bits.push(`${r.rsvps} attendance answer(s)`);
+          if (r.marketEntries > 0) bits.push(`${r.marketEntries} market entr${r.marketEntries === 1 ? "y" : "ies"}`);
+          return `• ${r.name} (${r.team || "no team"})${bits.length ? `: also deletes ${bits.join(", ")}` : ""}`;
+        });
+        const text =
+          (going.length
+            ? `Remove ${going.length} driver(s) from ${going[0].season || "this season"}?\n\n${lines.join("\n")}\n\nTheir entries in other seasons are not touched.`
+            : "None of the selected drivers can be deleted.") +
+          (blocked.length
+            ? `\n\nProtected (have race results, will be skipped): ${blocked.map((r) => r.name).join(", ")}`
+            : "");
+        if (going.length && window.confirm(text)) {
+          try {
+            const out = await api.bulkDeleteDrivers(ids, true);
+            setMsg(
+              [
+                out.removed.length ? `${out.removed.length} driver(s) removed.` : null,
+                out.demoted?.length ? `Moved to Reserve (attendance kept): ${out.demoted.join(", ")}.` : null,
+                out.blocked.length ? `Skipped (have results): ${out.blocked.join(", ")}.` : null,
+              ]
+                .filter(Boolean)
+                .join(" ") || "Nothing changed."
+            );
+            setSelected(new Set());
+            reload(); driverDb.reload();
+          } catch (e2) { setError(e2.message); }
+        } else if (!going.length) {
+          setError(`These drivers have race results and cannot be deleted: ${blocked.map((r) => r.name).join(", ")}`);
+        }
+      } else setError(err.message);
+    } finally { setBusy(false); }
   }
 
   // Teams with their drivers — grouped by team, ordered Tier 1 → Tier 2 →
@@ -1665,14 +1806,43 @@ function Drivers() {
               <DbSeatSearch
                 team={t}
                 db={driverDb.data?.entries}
-                rosterNames={new Set(allDrivers.map((d) => d.name.trim().toLowerCase()))}
+                // Only REAL-team drivers are hidden from the search: someone
+                // sitting in the Reserve pool stays findable, and picking them
+                // MOVES their reserve row into the team (sign-ups kept).
+                rosterNames={
+                  new Set(
+                    (teams || [])
+                      .filter((x) => x.tier !== 0)
+                      .flatMap((x) => x.drivers.map((d) => d.name.trim().toLowerCase()))
+                  )
+                }
                 onAdded={(m) => { setMsg(m); setError(null); reload(); driverDb.reload(); }}
                 onError={(m) => { setError(m); setMsg(null); }}
               />
+              {t.drivers.length > 0 && (
+                <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs font-semibold text-medium">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={t.drivers.every((d) => selected.has(d.id))}
+                    disabled={busy}
+                    onChange={() => toggleTeam(t)}
+                  />
+                  Select all {t.drivers.length} driver{t.drivers.length === 1 ? "" : "s"} of {t.name} for removal
+                </label>
+              )}
               <ul className="mt-1.5 divide-y divide-border border-t border-border">
                 {t.drivers.length === 0 && <li className="py-2 text-xs text-light">No drivers yet — add one with the search above.</li>}
                 {t.drivers.map((d) => (
                   <li key={d.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 shrink-0 accent-primary"
+                      title="Select for bulk removal"
+                      checked={selected.has(d.id)}
+                      disabled={busy}
+                      onChange={() => toggleSelected(d.id)}
+                    />
                     <span className={`min-w-0 flex-1 truncate font-semibold ${d.isActive ? "text-dark" : "text-light line-through"}`}>
                       {d.name}
                     </span>
@@ -1710,6 +1880,11 @@ function Drivers() {
                     {!d.isActive && d.hideFromStandings && (
                       <span className="pill bg-surface2 text-light" title="Not shown in the public driver standings">hidden</span>
                     )}
+                    <button className="text-xs font-semibold text-rose-500 hover:underline" disabled={busy}
+                      title="Removes this driver from THIS season only (their entries in other seasons stay). Blocked while they have race results; attendance answers and driver-market entries are listed for confirmation first."
+                      onClick={() => removeDriver(d)}>
+                      Remove
+                    </button>
                     <DriverDiscordId d={d} busy={busy} accounts={accounts}
                       onSave={(v) => patchDriver(d, { discordUserId: v })} />
                   </li>
@@ -1720,6 +1895,27 @@ function Drivers() {
             </div>
           ))}
         </div>
+        {selected.size > 0 && (
+          <div className="sticky bottom-0 mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
+            <span className="text-sm font-semibold text-dark">
+              {selected.size} driver{selected.size === 1 ? "" : "s"} selected
+            </span>
+            <button
+              className="rounded-lg bg-rose-500/10 px-3 py-1.5 text-sm font-semibold text-rose-500 transition hover:bg-rose-500/20"
+              disabled={busy}
+              onClick={removeSelected}
+            >
+              Remove selected
+            </button>
+            <button
+              className="text-sm font-semibold text-light hover:text-medium"
+              disabled={busy}
+              onClick={() => setSelected(new Set())}
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
     </div>
     </div>
@@ -2780,9 +2976,126 @@ function SeriesPanel() {
 // --- TEAMS -----------------------------------------------------------------
 const TIER_LABEL = { 0: "Reserve", 1: "Tier 1", 2: "Tier 2" };
 
+// The seat boxes inside a Teams-tab row: every current driver as a filled
+// chip, plus dashed "Add driver" slots (two seats for a racing team, one
+// rolling slot for the Reserve pool). Clicking a dashed slot opens the same
+// driver-database search the Drivers tab uses — the team fixes season and
+// tier, so picking a person is all there is to do.
+function SeatBoxes({ team, db, rosterNames, onAdded, onError, onRemove, busy }) {
+  const [adding, setAdding] = useState(false);
+  // The Reserve pool can hold many drivers, so it starts folded to one summary
+  // line — expand to see (and edit) the actual entries.
+  const [expanded, setExpanded] = useState(false);
+  const drivers = team.drivers || [];
+  const emptySlots = team.tier === 0 ? 1 : Math.max(0, 2 - drivers.length);
+
+  if (team.tier === 0 && !expanded && drivers.length > 0 && !adding) {
+    return (
+      <div className="flex min-w-[14rem] flex-[1.4] flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface2/60 px-3 text-sm font-semibold text-medium transition hover:text-dark"
+          title={drivers.map((d) => d.name).join(", ")}
+        >
+          {drivers.length} reserve driver{drivers.length === 1 ? "" : "s"}
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-dashed border-border px-3 text-xs font-semibold text-light transition hover:border-accent/60 hover:text-medium"
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Add driver
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-[14rem] flex-[1.4] flex-wrap items-center gap-2">
+      {drivers.map((d) => (
+        <span
+          key={d.id}
+          className={`inline-flex h-9 min-w-[8rem] flex-1 basis-32 items-center gap-2 rounded-lg border border-border bg-surface2/60 pl-2.5 pr-1 text-sm font-semibold ${
+            d.isActive ? "text-dark" : "text-light line-through"
+          }`}
+          title={d.isActive ? d.name : `${d.name} (inactive)`}
+        >
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: team.color || "#888" }} />
+          <span className="truncate">{d.name}</span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onRemove(d)}
+            title={`Remove ${d.name} from this season (same rules as the Drivers tab: blocked while they have race results, attendance answers are listed for confirmation first)`}
+            className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-light transition hover:bg-rose-500/10 hover:text-rose-500"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </span>
+      ))}
+      {team.tier === 0 && expanded && drivers.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="text-xs font-semibold text-light hover:text-medium"
+        >
+          Collapse
+        </button>
+      )}
+      {adding ? (
+        <div className="min-w-[12rem] flex-1 basis-48">
+          <DbSeatSearch
+            team={team}
+            db={db}
+            rosterNames={rosterNames}
+            autoFocus
+            placeholder={`Search the driver database…`}
+            onAdded={(m) => { setAdding(false); onAdded(m); }}
+            onError={onError}
+          />
+        </div>
+      ) : (
+        emptySlots > 0 &&
+        Array.from({ length: emptySlots }, (_, i) => (
+          <button
+            key={`slot${i}`}
+            type="button"
+            onClick={() => setAdding(true)}
+            className="inline-flex h-9 min-w-[8rem] flex-1 basis-32 items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-xs font-semibold text-light transition hover:border-accent/60 hover:text-medium"
+            title={`Add a driver to ${team.name} from the driver database (tier comes from the team)`}
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Add driver
+          </button>
+        ))
+      )}
+    </div>
+  );
+}
+
 function Teams() {
   const { current } = useSeason();
   const { data: teams, reload } = useApi(useCallback(() => api.teams(), []));
+  // The all-time driver database + current roster names feed the seat boxes'
+  // search (same source as the Drivers tab). Reserve-pool drivers are NOT
+  // hidden: picking one moves their reserve row into the team (sign-ups kept).
+  const driverDb = useApi(useCallback(() => api.adminDriverDb(), []));
+  const rosterNames = new Set(
+    (teams || [])
+      .filter((t) => t.tier !== 0)
+      .flatMap((t) => (t.drivers || []).map((d) => d.name.trim().toLowerCase()))
+  );
   const [form, setForm] = useState({ id: "", name: "", tier: 2, color: "#888888" });
   const [renaming, setRenaming] = useState(null); // { id, name } while a team is being renamed
   const [msg, setMsg] = useState(null);
@@ -2830,6 +3143,38 @@ function Teams() {
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // Removing a driver from a seat box — the SAME endpoint and rules as the
+  // Drivers tab (blocked with race results; the confirm lists attendance
+  // answers and market entries), so both tabs always stay in step.
+  async function removeDriver(d) {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.deleteDriver(d.id);
+      setMsg(`${d.name} removed from this season.`);
+      reload(); driverDb.reload();
+    } catch (err) {
+      if (err.data?.needsConfirm) {
+        if (window.confirm(err.message)) {
+          try {
+            const out = await api.deleteDriver(d.id, true);
+            setMsg(
+              out.demoted
+                ? `${d.name} moved to the Reserve pool — their attendance answers are kept.`
+                : `${d.name} removed from this season.`
+            );
+            reload(); driverDb.reload();
+          } catch (e2) { setError(e2.message); }
+        }
+      } else setError(err.message);
+    } finally { setBusy(false); }
+  }
+
+  // Tier 1 → Tier 2 → Reserve at the very bottom (tier values are 1/2/0).
+  const tierRank = (tier) => (tier === 1 ? 0 : tier === 2 ? 1 : 2);
+  const sortedTeams = [...(teams || [])].sort(
+    (a, b) => tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name)
+  );
+
   return (
     <div>
       {error && <div className="mb-4"><Notice kind="error">{error}</Notice></div>}
@@ -2874,7 +3219,7 @@ function Teams() {
         <div className="card p-5 lg:col-span-2">
           <CardHead eyebrow="Roster" title={`Teams (${(teams || []).length})`} />
           <ul className="mt-1 divide-y divide-border">
-            {(teams || []).map((t) => (
+            {sortedTeams.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 py-3">
                 {/* identity — the name is renameable in place (pencil) */}
                 <div className="flex min-w-[12rem] flex-1 items-center gap-3">
@@ -2921,6 +3266,17 @@ function Teams() {
                     </div>
                   )}
                 </div>
+
+                {/* seats — filled chips + dashed add-slots with DB search */}
+                <SeatBoxes
+                  team={t}
+                  db={driverDb.data?.entries}
+                  rosterNames={rosterNames}
+                  busy={busy}
+                  onRemove={removeDriver}
+                  onAdded={(m) => { setMsg(m); setError(null); reload(); driverDb.reload(); }}
+                  onError={(m) => { setError(m); setMsg(null); }}
+                />
 
                 {/* controls */}
                 <div className="flex items-center gap-2">

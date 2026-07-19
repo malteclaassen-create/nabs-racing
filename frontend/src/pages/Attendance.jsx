@@ -73,6 +73,27 @@ export default function Attendance() {
 
   const events = useApi(useCallback(() => api.events(), []));
   const market = useApi(useCallback(() => api.market(), []));
+  // Logged in but no driver profile anywhere (never raced with us): they can't
+  // RSVP, but they can raise a hand — "I want to race" — which the admin sees
+  // in Members → Needs attention.
+  const raceRequest = useApi(
+    useCallback(
+      () => (isLoggedIn && !driverId ? api.myRaceRequest() : Promise.resolve(null)),
+      [isLoggedIn, driverId]
+    )
+  );
+  async function requestSeat(raceId) {
+    setError(null);
+    setBusy(`${raceId}:request`);
+    try {
+      await api.requestRace(raceId);
+      await raceRequest.reload();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
   const marketByRace = useMemo(() => new Map((market.data?.races || []).map((r) => [r.id, r])), [market.data]);
 
   const list = useMemo(
@@ -213,6 +234,9 @@ export default function Attendance() {
                   reloadMarket={market.reload}
                   driverId={driverId}
                   canSignUp={canSignUp}
+                  isLoggedIn={isLoggedIn}
+                  raceRequest={raceRequest.data}
+                  onRequestSeat={requestSeat}
                   busy={busy}
                   onSetStatus={setStatus}
                   onClear={clearStatus}
@@ -229,6 +253,9 @@ export default function Attendance() {
                 reloadMarket={market.reload}
                 driverId={driverId}
                 canSignUp={canSignUp}
+                isLoggedIn={isLoggedIn}
+                raceRequest={raceRequest.data}
+                onRequestSeat={requestSeat}
                 busy={busy}
                 onSetStatus={setStatus}
                 onClear={clearStatus}

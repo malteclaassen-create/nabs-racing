@@ -198,6 +198,13 @@ export const api = {
   // current series/season (built without seriesQ/seasonQ on purpose). auth:true
   // so a signed-in admin also gets private-season/series hits.
   search: (q) => request(`/search?q=${encodeURIComponent(q)}`, { auth: true }),
+  // Admin "All time" search: every matching row across ALL seasons of the
+  // currently edited series (one row per season), for jumping into edits.
+  adminSearch: (q) =>
+    request(
+      `/search/admin?q=${encodeURIComponent(q)}${SELECTED_SERIES ? `&series=${encodeURIComponent(SELECTED_SERIES)}` : ""}`,
+      { auth: true }
+    ),
   // The next ANNOUNCED upcoming season for the "Coming up" strip (or null).
   seasonTeaser: () => request(`/seasons/teaser${seriesQ()}`),
   // Live championship projection (only { active: true } while a league race is
@@ -215,6 +222,10 @@ export const api = {
     request(`/events/${raceId}/rsvp`, { method: "POST", body: { driverId, status }, userAuth: true }),
   removeRsvp: (raceId, driverId) =>
     request(`/events/${raceId}/rsvp/${driverId}`, { method: "DELETE", userAuth: true }),
+  // "I want to race": a logged-in account with no driver profile raises a hand
+  // for a race; the admin sees it in Members → Needs attention.
+  myRaceRequest: () => request("/me/race-request", { userAuth: true }),
+  requestRace: (raceId) => request("/me/race-request", { method: "POST", body: { raceId }, userAuth: true }),
 
   // notifications (the nav-bar bell; member-only)
   notifications: () => request("/notifications", { userAuth: true }),
@@ -381,6 +392,17 @@ export const api = {
   addDriverFromDb: (sourceDriverId, teamId) =>
     request("/admin/drivers/from-db", { method: "POST", body: { sourceDriverId, teamId }, auth: true }),
   updateDriver: (id, body) => request(`/admin/drivers/${id}`, { method: "PUT", body, auth: true }),
+  // Remove one driver row from its season. Without force the backend answers
+  // 409 needsConfirm listing what would be deleted with it (attendance answers,
+  // market entries); the UI confirms, then retries with force.
+  deleteDriver: (id, force = false) =>
+    request(`/admin/drivers/${id}${force ? "?force=1" : ""}`, { method: "DELETE", auth: true }),
+  // Bulk removal: same two-step dance, but one confirm for the whole batch.
+  // Without force the backend answers 409 with a per-driver report (who is
+  // blocked by results, whose attendance answers would go); with force it
+  // deletes every deletable row and skips the blocked ones.
+  bulkDeleteDrivers: (ids, force = false) =>
+    request("/admin/drivers/bulk-delete", { method: "POST", body: { ids, force }, auth: true }),
   changePin: (newPin) =>
     request("/admin/settings/pin", { method: "PUT", body: { newPin }, auth: true }),
   adminSecurity: () => request("/admin/security", { auth: true }),

@@ -249,6 +249,12 @@ export async function ensureAppSchema(prisma) {
   );
   // When this member last opened the bell — everything newer counts as unread.
   await addColumn(prisma, "MemberAccount", "notificationsSeenAt", "DATETIME");
+  // "I want to race": a logged-in account with no driver profile can raise a
+  // hand from the Attendance page. Stamp + free-text (race name) shown in the
+  // admin Members tab; cleared when the account gets linked or a driver is
+  // created for it.
+  await addColumn(prisma, "MemberAccount", "raceRequestAt", "DATETIME");
+  await addColumn(prisma, "MemberAccount", "raceRequestText", "TEXT");
 
   // --- Phase 3: cross-season person links. One row per driver row that belongs
   // to a person; all driver rows of the same person share one personId.

@@ -737,11 +737,51 @@ function HeadToHead({ me, meRow, standings }) {
   );
 }
 
-function TeamPanel({ driver, standings }) {
+function TeamPanel({ driver, standings, career }) {
   const mates = standings
     .filter((s) => s.team.id === driver.team.id && s.driverId !== driver.id)
     .sort((a, b) => a.position - b.position);
   const c = driver.team.color;
+  const isReserve = driver.team.tier === 0;
+
+  // (1) The team's constructor-championship standing, fetched for the
+  // profile's own season (tier 1 and tier 2 have separate tables; the
+  // Reserve pool has no constructor entry).
+  const consApi = useApi(
+    useCallback(
+      () =>
+        driver.team.tier === 1
+          ? api.t1Standings(driver.seasonNumber)
+          : driver.team.tier === 2
+            ? api.t2Standings(driver.seasonNumber)
+            : Promise.resolve(null),
+      [driver.team.id, driver.team.tier, driver.seasonNumber]
+    )
+  );
+  const consRows = consApi.data?.standings || [];
+  const consRow = consRows.find((r) => r.teamId === driver.team.id) || null;
+  // Context line: the leader chases nobody, so show the lead over P2; everyone
+  // else shows the gap to the team directly ahead.
+  const consAhead = consRow && consRow.position > 1 ? consRows.find((r) => r.position === consRow.position - 1) : null;
+  const consNext = consRow && consRow.position === 1 ? consRows.find((r) => r.position === 2) : null;
+
+  // (2) Share of the team's driver points, focal driver included. Uses the
+  // driver standings that are already here, so it always matches the page.
+  const meRow = standings.find((s) => s.driverId === driver.id) || null;
+  const shareRows = [meRow, ...mates].filter(Boolean).filter((r) => (r.total || 0) > 0);
+  const shareTotal = shareRows.reduce((sum, r) => sum + (r.total || 0), 0);
+
+  // (4) The driver's history with THIS team across their linked seasons.
+  // teamName can read "A / B" after a mid-season move, so match by inclusion.
+  const withTeam = (career?.seasons || [])
+    .filter((s) => s.teamName && s.teamName.split(" / ").includes(driver.team.name))
+    // Only seasons actually raced (or the one being viewed) count — a signed
+    // seat for next season shouldn't already read as a season together.
+    .filter((s) => (s.starts || 0) > 0 || s.isCurrent)
+    .sort((a, b) => (a.seasonNumber || 0) - (b.seasonNumber || 0));
+  const historyBest = withTeam
+    .filter((s) => s.position != null && s.starts > 0)
+    .reduce((best, s) => (best == null || s.position < best.position ? s : best), null);
   // The Reserve "team" can have 50+ drivers, which used to stretch this panel
   // far past the race-by-race table beside it. Long lists start collapsed at
   // roughly that table's height; a footer button reveals the rest. Lists only
@@ -754,6 +794,8 @@ function TeamPanel({ driver, standings }) {
   return (
     <div className="reveal card overflow-hidden">
       <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Team</h2>
+      {/* Team-colour seam along the card's top edge, like the hero banner. */}
+      <span className="absolute inset-x-0 top-0 z-10 h-1" style={{ backgroundColor: c }} />
       <div className="relative overflow-hidden p-5">
         <div className="absolute inset-0 opacity-[0.1]" style={{ background: `radial-gradient(circle at 85% 0%, ${c}, transparent 60%)` }} />
         <div className="relative flex items-center gap-3">
@@ -769,19 +811,79 @@ function TeamPanel({ driver, standings }) {
           </div>
         </div>
 
-        <div className="relative mt-5">
-          <div className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">Teammates</div>
-          {mates.length === 0 && <div className="text-sm text-light">No teammates this season.</div>}
-          <div className="cascade space-y-1.5">
-            {shownMates.map((m, i) => (
-              <Link key={m.driverId} to={`/drivers/${m.driverId}`} style={{ "--i": Math.min(i, 16) }}
-                className="flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-surface2">
-                <DriverAvatar name={m.name} photoUrl={m.photoUrl} color={m.team.color} size={34} />
-                <span className="flex-1 font-display text-sm font-bold uppercase tracking-tight text-dark">{m.name}</span>
-                <span className="font-mono text-xs font-semibold tabular-nums text-light">P{m.position}</span>
-                <span className="font-display text-sm font-black tabular-nums text-dark">{m.total}</span>
-              </Link>
-            ))}
+        {/* (1) Championship standing as one stat strip: position · points · gap */}
+        {consRow && (
+          <div className="relative mt-4 grid grid-cols-3 divide-x divide-border border-y border-border text-center">
+            <div className="py-3">
+              <div className="font-display text-2xl font-black tabular-nums leading-none" style={{ color: consRow.position === 1 ? MEDAL_TEXT[0] : undefined }}>
+                <span className={consRow.position === 1 ? "" : "text-dark"}>P{consRow.position}</span>
+              </div>
+              <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light">Championship</div>
+            </div>
+            <div className="py-3">
+              <div className="font-display text-2xl font-black tabular-nums leading-none text-dark">
+                <CountUp end={consRow.total} />
+              </div>
+              <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light">Points</div>
+            </div>
+            <div className="py-3">
+              <div className={`font-display text-2xl font-black tabular-nums leading-none ${consRow.position === 1 ? "text-emerald-600" : "text-dark"}`}>
+                {consRow.position === 1
+                  ? consNext ? `+${consRow.total - consNext.total}` : "+0"
+                  : consAhead ? `-${consAhead.total - consRow.total}` : "–"}
+              </div>
+              <div className="mt-1 truncate font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+                {consRow.position === 1
+                  ? consNext ? `Lead over ${consNext.name}` : "Lead"
+                  : consAhead ? `To ${consAhead.name}` : "Gap"}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* (2) The line-up, focal driver included — each row carries a slim
+            bar showing that driver's share of the team's points. */}
+        <div className="relative mt-4">
+          <div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
+            {isReserve ? "Reserve drivers" : "Line-up"}
+          </div>
+          {isReserve && mates.length === 0 && <div className="text-sm text-light">No teammates this season.</div>}
+          <div className="cascade space-y-1">
+            {(isReserve ? shownMates : [meRow, ...mates].filter(Boolean)).map((m, i) => {
+              const self = m.driverId === driver.id;
+              const pct = !isReserve && shareTotal > 0 ? ((m.total || 0) / shareTotal) * 100 : null;
+              const inner = (
+                <>
+                  <DriverAvatar name={m.name} photoUrl={m.photoUrl} color={m.team.color} size={34} />
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate font-display text-sm font-bold uppercase tracking-tight ${self ? "text-dark" : "text-dark"}`}>
+                      {m.name}
+                      {self && <span className="ml-1.5 align-middle font-mono text-[9px] font-bold uppercase tracking-wider text-eyebrow">this page</span>}
+                    </span>
+                    {pct != null && (
+                      <span className="mt-1 block h-[3px] w-full overflow-hidden rounded-full bg-surface2">
+                        <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: c, opacity: self ? 1 : 0.45 }} />
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-mono text-xs font-semibold tabular-nums text-light">P{m.position}</span>
+                  <span className="font-display text-sm font-black tabular-nums text-dark">{m.total}</span>
+                  {pct != null && (
+                    <span className="w-9 text-right font-mono text-[10px] font-semibold tabular-nums text-light">{Math.round(pct)}%</span>
+                  )}
+                </>
+              );
+              return self ? (
+                <div key={m.driverId} className="flex items-center gap-3 rounded-lg bg-surface2/50 px-2 py-2 ring-1 ring-inset ring-border">
+                  {inner}
+                </div>
+              ) : (
+                <Link key={m.driverId} to={`/drivers/${m.driverId}`} style={{ "--i": Math.min(i, 16) }}
+                  className="flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-surface2">
+                  {inner}
+                </Link>
+              );
+            })}
           </div>
           {collapsible && (
             <button
@@ -793,6 +895,46 @@ function TeamPanel({ driver, standings }) {
             </button>
           )}
         </div>
+
+        {/* (4) The driver's history with this team across their seasons */}
+        {!isReserve && withTeam.length > 0 && (
+          <div className="relative mt-5 border-t border-border pt-4">
+            <div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
+              {driver.name.split(" ")[0]} &amp; {driver.team.name}
+            </div>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-light">Together</span>
+                <span className="font-display font-bold tabular-nums text-dark">
+                  {withTeam.length === 1
+                    ? `First season (S${withTeam[0].seasonNumber})`
+                    : `${withTeam.length} seasons · since S${withTeam[0].seasonNumber}`}
+                </span>
+              </div>
+              {historyBest && (
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-light">Best finish together</span>
+                  <span
+                    className="font-display font-bold tabular-nums"
+                    style={{ color: historyBest.position <= 3 ? MEDAL_TEXT[historyBest.position - 1] : undefined }}
+                  >
+                    <span className={historyBest.position <= 3 ? "" : "text-dark"}>
+                      {historyBest.position === 1 ? "Champion" : `P${historyBest.position}`} (S{historyBest.seasonNumber})
+                    </span>
+                  </span>
+                </div>
+              )}
+              {withTeam.length > 1 && (
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-light">Wins together</span>
+                  <span className="font-display font-bold tabular-nums text-dark">
+                    {withTeam.reduce((s, x) => s + (x.wins || 0), 0)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1430,7 +1572,7 @@ export default function DriverProfile({ previewId, preview }) {
           )}
         </div>
 
-        <TeamPanel driver={driver} standings={standingsData.standings} />
+        <TeamPanel driver={driver} standings={standingsData.standings} career={p.career} />
       </div>
 
       {/* Career across linked seasons (only when this driver spans more than one) */}

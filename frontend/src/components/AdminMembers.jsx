@@ -65,7 +65,11 @@ export default function AdminMembers() {
 
   const members = data?.members || [];
   const unclaimed = data?.unclaimed || [];
-  const unlinked = members.filter((m) => !m.driver);
+  // Accounts with a pending "I want to race" hand-raise float to the top —
+  // that's the most actionable item in the whole tab.
+  const unlinked = members
+    .filter((m) => !m.driver)
+    .sort((a, b) => (b.raceRequestAt ? 1 : 0) - (a.raceRequestAt ? 1 : 0));
   // Reserve first — that's where newcomers usually start.
   const teams = [...(teamsApi.data || [])].sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
 
@@ -184,6 +188,17 @@ export default function AdminMembers() {
                       </span>
                     )}
                   </span>
+                  {m.raceRequestAt && (
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wide text-emerald-600"
+                      title={`Asked to race${m.raceRequestText ? `: ${m.raceRequestText}` : ""} (${fmtDate(m.raceRequestAt)}). Link them or create a driver — that answers the request.`}
+                    >
+                      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M7 11V7a5 5 0 0110 0v4M5 11h14l-1 9H6z" />
+                      </svg>
+                      Wants to race{m.raceRequestText ? ` · ${m.raceRequestText}` : ""}
+                    </span>
+                  )}
                   <StatusPills m={m} />
                   <span className="flex items-center gap-2">
                     <select
