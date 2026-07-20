@@ -58,9 +58,58 @@ function Countdown({ date }) {
 // Scrolls horizontally on phones; becomes a vertical sidebar next to the
 // results table from `lg` up.
 // ---------------------------------------------------------------------------
+// Mask for the round rail: fades only the sides that have more content behind
+// them. No side scrollable -> no mask at all (an inline `undefined` leaves the
+// element unmasked), so a short rail keeps crisp edges.
+const FADE = "18px";
+function edgeMask({ left, right }) {
+  if (!left && !right) return undefined;
+  const stops = [
+    left ? `transparent, black ${FADE}` : "black",
+    right ? `black calc(100% - ${FADE}), transparent` : "black",
+  ].join(", ");
+  const img = `linear-gradient(to right, ${stops})`;
+  return { maskImage: img, WebkitMaskImage: img };
+}
+
 function RoundRail({ races, selectedId, onSelect }) {
   const scrollerRef = useRef(null);
   const activeRef = useRef(null);
+  // Which sides can still be scrolled to — drives the edge fade above.
+  const [edges, setEdges] = useState({ left: false, right: false });
+
+  // Called on scroll, on resize, whenever the contents change (switching tabs
+  // swaps the whole list) and right after the centring scroll below — that one
+  // runs during mount, where its scroll event can land before the listener is
+  // attached, so it reports in directly rather than relying on the event.
+  const syncEdges = useCallback(() => {
+    const c = scrollerRef.current;
+    if (!c) return;
+    const max = c.scrollWidth - c.clientWidth;
+    // 1px slack: sub-pixel widths otherwise leave a permanent phantom fade.
+    setEdges({ left: c.scrollLeft > 1, right: c.scrollLeft < max - 1 });
+  }, []);
+
+  useEffect(() => {
+    const c = scrollerRef.current;
+    if (!c) return;
+    syncEdges();
+    c.addEventListener("scroll", syncEdges, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(syncEdges) : null;
+    ro?.observe(c);
+    // Rotating the phone or crossing into the lg sidebar layout changes what
+    // overflows; the window event covers that even where the observer above
+    // doesn't report a box change.
+    window.addEventListener("resize", syncEdges);
+    // The display font landing widens the chips after first paint.
+    const t = setTimeout(syncEdges, 350);
+    return () => {
+      c.removeEventListener("scroll", syncEdges);
+      window.removeEventListener("resize", syncEdges);
+      ro?.disconnect();
+      clearTimeout(t);
+    };
+  }, [races, selectedId, syncEdges]);
 
   // On phones the rail is a horizontal strip. Centre the selected round so the
   // latest races are in view straight away, instead of forcing a long scroll
@@ -76,6 +125,7 @@ function RoundRail({ races, selectedId, onSelect }) {
       const aRect = a.getBoundingClientRect();
       const delta = aRect.left - cRect.left - (c.clientWidth / 2 - a.clientWidth / 2);
       c.scrollTo({ left: c.scrollLeft + delta, behavior: "auto" });
+      syncEdges();
     };
     // Twice: once after paint, once after the display font has loaded — the
     // buttons widen with it, which used to leave the strip parked on round 1.
@@ -85,14 +135,24 @@ function RoundRail({ races, selectedId, onSelect }) {
       cancelAnimationFrame(raf);
       clearTimeout(t);
     };
-  }, [selectedId, races]);
+  }, [selectedId, races, syncEdges]);
 
   return (
     <div
       ref={scrollerRef}
-      // The mask fades both edges below lg, so a clipped chip reads as "this
-      // scrolls" instead of looking broken.
-      className="scrollbar-slim flex gap-2 overflow-x-auto pb-2 [mask-image:linear-gradient(to_right,transparent,black_18px,black_calc(100%_-_18px),transparent)] lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:[mask-image:none]"
+      // The edge fade is a "there's more that way" hint, so it's applied per
+      // side and only while that side actually has more to scroll to: a rail
+      // that fits (one training session) or one scrolled to its end gets a
+      // clean, unfaded edge instead of looking cut off for no reason. At lg the
+      // rail is the vertical sidebar and never scrolls sideways, so both sides
+      // come out false and the mask drops away on its own.
+      style={edgeMask(edges)}
+      // pt-1: the selected chip's ring is drawn OUTSIDE its box, and a
+      // horizontal scroller clips vertically too (overflow-x:auto forces
+      // overflow-y:auto), so without a little headroom the ring's top edge got
+      // shaved off. Not needed at lg, where the rail is the unclipped sidebar
+      // and the padding would push the first chip out of line with the table.
+      className="scrollbar-slim flex gap-2 overflow-x-auto pb-2 pt-1 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:pt-0"
     >
       {races.map((r) => {
         const flag = flagFor(r.track, r.country);
@@ -415,7 +475,7 @@ export default function Races() {
   }
 
   return (
-    <div className="space-y-8 sm:space-y-12">
+    <div className="space-y-4 sm:space-y-12">
       {/* Session-type switcher sits in the header's top-right corner: it drives
           BOTH the explorer below (rail + detail) and the calendar grid further
           down, so picking a type shows every view of it. */}
@@ -423,17 +483,40 @@ export default function Races() {
         eyebrow="Schedule & Results"
         title="Races"
         right={
+          // On phones the bar spans the full width and the buttons split it
+          // evenly (one tidy row of equal targets) instead of wrapping into a
+          // ragged two-line block; the long labels shorten to fit. From sm up
+          // it's the usual content-width pill group.
           <SlidingTabs
-            btnClassName="px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm"
+            wrapClassName="flex w-full rounded-xl border border-border bg-card p-1 sm:inline-flex sm:w-auto"
+            btnClassName="flex-1 whitespace-nowrap px-2 py-1.5 text-xs sm:flex-none sm:px-4 sm:py-2 sm:text-sm"
             items={[
               { key: "rounds", label: <>Championship<span className="ml-1.5 opacity-70">{rounds.length}</span></> },
               // Training sessions get their own clearly-labelled group — the tab
               // only appears once a session is scheduled, so a league without
               // trainings keeps today's two-tab page.
               ...(trainings.length > 0
-                ? [{ key: "training", label: <>Training / Sessions<span className="ml-1.5 opacity-70">{trainings.length}</span></> }]
+                ? [{
+                    key: "training",
+                    label: (
+                      <>
+                        <span className="sm:hidden">Training</span>
+                        <span className="hidden sm:inline">Training / Sessions</span>
+                        <span className="ml-1.5 opacity-70">{trainings.length}</span>
+                      </>
+                    ),
+                  }]
                 : []),
-              { key: "se", label: <>Special Events<span className="ml-1.5 opacity-70">{specials.length}</span></> },
+              {
+                key: "se",
+                label: (
+                  <>
+                    <span className="sm:hidden">Special</span>
+                    <span className="hidden sm:inline">Special Events</span>
+                    <span className="ml-1.5 opacity-70">{specials.length}</span>
+                  </>
+                ),
+              },
             ]}
             value={tab}
             onChange={selectTab}
@@ -448,7 +531,7 @@ export default function Races() {
         {shown.length > 0 ? (
           // minmax(0,…) keeps the wide results table from stretching the
           // column (and the whole page) past the viewport on phones
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-3 sm:gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]">
             {/* race list — horizontal on phones, vertical sidebar from lg up */}
             <aside className="lg:sticky lg:top-28 lg:self-start">
               {/* The label row shares the exact height of the round header on
@@ -481,8 +564,11 @@ export default function Races() {
                     // newly loaded round (the stale round keeps its layout
                     // until the new one is ready).
                     <div key={detail.race.id} className={detailLoading ? "opacity-60 transition-opacity" : "transition-opacity"}>
-                      <div className="mb-4">
-                        <div className="flex h-8 items-center gap-3">
+                      <div className="mb-3 sm:mb-4">
+                        {/* One row from sm up. On phones the controls drop to
+                            their own line so the round title gets the full
+                            width instead of being cut to "R12 I…". */}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:h-8 sm:flex-nowrap">
                           {flagFor(detail.race.track, detail.race.country) && (
                             <Flag
                               code={flagFor(detail.race.track, detail.race.country).country}
@@ -491,26 +577,32 @@ export default function Races() {
                               h={19}
                             />
                           )}
-                          <h2 className="truncate font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
+                          <h2 className="min-w-0 flex-1 truncate font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">
                             {detail.race.number != null && <span className="text-light">R{detail.race.number}</span>} {detail.race.track}
                           </h2>
-                          <span className="ml-auto flex shrink-0 items-center gap-3">
-                            {/* Race | Qualifying switch, inline with the round
-                                title so the header stays one tidy row. Only for
-                                rounds with an imported qualifying. */}
-                            {detail.quali?.length > 0 && (
-                              <SlidingTabs
-                                wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
-                                btnClassName="px-2.5 py-1 text-[11px]"
-                                pillClassName="rounded-md bg-brand shadow"
-                                items={[
-                                  { key: "race", label: "Race" },
-                                  { key: "quali", label: "Quali" },
-                                ]}
-                                value={session}
-                                onChange={setSession}
-                              />
-                            )}
+                          {/* Race | Qualifying switch — it belongs to THIS round,
+                              so it stays glued to the round title on every screen
+                              size (the tab bar at the top of the page filters
+                              which list you're browsing, a different job). Only
+                              for rounds with an imported qualifying. */}
+                          {detail.quali?.length > 0 && (
+                            <SlidingTabs
+                              className="shrink-0"
+                              wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
+                              btnClassName="px-2.5 py-1 text-[11px]"
+                              pillClassName="rounded-md bg-brand shadow"
+                              items={[
+                                { key: "race", label: "Race" },
+                                { key: "quali", label: "Quali" },
+                              ]}
+                              value={session}
+                              onChange={setSession}
+                            />
+                          )}
+                          {/* Replay + date are reference info, not controls, so
+                              on phones they take the second line and leave the
+                              title row to the name and the switch. */}
+                          <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
                             {/* replay of this round, registered in the admin Downloads tab */}
                             {detail.race.replayDownloadId && (
                               <Link

@@ -398,7 +398,7 @@ export default function Home() {
 
   if (drivers.loading || t1.loading || t2.loading || races.loading)
     return (
-      <div className="space-y-8 sm:space-y-12">
+      <div className="space-y-6 sm:space-y-12">
         <Skeleton className="h-[460px] w-full rounded-[1.75rem]" />
         <div className="grid gap-4 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -557,7 +557,7 @@ export default function Home() {
   }
 
   return (
-    <div className="content-in space-y-16">
+    <div className="content-in space-y-10 sm:space-y-16">
       {/* ===================== SEASON TICKER ===================== */}
       <div className="-mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">

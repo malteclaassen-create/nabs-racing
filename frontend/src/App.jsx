@@ -126,7 +126,7 @@ function AppRoutes() {
     // still a short loading skeleton, the column would otherwise end exactly
     // at the viewport's bottom edge and the footer flashed into view for a
     // beat on every navigation. This keeps it below the fold from the start.
-    <main key={season ?? "loading"} className="container-page min-h-screen w-full flex-1 py-10">
+    <main key={season ?? "loading"} className="container-page min-h-screen w-full flex-1 py-6 sm:py-10">
       {/* Per-route crash guard: a page that throws shows a fallback here while
           the NavBar/Footer (outside this component) and every other route keep
           working. resetKey clears the error the moment the path changes. */}

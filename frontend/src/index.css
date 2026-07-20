@@ -641,16 +641,64 @@ body::before {
 }
 
 /* --- Mobile menu drop-down ----------------------------------------- */
-/* The burger panel slides + fades down over the page; its scrim just fades in. */
+/* The burger panel slides + fades down over the page; its scrim just fades in.
+   Closing plays the same motion backwards (.is-closing), which is why the menu
+   stays mounted for one beat after the tap — see NavBar's closing state. */
 @keyframes nav-drop {
   from { opacity: 0; transform: translateY(-10px); }
   to   { opacity: 1; transform: none; }
+}
+/* Closing gets its OWN keyframes (not `nav-drop reverse`): with the same
+   animation-name the browser treats the class swap as an update to the running
+   animation instead of a fresh start, so reopening mid-close wouldn't replay
+   the drop-in. A different name forces a clean restart in both directions. */
+@keyframes nav-drop-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(-10px); }
+}
+@keyframes nav-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 .nav-drop {
   animation: nav-drop 0.24s cubic-bezier(0.22, 0.61, 0.24, 1) both;
 }
 .nav-scrim {
   animation: content-in 0.22s ease both;
+}
+.nav-drop.is-closing {
+  animation: nav-drop-out 0.2s cubic-bezier(0.5, 0, 0.75, 0) both;
+}
+.nav-scrim.is-closing {
+  animation: nav-fade-out 0.2s ease both;
+}
+
+/* --- Animated collapse (session header on phones) ------------------------ */
+/* Height can't transition to `auto`, so the open height is measured in JS and
+   handed in as --panel-h; the rule stays here rather than in an inline style so
+   the media query below can still take the whole box away.
+   (The grid 0fr -> 1fr trick does NOT work here: `overflow: hidden` on the
+   child zeroes the track's content contribution, so the row stays at 0 even
+   when open — measured.)
+   From sm up both wrapper and inner become `display: contents`, so the stats
+   drop back into the card's own grid exactly as if this wrapper weren't there
+   and the clipping/animation stops applying entirely. */
+/* The height itself is set inline by the component (open = the measured content
+   height, closed = 0); this rule owns only the clipping and the timing.
+   It has to be `height`, not `max-height`: the panel is a grid item, and
+   `overflow: hidden` drops its automatic minimum size, so the grid row sizes
+   itself to 0 and stretches the item to match — a max-height only caps a height
+   that never grows in the first place (measured: the box stayed 0px tall while
+   its content was 149px). A definite height sizes the row instead. */
+.collapse-row {
+  overflow: hidden;
+  transition: height 0.3s cubic-bezier(0.22, 0.61, 0.24, 1);
+}
+@media (min-width: 640px) {
+  .collapse-row,
+  .collapse-row > .collapse-inner {
+    display: contents;
+  }
 }
 
 /* Champion highlight (finished seasons): a golden frame with an even glow on
@@ -772,9 +820,12 @@ body::before {
   .scroll-cue, .page-in, .content-in { animation: none !important; opacity: 1; transform: none; }
   .podium-floor, .podium-ped, .podium-driver, .champ-chip { animation: none !important; opacity: 1; transform: none; clip-path: none; }
   .nav-drop, .nav-scrim { animation: none !important; opacity: 1; transform: none; }
+  /* The closing pair must still vanish instantly rather than sit there opaque. */
+  .nav-drop.is-closing, .nav-scrim.is-closing { opacity: 0; }
   .nav-season-dock { animation: none !important; transition: none !important; }
   .notif-pop { animation: none !important; }
   .search-pop { animation: none !important; }
+  .collapse-row { transition: none !important; }
   .proj-flash-up, .proj-flash-down { animation: none !important; }
   .shine::after { display: none; }
   .tilt { transform: none !important; }
@@ -807,6 +858,8 @@ body::before {
 .fx-lite .glow-pulse, .fx-lite .float-bob, .fx-lite .scroll-cue,
 .fx-lite .page-in, .fx-lite .content-in { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .nav-drop, .fx-lite .nav-scrim { animation: none !important; opacity: 1; transform: none; }
+.fx-lite .nav-drop.is-closing, .fx-lite .nav-scrim.is-closing { opacity: 0; }
+.fx-lite .collapse-row { transition: none !important; }
 .fx-lite .nav-season-dock { animation: none !important; transition: none !important; }
 .fx-lite .notif-pop { animation: none !important; }
 .fx-lite .search-pop { animation: none !important; }

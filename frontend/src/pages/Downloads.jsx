@@ -386,7 +386,7 @@ export default function Downloads() {
   };
 
   return (
-    <div className="space-y-8 sm:space-y-12">
+    <div className="space-y-6 sm:space-y-12">
       <PageHeader
         eyebrow="Drivers' handbook"
         title="Race Info"

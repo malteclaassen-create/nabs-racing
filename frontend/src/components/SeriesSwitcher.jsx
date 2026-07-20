@@ -111,7 +111,9 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
           open ? "visible scale-100 opacity-100" : "invisible scale-[0.97] opacity-0"
         }`}
       >
-        <div className="max-h-[60vh] overflow-y-auto scrollbar-slim">
+        {/* py-px so the highlighted entry's ring isn't shaved off at the
+            list's own clipping edge (see SeasonPicker for the same fix). */}
+        <div className="max-h-[60vh] overflow-y-auto py-px scrollbar-slim">
           {seriesList.map((s) => {
             const viewing = current && s.slug === current.slug;
             return (

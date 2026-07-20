@@ -127,7 +127,10 @@ export default function SeasonPicker({ compact = false, onPick }) {
           open ? "visible scale-100 opacity-100" : "invisible scale-[0.97] opacity-0"
         }`}
       >
-        <div className="max-h-[60vh] overflow-y-auto scrollbar-slim">
+        {/* py-px: the highlighted entry's ring is drawn outside its box, and a
+            scrollable list clips at its own edge — without this the ring's top
+            line was shaved off whenever that entry sat first in view. */}
+        <div className="max-h-[60vh] overflow-y-auto py-px scrollbar-slim">
           {byNewest.map((s) => {
             const viewing = s.number === season;
             const past = active && s.number < active.number;

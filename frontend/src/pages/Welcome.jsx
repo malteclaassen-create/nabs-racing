@@ -215,7 +215,7 @@ export default function Welcome() {
 
   if (loading)
     return (
-      <div className="space-y-8 sm:space-y-12">
+      <div className="space-y-6 sm:space-y-12">
         <Skeleton className="h-[520px] w-full rounded-[1.75rem]" />
         <div className="grid gap-4 sm:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-2xl" />)}

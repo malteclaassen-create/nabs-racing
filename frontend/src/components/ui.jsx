@@ -276,12 +276,21 @@ export function CardHead({ eyebrow, title, children }) {
 
 // Page header matching the home-page section style: faint index numeral,
 // brand-pink mono eyebrow, display-font uppercase title, hairline rule.
-export function PageHeader({ index, eyebrow, title, subtitle, right }) {
+// `rightInline`: keeps `right` beside the title on phones too — only for
+// controls small enough to share the line (e.g. the two tier pills on
+// Constructors); wide filter bars keep the default stacked row.
+export function PageHeader({ index, eyebrow, title, subtitle, right, rightInline = false }) {
   return (
-    <div className="mb-6 border-b border-border pb-5 sm:mb-8">
+    <div className="mb-4 border-b border-border pb-4 sm:mb-8 sm:pb-5">
       {/* On phones `right` (filters, pills) gets its own row under the title —
           side by side it collided with the title on narrow screens. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+      <div
+        className={
+          rightInline
+            ? "flex flex-row items-end justify-between gap-3 sm:gap-4"
+            : "flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4"
+        }
+      >
         <div className="flex items-end gap-4">
           {index && (
             <span className="font-display text-4xl font-black leading-none text-faint">{index}</span>
@@ -292,7 +301,9 @@ export function PageHeader({ index, eyebrow, title, subtitle, right }) {
                 {eyebrow}
               </div>
             )}
-            <h1 className="font-display text-3xl font-extrabold uppercase tracking-tight text-dark sm:text-4xl">
+            {/* rightInline shares the phone row with controls, so the title
+                steps down a notch there to leave them room. */}
+            <h1 className={`font-display font-extrabold uppercase tracking-tight text-dark sm:text-4xl ${rightInline ? "text-2xl" : "text-3xl"}`}>
               {title}
             </h1>
           </div>

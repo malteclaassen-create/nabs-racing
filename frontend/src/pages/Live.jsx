@@ -88,16 +88,33 @@ function Stat({ label, children }) {
 function SessionHeader({ session, receivedAt }) {
   const code = countryCodeFromName(session.country);
   const weather = prettyWeather(session.weather);
-  // On phones the card compresses to the track + the two numbers that matter
-  // during a session (best lap, time left); Drivers/Conditions tuck behind a
-  // "More" toggle. From sm up everything is always shown.
+  // On phones the card is just the session type, the track and the server —
+  // every number (best lap, time left, drivers, conditions) waits behind the
+  // toggle, so the timing itself starts near the top of the screen. The
+  // .collapse-row wrapper animates the reveal and turns into `display:
+  // contents` from sm up, where the stats are simply part of the card's grid.
   const [showMore, setShowMore] = useState(false);
+  // The panel's open height, measured from the content so the close animation
+  // starts moving immediately instead of idling through a too-generous cap.
+  // Re-measured whenever the content reflows (the countdown and driver counts
+  // change width, and the card is only this shape below sm anyway).
+  const innerRef = useRef(null);
+  const [panelH, setPanelH] = useState(0);
+  useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const sync = () => setPanelH(el.scrollHeight);
+    sync();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(sync) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, []);
   return (
     <div className="reveal card relative overflow-hidden">
       <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-amber-500 to-sky-600" />
-      <div className="grid grid-cols-2 gap-4 p-4 sm:gap-5 sm:p-6 lg:grid-cols-6">
-        <div className="col-span-2 lg:col-span-2">
-          <div className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.2em] text-eyebrow">
+      <div className="grid grid-cols-1 gap-4 px-4 py-3.5 sm:grid-cols-2 sm:gap-5 sm:p-6 lg:grid-cols-6">
+        <div className="sm:col-span-2">
+          <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow sm:text-xs">
             <span>{session.type}</span>
             {session.sessionCount > 1 && (
               <span className="text-faint">
@@ -105,9 +122,9 @@ function SessionHeader({ session, receivedAt }) {
               </span>
             )}
           </div>
-          <div className="mt-2 flex items-center gap-2.5">
+          <div className="mt-1.5 flex items-center gap-2.5 sm:mt-2">
             {code && <Flag code={code} title={session.country} w={26} h={19} />}
-            <span className="font-display text-xl font-extrabold uppercase tracking-tight text-dark">
+            <span className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
               {session.trackName}
             </span>
           </div>
@@ -116,59 +133,63 @@ function SessionHeader({ session, receivedAt }) {
           )}
         </div>
 
-        <Stat label="Session Best">
-          <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
-            {formatLap(session.bestLapMs)}
-          </span>
-        </Stat>
-
-        <Stat label="Time Left">
-          <span className="text-xl font-bold sm:text-2xl">
-            <Countdown
-              baseMs={session.remainingMs}
-              receivedAt={receivedAt}
-              resetKey={`${session.type}|${session.sessionIndex}|${session.trackName}`}
-            />
-          </span>
-        </Stat>
-
-        {/* Secondary stats — hidden on phones until expanded, always shown from sm up. */}
-        <div className={`${showMore ? "" : "hidden"} sm:block`}>
-          <Stat label="Drivers">
-            <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
-              {session.driverCount}
-            </span>
-            <span className="ml-2 font-mono text-xs text-light">{session.onTrackCount} on track</span>
-          </Stat>
-        </div>
-
-        <div className={`${showMore ? "" : "hidden"} sm:block`}>
-          <Stat label="Conditions">
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-              {session.ambientTemp != null && (
-                <span className="text-medium">
-                  Air <span className="font-mono font-bold text-dark">{session.ambientTemp}°</span>
+        <div className="collapse-row" style={{ height: showMore ? panelH : 0 }}>
+          <div ref={innerRef} className="collapse-inner">
+            {/* This grid only exists on phones — from sm up the wrapper is
+                `display: contents` and the four stats become grid items of the
+                card itself, laid out exactly as before. */}
+            <div className="grid grid-cols-2 gap-4 pt-4">
+              <Stat label="Session Best">
+                <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
+                  {formatLap(session.bestLapMs)}
                 </span>
-              )}
-              {session.roadTemp != null && (
-                <span className="text-medium">
-                  Track <span className="font-mono font-bold text-dark">{session.roadTemp}°</span>
+              </Stat>
+
+              <Stat label="Time Left">
+                <span className="text-xl font-bold sm:text-2xl">
+                  <Countdown
+                    baseMs={session.remainingMs}
+                    receivedAt={receivedAt}
+                    resetKey={`${session.type}|${session.sessionIndex}|${session.trackName}`}
+                  />
                 </span>
-              )}
-              {weather && <span className="capitalize text-light">{weather}</span>}
+              </Stat>
+
+              <Stat label="Drivers">
+                <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
+                  {session.driverCount}
+                </span>
+                <span className="ml-2 font-mono text-xs text-light">{session.onTrackCount} on track</span>
+              </Stat>
+
+              <Stat label="Conditions">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                  {session.ambientTemp != null && (
+                    <span className="text-medium">
+                      Air <span className="font-mono font-bold text-dark">{session.ambientTemp}°</span>
+                    </span>
+                  )}
+                  {session.roadTemp != null && (
+                    <span className="text-medium">
+                      Track <span className="font-mono font-bold text-dark">{session.roadTemp}°</span>
+                    </span>
+                  )}
+                  {weather && <span className="capitalize text-light">{weather}</span>}
+                </div>
+              </Stat>
             </div>
-          </Stat>
+          </div>
         </div>
       </div>
 
-      {/* Mobile-only expand toggle for the secondary stats. */}
+      {/* Mobile-only expand toggle. */}
       <button
         type="button"
         onClick={() => setShowMore((v) => !v)}
         className="flex w-full items-center justify-center gap-1.5 border-t border-border py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 sm:hidden"
         aria-expanded={showMore}
       >
-        {showMore ? "Show less" : "Drivers & conditions"}
+        {showMore ? "Show less" : "Session details"}
         <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition-transform ${showMore ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M6 9l6 6 6-6" />
         </svg>
@@ -216,27 +237,49 @@ function carLabel(carName) {
 }
 
 // Shared driver identity cell (team colour bar, flag, name, team).
-function DriverCell({ e, match, showLiveDot }) {
+// `mobileBadges`: on phones the DRS/PIT badges have no column of their own, so
+// they ride along with the driver's name (see COLS).
+function DriverCell({ e, match, showLiveDot, mobileBadges = false }) {
   const name = match?.nabsName || e.name;
   const color = match?.teamColor || "var(--c-border)";
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2 sm:gap-3">
       <span className="relative flex h-8 w-1.5 shrink-0 items-center">
         <span className="h-full w-full rounded-full" style={{ backgroundColor: color }} />
         {showLiveDot && e.onTrack && (
           <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-card" title="On track" />
         )}
       </span>
-      {match?.country ? (
-        <Flag code={match.country} title={match.teamName} />
-      ) : (
-        <span className="h-[15px] w-5 shrink-0" />
-      )}
+      {/* From sm up the flag keeps its own slot ahead of the name, so the names
+          line up in a column. On phones that slot is dead width, so the flag
+          moves behind the name at a smaller size and the name starts flush. */}
+      <span className="hidden sm:block">
+        {match?.country ? (
+          <Flag code={match.country} title={match.teamName} />
+        ) : (
+          <span className="block h-[15px] w-5 shrink-0" />
+        )}
+      </span>
       <span className="min-w-0">
-        <span className="block truncate font-display text-base font-bold uppercase tracking-tight text-dark" title={e.name}>
-          {name}
+        <span className="flex items-center gap-1.5">
+          <span className="truncate font-display text-base font-bold uppercase tracking-tight text-dark" title={e.name}>
+            {name}
+          </span>
+          {match?.country && (
+            <Flag code={match.country} title={match.teamName} w={15} h={11} className="sm:hidden" />
+          )}
+          {/* DRS/PIT sit in their own column from sm up; on phones that column
+              is 55px of mostly-empty width, so the badges ride with the name. */}
+          {mobileBadges && (e.drs || e.inPits) && (
+            <span className="flex shrink-0 gap-1 sm:hidden">
+              {e.drs && <span className="pill bg-sky-500/15 text-sky-600">DRS</span>}
+              {e.inPits && <span className="pill bg-amber-500/15 text-amber-600">PIT</span>}
+            </span>
+          )}
         </span>
-        <span className="block truncate text-xs text-light">{match?.teamName || carLabel(e.carName) || "—"}</span>
+        <span className="block truncate text-xs text-light">
+          {match?.teamName || carLabel(e.carName) || "—"}
+        </span>
       </span>
       {e.raceNumber != null && (
         <span className="ml-1 hidden font-mono text-xs font-bold text-faint xl:inline">#{e.raceNumber}</span>
@@ -256,7 +299,7 @@ function OnTrackRow({ e, match, index = 0 }) {
       // dims but stays in their slot.
       className={`border-b border-border last:border-0 transition hover:bg-surface2 ${e.onTrack ? "" : "opacity-55"}`}
     >
-      <td className="py-3 pl-5 pr-2 text-center">
+      <td className="py-3 pl-3.5 pr-2 text-center sm:pl-5">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums text-medium">
           {e.position}
         </span>
@@ -309,7 +352,10 @@ function OnTrackRow({ e, match, index = 0 }) {
 }
 
 const ONTRACK_COLS = [
-  { label: "Pos", cls: "w-14 py-3 pl-5 text-center" },
+  // pl-3.5: with the card's 1px border and the 2px the fixed-width cell leaves
+  // when it centres the 32px chip, that lands the chip ~17px from the card's
+  // left edge — matching the ~16.5px it sits below the row's top edge.
+  { label: "Pos", cls: "w-14 py-3 pl-3.5 text-center sm:pl-5" },
   { label: "Driver", cls: "py-3 pl-1" },
   { label: "Tyre", cls: "hidden py-3 pr-4 text-center sm:table-cell" },
   { label: "Current", cls: "py-3 pr-4 text-right" },
@@ -331,7 +377,7 @@ function Row({ e, match, index = 0 }) {
         isP1 ? "bg-brand/5" : ""
       }`}
     >
-      <td className="py-3 pl-5 pr-2 text-center">
+      <td className="py-3 pl-3.5 pr-2 text-center sm:pl-5">
         <span
           className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums ${
             isP1 ? "bg-brand text-ink" : "text-medium"
@@ -341,7 +387,7 @@ function Row({ e, match, index = 0 }) {
         </span>
       </td>
       <td className="py-3 pl-1 pr-3">
-        <DriverCell e={e} match={match} showLiveDot />
+        <DriverCell e={e} match={match} showLiveDot mobileBadges />
       </td>
       {/* sectors */}
       <td className="hidden py-3 pr-4 lg:table-cell">
@@ -355,13 +401,21 @@ function Row({ e, match, index = 0 }) {
         <span className={`font-mono text-base font-bold tabular-nums ${isP1 ? "text-eyebrow" : "text-dark"}`}>
           {formatLap(e.bestLapMs)}
         </span>
+        {/* On phones the gap has no column of its own, so it sits directly
+            under the lap it refers to. Nothing for the leader (gap 0) or for
+            a driver without a time yet. */}
+        {e.gapToBestMs ? (
+          <span className="block font-mono text-xs tabular-nums text-light sm:hidden">
+            {formatGap(e.gapToBestMs)}
+          </span>
+        ) : null}
       </td>
       <td className="hidden py-3 pr-4 text-right md:table-cell">
         <span className="font-mono text-sm tabular-nums text-violet-500" title="Ideal lap (sum of best sectors)">
           {formatLap(e.potentialMs)}
         </span>
       </td>
-      <td className="py-3 pr-4 text-right">
+      <td className="hidden py-3 pr-4 text-right sm:table-cell">
         <span className="font-mono text-sm tabular-nums text-light">{formatGap(e.gapToBestMs)}</span>
       </td>
       <td className="hidden py-3 pr-4 text-right sm:table-cell">
@@ -386,7 +440,7 @@ function Row({ e, match, index = 0 }) {
       <td className="hidden py-3 pr-4 text-right xl:table-cell">
         <span className="font-mono text-sm tabular-nums text-light">{e.onTrack && e.ping != null ? e.ping : "—"}</span>
       </td>
-      <td className="py-3 pr-5 text-right">
+      <td className="hidden py-3 pr-5 text-right sm:table-cell">
         <div className="flex justify-end gap-1.5">
           {e.drs && <span className="pill bg-sky-500/15 text-sky-600">DRS</span>}
           {e.inPits && <span className="pill bg-amber-500/15 text-amber-600">PIT</span>}
@@ -562,7 +616,7 @@ function ChampionshipProjection({ data }) {
           <table className={`w-full ${standalone ? "min-w-[520px]" : "min-w-[620px]"}`}>
             <thead>
               <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">
-                <th className="w-14 py-3 pl-5 text-center">Pos</th>
+                <th className="w-14 py-3 pl-3.5 text-center sm:pl-5">Pos</th>
                 {!standalone && <th className="w-16 py-3 text-center"></th>}
                 <th className="py-3 pl-1">Driver</th>
                 <th className="py-3 pr-4 text-center">Race</th>
@@ -586,7 +640,7 @@ function ChampionshipProjection({ data }) {
                     d.position === 1 ? "row-leader" : "hover:bg-surface2"
                   }`}
                 >
-                  <td className="py-3 pl-5 pr-2 text-center">
+                  <td className="py-3 pl-3.5 pr-2 text-center sm:pl-5">
                     <span
                       className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums ${
                         d.position === 1 ? "bg-brand text-ink" : "text-medium"
@@ -678,19 +732,26 @@ function ChampionshipProjection({ data }) {
 }
 
 const COLS = [
-  { label: "Pos", cls: "w-14 py-3 pl-5 text-center" },
+  // pl-3.5: with the card's 1px border and the 2px the fixed-width cell leaves
+  // when it centres the 32px chip, that lands the chip ~17px from the card's
+  // left edge — matching the ~16.5px it sits below the row's top edge.
+  { label: "Pos", cls: "w-14 py-3 pl-3.5 text-center sm:pl-5" },
   { label: "Driver", cls: "py-3 pl-1" },
   { label: "Sectors", cls: "hidden py-3 pr-4 lg:table-cell" },
   { label: "Best", cls: "py-3 pr-4 text-right" },
   { label: "Potential", cls: "hidden py-3 pr-4 text-right md:table-cell" },
-  { label: "Gap", cls: "py-3 pr-4 text-right" },
+  // On phones the gap rides along under the driver's name instead of taking a
+  // column of its own — that room goes to the best lap, which is what you're
+  // actually here to read.
+  { label: "Gap", cls: "hidden py-3 pr-4 text-right sm:table-cell" },
   { label: "Last", cls: "hidden py-3 pr-4 text-right sm:table-cell" },
   { label: "Laps", cls: "hidden py-3 pr-4 text-center md:table-cell" },
   { label: "Tyre", cls: "hidden py-3 pr-4 text-center lg:table-cell" },
   { label: "Top", cls: "hidden py-3 pr-4 text-right xl:table-cell" },
   { label: "Pits", cls: "hidden py-3 pr-4 text-center xl:table-cell" },
   { label: "Ping", cls: "hidden py-3 pr-4 text-right xl:table-cell" },
-  { label: "", cls: "py-3 pr-5" },
+  // DRS/PIT badges — folded into the driver cell on phones (see DriverCell).
+  { label: "", cls: "hidden py-3 pr-5 sm:table-cell" },
 ];
 
 /* ===== External links, view switch, track map ============================= */
@@ -714,10 +775,13 @@ function ExternalButtons({ links, patreonUrl }) {
   // Lives in the PAGE HEADER's right slot (same height as the title), so the
   // actual content starts right below. One shared size; phones stack them
   // full-width under the title (the header handles the stacking).
+  // Phones: one row of three equal buttons with short labels, so they don't
+  // eat three stacked full-width rows before the timing even starts. The full
+  // wording comes back from sm up, where there's room for it.
   const base =
-    "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold uppercase tracking-wide transition sm:w-auto";
+    "flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-xs font-bold uppercase tracking-wide transition sm:w-auto sm:flex-none sm:gap-2 sm:px-4 sm:text-sm";
   return (
-    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-2.5">
+    <div className="flex w-full gap-2 sm:w-auto sm:flex-wrap sm:items-center sm:justify-end sm:gap-2.5">
       {join && (
         <a
           href={join}
@@ -726,7 +790,8 @@ function ExternalButtons({ links, patreonUrl }) {
           className={`${base} bg-brand text-ink shadow-lg shadow-brand/25 hover:brightness-105`}
         >
           <ExternalIcon />
-          Join in Content Manager
+          <span className="sm:hidden">Join</span>
+          <span className="hidden sm:inline">Join in Content Manager</span>
         </a>
       )}
       {timing && (
@@ -737,7 +802,8 @@ function ExternalButtons({ links, patreonUrl }) {
           className={`${base} border border-border bg-card text-dark hover:bg-surface2`}
         >
           <ExternalIcon />
-          Full live timing
+          <span className="sm:hidden">Timing</span>
+          <span className="hidden sm:inline">Full live timing</span>
         </a>
       )}
       {patreonUrl && (
@@ -748,7 +814,8 @@ function ExternalButtons({ links, patreonUrl }) {
           className={`${base} border border-[#FF424D]/40 bg-[#FF424D]/10 text-[#FF424D] hover:bg-[#FF424D]/20`}
         >
           <SocialIcon name="patreon" className="h-4 w-4" />
-          Support us on Patreon
+          <span className="sm:hidden">Patreon</span>
+          <span className="hidden sm:inline">Support us on Patreon</span>
         </a>
       )}
     </div>
@@ -906,10 +973,13 @@ function DrivingNowSection({ onTrack, match, flip = false, className = "" }) {
 // this lists who's currently sitting in the pit lane (the map's dimmed dots).
 // flex-1 in the map column, so the pair always closes flush with the "driving
 // now" card beside it.
+// The caller supplies the display utility (the Live page hides this on phones),
+// so `flex` is deliberately NOT baked in here — two competing display classes
+// would resolve by Tailwind's output order rather than by intent.
 function PitLaneSection({ entries, match, className = "" }) {
   const inPits = entries.filter((e) => e.onTrack && e.inPits);
   return (
-    <section className={`reveal card flex flex-col overflow-hidden ${className}`}>
+    <section className={`reveal card flex-col overflow-hidden ${className}`}>
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
         <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Pit lane</span>
         <span className="font-mono text-[11px] uppercase tracking-wider text-light">
@@ -1088,7 +1158,11 @@ export default function Live() {
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-5 lg:items-stretch">
             <div className="flex flex-col gap-4 sm:gap-6 lg:col-span-2 lg:col-start-4 lg:row-start-1">
               <TrackMapSection session={session} entries={entries} match={match} />
-              <PitLaneSection entries={entries} match={match} className="flex-1" />
+              {/* Phones skip the pit-lane card: the same drivers already show
+                  as dimmed dots on the map above and carry a PIT badge in the
+                  timing table, so it was a third copy of the same fact for a
+                  screenful of height. */}
+              <PitLaneSection entries={entries} match={match} className="hidden flex-1 sm:flex" />
             </div>
             <DrivingNowSection
               // In a race, drivers who left the server (post-race exodus) stay
@@ -1132,7 +1206,11 @@ export default function Live() {
             ) : (
               <div className="card overflow-hidden">
                 <div className="scrollbar-slim overflow-x-auto">
-                  <table className="w-full min-w-[680px]">
+                  {/* The min-width was sized for the full desktop column set,
+                      so phones had to scroll sideways to reach Best even
+                      though only four columns were showing. It now kicks in
+                      at md, where those extra columns actually appear. */}
+                  <table className="w-full md:min-w-[680px]">
                     <thead>
                       <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">
                         {COLS.map((c, i) => (

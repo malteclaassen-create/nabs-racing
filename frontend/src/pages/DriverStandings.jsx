@@ -315,9 +315,11 @@ export default function DriverStandings() {
       <PageHeader eyebrow="Championship" title="Driver Standings" />
 
       {top3.length > 0 && (
-        // 3-across only from lg: at md widths the cards get so narrow the
-        // driver names truncate away entirely
-        <div className="cascade mb-8 grid gap-4 lg:grid-cols-3">
+        // Phones skip the leader cards entirely — the same three drivers head
+        // the table right below, so the cards were a screen of duplicate info
+        // before the actual standings. 3-across only from lg: at md widths the
+        // cards get so narrow the driver names truncate away entirely.
+        <div className="cascade mb-8 hidden gap-4 sm:grid lg:grid-cols-3">
           {top3.map((row, i) => (
             <LeaderCard
               key={row.driverId}

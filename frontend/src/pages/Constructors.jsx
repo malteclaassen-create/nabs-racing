@@ -22,6 +22,14 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
   const done = completedRounds(standings);
   const lastRound = done[done.length - 1];
 
+  // Line-up cards in championship order, mirroring the table above (the roster
+  // endpoint returns them in admin order). Teams without a standings entry
+  // (no points recorded yet) keep their roster order at the end.
+  const posByTeam = new Map(rows.map((r, i) => [r.teamId, i]));
+  const orderedTeams = [...teams].sort(
+    (a, b) => (posByTeam.get(a.id) ?? Infinity) - (posByTeam.get(b.id) ?? Infinity)
+  );
+
   return (
     <section id={id} className="reveal scroll-mt-28 space-y-6">
       {/* No "Champions" pill up here — the gold first row of the table and the
@@ -43,7 +51,7 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
       <div className="space-y-3 pt-2">
         <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Line-ups</h3>
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {teams.map((team, i) => (
+          {orderedTeams.map((team, i) => (
             <TeamCard key={team.id} team={team} index={i} champion={team.id === championTeamId} />
           ))}
         </div>
@@ -98,10 +106,11 @@ function TeamCard({ team, index = 0, champion = false }) {
 // Quick anchor pills in the page header so Tier 2 is one tap away instead of a
 // long scroll past the whole Tier-1 block.
 function TierJump({ className = "" }) {
+  // Slightly tighter below sm so both pills fit beside the page title.
   const cls =
-    "rounded-lg border border-border bg-card px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark";
+    "rounded-lg border border-border bg-card px-2 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark sm:px-3 sm:text-xs";
   return (
-    <div className={`gap-2 ${className}`}>
+    <div className={`gap-1.5 sm:gap-2 ${className}`}>
       <a href="#tier-1" className={cls}>
         Tier 1
       </a>
@@ -122,7 +131,7 @@ export default function Constructors() {
 
   if (t1.loading || t2.loading || teams.loading)
     return (
-      <div className="space-y-9 sm:space-y-14">
+      <div className="space-y-6 sm:space-y-14">
         <PageHeaderSkeleton />
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="space-y-5">
@@ -147,17 +156,16 @@ export default function Constructors() {
   const champId = (data) => (seasonDecided && (data.standings[0]?.total ?? 0) > 0 ? data.standings[0].teamId : null);
 
   return (
-    <div className="content-in space-y-16">
-      <div>
-        {/* pills sit beside the title on desktop, on their own row on phones —
-            side by side they push the header past the viewport */}
-        <PageHeader
-          eyebrow="Championship"
-          title="Constructors"
-          right={hasT2 ? <TierJump className="hidden shrink-0 sm:flex" /> : null}
-        />
-        {hasT2 && <TierJump className="-mt-2 flex sm:hidden" />}
-      </div>
+    <div className="content-in space-y-10 sm:space-y-16">
+      {/* The tier pills share the title line on every width (rightInline) —
+          they're small enough now that they no longer push the header past
+          the viewport, and the content starts a row earlier on phones. */}
+      <PageHeader
+        eyebrow="Championship"
+        title="Constructors"
+        rightInline
+        right={hasT2 ? <TierJump className="flex shrink-0" /> : null}
+      />
 
       <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1.data)} decided={seasonDecided} />
       {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} championTeamId={champId(t2.data)} decided={seasonDecided} />}

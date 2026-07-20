@@ -350,7 +350,7 @@ export default function HallOfFame() {
   const activeList = data.lists.find((l) => l.key === activeListKey);
 
   return (
-    <div className="content-in space-y-9 sm:space-y-14">
+    <div className="content-in space-y-6 sm:space-y-14">
       <PageHeader eyebrow="All-time" title="Hall of Fame" />
 
       {/* champions first — drivers ⇄ teams */}
@@ -396,8 +396,14 @@ export default function HallOfFame() {
       {activeList && (
         <section className="reveal">
           <SectionHead eyebrow="Careers" title="All-time Top 10" />
+          {/* Nine-plus categories, and the list grows with the data: on phones
+              the bar scrolls sideways as one row instead of stacking into a
+              three-row block (that block alone was 118px of the screen). From
+              sm up there's room to wrap as before. */}
           <SlidingTabs
             className="mb-4"
+            wrapClassName="scrollbar-slim flex overflow-x-auto rounded-xl border border-border bg-card p-1 sm:inline-flex sm:flex-wrap sm:overflow-visible"
+            btnClassName="shrink-0 whitespace-nowrap px-3.5 py-2 text-sm"
             items={data.lists.map((l) => ({
               key: l.key,
               label: l.label.replace(/^Most /, "").replace(/^./, (c) => c.toUpperCase()),

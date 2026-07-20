@@ -184,22 +184,27 @@ export default function RaceSignupCard({
           buttons and everyone&rsquo;s answers right here once it does.
         </div>
       ) : (
-      <div className={`grid gap-4 p-5 ${visible.length === 1 ? "" : visible.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+      // The answer columns sit side by side on EVERY width (they used to
+      // stack on phones, which made the card a long scroll): three narrow
+      // columns with the names truncating beats three screens of list.
+      <div className={`grid gap-3 p-4 sm:gap-4 sm:p-5 ${visible.length === 1 ? "" : visible.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
         {visible.map((status) => (
-          <div key={status}>
+          <div key={status} className="min-w-0">
             <div className="mb-2 flex items-center gap-1.5 font-mono text-xs font-bold uppercase tracking-wider text-medium">
-              <StatusIcon d={STATUS_UI[status].icon} className={`h-3.5 w-3.5 ${STATUS_UI[status].idleIcon}`} />
-              {STATUS_UI[status].title}
+              <StatusIcon d={STATUS_UI[status].icon} className={`h-3.5 w-3.5 shrink-0 ${STATUS_UI[status].idleIcon}`} />
+              {/* On phones the count alone labels the column — the coloured
+                  icon already says which answer it is, and the words don't fit. */}
+              <span className="hidden sm:inline">{STATUS_UI[status].title}</span>
               <span className="text-light">({ev.rsvps[status].length})</span>
             </div>
             <ul className="space-y-1.5">
               {ev.rsvps[status].map((r) => (
-                <li key={r.driverId} className="flex items-center gap-2 text-sm">
+                <li key={r.driverId} className="flex min-w-0 items-center gap-1.5 text-sm sm:gap-2">
                   <TeamDot color={r.team.color} />
-                  <span className={r.driverId === driverId ? "font-bold text-dark" : "text-dark"}>
+                  <span className={`truncate ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}>
                     {r.name}
                   </span>
-                  <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} />
+                  <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
                 </li>
               ))}
               {ev.rsvps[status].length === 0 && <li className="text-sm text-faint">—</li>}

@@ -31,8 +31,17 @@ export default function SlidingTabs({
       setPill(null);
       return;
     }
-    const measure = () =>
+    const measure = () => {
       setPill({ left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight });
+      // Bars that scroll sideways instead of wrapping (long, data-driven lists
+      // on phones) keep the active button in view — otherwise picking the last
+      // category and coming back leaves the highlight parked off-screen. No-op
+      // for every bar that fits, which is all of them on desktop.
+      if (wrap.scrollWidth > wrap.clientWidth + 1) {
+        const centred = el.offsetLeft - (wrap.clientWidth - el.offsetWidth) / 2;
+        wrap.scrollLeft = Math.max(0, Math.min(centred, wrap.scrollWidth - wrap.clientWidth));
+      }
+    };
     measure();
     // Re-measure when the bar reflows (resize, fonts, wrapping) so the pill
     // stays glued to its button.

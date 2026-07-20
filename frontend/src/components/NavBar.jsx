@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
+import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import { api } from "../api/client.js";
 import Logo from "./Logo.jsx";
@@ -276,10 +276,30 @@ function ScrollProgressLine() {
 }
 
 export default function NavBar() {
-  const { seriesList } = useSeries();
   const { seriesPath } = useSeriesPath();
-  const [open, setOpen] = useState(false);
+  // One state machine, so open/closing can never contradict each other:
+  // "closed" -> "open" (panel mounts, drop-in plays) -> "closing" (stays
+  // mounted while the drop-out plays) -> "closed" (unmount). Tapping the
+  // burger mid-close reopens straight from "closing".
+  const [menu, setMenu] = useState("closed");
+  const open = menu === "open";
+  const closing = menu === "closing";
   const location = useLocation();
+
+  const openMenu = () => setMenu("open");
+  // Functional update: only an OPEN menu starts closing, so a stray second
+  // call (scrim + button both firing, ghost clicks) can't restart the exit.
+  const closeMenu = () => setMenu((m) => (m === "open" ? "closing" : m));
+  // Unmount when the drop-out finishes. The animationend event is the real
+  // signal; the timer is a backstop for when the animation never runs
+  // (reduced motion, lite graphics mode) — slightly longer than the 0.2s
+  // animation so it never cuts off the last frame.
+  const finishClose = () => setMenu((m) => (m === "closing" ? "closed" : m));
+  useEffect(() => {
+    if (!closing) return;
+    const t = setTimeout(finishClose, 300);
+    return () => clearTimeout(t);
+  }, [closing]);
 
   // The Attendance item only earns its nav slot while a race is actually
   // taking answers: the sign-up window is open (always, when no window is
@@ -317,8 +337,13 @@ export default function NavBar() {
   const desktopNavRef = useRef(null);
   const navPill = useSlidingHighlight(desktopNavRef, [location.pathname]);
 
-  // Close the mobile menu whenever the route changes.
-  useEffect(() => setOpen(false), [location.pathname]);
+  // Close the mobile menu whenever the route changes — animated, like a tap on
+  // the burger. `open` is read from the render where the path changed, which is
+  // exactly the state we want to act on, so it stays out of the dep list.
+  useEffect(() => {
+    if (open) closeMenu();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   // Season pages are matched with the series prefix stripped, so the docked
   // season pill follows the same pages inside every series.
@@ -416,7 +441,7 @@ export default function NavBar() {
         <div className="flex items-center gap-1 lg:hidden">
           <NotificationBell className="h-10 w-10" />
           <button
-            onClick={() => setOpen((o) => !o)}
+            onClick={() => (open ? closeMenu() : openMenu())}
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
             className="flex h-10 w-10 items-center justify-center rounded-lg text-dark transition hover:bg-surface2"
@@ -437,38 +462,44 @@ export default function NavBar() {
 
       {/* Mobile menu — a drop-down panel that OVERLAYS the page (absolute, so the
           content underneath stays put) with a soft scrim. Tapping the scrim or a
-          link closes it. Both fade/slide in (see .nav-scrim / .nav-drop). */}
-      {open && (
+          link closes it. Both fade/slide in and back out again (see .nav-scrim /
+          .nav-drop and their .is-closing variants); `closing` is what keeps the
+          panel mounted long enough for the way out to be seen. */}
+      {menu !== "closed" && (
         <div className="lg:hidden">
+          {/* pointer-events-none while closing: the fading scrim must not eat
+              the very next tap (which used to make the page feel dead for a
+              beat after closing — and a tap ON it re-armed the close). */}
           <button
             type="button"
             aria-label="Close menu"
-            onClick={() => setOpen(false)}
-            className="nav-scrim fixed inset-x-0 bottom-0 top-[84px] z-20 bg-ink/40 backdrop-blur-sm"
+            onClick={closeMenu}
+            className={`nav-scrim fixed inset-x-0 bottom-0 top-[84px] z-20 bg-ink/40 backdrop-blur-sm ${closing ? "is-closing pointer-events-none" : ""}`}
           />
-          <div className="nav-drop absolute inset-x-0 top-full z-30 max-h-[calc(100dvh-96px)] origin-top overflow-y-auto border-t border-border bg-card shadow-xl shadow-ink/20">
+          <div
+            onAnimationEnd={(e) => closing && e.target === e.currentTarget && finishClose()}
+            className={`nav-drop absolute inset-x-0 top-full z-30 max-h-[calc(100dvh-96px)] origin-top overflow-y-auto border-t border-border bg-card shadow-xl shadow-ink/20 ${closing ? "is-closing pointer-events-none" : ""}`}
+          >
             <div className="container-page flex flex-col py-3">
-              {/* You-stuff first: profile chip + search side by side conceptually,
-                  then the context pickers, then the pages in labelled groups. */}
-              <AuthControl mobile />
-              <div className="px-2 pb-1 pt-2">
-                <GlobalSearch mobile />
+              {/* You-stuff first, on ONE row: profile chip left, search right.
+                  The chip keeps its natural width (name truncates via its own
+                  max-w), the search field takes the rest of the line. */}
+              <div className="flex items-center gap-2">
+                <AuthControl mobile={false} />
+                <div className="min-w-0 flex-1">
+                  <GlobalSearch mobile />
+                </div>
               </div>
 
-              {/* Series first (page identity), season below it (page filter). */}
-              {(seriesList.length > 1 || onSeasonPage) && (
+              {/* No series switcher here — the one under the wordmark in the bar
+                  covers that on every page. Only the season filter docks in,
+                  and only on season-scoped pages (phones have no other one). */}
+              {onSeasonPage && (
                 <>
-                  <MobileMenuLabel>Series &amp; season</MobileMenuLabel>
-                  {seriesList.length > 1 && (
-                    <div className="px-2 py-1">
-                      <SeriesSwitcher mobile onPick={() => setOpen(false)} />
-                    </div>
-                  )}
-                  {onSeasonPage && (
-                    <div className="px-2 py-1">
-                      <SeasonPicker onPick={() => setOpen(false)} />
-                    </div>
-                  )}
+                  <MobileMenuLabel>Season</MobileMenuLabel>
+                  <div className="px-2 py-1">
+                    <SeasonPicker onPick={closeMenu} />
+                  </div>
                 </>
               )}
 
