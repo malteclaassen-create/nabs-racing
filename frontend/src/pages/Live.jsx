@@ -1099,6 +1099,14 @@ export default function Live() {
   const entries = board?.entries || [];
   const onTrack = entries.filter((e) => e.onTrack);
   const receivedAt = useMemo(() => Date.now(), [board?.updatedAt]);
+  // Nobody actually driving: the "right now" block (driving now, track map,
+  // pit lane) and the strategy views would all be empty shells, so the page
+  // collapses to header + best times. A race with laps on the board stays in
+  // the full layout even after the post-race exodus — the finishing order in
+  // Driving Now is the payoff of the session.
+  const quiet =
+    onTrack.length === 0 &&
+    !(session?.type === "Race" && entries.some((e) => (e.lapCount || 0) > 0));
 
   // Championship projection: polled (the standings only move when the race
   // order does, so ~20s is plenty). { active: false } or any error hides the
@@ -1136,6 +1144,75 @@ export default function Live() {
   const collapseTimes = narrow && !showAllTimes && entries.length > TIMES_LIMIT;
   const shownEntries = collapseTimes ? entries.slice(0, TIMES_LIMIT) : entries;
 
+  // The best-times section renders in two spots — as the Timing view of the
+  // full layout, and alone right under the header when the server is quiet —
+  // so it lives in one place here.
+  const bestTimes = (
+    <>
+      {/* ===== Full session-best leaderboard (all drivers) ===== */}
+      <section className="reveal space-y-4">
+        <SectionHeading eyebrow="Classification" title="Session Best Times" />
+        {entries.length === 0 ? (
+          <div className="card py-16 text-center text-light">
+            Session is live, no times set yet.
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="scrollbar-slim overflow-x-auto">
+              {/* The min-width was sized for the full desktop column set,
+                  so phones had to scroll sideways to reach Best even
+                  though only four columns were showing. It now kicks in
+                  at md, where those extra columns actually appear. */}
+              <table className="w-full md:min-w-[680px]">
+                <thead>
+                  <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">
+                    {COLS.map((c, i) => (
+                      <th key={i} className={c.cls}>
+                        {c.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                {/* cascade: rows rise in one after another, like the standings tables */}
+                <tbody className="cascade">
+                  {shownEntries.map((e, i) => (
+                    <Row key={e.guid} e={e} match={match(e.name)} index={i} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {collapseTimes && (
+              <button
+                type="button"
+                onClick={() => setShowAllTimes(true)}
+                className="flex w-full items-center justify-center gap-1.5 border-t border-border py-3 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 sm:hidden"
+              >
+                Show all {entries.length} drivers
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* legend */}
+      <div className="reveal flex flex-wrap items-center gap-4 px-1 font-mono text-[11px] uppercase tracking-wider text-light">
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded bg-violet-500/40" /> Fastest sector
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded bg-emerald-500/30" /> Personal best
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> On track now
+        </span>
+        <span className="text-faint">Potential = sum of best sectors</span>
+      </div>
+    </>
+  );
+
   return (
     <div>
       {/* No live/offline badge up here — the session card below already tells
@@ -1165,6 +1242,12 @@ export default function Live() {
           {/* ===== Session bar across the top ===== */}
           <SessionHeader session={session} receivedAt={receivedAt} />
 
+          {quiet ? (
+            // Empty server: the best-times board takes the "right now" slot,
+            // everything else (driving now, map, pit lane, strategy) sits out.
+            bestTimes
+          ) : (
+          <>
           {/* ===== Driving now (left, wider) beside the track map + pit lane
                  (right, narrower): one "right now" block. The map column is
                  first in the DOM so it leads on phones; explicit column starts
@@ -1210,68 +1293,8 @@ export default function Live() {
               <CompoundLegend entries={entries} />
             </section>
           ) : (
-          <>
-          {/* ===== Full session-best leaderboard (all drivers) ===== */}
-          <section className="reveal space-y-4">
-            <SectionHeading eyebrow="Classification" title="Session Best Times" />
-            {entries.length === 0 ? (
-              <div className="card py-16 text-center text-light">
-                Session is live, no times set yet.
-              </div>
-            ) : (
-              <div className="card overflow-hidden">
-                <div className="scrollbar-slim overflow-x-auto">
-                  {/* The min-width was sized for the full desktop column set,
-                      so phones had to scroll sideways to reach Best even
-                      though only four columns were showing. It now kicks in
-                      at md, where those extra columns actually appear. */}
-                  <table className="w-full md:min-w-[680px]">
-                    <thead>
-                      <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">
-                        {COLS.map((c, i) => (
-                          <th key={i} className={c.cls}>
-                            {c.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    {/* cascade: rows rise in one after another, like the standings tables */}
-                    <tbody className="cascade">
-                      {shownEntries.map((e, i) => (
-                        <Row key={e.guid} e={e} match={match(e.name)} index={i} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {collapseTimes && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllTimes(true)}
-                    className="flex w-full items-center justify-center gap-1.5 border-t border-border py-3 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 sm:hidden"
-                  >
-                    Show all {entries.length} drivers
-                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M6 9l6 6 6-6" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* legend */}
-          <div className="reveal flex flex-wrap items-center gap-4 px-1 font-mono text-[11px] uppercase tracking-wider text-light">
-            <span className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-violet-500/40" /> Fastest sector
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-emerald-500/30" /> Personal best
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> On track now
-            </span>
-            <span className="text-faint">Potential = sum of best sectors</span>
-          </div>
+            bestTimes
+          )}
           </>
           )}
 
