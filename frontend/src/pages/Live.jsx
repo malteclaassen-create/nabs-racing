@@ -96,18 +96,32 @@ function SessionHeader({ session, receivedAt }) {
   const [showMore, setShowMore] = useState(false);
   // The panel's open height, measured from the content so the close animation
   // starts moving immediately instead of idling through a too-generous cap.
-  // Re-measured whenever the content reflows (the countdown and driver counts
-  // change width, and the card is only this shape below sm anyway).
+  // Measured fresh on every toggle: a mount-time measurement reads 0 when the
+  // page loads at desktop width (the wrappers are `display: contents` there,
+  // no box to measure) and then sticks, leaving the panel unable to open after
+  // shrinking the window to phone width. The ResizeObserver keeps it honest
+  // while the panel is open and its content reflows (the ticking countdown).
   const innerRef = useRef(null);
   const [panelH, setPanelH] = useState(0);
-  useLayoutEffect(() => {
+  const measure = () => {
     const el = innerRef.current;
-    if (!el) return;
-    const sync = () => setPanelH(el.scrollHeight);
-    sync();
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(sync) : null;
-    ro?.observe(el);
-    return () => ro?.disconnect();
+    // scrollHeight is the content's natural height even while the clipped
+    // wrapper around it is 0px tall; 0 only in the display:contents layouts,
+    // where the toggle isn't rendered anyway.
+    if (el) setPanelH(el.scrollHeight);
+  };
+  const toggleMore = () => {
+    measure();
+    setShowMore((v) => !v);
+  };
+  useLayoutEffect(() => {
+    measure();
+    const el = innerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
     <div className="reveal card relative overflow-hidden">
@@ -135,10 +149,11 @@ function SessionHeader({ session, receivedAt }) {
 
         <div className="collapse-row" style={{ height: showMore ? panelH : 0 }}>
           <div ref={innerRef} className="collapse-inner">
-            {/* This grid only exists on phones — from sm up the wrapper is
-                `display: contents` and the four stats become grid items of the
-                card itself, laid out exactly as before. */}
-            <div className="grid grid-cols-2 gap-4 pt-4">
+            {/* This grid only exists on phones — from sm up it dissolves too
+                (sm:contents, like the collapse wrappers around it), so the four
+                stats become grid items of the card itself and spread across
+                its columns exactly as before the collapse existed. */}
+            <div className="grid grid-cols-2 gap-4 pt-4 sm:contents">
               <Stat label="Session Best">
                 <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
                   {formatLap(session.bestLapMs)}
@@ -185,7 +200,7 @@ function SessionHeader({ session, receivedAt }) {
       {/* Mobile-only expand toggle. */}
       <button
         type="button"
-        onClick={() => setShowMore((v) => !v)}
+        onClick={toggleMore}
         className="flex w-full items-center justify-center gap-1.5 border-t border-border py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 sm:hidden"
         aria-expanded={showMore}
       >
