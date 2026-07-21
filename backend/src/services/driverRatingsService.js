@@ -260,6 +260,15 @@ export function shrink(v, n, fieldMean) {
   return (n * v + SHRINK_K * fieldMean) / (n + SHRINK_K);
 }
 
+// Round a 0..1 component share to three decimals for the API payload.
+function r3(x) {
+  return Math.round((Number(x) || 0) * 1000) / 1000;
+}
+// Same, but null stays null (a missing raw signal must not become a fake 0).
+function r3n(x) {
+  return x == null ? null : r3(x);
+}
+
 function clampRating(pct, band) {
   const r = Math.round(band.low + pct * (band.high - band.low));
   return Math.max(0, Math.min(99, r));
@@ -333,7 +342,7 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
   // override them group-by-group. Both fall through to RATING_DEFAULTS.
   const saved = (await readRatingWeights(prisma)) || {};
   const cfg = resolveConfig({ ...saved, ...opts });
-  const [season, drivers, races, results, telemetry] = await Promise.all([
+  let [season, drivers, races, results, telemetry] = await Promise.all([
     prisma.season.findUnique({ where: { id: seasonId } }),
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({
@@ -344,6 +353,13 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     telemetryBySeason(prisma, seasonId),
   ]);
   if (!season) return [];
+
+  // "As of round N": the rating-history service replays the season round by
+  // round by cutting the race list here. Everything downstream (results,
+  // telemetry sums, reference field, percentiles) follows the shorter list,
+  // so each replayed point is exactly what the card would have shown then.
+  const upTo = Number(opts.upToRaceNumber);
+  if (Number.isFinite(upTo)) races = races.filter((r) => r.number != null && r.number <= upTo);
 
   // Career window inputs (EXP formula + PAC signals), per rated driver row.
   const career = await getCareerInputs(prisma, season, drivers, cfg);
@@ -362,6 +378,7 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
        FROM "RaceResult" rr
        JOIN "Race" r ON r.id = rr."raceId"
       WHERE r."seasonId" = ? AND r."isSpecialEvent" = 0 AND r."isCompleted" = 1
+        ${Number.isFinite(upTo) ? `AND r."number" <= ${Math.round(upTo)}` : ""}
       GROUP BY rr."driverId"`,
     seasonId
   );
@@ -599,6 +616,58 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
           }
         : null,
       ratings: { overall, exp, pac, rac, aha },
+      // The rating-detail page's "what goes into it" block: every component's
+      // field percentile (0..1, 0.5 = mid-field) plus the active blend weights.
+      // Only attached on request — the standings cards don't need the payload.
+      ...(opts.withComponents
+        ? {
+            components: {
+              pac: { quali: r3(pGrid), bestLap: r3(pLap), consistency: r3(pCons), poleGap: r3(pPole) },
+              rac: { finish: r3(pFinish), gained: r3(pGained), overtakes: r3(pOvertakes), podium: r3(pPodium) },
+              aha: {
+                finishRate: r3(pFinishRate),
+                dnf: r3(pDnf),
+                consistency: r3(pConsistency),
+                contacts: r3(pContacts),
+                env: r3(pEnv),
+                penalties: r3(pPenalties),
+                cuts: r3(pCuts),
+              },
+              exp: {
+                starts: r3(startsPct),
+                championship: r3(champPct),
+                finishing: r3(finishingPct),
+                activity: r3(activityPct),
+              },
+            },
+            weights: { rtg: cfg.rtg, pac: cfg.pac, rac: cfg.rac, aha: cfg.aha, exp: cfg.exp.weights },
+            // The honest raw numbers behind each component, so the detail page
+            // can print "1.9 contacts per race" next to "bottom 14%". null =
+            // no sample for that signal.
+            raw: {
+              rac: {
+                avgFinishNorm: r3n(m.avgFinishNorm),
+                avgGained: r3n(m.avgGained),
+                podiumRate: r3n(m.podiumRate),
+                overtakesPerRace: r3n(m.overtakesRate),
+              },
+              aha: {
+                finishRate: r3n(m.finishRate),
+                dnfRate: r3n(m.dnfRate),
+                lapConsistencyMs: m.lapConsistencyMs != null ? Math.round(m.lapConsistencyMs) : null,
+                finishSpread: r3n(m.finishSpread),
+                contactsPerRace: r3n(m.contactsRate),
+                envPerRace: r3n(m.envRate),
+                penaltiesPerRace: r3n(m.penaltyRate),
+              },
+              pac: {
+                avgGridNorm: r3n(m.careerGridNorm),
+                lapGapPct: m.careerLapGap != null ? Math.round(m.careerLapGap * 10000) / 100 : null,
+                consistencyPct: r3n(m.careerConsistency),
+              },
+            },
+          }
+        : null),
     };
   });
 

@@ -28,6 +28,7 @@ import {
 } from "../lib/downloads.js";
 import { stashIncoming, archiveCommitted } from "../lib/resultsArchive.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
+import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
@@ -557,6 +558,8 @@ router.get("/ratings/weights", async (req, res, next) => {
 router.put("/ratings/weights", async (req, res, next) => {
   try {
     const saved = await writeRatingWeights(prisma, req.body?.weights ?? null);
+    // New weights bend every replayed curve — drop the cached histories.
+    invalidateRatingHistoryCache();
     res.json({ ok: true, saved });
   } catch (e) {
     next(e);

@@ -10,6 +10,7 @@ import {
 } from "./pointsCalculator.js";
 import { getSeasonScoring } from "./seasonService.js";
 import { invalidateRecordsCache } from "./recordsService.js";
+import { invalidateRatingHistoryCache } from "./ratingHistoryService.js";
 
 // Rejects obviously broken input BEFORE anything is written, with messages an
 // admin can act on. Throws a 400-flagged error (the express error handler
@@ -213,6 +214,8 @@ export async function saveRaceResults(prisma, raceId, results) {
   // New results move the all-time records — drop the Hall of Fame cache so the
   // page reflects the round immediately instead of after the cache TTL.
   invalidateRecordsCache();
+  // New results also reshape the round-by-round rating curves.
+  invalidateRatingHistoryCache();
   return { steamIdConflicts };
 }
 

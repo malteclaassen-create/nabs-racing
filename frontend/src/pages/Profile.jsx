@@ -14,6 +14,7 @@ import { COUNTRIES } from "../data/countries.js";
 import { SocialIcon, SOCIAL_META } from "../components/SocialLinks.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import DriverProfile from "./DriverProfile.jsx";
+import MyRating from "./MyRating.jsx";
 
 // The public profile shows at most this many stat tiles.
 const MAX_TILES = 9;
@@ -514,6 +515,7 @@ function memberTabs(isAdmin) {
   return [
     { key: "profile", label: "Edit Profile" },
     ...COCKPIT_TABS,
+    { key: "rating", label: "My Rating" },
     { key: "tools", label: "Race Tools" },
     { key: "settings", label: "Settings" },
     ...(isAdmin ? [{ key: "admin", label: "Admin" }] : []),
@@ -526,7 +528,7 @@ function MyProfile() {
   const me = useApi(useCallback(() => api.me(), []));
   const [params, setParams] = useSearchParams();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const tab = ["profile", "tools", ...COCKPIT_TABS.map((t) => t.key)].includes(params.get("tab"))
+  const tab = ["profile", "rating", "tools", ...COCKPIT_TABS.map((t) => t.key)].includes(params.get("tab"))
     ? params.get("tab")
     : "profile";
   const setTab = (key) => {
@@ -601,6 +603,8 @@ function MyProfile() {
 
       {tab === "tools" ? (
         <Tools embedded />
+      ) : tab === "rating" ? (
+        <MyRating me={d} />
       ) : tab !== "profile" ? (
         <CockpitPanels tab={tab} onTab={setTab} />
       ) : (

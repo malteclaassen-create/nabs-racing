@@ -177,6 +177,10 @@ export const api = {
   racesFor: (n) => request(`/races${seasonParam(n)}`, { auth: true }),
   driverProfile: (id) => request(`/drivers/${id}/profile`, { auth: true }),
   driverRating: (id) => request(`/drivers/${id}/rating`, { auth: true }),
+  // Own round-by-round rating history + component breakdown (My Rating tab).
+  myRatingHistory: () => request("/me/rating/history", { userAuth: true }),
+  // Per-race career curve — heavier, so it loads only on demand.
+  myRatingCareer: () => request("/me/rating/career", { userAuth: true }),
   t1Standings: (season) => request(`/standings/constructors/t1${seasonParam(season)}`, { auth: true }),
   t2Standings: (season) => request(`/standings/constructors/t2${seasonParam(season)}`, { auth: true }),
   races: (season) => request(`/races${seasonParam(season)}`, { auth: true }),

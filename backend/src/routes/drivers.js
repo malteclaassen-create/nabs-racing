@@ -43,4 +43,7 @@ router.get("/:id/rating", async (req, res, next) => {
   }
 });
 
+// The round-by-round rating history is NOT public: it lives on /api/me/rating/
+// history (me.js), own eyes only — the public profile shows just the card.
+
 export default router;

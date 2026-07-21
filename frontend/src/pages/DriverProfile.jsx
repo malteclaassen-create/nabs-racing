@@ -1364,7 +1364,7 @@ export default function DriverProfile({ previewId, preview }) {
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
         </svg>
-        Edit my profile
+        Personal Area
       </Link>
       {/* Site settings moved into the /profile member bar — no gear here. */}
     </div>

@@ -20,6 +20,7 @@ import {
 import { cardUnlockInputs } from "../services/driverProfileService.js";
 import { notifyCardUnlocks } from "../lib/notifications.js";
 import { dbGetMember, dbSetRaceRequest } from "../lib/members.js";
+import { getDriverRatingHistory, getDriverCareerRatings } from "../services/ratingHistoryService.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const router = Router();
@@ -469,6 +470,40 @@ router.delete("/card-photo-image", async (req, res, next) => {
     if (!driverId) return;
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${null} WHERE "id" = ${driverId}`;
     res.json({ ok: true, cardPhotoUrl: null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/me/rating/history -> the logged-in driver's own rating, replayed
+// round by round (curve points + per-race facts + component breakdown). Own
+// eyes only on purpose — the full what-goes-into-it view is private, the
+// public profile card just shows the four numbers.
+router.get("/rating/history", async (req, res, next) => {
+  try {
+    const driverId = await requireDriver(req, res);
+    if (!driverId) return;
+    const history = await getDriverRatingHistory(prisma, driverId);
+    if (!history) return res.status(404).json({ error: "No rating yet" });
+    // Plus the CHEAP all-time curve (one point per season), so the chart can
+    // zoom out right away. The per-race career curve is a separate call below,
+    // fetched only when the reader actually asks for that detail.
+    const career = await getDriverCareerRatings(prisma, driverId);
+    res.json({ ...history, careerSeasons: career?.points || [] });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/me/rating/career -> every RACE of every season, replayed. The
+// expensive view, so it is its own request: the page only asks for it when the
+// reader switches the all-time chart to per-race detail.
+router.get("/rating/career", async (req, res, next) => {
+  try {
+    const driverId = await requireDriver(req, res);
+    if (!driverId) return;
+    const career = await getDriverCareerRatings(prisma, driverId, { perRace: true });
+    res.json({ points: career?.points || [] });
   } catch (e) {
     next(e);
   }

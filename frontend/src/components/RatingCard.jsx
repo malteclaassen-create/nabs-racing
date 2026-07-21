@@ -67,7 +67,7 @@ export function cardPhotoFraming(pos) {
 // Plain-words explanation of each sub-rating, shown on the public profile when
 // `explain` is on (hover/tap a value). RAC and AWA carry a "still being tuned"
 // note on purpose — the admins are still refining those two formulas.
-const RATING_INFO = {
+export const RATING_INFO = {
   exp: {
     code: "EXP",
     label: "Experience",
