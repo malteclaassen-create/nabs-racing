@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
+import { useTour } from "./Tour.jsx";
 
 // The bell in the nav bar. Logged-in members see league notifications
 // (results, race day, downloads, driver market); the unread count polls once
@@ -102,6 +103,7 @@ const POLL_MS = 60_000;
 export default function NotificationBell({ className = "" }) {
   const { isLoggedIn } = useAuth();
   const navigate = useNavigate();
+  const { startTour } = useTour();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState(null); // null = not loaded yet
@@ -157,7 +159,11 @@ export default function NotificationBell({ className = "" }) {
 
   function onItemClick(n) {
     close();
-    if (n.link) navigate(n.link);
+    if (!n.link) return;
+    // A `tour:<name>` link doesn't jump straight to a page — it kicks off a
+    // guided walk-through that spotlights the buttons to press on the way there.
+    if (n.link.startsWith("tour:")) return startTour(n.link.slice(5));
+    navigate(n.link);
   }
 
   return (

@@ -1360,7 +1360,7 @@ export default function DriverProfile({ previewId, preview }) {
 
   const ownControls = isOwnProfile && (
     <div className="-mb-2 flex justify-end gap-2">
-      <Link to="/profile" className="btn-secondary inline-flex items-center gap-1.5">
+      <Link to="/profile" data-tour="personal-area" className="btn-secondary inline-flex items-center gap-1.5">
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
         </svg>

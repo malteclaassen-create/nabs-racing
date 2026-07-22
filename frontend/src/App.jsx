@@ -6,6 +6,7 @@ import { setTrackCountryOverrides } from "./data/circuits.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
 import { SeriesProvider, useSeries, useSeriesPath } from "./context/SeriesContext.jsx";
 import NavBar from "./components/NavBar.jsx";
+import { TourProvider } from "./components/Tour.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Logo from "./components/Logo.jsx";
 import SocialLinks, { useSocial, SocialIcon } from "./components/SocialLinks.jsx";
@@ -303,13 +304,15 @@ function SeriesScopedApp() {
   return (
     <SeasonProvider key={slug || "default"}>
       <TitleSync />
-      <div className="flex min-h-screen flex-col">
-        <NavBar />
-        <PrivateSeasonBanner />
-        <AppRoutes />
-        <Footer />
-      </div>
-      <PreviewToggle />
+      <TourProvider>
+        <div className="flex min-h-screen flex-col">
+          <NavBar />
+          <PrivateSeasonBanner />
+          <AppRoutes />
+          <Footer />
+        </div>
+        <PreviewToggle />
+      </TourProvider>
     </SeasonProvider>
   );
 }

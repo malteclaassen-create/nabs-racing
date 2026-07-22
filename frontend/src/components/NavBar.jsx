@@ -24,6 +24,7 @@ function AuthControl({ mobile = false }) {
       <NavLink
         to={user.driverId ? `/drivers/${user.driverId}` : "/profile"}
         title="Your driver profile"
+        data-tour="nav-profile"
         className={({ isActive }) =>
           `flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold transition ${
             mobile ? "w-full" : ""
@@ -444,6 +445,7 @@ export default function NavBar() {
             onClick={() => (open ? closeMenu() : openMenu())}
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
+            data-tour="nav-burger"
             className="flex h-10 w-10 items-center justify-center rounded-lg text-dark transition hover:bg-surface2"
           >
             {open ? (

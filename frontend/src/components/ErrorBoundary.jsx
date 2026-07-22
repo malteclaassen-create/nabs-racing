@@ -39,7 +39,7 @@ export default class ErrorBoundary extends Component {
             This page hit a snag
           </h2>
           <p className="mt-3 text-sm text-light">
-            The rest of the site still works — use the menu to head elsewhere, or reload to try this
+            The rest of the site still works. Use the menu to head elsewhere, or reload to try this
             page again.
           </p>
           <button className="btn-primary mt-6" onClick={() => window.location.reload()}>

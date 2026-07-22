@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -130,7 +130,13 @@ function causesFor(r) {
   if (r.contacts === 0) out.push({ tone: "good", text: "Contact-free", hits: "AWA" });
   if (r.envContacts != null && r.envContacts > 2) out.push({ tone: "bad", text: `${r.envContacts} off-track hits`, hits: "AWA" });
   if (r.gamePenalties != null && r.gamePenalties > 0) out.push({ tone: "bad", text: `${r.gamePenalties} penalt${r.gamePenalties === 1 ? "y" : "ies"}`, hits: "AWA" });
-  if (r.bestLapGapPct != null && r.bestLapGapPct <= 1) out.push({ tone: "good", text: `Best lap +${r.bestLapGapPct}%`, hits: "PAC" });
+  // 0% gap to the race's best lap means it WAS the race's best lap.
+  if (r.bestLapGapPct != null && r.bestLapGapPct <= 1)
+    out.push({
+      tone: "good",
+      text: r.bestLapGapPct === 0 ? "Fastest lap of the race" : `Best lap within ${r.bestLapGapPct}%`,
+      hits: "PAC",
+    });
   return out;
 }
 
@@ -144,9 +150,74 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
   // can be positioned fixed and float clear of the plot (which scrolls
   // horizontally and would otherwise clip it).
   const [hover, setHover] = useState(null);
+  const N = points.length;
+
+  // Edge fades: when the plot scrolls sideways, the cut-off edges get a soft
+  // gradient into the card background instead of a hard clip — and each fade
+  // only shows where there actually IS more content (same pattern as the
+  // Races page's round rail). ALL hooks live above the empty-state return
+  // below, or React's hook order breaks when the state flips (the "By race"
+  // view renders empty for a beat while its points load).
+  const scrollRef = useRef(null);
+  const [fade, setFade] = useState({ l: false, r: false });
+  const updateFade = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    const l = el.scrollLeft > 4;
+    const r = max - el.scrollLeft > 4;
+    setFade((cur) => (cur.l === l && cur.r === r ? cur : { l, r }));
+  };
+  // Re-check when the layout settles or changes (mount, resize, more points).
+  useEffect(() => {
+    updateFade();
+    const el = scrollRef.current;
+    const ro = typeof ResizeObserver !== "undefined" && el ? new ResizeObserver(updateFade) : null;
+    if (el) ro?.observe(el);
+    return () => ro?.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [N, perRace]);
+
+  // The detail card is pinned to screen coordinates, so scrolling the PAGE
+  // would leave it floating over the wrong spot — drop it on any page scroll
+  // (the plot's own sideways scroll already does the same).
+  useEffect(() => {
+    const drop = () => setHover((cur) => (cur ? null : cur));
+    window.addEventListener("scroll", drop, { passive: true });
+    return () => window.removeEventListener("scroll", drop);
+  }, []);
+
+  // Drag-to-pan with the mouse: hold down anywhere on the plot and slide it
+  // sideways (touch already pans natively). A real drag (>4px) swallows the
+  // click that follows, so letting go doesn't also open a race's detail card.
+  const dragRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const onDragStart = (e) => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    const el = scrollRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    dragRef.current = { x: e.clientX, sl: el.scrollLeft, moved: false };
+    setDragging(true);
+  };
+  const onDragMove = (e) => {
+    const d = dragRef.current;
+    const el = scrollRef.current;
+    if (!d || !el) return;
+    const dx = e.clientX - d.x;
+    if (Math.abs(dx) > 4) d.moved = true;
+    el.scrollLeft = d.sl - dx;
+  };
+  const onDragEnd = () => {
+    setDragging(false);
+    // Cleared on the next tick, AFTER the click event this drag may produce —
+    // the column click handler reads `moved` to tell a drag from a tap.
+    setTimeout(() => {
+      dragRef.current = null;
+    }, 0);
+  };
+
   const rated = points.map((p, i) => (p.ratings ? { i, v: p.ratings[statKey] } : null)).filter(Boolean);
   if (rated.length === 0) return <div className="p-6 text-sm text-light">No rated rounds yet.</div>;
-  const N = points.length;
   const vals = rated.map((r) => r.v);
   const lo = Math.max(0, Math.min(...vals) - 3);
   const hi = Math.min(99, Math.max(...vals) + 3);
@@ -180,12 +251,41 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
   const hp = hover ? points[hover.i] : null;
   const hv = hp?.ratings ? hp.ratings[statKey] : null;
 
+  // Pin the detail card to a column. Works for mouse hover AND touch: phones
+  // can't hover, so a tap on a race opens its card (tapping it again, tapping
+  // another race, or scrolling the plot dismisses it).
+  const showFrom = (i, el, r) => {
+    const box = el.getBoundingClientRect();
+    setHover({
+      i,
+      x: box.left + box.width / 2,
+      y: box.top + (r != null ? (yPct(r) / 100) * box.height : box.height / 2),
+    });
+  };
+
   return (
-    <div className="scrollbar-slim w-full overflow-x-auto">
+    <div className="relative">
+      <div
+        ref={scrollRef}
+        className={`scrollbar-slim w-full overflow-x-auto ${
+          dragging ? "cursor-grabbing select-none" : fade.l || fade.r ? "cursor-grab" : ""
+        }`}
+        onScroll={() => {
+          setHover(null);
+          updateFade();
+        }}
+        onPointerDown={onDragStart}
+        onPointerMove={onDragMove}
+        onPointerUp={onDragEnd}
+        onPointerLeave={onDragEnd}
+        onPointerCancel={onDragEnd}
+      >
       <div className="flex h-72 flex-col" style={{ minWidth: minW + 40 }}>
-        <div className="flex min-h-0 flex-1 items-stretch gap-2">
-          {/* pinned y-axis */}
-          <div className="sticky left-0 z-10 w-8 shrink-0 bg-card">
+        <div className="flex min-h-0 flex-1 items-stretch">
+          {/* Pinned y-axis. Its solid column is a touch wider than the numbers
+              (pr-2) so scrolled-away content can never peek through between
+              the numbers and the plot — and the numbers sit clearly apart. */}
+          <div className="sticky left-0 z-10 w-10 shrink-0 bg-card pr-2">
             <div className="relative h-full">
               {ticks.map((v) => (
                 <span key={v} className="absolute right-0 -translate-y-1/2 font-mono text-[10px] font-bold tabular-nums text-faint" style={{ top: `${yPct(v)}%` }}>
@@ -235,26 +335,25 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
                     // catches a race anywhere above or below its dot
                     <div
                       key={p.raceId || i}
-                      className="relative flex-1"
-                      onMouseEnter={(e) => {
-                        // remember where this dot sits on screen, so the card
-                        // can float above it outside the plot's own bounds
-                        const box = e.currentTarget.getBoundingClientRect();
-                        setHover({
-                          i,
-                          x: box.left + box.width / 2,
-                          y: box.top + (r != null ? (yPct(r) / 100) * box.height : box.height / 2),
-                        });
-                      }}
+                      className="relative flex-1 cursor-pointer"
+                      // Hover for mouse; tap for touch (toggles this race's card).
+                      onMouseEnter={(e) => showFrom(i, e.currentTarget, r)}
                       onMouseLeave={() => setHover((cur) => (cur?.i === i ? null : cur))}
+                      onClick={(e) => {
+                        if (dragRef.current?.moved) return; // that was a pan, not a tap
+                        if (hover?.i === i) setHover(null);
+                        else showFrom(i, e.currentTarget, r);
+                      }}
                     >
                       {isHover && <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />}
                       {r != null && (
                         <>
                           {ring && (
+                            // a bordered circle (not a box-shadow halo), so its
+                            // visible edge is exactly concentric with the dot
                             <span
-                              className="absolute h-[22px] w-[22px] -translate-x-1/2 -translate-y-1/2 rounded-full"
-                              style={{ left: "50%", top: `${yPct(r)}%`, boxShadow: `0 0 0 2px ${ring}` }}
+                              className="absolute h-[26px] w-[26px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2"
+                              style={{ left: "50%", top: `${yPct(r)}%`, borderColor: ring }}
                             />
                           )}
                           {/* only the hover grow is animated — never the
@@ -274,9 +373,11 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
                               in the dense per-race view the hover card
                               carries it instead */}
                           {!perRace && (
+                            // lifted clear of the best/low rings, which reach
+                            // further out than the plain dots
                             <span
                               className="absolute -translate-x-1/2 font-display text-xs font-black tabular-nums text-dark"
-                              style={{ left: "50%", top: `calc(${yPct(r)}% - 1.6rem)` }}
+                              style={{ left: "50%", top: `calc(${yPct(r)}% - 2.1rem)` }}
                             >
                               {r}
                             </span>
@@ -366,7 +467,9 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
         </div>
         {/* x-axis: round (plus the circuit where there is room); in the
             all-time view the season name spans its own block of races */}
-        <div className="ml-10 flex pt-2.5">
+        <div className="flex pt-2.5">
+          {/* sticky spacer: covers scrolled-away labels, like the axis above */}
+          <div className="sticky left-0 z-10 w-10 shrink-0 bg-card" />
           {points.map((p, i) => (
             <div key={p.raceId || i} className="min-w-0 flex-1 px-0.5 text-center">
               <div className="font-mono text-[10px] font-bold uppercase tracking-wide text-faint">
@@ -381,15 +484,30 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
           ))}
         </div>
         {perRace && (
-          <div className="ml-10 mt-1.5 flex border-t border-border pt-1.5">
-            {groups.map((g) => (
-              <div key={g.from} className="min-w-0 px-1 text-center" style={{ flex: `${g.count} 1 0%` }}>
-                <span className="block truncate font-display text-[11px] font-bold uppercase tracking-tight text-light">{g.label}</span>
-              </div>
-            ))}
+          <div className="mt-1.5 flex">
+            <div className="sticky left-0 z-10 w-10 shrink-0 bg-card" />
+            {/* the separator sits on the CONTENT half only, so it starts at the
+                axis edge instead of running left under it */}
+            <div className="flex min-w-0 flex-1 border-t border-border pt-1.5">
+              {groups.map((g) => (
+                <div key={g.from} className="min-w-0 px-1 text-center" style={{ flex: `${g.count} 1 0%` }}>
+                  <span className="block truncate font-display text-[11px] font-bold uppercase tracking-tight text-light">{g.label}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
+        </div>
       </div>
+      {/* soft edges over the scrolling plot: left one starts after the pinned
+          y-axis, each side only shows while there is more to scroll to, and
+          both stop above the scrollbar strip so the thumb stays readable */}
+      {fade.l && (
+        <div aria-hidden className="pointer-events-none absolute bottom-2 left-10 top-0 w-8 bg-gradient-to-r from-card to-transparent" />
+      )}
+      {fade.r && (
+        <div aria-hidden className="pointer-events-none absolute bottom-2 right-0 top-0 w-8 bg-gradient-to-l from-card to-transparent" />
+      )}
     </div>
   );
 }
@@ -701,46 +819,60 @@ export default function MyRating({ me }) {
               </div>
             </div>
           </div>
-          {/* The group is right-aligned, and the grain switch comes FIRST in
-              it: switching to all-time then grows the row leftwards, leaving
-              Season/All-time and the value tabs exactly where they were. */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* inside all-time: season summary or every single race */}
+          {/* PHONE: the switchers span the card's full width with equal-width
+              buttons (same pattern as the Races page's session tabs) — a tidy
+              control block instead of loose pills. The zoom row comes first,
+              the grain row slides in under it in all-time mode, the value tabs
+              close the block. DESKTOP: unchanged one row, grain leftmost so
+              its appearing never displaces the others. */}
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+            {/* inside all-time: per-season summary or every single race. Labelled
+                "By season / By race" so it doesn't read like the Season/All-time
+                zoom right next to it. */}
             {inCareer && (
-              <SlidingTabs
-                wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
-                btnClassName="px-3 py-1.5 text-xs font-bold"
-                pillClassName="rounded-md bg-brand"
-                items={[
-                  { key: "seasons", label: "Seasons" },
-                  { key: "races", label: "Races" },
-                ]}
-                value={grain}
-                onChange={setGrain}
-              />
+              // keyed so the entrance replays each time all-time is entered;
+              // pop-in matches the site's other appearing controls
+              <div key="grain" className="tabs-pop order-2 sm:order-1">
+                <SlidingTabs
+                  wrapClassName="flex w-full rounded-lg border border-border bg-card p-0.5 sm:inline-flex sm:w-auto"
+                  btnClassName="flex-1 px-3 py-1.5 text-xs font-bold sm:flex-none"
+                  pillClassName="rounded-md bg-brand"
+                  items={[
+                    { key: "seasons", label: "By season" },
+                    { key: "races", label: "By race" },
+                  ]}
+                  value={grain}
+                  onChange={setGrain}
+                />
+              </div>
             )}
             {/* zoom out to every season this person has raced */}
             {hasCareer && (
-              <SlidingTabs
-                wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
-                btnClassName="px-3 py-1.5 text-xs font-bold"
-                pillClassName="rounded-md bg-brand"
-                items={[
-                  { key: "season", label: "Season" },
-                  { key: "career", label: "All-time" },
-                ]}
-                value={scope}
-                onChange={setScope}
-              />
+              <div className="order-1 sm:order-2">
+                <SlidingTabs
+                  wrapClassName="flex w-full rounded-lg border border-border bg-card p-0.5 sm:inline-flex sm:w-auto"
+                  btnClassName="flex-1 px-3 py-1.5 text-xs font-bold sm:flex-none"
+                  pillClassName="rounded-md bg-brand"
+                  items={[
+                    { key: "season", label: "Season" },
+                    { key: "career", label: "All-time" },
+                  ]}
+                  value={scope}
+                  onChange={setScope}
+                />
+              </div>
             )}
-            <SlidingTabs
-              wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
-              btnClassName="px-3 py-1.5 text-xs font-bold"
-              pillClassName="rounded-md bg-brand"
-              items={SERIES.map((s) => ({ key: s.key, label: s.code }))}
-              value={stat}
-              onChange={setStat}
-            />
+            {/* the value being plotted */}
+            <div className="order-3">
+              <SlidingTabs
+                wrapClassName="flex w-full rounded-lg border border-border bg-card p-0.5 sm:inline-flex sm:w-auto"
+                btnClassName="flex-1 px-3 py-1.5 text-xs font-bold sm:flex-none"
+                pillClassName="rounded-md bg-brand"
+                items={SERIES.map((s) => ({ key: s.key, label: s.code }))}
+                value={stat}
+                onChange={setStat}
+              />
+            </div>
           </div>
         </div>
         <div className="p-5 sm:p-6">
@@ -757,11 +889,11 @@ export default function MyRating({ me }) {
         <p className="border-t border-border px-5 py-2.5 font-mono text-[11px] leading-relaxed text-light sm:px-6">
           {inCareer
             ? perRace
-              ? "Every race you have driven · hover one for its detail"
-              : "One point per season, at its end · hover one for its detail"
+              ? "Every race you have driven · tap one for its detail"
+              : "One point per season, at its end · tap one for its detail"
             : stat === "pac" || stat === "exp"
               ? "Career-window value · it moves slowly within a season"
-              : "Your rating after each round · hover one for its detail"}
+              : "Your rating after each round · tap one for its detail"}
         </p>
       </div>
 
@@ -771,43 +903,102 @@ export default function MyRating({ me }) {
           <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Round by round</h2>
           <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">what moved your numbers, race by race</span>
         </div>
-        <div className="cascade divide-y divide-border">
-          {ratedPoints.map((p, i) => {
+        {/* Thicker dividers on the phone (2px vs the desktop hairline), so each
+            race reads as its own block even with everything stacked. */}
+        <div className="cascade divide-y-2 divide-border sm:divide-y">
+          {/* EVERY round of the season, including the ones sat out (even those
+              before the first start, which carry no rating row at all) — but a
+              missed round is just one slim muted line, since it moved nothing. */}
+          {points.map((p, i) => {
+            if (!p.race?.raced) {
+              return (
+                <div
+                  key={p.raceId || i}
+                  style={{ "--i": Math.min(i, 16) }}
+                  className="flex items-center gap-x-4 px-5 py-2.5 opacity-60 sm:px-6"
+                >
+                  <span className="w-8 shrink-0 font-mono text-base font-bold tabular-nums text-faint">{p.number}</span>
+                  <Flag code={p.country || flagFor(p.track)?.country} w={26} h={19} />
+                  <span className="min-w-0 flex-1 truncate font-display text-base font-extrabold uppercase tracking-tight text-light">
+                    {p.track}
+                  </span>
+                  <span className="shrink-0 text-sm font-semibold text-light">sat out</span>
+                </div>
+              );
+            }
             const causes = causesFor(p.race || {});
+            const goodCauses = causes.filter((c) => c.tone === "good");
+            const badCauses = causes.filter((c) => c.tone !== "good");
+            // Roomier on the phone (py-5, wider row gaps): each race needs to
+            // read as its own block, not one dense stream. Desktop keeps the
+            // tighter rhythm.
             return (
-              <div key={p.raceId} style={{ "--i": Math.min(i, 16) }} className="px-5 py-4 sm:px-6">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
+              <div key={p.raceId} style={{ "--i": Math.min(i, 16) }} className="px-5 py-5 sm:px-6 sm:py-4">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-3.5 sm:gap-y-2.5">
                   <span className="w-8 shrink-0 font-mono text-base font-bold tabular-nums text-faint">{p.number}</span>
                   <Flag code={p.country || flagFor(p.track)?.country} w={26} h={19} />
                   <span className="min-w-0 flex-1 truncate font-display text-lg font-extrabold uppercase tracking-tight text-dark">
                     {p.track}
                   </span>
-                  {p.race?.raced ? (
-                    <span className="shrink-0 text-sm font-bold text-dark">
-                      {p.race.position != null ? `P${p.race.position}` : p.race.status}
-                      {p.race.grid != null && <span className="font-semibold text-light"> from P{p.race.grid}</span>}
-                    </span>
-                  ) : (
-                    <span className="shrink-0 text-sm font-semibold text-light">sat out</span>
-                  )}
-                  {/* per-value deltas — solid pills, big enough to read at a glance */}
-                  <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="shrink-0 text-sm font-bold text-dark">
+                    {p.race.position != null ? `P${p.race.position}` : p.race.status}
+                    {p.race.grid != null && <span className="font-semibold text-light"> from P{p.race.grid}</span>}
+                  </span>
+                  {/* Per-value deltas. On a phone they drop to their own full
+                      width line and spread out evenly (so they never wrap into a
+                      ragged block); inline at the end of the row from sm up. */}
+                  <span className="order-last flex w-full items-center justify-between gap-1.5 sm:order-none sm:w-auto sm:justify-start">
                     {["overall", "rac", "aha", "pac", "exp"].map((k) => (
                       <DeltaPill key={k} value={p.delta?.[k]} code={SERIES.find((s) => s.key === k)?.code} />
                     ))}
                   </span>
                 </div>
                 {causes.length > 0 && (
-                  <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-12">
-                    {causes.map((c, j) => (
-                      <Cause key={j} tone={c.tone}>
-                        {c.text}
-                        <span className="ml-2 border-l pl-2 opacity-70" style={{ borderColor: "currentColor" }}>
-                          {c.hits}
-                        </span>
-                      </Cause>
-                    ))}
-                  </div>
+                  <>
+                    {/* Phone: gains left, losses right — but as a quiet list in
+                        the page's own language: no tinted boxes, a hairline
+                        between the columns, colour only on the small ▲/▼ marker,
+                        the text in the normal ink. One side empty = the other
+                        spans the full width. */}
+                    <div
+                      className={`mt-4 grid gap-x-4 sm:hidden ${
+                        goodCauses.length > 0 && badCauses.length > 0
+                          ? "grid-cols-2 divide-x divide-border"
+                          : "grid-cols-1"
+                      }`}
+                    >
+                      {[
+                        { list: goodCauses, arrow: "▲", mark: "text-emerald-600 dark:text-emerald-400" },
+                        { list: badCauses, arrow: "▼", mark: "text-red-600 dark:text-red-400" },
+                      ].map(
+                        (col) =>
+                          col.list.length > 0 && (
+                            <ul key={col.arrow} className="space-y-1.5 [&:nth-child(2)]:pl-4">
+                              {col.list.map((c, j) => (
+                                <li key={j} className="flex items-baseline gap-1.5">
+                                  <span aria-hidden className={`shrink-0 text-[8px] ${col.mark}`}>{col.arrow}</span>
+                                  <span className="min-w-0 text-[13px] font-semibold leading-snug text-medium">{c.text}</span>
+                                  <span className="ml-auto shrink-0 font-mono text-[9px] font-bold uppercase tracking-wider text-faint">
+                                    {c.hits}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )
+                      )}
+                    </div>
+                    {/* Desktop keeps the chip row, where there is room for it. */}
+                    <div className="mt-2.5 hidden flex-wrap items-center gap-2 pl-12 sm:flex">
+                      {causes.map((c, j) => (
+                        <Cause key={j} tone={c.tone}>
+                          {c.text}
+                          <span className="ml-2 border-l pl-2 opacity-70" style={{ borderColor: "currentColor" }}>
+                            {c.hits}
+                          </span>
+                        </Cause>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             );

@@ -66,6 +66,7 @@ export default function SlidingTabs({
           ref={(n) => (btnRefs.current[it.key] = n)}
           type="button"
           title={it.title}
+          data-tour={it.dataTour}
           onClick={() => onChange(it.key)}
           aria-pressed={value === it.key}
           className={`relative z-10 rounded-lg font-bold transition-colors ${btnClassName} ${

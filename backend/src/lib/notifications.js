@@ -586,6 +586,15 @@ const FEATURE_ANNOUNCEMENTS = [
     body: "Sign-up for a race opens a few days before the event and you'll get a notification here the moment it does. The Attendance button only shows in the menu while a sign-up is open. You can already answer for next season's races too.",
     link: "/attendance",
   },
+  {
+    dedupeKey: "feature:my-rating",
+    type: "CARD",
+    title: "New: your private rating breakdown",
+    body: "There's now a \"My Rating\" tab in your Personal Area, just for you: it shows round by round where your rating comes from, your biggest strengths and what's costing you most. Tap this to be walked there step by step.",
+    // A `tour:` link starts a guided walk-through instead of jumping straight to
+    // the page (see the notification bell / Tour.jsx on the frontend).
+    link: "tour:my-rating",
+  },
 ];
 
 export async function announceFeatures(prisma) {

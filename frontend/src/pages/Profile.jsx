@@ -515,7 +515,7 @@ function memberTabs(isAdmin) {
   return [
     { key: "profile", label: "Edit Profile" },
     ...COCKPIT_TABS,
-    { key: "rating", label: "My Rating" },
+    { key: "rating", label: "My Rating", dataTour: "tab-rating" },
     { key: "tools", label: "Race Tools" },
     { key: "settings", label: "Settings" },
     ...(isAdmin ? [{ key: "admin", label: "Admin" }] : []),
@@ -604,7 +604,9 @@ function MyProfile() {
       {tab === "tools" ? (
         <Tools embedded />
       ) : tab === "rating" ? (
-        <MyRating me={d} />
+        <div data-tour="my-rating-panel">
+          <MyRating me={d} />
+        </div>
       ) : tab !== "profile" ? (
         <CockpitPanels tab={tab} onTab={setTab} />
       ) : (

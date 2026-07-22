@@ -584,6 +584,35 @@ body::before {
 @keyframes content-in { from { opacity: 0; } to { opacity: 1; } }
 .content-in { animation: content-in 0.3s ease both; }
 
+/* --- Guided tour spotlight ------------------------------------------ */
+/* The cut-out over the highlighted control: a huge spreading shadow dims the
+   rest of the screen, an inner ring draws the eye, and the whole thing lets
+   clicks fall through to the target underneath (pointer-events: none). Position
+   and size are driven per-frame from JS (see Tour.jsx); only the look lives
+   here. */
+.tour-spot {
+  pointer-events: none;
+  border-radius: 12px;
+  box-shadow: 0 0 0 3px rgb(66 81 168 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55);
+  transition: left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease, opacity 0.18s ease;
+  animation: tour-pulse 1.6s ease-in-out infinite;
+}
+.tour-spot-idle { animation: none; }
+@keyframes tour-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgb(66 81 168 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55); }
+  50%      { box-shadow: 0 0 0 8px rgb(66 81 168 / 0.35), 0 0 0 9999px rgb(2 6 23 / 0.55); }
+}
+.tour-card { animation: nabs-pop 0.22s cubic-bezier(0.22, 0.61, 0.24, 1) both; }
+
+/* A control that appears because of another control (the By-season/By-race
+   switch popping up in all-time mode) eases in instead of snapping. */
+.tabs-pop { animation: nabs-pop 0.25s cubic-bezier(0.22, 0.61, 0.24, 1) both; }
+.fx-lite .tabs-pop { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot { animation: none; }
+  .tour-card { animation: none; }
+}
+
 /* --- Odometer digits ----------------------------------------------- */
 /* Countdown numerals roll to their value instead of hard-swapping (RollingNumber
    in ui.jsx). Each digit is a clipped 1em window over a 0–9 column that slides. */
