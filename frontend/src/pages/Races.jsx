@@ -24,7 +24,10 @@ function kindOf(r) {
   return r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
 }
 
+// A round whose date isn't fixed yet renders "Date TBA" rather than the literal
+// string "Invalid Date" (same guard as fmtFull on the home page).
 function fmtDate(d) {
+  if (!d) return "Date TBA";
   return new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
 }
 
@@ -403,13 +406,20 @@ export default function Races() {
 
   useEffect(() => {
     if (!selectedId) return;
+    // `alive` guards against a slow answer for the PREVIOUS round landing after
+    // a faster one for the round the visitor has since clicked: without it, the
+    // old table would overwrite the new one and sit under the wrong heading.
+    let alive = true;
     setDetailLoading(true);
     setDetailError(null);
     api
       .raceResults(selectedId)
-      .then(setDetail)
-      .catch((e) => setDetailError(e.message))
-      .finally(() => setDetailLoading(false));
+      .then((d) => alive && setDetail(d))
+      .catch((e) => alive && setDetailError(e.message))
+      .finally(() => alive && setDetailLoading(false));
+    return () => {
+      alive = false;
+    };
   }, [selectedId]);
 
   function selectRace(id) {

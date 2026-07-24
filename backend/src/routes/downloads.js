@@ -8,6 +8,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { requireUser, signDownloadTicket, verifyDownloadTicket } from "../middleware/auth.js";
+import { isBanned } from "../lib/members.js";
 import {
   dbListDownloads, dbGetDownload, dbListFolders, statFile, resolveDownloadPath, fmtSize,
 } from "../lib/downloads.js";
@@ -46,7 +47,7 @@ router.post("/:id/ticket", requireUser, async (req, res, next) => {
     if (!d || !Number(d.published)) return res.status(404).json({ error: "Not found" });
     if (d.externalUrl) return res.json({ url: d.externalUrl, external: true });
     if (!statFile(d.fileName).exists) return res.status(404).json({ error: "File not available yet" });
-    const ticket = signDownloadTicket(d.id);
+    const ticket = signDownloadTicket(d.id, req.user?.discordId);
     res.json({ url: `/api/downloads/${d.id}/file?ticket=${encodeURIComponent(ticket)}`, external: false });
   } catch (e) { next(e); }
 });
@@ -56,8 +57,17 @@ router.post("/:id/ticket", requireUser, async (req, res, next) => {
 router.get("/:id/file", async (req, res, next) => {
   try {
     const id = req.params.id;
-    if (!verifyDownloadTicket(req.query.ticket, id)) {
+    const ticket = verifyDownloadTicket(req.query.ticket, id);
+    if (!ticket) {
       return res.status(403).json({ error: "Invalid or expired download link" });
+    }
+    // A ban must bite straight away, even while the member's ticket still
+    // has hours left on it. Never let the ban lookup itself block a download.
+    if (ticket.sub) {
+      const banned = await isBanned(prisma, ticket.sub).catch(() => false);
+      if (banned) {
+        return res.status(403).json({ error: "This account has been suspended by the league admins." });
+      }
     }
     const d = await dbGetDownload(prisma, id);
     if (!d || !Number(d.published)) return res.status(404).json({ error: "Not found" });

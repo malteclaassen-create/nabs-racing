@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox } from "./ui.jsx";
+import { ErrorBox, CardBar } from "./ui.jsx";
 import Icon from "./InfoIcon.jsx";
 
 const EMPTY = { title: "", folderId: "", raceId: "", version: "", description: "", installNote: "", fileName: "", externalUrl: "", sortOrder: 0, published: true };
@@ -418,9 +418,7 @@ export default function AdminDownloads() {
 
       {/* Existing entries */}
       <div className="card overflow-hidden">
-        <h3 className="border-b border-border px-5 py-4 font-display text-base font-extrabold uppercase tracking-tight text-dark">
-          Catalogue {downloads.length > 0 && <span className="font-mono text-xs text-light">({downloads.length})</span>}
-        </h3>
+        <CardBar as="h3" title={<>Catalogue {downloads.length > 0 && <span className="font-mono text-xs text-light">({downloads.length})</span>}</>} />
         {loading ? (
           <p className="p-5 text-sm text-light">Loading…</p>
         ) : downloads.length === 0 ? (

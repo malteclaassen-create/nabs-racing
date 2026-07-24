@@ -233,7 +233,7 @@ export default function TeamProfile() {
           <Stat index={0} icon="hash" label="Championship" value={`P${teamRow.position}`} sub={`of ${standingsSet.standings.length} teams`} />
           <Stat index={1} icon="chart" label="Points" value={teamRow.total} sub={`${TIER_LABEL[team.tier]} table`} accent={color} />
           <Stat index={2} icon="trophy" label="Race Wins" value={wins} sub="by team drivers" accent={wins ? MEDAL_TEXT[0] : undefined} />
-          <Stat index={3} icon="podium" label="Podiums" value={podiums} sub="P1–P3 finishes" />
+          <Stat index={3} icon="podium" label="Podiums" value={podiums} sub="P1 to P3 finishes" />
           <Stat index={4} icon="flagChk" label="Best Round" value={bestRoundPts || "–"} sub="points in one race" />
           <Stat index={5} icon="hash" label="Rounds Scored" value={roundsScored} sub={`of ${raceNumbers.length}`} />
         </div>

@@ -19,7 +19,7 @@ const GROUPS = [
   },
   {
     title: "Milestones",
-    note: "Earned from career starts, wins, podiums and poles — kept forever.",
+    note: "Earned from career starts, wins, podiums and poles, kept forever.",
     editions: [
       { key: "rookie", name: "Rookie", tagline: "10 starts" },
       { key: "veteran", name: "Veteran", tagline: "20 starts" },
@@ -33,7 +33,7 @@ const GROUPS = [
   },
   {
     title: "Titles",
-    note: "Key off a season's podium seal — the card of that season only.",
+    note: "Key off a season's podium seal, for that season's card only.",
     editions: [
       { key: "champion", name: "Champion", tagline: "Title this season" },
       { key: "vice", name: "Vice", tagline: "P2 this season" },
@@ -112,7 +112,7 @@ export default function CardGallery() {
               type="button"
               onClick={() => fileRef.current?.click()}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-medium transition hover:bg-surface2"
-              title="Shown on every preview card. Stays on your device — nothing is uploaded."
+              title="Shown on every preview card. Stays on your device. Nothing is uploaded."
             >
               <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M4 8h3l2-3h6l2 3h3a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z" />

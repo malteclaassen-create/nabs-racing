@@ -42,19 +42,45 @@ router.get("/history", optionalUser, async (req, res, next) => {
     const groupKey = groupKeyFor(track);
     const isAdmin = isAdminRequest(req);
 
-    const [races, priv, groups, nameOverrides, info, series, bySeries] = await Promise.all([
-      prisma.race.findMany({
-        where: { isCompleted: true, isSpecialEvent: false },
-        include: { season: { select: { id: true, number: true, name: true } } },
-      }),
+    // Work out the visible scope FIRST, so the race query can be narrowed in SQL.
+    // This used to pull every completed race of every series and season on each
+    // call and throw most of them away in JS afterwards.
+    const [priv, series, bySeries] = await Promise.all([
       getPrivateSeasonIds(prisma),
-      getPersonGroups(prisma),
-      getNameOverrides(prisma),
-      readTrackInfo(prisma, groupKey),
       // Track records are per SERIES (GT laps must not enter the F1 record
       // book). ?series=<slug>; default = the active (primary) series.
       resolveSeries(prisma, req.query.series, { includePrivate: isAdmin }),
       seasonSeriesMap(prisma),
+    ]);
+
+    // Seasons this request is allowed to see. null means "can't narrow" (no
+    // series resolved, or the season->series map is empty) — then we fall back
+    // to the old behaviour of scanning everything, exactly as before.
+    let allowedSeasonIds = null;
+    if (series && bySeries.size) {
+      allowedSeasonIds = [...bySeries.entries()]
+        .filter(([seasonId, seriesId]) => seriesId === series.id && (isAdmin || !priv.has(seasonId)))
+        .map(([seasonId]) => seasonId);
+    }
+    const raceWhere = { isCompleted: true, isSpecialEvent: false };
+    if (allowedSeasonIds) raceWhere.seasonId = { in: allowedSeasonIds };
+
+    const [races, groups, nameOverrides, info] = await Promise.all([
+      prisma.race.findMany({
+        where: raceWhere,
+        // Only the fields this endpoint actually reads.
+        select: {
+          id: true,
+          track: true,
+          seasonId: true,
+          number: true,
+          date: true,
+          season: { select: { id: true, number: true, name: true } },
+        },
+      }),
+      getPersonGroups(prisma),
+      getNameOverrides(prisma),
+      readTrackInfo(prisma, groupKey),
     ]);
 
     // Races at this circuit: this series' seasons only, and only public
@@ -93,6 +119,15 @@ router.get("/history", optionalUser, async (req, res, next) => {
     const telByKey = new Map(telemetryRows.map((t) => [`${t.raceId}|${t.driverId}`, t]));
     const raceById = new Map(here.map((r) => [r.id, r]));
     const seasonNumberOf = (raceId) => raceById.get(raceId)?.season?.number ?? 0;
+    // seasonId -> season number, built once. The old helper did a linear scan of
+    // `here` for every single result row, which made the whole loop cost
+    // results x races.
+    const seasonNumberById = new Map();
+    for (const r of here) {
+      if (r.seasonId != null && !seasonNumberById.has(r.seasonId)) {
+        seasonNumberById.set(r.seasonId, r.season?.number ?? 0);
+      }
+    }
 
     // Resolve a result row to a stable person key + its current display name and
     // the driverId to link to (newest-season row of that person).
@@ -108,7 +143,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
         p = { name: currentName(driver), wins: 0, poles: 0, crashes: 0, cuts: 0, cutsSeen: false, linkId: driver.id, linkSeason: -1 };
         people.set(k, p);
       }
-      const sn = driver.seasonId ? seasonNumberOfSeasonId(driver.seasonId, here) : 0;
+      const sn = driver.seasonId ? seasonNumberById.get(driver.seasonId) ?? 0 : 0;
       if (sn >= p.linkSeason) { p.linkSeason = sn; p.linkId = driver.id; p.name = currentName(driver); }
       return p;
     };
@@ -217,9 +252,4 @@ router.get("/history", optionalUser, async (req, res, next) => {
 });
 
 // Season number for a driver's own season id, looked up from the loaded races.
-function seasonNumberOfSeasonId(seasonId, races) {
-  const hit = races.find((r) => r.seasonId === seasonId);
-  return hit?.season?.number ?? 0;
-}
-
 export default router;

@@ -43,7 +43,7 @@ function AuthControl({ mobile = false }) {
         mobile ? "w-full" : ""
       }`}
     >
-      Log in
+      Sign in
     </NavLink>
   );
 }
@@ -301,6 +301,29 @@ export default function NavBar() {
     const t = setTimeout(finishClose, 300);
     return () => clearTimeout(t);
   }, [closing]);
+
+  // Escape closes the menu, like every other overlay on the site.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") closeMenu();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  // Hold the page still behind the open menu. Without this the content kept
+  // scrolling under the panel, which on a phone reads as the menu sliding
+  // around. Reinstating the previous overflow (rather than clearing it) keeps
+  // this safe if another overlay ever locks scrolling at the same time.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
 
   // The Attendance item only earns its nav slot while a race is actually
   // taking answers: the sign-up window is open (always, when no window is

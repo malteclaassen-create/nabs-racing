@@ -342,7 +342,7 @@ export default function HallOfFame() {
     return (
       <div>
         <PageHeader eyebrow="All-time" title="Hall of Fame" />
-        <div className="card p-8 text-center text-medium">No completed seasons yet — the records start with the first finale.</div>
+        <div className="card p-8 text-center text-medium">No completed seasons yet. The records start with the first finale.</div>
       </div>
     );
 

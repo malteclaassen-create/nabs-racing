@@ -82,17 +82,39 @@ export function RollingNumber({ value, digits = 2, className = "" }) {
   );
 }
 
+// Which constructor table a car scores in. The race preview used to carry its
+// own near-identical copy of this in sky/violet, so the same badge looked
+// different before and after a result was saved; the explanatory titles came
+// from that copy and are kept here.
 export function TierBadge({ tier }) {
   if (tier === 1)
-    return <span className="pill bg-brand/20 text-dark">T1</span>;
+    return <span className="pill bg-brand/20 text-dark" title="Scores in the Tier 1 constructors' table">T1</span>;
   if (tier === 2)
-    return <span className="pill bg-primary/10 text-primary">T2</span>;
-  return <span className="pill bg-surface2 text-light">RES</span>;
+    return <span className="pill bg-primary/10 text-primary" title="Scores in the Tier 2 table (re-ranked among Tier-2 cars)">T2</span>;
+  return <span className="pill bg-surface2 text-light" title="Reserve: scores only for the team it subs for">RES</span>;
+}
+
+// Ink colour that stays readable on an arbitrary team colour. Some teams race
+// in white, pale yellow or the brand pink, and always-white initials vanished
+// on those (white on white at worst). Relative luminance per WCAG; the 0.179
+// cut-off is where black overtakes white on contrast.
+export function readableInkOn(bgHex) {
+  let c = String(bgHex || "").replace("#", "").trim();
+  if (c.length === 3) c = c.split("").map((x) => x + x).join("");
+  if (!/^[0-9a-f]{6}$/i.test(c)) return "#fff"; // unparseable -> previous behaviour
+  const channel = (v) => {
+    const s = parseInt(v, 16) / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const luminance =
+    0.2126 * channel(c.slice(0, 2)) + 0.7152 * channel(c.slice(2, 4)) + 0.0722 * channel(c.slice(4, 6));
+  return luminance > 0.179 ? "#0F172A" : "#fff";
 }
 
 // Driver avatar: shows the photo if present, else the initials on the team
 // colour. `size` is the pixel diameter.
 export function DriverAvatar({ name, photoUrl, color = "#888", size = 44, className = "" }) {
+  const [photoFailed, setPhotoFailed] = useState(false);
   const initials = (name || "?")
     .split(/\s+/)
     .map((p) => p[0])
@@ -100,18 +122,27 @@ export function DriverAvatar({ name, photoUrl, color = "#888", size = 44, classN
     .slice(0, 2)
     .join("")
     .toUpperCase();
+  const showPhoto = photoUrl && !photoFailed;
   return (
     <span
-      className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-display font-black text-white ring-2 ring-black/5 ${className}`}
-      style={{ width: size, height: size, backgroundColor: color, fontSize: size * 0.38 }}
+      className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-display font-black ring-2 ring-black/5 ${className}`}
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: color,
+        fontSize: size * 0.38,
+        color: readableInkOn(color),
+      }}
     >
-      {photoUrl ? (
+      {showPhoto ? (
         <img
           src={photoUrl}
           alt={name}
           className="h-full w-full object-cover"
           loading="lazy"
-          onError={(e) => (e.currentTarget.style.display = "none")}
+          // A dead picture link falls back to the initials instead of leaving an
+          // empty coloured disc (hiding the <img> used to show nothing at all).
+          onError={() => setPhotoFailed(true)}
         />
       ) : (
         initials
@@ -122,10 +153,14 @@ export function DriverAvatar({ name, photoUrl, color = "#888", size = 44, classN
 
 export function StatusPill({ status }) {
   if (!status || status === "FINISHED") return null;
+  // Tinted with the site's usual <colour>-500/15 wash rather than the solid
+  // -100 shades: those were the only near-white chips in the app and glared out
+  // of a dark card. DSQ also used to be styled `text-primary`, i.e. the blue
+  // accent on a red chip, which read as a mistake next to amber-on-amber DNF.
   const map = {
     DNS: "bg-border text-medium",
-    DNF: "bg-amber-100 text-amber-700",
-    DSQ: "bg-red-100 text-primary",
+    DNF: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+    DSQ: "bg-red-500/15 text-red-600 dark:text-red-400",
   };
   return <span className={`pill ${map[status] || "bg-surface2"}`}>{status}</span>;
 }
@@ -237,7 +272,10 @@ export function EmptyState({ title, hint, children, className = "" }) {
 
 export function ErrorBox({ message }) {
   return (
-    <div className="card border-red-500/30 bg-red-500/10 p-4 text-sm font-medium text-red-600">
+    // dark:text-red-400 — the 600 shade sits under 4.5:1 on a dark card, and
+    // these two boxes are the site's shared feedback, so every page that shows
+    // an error inherited that.
+    <div className="card border-red-500/30 bg-red-500/10 p-4 text-sm font-medium text-red-600 dark:text-red-400">
       {message || "Something went wrong."}
     </div>
   );
@@ -247,9 +285,9 @@ export function ErrorBox({ message }) {
 // admin area (replaces ad-hoc green/red boxes; works in light & dark mode).
 export function Notice({ kind = "success", children }) {
   const styles = {
-    success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600",
-    info: "border-sky-500/30 bg-sky-500/10 text-sky-600",
-    error: "border-red-500/30 bg-red-500/10 text-red-600",
+    success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    info: "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-300",
+    error: "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400",
   };
   if (!children) return null;
   return (
@@ -260,6 +298,34 @@ export function Notice({ kind = "success", children }) {
 }
 
 // Consistent card section header: brand-pink mono eyebrow + display title.
+// The strip across the top of a card: a hairline underneath, and the same
+// horizontal padding as the card body so the two line up.
+//
+// This existed as hand-written classes in more than twenty places and had
+// drifted apart. On the driver profile alone, three of the four bars carried
+// `sm:px-6` and the fourth did not, so the same card sat inset differently on
+// desktop depending which section you looked at; title sizes ranged from
+// text-base to text-xl for the same job.
+//
+//   <CardBar title="Team" />                        title only
+//   <CardBar title="Season form" right={<Menu />} /> title left, controls right
+//   <CardBar>{anything}</CardBar>                    just the bar's geometry
+//
+// Note this is NOT CardHead below, which is the margin-based heading used
+// INSIDE an already-padded admin card. Different job, deliberately separate.
+export function CardBar({ title, right, as: Tag = "h2", className = "", children }) {
+  const bar = `border-b border-border px-5 py-4 sm:px-6 ${className}`;
+  const heading = "font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl";
+  if (children) return <div className={bar}>{children}</div>;
+  if (!right) return <Tag className={`${bar} ${heading}`}>{title}</Tag>;
+  return (
+    <div className={`flex items-center justify-between gap-3 ${bar}`}>
+      <Tag className={heading}>{title}</Tag>
+      {right}
+    </div>
+  );
+}
+
 export function CardHead({ eyebrow, title, children }) {
   return (
     <div className="mb-4 flex items-start justify-between gap-3">

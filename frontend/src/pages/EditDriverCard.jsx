@@ -266,7 +266,7 @@ function CardEditor({ me }) {
               />
               {!isMe && rowSeasonNumber != null && (
                 <p className="text-xs leading-relaxed text-light">
-                  You&rsquo;re editing your Season {rowSeasonNumber} card — edition, picture, framing and
+                  You&rsquo;re editing your Season {rowSeasonNumber} card: edition, picture, framing and
                   animation apply to this season only.
                 </p>
               )}
@@ -275,7 +275,7 @@ function CardEditor({ me }) {
             <div className="card p-5 text-sm text-light">
               {isMe
                 ? "Your rating card appears once you've raced a round this season. You can still pick an edition on the right."
-                : "No card for this season yet — it appears once you've raced a round. You can still pick its edition on the right."}
+                : "No card for this season yet. It appears once you've raced a round. You can still pick its edition on the right."}
             </div>
           )}
 
@@ -287,7 +287,7 @@ function CardEditor({ me }) {
             <div className="min-w-0">
               <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Card animation</div>
               <div className="mt-0.5 text-xs text-light">
-                {cardAnim === "off" ? "Off — a still card." : "On — the edition's glow, sparkle and shimmer."}
+                {cardAnim === "off" ? "Off, a still card." : "On, with the edition's glow, sparkle and shimmer."}
               </div>
             </div>
             <button

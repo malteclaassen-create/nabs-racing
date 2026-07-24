@@ -149,7 +149,17 @@ export default function AdminTracks() {
                     value={f.label} onChange={(e) => setFact(i, { label: e.target.value })} />
                   <input className="input min-w-40 flex-[2] py-1.5 text-sm" placeholder="Value (e.g. 1.2 km, DRS heaven)"
                     value={f.value} onChange={(e) => setFact(i, { value: e.target.value })} />
-                  <button className="text-light hover:text-red-600" onClick={() => setFacts((fs) => fs.filter((_, idx) => idx !== i))}>✕</button>
+                  <button
+                    type="button"
+                    aria-label="Remove this fact"
+                    title="Remove this fact"
+                    className="text-light hover:text-red-600"
+                    onClick={() => setFacts((fs) => fs.filter((_, idx) => idx !== i))}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                      <path d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </button>
                 </div>
               ))}
             </div>

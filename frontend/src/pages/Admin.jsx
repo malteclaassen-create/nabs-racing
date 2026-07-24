@@ -40,7 +40,7 @@ const TAB_GROUPS = [
       { id: "drivers", label: "Drivers" },
       { id: "market", label: "Driver Market" },
       { id: "ratings", label: "Ratings" },
-      { id: "alltime", label: "All time" },
+      { id: "alltime", label: "All-time" },
     ],
   },
   {
@@ -232,7 +232,7 @@ export default function Admin() {
             window.location.href = "/";
           }}
         >
-          Log out
+          Sign out
         </button>
       </div>
 
@@ -546,7 +546,7 @@ function TrafficAdmin() {
             <Tile label="Today" views={data.views.today} visitors={data.visitors.today} />
             <Tile label="Last 7 days" views={data.views.last7} visitors={data.visitors.last7} />
             <Tile label="Last 30 days" views={data.views.last30} visitors={data.visitors.last30} />
-            <Tile label="All time" views={data.views.total} visitors={data.visitors.total} />
+            <Tile label="All-time" views={data.views.total} visitors={data.visitors.total} />
           </div>
 
           <div className="grid gap-5 lg:grid-cols-2">
@@ -842,7 +842,7 @@ function Login({ onSuccess, expired }) {
         </div>
         {error && <Notice kind="error">{error}</Notice>}
         <button className="btn-primary w-full" disabled={busy}>
-          {busy ? "Checking…" : "Log in"}
+          {busy ? "Checking…" : "Sign in"}
         </button>
       </form>
     </div>
@@ -1222,7 +1222,7 @@ function EditResults() {
                     <td className="px-3 py-2">
                       <select
                         className="input min-w-40 py-1 font-semibold"
-                        title="Wrong person on this result? Pick who actually drove — finish, penalty and race data stay with the row."
+                        title="Wrong person on this result? Pick who actually drove. Finish, penalty and race data stay with the row."
                         value={r.driverId}
                         onChange={(e) => swapDriver(i, e.target.value)}
                       >
@@ -1318,7 +1318,7 @@ function EditResults() {
               <div className="text-sm font-bold text-dark">Delete results only</div>
               <p className="text-xs text-light">
                 Wipes the stored classification, but the race itself stays on the calendar (date, sign-ups
-                and qualifying included) — ready for a fresh import. A backup is saved automatically first.
+                and qualifying included), ready for a fresh import. A backup is saved automatically first.
               </p>
             </div>
             <button
@@ -1649,7 +1649,7 @@ function Drivers() {
             const out = await api.deleteDriver(d.id, true);
             setMsg(
               out.demoted
-                ? `${d.name} moved to the Reserve pool — their attendance answers are kept.`
+                ? `${d.name} moved to the Reserve pool. Their attendance answers are kept.`
                 : `${d.name} removed from this season.`
             );
             reload(); driverDb.reload();
@@ -1832,7 +1832,7 @@ function Drivers() {
                 </label>
               )}
               <ul className="mt-1.5 divide-y divide-border border-t border-border">
-                {t.drivers.length === 0 && <li className="py-2 text-xs text-light">No drivers yet — add one with the search above.</li>}
+                {t.drivers.length === 0 && <li className="py-2 text-xs text-light">No drivers yet. Add one with the search above.</li>}
                 {t.drivers.map((d) => (
                   <li key={d.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
                     <input
@@ -2801,7 +2801,7 @@ function SeriesPanel() {
         game: form.game.trim() || null,
         accentColor: form.accentColor.trim() || null,
       });
-      setMsg(`Series "${s.name}" created (URL: /s/${s.slug}). It starts private — build its seasons, then publish it. Pick it in the bar above to start editing.`);
+      setMsg(`Series "${s.name}" created (URL: /s/${s.slug}). It starts private, so build its seasons and then publish it. Pick it in the bar above to start editing.`);
       setForm({ name: "", game: "", accentColor: "" });
       reload(); nudge();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
@@ -2830,7 +2830,7 @@ function SeriesPanel() {
     setBusy(true); setError(null); setMsg(null);
     try {
       await api.updateSeries(s.id, { isPublic: !s.isPublic });
-      setMsg(s.isPublic ? `${s.name} is now private — hidden from the public.` : `${s.name} is now public.`);
+      setMsg(s.isPublic ? `${s.name} is now private and hidden from the public.` : `${s.name} is now public.`);
       reload(); nudge();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -2839,7 +2839,7 @@ function SeriesPanel() {
     setBusy(true); setError(null); setMsg(null);
     try {
       await api.activateSeries(s.id);
-      setMsg(`${s.name} is now the primary series — "/" and old links land there.`);
+      setMsg(`${s.name} is now the primary series. "/" and old links land there.`);
       reload(); nudge();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -2882,7 +2882,7 @@ function SeriesPanel() {
     <div className="card space-y-4 p-5">
       <CardHead eyebrow="Series" title={`Racing series (${sorted.length})`} />
       <p className="text-sm text-light">
-        A series is its own championship with its own seasons, teams, drivers and standings — Discord
+        A series is its own championship with its own seasons, teams, drivers and standings. Discord
         login, members and downloads stay shared. With a single series the public site looks exactly
         as before; the switcher in the top bar appears once a second one exists.
       </p>
@@ -2902,10 +2902,18 @@ function SeriesPanel() {
             <div className="flex items-center gap-3">
               {sorted.length > 1 && (
                 <span className="flex items-center gap-1">
-                  <button className="text-xs text-light transition hover:text-dark disabled:opacity-30" disabled={busy || i === 0}
-                    onClick={() => move(s, -1)} title="Move up in the switcher">▲</button>
-                  <button className="text-xs text-light transition hover:text-dark disabled:opacity-30" disabled={busy || i === sorted.length - 1}
-                    onClick={() => move(s, 1)} title="Move down in the switcher">▼</button>
+                  <button type="button" className="text-light transition hover:text-dark disabled:opacity-30" disabled={busy || i === 0}
+                    onClick={() => move(s, -1)} title="Move up in the switcher" aria-label="Move up in the switcher">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M6 15l6-6 6 6" />
+                    </svg>
+                  </button>
+                  <button type="button" className="text-light transition hover:text-dark disabled:opacity-30" disabled={busy || i === sorted.length - 1}
+                    onClick={() => move(s, 1)} title="Move down in the switcher" aria-label="Move down in the switcher">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
                 </span>
               )}
               {/* Accent colour — saved when the picker closes (blur), same
@@ -3159,7 +3167,7 @@ function Teams() {
             const out = await api.deleteDriver(d.id, true);
             setMsg(
               out.demoted
-                ? `${d.name} moved to the Reserve pool — their attendance answers are kept.`
+                ? `${d.name} moved to the Reserve pool. Their attendance answers are kept.`
                 : `${d.name} removed from this season.`
             );
             reload(); driverDb.reload();

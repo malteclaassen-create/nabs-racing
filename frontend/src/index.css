@@ -859,6 +859,16 @@ body::before {
   .shine::after { display: none; }
   .tilt { transform: none !important; }
   .roll-col { transition: none !important; }
+
+  /* The never-ending ones. These matter most for anyone who asked for less
+     motion — a one-off entrance is over in a moment, a loop never stops — yet
+     they were only switched off in lite graphics mode. Mirrored from the
+     .fx-lite rules further down so the two switches now agree.
+     animate-pulse is Tailwind's, used by every loading skeleton. */
+  .live-dot, .animate-ping, .animate-pulse { animation: none !important; }
+  .animate-ping { opacity: 0; }
+  .live-dot-move { transition: none !important; }
+  .tabs-pop { animation: none !important; }
 }
 
 /* --- Lite graphics mode (Settings panel) --------------------------------- */

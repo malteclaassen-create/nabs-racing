@@ -55,6 +55,9 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
         className={`${base} text-sm text-faint line-through decoration-2`}
       >
         {label || 0}
+        {/* The strike-through is the only visual marker, and the footnote under
+            the table is far from the cell. Read out per cell instead. */}
+        <span className="sr-only"> (dropped, not counted)</span>
       </td>
     );
   }
@@ -124,12 +127,17 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
 
   return (
     <div className="card overflow-hidden">
-      <div ref={scrollRef} className="overflow-x-auto">
+      {/* overscroll-x-none: without it, swiping past the first or last round
+          rubber-bands the container and hands the leftover movement to the
+          page. During that bounce the frozen Pos/Driver/Pts columns ride along
+          with the content instead of staying put, which is exactly what they
+          are there to avoid. */}
+      <div ref={scrollRef} className="overflow-x-auto overscroll-x-none">
         <table className="w-full min-w-[720px] border-collapse">
           <thead>
             <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-wider text-light">
               <th className="sticky left-0 z-20 w-14 bg-card px-3 py-3 text-center">Pos</th>
-              <th className={`sticky left-14 z-20 bg-card px-3 py-3 transition-shadow ${leftShadow}`}>
+              <th className={`sticky left-14 z-20 max-w-[34vw] sm:max-w-none bg-card px-3 py-3 transition-shadow ${leftShadow}`}>
                 {isDriver ? "Driver" : "Team"}
               </th>
               {isDriver && <th className="hidden px-3 py-3 lg:table-cell">Discord</th>}
@@ -167,7 +175,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   </td>
 
                   {isDriver ? (
-                    <td className={`sticky left-14 z-10 px-3 py-3 transition sticky-cell ${leftShadow}`}>
+                    <td className={`sticky left-14 z-10 max-w-[34vw] sm:max-w-none px-3 py-3 transition sticky-cell ${leftShadow}`}>
                       <Link to={`/drivers/${row.driverId}`} className="group/name flex items-center gap-3">
                         <span
                           className="h-7 w-1.5 shrink-0 rounded-full"
@@ -189,10 +197,10 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                       </Link>
                     </td>
                   ) : (
-                    <td className={`sticky left-14 z-10 px-3 py-3 transition sticky-cell ${leftShadow}`}>
+                    <td className={`sticky left-14 z-10 max-w-[34vw] sm:max-w-none px-3 py-3 transition sticky-cell ${leftShadow}`}>
                       <Link to={`/teams/${row.teamId}`} className="group/name flex items-center gap-3">
                         <TeamLogo id={row.teamId} name={row.name} color={row.color} logoUrl={row.logoUrl} size={28} />
-                        <span className="font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
+                        <span className="min-w-0 truncate font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
                           {row.name}
                         </span>
                       </Link>

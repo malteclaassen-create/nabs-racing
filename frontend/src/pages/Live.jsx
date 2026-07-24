@@ -262,7 +262,11 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false }) {
       <span className="relative flex h-8 w-1.5 shrink-0 items-center">
         <span className="h-full w-full rounded-full" style={{ backgroundColor: color }} />
         {showLiveDot && e.onTrack && (
-          <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-card" title="On track" />
+          <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-card" title="On track">
+            {/* Colour was the only carrier of this: no text, and `title` never
+                appears on a touch device. */}
+            <span className="sr-only">On track</span>
+          </span>
         )}
       </span>
       {/* From sm up the flag keeps its own slot ahead of the name, so the names
@@ -1107,6 +1111,7 @@ export default function Live() {
   const quiet =
     onTrack.length === 0 &&
     !(session?.type === "Race" && entries.some((e) => (e.lapCount || 0) > 0));
+
 
   // Championship projection: polled (the standings only move when the race
   // order does, so ~20s is plenty). { active: false } or any error hides the

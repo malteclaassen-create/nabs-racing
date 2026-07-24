@@ -114,6 +114,18 @@ function userTokenExpired(token) {
   }
 }
 
+// Plain-language stand-in when the server sends no message of its own. The old
+// text was the bare "Request failed (500)", which meant nothing to a driver
+// looking at the standings.
+function humanHttpError(status) {
+  if (status === 404) return "We couldn't find that.";
+  if (status === 403) return "You don't have access to that.";
+  if (status === 413) return "That file is too big.";
+  if (status === 429) return "Too many requests just now. Give it a moment and try again.";
+  if (status >= 500) return "The league server is having a moment. Try again shortly.";
+  return "That didn't work. Try again.";
+}
+
 async function request(path, { method = "GET", body, auth = false, userAuth = false, form = false } = {}) {
   const headers = {};
   if (!form) headers["Content-Type"] = "application/json";
@@ -125,13 +137,31 @@ async function request(path, { method = "GET", body, auth = false, userAuth = fa
     const ut = localStorage.getItem(USER_TOKEN_KEY);
     if (ut) headers["Authorization"] = `Bearer ${ut}`;
   }
-  const res = await fetch(`${BASE}/api${path}`, {
-    method,
-    headers,
-    body: form ? body : body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`${BASE}/api${path}`, {
+      method,
+      headers,
+      body: form ? body : body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // fetch itself rejects when the connection never happens (offline, DNS,
+    // server down). Its own wording is "Failed to fetch", which was shown to
+    // the visitor verbatim.
+    const offline = new Error("No connection to the league server. Check your internet and try again.");
+    offline.status = 0;
+    throw offline;
+  }
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  // A proxy or gateway that answers with an HTML error page would otherwise
+  // blow up here, and the raw parser message ("Unexpected token '<' …") ended
+  // up on screen as if it were our error text.
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
   if (!res.ok) {
     // An expired/invalid admin token: drop it and let the admin UI bounce back
     // to the login screen instead of pretending we're still signed in. Discord
@@ -150,7 +180,7 @@ async function request(path, { method = "GET", body, auth = false, userAuth = fa
     if (res.status === 401 && userAuth) {
       dropDeadUserSession(data);
     }
-    const err = new Error((data && data.error) || `Request failed (${res.status})`);
+    const err = new Error((data && data.error) || humanHttpError(res.status));
     err.status = res.status;
     err.data = data; // e.g. { needsConfirm: true } on overwrite guards
     throw err;

@@ -191,7 +191,12 @@ export default function NotificationBell({ className = "" }) {
         <>
           {/* Invisible click-catcher: tapping anywhere else closes the panel. */}
           <button type="button" aria-label="Close notifications" onClick={close} className="fixed inset-0 z-30 cursor-default" />
-          <div className="notif-pop absolute right-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-ink/20">
+          {/* The panel hangs off the bell's right edge, and on a phone the bell
+              itself sits ~60px in from the screen edge (the burger is to its
+              right). The old clamp only subtracted the page gutter, so on
+              narrow phones the panel's LEFT edge ran off screen. Subtracting
+              5.5rem accounts for the burger plus a margin, so it always fits. */}
+          <div className="notif-pop absolute right-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-5.5rem)] overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-ink/20 lg:max-w-[calc(100vw-1.5rem)]">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <h2 className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Notifications</h2>
               {unreadCountLabel(items)}
@@ -200,7 +205,7 @@ export default function NotificationBell({ className = "" }) {
             <div className="max-h-[min(24rem,60vh)] overflow-y-auto">
               {!isLoggedIn ? (
                 <p className="px-4 py-6 text-sm leading-relaxed text-light">
-                  Log in with Discord to get notified about race results, race days, new downloads and the driver market.
+                  Sign in with Discord to get notified about race results, race days, new downloads and the driver market.
                 </p>
               ) : loading && items === null ? (
                 <p className="px-4 py-6 text-sm text-light">Loading&hellip;</p>

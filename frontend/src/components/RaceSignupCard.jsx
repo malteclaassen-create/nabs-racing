@@ -151,13 +151,13 @@ export default function RaceSignupCard({
                 I want to race
               </button>
               <span className="text-sm text-light">
-                You haven't raced with us yet — ask for a seat and the admin will set you up.
+                You haven't raced with us yet. Ask for a seat and the admin will set you up.
               </span>
             </div>
           )
         ) : (
           <Link to="/profile" className="text-sm font-semibold text-primary hover:underline">
-            Log in to respond
+            Sign in to respond
           </Link>
         )}
       </div>

@@ -275,7 +275,7 @@ export default function RatingCard({ driver, rating, anim, explain = false }) {
           <p className="mt-1.5 text-xs leading-relaxed text-medium">{RATING_INFO[info].text}</p>
           {RATING_INFO[info].tuning && (
             <p className="mt-1.5 text-[11px] font-semibold leading-relaxed text-amber-600 dark:text-amber-400">
-              This formula is still being fine-tuned — the exact maths may change.
+              This formula is still being fine-tuned, so the exact maths may change.
             </p>
           )}
         </div>

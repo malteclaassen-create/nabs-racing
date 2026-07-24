@@ -19,8 +19,11 @@ import { telemetryBySeason } from "../lib/telemetryRead.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 
 const CACHE_MS = 5 * 60 * 1000;
-const cache = new Map(); // driverId -> { at, value }
-const careerCache = new Map(); // `${driverId}|${perRace}` -> { at, value }
+// Both caches hold the in-flight PROMISE, not the finished value, so that
+// several readers arriving just after an entry expires share one computation
+// instead of each starting their own (see the note in recordsService.js).
+const cache = new Map(); // driverId -> { at, promise }
+const careerCache = new Map(); // `${driverId}|${perRace}` -> { at, promise }
 
 export function invalidateRatingHistoryCache() {
   cache.clear();
@@ -85,8 +88,17 @@ function attachDeltas(points) {
 export async function getDriverCareerRatings(prisma, driverId, { perRace = false } = {}) {
   const key = `${driverId}|${perRace ? "race" : "season"}`;
   const hit = careerCache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.promise;
 
+  const promise = computeDriverCareerRatings(prisma, driverId, perRace);
+  careerCache.set(key, { at: Date.now(), promise });
+  promise.catch(() => {
+    if (careerCache.get(key)?.promise === promise) careerCache.delete(key);
+  });
+  return promise;
+}
+
+async function computeDriverCareerRatings(prisma, driverId, perRace) {
   const seasons = await personSeasons(prisma, driverId);
   if (!seasons) return null;
 
@@ -162,15 +174,22 @@ export async function getDriverCareerRatings(prisma, driverId, { perRace = false
     }
   }
 
-  const value = { points: attachDeltas(points) };
-  careerCache.set(key, { at: Date.now(), value });
-  return value;
+  return { points: attachDeltas(points) };
 }
 
 export async function getDriverRatingHistory(prisma, driverId) {
   const hit = cache.get(driverId);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.promise;
 
+  const promise = computeDriverRatingHistory(prisma, driverId);
+  cache.set(driverId, { at: Date.now(), promise });
+  promise.catch(() => {
+    if (cache.get(driverId)?.promise === promise) cache.delete(driverId);
+  });
+  return promise;
+}
+
+async function computeDriverRatingHistory(prisma, driverId) {
   const driver = await prisma.driver.findUnique({ where: { id: driverId }, include: { team: true } });
   if (!driver || !driver.seasonId) return null;
 
@@ -277,7 +296,7 @@ export async function getDriverRatingHistory(prisma, driverId) {
     if (p.ratings) prev = p.ratings;
   }
 
-  const value = {
+  return {
     driver: {
       id: driver.id,
       name: driver.name,
@@ -289,6 +308,4 @@ export async function getDriverRatingHistory(prisma, driverId) {
     // for the "what goes into it" section.
     current: lastRow,
   };
-  cache.set(driverId, { at: Date.now(), value });
-  return value;
 }

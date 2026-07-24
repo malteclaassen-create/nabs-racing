@@ -502,9 +502,7 @@ function InsightsTab() {
 // Race analysis — pick a race, read its lap story. Flat sections, no boxes.
 // ---------------------------------------------------------------------------
 function RaceAnalysis({ raceId }) {
-  // deps must ALSO go to useApi — its internal memo would otherwise never
-  // refetch on a prop change (the bug that froze race switching once).
-  const q = useApi(useCallback(() => api.cockpitRaceAnalysis(raceId), [raceId]), [raceId]);
+  const q = useApi(useCallback(() => api.cockpitRaceAnalysis(raceId), [raceId]));
   if (q.loading) return <TableSkeleton rows={4} />;
   if (q.error) return <ErrorBox message={q.error} />;
   const d = q.data;

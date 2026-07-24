@@ -230,7 +230,7 @@ export default function AdminImport({ onCommitted }) {
     const r = rows[i];
     if (!r?.acDriverName) return;
     const reserve = (teams || []).find((t) => t.tier === 0) || (teams || [])[0];
-    if (!reserve) return setError("No team to create the driver in — create teams first.");
+    if (!reserve) return setError("No team to create the driver in. Create a team first.");
     setCreatingRow(i);
     setError(null);
     try {
@@ -348,7 +348,7 @@ export default function AdminImport({ onCommitted }) {
       const conflictNote = conflicts.length
         ? ` Note: ${conflicts.length} Steam ID ${conflicts.length === 1 ? "conflict" : "conflicts"} left unchanged (${conflicts
             .map((c) => c.name)
-            .join(", ")}) — check for a mis-mapping or a shared account.`
+            .join(", ")}). Check for a mis-mapping or a shared account.`
         : "";
       setDone(
         res.number != null
@@ -697,7 +697,7 @@ export default function AdminImport({ onCommitted }) {
                           {r.driverId && r.matchedBy === "steam" && (
                             <div
                               className="mt-1 font-mono text-[10px] uppercase tracking-wider text-emerald-600"
-                              title="Matched by Steam ID, not by name — a certain match"
+                              title="Matched by Steam ID, not by name. This one is certain."
                             >
                               ✓ matched by Steam ID
                             </div>

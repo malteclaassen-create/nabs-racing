@@ -343,7 +343,7 @@ export default function AdminRatings() {
         <div className="space-y-4">
           <Section
             title="Career window"
-            help="EXP and PAC look at the last N finished seasons (the running season joins once its finale is in). Recency weights say how much each season counts, newest first — they're treated proportionally."
+            help="EXP and PAC look at the last N finished seasons (the running season joins once its finale is in). Recency weights say how much each season counts, newest first. They are treated proportionally."
           >
             <div className="space-y-3">
               <NumField label="Seasons in the window" min="1" max="20" value={form.window.seasons} onChange={(v) => setWindow("seasons", v)} />
@@ -351,7 +351,7 @@ export default function AdminRatings() {
                 label="Recency weights (newest season first)"
                 value={form.window.recency}
                 onChange={(v) => setWindow("recency", v)}
-                hint="Example: 25, 20, 20, 15, 10, 5, 5 — the latest season counts 25%, the oldest 5%."
+                hint="Example: 25, 20, 20, 15, 10, 5, 5, where the latest season counts 25% and the oldest 5%."
               />
             </div>
           </Section>
@@ -404,7 +404,7 @@ export default function AdminRatings() {
                   label="Constructors, Tier 1 (%)"
                   rows={form.exp.tier1}
                   onChange={(rows) => setExp("tier1", rows)}
-                  hint="One value ladder per field size — a 5-team tier pays differently than a 6-team tier. The closest matching row is used."
+                  hint="One value ladder per field size, because a 5-team tier pays differently than a 6-team tier. The closest matching row is used."
                 />
                 <TierTables
                   label="Constructors, Tier 2 (%)"
@@ -444,7 +444,7 @@ export default function AdminRatings() {
 
           <Section
             title="Spread"
-            help="Where the worst and best land on the 0–99 scale. The shared band drives RAC and AWA; EXP (35–99) and PAC (50–99) have their own scales from the formula sheet — override any of them below, blank = default."
+            help="Where the worst and best land on the 0 to 99 scale. The shared band drives RAC and AWA; EXP (35 to 99) and PAC (50 to 99) have their own scales from the formula sheet. Override any of them below, blank = default."
           >
             <div className="flex items-center gap-4">
               <NumField label="Shared floor" min="0" max="98" value={form.band.low} onChange={(v) => setBand("low", v)} />

@@ -4,7 +4,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { Skeleton, TableSkeleton, CountUp, Rank, MEDAL_TEXT, DriverAvatar } from "../components/ui.jsx";
+import { Skeleton, TableSkeleton, CountUp, Rank, MEDAL_TEXT, DriverAvatar, ErrorBox } from "../components/ui.jsx";
 import { useParallax, useMagnetic } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import PointsChart from "../components/PointsChart.jsx";
@@ -15,8 +15,7 @@ import CircuitMap from "../components/CircuitMap.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
-import { heroFor, heroOnError, carFor, carModelFor } from "../utils/heroImage.js";
-import Car3D from "../components/Car3D.jsx";
+import { heroFor, heroOnError, carFor } from "../utils/heroImage.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
@@ -217,54 +216,29 @@ function HonourCell({ label, to, name, stat, note, driverId, country, team, clas
   );
 }
 
-// The season's car in the coming-soon hero. Best case the season has a 3D
-// model at public/cars/s<n>.glb (converted from the real Assetto Corsa car,
-// tools/kn5-to-glb): rotatable, with a driver-view button. A season with only
-// the showroom JPG at cars/s<n>.jpg gets the flat shot (its black backdrop
-// plus blend-mode "screen" acts as a free cutout on the dark panel), and one
-// with neither keeps the coming-soon placeholder. All drop-a-file, no admin.
+// The season's car in the coming-soon hero: the showroom JPG at
+// public/cars/s<n>.jpg (its black backdrop plus blend-mode "screen" acts as a
+// free cutout on the dark panel). A season without one renders no panel at all.
+// Drop-a-file, no admin.
 function CarReveal({ season }) {
   const [ok, setOk] = useState(false);
-  // null = probing for the GLB, true = use 3D, false = fall back to the JPG
-  const [use3d, setUse3d] = useState(null);
   // null = probing whether the car image exists, true/false = probe verdict.
   const [hasImg, setHasImg] = useState(null);
   const src = carFor(season);
-  const modelSrc = carModelFor(season);
 
-  useEffect(() => {
-    let cancelled = false;
-    setUse3d(null);
-    setOk(false);
-    if (!modelSrc) {
-      setUse3d(false);
-      return;
-    }
-    fetch(modelSrc, { method: "HEAD" })
-      .then((res) => {
-        // dev servers answer missing files with index.html, so check the type
-        const type = res.headers.get("content-type") || "";
-        if (!cancelled) setUse3d(res.ok && !type.includes("text/html"));
-      })
-      .catch(() => {
-        if (!cancelled) setUse3d(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [modelSrc]);
-
-  // Probe the flat car shot the same way, so a season WITHOUT any car renders
-  // no panel at all instead of a "coming soon" placeholder box.
+  // Probe the car shot first, so a season WITHOUT one renders no panel at all
+  // instead of an empty placeholder box.
   useEffect(() => {
     let cancelled = false;
     setHasImg(null);
+    setOk(false);
     if (!src) {
       setHasImg(false);
       return;
     }
     fetch(src, { method: "HEAD" })
       .then((res) => {
+        // dev servers answer missing files with index.html, so check the type
         const type = res.headers.get("content-type") || "";
         if (!cancelled) setHasImg(res.ok && !type.includes("text/html"));
       })
@@ -278,12 +252,12 @@ function CarReveal({ season }) {
 
   // Nothing to show (and nothing still probing): drop the panel entirely —
   // the announcement text simply fills the hero on its own.
-  if (use3d === false && hasImg === false) return null;
+  if (hasImg === false) return null;
   // Still probing: hold the space quietly (no placeholder copy) to avoid a
   // one-frame layout jump when the car pops in.
-  const probing = use3d === null || (use3d === false && hasImg === null);
+  const probing = hasImg === null;
 
-  const showCar = ok || use3d === true;
+  const showCar = ok;
   const alt = season?.name ? `The ${season.name} car` : "The season's car";
   return (
     <div
@@ -299,10 +273,7 @@ function CarReveal({ season }) {
       {/* no "coming soon" placeholder copy — while probing the panel just sits
           quietly with the hatch until the car (2D or 3D) is confirmed */}
       {probing && <span aria-hidden className="absolute inset-0" />}
-      {use3d === true && (
-        <Car3D src={modelSrc} poster={src || undefined} alt={alt} onFail={() => setUse3d(false)} />
-      )}
-      {use3d === false && src && (
+      {hasImg === true && src && (
         <img
           src={src}
           alt={alt}
@@ -323,6 +294,83 @@ function CarReveal({ season }) {
   );
 }
 
+// The member's own to-do strip. Two signals, both from data the page already
+// has: an upcoming race they haven't answered for, and a free seat they could
+// take. Renders nothing at all when neither applies (and for logged-out
+// visitors), so the page is unchanged for everyone else.
+function YourTurn({ events, market, driverId }) {
+  if (!driverId) return null;
+
+  const answered = (race) =>
+    ["ACCEPTED", "DECLINED", "TENTATIVE"].some((s) =>
+      (race.rsvps?.[s] || []).some((r) => r.driverId === driverId)
+    );
+  const upcoming = [...(events || [])].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+  const unanswered = upcoming.find((r) => !answered(r));
+
+  // Seats other drivers offered that this member could fill (their own offers
+  // don't count as something to act on).
+  const openSeats = (market?.races || []).reduce(
+    (n, r) => n + (r.offers || []).filter((o) => !o.filledBy && o.offeredBy?.driverId !== driverId).length,
+    0
+  );
+
+  if (!unanswered && !openSeats) return null;
+
+  const race = unanswered;
+  return (
+    <div className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Your turn</div>
+        <p className="mt-1 text-sm leading-relaxed text-medium">
+          {race && (
+            <>
+              You haven&rsquo;t said whether you&rsquo;re racing{" "}
+              <span className="font-semibold text-dark">
+                Round {race.number}
+                {race.track ? ` at ${race.track}` : ""}
+              </span>
+              .
+            </>
+          )}
+          {race && openSeats > 0 && " "}
+          {openSeats > 0 && (
+            <>
+              {openSeats === 1 ? "One seat is" : `${openSeats} seats are`} up for grabs on the driver market.
+            </>
+          )}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        {race && (
+          <>
+            <Link
+              to={`/attendance?race=${race.id}&rsvp=yes`}
+              className="inline-flex min-h-[40px] items-center rounded-lg bg-brand px-4 py-2 text-sm font-bold text-ink transition hover:brightness-105"
+            >
+              I&rsquo;m racing
+            </Link>
+            <Link
+              to={`/attendance?race=${race.id}`}
+              className="inline-flex min-h-[40px] items-center rounded-lg bg-surface2 px-4 py-2 text-sm font-bold text-medium transition hover:text-dark"
+            >
+              Other answer
+            </Link>
+          </>
+        )}
+        {!race && openSeats > 0 && (
+          <Link
+            to="/races"
+            className="inline-flex min-h-[40px] items-center rounded-lg bg-surface2 px-4 py-2 text-sm font-bold text-medium transition hover:text-dark"
+          >
+            See the seats
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const { current: season, active, seasons, setSeason } = useSeason();
   const { user, isLoggedIn } = useAuth();
@@ -332,6 +380,8 @@ export default function Home() {
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const events = useApi(useCallback(() => api.events(), []));
+  // Only for the "your turn" strip, so it stays off the wire for visitors.
+  const market = useApi(useCallback(() => (isLoggedIn ? api.market() : Promise.resolve(null)), [isLoggedIn]));
   const [latest, setLatest] = useState(null);
   // Previous season's final standings — shown in the hero while the selected
   // season hasn't run its opener yet (so the "latest race" side isn't empty).
@@ -372,16 +422,31 @@ export default function Home() {
   // Dev-only (?demo=1): preview the title-fight widget on a finished season.
   const demoFight = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
 
+  // The three fetches below each carry an `alive` flag: switching season in the
+  // picker restarts them, and without it a slow answer for the season the
+  // visitor just left could land last and overwrite the newer one (podium and
+  // honours from the wrong season), plus set state after unmount.
   useEffect(() => {
-    if (lastRace?.id) api.raceResults(lastRace.id).then(setLatest).catch(() => {});
+    let alive = true;
+    if (lastRace?.id) api.raceResults(lastRace.id).then((d) => alive && setLatest(d)).catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, [lastRace?.id]);
 
   useEffect(() => {
+    let alive = true;
     if (awaitingOpener && prevSeason?.number != null) {
-      api.driverStandings(prevSeason.number).then(setPrevChamps).catch(() => setPrevChamps(null));
+      api
+        .driverStandings(prevSeason.number)
+        .then((d) => alive && setPrevChamps(d))
+        .catch(() => alive && setPrevChamps(null));
     } else {
       setPrevChamps(null);
     }
+    return () => {
+      alive = false;
+    };
   }, [awaitingOpener, prevSeason?.number]);
 
   // End-of-season honours — for the live finale AND archived seasons (the API
@@ -389,11 +454,18 @@ export default function Home() {
   // seasons show whatever can still be computed).
   const [honours, setHonours] = useState(null);
   useEffect(() => {
+    let alive = true;
     if (seasonOver || isPast) {
-      api.seasonHonours().then(setHonours).catch(() => setHonours(null));
+      api
+        .seasonHonours()
+        .then((d) => alive && setHonours(d))
+        .catch(() => alive && setHonours(null));
     } else {
       setHonours(null);
     }
+    return () => {
+      alive = false;
+    };
   }, [seasonOver, isPast, season?.number]);
 
   if (drivers.loading || t1.loading || t2.loading || races.loading)
@@ -406,6 +478,22 @@ export default function Home() {
           ))}
         </div>
         <TableSkeleton rows={8} />
+      </div>
+    );
+
+  // Without this the page rendered right through an API outage: every optional
+  // chain resolved to nothing, so visitors got a hero with no names and empty
+  // tables instead of being told something is wrong.
+  //
+  // Only the BACKBONE counts here (the driver table and the calendar). If just
+  // one constructor table is unavailable the rest of the page is still worth
+  // reading, and replacing all of it with an error box would be a step back
+  // from what visitors saw before.
+  const loadError = drivers.error || races.error;
+  if (loadError)
+    return (
+      <div className="space-y-6">
+        <ErrorBox message={loadError} />
       </div>
     );
 
@@ -558,6 +646,11 @@ export default function Home() {
 
   return (
     <div className="content-in space-y-10 sm:space-y-16">
+      {/* What THIS member still has to do, if anything. Everything below the
+          strip is the same for every visitor; this is the one part that knows
+          who is looking. It stays out of the way when there is nothing to do. */}
+      <YourTurn events={events.data} market={market.data} driverId={myDriverId} />
+
       {/* ===================== SEASON TICKER ===================== */}
       <div className="-mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">

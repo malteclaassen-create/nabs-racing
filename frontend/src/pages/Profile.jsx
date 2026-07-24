@@ -7,7 +7,7 @@ import Tools from "./Tools.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth, getUserToken, saveUser } from "../hooks/useAuth.js";
-import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge } from "../components/ui.jsx";
+import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { COUNTRIES } from "../data/countries.js";
@@ -85,7 +85,7 @@ function DiscordLogin() {
     <div>
       <PageHeader
         eyebrow="Members"
-        title="Log in"
+        title="Sign in"
         subtitle="Sign in with your Discord account to manage your driver profile, set your attendance for races, and use the Driver Market."
       />
       <div className="mx-auto max-w-md">
@@ -228,9 +228,7 @@ function ProfileEditor({ me, onDraftChange }) {
 
   return (
     <div className="card overflow-hidden">
-      <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark">
-        Edit your profile
-      </h2>
+      <CardBar title="Edit your profile" />
       <div className="space-y-6 p-5 sm:p-6">
         {error && <ErrorBox message={error} />}
 
@@ -284,7 +282,7 @@ function ProfileEditor({ me, onDraftChange }) {
                     placeholder="Your name"
                   />
                 </Field>
-                <Field label="Racing number" hint="Optional, 0–999.">
+                <Field label="Racing number" hint="Optional, 0 to 999.">
                   <input
                     className="input"
                     type="number"
@@ -403,7 +401,7 @@ function ProfileEditor({ me, onDraftChange }) {
                 <span className="transition group-hover:translate-x-0.5">→</span>
               </Link>
               <p className="text-center text-xs text-light">
-                Unlockable designs, your picture, framing and animation — for every season you raced.
+                Unlockable designs, your picture, framing and animation, for every season you raced.
               </p>
             </div>
           )}

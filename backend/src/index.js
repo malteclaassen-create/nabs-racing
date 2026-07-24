@@ -1,9 +1,10 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import compression from "compression";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 
 import standingsRoutes from "./routes/standings.js";
 import driversRoutes from "./routes/drivers.js";
@@ -27,7 +28,8 @@ import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.
 import { serverKeyForSeries } from "./lib/liveServers.js";
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
-import { isAdminRequest } from "./middleware/auth.js";
+import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
+import { buildPageMeta, applyPageMeta } from "./lib/pageMeta.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
@@ -61,7 +63,49 @@ const origins = (process.env.CORS_ORIGIN || "http://localhost:5173")
   .map((s) => s.trim());
 
 app.use(cors({ origin: origins }));
+
+// Gzip everything compressible on the way out. The built frontend bundle alone
+// is ~980 kB of JavaScript and was being sent verbatim; compressed it is ~275 kB,
+// so this saves roughly 700 kB on every first visit — the single biggest win for
+// anyone loading the site on phone data. Already-compressed formats (png, jpg,
+// woff2, zip) are skipped automatically, and a response can opt out with the
+// header `Cache-Control: no-transform`.
+app.use(
+  compression({
+    filter(req, res) {
+      // The mod catalogue streams with HTTP range support so a multi-gigabyte
+      // download can be paused and resumed. Compression rewrites the body and
+      // drops Content-Length, which breaks resuming — and those files (zip/7z)
+      // are already compressed anyway. Never touch that route, whatever the
+      // file inside happens to be.
+      if (req.path.startsWith("/api/downloads/") && req.path.endsWith("/file")) return false;
+      return compression.filter(req, res);
+    },
+  })
+);
+
+// Baseline browser protections. Deliberately NOT a full Content-Security-Policy
+// for the site itself: profile pictures come straight from Discord's CDN and
+// the theme switch runs an inline script in index.html, so a strict policy
+// would need a careful allowlist first. These four are safe as they stand.
+app.use((req, res, next) => {
+  // Don't let a browser guess a file's type against what we declared.
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  // Clickjacking: nobody may frame the site to trick members into clicking.
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  // Don't hand full URLs (which can name a driver or a race) to other sites.
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  // No page here needs the camera, microphone or location.
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  next();
+});
+
 app.use(express.json({ limit: "12mb" }));
+
+// Works out once per request whether this caller is currently an admin, so the
+// public read routes can show private seasons to an admin without a database
+// round trip each time they ask. Must sit ahead of every router below.
+app.use(resolveAdminContext);
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
@@ -85,6 +129,16 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 app.use("/api/uploads", express.static(UPLOADS_DIR, {
   maxAge: "30d",
   immutable: true,
+  // These files are uploaded through the admin area and then served from the
+  // SAME origin as the site. An SVG is allowed to contain <script>, so opening
+  // a booby-trapped logo URL directly would run that script as if the league
+  // site had written it. The sandbox + locked-down CSP below neutralises that
+  // while leaving the file perfectly usable as an <img> (image rendering never
+  // executes scripts anyway), so SVG logos keep working as before.
+  setHeaders(res) {
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+  },
 }));
 
 // Live timing (Assetto Corsa Server Manager relay). REST snapshot for fallback/
@@ -169,9 +223,26 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
   }));
   // SPA fallback: any non-API GET returns index.html so client-side routes work
   // on refresh / deep links (e.g. /downloads). API paths fall through to the 404.
-  app.get("*", (req, res, next) => {
+  //
+  // Shareable routes get their link preview filled in first (see lib/pageMeta):
+  // Discord and friends don't run the app's JavaScript, so without this every
+  // pasted driver or team link unfurled as the same generic site card.
+  app.get("*", async (req, res, next) => {
     if (req.path.startsWith("/api")) return next();
-    res.sendFile(join(DIST_DIR, "index.html"));
+    const indexPath = join(DIST_DIR, "index.html");
+    let meta = null;
+    try {
+      meta = await buildPageMeta(prisma, req.path);
+    } catch {
+      /* a preview must never cost us the page */
+    }
+    if (!meta) return res.sendFile(indexPath);
+    try {
+      const html = readFileSync(indexPath, "utf8");
+      res.type("html").send(applyPageMeta(html, meta));
+    } catch {
+      res.sendFile(indexPath);
+    }
   });
   console.log("Serving built frontend from", DIST_DIR);
 }
@@ -181,9 +252,21 @@ app.use((req, res) => res.status(404).json({ error: "Not found" }));
 
 // Error handler. Errors may carry an explicit HTTP status (e.g. validation
 // failures throw with err.status = 400); everything else is a 500.
+//
+// Only DELIBERATE errors (4xx, thrown by our own validation) show their text to
+// the caller. An unexpected 500 keeps its message on the server: a Prisma
+// failure spells out table and column names, and those would otherwise be
+// readable by anyone who can trigger the error. The full error still goes to
+// the log above, so nothing is lost for debugging.
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(err.status || 500).json({ error: err.message || "Internal server error" });
+  const status = err.status || 500;
+  // Deliberate 4xx keep their text. An unexpected 500 shows its real message
+  // only to a signed-in admin — they are the one who has to fix it, and losing
+  // the cause in the UI would make the admin area harder to work with than it
+  // was before. Everyone else gets the neutral line.
+  const showDetail = (status < 500 || isAdminRequest(req)) && err.message;
+  res.status(status).json({ error: showDetail ? err.message : "Something went wrong on our side." });
 });
 
 const server = app.listen(PORT, () => {

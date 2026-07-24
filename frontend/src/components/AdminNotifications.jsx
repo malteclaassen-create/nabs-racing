@@ -61,7 +61,7 @@ function AttendanceNudge() {
       <div className="mb-2 text-sm font-semibold text-dark">Send a nudge now</div>
       <p className="mb-3 text-xs leading-relaxed text-light">
         Posts a &ldquo;please confirm or update your attendance&rdquo; note to everyone&rsquo;s
-        bell for the chosen race. Works any number of times — use it when the list looks thin.
+        bell for the chosen race. Works any number of times. Use it when the list looks thin.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <select

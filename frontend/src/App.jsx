@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useParams, useNavigationType } from "react-router-dom";
 import { useScrollReveal } from "./hooks/useScrollReveal.js";
 import { api } from "./api/client.js";
@@ -12,6 +12,7 @@ import Logo from "./components/Logo.jsx";
 import SocialLinks, { useSocial, SocialIcon } from "./components/SocialLinks.jsx";
 import { useAuth } from "./hooks/useAuth.js";
 import PreviewToggle from "./components/PreviewToggle.jsx";
+import { Skeleton } from "./components/ui.jsx";
 import { usePreviewMode, applyPreviewFromUrl } from "./preview.js";
 import Home from "./pages/Home.jsx";
 import Welcome from "./pages/Welcome.jsx";
@@ -24,14 +25,23 @@ import Races from "./pages/Races.jsx";
 import Attendance from "./pages/Attendance.jsx";
 import Live from "./pages/Live.jsx";
 import Downloads from "./pages/Downloads.jsx";
-import Tools from "./pages/Tools.jsx";
-import Profile from "./pages/Profile.jsx";
-import Cockpit from "./pages/Cockpit.jsx";
-import EditDriverCard from "./pages/EditDriverCard.jsx";
 import DiscordCallback from "./pages/DiscordCallback.jsx";
-import Admin from "./pages/Admin.jsx";
-import CardGallery from "./pages/CardGallery.jsx";
 import NotFound from "./pages/NotFound.jsx";
+
+// Pages that only a signed-in member or the admin ever opens are split into
+// their own chunks, so a normal visitor never downloads them. The admin area is
+// by far the biggest single piece of the app, and nobody browsing the standings
+// has any use for it.
+const Admin = lazy(() => import("./pages/Admin.jsx"));
+const EditDriverCard = lazy(() => import("./pages/EditDriverCard.jsx"));
+const CardGallery = lazy(() => import("./pages/CardGallery.jsx"));
+// Profile pulls in the whole personal area (cockpit panels, the lap-time tools
+// and the rating breakdown), so splitting it takes all of that off the critical
+// path in one go. Cockpit and Tools are listed here for their own routes, but
+// they land in Profile's chunk because Profile imports from both.
+const Profile = lazy(() => import("./pages/Profile.jsx"));
+const Cockpit = lazy(() => import("./pages/Cockpit.jsx"));
+const Tools = lazy(() => import("./pages/Tools.jsx"));
 
 // Keeps the browser-tab title in sync with the season being viewed (the static
 // title in index.html is just the pre-load fallback). With several series the
@@ -127,13 +137,17 @@ function AppRoutes() {
     // still a short loading skeleton, the column would otherwise end exactly
     // at the viewport's bottom edge and the footer flashed into view for a
     // beat on every navigation. This keeps it below the fold from the start.
-    <main key={season ?? "loading"} className="container-page min-h-screen w-full flex-1 py-6 sm:py-10">
+    <main id="main" key={season ?? "loading"} className="container-page min-h-screen w-full flex-1 py-6 sm:py-10">
       {/* Per-route crash guard: a page that throws shows a fallback here while
           the NavBar/Footer (outside this component) and every other route keep
           working. resetKey clears the error the moment the path changes. */}
       <ErrorBoundary resetKey={location.pathname}>
       {/* Keyed on the path so each navigation replays the fade-in entrance. */}
       <div key={location.pathname} className="page-in">
+      {/* The lazily-loaded pages (admin, cockpit, tools, …) need a fallback for
+          the moment their chunk is still on the wire. Same skeleton the pages
+          use themselves, so the switch is not visible as a change of style. */}
+      <Suspense fallback={<PageChunkSkeleton />}>
       <Routes location={location}>
         {/* Series-scoped pages live under /s/<slug>/… — the series is part of
             the page's identity, so links can be shared across series. */}
@@ -191,9 +205,22 @@ function AppRoutes() {
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
+      </Suspense>
       </div>
       </ErrorBoundary>
     </main>
+  );
+}
+
+// Placeholder while a split-off page chunk downloads. Deliberately plain: these
+// pages are behind a login or the admin PIN, so it is only ever seen for the
+// fraction of a second before the real page's own skeleton takes over.
+function PageChunkSkeleton() {
+  return (
+    <div className="space-y-6">
+      <Skeleton className="h-24 w-full rounded-xl" />
+      <Skeleton className="h-64 w-full rounded-xl" />
+    </div>
   );
 }
 
@@ -306,6 +333,15 @@ function SeriesScopedApp() {
       <TitleSync />
       <TourProvider>
         <div className="flex min-h-screen flex-col">
+          {/* First thing in the tab order: jumps straight past the logo, series
+              switcher, six nav links, search, profile chip and bell. Invisible
+              until it takes focus. */}
+          <a
+            href="#main"
+            className="sr-only left-3 top-3 z-50 rounded-lg bg-brand px-4 py-2 text-sm font-bold text-ink shadow-lg focus:not-sr-only focus:fixed"
+          >
+            Skip to content
+          </a>
           <NavBar />
           <PrivateSeasonBanner />
           <AppRoutes />

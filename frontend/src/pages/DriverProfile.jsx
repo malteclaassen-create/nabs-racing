@@ -6,7 +6,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import {
-  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp,
+  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar,
 } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -273,9 +273,7 @@ function CareerBlock({ career, otherSeries }) {
     // The person only spans series, not seasons: just the summary lines.
     return (
       <div className="reveal card overflow-hidden">
-        <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:px-6 sm:text-xl">
-          Across the leagues
-        </h2>
+        <CardBar title="Across the leagues" />
         <OtherSeriesLines otherSeries={otherSeries} />
       </div>
     );
@@ -283,9 +281,7 @@ function CareerBlock({ career, otherSeries }) {
   const { seasons, totals } = career;
   return (
     <div className="reveal card overflow-hidden">
-      <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:px-6 sm:text-xl">
-        Career across seasons
-      </h2>
+      <CardBar title="Career across seasons" />
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -425,7 +421,7 @@ function FormChart({ perRace, color }) {
     // sticky y-axis pinned to the left. On a phone this means the trend line and
     // the result chips beneath it always scroll together and stay aligned —
     // before, they were two separate scroll strips that could drift apart.
-    <div className="scrollbar-slim h-full min-h-[240px] w-full overflow-x-auto">
+    <div className="scrollbar-slim h-full min-h-[240px] w-full overflow-x-auto overscroll-x-none">
       <div className="flex h-full flex-col" style={{ minWidth: minW + 36 }}>
       {/* plot region — pinned y-axis + plot, both share this row's height so
           the position ticks line up exactly with the dots */}
@@ -574,7 +570,12 @@ function HeadToHead({ me, meRow, standings }) {
   const defaultOpp = useMemo(() => {
     const mate = others.find((o) => o.team.id === me.driver.team.id);
     if (mate) return mate.driverId;
-    return others.sort((a, b) => Math.abs(a.position - (meRow?.position ?? 0)) - Math.abs(b.position - (meRow?.position ?? 0)))[0]?.driverId;
+    // Sort a COPY: `others` is the memoised array the opponent picker renders
+    // from, and sorting it in place reshuffled the dropdown from championship
+    // order into distance-from-me order (P5, P4, P6, P3, …).
+    return [...others].sort(
+      (a, b) => Math.abs(a.position - (meRow?.position ?? 0)) - Math.abs(b.position - (meRow?.position ?? 0))
+    )[0]?.driverId;
   }, [others, meRow, me.driver]);
 
   const [oppId, setOppId] = useState(defaultOpp);
@@ -649,13 +650,15 @@ function HeadToHead({ me, meRow, standings }) {
 
   return (
     <div className="reveal card overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Head to Head</h2>
-        <select value={opp.driverId} onChange={(e) => setOppId(e.target.value)}
-          className="max-w-[11rem] rounded-lg border border-border bg-surface2 px-2.5 py-1.5 text-sm font-bold text-dark focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20">
-          {others.map((o) => <option key={o.driverId} value={o.driverId}>P{o.position} · {o.name}</option>)}
-        </select>
-      </div>
+      <CardBar
+        title="Head to Head"
+        right={
+          <select value={opp.driverId} onChange={(e) => setOppId(e.target.value)}
+            className="max-w-[11rem] rounded-lg border border-border bg-surface2 px-2.5 py-1.5 text-sm font-bold text-dark focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20">
+            {others.map((o) => <option key={o.driverId} value={o.driverId}>P{o.position} · {o.name}</option>)}
+          </select>
+        }
+      />
 
       <div className="p-5">
         <div className="mb-5 flex items-center justify-between gap-3">
@@ -793,7 +796,7 @@ function TeamPanel({ driver, standings, career }) {
   const shownMates = collapsible && !showAllMates ? mates.slice(0, CAP) : mates;
   return (
     <div className="reveal card overflow-hidden">
-      <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Team</h2>
+      <CardBar title="Team" />
       {/* Team-colour seam along the card's top edge, like the hero banner. */}
       <span className="absolute inset-x-0 top-0 z-10 h-1" style={{ backgroundColor: c }} />
       <div className="relative overflow-hidden p-5">
@@ -1494,7 +1497,7 @@ export default function DriverProfile({ previewId, preview }) {
       {/* Race by race + Team */}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="reveal card overflow-hidden lg:col-span-2">
-          <h2 className="border-b border-border px-5 py-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:px-6 sm:text-xl">Race by Race</h2>
+          <CardBar title="Race by Race" />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

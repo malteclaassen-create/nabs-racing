@@ -147,7 +147,11 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
       setActive((i) => Math.min(flat.length - 1, i + 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActive((i) => Math.max(0, i - 1));
+      // From "nothing selected" (-1), Math.max(0, -2) used to land on the FIRST
+      // result — so the very first Up press selected something and a following
+      // Enter navigated somewhere the user never picked. Step back to
+      // "nothing selected" instead.
+      setActive((i) => (i <= 0 ? -1 : i - 1));
     } else if (e.key === "Enter") {
       if (active >= 0 && flat[active]) { e.preventDefault(); go(flat[active]); }
     } else if (e.key === "Escape") {
@@ -186,6 +190,9 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
         <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-light">
           <SearchIcon />
         </span>
+        {/* Arrow keys and Enter already worked, but nothing told a screen reader
+            that a list of suggestions had appeared, or which entry was
+            highlighted. The combobox attributes below are what carry that. */}
         <input
           ref={inputRef}
           type="search"
@@ -197,6 +204,11 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
           placeholder={expanded ? "Search drivers, teams, races…" : wide ? "Search" : ""}
           aria-label="Search"
           autoComplete="off"
+          role="combobox"
+          aria-expanded={showPanel}
+          aria-controls="global-search-results"
+          aria-autocomplete="list"
+          aria-activedescendant={showPanel && active >= 0 ? `global-search-option-${active}` : undefined}
           className="h-9 w-full min-w-0 rounded-lg border border-border bg-surface2 py-2 pl-9 pr-3 text-sm text-dark placeholder:text-light focus:border-primary focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
       </div>
@@ -208,7 +220,7 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
           }`}
           style={mobile ? undefined : { width: expandedW ? `${expandedW}px` : "15rem", maxWidth: "calc(100vw - 1.5rem)" }}
         >
-          <div className="max-h-[min(28rem,70vh)] overflow-y-auto py-1">
+          <div id="global-search-results" role="listbox" aria-label="Search results" className="max-h-[min(28rem,70vh)] overflow-y-auto py-1">
             {loading && !data ? (
               <p className="px-4 py-6 text-center text-sm text-light">Searching…</p>
             ) : !data || data.groups.length === 0 ? (
@@ -217,8 +229,8 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
               </p>
             ) : (
               data.groups.map((g) => (
-                <div key={g.type} className="py-1">
-                  <div className="px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light">{g.label}</div>
+                <div key={g.type} role="group" aria-label={g.label} className="py-1">
+                  <div aria-hidden className="px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light">{g.label}</div>
                   {g.items.map((item) => {
                     idx += 1;
                     const i = idx;
@@ -226,6 +238,9 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
                       <button
                         key={`${item.type}-${item.id}`}
                         type="button"
+                        id={`global-search-option-${i}`}
+                        role="option"
+                        aria-selected={active === i}
                         onMouseEnter={() => setActive(i)}
                         onClick={() => go(item)}
                         className={`flex w-full items-center gap-3 px-3 py-2 text-left transition ${

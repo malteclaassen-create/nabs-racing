@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
+import { TierBadge } from "./ui.jsx";
 
 // Position-change badge: ▲ up / ▼ down / – unchanged.
 function Delta({ value }) {
@@ -14,15 +15,6 @@ function Delta({ value }) {
   );
 }
 
-// Which constructor table a car scores in: Tier 1 / Tier 2 / Reserve.
-function TierTag({ tier }) {
-  const map = {
-    1: ["T1", "bg-sky-500/15 text-sky-600", "Scores in the Tier 1 constructors' table"],
-    2: ["T2", "bg-violet-500/15 text-violet-600", "Scores in the Tier 2 table (re-ranked among Tier-2 cars)"],
-  };
-  const [label, cls, title] = map[tier] || ["Res", "bg-slate-400/20 text-slate-500", "Reserve: scores only for the team it subs for"];
-  return <span className={`pill ${cls}`} title={title}>{label}</span>;
-}
 
 // Muted second line under a driver: race time / gap, the penalty added, and any
 // position change — so the effect of a time penalty is spelled out.
@@ -178,7 +170,7 @@ export default function RacePreview({ request }) {
                               <span className="h-4 w-1 shrink-0 rounded-full" style={{ backgroundColor: r.team.color }} />
                             )}
                             <span className="font-semibold text-dark">{r.name}</span>
-                            <TierTag tier={r.tier} />
+                            <TierBadge tier={r.tier} />
                             {r.isSub && r.team && (
                               <span className="pill bg-amber-100 text-amber-700" title={`Reserve driving for ${r.team.name}`}>
                                 sub · {r.team.name}
@@ -186,7 +178,7 @@ export default function RacePreview({ request }) {
                             )}
                             {dnf && <span className="pill bg-surface2 text-light">{r.status}</span>}
                             {r.penalty > 0 && (
-                              <span className="pill bg-rose-500/15 text-rose-500" title={`Finished P${r.rawPosition}, +${r.penalty}s time penalty`}>
+                              <span className="pill bg-red-500/15 text-red-500" title={`Finished P${r.rawPosition}, +${r.penalty}s time penalty`}>
                                 +{r.penalty}s pen
                               </span>
                             )}

@@ -5,6 +5,7 @@ import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync } fr
 import { join, extname, basename } from "path";
 import prisma from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
+import { isSafeId, safeUploadPath } from "../lib/safeUpload.js";
 import { parseAcRaceJson, parseAcQualiJson } from "../services/acJsonParser.js";
 import { listRemoteResults, fetchRemoteResult } from "../services/emperorResults.js";
 import { saveRaceResults } from "../services/raceWriter.js";
@@ -924,6 +925,10 @@ router.post("/drivers", async (req, res, next) => {
     }
     // Explicit id still wins (scripted imports); otherwise derive from the name.
     const driverId = String(id || "").trim() || (await uniqueDriverId(name));
+    // The id becomes the avatar's file name later on (routes/me.js).
+    if (!isSafeId(driverId)) {
+      return res.status(400).json({ error: "Driver id may only contain letters, digits, - and _" });
+    }
     // Default to the season the chosen team belongs to (or the active season
     // of the series the admin is editing).
     let resolvedSeasonId = seasonId;
@@ -2175,7 +2180,7 @@ router.put("/series/:id", async (req, res, next) => {
     }
     // Hiding the ACTIVE (primary) series would blank the public site.
     if (req.body?.isPublic === false && existing.isActive) {
-      return res.status(409).json({ error: "The active series cannot be hidden — activate another series first" });
+      return res.status(409).json({ error: "The active series cannot be hidden. Activate another series first" });
     }
     const series = await dbUpdateSeries(prisma, req.params.id, req.body || {});
     res.json(series);
@@ -2258,7 +2263,9 @@ router.post("/series/:id/logo", upload.single("file"), async (req, res, next) =>
 
     mkdirSync(SERIES_DIR, { recursive: true });
     const filename = `${series.id}${ext}`;
-    writeFileSync(join(SERIES_DIR, filename), req.file.buffer);
+    const dest = safeUploadPath(SERIES_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "This series' id can't be used as a file name" });
+    writeFileSync(dest, req.file.buffer);
     // Cache-bust the URL so an updated logo shows immediately.
     const logoDarkUrl = `/api/uploads/series/${filename}?v=${Date.now()}`;
     await writeSeriesLogo(prisma, series.id, logoDarkUrl);
@@ -2666,7 +2673,9 @@ router.post("/seasons/:id/hero", upload.single("file"), async (req, res, next) =
 
     mkdirSync(SEASONS_DIR, { recursive: true });
     const filename = `${season.id}${ext}`;
-    writeFileSync(join(SEASONS_DIR, filename), req.file.buffer);
+    const dest = safeUploadPath(SEASONS_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "This season's id can't be used as a file name" });
+    writeFileSync(dest, req.file.buffer);
     // Cache-bust the URL so an updated photo shows immediately.
     const heroImageUrl = `/api/uploads/seasons/${filename}?v=${Date.now()}`;
     await writeSeasonHero(prisma, season.id, heroImageUrl);
@@ -2702,7 +2711,9 @@ router.post("/seasons/:id/car", upload.single("file"), async (req, res, next) =>
 
     mkdirSync(SEASONS_DIR, { recursive: true });
     const filename = `${season.id}-car${ext}`;
-    writeFileSync(join(SEASONS_DIR, filename), req.file.buffer);
+    const dest = safeUploadPath(SEASONS_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "This season's id can't be used as a file name" });
+    writeFileSync(dest, req.file.buffer);
     const carImageUrl = `/api/uploads/seasons/${filename}?v=${Date.now()}`;
     await writeSeasonCar(prisma, season.id, carImageUrl);
     res.json({ ok: true, carImageUrl });
@@ -2733,6 +2744,11 @@ router.post("/teams", async (req, res, next) => {
     const { id, name, tier, color, seasonId } = req.body || {};
     if (!id || !name || tier === undefined || !color) {
       return res.status(400).json({ error: "id, name, tier, color required" });
+    }
+    // The id becomes the logo's file name later on, so keep it to plain
+    // characters. Every existing team already fits this.
+    if (!isSafeId(id)) {
+      return res.status(400).json({ error: "Team id may only contain letters, digits, - and _" });
     }
     const targetSeasonId =
       seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
@@ -2775,7 +2791,9 @@ router.post("/teams/:id/logo", upload.single("file"), async (req, res, next) => 
 
     mkdirSync(TEAMS_DIR, { recursive: true });
     const filename = `${team.id}${ext}`;
-    writeFileSync(join(TEAMS_DIR, filename), req.file.buffer);
+    const dest = safeUploadPath(TEAMS_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "This team's id can't be used as a file name" });
+    writeFileSync(dest, req.file.buffer);
     // Cache-bust the URL so an updated logo shows immediately.
     const logoUrl = `/api/uploads/teams/${filename}?v=${Date.now()}`;
     await prisma.team.update({ where: { id: team.id }, data: { logoUrl } });
@@ -2840,7 +2858,9 @@ router.post("/tracks/:key/map", upload.single("file"), async (req, res, next) =>
     if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
     mkdirSync(TRACKS_DIR, { recursive: true });
     const filename = `${key}${ext}`;
-    writeFileSync(join(TRACKS_DIR, filename), req.file.buffer);
+    const dest = safeUploadPath(TRACKS_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "Invalid track key" });
+    writeFileSync(dest, req.file.buffer);
     const mapImageUrl = `/api/uploads/tracks/${filename}?v=${Date.now()}`;
     const current = await readTrackInfo(prisma, key);
     const saved = await writeTrackInfo(prisma, key, { ...current, mapImageUrl });

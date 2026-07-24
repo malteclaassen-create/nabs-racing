@@ -348,7 +348,7 @@ export async function sendAttendancePing(prisma, raceId) {
   await dbCreateNotification(prisma, {
     type: "REMINDER",
     title: `Attendance check: ${isTraining ? "training session" : roundName(race)} at ${race.track}`,
-    body: "Please confirm or update whether you're racing — every answer helps the planning.",
+    body: "Please confirm or update whether you're racing. Every answer helps the planning.",
     link: `${prefix}/attendance?race=${race.id}`,
     dedupeKey: `attendance-ping:${race.id}:${Date.now()}`,
   });

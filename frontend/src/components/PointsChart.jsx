@@ -94,10 +94,13 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
   return (
     <div className="reveal-chart card p-5 sm:p-6">
       <div className="relative">
+        {/* Deliberately no touch-action override: the chart is hover-only (mouse
+            handlers), so switching off touch gestures only trapped the finger and
+            stopped the page scrolling wherever the chart sat on screen. */}
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
-          className="h-auto w-full touch-none select-none"
+          className="h-auto w-full select-none"
           xmlns="http://www.w3.org/2000/svg"
         >
           {/* horizontal grid + y labels */}

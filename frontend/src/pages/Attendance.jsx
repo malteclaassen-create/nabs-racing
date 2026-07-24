@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
-import { ErrorBox, PageHeader, TableSkeleton, EmptyState } from "../components/ui.jsx";
+import { ErrorBox, PageHeader, TableSkeleton, EmptyState, Notice } from "../components/ui.jsx";
 import RaceSignupCard from "../components/RaceSignupCard.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import Flag from "../components/Flag.jsx";
 import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
+
+// Which answer a ?rsvp= link stands for. Deliberately a fixed map, so an
+// arbitrary value in the URL can never be forwarded to the API as a status.
+const RSVP_FROM_LINK = { yes: "ACCEPTED", maybe: "TENTATIVE", no: "DECLINED" };
 
 const MAX_LAP_MS = 1_800_000;
 function fmtLap(ms) {
@@ -65,7 +69,7 @@ function MyTrackHistory({ track, me }) {
 }
 
 export default function Attendance() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const wantRace = params.get("race");
   const { user, isLoggedIn } = useAuth();
   const driverId = isLoggedIn ? user?.driverId : null;
@@ -122,6 +126,39 @@ export default function Attendance() {
       setBusy(null);
     }
   }
+  // One-tap answer straight out of a notification or a Discord post:
+  // /attendance?race=<id>&rsvp=yes|maybe|no submits that answer on arrival, so
+  // the weekly "are you racing" question is a single click instead of
+  // open page -> find race -> press button.
+  //
+  // Guarded on purpose: it fires once per page load, only for a signed-in
+  // member who can actually sign up, and only for the race named in the link.
+  // The parameter is stripped afterwards so a refresh (or the back button)
+  // can't silently answer again.
+  const [autoAnswered, setAutoAnswered] = useState(null);
+  const autoFired = useRef(false);
+  useEffect(() => {
+    const wanted = RSVP_FROM_LINK[(params.get("rsvp") || "").toLowerCase()];
+    if (!wanted || autoFired.current) return;
+    if (!canSignUp || !wantRace) return;
+    const race = list.find((e) => e.id === wantRace);
+    if (!race) return; // list not loaded yet, or an unknown race id
+    autoFired.current = true;
+    (async () => {
+      try {
+        await api.rsvp(race.id, driverId, wanted);
+        await events.reload();
+        setAutoAnswered(wanted);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        const next = new URLSearchParams(params);
+        next.delete("rsvp");
+        setParams(next, { replace: true });
+      }
+    })();
+  }, [params, canSignUp, wantRace, list, driverId]);
+
   async function clearStatus(raceId) {
     setBusy(`${raceId}:clear`);
     try {
@@ -148,6 +185,16 @@ export default function Attendance() {
     <div className="content-in space-y-6">
       <PageHeader eyebrow="Race Attendance" title="Attendance" />
 
+      {/* Confirms a one-tap answer that came in through the link, so the click
+          visibly did something instead of just landing on the page. */}
+      {autoAnswered && (
+        <Notice kind="success">
+          {autoAnswered === "ACCEPTED" && "You're in. See you on the grid."}
+          {autoAnswered === "TENTATIVE" && "Marked as tentative. Update it any time below."}
+          {autoAnswered === "DECLINED" && "Marked as not racing. Thanks for letting the grid know."}
+        </Notice>
+      )}
+
       {events.loading && <TableSkeleton rows={6} />}
 
       {!events.loading && list.length === 0 && (
@@ -160,12 +207,20 @@ export default function Attendance() {
         <>
           {/* race picker (when more than one upcoming) */}
           {list.length > 1 && (
+            /* This is the page's main navigation, so these are real buttons and
+               not the .pill status badge they used to borrow — that made them
+               about 18px tall and packed tightly together, a poor target on a
+               phone. */
             <div className="flex flex-wrap gap-2">
               {list.map((e) => (
                 <button
                   key={e.id}
+                  type="button"
+                  aria-pressed={e.id === ev.id}
                   onClick={() => setSelectedId(e.id)}
-                  className={`pill ${e.id === ev.id ? "bg-primary text-white" : "bg-surface2 text-medium hover:text-dark"}`}
+                  className={`inline-flex min-h-[44px] items-center rounded-full px-4 py-2 text-sm font-bold uppercase tracking-wide transition ${
+                    e.id === ev.id ? "bg-brand text-ink" : "bg-surface2 text-medium hover:text-dark"
+                  }`}
                 >
                   {e.type === "TRAINING" ? "Training" : `R${e.number}`} {e.track}
                 </button>

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { Skeleton, CountUp, MEDAL } from "../components/ui.jsx";
+import { Skeleton, CountUp, MEDAL, ErrorBox } from "../components/ui.jsx";
 import { useParallax, useTilt, useMagnetic } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
@@ -218,8 +218,19 @@ export default function Welcome() {
       <div className="space-y-6 sm:space-y-12">
         <Skeleton className="h-[520px] w-full rounded-[1.75rem]" />
         <div className="grid gap-4 sm:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-2xl" />)}
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
         </div>
+      </div>
+    );
+
+  // Same reason as the home page: an API outage would otherwise render a
+  // complete-looking landing page with every number missing. Backbone only —
+  // a single missing constructor table shouldn't hide everything else.
+  const loadError = drivers.error || races.error;
+  if (loadError)
+    return (
+      <div className="space-y-6">
+        <ErrorBox message={loadError} />
       </div>
     );
 
@@ -333,7 +344,7 @@ export default function Welcome() {
           </FeatureCard>
           <FeatureCard index={1} icon="layers" title="Racing at every level">
             Grids are split by pace so the racing stays close, whatever your speed. Reserves can step in for
-            any team when a regular can&rsquo;t make a round &mdash; a perfect way to get your first start.
+            any team when a regular can&rsquo;t make a round, and a perfect way to get your first start.
           </FeatureCard>
           <FeatureCard index={2} icon="calendar" title="A real season">
             {totalRounds > 0 ? `${totalRounds} rounds` : "A full season of rounds"} on iconic circuits, run
@@ -427,7 +438,7 @@ export default function Welcome() {
         <SectionHead
           eyebrow="The format"
           title="How the championship works"
-          sub="Finish a race, earn points for your position, and climb the tables — as a driver and as a team."
+          sub="Finish a race, earn points for your position, and climb the tables, as a driver and as a team."
         />
         <div className="grid gap-6 lg:grid-cols-5">
           {/* points table */}

@@ -267,7 +267,7 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
     <div className="relative">
       <div
         ref={scrollRef}
-        className={`scrollbar-slim w-full overflow-x-auto ${
+        className={`scrollbar-slim w-full overflow-x-auto overscroll-x-none ${
           dragging ? "cursor-grabbing select-none" : fade.l || fade.r ? "cursor-grab" : ""
         }`}
         onScroll={() => {
@@ -667,8 +667,8 @@ export default function MyRating({ me }) {
   if (loading)
     return (
       <div className="space-y-6">
-        <Skeleton className="h-40 w-full rounded-2xl" />
-        <Skeleton className="h-72 w-full rounded-2xl" />
+        <Skeleton className="h-40 w-full rounded-xl" />
+        <Skeleton className="h-72 w-full rounded-xl" />
       </div>
     );
   // No rating yet (no starts this season) comes back as a 404 — show it kindly.

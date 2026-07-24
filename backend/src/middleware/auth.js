@@ -141,33 +141,71 @@ export async function resolveDriverId(prismaClient, user) {
 // minutes) made every resume beyond that window fail mid-download. The ticket
 // still names exactly one file and expires within the day, which is plenty of
 // protection for a member-only catalogue.
-export function signDownloadTicket(id) {
-  return jwt.sign({ role: "dl", id }, JWT_SECRET, { expiresIn: "12h" });
+// The ticket names the MEMBER it was handed to (`sub`), not just the file, so a
+// link pasted into a public channel is no longer a working download for
+// everyone who reads it — and a member banned after collecting their ticket
+// stops downloading immediately (checked in routes/downloads.js).
+export function signDownloadTicket(id, discordId) {
+  return jwt.sign({ role: "dl", id, sub: discordId || null }, JWT_SECRET, { expiresIn: "12h" });
 }
+
+// Returns the ticket payload when it is valid for this file, else null.
+// Tickets issued before the `sub` claim existed stay valid until they expire,
+// so an in-progress multi-gigabyte download survives a server update.
 export function verifyDownloadTicket(token, id) {
   try {
     const p = jwt.verify(token, JWT_SECRET);
-    return p.role === "dl" && p.id === id;
+    if (p.role !== "dl" || p.id !== id) return null;
+    return p;
   } catch {
-    return false;
+    return null;
   }
 }
 
-// Non-blocking admin check for otherwise-public routes: true when the request
-// carries a valid admin JWT (PIN login) OR a Discord user token flagged isAdmin
-// at login. Lets a public endpoint reveal private seasons (or their deep links)
-// to a signed-in admin without gating the endpoint itself. (The flag is baked at
-// login; the actual admin WRITE gate — requireAdmin — re-checks live.)
-export function isAdminRequest(req) {
+// Resolves ONCE per request whether the caller currently counts as an admin,
+// and parks the answer on req. Mounted globally in index.js, ahead of every
+// router.
+//
+// Why a middleware and not a plain helper: the check has to hit the database
+// (an admin can be demoted or banned at any moment, while their login token
+// stays valid for 30 days), and the ~16 read routes that ask this question do
+// so from synchronous helpers. Turning those into async calls would mean a
+// forgotten `await` yields a Promise — which is truthy, and would hand private
+// seasons to EVERYONE. Resolving it up front keeps every call site synchronous
+// and makes the failure direction safe: no middleware, no admin rights.
+export async function resolveAdminContext(req, res, next) {
+  req.isAdminRequest = false;
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token) return false;
+  if (!token) return next();
   try {
     const p = jwt.verify(token, JWT_SECRET);
-    return p.role === "admin" || (p.role === "user" && !!p.isAdmin);
+    if (p.role === "admin") {
+      // The PIN token is short-lived (12h) and issued by the admin login itself.
+      req.isAdminRequest = true;
+    } else if (p.role === "user" && p.isAdmin && p.discordId) {
+      // The isAdmin flag was baked in at login. Re-check it live, exactly like
+      // requireAdmin does, so revoking admin or banning an account takes hold
+      // immediately instead of after the token's 30 days. Both lookups are
+      // cached, so this costs nothing on repeat requests.
+      const [banned, stillAdmin] = await Promise.all([
+        isBanned(prisma, p.discordId).catch(() => false),
+        isDiscordAdmin(prisma, p.discordId).catch(() => false),
+      ]);
+      req.isAdminRequest = !banned && stillAdmin;
+    }
   } catch {
-    return false;
+    /* invalid or expired token -> not an admin */
   }
+  next();
+}
+
+// Non-blocking admin check for otherwise-public routes. Lets a public endpoint
+// reveal private seasons (or their deep links) to a signed-in admin without
+// gating the endpoint itself. Reads the answer resolved by the middleware
+// above; if that never ran, the caller is simply treated as the public.
+export function isAdminRequest(req) {
+  return req?.isAdminRequest === true;
 }
 
 // Express middleware: requires admin access. Two ways in:

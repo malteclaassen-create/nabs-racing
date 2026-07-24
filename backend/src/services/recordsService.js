@@ -18,7 +18,13 @@ import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
 // Heavy (walks every season), so one result is kept warm per series for a few
 // minutes. Results imports simply age out within CACHE_MS.
 const CACHE_MS = 5 * 60 * 1000;
-const cache = new Map(); // `${seriesId}|${admin}` -> { at, data }
+// The cached value is the PROMISE, not the finished result. Storing the result
+// meant that the moment the entry aged out, every request arriving in the gap
+// started its own full recomputation — on a race night with a few dozen people
+// on the Hall of Fame page that was a few dozen parallel walks over every
+// season, all hitting the same SQLite file. Now the first caller starts the
+// work and the rest await the same promise.
+const cache = new Map(); // `${seriesId}|${admin}` -> { at, promise }
 export function invalidateRecordsCache() {
   cache.clear();
 }
@@ -39,8 +45,19 @@ export async function getSeriesRecords(prisma, seriesSlug, { includePrivate = fa
 
   const key = `${series.id}|${includePrivate ? 1 : 0}`;
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.promise;
 
+  const promise = computeSeriesRecords(prisma, series, includePrivate);
+  cache.set(key, { at: Date.now(), promise });
+  // A failed run must not sit in the cache for the rest of the TTL, or one
+  // blip would keep the page broken for five minutes.
+  promise.catch(() => {
+    if (cache.get(key)?.promise === promise) cache.delete(key);
+  });
+  return promise;
+}
+
+async function computeSeriesRecords(prisma, series, includePrivate) {
   const priv = includePrivate ? new Set() : await getPrivateSeasonIds(prisma);
   const seasons = (
     await prisma.season.findMany({ where: { seriesId: series.id }, orderBy: { number: "asc" } })
@@ -247,7 +264,5 @@ export async function getSeriesRecords(prisma, seriesSlug, { includePrivate = fa
     recordEntry("winStreak", "Longest win streak", streak, "consecutive rounds won"),
   ].filter(Boolean);
 
-  const data = { seriesName: series.name, seasons: seasons.length, lists, records, champions };
-  cache.set(key, { at: Date.now(), data });
-  return data;
+  return { seriesName: series.name, seasons: seasons.length, lists, records, champions };
 }

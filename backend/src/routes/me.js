@@ -9,6 +9,7 @@ import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import prisma from "../lib/prisma.js";
 import { optionalUser, resolveDriverId } from "../middleware/auth.js";
+import { safeUploadPath } from "../lib/safeUpload.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { parseSocials, serializeSocials } from "../lib/socials.js";
 import { DEFAULT_PROFILE_TILES, PROFILE_TILE_KEYS, readProfileTiles } from "../lib/profileTiles.js";
@@ -129,7 +130,7 @@ router.put("/profile", async (req, res, next) => {
     if (req.body?.name !== undefined) {
       const name = String(req.body.name || "").trim();
       if (name.length < 1 || name.length > 40) {
-        return res.status(400).json({ error: "Name must be 1–40 characters" });
+        return res.status(400).json({ error: "Name must be 1 to 40 characters" });
       }
       data.name = name;
     }
@@ -408,7 +409,9 @@ router.post("/photo", upload.single("file"), async (req, res, next) => {
 
     mkdirSync(AVATAR_DIR, { recursive: true });
     const filename = `${driverId}${ext}`;
-    writeFileSync(join(AVATAR_DIR, filename), req.file.buffer);
+    const dest = safeUploadPath(AVATAR_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "Your driver id can't be used as a file name" });
+    writeFileSync(dest, req.file.buffer);
     // Cache-bust so the new picture shows immediately even if the URL is reused.
     const photoUrl = `/api/uploads/avatars/${filename}?v=${Date.now()}`;
     await prisma.driver.update({ where: { id: driverId }, data: { photoUrl } });
@@ -451,7 +454,9 @@ router.post("/card-photo-image", upload.single("file"), async (req, res, next) =
 
     mkdirSync(CARD_DIR, { recursive: true });
     const filename = `${driverId}${ext}`;
-    writeFileSync(join(CARD_DIR, filename), req.file.buffer);
+    const dest = safeUploadPath(CARD_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "Your driver id can't be used as a file name" });
+    writeFileSync(dest, req.file.buffer);
     const cardPhotoUrl = `/api/uploads/cards/${filename}?v=${Date.now()}`;
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${cardPhotoUrl} WHERE "id" = ${driverId}`;
     res.json({ ok: true, cardPhotoUrl });
@@ -533,7 +538,7 @@ router.post("/race-request", async (req, res, next) => {
   try {
     if (!req.user?.discordId) return res.status(401).json({ error: "Sign in with Discord first" });
     if (await resolveDriverId(prisma, req.user)) {
-      return res.status(409).json({ error: "Your account is already connected to a driver — use the sign-up buttons directly." });
+      return res.status(409).json({ error: "Your account is already connected to a driver. Use the sign-up buttons directly." });
     }
     const acct = await dbGetMember(prisma, req.user.discordId);
     if (!acct) return res.status(404).json({ error: "Account not found" });

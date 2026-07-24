@@ -4,6 +4,7 @@ import { resolveSeasonId } from "../services/seasonService.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides, discordIdsForDrivers } from "../lib/persons.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
+import { stripPrivateDriverFields } from "../lib/privacy.js";
 
 const router = Router();
 
@@ -11,8 +12,9 @@ const router = Router();
 // season. An admin may target a private season (site preview); the public can't.
 router.get("/", async (req, res, next) => {
   try {
+    const admin = isAdminRequest(req);
     const seasonId = await resolveSeasonId(prisma, req.query.season, {
-      includePrivate: isAdminRequest(req),
+      includePrivate: admin,
       series: req.query.series,
     });
     const [teams, nameOverrides] = await Promise.all([
@@ -41,8 +43,11 @@ router.get("/", async (req, res, next) => {
     // The person's EFFECTIVE Discord id: the literal value lives on one row
     // per person (unique), but login and mentions inherit it through the
     // person links — so the admin Drivers tab should show it too instead of a
-    // misleading "not set" on a fresh season row.
-    const effectiveDiscord = await discordIdsForDrivers(prisma, allIds).catch(() => new Map());
+    // misleading "not set" on a fresh season row. Admin-only, so the lookup is
+    // skipped entirely for the public roster.
+    const effectiveDiscord = admin
+      ? await discordIdsForDrivers(prisma, allIds).catch(() => new Map())
+      : new Map();
     // Archive rosters show the person's current name with a "raced as" note.
     // No-op for the active season (its own row already carries the current name).
     for (const t of teams) {
@@ -54,9 +59,18 @@ router.get("/", async (req, res, next) => {
         }
         d.role = roles.get(d.id) || null;
         d.hideFromStandings = hiddenSet.has(d.id);
-        // Inherited from a linked season row (own column empty).
-        const eff = effectiveDiscord.get(d.id) || null;
-        d.inheritedDiscordUserId = !d.discordUserId && eff ? eff : null;
+        if (admin) {
+          // Inherited from a linked season row (own column empty).
+          const eff = effectiveDiscord.get(d.id) || null;
+          d.inheritedDiscordUserId = !d.discordUserId && eff ? eff : null;
+        } else {
+          // Contact identities never leave the server for the public roster.
+          // This endpoint feeds the Constructors, Live and team pages, so
+          // without this every visitor's browser would download a ready-made
+          // "league nickname -> real Discord and Steam account" list.
+          // The admin Drivers tab and the import matcher still get them above.
+          stripPrivateDriverFields(d);
+        }
       }
     }
     res.json(teams);
