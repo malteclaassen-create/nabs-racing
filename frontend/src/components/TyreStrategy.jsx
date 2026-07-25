@@ -72,7 +72,7 @@ function PitBlock({ leftPct = 0 }) {
       }}
       title="In the pit lane right now"
     >
-      <span className="font-mono text-[9px] font-black uppercase tracking-wider text-light">Pit</span>
+      <span className="font-mono text-[10px] font-black uppercase tracking-wider text-light">Pit</span>
     </div>
   );
 }

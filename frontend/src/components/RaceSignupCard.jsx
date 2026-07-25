@@ -89,7 +89,7 @@ export default function RaceSignupCard({
     <div className="card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-border px-5 py-4">
         <div>
-          <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Sign-Up</h3>
+          <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Sign-Up</h3>
           <p className="mt-0.5 font-display text-lg font-extrabold uppercase tracking-tight text-dark">
             Are you on the grid?
           </p>
@@ -190,7 +190,7 @@ export default function RaceSignupCard({
       <div className={`grid gap-3 p-4 sm:gap-4 sm:p-5 ${visible.length === 1 ? "" : visible.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
         {visible.map((status) => (
           <div key={status} className="min-w-0">
-            <div className="mb-2 flex items-center gap-1.5 font-mono text-xs font-bold uppercase tracking-wider text-medium">
+            <div className="mb-2 flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
               <StatusIcon d={STATUS_UI[status].icon} className={`h-3.5 w-3.5 shrink-0 ${STATUS_UI[status].idleIcon}`} />
               {/* On phones the count alone labels the column — the coloured
                   icon already says which answer it is, and the words don't fit. */}

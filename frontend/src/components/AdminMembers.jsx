@@ -190,7 +190,7 @@ export default function AdminMembers() {
                   </span>
                   {m.raceRequestAt && (
                     <span
-                      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wide text-emerald-600"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-emerald-600"
                       title={`Asked to race${m.raceRequestText ? `: ${m.raceRequestText}` : ""} (${fmtDate(m.raceRequestAt)}). Link them or create a driver — that answers the request.`}
                     >
                       <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

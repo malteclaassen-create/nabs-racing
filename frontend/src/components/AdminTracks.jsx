@@ -125,7 +125,7 @@ export default function AdminTracks() {
       {key && (
         <div className="card space-y-4 p-5">
           <div>
-            <div className="mb-2 font-mono text-xs font-bold uppercase tracking-widest text-light">Country flag</div>
+            <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Country flag</div>
             <p className="mb-2 text-sm text-light">
               Which country's flag shows next to this circuit, on every page and in every season it was raced.
             </p>
@@ -141,7 +141,7 @@ export default function AdminTracks() {
           </div>
 
           <div>
-            <div className="mb-2 font-mono text-xs font-bold uppercase tracking-widest text-light">Custom facts</div>
+            <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Custom facts</div>
             <div className="space-y-2">
               {facts.map((f, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
@@ -172,7 +172,7 @@ export default function AdminTracks() {
 
           {circuitFor(selected) && !mapImageUrl && (
             <div>
-              <div className="mb-2 font-mono text-xs font-bold uppercase tracking-widest text-light">Outline rotation</div>
+              <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Outline rotation</div>
               <p className="mb-2 text-sm text-light">
                 Turn the built-in outline so it fills the upcoming-race panel better. The preview below shows exactly
                 what visitors will see. Remember to hit &ldquo;Save track info&rdquo;.
@@ -202,7 +202,7 @@ export default function AdminTracks() {
           )}
 
           <div>
-            <div className="mb-2 font-mono text-xs font-bold uppercase tracking-widest text-light">Custom map image</div>
+            <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Custom map image</div>
             <p className="mb-2 text-sm text-light">
               Replaces the plain outline on the upcoming-race panel, e.g. the downloaded PNG with the corners labelled.
               Remove it to go back to the built-in outline.

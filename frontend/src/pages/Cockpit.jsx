@@ -141,7 +141,7 @@ function Hero() {
             <div className="flex items-center gap-4">
               <DriverAvatar name={d.driver.name} photoUrl={d.driver.photoUrl} color={color} size={64} className="ring-2 ring-white/20" />
               <div>
-                <div className="font-mono text-[11px] font-bold uppercase tracking-[0.24em] text-white/50">
+                <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/50">
                   Private cockpit · {d.driver.seasonName}
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -157,7 +157,7 @@ function Hero() {
             </div>
             <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
               <div>
-                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-white/50">Championship</div>
+                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Championship</div>
                 <div className="mt-0.5 flex items-baseline gap-2">
                   <span
                     className="font-display text-5xl font-black leading-none tabular-nums"
@@ -174,14 +174,14 @@ function Hero() {
                 <div className="mt-1 font-mono text-[11px] text-white/50">of {ch?.fieldSize} classified</div>
               </div>
               <div>
-                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-white/50">Points</div>
+                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Points</div>
                 <div className="mt-0.5 font-display text-5xl font-black leading-none tabular-nums"><CountUp end={ch?.points ?? 0} /></div>
                 <div className="mt-1 font-mono text-[11px] text-white/50">
                   {ch?.gapToLeader > 0 ? `${ch.gapToLeader} behind P1` : "championship lead"}
                 </div>
               </div>
               <div>
-                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-white/50">Form</div>
+                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Form</div>
                 <div className="mt-1.5 flex gap-1.5">
                   {(d.form || []).map((f) => {
                     const tint = resultTint(f);
@@ -225,7 +225,7 @@ function Insight({ eyebrow, children }) {
 function BigStat({ eyebrow, value, unit, tone, sub }) {
   return (
     <div>
-      <div className="font-mono text-[11px] font-bold uppercase tracking-[0.24em] text-eyebrow">{eyebrow}</div>
+      <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">{eyebrow}</div>
       <div className="mt-2 flex items-baseline gap-2">
         <span className={`font-display text-6xl font-black leading-none tracking-tight sm:text-7xl ${tone || "text-dark"}`}>{value}</span>
         {unit && <span className="font-display text-xl font-bold text-faint">{unit}</span>}
@@ -446,11 +446,11 @@ function InsightsTab() {
           <div className="grid grid-cols-2 gap-x-12 gap-y-6 self-center lg:order-1">
             <div>
               <div className="font-display text-4xl font-black tabular-nums text-dark">{fmtDuration(d.lostTime.totalMs)}</div>
-              <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-eyebrow">career total</div>
+              <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">career total</div>
             </div>
             <div>
               <div className="font-display text-4xl font-black tabular-nums text-dark">{d.races.length}</div>
-              <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-eyebrow">races measured</div>
+              <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">races measured</div>
             </div>
           </div>
         </Insight>
@@ -550,7 +550,7 @@ function RaceAnalysis({ raceId }) {
             {d.result.status === "FINISHED" ? d.result.position : d.result.status}
           </span>
           <div>
-            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-eyebrow">Finish</div>
+            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">Finish</div>
             <div className="text-sm text-light">
               from {ordinal(d.result.grid)} on the grid
               {gain != null && gain !== 0 && (
@@ -562,19 +562,19 @@ function RaceAnalysis({ raceId }) {
           </div>
         </div>
         <div>
-          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-eyebrow">Best lap</div>
+          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">Best lap</div>
           <div className="font-display text-3xl font-black tabular-nums text-dark">{fmtLap(d.result.bestLapMs)}</div>
         </div>
         {a?.theoreticalMs && (
           <div>
-            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-eyebrow">Ideal lap</div>
+            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">Ideal lap</div>
             <div className="font-display text-3xl font-black tabular-nums text-dark">{fmtLap(a.theoreticalMs)}</div>
             {d.result.bestLapMs && <div className="text-xs text-light">{fmtDelta(d.result.bestLapMs - a.theoreticalMs)} left on the table</div>}
           </div>
         )}
         {d.quali && (
           <div>
-            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-eyebrow">Qualifying</div>
+            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">Qualifying</div>
             <div className="font-display text-3xl font-black tabular-nums text-dark">{ordinal(d.quali.position)}</div>
             <div className="text-xs text-light">
               {fmtLap(d.quali.bestLapMs)}

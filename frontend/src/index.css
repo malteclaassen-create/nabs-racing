@@ -11,7 +11,11 @@
   --c-text: #0f172a;
   --c-text2: #334155;
   --c-text3: #586676;
-  --c-faint: #aab6c6;
+  /* The faintest text tone. Was #aab6c6, which sat at 2.06:1 on a white card —
+     under the 4.5 readability bar, and used in ~100 places (season labels, the
+     "no value" dashes, footer lines). Darkened until it carries, while staying
+     lighter than --c-text3 so the three-step hierarchy still reads. */
+  --c-faint: #68758a;
   /* Card elevation — tuned per theme so widgets lift off the background. */
   --c-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 10px 26px -14px rgba(15, 23, 42, 0.28);
   --c-shadow-lift: 0 2px 6px rgba(15, 23, 42, 0.08), 0 18px 40px -16px rgba(15, 23, 42, 0.34);
@@ -50,7 +54,8 @@
   --c-text: #e8eef7;
   --c-text2: #aebacd;
   --c-text3: #9aa8be;
-  --c-faint: #58657b;
+  /* Same story on dark: #58657b was 3.06:1 on a card. */
+  --c-faint: #78859a;
   --c-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 30px -16px rgba(0, 0, 0, 0.7);
   --c-shadow-lift: 0 2px 8px rgba(0, 0, 0, 0.5), 0 22px 48px -18px rgba(0, 0, 0, 0.8);
   --c-page-glow: radial-gradient(1200px 560px at 50% -10%, rgb(var(--c-brand) / 0.1), transparent 70%);
@@ -59,6 +64,31 @@
   --medal-3: #c2410c;
   --c-eyebrow: var(--c-eyebrow-dark-dynamic, #f4afc6);
   --c-accent: var(--c-accent-dark-dynamic, 244 175 198);
+}
+
+/* --- Motion scale ---------------------------------------------------------
+   The site had grown 33 different durations and 10 easing curves, several of
+   them accidental near-twins: `content-in` ran at both 0.22s and 0.3s,
+   `nabs-pop` at 0.14s, 0.22s and 0.25s, and two curves differed by 0.1 in a
+   single control point. Individually invisible; together the motion read as
+   many separate decisions rather than one system.
+
+   Five steps, because the choreographed bits (the podium building itself up,
+   a bar filling) need to stagger against each other and would flatten into a
+   single beat with fewer. Endless ambient loops are deliberately NOT on this
+   scale — their odd periods are what keep them from syncing up. */
+:root {
+  --t-quick: 140ms; /* state flips, small pops */
+  --t-base: 220ms; /* the default in and out */
+  --t-slow: 450ms; /* page and section entrances */
+  --t-tell: 700ms; /* moments meant to be watched */
+  --t-draw: 1100ms; /* something drawing itself in */
+
+  --e-out: cubic-bezier(0.22, 0.61, 0.24, 1); /* fast start, long settle */
+  --e-draw: cubic-bezier(0.33, 0.1, 0.25, 1); /* eases IN, for growing shapes */
+  --e-soft: cubic-bezier(0.4, 0.1, 0.2, 1);
+  --e-pop: cubic-bezier(0.34, 1.4, 0.5, 1); /* slight overshoot */
+  --e-in: cubic-bezier(0.5, 0, 0.75, 0); /* exits, accelerating away */
 }
 
 /* The native scrollbar is hidden site-wide: the rainbow accent line under the
@@ -258,7 +288,7 @@ body::before {
   stroke-dashoffset: 1;
   animation-name: circuit-draw;
   animation-duration: 2.6s;
-  animation-timing-function: cubic-bezier(0.4, 0.1, 0.3, 1);
+  animation-timing-function: var(--e-soft);
   animation-fill-mode: forwards;
   animation-iteration-count: 1;
 }
@@ -303,7 +333,7 @@ body::before {
   transform: translateY(14px);
 }
 .reveal.is-visible {
-  animation: nabs-rise 0.55s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+  animation: nabs-rise var(--t-slow) var(--e-out) both;
   /* --reveal-delay is handed out per element by useScrollReveal, sorted by
      vertical position, so a page builds itself top-to-bottom on load. */
   animation-delay: var(--reveal-delay, 0s);
@@ -321,7 +351,9 @@ body::before {
   stroke-dashoffset: 1;
 }
 .reveal-chart.is-visible .chart-line {
-  animation: nabs-line-draw 1.5s cubic-bezier(0.33, 0.1, 0.25, 1) forwards;
+  /* Deliberately off the scale: the points line drawing itself across the
+     chart is the slowest thing on the site, and that is the point. */
+  animation: nabs-line-draw 1.5s var(--e-draw) forwards;
   animation-delay: var(--reveal-delay, 0s);
 }
 
@@ -346,12 +378,12 @@ body::before {
    snappier ones can share the same utility. Elements with the same duration
    and delay stay perfectly in sync (plot + result chips). */
 .reveal.is-visible .wipe-ltr {
-  animation: wipe-in-ltr cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  animation: wipe-in-ltr var(--e-draw) both;
   animation-duration: var(--wipe-dur, 1.2s);
   animation-delay: var(--reveal-delay, 0s);
 }
 .reveal.is-visible .wipe-rtl {
-  animation: wipe-in-rtl cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  animation: wipe-in-rtl var(--e-draw) both;
   animation-duration: var(--wipe-dur, 1.2s);
   animation-delay: var(--reveal-delay, 0s);
 }
@@ -361,7 +393,7 @@ body::before {
    replacement animates in. */
 @keyframes nabs-fade-out { to { opacity: 0; } }
 .fade-out {
-  animation: nabs-fade-out 0.18s ease both;
+  animation: nabs-fade-out var(--t-quick) ease both;
 }
 
 /* Fade/scale-in for tooltips and popovers. */
@@ -370,7 +402,7 @@ body::before {
   to   { opacity: 1; transform: none; }
 }
 .pop-in {
-  animation: nabs-pop 0.14s ease-out both;
+  animation: nabs-pop var(--t-quick) ease-out both;
 }
 
 /* Soft pulse used for "next race" / live accents. */
@@ -388,7 +420,7 @@ body::before {
   opacity: 0;
 }
 .cascade.is-visible > * {
-  animation: nabs-rise 0.5s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+  animation: nabs-rise var(--t-slow) var(--e-out) both;
   /* children inherit --reveal-delay from the container, then fan out on --i */
   animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 45ms);
 }
@@ -410,7 +442,7 @@ body::before {
 }
 .reveal.is-visible .bar-fill,
 .cascade.is-visible .bar-fill {
-  animation: grow-x 1.1s cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  animation: grow-x var(--t-draw) var(--e-draw) both;
   animation-delay: var(--reveal-delay, 0s);
 }
 
@@ -429,7 +461,7 @@ body::before {
 }
 .reveal.is-visible .bar-rise,
 .cascade.is-visible .bar-rise {
-  animation: grow-y 0.85s cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  animation: grow-y var(--t-tell) var(--e-draw) both;
   animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms);
 }
 
@@ -446,7 +478,7 @@ body::before {
   inset: 0;
   background: linear-gradient(115deg, transparent 32%, rgba(255, 255, 255, 0.38) 50%, transparent 68%);
   transform: translateX(-130%);
-  transition: transform 0.75s cubic-bezier(0.4, 0.1, 0.2, 1);
+  transition: transform 0.75s var(--e-soft);
   pointer-events: none;
 }
 .dark .shine::after {
@@ -474,13 +506,14 @@ body::before {
   to   { opacity: 1; transform: none; }
 }
 .hero-anim {
-  animation: hero-rise 0.7s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+  animation: hero-rise var(--t-tell) var(--e-out) both;
 }
 @keyframes hero-zoom {
   from { transform: scale(1.12); }
   to   { transform: scale(1); }
 }
 .hero-zoom {
+  /* Also off the scale: a barely-there ambient push-in behind the hero. */
   animation: hero-zoom 7s ease-out both;
 }
 
@@ -495,14 +528,14 @@ body::before {
   to   { transform: scaleX(1); }
 }
 .podium-floor {
-  animation: podium-floor-draw 0.5s cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  animation: podium-floor-draw var(--t-slow) var(--e-draw) both;
 }
 @keyframes podium-ped-grow {
   from { clip-path: inset(100% 0 0 0); }
   to   { clip-path: inset(0 0 0 0); }
 }
 .podium-ped {
-  animation: podium-ped-grow 0.55s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+  animation: podium-ped-grow var(--t-slow) var(--e-out) both;
   animation-delay: var(--pd, 0s);
 }
 @keyframes podium-driver-in {
@@ -512,7 +545,7 @@ body::before {
   100% { opacity: 1; transform: none; }
 }
 .podium-driver {
-  animation: podium-driver-in 0.65s cubic-bezier(0.3, 0.6, 0.35, 1) both;
+  animation: podium-driver-in var(--t-tell) var(--e-out) both;
   animation-delay: calc(var(--pd, 0s) + 0.16s);
 }
 @keyframes champ-pop {
@@ -521,7 +554,7 @@ body::before {
   100% { opacity: 1; transform: none; }
 }
 .champ-chip {
-  animation: champ-pop 0.5s cubic-bezier(0.34, 1.4, 0.5, 1) both;
+  animation: champ-pop var(--t-slow) var(--e-pop) both;
   animation-delay: var(--pd, 0s);
 }
 
@@ -534,7 +567,7 @@ body::before {
   100% { opacity: 1; }
 }
 .defer-in {
-  animation: defer-in 0.5s ease both;
+  animation: defer-in var(--t-slow) ease both;
 }
 
 /* Animated brand gradient used for accent rails / glints. */
@@ -575,14 +608,14 @@ body::before {
   to   { opacity: 1; transform: none; }
 }
 .page-in {
-  animation: page-in 0.4s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+  animation: page-in var(--t-slow) var(--e-out) both;
 }
 
 /* Content that replaces a loading skeleton fades in, so data arriving doesn't
    pop. Opacity only (no transform) so it never fights the reveal/cascade
    entrances inside it. */
 @keyframes content-in { from { opacity: 0; } to { opacity: 1; } }
-.content-in { animation: content-in 0.3s ease both; }
+.content-in { animation: content-in var(--t-base) ease both; }
 
 /* --- Guided tour spotlight ------------------------------------------ */
 /* The cut-out over the highlighted control: a huge spreading shadow dims the
@@ -602,11 +635,11 @@ body::before {
   0%, 100% { box-shadow: 0 0 0 3px rgb(66 81 168 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55); }
   50%      { box-shadow: 0 0 0 8px rgb(66 81 168 / 0.35), 0 0 0 9999px rgb(2 6 23 / 0.55); }
 }
-.tour-card { animation: nabs-pop 0.22s cubic-bezier(0.22, 0.61, 0.24, 1) both; }
+.tour-card { animation: nabs-pop var(--t-base) var(--e-out) both; }
 
 /* A control that appears because of another control (the By-season/By-race
    switch popping up in all-time mode) eases in instead of snapping. */
-.tabs-pop { animation: nabs-pop 0.25s cubic-bezier(0.22, 0.61, 0.24, 1) both; }
+.tabs-pop { animation: nabs-pop var(--t-base) var(--e-out) both; }
 .fx-lite .tabs-pop { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .tour-spot { animation: none; }
@@ -626,7 +659,7 @@ body::before {
 .roll-col {
   display: flex;
   flex-direction: column;
-  transition: transform 0.55s cubic-bezier(0.22, 0.61, 0.24, 1);
+  transition: transform 0.55s var(--e-out);
   will-change: transform;
 }
 .roll-cell {
@@ -658,7 +691,7 @@ body::before {
   height: 2px;
   border-radius: 2px;
   background: linear-gradient(90deg, rgb(var(--c-brand)), #4251a8);
-  transition: width 0.28s cubic-bezier(0.4, 0.1, 0.2, 1);
+  transition: width 0.28s var(--e-soft);
 }
 .nav-link:hover::after {
   width: calc(100% - 24px);
@@ -690,16 +723,16 @@ body::before {
   to   { opacity: 0; }
 }
 .nav-drop {
-  animation: nav-drop 0.24s cubic-bezier(0.22, 0.61, 0.24, 1) both;
+  animation: nav-drop var(--t-base) var(--e-out) both;
 }
 .nav-scrim {
-  animation: content-in 0.22s ease both;
+  animation: content-in var(--t-base) ease both;
 }
 .nav-drop.is-closing {
-  animation: nav-drop-out 0.2s cubic-bezier(0.5, 0, 0.75, 0) both;
+  animation: nav-drop-out var(--t-base) var(--e-in) both;
 }
 .nav-scrim.is-closing {
-  animation: nav-fade-out 0.2s ease both;
+  animation: nav-fade-out var(--t-base) ease both;
 }
 
 /* --- Animated collapse (session header on phones) ------------------------ */
@@ -721,7 +754,7 @@ body::before {
    its content was 149px). A definite height sizes the row instead. */
 .collapse-row {
   overflow: hidden;
-  transition: height 0.3s cubic-bezier(0.22, 0.61, 0.24, 1);
+  transition: height 0.3s var(--e-out);
 }
 @media (min-width: 640px) {
   .collapse-row,
@@ -783,7 +816,7 @@ body::before {
 .nav-season-dock {
   opacity: 1;
   transform: none;
-  animation: nav-season-in 0.26s ease;
+  animation: nav-season-in var(--t-base) ease;
   transition: opacity 0.26s ease, transform 0.26s ease;
 }
 .nav-season-dock.is-hidden { opacity: 0; transform: translateY(-6px) scale(0.96); }
@@ -796,7 +829,7 @@ body::before {
 }
 .notif-pop {
   transform-origin: top right;
-  animation: notif-pop-in 0.16s ease-out;
+  animation: notif-pop-in var(--t-quick) ease-out;
 }
 
 /* Live projection reorder (Live page, Standings view): while a row FLIP-glides
@@ -811,8 +844,8 @@ body::before {
   from { background-color: color-mix(in srgb, #ef4444 16%, transparent); }
   to   { background-color: transparent; }
 }
-.proj-flash-up, .cascade > .proj-flash-up { animation: proj-flash-up 1.1s ease-out; }
-.proj-flash-down, .cascade > .proj-flash-down { animation: proj-flash-down 1.1s ease-out; }
+.proj-flash-up, .cascade > .proj-flash-up { animation: proj-flash-up var(--t-draw) ease-out; }
+.proj-flash-down, .cascade > .proj-flash-down { animation: proj-flash-down var(--t-draw) ease-out; }
 .fx-lite .proj-flash-up, .fx-lite .proj-flash-down { animation: none !important; }
 
 /* Global search results dropdown: a quick fade + small drop. Lite mode and
@@ -823,7 +856,7 @@ body::before {
 }
 .search-pop {
   transform-origin: top;
-  animation: search-pop-in 0.14s ease-out;
+  animation: search-pop-in var(--t-quick) ease-out;
 }
 
 /* Count-up numbers shouldn't reflow as digits change width. */
@@ -1283,11 +1316,11 @@ body::before {
   45% { transform: scale(1.04); box-shadow: 0 0 0 7px rgba(var(--c-brand), 0.28); }
   100% { transform: scale(1); box-shadow: 0 0 0 12px rgba(var(--c-brand), 0); }
 }
-.card-revealing { animation: card-reveal-pop 0.7s ease-out; }
+.card-revealing { animation: card-reveal-pop var(--t-tell) ease-out; }
 .card-reveal-lock {
   position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
   color: #fff; background: rgba(6, 9, 14, 0.55); border-radius: inherit; pointer-events: none;
-  animation: card-reveal-lock-out 0.9s cubic-bezier(0.4, 0.1, 0.2, 1) forwards;
+  animation: card-reveal-lock-out var(--t-tell) var(--e-soft) forwards;
 }
 @keyframes card-reveal-lock-out {
   0% { opacity: 1; transform: scale(1) translateY(0) rotate(0); }

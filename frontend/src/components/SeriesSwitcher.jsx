@@ -80,7 +80,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
               {current?.isPublic === false && <LockIcon className="h-3 w-3 shrink-0 text-amber-600" />}
               <span className="truncate">{label}</span>
             </span>
-            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-eyebrow">Series</span>
+            <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Series</span>
           </>
         ) : (
           <>
@@ -130,7 +130,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
                   <span className="flex items-center gap-1.5">
                     <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{s.name}</span>
                     {s.isPublic === false && (
-                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-amber-600">
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-amber-600">
                         <LockIcon className="h-2.5 w-2.5" />
                         Private
                       </span>

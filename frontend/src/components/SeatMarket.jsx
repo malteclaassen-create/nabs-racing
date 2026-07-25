@@ -49,7 +49,7 @@ export default function SeatMarket({ race, me, reload }) {
   return (
     <div className="border-t border-border bg-surface2/40 px-5 py-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-medium">
+        <h3 className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
           Driver Market
         </h3>
         {canOfferHere && race && (

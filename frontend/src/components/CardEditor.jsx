@@ -249,7 +249,7 @@ export function CardEditionPicker({ seasons, activeDriverId, onPickSeason, editi
               key={s.driverId}
               type="button"
               onClick={() => onPickSeason(s.driverId)}
-              className={`rounded-lg px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wide transition ${
+              className={`rounded-lg px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
                 s.driverId === activeDriverId ? "bg-brand text-ink" : "bg-surface2 text-light hover:text-dark"
               }`}
             >

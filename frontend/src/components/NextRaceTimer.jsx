@@ -105,7 +105,7 @@ export default function NextRaceTimer({ className = "", compact = false }) {
         <span className="flex items-center gap-2">
           <span className="live-dot inline-block h-2 w-2 shrink-0 rounded-full bg-brand" />
           <span className="flex flex-col leading-none">
-            <span className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-eyebrow">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">
               Next Race
             </span>
             <span className="mt-1 flex items-center gap-1.5">
@@ -121,11 +121,11 @@ export default function NextRaceTimer({ className = "", compact = false }) {
 
         {/* countdown */}
         {live ? (
-          <span className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-eyebrow">
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
             Lights out
           </span>
         ) : !target ? (
-          <span className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-light">
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">
             Time TBA
           </span>
         ) : (

@@ -302,7 +302,7 @@ function TourOverlay({ step, index, total, onNext, onSkipAhead, onEnd }) {
         className="tour-card pointer-events-auto fixed w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-border bg-card p-4 shadow-2xl shadow-ink/40"
       >
         <div className="mb-1.5 flex items-center justify-between">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-eyebrow">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">
             Step {index + 1} of {total}
           </span>
           <button

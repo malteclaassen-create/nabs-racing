@@ -40,7 +40,7 @@ export default function Podium({ entries = [] }) {
           >
             {champ && (
               <span
-                className="champ-chip mb-2.5 flex items-center gap-1.5 rounded-full px-3.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-ink shadow-md shadow-black/30"
+                className="champ-chip mb-2.5 flex items-center gap-1.5 rounded-full px-3.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-ink shadow-md shadow-black/30"
                 style={{
                   background: `linear-gradient(180deg, color-mix(in srgb, ${color} 45%, #fff), ${color} 60%, color-mix(in srgb, ${color} 72%, #5c430a))`,
                   "--pd": "1.05s",

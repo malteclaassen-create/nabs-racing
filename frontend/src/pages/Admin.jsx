@@ -405,7 +405,7 @@ function MarketAdmin() {
         )}
         {(history.data?.races || []).map((race) => (
           <div key={race.id} className="mt-4 first:mt-3">
-            <div className="mb-1.5 flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-medium">
+            <div className="mb-1.5 flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
               R{race.number} · {race.track}
               {race.isCompleted && <span className="pill bg-surface2 text-[10px] text-light">done</span>}
             </div>

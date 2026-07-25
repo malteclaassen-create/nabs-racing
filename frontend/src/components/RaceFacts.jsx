@@ -246,7 +246,7 @@ export default function RaceFacts({ race, results, quali = null }) {
   return (
     <div className="card mt-6 overflow-hidden">
       <div className="border-b border-border bg-surface2/50 px-5 py-3">
-        <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Race Facts</h3>
+        <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Race Facts</h3>
       </div>
       {hasDotd && <DriverOfTheDay row={dotdRow} name={dotd.name || dotdRow?.name || "—"} pickedBy={dotd.pickedBy} />}
       {facts.length > 0 && (

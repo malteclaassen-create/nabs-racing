@@ -3,7 +3,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton } from "../components/ui.jsx";
+import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent } from "../components/ui.jsx";
+import { useTheme } from "../hooks/useTheme.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import RaceResults from "../components/RaceResults.jsx";
 import RaceFacts from "../components/RaceFacts.jsx";
@@ -210,6 +211,10 @@ const BRAND = "rgb(var(--c-brand))";
 const SKY = "#0ea5e9"; // training sessions
 
 function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
+  // The winning team is named in its own colour. Raw, that fails the contrast
+  // bar for most of the grid on one theme or the other, so it is nudged just
+  // far enough to carry (see readableAccent) and left alone when it already does.
+  const { theme } = useTheme();
   const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
   const se = kind === "SPECIAL";
   const training = kind === "TRAINING";
@@ -281,7 +286,7 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
                 title={`Winner: ${r.winner.name}${r.winner.team ? ` · ${r.winner.team.name}` : ""}`}
               >
                 <div className="min-w-0 text-right">
-                  <div className="font-mono text-[9px] font-bold uppercase tracking-widest text-light">Winner</div>
+                  <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-light">Winner</div>
                   <div className="truncate font-display text-base font-extrabold uppercase leading-tight tracking-tight text-dark">
                     {r.winner.name}
                   </div>
@@ -306,8 +311,12 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
             {isNext && !done && <Countdown date={e.date} />}
             {done && r.winner?.team && (
               <div
-                className="min-w-0 max-w-[48%] truncate text-right font-mono text-xs font-bold uppercase tracking-wider"
-                style={{ color: r.winner.team.color || "var(--c-light)" }}
+                className="min-w-0 max-w-[48%] truncate text-right font-mono text-[11px] font-bold uppercase tracking-wider"
+                style={{
+                  color: r.winner.team.color
+                    ? readableAccent(r.winner.team.color, { dark: theme === "dark" })
+                    : "var(--c-light)",
+                }}
               >
                 {r.winner.team.name}
               </div>
@@ -547,7 +556,7 @@ export default function Races() {
               {/* The label row shares the exact height of the round header on
                   the right (h-8 title line + mb-4), so the first round button
                   and the results table start flush on one line. */}
-              <h3 className="mb-4 hidden h-8 items-center font-mono text-xs font-bold uppercase tracking-widest text-light lg:flex">
+              <h3 className="mb-4 hidden h-8 items-center font-mono text-[11px] font-bold uppercase tracking-widest text-light lg:flex">
                 {railLabel}
               </h3>
               <RoundRail races={shown} selectedId={selectedId} onSelect={selectRace} />

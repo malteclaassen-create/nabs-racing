@@ -18,7 +18,7 @@ export default function NotFound() {
         <path d="M5 21V4M5 4c3-1.5 6 1.5 9 0s4-1 4-1v9s-1 .5-4 1-6-1.5-9 0" />
       </svg>
 
-      <div className="font-mono text-[12px] font-bold uppercase tracking-[0.25em] text-eyebrow">
+      <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
         Off track
       </div>
       <div className="mt-3 font-display text-7xl font-black leading-none tracking-tight text-dark sm:text-8xl">

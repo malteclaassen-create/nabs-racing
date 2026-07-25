@@ -31,14 +31,14 @@ function MyTrackHistory({ track, me }) {
   if (!me || !me.editions?.length) {
     return (
       <div className="card p-5">
-        <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Your history here</h3>
+        <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Your history here</h3>
         <p className="mt-2 text-sm text-light">You have not raced at {track} yet. Time to make some history.</p>
       </div>
     );
   }
   return (
     <div className="card p-5">
-      <h3 className="mb-3 font-mono text-xs font-bold uppercase tracking-widest text-light">Your history at {track}</h3>
+      <h3 className="mb-3 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Your history at {track}</h3>
       <div className="mb-3 grid grid-cols-3 gap-2 text-center">
         <div>
           <div className="font-display text-2xl font-black tabular-nums text-dark">{me.starts}</div>
@@ -241,7 +241,7 @@ export default function Attendance() {
                   </span>
                 </div>
                 <h2 className="mt-1 font-display text-3xl font-black uppercase tracking-tight text-dark sm:text-4xl">{ev.track}</h2>
-                <div className="mt-1 font-mono text-sm font-bold uppercase tracking-wide text-medium">
+                <div className="mt-1 font-mono text-[13px] font-bold uppercase tracking-wider text-medium">
                   {ev.date ? (
                     <>
                       {fmtDate(ev.date)} <span className="text-light">· {fmtRaceTime(ev.date)}</span>
@@ -251,7 +251,7 @@ export default function Attendance() {
                   )}
                 </div>
                 {(ev.qualiMinutes || ev.raceLaps) && (
-                  <div className="mt-1.5 font-mono text-xs font-bold uppercase tracking-wide text-light">
+                  <div className="mt-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
                     {[
                       ev.qualiMinutes && `Qualifying ${ev.qualiMinutes} min`,
                       ev.raceLaps && `Race ${ev.raceLaps} laps`,

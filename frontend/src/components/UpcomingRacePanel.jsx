@@ -57,7 +57,7 @@ function RecordRow({ icon, label, name, driverId, value }) {
 function CardHeader({ title, children }) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-border bg-surface2/50 px-5 py-3">
-      <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">{title}</h3>
+      <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">{title}</h3>
       {children}
     </div>
   );
@@ -105,7 +105,7 @@ export default function UpcomingRacePanel({ race }) {
             <h2 className="mt-1 font-display text-3xl font-black uppercase tracking-tight text-dark sm:text-4xl">
               {race.track}
             </h2>
-            <div className="mt-1 font-mono text-sm font-bold uppercase tracking-wide text-medium">
+            <div className="mt-1 font-mono text-[13px] font-bold uppercase tracking-wider text-medium">
               {race.date ? (
                 <>
                   {fmtDate(race.date)} <span className="text-light">· {fmtRaceTime(race.date)}</span>
@@ -115,7 +115,7 @@ export default function UpcomingRacePanel({ race }) {
               )}
             </div>
             {(race.qualiMinutes || race.raceLaps) && (
-              <div className="mt-1.5 font-mono text-xs font-bold uppercase tracking-wide text-light">
+              <div className="mt-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
                 {[
                   race.qualiMinutes && `Qualifying ${race.qualiMinutes} min`,
                   race.raceLaps && `Race ${race.raceLaps} laps`,

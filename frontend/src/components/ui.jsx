@@ -94,6 +94,52 @@ export function TierBadge({ tier }) {
   return <span className="pill bg-surface2 text-light" title="Reserve: scores only for the team it subs for">RES</span>;
 }
 
+// --- colour helpers --------------------------------------------------------
+function parseHex(hex) {
+  let c = String(hex || "").replace("#", "").trim();
+  if (c.length === 3) c = c.split("").map((x) => x + x).join("");
+  if (!/^[0-9a-f]{6}$/i.test(c)) return null;
+  return [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16));
+}
+const toHex = (rgb) => "#" + rgb.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+function relLuminance([r, g, b]) {
+  const ch = (v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
+}
+const contrast = (a, b) => {
+  const [x, y] = [relLuminance(a), relLuminance(b)];
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+};
+
+// A team colour used as TEXT, nudged until it is actually readable on the
+// current theme. Every one of the league's 18 team colours failed the 4.5:1
+// bar on at least one of the two themes when used raw: McLaren's orange sits
+// at 2.6 on white, Toro Rosso's navy near 1.2 on the dark card.
+//
+// It blends toward the theme's own text colour only as far as each colour
+// needs, rather than a fixed mix: Ferrari red barely moves, a pale orange moves
+// a lot, and the team stays recognisable in a way a flat 50% mix would not.
+// Returns the colour unchanged when it already carries.
+export function readableAccent(hex, { dark = false, target = 4.5 } = {}) {
+  const rgb = parseHex(hex);
+  if (!rgb) return hex;
+  // The theme's own --c-card / --c-text from index.css. Kept in step with them:
+  // guessing the dark card a few points too dark left Ferrari at 4.38 instead
+  // of clearing the bar.
+  const ground = dark ? [19, 28, 46] : [255, 255, 255]; // --c-card
+  const ink = dark ? [232, 238, 247] : [15, 23, 42]; // --c-text
+  if (contrast(rgb, ground) >= target) return hex;
+  for (let step = 1; step <= 20; step++) {
+    const p = 1 - step / 20;
+    const mixed = rgb.map((v, i) => v * p + ink[i] * (1 - p));
+    if (contrast(mixed, ground) >= target) return toHex(mixed);
+  }
+  return toHex(ink);
+}
+
 // Ink colour that stays readable on an arbitrary team colour. Some teams race
 // in white, pale yellow or the brand pink, and always-white initials vanished
 // on those (white on white at worst). Relative luminance per WCAG; the 0.179
@@ -194,7 +240,7 @@ export function Spinner({ label = "Loading…" }) {
   return (
     <div className="flex items-center justify-center gap-3 py-16 text-light">
       <span className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-brand" />
-      <span className="font-mono text-sm uppercase tracking-wider">{label}</span>
+      <span className="font-mono text-[13px] uppercase tracking-wider">{label}</span>
     </div>
   );
 }
@@ -363,7 +409,7 @@ export function PageHeader({ index, eyebrow, title, subtitle, right, rightInline
           )}
           <div>
             {eyebrow && (
-              <div className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-eyebrow sm:text-[13px] sm:tracking-[0.2em]">
+              <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow sm:text-[13px] sm:tracking-[0.2em]">
                 {eyebrow}
               </div>
             )}
@@ -387,7 +433,7 @@ export function SectionHeading({ eyebrow, title, right }) {
     <div className="mb-4 flex items-end justify-between gap-4">
       <div>
         {eyebrow && (
-          <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
             {eyebrow}
           </div>
         )}

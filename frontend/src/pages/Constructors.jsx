@@ -39,7 +39,7 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
         title={title || `Tier ${tier}`}
         right={
           lastRound != null && (
-            <span className="hidden shrink-0 font-mono text-xs font-bold uppercase tracking-wider text-light sm:block">
+            <span className="hidden shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-light sm:block">
               After R{lastRound} of {standings.raceNumbers.length}
             </span>
           )
@@ -49,7 +49,7 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
       <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} dropMode={standings.dropMode} teamDropWorst={standings.teamDropWorst} decided={decided} />
 
       <div className="space-y-3 pt-2">
-        <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">Line-ups</h3>
+        <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Line-ups</h3>
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {orderedTeams.map((team, i) => (
             <TeamCard key={team.id} team={team} index={i} champion={team.id === championTeamId} />
@@ -108,7 +108,7 @@ function TeamCard({ team, index = 0, champion = false }) {
 function TierJump({ className = "" }) {
   // Slightly tighter below sm so both pills fit beside the page title.
   const cls =
-    "rounded-lg border border-border bg-card px-2 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark sm:px-3 sm:text-xs";
+    "rounded-lg border border-border bg-card px-2 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark sm:px-3 sm:text-[11px]";
   return (
     <div className={`gap-1.5 sm:gap-2 ${className}`}>
       <a href="#tier-1" className={cls}>

@@ -117,7 +117,7 @@ function RoundBars({ raceNumbers, perRace, droppedPerRace, raceByNumber, color }
               ) : (
                 <span className="h-3 w-4" />
               )}
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-light">R{n}</span>
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-light">R{n}</span>
             </div>
           );
         })}
@@ -201,7 +201,7 @@ export default function TeamProfile() {
               <TierBadge tier={team.tier} />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-white/70">
-              <span className="font-mono text-xs font-semibold uppercase tracking-wider">
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider">
                 {TIER_LABEL[team.tier] ?? "—"} Constructor
               </span>
               <span className="text-white/30">·</span>

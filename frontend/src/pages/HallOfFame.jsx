@@ -19,7 +19,7 @@ function SectionHead({ eyebrow, title, right }) {
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-eyebrow sm:text-[11px] sm:tracking-[0.25em]">{eyebrow}</div>
+        <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow sm:text-[11px] sm:tracking-[0.2em]">{eyebrow}</div>
         <h2 className="mt-1 font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-3xl">{title}</h2>
       </div>
       {right}
@@ -51,7 +51,7 @@ function DriverChampions({ champions }) {
             className="text-3xl ring-2 ring-[color:var(--medal-1)]"
           />
           <div className="min-w-0 flex-1">
-            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] sm:text-[11px] sm:tracking-[0.25em]" style={{ color: MEDAL_TEXT[0] }}>
+            <div className="font-mono text-[10px] font-bold uppercase tracking-widest sm:text-[11px] sm:tracking-[0.2em]" style={{ color: MEDAL_TEXT[0] }}>
               Reigning champion · {latest.seasonName || `Season ${latest.seasonNumber}`}
             </div>
             <div className="mt-1.5 flex items-center gap-2 sm:gap-3">
@@ -130,7 +130,7 @@ function TeamChampions({ champions }) {
           className="pointer-events-none absolute inset-0 opacity-[0.1]"
           style={{ background: `radial-gradient(110% 150% at 90% 0%, ${MEDAL[0]}, transparent 55%)` }}
         />
-        <div className="relative font-mono text-[10px] font-bold uppercase tracking-[0.14em] sm:text-[11px] sm:tracking-[0.25em]" style={{ color: MEDAL_TEXT[0] }}>
+        <div className="relative font-mono text-[10px] font-bold uppercase tracking-widest sm:text-[11px] sm:tracking-[0.2em]" style={{ color: MEDAL_TEXT[0] }}>
           Reigning team champions · {latest.seasonName || `Season ${latest.seasonNumber}`}
         </div>
         <div className="relative mt-4 grid gap-4 sm:grid-cols-2">
@@ -154,7 +154,7 @@ function TeamChampions({ champions }) {
                   <span className="font-display text-3xl font-black leading-none tabular-nums" style={{ color: MEDAL_TEXT[0] }}>
                     <CountUp end={t.points} />
                   </span>
-                  <span className="block font-mono text-[9px] font-bold uppercase tracking-wider text-light">pts</span>
+                  <span className="block font-mono text-[10px] font-bold uppercase tracking-wider text-light">pts</span>
                 </span>
               )}
             </Link>
@@ -174,12 +174,12 @@ function TeamChampions({ champions }) {
                   <span className="block truncate font-display text-lg font-extrabold uppercase tracking-tight text-dark transition group-hover:text-brand">
                     {t.name}
                   </span>
-                  <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-light">Tier {t.tier}</span>
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Tier {t.tier}</span>
                 </span>
                 {t.points != null && (
                   <span className="shrink-0 font-display text-xl font-black tabular-nums text-dark">
                     <CountUp end={t.points} />
-                    <span className="ml-1 font-mono text-[9px] font-bold uppercase tracking-wider text-light">pts</span>
+                    <span className="ml-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light">pts</span>
                   </span>
                 )}
               </Link>
@@ -256,7 +256,7 @@ function TopListPanel({ lists }) {
         />
         <DriverAvatar name={leader.name} photoUrl={leader.photoUrl} color={leader.team?.color || "#64748b"} size={76} className="text-2xl" />
         <span className="relative min-w-0 flex-1">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] sm:text-[11px] sm:tracking-[0.25em]" style={{ color: MEDAL_TEXT[0] }}>
+          <span className="font-mono text-[10px] font-bold uppercase tracking-widest sm:text-[11px] sm:tracking-[0.2em]" style={{ color: MEDAL_TEXT[0] }}>
             {list.label}
           </span>
           <span className="mt-1 flex items-center gap-3">

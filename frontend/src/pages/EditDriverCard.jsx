@@ -301,7 +301,7 @@ function CardEditor({ me }) {
               <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${cardAnim === "off" ? "left-0.5" : "left-[22px]"}`} />
             </button>
           </div>
-          <p className="text-right font-mono text-[10px] uppercase tracking-wide text-light">
+          <p className="text-right font-mono text-[10px] uppercase tracking-wider text-light">
             {posState === "saving" ? "Saving framing…" : posState === "saved" ? "Framing saved" : " "}
           </p>
           </>

@@ -128,7 +128,7 @@ function SessionHeader({ session, receivedAt }) {
       <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-amber-500 to-sky-600" />
       <div className="grid grid-cols-1 gap-4 px-4 py-3.5 sm:grid-cols-2 sm:gap-5 sm:p-6 lg:grid-cols-6">
         <div className="sm:col-span-2">
-          <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow sm:text-xs">
+          <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow sm:text-[11px]">
             <span>{session.type}</span>
             {session.sessionCount > 1 && (
               <span className="text-faint">
@@ -236,7 +236,7 @@ function CurrentLap({ lastLapAt, inPits }) {
     const t = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(t);
   }, []);
-  if (inPits) return <span className="font-mono text-xs font-bold uppercase text-amber-600">In pit</span>;
+  if (inPits) return <span className="font-mono text-[11px] font-bold uppercase text-amber-600">In pit</span>;
   if (!lastLapAt) return <span className="font-mono tabular-nums text-light">—</span>;
   const ms = now - lastLapAt;
   if (ms < 0 || ms > 15 * 60 * 1000) return <span className="font-mono tabular-nums text-light">—</span>;
@@ -620,7 +620,7 @@ function ChampionshipProjection({ data }) {
           <span className="flex items-center gap-2">
             {standalone && <span className="pill bg-sky-500/15 text-sky-600">Not scored</span>}
             {data.simulated && <span className="pill bg-amber-500/15 text-amber-600">Demo</span>}
-            <span className="inline-flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-eyebrow">
+            <span className="inline-flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">
               <span className="relative flex h-2.5 w-2.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand" />
@@ -634,7 +634,7 @@ function ChampionshipProjection({ data }) {
         <div className="scrollbar-slim overflow-x-auto">
           <table className={`w-full ${standalone ? "min-w-[520px]" : "min-w-[620px]"}`}>
             <thead>
-              <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">
+              <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
                 <th className="w-14 py-3 pl-3.5 text-center sm:pl-5">Pos</th>
                 {!standalone && <th className="w-16 py-3 text-center"></th>}
                 <th className="py-3 pl-1">Driver</th>
@@ -913,7 +913,7 @@ function TrackMapSection({ session, entries, match, className = "" }) {
           </>
         ) : (
           <div className="py-12 text-center text-light">
-            <p className="font-mono text-sm uppercase tracking-wider">No map for this circuit yet</p>
+            <p className="font-mono text-[13px] uppercase tracking-wider">No map for this circuit yet</p>
             <p className="mt-1 text-sm">{session.trackName || session.track || "Unknown track"}</p>
           </div>
         )}
@@ -955,7 +955,7 @@ function DrivingNowSection({ onTrack, match, flip = false, className = "" }) {
           <div className="scrollbar-slim max-h-[430px] overflow-auto lg:absolute lg:inset-0 lg:max-h-none">
             <table className="w-full min-w-[520px]">
             <thead>
-              <tr className="text-left font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">
+              <tr className="text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
                 {ONTRACK_COLS.map((c, i) => (
                   // sticky per-cell (sticky thead still doesn't scroll along in
                   // every browser); shadow stands in for the border, which
@@ -980,7 +980,7 @@ function DrivingNowSection({ onTrack, match, flip = false, className = "" }) {
         </div>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-1 px-4 py-12 text-center">
-          <p className="font-mono text-sm uppercase tracking-wider text-light">No cars out on track</p>
+          <p className="font-mono text-[13px] uppercase tracking-wider text-light">No cars out on track</p>
           <p className="text-sm text-light">Drivers show up here the moment they leave the pit lane.</p>
         </div>
       )}
@@ -1038,7 +1038,7 @@ function PitLaneSection({ entries, match, className = "" }) {
         </div>
       ) : (
         <div className="flex flex-1 items-center justify-center px-4 py-8 text-center">
-          <p className="font-mono text-xs uppercase tracking-wider text-light">Pit lane is empty</p>
+          <p className="font-mono text-[11px] uppercase tracking-wider text-light">Pit lane is empty</p>
         </div>
       )}
     </section>
@@ -1170,7 +1170,7 @@ export default function Live() {
                   at md, where those extra columns actually appear. */}
               <table className="w-full md:min-w-[680px]">
                 <thead>
-                  <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">
+                  <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
                     {COLS.map((c, i) => (
                       <th key={i} className={c.cls}>
                         {c.label}
@@ -1238,7 +1238,7 @@ export default function Live() {
       {!session ? (
         <div className="card flex flex-col items-center justify-center gap-3 py-12 text-center sm:py-20">
           <span className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand" />
-          <p className="font-mono text-sm uppercase tracking-wider text-light">
+          <p className="font-mono text-[13px] uppercase tracking-wider text-light">
             {socketState === "open" ? "Waiting for the server…" : "Connecting to the server…"}
           </p>
         </div>
@@ -1283,7 +1283,7 @@ export default function Live() {
 
           {/* ===== Timing / Strategy / Standings switch ===== */}
           <div className="reveal flex items-center justify-between gap-4">
-            <span className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
               Session view
             </span>
             <ViewSwitch view={view} setView={setView} hasStandings={!!champ?.active} />
@@ -1304,7 +1304,7 @@ export default function Live() {
           )}
 
           {!connected && (
-            <p className="text-center font-mono text-xs uppercase tracking-wider text-amber-600">
+            <p className="text-center font-mono text-[11px] uppercase tracking-wider text-amber-600">
               Connection lost. Showing last known data, reconnecting…
             </p>
           )}

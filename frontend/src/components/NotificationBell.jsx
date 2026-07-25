@@ -230,7 +230,7 @@ export default function NotificationBell({ className = "" }) {
                             {n.title}
                           </span>
                           {n.body && <span className="mt-0.5 block text-xs leading-relaxed text-light">{n.body}</span>}
-                          <span className="mt-1 block font-mono text-[10px] uppercase tracking-wide text-light">
+                          <span className="mt-1 block font-mono text-[10px] uppercase tracking-wider text-light">
                             {timeAgo(n.createdAt)}
                           </span>
                         </span>

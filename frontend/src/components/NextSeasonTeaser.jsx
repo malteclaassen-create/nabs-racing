@@ -47,13 +47,13 @@ export default function NextSeasonTeaser() {
         style={{ WebkitMaskImage: "linear-gradient(to left,#000 30%,transparent)", maskImage: "linear-gradient(to left,#000 30%,transparent)" }} />
       <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <div className="flex items-center gap-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-eyebrow">
+          <div className="flex items-center gap-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
             <span className="live-dot inline-block h-2 w-2 rounded-full bg-brand" />
             Coming up
           </div>
           <h2 className="mt-1.5 font-display text-2xl font-black uppercase tracking-tight text-dark dark:text-white sm:text-3xl">
             {title}
-            {next.game && <span className="ml-3 align-middle font-mono text-xs font-bold uppercase tracking-wider text-light dark:text-white/50">{next.game}</span>}
+            {next.game && <span className="ml-3 align-middle font-mono text-[11px] font-bold uppercase tracking-wider text-light dark:text-white/50">{next.game}</span>}
           </h2>
           <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-medium dark:text-white/70">
             {firstRace

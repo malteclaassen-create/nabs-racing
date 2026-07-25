@@ -22,7 +22,7 @@ const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 // Amber pill marking the league's safety car driver, next to the tier badge.
 function SafetyCarBadge() {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-amber-600 ring-1 ring-amber-500/40 dark:text-amber-400">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-amber-600 ring-1 ring-amber-500/40 dark:text-amber-400">
       <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M3 17h18M5 17l1.5-4.5A3 3 0 019.3 10h5.4a3 3 0 012.8 2l1.5 5M7.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM16.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
       </svg>
@@ -372,7 +372,7 @@ function RatingBreakdown({ rating, stats, color }) {
             <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-surface2">
               <div className="h-full rounded-full" style={{ width: `${g[r.k]}%`, backgroundColor: color }} />
             </div>
-            <div className="mt-1 font-mono text-[11px] uppercase tracking-wide text-light">{r.note}</div>
+            <div className="mt-1 font-mono text-[11px] uppercase tracking-wider text-light">{r.note}</div>
           </div>
         ))}
       </div>
@@ -549,7 +549,7 @@ function FormChart({ perRace, color }) {
                   >
                     {finished ? r.position : r.status}
                   </span>
-                  <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-light">
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-light">
                     R{r.number}
                   </span>
                 </div>
@@ -809,7 +809,7 @@ function TeamPanel({ driver, standings, career }) {
             </Link>
             <div className="mt-0.5 flex items-center gap-2">
               <TierBadge tier={driver.tier} />
-              <span className="font-mono text-xs font-semibold uppercase tracking-wider text-light">{TIER_LABEL[driver.team.tier] ?? "—"}</span>
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">{TIER_LABEL[driver.team.tier] ?? "—"}</span>
             </div>
           </div>
         </div>
@@ -861,7 +861,7 @@ function TeamPanel({ driver, standings, career }) {
                   <span className="min-w-0 flex-1">
                     <span className={`block truncate font-display text-sm font-bold uppercase tracking-tight ${self ? "text-dark" : "text-dark"}`}>
                       {m.name}
-                      {self && <span className="ml-1.5 align-middle font-mono text-[9px] font-bold uppercase tracking-wider text-eyebrow">this page</span>}
+                      {self && <span className="ml-1.5 align-middle font-mono text-[10px] font-bold uppercase tracking-wider text-eyebrow">this page</span>}
                     </span>
                     {pct != null && (
                       <span className="mt-1 block h-[3px] w-full overflow-hidden rounded-full bg-surface2">
@@ -1045,7 +1045,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
   const sealLabel = (text, title) => (
     <span
       title={title}
-      className="cursor-help font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-light"
+      className="cursor-help font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light"
     >
       {text}
     </span>
@@ -1407,7 +1407,7 @@ export default function DriverProfile({ previewId, preview }) {
                 <Link
                   key={s.driverId}
                   to={`/drivers/${s.driverId}?season=${s.seasonNumber}`}
-                  className="rounded-lg bg-surface2 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wide text-medium transition hover:bg-brand hover:text-ink"
+                  className="rounded-lg bg-surface2 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:bg-brand hover:text-ink"
                 >
                   S{s.seasonNumber}
                 </Link>
@@ -1432,7 +1432,7 @@ export default function DriverProfile({ previewId, preview }) {
           {/* Official rating card (FIFA/EA-style) + breakdown */}
           {rating && (
             <div>
-              <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-light">
+              <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-light">
                 Official Driver Rating
               </div>
               <div className="grid items-start gap-6 lg:grid-cols-[auto_1fr]">

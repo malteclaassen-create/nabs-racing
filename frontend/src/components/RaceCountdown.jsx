@@ -67,7 +67,7 @@ export default function RaceCountdown({ date, className = "" }) {
           >
             <RollingNumber value={u.value} digits={2} />
           </span>
-          <span className="mt-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-ink/45 dark:text-white/55">
+          <span className="mt-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-ink/45 dark:text-white/55">
             {u.label}
           </span>
         </div>

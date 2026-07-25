@@ -61,7 +61,7 @@ function Icon({ name, className = "" }) {
 function SectionHead({ eyebrow, title, sub, center }) {
   return (
     <div className={`mb-8 ${center ? "mx-auto max-w-2xl text-center" : ""}`}>
-      <div className="font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow">{eyebrow}</div>
+      <div className="font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow">{eyebrow}</div>
       <h2 className="mt-2 font-display text-3xl font-black uppercase tracking-tight text-dark sm:text-4xl">{title}</h2>
       {sub && <p className={`mt-3 text-[15px] leading-relaxed text-light ${center ? "" : "max-w-2xl"}`}>{sub}</p>}
     </div>
@@ -258,7 +258,7 @@ export default function Welcome() {
         <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-brand via-brand/40 to-transparent" />
 
         <div className="relative flex min-h-[520px] flex-col justify-center gap-6 p-7 sm:p-12 lg:max-w-3xl">
-          <div className="hero-anim flex items-center gap-3 font-mono text-[12px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
+          <div className="hero-anim flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
             <span>{season ? season.name : "NABS Racing League"}{season?.game ? ` · ${season.game}` : ""}</span>
           </div>
 
@@ -298,7 +298,7 @@ export default function Welcome() {
           </div>
 
           {nextRace && (
-            <div className="hero-anim mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs uppercase tracking-wider text-ink/55 dark:text-white/60" style={{ animationDelay: "0.38s" }}>
+            <div className="hero-anim mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] uppercase tracking-wider text-ink/55 dark:text-white/60" style={{ animationDelay: "0.38s" }}>
               <span className="text-ink/40 dark:text-white/40">Next race</span>
               {nextCircuit && <Flag code={nextCircuit.country} title={nextCircuit.countryName} w={18} h={13} />}
               <span className="font-bold text-ink/90 dark:text-white/90">{nextRace.track}</span>
@@ -321,7 +321,7 @@ export default function Welcome() {
             <div className="font-display text-4xl font-black tabular-nums text-dark sm:text-5xl">
               <CountUp end={s.value} />
             </div>
-            <div className="mt-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-light">{s.label}</div>
+            <div className="mt-1.5 font-mono text-[11px] font-bold uppercase tracking-widest text-light">{s.label}</div>
           </div>
         ))}
       </section>

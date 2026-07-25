@@ -88,7 +88,7 @@ function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, total
     <section className="reveal space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <h3 className="section-title">Title fight</h3>
-        <span className="font-mono text-xs font-bold uppercase tracking-wider text-light">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
           {remaining} {remaining === 1 ? "round" : "rounds"} to go · up to {potential} pts on the table
         </span>
       </div>
@@ -173,7 +173,7 @@ function HonourCell({ label, to, name, stat, note, driverId, country, team, clas
       style={{ "--i": index }}
     >
       <div className="min-w-0">
-        <div className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-light">{label}</div>
+        <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">{label}</div>
         <div className="mt-2 flex min-w-0 items-center gap-2.5">
           {!driverId && team && (
             <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={28} />
@@ -286,87 +286,10 @@ function CarReveal({ season }) {
         />
       )}
       {showCar && (
-        <div className="pointer-events-none absolute bottom-3 left-4 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-white/50">
+        <div className="pointer-events-none absolute bottom-3 left-4 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">
           The {season?.name} car{season?.game ? ` · ${season.game}` : ""}
         </div>
       )}
-    </div>
-  );
-}
-
-// The member's own to-do strip. Two signals, both from data the page already
-// has: an upcoming race they haven't answered for, and a free seat they could
-// take. Renders nothing at all when neither applies (and for logged-out
-// visitors), so the page is unchanged for everyone else.
-function YourTurn({ events, market, driverId }) {
-  if (!driverId) return null;
-
-  const answered = (race) =>
-    ["ACCEPTED", "DECLINED", "TENTATIVE"].some((s) =>
-      (race.rsvps?.[s] || []).some((r) => r.driverId === driverId)
-    );
-  const upcoming = [...(events || [])].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
-  const unanswered = upcoming.find((r) => !answered(r));
-
-  // Seats other drivers offered that this member could fill (their own offers
-  // don't count as something to act on).
-  const openSeats = (market?.races || []).reduce(
-    (n, r) => n + (r.offers || []).filter((o) => !o.filledBy && o.offeredBy?.driverId !== driverId).length,
-    0
-  );
-
-  if (!unanswered && !openSeats) return null;
-
-  const race = unanswered;
-  return (
-    <div className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Your turn</div>
-        <p className="mt-1 text-sm leading-relaxed text-medium">
-          {race && (
-            <>
-              You haven&rsquo;t said whether you&rsquo;re racing{" "}
-              <span className="font-semibold text-dark">
-                Round {race.number}
-                {race.track ? ` at ${race.track}` : ""}
-              </span>
-              .
-            </>
-          )}
-          {race && openSeats > 0 && " "}
-          {openSeats > 0 && (
-            <>
-              {openSeats === 1 ? "One seat is" : `${openSeats} seats are`} up for grabs on the driver market.
-            </>
-          )}
-        </p>
-      </div>
-      <div className="flex shrink-0 flex-wrap gap-2">
-        {race && (
-          <>
-            <Link
-              to={`/attendance?race=${race.id}&rsvp=yes`}
-              className="inline-flex min-h-[40px] items-center rounded-lg bg-brand px-4 py-2 text-sm font-bold text-ink transition hover:brightness-105"
-            >
-              I&rsquo;m racing
-            </Link>
-            <Link
-              to={`/attendance?race=${race.id}`}
-              className="inline-flex min-h-[40px] items-center rounded-lg bg-surface2 px-4 py-2 text-sm font-bold text-medium transition hover:text-dark"
-            >
-              Other answer
-            </Link>
-          </>
-        )}
-        {!race && openSeats > 0 && (
-          <Link
-            to="/races"
-            className="inline-flex min-h-[40px] items-center rounded-lg bg-surface2 px-4 py-2 text-sm font-bold text-medium transition hover:text-dark"
-          >
-            See the seats
-          </Link>
-        )}
-      </div>
     </div>
   );
 }
@@ -380,8 +303,6 @@ export default function Home() {
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const events = useApi(useCallback(() => api.events(), []));
-  // Only for the "your turn" strip, so it stays off the wire for visitors.
-  const market = useApi(useCallback(() => (isLoggedIn ? api.market() : Promise.resolve(null)), [isLoggedIn]));
   const [latest, setLatest] = useState(null);
   // Previous season's final standings — shown in the hero while the selected
   // season hasn't run its opener yet (so the "latest race" side isn't empty).
@@ -646,11 +567,6 @@ export default function Home() {
 
   return (
     <div className="content-in space-y-10 sm:space-y-16">
-      {/* What THIS member still has to do, if anything. Everything below the
-          strip is the same for every visitor; this is the one part that knows
-          who is looking. It stays out of the way when there is nothing to do. */}
-      <YourTurn events={events.data} market={market.data} driverId={myDriverId} />
-
       {/* ===================== SEASON TICKER ===================== */}
       <div className="-mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">
@@ -724,7 +640,7 @@ export default function Home() {
                   eyebrow row (mono, accent colour, hairlines) and the same big
                   display headline. Gold stays reserved for the champion. */}
               <div className="hero-anim text-center" style={{ animationDelay: "0.05s" }}>
-                <div className="flex items-center justify-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow">
+                <div className="flex items-center justify-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow">
                   <span className="h-px w-10 bg-accent/50" />
                   <span>Championship complete</span>
                   <span className="h-px w-10 bg-accent/50" />
@@ -760,7 +676,7 @@ export default function Home() {
                3D car reveal (a real model mounts there later). */
             <div className="flex flex-1 flex-col justify-center gap-7 lg:flex-row lg:items-center lg:gap-10">
               <div className="flex flex-1 flex-col gap-5">
-                <div className="hero-anim flex items-center gap-2.5 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
+                <div className="hero-anim flex items-center gap-2.5 font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
                   <span className="live-dot inline-block h-2 w-2 rounded-full bg-brand" />
                   {comingSoonCopy.eyebrow}
                 </div>
@@ -768,7 +684,7 @@ export default function Home() {
                   {season?.name}
                 </h1>
                 {season?.game && (
-                  <div className="hero-anim font-mono text-sm font-bold uppercase tracking-wider text-ink/60 dark:text-white/60" style={{ animationDelay: "0.16s" }}>
+                  <div className="hero-anim font-mono text-[13px] font-bold uppercase tracking-wider text-ink/60 dark:text-white/60" style={{ animationDelay: "0.16s" }}>
                     {season.game}
                   </div>
                 )}
@@ -783,7 +699,7 @@ export default function Home() {
                       Season opener · Round {nextRace.number}{nextRace.track ? ` · ${nextRace.track}` : ""}
                     </div>
                     <RaceCountdown date={nextRace.date} className="mt-3" />
-                    <div className="mt-3 flex items-center justify-center gap-2 font-mono text-xs uppercase tracking-wider text-ink/60 dark:text-white/60">
+                    <div className="mt-3 flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-wider text-ink/60 dark:text-white/60">
                       <span className="font-bold text-ink/85 dark:text-white/85">
                         {new Date(nextRace.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
                       </span>
@@ -807,14 +723,14 @@ export default function Home() {
           {/* LEFT — latest race, or (before the opener) last season's champions */}
           <div className="flex flex-1 flex-col justify-end">
             {showPrevChamps ? (
-              <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
+              <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
                 <Flag code={countryFor(prevChampion.driverId, prevChampion.country)} w={26} h={19} />
                 <span>Last Season</span>
                 <span className="h-px w-10 bg-accent/50" />
                 <span className="text-ink/40 dark:text-white/50">{prevSeason?.name}</span>
               </div>
             ) : (
-              <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
+              <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
                 {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
                 <span>Latest Race</span>
                 <span className="h-px w-10 bg-accent/50" />
@@ -825,7 +741,7 @@ export default function Home() {
             <h1 className="hero-anim mt-4 max-w-3xl break-words font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
               {showPrevChamps ? prevChampion.name : lastRace?.track || "Season opener"}
             </h1>
-            <p className="hero-anim mt-3 font-mono text-sm uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
+            <p className="hero-anim mt-3 font-mono text-[13px] uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
               {showPrevChamps
                 ? `${prevSeason?.name} Champion · ${prevChampion.total} pts`
                 : `${lastCircuit && lastCircuit.circuit?.toLowerCase() !== lastRace?.track?.toLowerCase() ? `${lastCircuit.circuit} · ` : ""}${fmtFull(lastRace?.date)}`}
@@ -939,7 +855,7 @@ export default function Home() {
           {nextRace && (
             <div className="flex shrink-0 flex-col justify-end lg:w-72">
               <div className="hero-anim rounded-2xl border border-black/10 bg-white/75 p-5 shadow-xl shadow-ink/10 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.08]" style={{ animationDelay: "0.22s" }}>
-                <div className="flex items-center gap-2 font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-sky-600 dark:text-sky-300">
+                <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-sky-600 dark:text-sky-300">
                   {nextCircuit && <Flag code={nextCircuit.country} title={nextCircuit.countryName} w={22} h={16} />}
                   <span>Next Race</span>
                   <span className="ml-auto text-ink/40 dark:text-white/50">Round {nextRace.number}</span>
@@ -951,7 +867,7 @@ export default function Home() {
                 {/* skip the circuit line when it just repeats the race name
                     (e.g. race "Interlagos" at circuit "Interlagos") */}
                 {nextCircuit && nextCircuit.circuit?.toLowerCase() !== nextRace.track?.toLowerCase() && (
-                  <div className="mt-2 font-mono text-xs uppercase tracking-wider text-ink/60 dark:text-white/65">
+                  <div className="mt-2 font-mono text-[11px] uppercase tracking-wider text-ink/60 dark:text-white/65">
                     {nextCircuit.circuit}
                   </div>
                 )}
@@ -959,7 +875,7 @@ export default function Home() {
                 <RaceCountdown date={nextRace.date} className="mt-5" />
 
                 {nextDate && (
-                  <div className="mt-3 flex items-center justify-center gap-2 font-mono text-xs uppercase tracking-wider text-ink/65 dark:text-white/70">
+                  <div className="mt-3 flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-wider text-ink/65 dark:text-white/70">
                     <span className="font-bold text-ink/80 dark:text-white/85">
                       {nextDate.getDate()} {MONTHS[nextDate.getMonth()]}
                     </span>
@@ -1388,7 +1304,7 @@ function Heading({ index, eyebrow, title, to }) {
       {to && (
         <Link
           to={to}
-          className="group shrink-0 font-mono text-sm font-bold uppercase tracking-wider text-light transition hover:text-dark"
+          className="group shrink-0 font-mono text-[13px] font-bold uppercase tracking-wider text-light transition hover:text-dark"
         >
           Full table <span className="text-brand transition group-hover:translate-x-0.5">→</span>
         </Link>
@@ -1446,7 +1362,7 @@ function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = f
             </svg>
           </span>
         ) : null}
-        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-light">{label}</span>
+        <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">{label}</span>
         {to && (
           <span className="ml-auto text-light opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100">
             →
@@ -1481,7 +1397,7 @@ function DriversTable({ rows, leaderTotal, decided = false }) {
     <div className="card overflow-hidden">
       <table className="w-full">
         <thead>
-          <tr className="border-b border-border text-left font-mono text-xs font-bold uppercase tracking-[0.15em] text-light">
+          <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
             <th className="w-14 py-3 pl-5 text-center">Pos</th>
             <th className="py-3 pl-2">Driver</th>
             <th className="hidden py-3 sm:table-cell">Team</th>

@@ -26,7 +26,7 @@ function Chevron({ open }) {
 function CardHeader({ title, children }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface2/50 px-5 py-3">
-      <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-light">{title}</h3>
+      <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">{title}</h3>
       {children}
     </div>
   );

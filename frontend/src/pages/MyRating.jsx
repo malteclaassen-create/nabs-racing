@@ -407,7 +407,7 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
                   >
                   <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
                     <span className="font-display text-lg font-black uppercase leading-tight tracking-tight text-dark">{hp.track}</span>
-                    <span className="font-mono text-xs font-bold uppercase tracking-wider text-light">
+                    <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
                       {career
                         ? perRace && hp.seasonNumber != null
                           ? `S${hp.seasonNumber} · R${hp.number}`
@@ -455,7 +455,7 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
                           .join(" · ")}
                   </div>
                   {hp.rank != null && (
-                    <div className="mt-0.5 font-mono text-xs uppercase tracking-wide text-light">
+                    <div className="mt-0.5 font-mono text-[11px] uppercase tracking-wider text-light">
                       #{hp.rank} of {hp.fieldSize} rated
                     </div>
                   )}
@@ -472,7 +472,7 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
           <div className="sticky left-0 z-10 w-10 shrink-0 bg-card" />
           {points.map((p, i) => (
             <div key={p.raceId || i} className="min-w-0 flex-1 px-0.5 text-center">
-              <div className="font-mono text-[10px] font-bold uppercase tracking-wide text-faint">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
                 {career && !perRace ? `S${p.number}` : p.number}
               </div>
               {!perRace && (
@@ -538,7 +538,7 @@ function CompositionBlock({ statKey, components, weights, color }) {
           <span className="ml-2 font-mono text-[10px] font-semibold text-light">{RATING_INFO[statKey]?.code}</span>
         </h3>
         {info.absolute && (
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-light">absolute scale</span>
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">absolute scale</span>
         )}
       </div>
       <div className="divide-y divide-border">
@@ -553,7 +553,7 @@ function CompositionBlock({ statKey, components, weights, color }) {
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                 <span className="text-sm font-bold text-dark">
                   {p.label}
-                  <span className="ml-2 font-mono text-[10px] font-bold uppercase tracking-wide text-faint">{share}%</span>
+                  <span className="ml-2 font-mono text-[10px] font-bold uppercase tracking-wider text-faint">{share}%</span>
                 </span>
                 <span
                   className="font-display text-base font-black uppercase tabular-nums tracking-tight"
@@ -626,7 +626,7 @@ function HighlightTile({ icon, eyebrow, main, subPrefix, subValue, tone }) {
             <path d={HL_ICONS[icon]} />
           </svg>
         </span>
-        <span className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-dark">{eyebrow}</span>
+        <span className="font-mono text-[13px] font-bold uppercase tracking-widest text-dark">{eyebrow}</span>
       </div>
       {/* the subject reads as a sentence-case line, not shouted caps — long
           labels like "On-track overtakes" stay scannable */}
@@ -740,7 +740,7 @@ export default function MyRating({ me }) {
   ].filter(Boolean);
 
   const provisionalPill = rating.provisional && (
-    <span className="rounded-full bg-amber-500/15 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-amber-600 ring-1 ring-amber-500/40 dark:text-amber-400">
+    <span className="rounded-full bg-amber-500/15 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-amber-600 ring-1 ring-amber-500/40 dark:text-amber-400">
       Provisional
     </span>
   );
@@ -978,7 +978,7 @@ export default function MyRating({ me }) {
                                 <li key={j} className="flex items-baseline gap-1.5">
                                   <span aria-hidden className={`shrink-0 text-[8px] ${col.mark}`}>{col.arrow}</span>
                                   <span className="min-w-0 text-[13px] font-semibold leading-snug text-medium">{c.text}</span>
-                                  <span className="ml-auto shrink-0 font-mono text-[9px] font-bold uppercase tracking-wider text-faint">
+                                  <span className="ml-auto shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
                                     {c.hits}
                                   </span>
                                 </li>
