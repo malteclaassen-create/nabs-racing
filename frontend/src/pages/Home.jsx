@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -14,7 +14,7 @@ import TeamLogo from "../components/TeamLogo.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
-import { fmtRaceTime } from "../utils/raceTime.js";
+import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
 import { heroFor, heroOnError, carFor } from "../utils/heroImage.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
@@ -294,6 +294,242 @@ function CarReveal({ season }) {
   );
 }
 
+// How to name the day of the opener under the countdown. Weeks out, a date is
+// the useful answer ("07 Aug"); inside the final week the weekday is what
+// people actually plan around, and the last two days get named outright. Reads
+// the kickoff time, not the raw date, so a date-only race says the same day the
+// countdown counts to.
+function openerDayLabel(date) {
+  const target = raceKickoff(date);
+  if (!target) return null;
+  const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((midnight(target) - midnight(new Date())) / 86400000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  // Only up to 6 days out: at exactly 7, "Friday" would name two possible days.
+  // A kickoff already in the past (the season not activated the morning after
+  // its opener) falls through to the date as well, rather than claiming "Today".
+  if (days > 1 && days < 7) return target.toLocaleDateString("en-GB", { weekday: "long" });
+  return `${pad2(target.getDate())} ${MONTHS[target.getMonth()]}`;
+}
+
+// Dev-only preview helper: pretends the announced opener is `days` from now and
+// optionally at another circuit, so the off-season hero can be checked at every
+// stage of its countdown, and with any track's outline, without moving the real
+// race in the admin. Keeps the league's usual evening start, so the day label
+// and the countdown agree. Production builds never call this (see the `?opener=`
+// read in Home, guarded by import.meta.env.DEV).
+function previewOpener(teaser, spec, track) {
+  if (!teaser?.firstRace) return teaser;
+  if (track) {
+    teaser = { ...teaser, firstRace: { ...teaser.firstRace, track } };
+    if (spec == null) return teaser;
+  }
+  const s = String(spec).trim();
+  const inHours = /h$/i.test(s);
+  const n = Number(inHours ? s.slice(0, -1) : s);
+  if (!Number.isFinite(n)) return teaser;
+  const now = new Date();
+  // A plain number counts whole days and keeps the league's evening start, so
+  // the day label reads the way it will on the real date. "<n>h" counts hours
+  // from right now instead, which is the only way to land inside the race
+  // window and see the countdown flip to Lights Out.
+  const at = inHours
+    ? new Date(now.getTime() + n * 3600000)
+    : new Date(now.getFullYear(), now.getMonth(), now.getDate() + Math.trunc(n), 19, 0, 0);
+  return { ...teaser, firstRace: { ...teaser.firstRace, date: at.toISOString() } };
+}
+
+// Box for the circuit watermark on the next-season card, derived from the
+// track's own proportions. The league's outlines run from a 2.1:1 sprawl (Miami)
+// to a 1:3 sliver (Jeddah), and one fixed box would draw the wide ones large and
+// the narrow ones tiny, since each outline is fitted inside whatever box it gets.
+// Equal AREA instead, so every track carries about the same weight, then clamped
+// so the mark stays in the card's free top-right corner and never reaches down
+// into the countdown.
+const MARK_AREA = 6700; // px², about 100x67 for a typical layout
+function circuitMark(track) {
+  const c = circuitFor(track);
+  if (!c) return null;
+  const [, , w, h] = String(c.box || "0 0 100 100").split(/\s+/).map(Number);
+  let aspect = w > 0 && h > 0 ? w / h : 1;
+  // A layout more than twice as tall as it is wide (Jeddah is 1:3, Montreal and
+  // Watkins Glen close behind) would come out as a thin scratch in the corner
+  // however much area it is given, because the corner is wider than it is tall.
+  // Those lie down, the same move the admin can make per track for the race
+  // pages. CircuitMap grows its viewBox to the rotated bounds, so nothing clips.
+  const rotate = aspect < 0.5 ? 90 : 0;
+  if (rotate) aspect = 1 / aspect;
+  const height = Math.sqrt(MARK_AREA / aspect);
+  const width = aspect * height;
+  const fit = Math.min(1, 120 / width, 100 / height);
+  return { rotate, style: { width: Math.round(width * fit), height: Math.round(height * fit) } };
+}
+
+// The hero's off-season half: once the champion is crowned and the next season
+// is announced, the celebration shares the hero with what comes next, instead
+// of the only forward-looking thing on the page sitting far below the honours.
+// Everything here comes from the teaser endpoint (name, game, opener track and
+// date), so a season that is still private gives away nothing beyond what the
+// admin chose to announce.
+function NextSeasonPanel({ teaser, discord, signupRace }) {
+  // Same guard the "Coming up" strip uses: the car band stays hidden until the
+  // file really loads, and a cached image can be complete before React attaches
+  // its load listener, so the element is checked directly too.
+  const [carOk, setCarOk] = useState(false);
+  const carRef = useRef(null);
+  const teasedNumber = teaser?.number;
+  useEffect(() => {
+    const el = carRef.current;
+    if (el && el.complete && el.naturalWidth > 0) setCarOk(true);
+  }, [teasedNumber]);
+
+  if (!teaser) return null;
+  const opener = teaser.firstRace;
+  const carSrc = carFor(teaser);
+  const openerFlag = opener?.track ? flagFor(opener.track) : null;
+  const mark = opener?.track ? circuitMark(opener.track) : null;
+  // "Season 8" reads fine; a season literally named "8" gets the prefix.
+  const title = /^\d+$/.test(String(teaser.name).trim()) ? `Season ${teaser.name}` : teaser.name;
+
+  return (
+    <div className="flex shrink-0 flex-col justify-center lg:w-80">
+      <div
+        /* A touch more solid than the hero's other panels in light mode: the
+           framed photo needs real white around it to read as a frame instead of
+           the hero photo showing through the margin. */
+        className="hero-anim overflow-hidden rounded-2xl border border-black/10 bg-white/85 shadow-xl shadow-ink/10 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.08]"
+        style={{ animationDelay: "0.3s" }}
+      >
+        {/* The new season's car. The Assetto Corsa showroom shots come on a
+            black studio ground, and blend-screen only cuts that away over a
+            dark surface, so the photo itself stays dark in both themes. Dark
+            mode can therefore run it edge to edge like the "Coming up" strip
+            does; light mode instead FRAMES it (white margin, hairline, caption),
+            so it reads as a picture inside a white card rather than as a piece
+            of the dark theme left in by accident.
+            The shots put the car in the LOWER half of the frame, hence the low
+            crop window. */}
+        <div className={`px-3 pt-3 dark:px-0 dark:pt-0 ${carOk ? "" : "hidden"}`}>
+          <div className="relative h-32 overflow-hidden rounded-xl bg-[#05070c] ring-1 ring-ink/10 sm:h-36 dark:rounded-none dark:ring-0">
+            <div className="speed-hatch absolute inset-0 opacity-20" />
+            {carSrc && (
+              <img
+                ref={carRef}
+                src={carSrc}
+                alt={`The ${title} car`}
+                onLoad={() => setCarOk(true)}
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+                className="absolute inset-0 h-full w-full object-cover object-[center_82%] mix-blend-screen"
+              />
+            )}
+          </div>
+          {/* Caption only in light mode: in the dark card the band sits flush
+              under the top edge and needs no label, the season name is right
+              below it. */}
+          <div className="pt-2 font-mono text-[10px] font-bold uppercase tracking-wider text-ink/45 dark:hidden">
+            The {title} car
+          </div>
+        </div>
+
+        <div className="p-5">
+          {/* Season name and game, with the opener's circuit as a watermark
+              beside them. The outline is centred on THIS block (not pinned to a
+              corner of the card), so it reads as belonging to the name however
+              tall the drawing turns out to be. */}
+          <div className="relative">
+            {/* The same outline the calendar and race pages use, drawing itself
+                once (fx-lite and reduced motion stop that, see index.css).
+                Faded with `opacity` rather than a translucent stroke colour,
+                because the looping segment that follows the first lap carries
+                its own colour and would otherwise be the loudest thing on the
+                card. Sized per track by circuitMark, so a wide layout and a
+                narrow one read as equally important. */}
+            {mark && (
+              <div
+                className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-ink opacity-[0.12] dark:text-white dark:opacity-[0.16]"
+                style={mark.style}
+              >
+                <CircuitMap
+                  track={opener.track}
+                  animate
+                  rotate={mark.rotate}
+                  className="h-full w-full"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                />
+              </div>
+            )}
+            <div className="relative font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+              Next season
+            </div>
+            <div className="relative mt-2.5 break-words font-display text-2xl font-black uppercase leading-none tracking-tight text-ink dark:text-white sm:text-3xl">
+              {title}
+            </div>
+            {teaser.game && (
+              <div className="relative mt-2 font-mono text-[10px] font-bold uppercase tracking-wider text-ink/55 dark:text-white/55">
+                {teaser.game}
+              </div>
+            )}
+          </div>
+
+          <div>
+            {opener?.track && (
+              <div className="mt-3.5 flex items-center gap-2 border-t border-ink/10 pt-4 dark:border-white/10">
+                {openerFlag && <Flag code={openerFlag.country} title={openerFlag.countryName} w={22} h={16} />}
+                <span className="min-w-0 truncate font-mono text-[11px] font-bold uppercase tracking-wider text-ink/75 dark:text-white/75">
+                  {opener.track}
+                </span>
+                <span className="ml-auto shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-ink/40 dark:text-white/45">
+                  Opener
+                </span>
+              </div>
+            )}
+
+            {opener?.date && (
+              <>
+                <RaceCountdown date={opener.date} className="mt-4" />
+                <div className="mt-3 flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-wider text-ink/65 dark:text-white/70">
+                  <span className="font-bold text-ink/85 dark:text-white/85">{openerDayLabel(opener.date)}</span>
+                  <span className="h-3 w-px bg-ink/20 dark:bg-white/25" />
+                  <span>{fmtRaceTime(opener.date)}</span>
+                </div>
+              </>
+            )}
+
+            {/* Everyone who sees this card is signed in, and signed-in members
+                are on the Discord already, so the button leads to the sign-up
+                for the opener rather than to an invite. Discord stays as the
+                fallback for as long as the race isn't in the events feed yet
+                (a season still kept private), because then there is nothing to
+                sign up for. */}
+            {signupRace ? (
+              <Link
+                to={`/attendance?race=${signupRace.id}`}
+                className="shine group mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
+              >
+                Sign up for the opener
+                <span className="transition group-hover:translate-x-0.5">→</span>
+              </Link>
+            ) : discord ? (
+              <a
+                href={discord}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#5865F2] px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-[#5865F2]/30 transition hover:brightness-110"
+              >
+                Join for {title} <span aria-hidden="true">→</span>
+              </a>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const { current: season, active, seasons, setSeason } = useSeason();
   const { user, isLoggedIn } = useAuth();
@@ -339,6 +575,39 @@ export default function Home() {
   // celebration + honours board, fed by /standings/honours.
   const seasonOver =
     !isPast && !isUpcomingSeason && champRaces.length > 0 && champRaces.every((r) => r.isCompleted);
+
+  // The announced next season, for the hero's off-season half. Only asked for
+  // once the running season has crowned its champion, so a season in progress
+  // doesn't pay for a request it has no place to show (the "Coming up" strip
+  // further down fetches its own).
+  const teaser = useApi(useCallback(() => (seasonOver ? api.seasonTeaser() : Promise.resolve(null)), [seasonOver]));
+  // Dev-only knobs for the off-season hero, same idea as ?demo=1 for the title
+  // fight and just as absent from a build:
+  //   ?opener=<days>       how the panel reads that many days out (6 = a
+  //                        weekday, 1 = Tomorrow, 0 = Today, -1 = kickoff gone,
+  //                        "<n>h" counts hours so -1h shows Lights Out)
+  //   ?openerTrack=<name>  swaps the opener's circuit, to see the outline with a
+  //                        wide, a tall or an odd-shaped track
+  const devQuery = import.meta.env.DEV ? new URLSearchParams(window.location.search) : null;
+  const openerShift = devQuery ? devQuery.get("opener") : null;
+  const openerTrack = devQuery ? devQuery.get("openerTrack") : null;
+  const teased =
+    openerShift != null || openerTrack != null
+      ? previewOpener(teaser.data, openerShift, openerTrack)
+      : teaser.data;
+  // The off-season weeks: champion crowned, next season announced but not yet
+  // running. The hero then looks forward as well as back, and the "Coming up"
+  // strip stands down so the countdown isn't on the page twice.
+  const offSeason = seasonOver && !!teased;
+  // The opener's own row in the events feed, so the card's button can lead
+  // straight to its sign-up. Matched on the track name first, with the next
+  // upcoming race as the fallback (which is what the opener is in the
+  // off-season, and it keeps the button working under ?openerTrack=). Stays null
+  // while the new season's races aren't in the feed yet, e.g. a season the admin
+  // announced but is still keeping private: nothing to sign up for then.
+  const upcomingEvents = events.data || [];
+  const signupRace =
+    upcomingEvents.find((e) => e.track === teased?.firstRace?.track) || upcomingEvents[0] || null;
 
   // Dev-only (?demo=1): preview the title-fight widget on a finished season.
   const demoFight = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
@@ -634,7 +903,11 @@ export default function Home() {
                podium, with the honours band right below. The game name stays
                out of here on purpose; it already sits in the ticker line next
                to the season switcher. The live finale hands back to the normal
-               hero when the next season starts. */
+               hero when the next season starts.
+               In the off-season it shares the hero with the next season's panel
+               (see NextSeasonPanel); an archive season never does, there is
+               nothing upcoming about a season from two years ago. */
+            <>
             <div className="flex flex-1 flex-col justify-center gap-7">
               {/* Title card, matching the other hero variants exactly: the same
                   eyebrow row (mono, accent colour, hairlines) and the same big
@@ -668,6 +941,10 @@ export default function Home() {
                 </Link>
               </div>
             </div>
+            {offSeason && (
+              <NextSeasonPanel teaser={teased} discord={social.data?.discord} signupRace={signupRace} />
+            )}
+            </>
           ) : showComingSoonHero ? (
             /* COMING SOON — a future season previewed before it has started, OR
                an already-active season waiting for its very first round with no
@@ -1237,8 +1514,10 @@ export default function Home() {
 
       {/* =============== NEXT SEASON (active season, transition only) ======== */}
       {/* Sits under the numbers band: the running season teases the next one while
-          it's being set up. On an archive season this renders nothing. */}
-      {season?.isActive && <NextSeasonTeaser />}
+          it's being set up. On an archive season this renders nothing, and in the
+          off-season the hero already carries the announcement (with the same
+          countdown), so the strip stays away rather than repeating it. */}
+      {season?.isActive && !offSeason && <NextSeasonTeaser />}
 
       {/* ===================== DRIVERS' CHAMPIONSHIP ===================== */}
       <section className="reveal">

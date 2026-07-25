@@ -3,10 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Browser-tab icon: the NABS emblem on a pink disc (reads well on both
-         light and dark browser tabs). apple-touch-icon covers iOS home screens. -->
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
+    <!-- Two icon looks, on purpose. The browser TAB gets the round pink disc on
+         a transparent square (rel="icon" below) — tabs keep transparency, so it
+         stays a disc. Google search, Android and iOS instead crop icons into
+         their own round frame, and the old transparent corners showed up there
+         as a white ring around the disc; those surfaces get the full-bleed pink
+         square (apple-touch-icon + favicon.png + the manifest icons), which
+         fills their circle completely. Google picks the largest icon it finds,
+         so the 180px full-bleed wins over the 64px tab disc there. /favicon.ico
+         (the disc) stays unlinked as the root fallback old browsers probe.
+         ?v=3 so browsers holding older files refetch. -->
+    <link rel="icon" type="image/png" href="/icon-round-32.png?v=3" sizes="32x32" />
+    <link rel="icon" type="image/png" href="/icon-round-64.png?v=3" sizes="64x64" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3" />
     <!-- Lets members keep the league on their phone's home screen and open it
          without browser chrome (the site is used weekly, mostly on a phone). -->
     <link rel="manifest" href="/site.webmanifest" />
