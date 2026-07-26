@@ -18,6 +18,7 @@
 //    it rather than redirecting.
 // ---------------------------------------------------------------------------
 import { resolveSeries } from "./series.js";
+import { getActiveSeason } from "../services/seasonService.js";
 
 // The series a flat path belongs to: the primary one, same choice the app makes
 // when the address carries no slug. Cached, because it is needed on every page
@@ -89,6 +90,7 @@ export function legacyRedirects(prisma) {
 
 // Global pages that live outside any series (see the route table in App.jsx).
 const GLOBAL_SEGMENTS = new Set([
+  "join",
   "downloads",
   "tools",
   "profile",
@@ -136,21 +138,129 @@ export function applyNoindex(html) {
   return html.replace(/<\/head>/i, `  <meta name="robots" content="noindex" />\n  </head>`);
 }
 
+// Sections that are the SAME page under a second name (the route table hands
+// each pair to one component). Left alone they are two official addresses for
+// identical content, which is the one thing a canonical tag exists to prevent.
+const SECTION_ALIASES = { results: "races", calendar: "races", teams: "constructors" };
+
+// Query parameters that select WHICH content a page shows, and therefore belong
+// in its official address.
+//
+// Everything else is dropped. That is the important half of this list: ?dl=,
+// ?tour=, ?demo= and any campaign tag render the very same page, and left in the
+// canonical they would turn one page into an unbounded number of addresses all
+// competing with each other.
+//
+//   season=<n>  the listing pages show one season at a time. This is what gives
+//               every archived season's tables an address of their own instead
+//               of all seven folding into one. Dropped when it names the season
+//               the page shows anyway (the active one), so /drivers and
+//               /drivers?season=7 never compete.
+//   race=<id>   the races page opens on one round. This is what gives every
+//               round of every season an address of its own.
+// NOT /records: the Hall of Fame is all-time across every season (see
+// recordsService), so a season parameter there selects nothing and would only
+// clone the page.
+const SEASON_PAGES = new Set(["drivers", "constructors", "races", "attendance"]);
+const RACE_PAGES = new Set(["races"]);
+
+// The canonical query string ("" or "?season=3&race=abc"), built in a fixed
+// order so the same page never yields two spellings of the same address.
+function canonicalQuery(section, query, activeSeason) {
+  const parts = [];
+  const season = Number(query?.season);
+  if (
+    section &&
+    SEASON_PAGES.has(section) &&
+    Number.isInteger(season) &&
+    season > 0 &&
+    season !== activeSeason
+  ) {
+    parts.push(`season=${season}`);
+  }
+  const race = typeof query?.race === "string" ? query.race.trim() : "";
+  // Ids are cuids; anything else is somebody probing, and it must not be
+  // dignified with a canonical address of its own.
+  if (section && RACE_PAGES.has(section) && /^[A-Za-z0-9_-]{1,64}$/.test(race)) {
+    parts.push(`race=${encodeURIComponent(race)}`);
+  }
+  return parts.length ? `?${parts.join("&")}` : "";
+}
+
 // The address that counts as official for what this request renders.
-export function canonicalUrl(req, slug) {
+export async function canonicalUrl(req, prisma) {
   const origin = `${req.protocol}://${req.get("host")}`;
   let path = req.path.replace(/\/+$/, "") || "/";
+  const slug = await primarySlug(prisma).catch(() => null);
   // The primary series' home and the root are the same page; the short address
   // wins, because that is the one people share.
   if (slug && (path === `/s/${slug}` || path === `/s/${slug}/`)) path = "/";
-  return origin + path;
+  // /join is the newcomer page under an address you can put in a Discord
+  // listing or a forum post, and one that keeps working for a member who is
+  // signed in. But it renders exactly what the root renders to anyone who is
+  // NOT signed in, and a crawler never is, so as far as a search engine is
+  // concerned the two are one page. The root wins it: it is the address other
+  // sites link to, and every link to /join should count towards it.
+  //
+  // If the root ever stops showing the newcomer page to signed-out visitors,
+  // this fold is the line to remove.
+  if (path === "/join") path = "/";
+
+  // Only a series listing page (/s/<slug>/<section>) carries a section that the
+  // rules above apply to. An entity page (/s/<slug>/drivers/<id>) already names
+  // exactly what it shows, so no parameter can add anything to it.
+  const parts = path.split("/").filter(Boolean);
+  let section = null;
+  if (parts[0] === "s" && parts.length === 3) {
+    section = SECTION_ALIASES[parts[2]] || parts[2];
+    path = `/s/${parts[1]}/${section}`;
+  } else if (parts[0] === "s" && parts.length === 4) {
+    path = `/s/${parts[1]}/${SECTION_ALIASES[parts[2]] || parts[2]}/${parts[3]}`;
+  }
+
+  const active = section ? await activeSeasonNumber(prisma, parts[1]).catch(() => null) : null;
+  return origin + path + canonicalQuery(section, req.query, active);
+}
+
+// The number of the season a series' listing pages show by default. Cached like
+// primarySlug above: it is needed on every page render and changes once a
+// season.
+const ACTIVE_TTL_MS = 60 * 1000;
+const activeCache = new Map(); // slug -> { at, number }
+
+export async function activeSeasonNumber(prisma, slug) {
+  const hit = activeCache.get(slug || "");
+  if (hit && Date.now() - hit.at < ACTIVE_TTL_MS) return hit.number;
+  let number = null;
+  try {
+    const series = await resolveSeries(prisma, slug, { includePrivate: false });
+    if (series) {
+      const season = await getActiveSeason(prisma, series.id);
+      number = season?.number != null ? Number(season.number) : null;
+    }
+  } catch {
+    return hit ? hit.number : null; // stale is better than a wrong canonical
+  }
+  activeCache.set(slug || "", { at: Date.now(), number });
+  return number;
 }
 
 // Put it into the HTML, replacing an existing tag rather than adding a second.
+//
+// og:url gets the same address. index.html carries a fixed one (the home page),
+// which every subpage was then shipping unchanged: a pasted driver link unfurled
+// with the right title but claimed to be the site root, and some readers use
+// og:url rather than the address they fetched.
 export function applyCanonical(html, url) {
-  const tag = `<link rel="canonical" href="${url.replace(/"/g, "&quot;")}" />`;
-  if (/<link[^>]+rel=["']canonical["'][^>]*>/i.test(html)) {
-    return html.replace(/<link[^>]+rel=["']canonical["'][^>]*>/i, tag);
+  // An address with two parameters carries an "&", and in an attribute value that
+  // has to be escaped: left raw, a parser is entitled to read "&race" as the
+  // start of an entity. A canonical tag that does not parse is worse than none,
+  // because the page then argues for whichever address happened to be crawled.
+  const href = url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  const tag = `<link rel="canonical" href="${href}" />`;
+  let out = html.replace(/(<meta property="og:url" content=")[^"]*(")/i, `$1${href}$2`);
+  if (/<link[^>]+rel=["']canonical["'][^>]*>/i.test(out)) {
+    return out.replace(/<link[^>]+rel=["']canonical["'][^>]*>/i, tag);
   }
-  return html.replace(/<\/head>/i, `  ${tag}\n  </head>`);
+  return out.replace(/<\/head>/i, `  ${tag}\n  </head>`);
 }

@@ -3,6 +3,8 @@ import { useParams, Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
+import { useSeason } from "../context/SeasonContext.jsx";
+import { useSpecificTitle } from "../utils/pageTitle.js";
 import { ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, MEDAL_TEXT, DriverAvatar, CountUp } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -134,6 +136,15 @@ export default function TeamProfile() {
       () => Promise.all([api.teams(), api.t1Standings(), api.t2Standings(), api.driverStandings(), api.races()]),
       []
     )
+  );
+
+  // The team is what this page is about, so the tab and the search result say the
+  // team, not just the season. Same wording as the server ships for this address
+  // (backend/src/lib/pageMeta.js).
+  const { current: shownSeason } = useSeason();
+  const shownTeam = (data?.[0] || []).find((t) => t.id === id);
+  useSpecificTitle(
+    shownTeam ? `${shownTeam.name} · ${shownSeason?.name || "NABS Racing League"}` : null
   );
 
   if (loading)

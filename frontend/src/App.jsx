@@ -14,6 +14,7 @@ import { useAuth } from "./hooks/useAuth.js";
 import PreviewToggle from "./components/PreviewToggle.jsx";
 import { Skeleton } from "./components/ui.jsx";
 import { usePreviewMode, applyPreviewFromUrl } from "./preview.js";
+import { setFallbackTitle, titleFor } from "./utils/pageTitle.js";
 import Home from "./pages/Home.jsx";
 import Welcome from "./pages/Welcome.jsx";
 import DriverStandings from "./pages/DriverStandings.jsx";
@@ -44,17 +45,22 @@ const Profile = lazy(() => import("./pages/Profile.jsx"));
 const Cockpit = lazy(() => import("./pages/Cockpit.jsx"));
 const Tools = lazy(() => import("./pages/Tools.jsx"));
 
-// Keeps the browser-tab title in sync with the season being viewed (the static
-// title in index.html is just the pre-load fallback). With several series the
-// series name joins in, so two open tabs are tellable apart.
+// Keeps the browser-tab title in sync with the page and the season being viewed.
+//
+// It used to name only the season, which read fine in a tab but cost the site in
+// search results: the server writes a title per page into the HTML it ships, and
+// a crawler renders the page before indexing it, so this line was overwriting
+// every one of those with the same generic label. utils/pageTitle mirrors the
+// server's wording; a page with something more precise to say (a round, a driver)
+// claims the title for itself through useSpecificTitle.
 function TitleSync() {
   const { current } = useSeason();
   const { current: series, seriesList } = useSeries();
-  const seriesName = seriesList.length > 1 && series ? series.name : null;
+  const location = useLocation();
+  const multi = seriesList.length > 1;
   useEffect(() => {
-    const brand = seriesName || "NABS Racing League";
-    document.title = current ? `${brand} · ${current.name}` : brand;
-  }, [current?.name, seriesName]);
+    setFallbackTitle(titleFor(location.pathname, { season: current, series, multi }));
+  }, [location.pathname, current?.name, current?.number, current?.game, series?.name, series?.isActive, multi]);
   return null;
 }
 
@@ -196,6 +202,12 @@ function AppRoutes() {
         <Route path="/live" element={<ToSeries sub="/live" />} />
 
         {/* Global pages (shared across series): no prefix. */}
+        {/* The newcomer page under an address of its own. The home route shows
+            it to signed-out visitors, but only they ever see it: a member who
+            has signed in cannot get back to the rules and the FAQ, and there is
+            no link to hand someone in a Discord listing or a forum post. Same
+            page, always, whoever is looking. */}
+        <Route path="/join" element={<Welcome />} />
         <Route path="/downloads" element={<Downloads />} />
         {/* Race-prep calculators. Not in the nav on purpose: linked from the
             upcoming-race panel and the private profile. */}
@@ -252,6 +264,11 @@ function footerLinks(p) {
     { to: p("/races"), label: "Races" },
     { to: p("/attendance"), label: "Attendance" },
     { to: p("/live"), label: "Live Timing" },
+    // The newcomer page. Signed-out visitors meet it as the home page, but a
+    // member never sees it again once they have logged in, and the rules and
+    // the FAQ live there. This is also the only link on the site pointing at it,
+    // which is what lets a search engine find it at all.
+    { to: "/join", label: "How it works" },
     { to: "/downloads", label: "Race Info" },
   ];
 }

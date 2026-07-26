@@ -30,9 +30,9 @@ import { serverKeyForSeries } from "./lib/liveServers.js";
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
-import { buildPageMeta, applyPageMeta } from "./lib/pageMeta.js";
+import { buildPageMeta, applyPageMeta, buildOrganizationJsonLd, applyJsonLd } from "./lib/pageMeta.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
-import { legacyRedirects, canonicalUrl, applyCanonical, primarySlug, isKnownRoute, applyNoindex } from "./lib/seo.js";
+import { legacyRedirects, canonicalUrl, applyCanonical, isKnownRoute, applyNoindex } from "./lib/seo.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
@@ -272,12 +272,25 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
     } catch {
       return res.sendFile(indexPath); // unreadable for once: at least send the file
     }
-    // Link preview for the shareable routes (driver, team, …).
+    // Title and description for the routes that have something of their own to
+    // say (a driver, a team, a season's tables, a single round). The query is
+    // part of that: ?season= and ?race= are what select which season's tables
+    // and which round the page shows.
     try {
-      const meta = await buildPageMeta(prisma, req.path);
+      const meta = await buildPageMeta(prisma, req.path, req.query);
       if (meta) html = applyPageMeta(html, meta);
     } catch {
       /* a preview must never cost us the page */
+    }
+    // Who the league is, in machine-readable form, on the one page everything
+    // else links to. Google currently answers "what is NABS Racing" out of
+    // SimGrid for want of the league saying so itself.
+    if (req.path === "/" || req.path === "/join") {
+      try {
+        html = applyJsonLd(html, await buildOrganizationJsonLd(prisma, publicOrigin(req)));
+      } catch {
+        /* same rule */
+      }
     }
     // An address the app has no page for. It still gets index.html (the app
     // renders its own 404 screen, which is friendlier than a server error page),
@@ -288,11 +301,13 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
       html = applyNoindex(html);
       res.status(404);
     } else {
-      // The official address of whatever this renders. Every page gets one: the
-      // site links with ?season=<n> in places, and without this each of those
-      // variants competes with the plain page for the same content.
+      // The official address of whatever this renders. Every page gets one: it
+      // settles which of several spellings of the same page counts (/races vs
+      // /calendar, /drivers vs /drivers?season=<the active one>), and equally
+      // which parameters do name a page of their own (an archived season's
+      // tables, a single round).
       try {
-        html = applyCanonical(html, canonicalUrl(req, await primarySlug(prisma)));
+        html = applyCanonical(html, await canonicalUrl(req, prisma));
       } catch {
         /* same rule: never lose the page over a tag */
       }

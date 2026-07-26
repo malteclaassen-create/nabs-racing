@@ -24,7 +24,15 @@
     <!-- Fonts are self-hosted (public/fonts), no Google servers involved. -->
     <link rel="stylesheet" href="/fonts/fonts.css" />
     <title>NABS Racing League</title>
-    <meta name="description" content="NABS Racing League, a community-run sim racing championship on Assetto Corsa. Results, standings, live timing and race sign-ups." />
+    <!-- The fallback description. Pages with something more specific to say get
+         this rewritten by the server before it goes out (see
+         backend/src/lib/pageMeta.js): the home page adds the race night, a
+         driver page names the driver. This text is what the rest fall back to,
+         and what the frontend dev server (which serves index.html untouched)
+         shows. Deliberately makes no claim that can go stale: no season, no
+         race day. The server adds the race night because it reads it off the
+         calendar, which nothing typed in here could do. -->
+    <meta name="description" content="Formula 1 sim racing league on Assetto Corsa. Online F1 championship with driver and team standings, results, live timing and open sign-ups." />
     <meta name="theme-color" content="#F4AFC6" />
     <!-- Link previews (Discord, WhatsApp, …). og:image must be an ABSOLUTE URL;
          if the site ever moves to another domain, update it below
@@ -32,14 +40,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="NABS Racing League" />
     <meta property="og:title" content="NABS Racing League" />
-    <meta property="og:description" content="Community sim racing on Assetto Corsa: results, standings, live timing and race sign-ups." />
+    <meta property="og:description" content="Formula 1 sim racing league on Assetto Corsa. Online F1 championship with driver and team standings, results, live timing and open sign-ups." />
     <meta property="og:url" content="https://nabsracing.com/" />
     <meta property="og:image" content="https://nabsracing.com/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="NABS Racing League" />
-    <meta name="twitter:description" content="Community sim racing on Assetto Corsa: results, standings, live timing and race sign-ups." />
+    <meta name="twitter:description" content="Formula 1 sim racing league on Assetto Corsa. Online F1 championship with driver and team standings, results, live timing and open sign-ups." />
     <meta name="twitter:image" content="https://nabsracing.com/og-image.jpg" />
     <script>
       // Apply saved/system theme before paint to avoid a flash.

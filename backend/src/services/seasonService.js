@@ -10,7 +10,7 @@
 // column (may not be in the generated client), read here with a short cache so
 // it costs about one query per 30s instead of one per request. The admin toggle
 // invalidates it so a publish/hide takes effect on the next request.
-import { getActiveSeries, resolveSeries } from "../lib/series.js";
+import { getActiveSeries, resolveSeries, seasonSeriesMap } from "../lib/series.js";
 
 const PRIVATE_CACHE_MS = 30_000;
 let privateCache = { set: null, at: 0 };
@@ -120,6 +120,64 @@ export async function resolveSeason(prisma, seasonNumber, { includePrivate = fal
 export async function resolveSeasonId(prisma, seasonNumber, opts) {
   const s = await resolveSeason(prisma, seasonNumber, opts);
   return s ? s.id : null;
+}
+
+// The next ANNOUNCED season of a series, or null. Announced (isAnnounced, a
+// raw-SQL column the admin flips on the Seasons tab) means "advertise it",
+// which is why this deliberately works for PRIVATE seasons too: the league
+// teases the next season before its rosters are browsable. It therefore only
+// ever returns the teaser facts (number, name, game, opener), never a roster
+// or a result.
+//
+// Lives here rather than in the /api/seasons/teaser route because the home
+// page's search snippet needs the same answer: once a season has run out of
+// races, the announced one is where the league's race night is now decided, and
+// the snippet must not go on advertising the old one (see lib/pageMeta.js).
+//
+// The returned `id` is for those server-side callers. The route deliberately
+// does not pass it on: the teased season is usually still private.
+export async function getSeasonTeaser(prisma, seriesRow) {
+  if (!seriesRow) return null;
+  const [bySeries, rows] = await Promise.all([
+    seasonSeriesMap(prisma),
+    prisma
+      .$queryRawUnsafe(
+        `SELECT "id","number","name","game" FROM "Season" WHERE "isAnnounced" = 1 ORDER BY "number" ASC`
+      )
+      .catch(() => []),
+  ]);
+  const inSeries = (id) => bySeries.size === 0 || bySeries.get(id) === seriesRow.id;
+  // The series' own running season (at most one active per seriesId).
+  // Pre-backfill DBs (empty map) fall back to the global active season.
+  const activeRow = bySeries.size
+    ? (
+        await prisma
+          .$queryRawUnsafe(
+            `SELECT "number" FROM "Season" WHERE "isActive" = 1 AND "seriesId" = ? LIMIT 1`,
+            seriesRow.id
+          )
+          .catch(() => [])
+      )[0]
+    : await prisma.season.findFirst({ where: { isActive: true }, select: { number: true } });
+  const activeNumber = activeRow ? Number(activeRow.number) : null;
+  // Only a season AHEAD of the running one may announce itself (a stale flag on
+  // an activated or archived season is simply ignored).
+  const teased = rows.find(
+    (r) => inSeries(r.id) && (activeNumber == null || Number(r.number) > Number(activeNumber))
+  );
+  if (!teased) return null;
+  const firstRace = await prisma.race.findFirst({
+    where: { seasonId: teased.id, isSpecialEvent: false, number: { not: null }, isCompleted: false },
+    orderBy: { number: "asc" },
+    select: { track: true, date: true },
+  });
+  return {
+    id: teased.id,
+    number: Number(teased.number),
+    name: teased.name,
+    game: teased.game || null,
+    firstRace: firstRace ? { track: firstRace.track, date: firstRace.date } : null,
+  };
 }
 
 // ---------------------------------------------------------------------------

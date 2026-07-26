@@ -1,7 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { isAdminRequest } from "../middleware/auth.js";
-import { getPrivateSeasonIds } from "../services/seasonService.js";
+import { getPrivateSeasonIds, getSeasonTeaser } from "../services/seasonService.js";
 import { resolveSeries, seasonSeriesMap } from "../lib/series.js";
 
 const router = Router();
@@ -19,43 +19,11 @@ router.get("/teaser", async (req, res, next) => {
       includePrivate: isAdminRequest(req),
     });
     if (!series) return res.json(null);
-    const [bySeries, rows] = await Promise.all([
-      seasonSeriesMap(prisma),
-      prisma
-        .$queryRawUnsafe(`SELECT "id","number","name","game" FROM "Season" WHERE "isAnnounced" = 1 ORDER BY "number" ASC`)
-        .catch(() => []),
-    ]);
-    const inSeries = (id) => bySeries.size === 0 || bySeries.get(id) === series.id;
-    // The series' own running season (there is at most one active per series).
-    // Pre-backfill DBs (empty map) fall back to the global active season.
-    const activeRow = bySeries.size
-      ? (
-          await prisma
-            .$queryRawUnsafe(
-              `SELECT "number" FROM "Season" WHERE "isActive" = 1 AND "seriesId" = ? LIMIT 1`,
-              series.id
-            )
-            .catch(() => [])
-        )[0]
-      : await prisma.season.findFirst({ where: { isActive: true }, select: { number: true } });
-    const activeNumber = activeRow ? Number(activeRow.number) : null;
-    // Only a season AHEAD of the series' running one may announce itself (a
-    // stale flag on an activated or archived season is simply ignored).
-    const teased = rows.find(
-      (r) => inSeries(r.id) && (activeNumber == null || Number(r.number) > Number(activeNumber))
-    );
-    if (!teased) return res.json(null);
-    const firstRace = await prisma.race.findFirst({
-      where: { seasonId: teased.id, isSpecialEvent: false, number: { not: null }, isCompleted: false },
-      orderBy: { number: "asc" },
-      select: { track: true, date: true },
-    });
-    res.json({
-      number: Number(teased.number),
-      name: teased.name,
-      game: teased.game || null,
-      firstRace: firstRace ? { track: firstRace.track, date: firstRace.date } : null,
-    });
+    // Field by field, not the whole object: getSeasonTeaser also carries the
+    // season's id for its server-side callers, and the teased season is usually
+    // still private.
+    const t = await getSeasonTeaser(prisma, series);
+    res.json(t && { number: t.number, name: t.name, game: t.game, firstRace: t.firstRace });
   } catch (e) {
     next(e);
   }

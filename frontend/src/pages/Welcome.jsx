@@ -1,10 +1,11 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { Skeleton, CountUp, MEDAL, ErrorBox } from "../components/ui.jsx";
-import { useParallax, useTilt, useMagnetic } from "../hooks/motion.js";
+import { useParallax, useTilt, useMagnetic, motionOff } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
@@ -19,6 +20,27 @@ import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 // can override the table (Season.pointsTable), which /api/seasons delivers and
 // the page prefers, so the copy below always matches the season being shown.
 const DEFAULT_POINTS = [35, 30, 25, 22, 20, 18, 16, 14, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1];
+
+// How often the league races, read off the season's own calendar instead of
+// asserted. The page says "run weekly" in two places, and that is exactly the
+// kind of sentence nobody remembers to change: a season that moves to a round
+// every other week would leave the newcomer page promising something the
+// calendar contradicts. Returns null when the calendar has no clear rhythm, and
+// then the claim is simply left out rather than guessed.
+function raceCadence(races) {
+  const dates = races
+    .map((r) => (r.date ? new Date(r.date).getTime() : null))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+  if (dates.length < 3) return null; // too few rounds to call it a rhythm
+  const gaps = [];
+  for (let i = 1; i < dates.length; i++) gaps.push(Math.round((dates[i] - dates[i - 1]) / 86400000));
+  const sorted = [...gaps].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  if (median >= 5 && median <= 10) return "weekly";
+  if (median >= 11 && median <= 18) return "every other week";
+  return null;
+}
 
 // Admin-edited FAQ answers are stored as plain strings; these two helpers turn
 // them into JSX: fill() resolves {placeholders} from the season, rich() turns
@@ -118,16 +140,68 @@ function Step({ n, title, children, last }) {
   );
 }
 
+// One FAQ entry. Still a real <details>/<summary>, so it works with a keyboard,
+// with a screen reader and with the browser's own find-in-page, and so the
+// answers are in the page whether or not anything is open.
+//
+// What the script adds is only the movement: <details> snaps open, and the panel
+// is what a visitor is trying to read, so it slides and fades in instead of
+// appearing at full height. Closing is animated too, which means holding the
+// element open until the animation has finished. If the visitor has asked for
+// less motion, or the graphics setting is on Lite, none of this runs and the
+// native behaviour is left alone.
 function FaqItem({ q, children }) {
+  const detailsRef = useRef(null);
+  const panelRef = useRef(null);
+  const running = useRef(null);
+
+  function onSummaryClick(e) {
+    const details = detailsRef.current;
+    const panel = panelRef.current;
+    if (!details || !panel || motionOff() || typeof panel.animate !== "function") return;
+    e.preventDefault(); // we drive `open` ourselves for the length of the animation
+    running.current?.cancel();
+    const opening = !details.open;
+    if (opening) details.open = true; // has to be open to be measurable
+    const height = panel.scrollHeight;
+    const anim = panel.animate(
+      {
+        height: opening ? ["0px", `${height}px`] : [`${height}px`, "0px"],
+        opacity: opening ? [0, 1] : [1, 0],
+      },
+      { duration: 220, easing: "cubic-bezier(0.4, 0, 0.2, 1)" }
+    );
+    running.current = anim;
+    // The `finished` promise, not the `finish` event: the event is queued on the
+    // frame loop and is not delivered while the tab is in the background, which
+    // would leave a panel that was closing stuck open. The promise resolves
+    // either way. It REJECTS when a newer click cancels this animation, and that
+    // is the right thing to ignore: whoever cancelled it now owns the state.
+    anim.finished
+      .then(() => {
+        if (!opening) details.open = false;
+        running.current = null;
+      })
+      .catch(() => {});
+  }
+
   return (
-    <details className="group card overflow-hidden">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-display text-base font-bold uppercase tracking-tight text-dark transition hover:bg-surface2">
+    <details ref={detailsRef} className="group card overflow-hidden">
+      <summary
+        onClick={onSummaryClick}
+        className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-display text-base font-bold uppercase tracking-tight text-dark transition hover:bg-surface2"
+      >
         {q}
         <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-brand transition-transform duration-300 group-open:rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
           <path d="M12 5v14M5 12h14" />
         </svg>
       </summary>
-      <div className="border-t border-border px-5 py-4 text-sm leading-relaxed text-light">{children}</div>
+      {/* The animated element is this wrapper, not the padded box inside it:
+          animating the height of a box with padding would squash the text
+          against its own edges on the way. */}
+      <div ref={panelRef} className="overflow-hidden">
+        <div className="border-t border-border px-5 py-4 text-sm leading-relaxed text-light">{children}</div>
+      </div>
     </details>
   );
 }
@@ -139,6 +213,7 @@ export default function Welcome() {
   // archive one the switcher might be pointing at — so it reads the active
   // season explicitly instead of following the selected season.
   const { seasons, active: season } = useSeason();
+  const { seriesPath } = useSeriesPath();
   const activeNum = season?.number;
   const drivers = useApi(useCallback(() => api.driverStandings(activeNum), [activeNum]));
   const t1 = useApi(useCallback(() => api.t1Standings(activeNum), [activeNum]));
@@ -196,6 +271,7 @@ export default function Welcome() {
   const pointsTable =
     Array.isArray(season?.pointsTable) && season.pointsTable.length ? season.pointsTable : DEFAULT_POINTS;
   const pointsPairs = pointsTable.map((pts, i) => [String(i + 1), pts]);
+  const cadence = raceCadence(champRaces);
 
   // Admin-edited FAQ (if any) + the live numbers its {placeholders} reference.
   const faqItems = faq.data?.content;
@@ -209,6 +285,7 @@ export default function Welcome() {
     seasons: seasonCount || "",
     pointsFirst: pointsPairs[0]?.[1] ?? "",
     pointsLast: pointsPairs[pointsPairs.length - 1]?.[1] ?? "",
+    cadence: cadence || "",
   };
 
   const loading = drivers.loading || t1.loading || t2.loading || races.loading;
@@ -331,11 +408,18 @@ export default function Welcome() {
 
       {/* ====================== WHAT IS NABS ======================= */}
       <section>
+        {/* The one heading on the page that answers the question a newcomer
+            actually types into a search box, so it names the sim and the cars
+            rather than leaving both to the paragraphs below. Both come from the
+            season's own `game` field, so the sentence follows the league to
+            whatever it races next. */}
         <SectionHead
           center
           eyebrow="New here?"
           title="What is the NABS Racing League?"
-          sub="A community-run online championship for sim racers. Here's the short version."
+          sub={`A community-run online ${carsLabel} championship${
+            showPlatform ? ` on ${platform}` : ""
+          } for sim racers. Here's the short version.`}
         />
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <FeatureCard index={0} icon="wheel" title="A new era every season">
@@ -347,8 +431,8 @@ export default function Welcome() {
             any team when a regular can&rsquo;t make a round, and a perfect way to get your first start.
           </FeatureCard>
           <FeatureCard index={2} icon="calendar" title="A real season">
-            {totalRounds > 0 ? `${totalRounds} rounds` : "A full season of rounds"} on iconic circuits, run
-            roughly weekly.{" "}
+            {totalRounds > 0 ? `${totalRounds} rounds` : "A full season of rounds"} on iconic circuits
+            {cadence ? `, run ${cadence}` : ""}.{" "}
             {dropWorst > 0
               ? counted
                 ? `Your best ${counted} results count toward the title, so one bad night never ends your championship.`
@@ -617,7 +701,8 @@ export default function Welcome() {
             </FaqItem>
           )}
           <FaqItem q="How often do you race?">
-            Roughly one round a week{totalRounds > 0 ? ` across a ${totalRounds}-race season` : ""}, plus the
+            {cadence === "every other week" ? "A round every other week" : "Roughly one round a week"}
+            {totalRounds > 0 ? ` across a ${totalRounds}-race season` : ""}, plus the
             occasional special event like an endurance night. You sign up for each round, so you&rsquo;re
             never locked in.
           </FaqItem>
@@ -654,8 +739,11 @@ export default function Welcome() {
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <DiscordButton magnetic>Join the Discord</DiscordButton>
+            {/* The series-prefixed address, not the flat /drivers: that one is
+                a legacy path the server answers with a redirect, and an internal
+                link should point where it is going. */}
             <Link
-              to="/drivers"
+              to={seriesPath("/drivers")}
               className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-6 py-3.5 text-sm font-bold uppercase tracking-wide text-white backdrop-blur-sm transition hover:bg-white/15"
             >
               Browse the standings

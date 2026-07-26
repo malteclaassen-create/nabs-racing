@@ -8,8 +8,11 @@ import { readWelcomeFaq } from "../lib/welcomeFaq.js";
 
 const router = Router();
 
-// The social platforms the site knows how to render an icon for.
-export const SOCIAL_KEYS = ["discord", "twitch", "youtube", "instagram", "tiktok", "x", "patreon"];
+// The league's social links moved to lib/leagueSocials.js when the home page's
+// structured data became a second reader of them. Imported and re-exported here
+// so every existing importer (the admin routes) keeps working unchanged.
+import { SOCIAL_KEYS, readSocialLinks } from "../lib/leagueSocials.js";
+export { SOCIAL_KEYS, readSocialLinks };
 
 // Live Timing page external links (admin-managed under these Setting keys).
 // The full live-timing default is derived from the same upstream origin the
@@ -32,16 +35,6 @@ export async function readLiveLinks(prismaClient) {
     liveTimingUrl: get("live_timing_url") || LIVE_LINK_DEFAULTS.liveTimingUrl,
     cmJoinUrl: get("live_cm_join_url") || LIVE_LINK_DEFAULTS.cmJoinUrl,
   };
-}
-
-// Read the configured social links as { discord, twitch, ... } (empty = unset).
-export async function readSocialLinks(prismaClient) {
-  const rows = await prismaClient.setting.findMany({
-    where: { key: { in: SOCIAL_KEYS.map((k) => `social_${k}`) } },
-  });
-  const map = {};
-  for (const k of SOCIAL_KEYS) map[k] = rows.find((r) => r.key === `social_${k}`)?.value || "";
-  return map;
 }
 
 // GET /api/settings/social -> the public social links map.

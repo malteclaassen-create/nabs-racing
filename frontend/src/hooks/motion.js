@@ -13,6 +13,13 @@ const prefersReduced = () =>
 const fxLite = () =>
   typeof document !== "undefined" && document.documentElement.classList.contains("fx-lite");
 
+// "Should this animate at all?" for animations driven by JavaScript rather than
+// a CSS class. The CSS ones get the same two answers from the `.fx-lite …
+// { animation: none }` rules and the reduced-motion media query in index.css;
+// anything scripted has to ask here, or it would keep moving after the visitor
+// has asked the site to stop.
+export const motionOff = () => prefersReduced() || fxLite();
+
 // Fires once when the element first scrolls into view. Returns [ref, inView].
 // Used to kick off count-ups and other one-shot entrances exactly when seen.
 export function useInView({ rootMargin = "0px 0px -10% 0px", once = true } = {}) {

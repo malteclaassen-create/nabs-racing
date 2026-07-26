@@ -12,6 +12,7 @@ import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
+import { useSpecificTitle, prettyTrack } from "../utils/pageTitle.js";
 import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 
 // The calendar is built entirely from the season's races (DB), so it stays in
@@ -362,7 +363,7 @@ export default function Races() {
   const [searchParams, setSearchParams] = useSearchParams();
   const wantRaceId = searchParams.get("race");
   const wantSeason = searchParams.get("season");
-  const { season, setSeason } = useSeason();
+  const { season, setSeason, current } = useSeason();
   useEffect(() => {
     if (!wantSeason || season == null) return;
     const n = Number(wantSeason);
@@ -374,6 +375,23 @@ export default function Races() {
 
   // Sign-up + attendance for upcoming rounds now lives on the /attendance page;
   // the Races page shows the UpcomingRacePanel (countdown, circuit, track record).
+
+  // A round the ADDRESS asked for is a page of its own as far as a search engine
+  // is concerned, and the round is the most specific thing that page can be
+  // called. Deliberately not the explorer's current pick: that defaults to the
+  // latest round, and titling the calendar after it would make the calendar look
+  // like a duplicate of that round's own page. Wording mirrors the title the
+  // server ships for this address (backend/src/lib/pageMeta.js).
+  //
+  // Above the early returns below, because a hook has to run on every render.
+  const linkedRace = wantRaceId && races ? races.find((r) => r.id === wantRaceId) : null;
+  useSpecificTitle(
+    linkedRace
+      ? `${prettyTrack(linkedRace.track)}${linkedRace.isCompleted ? " results" : ""} · ${
+          linkedRace.number != null ? `Round ${linkedRace.number}` : "Special event"
+        }, ${current?.name || `Season ${season}`} · NABS Racing League`
+      : null
+  );
 
   // Explicit deep link (?race=<id>): always honour it and bring the explorer
   // into view. Keyed only on the id/races so a later manual pick isn't reverted.
@@ -489,6 +507,7 @@ export default function Races() {
   // upcoming -> the UpcomingRacePanel (countdown, circuit map, track record).
   const selectedRace = (races || []).find((r) => r.id === selectedId);
 
+  // A round opened from the address bar (?race=<id>) is its own page as far as a
   // Switching tabs re-points the explorer at a sensible race of the NEW type —
   // same heuristic as the initial pick (most recent completed, else next
   // upcoming, else just the first one) — so the rail and detail panel always

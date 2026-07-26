@@ -16,6 +16,7 @@ import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx"
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { flagFor } from "../data/circuits.js";
+import { useSpecificTitle } from "../utils/pageTitle.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
@@ -1294,6 +1295,20 @@ export default function DriverProfile({ previewId, preview }) {
   // Drawer for the site settings button shown on one's OWN profile.
   const { data, loading, error } = useApi(
     useCallback(() => Promise.all([api.driverProfile(id), api.driverRating(id)]), [id])
+  );
+
+  // The driver IS this page, so the tab and the search result should say so
+  // rather than naming the season alone. Same wording as the title the server
+  // ships for this address (backend/src/lib/pageMeta.js), so the rendered page
+  // does not contradict it. Not in the /profile live preview, which is not this
+  // address at all.
+  const shownDriver = previewId ? null : data?.[0]?.driver;
+  useSpecificTitle(
+    shownDriver
+      ? `${shownDriver.name} · ${
+          shownDriver.seasonNumber != null ? `Season ${shownDriver.seasonNumber}` : "NABS Racing League"
+        }`
+      : null
   );
 
   // Honour a ?season=N deep link (search results / career-table links): steer

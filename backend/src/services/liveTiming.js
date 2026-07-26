@@ -65,6 +65,11 @@ const BROADCAST_MS = 700; // how often we push a fresh board to frontend clients
 // no per-car telemetry in between, so the stale threshold must sit comfortably
 // above that gap or the badge flaps to "Reconnecting" between snapshots.
 const STALE_MS = 75000; // no upstream message for this long => mark stale
+// How often to ping the race server, and (times two) how long an unanswered
+// socket may hang around before it is dropped as dead. Well above the stale
+// threshold on purpose: silence is normal and only means "nothing is happening",
+// while an unanswered ping means the server is not there at all.
+const HEARTBEAT_MS = 30000;
 
 // Demo board (fabricated cars, moving splines, stint histories) so the track
 // map and strategy views can be seen working when no real session is on. It is
@@ -195,6 +200,11 @@ function createRelay(server) {
   let upstream = null;
   let reconnectTimer = null;
   let reconnectDelay = 1000;
+  let heartbeatTimer = null;
+  // Last proof the race server is still there: a message OR a pong. Distinct
+  // from lastMessageAt below, which is about whether the DATA is fresh; this one
+  // is about whether the connection is real (see the heartbeat).
+  let lastAliveAt = 0;
 
   let status = null; // latest EventType 200 Message (full snapshot)
   const liveByCar = new Map(); // CarID -> latest EventType 53 telemetry
@@ -380,11 +390,28 @@ function createRelay(server) {
 
     upstream.on("open", () => {
       reconnectDelay = 1000;
+      lastAliveAt = Date.now();
+      startHeartbeat();
       console.log(`${tag} upstream connected:`, server.ws);
+    });
+
+    // The server answering our ping is the only thing that proves it is still
+    // there. Silence does not: an open practice session sends nothing at all for
+    // minutes on end, which is normal, and a connection that dies without a close
+    // frame (a network partition, a box unplugged) leaves readyState at OPEN for
+    // as long as the operating system keeps the TCP entry, which can be hours.
+    //
+    // This matters more than it used to. The live page decides whether it is off
+    // air from this socket now, rather than from a silence timer, precisely so a
+    // quiet practice session stays on screen — so the socket has to be honest
+    // about being alive, or a race finished days ago would still be up there.
+    upstream.on("pong", () => {
+      lastAliveAt = Date.now();
     });
 
     upstream.on("message", (buf) => {
       lastMessageAt = Date.now();
+      lastAliveAt = Date.now(); // traffic proves liveness as well as a pong does
       let msg;
       try {
         msg = JSON.parse(buf.toString());
@@ -420,6 +447,7 @@ function createRelay(server) {
     });
 
     upstream.on("close", () => {
+      stopHeartbeat();
       console.log(`${tag} upstream closed; reconnecting…`);
       scheduleReconnect();
     });
@@ -431,6 +459,34 @@ function createRelay(server) {
         /* noop */
       }
     });
+  }
+
+  // Ping every HEARTBEAT_MS; give up on the socket when nothing has come back
+  // for two rounds. terminate() rather than close(): a socket whose peer is gone
+  // never completes a closing handshake, and close() would sit in CLOSING.
+  function startHeartbeat() {
+    stopHeartbeat();
+    heartbeatTimer = setInterval(() => {
+      if (Date.now() - lastAliveAt > HEARTBEAT_MS * 2) {
+        console.log(`${tag} upstream unresponsive for ${Math.round((Date.now() - lastAliveAt) / 1000)}s; dropping it`);
+        try {
+          upstream.terminate();
+        } catch {
+          /* already gone */
+        }
+        return; // the close handler stops this timer and schedules the reconnect
+      }
+      try {
+        upstream.ping();
+      } catch {
+        /* the close handler will pick it up */
+      }
+    }, HEARTBEAT_MS);
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
   }
 
   function scheduleReconnect() {

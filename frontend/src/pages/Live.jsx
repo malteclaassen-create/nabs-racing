@@ -1166,13 +1166,24 @@ export default function Live() {
 
   const connected = board?.connected && !board?.stale && socketState === "open";
   const session = board?.session;
-  // Off air vs a momentary blip. The relay keeps its last snapshot on purpose,
-  // so a reconnect resumes instantly instead of blanking the board mid-race —
-  // but that also meant a finished race stayed on screen as if it were running,
-  // for as long as the race server was down. `stale` is the relay's own "no
-  // upstream data for 75 seconds" flag, and a quiet server still sends a
-  // snapshot every ~30s, so stale genuinely means nothing is on.
-  const offAir = !session || !!board?.stale;
+  // Off air means one of two things, and neither of them is "quiet".
+  //
+  // This used to treat the relay's `stale` flag ("no upstream data for 75
+  // seconds") as off air, on the assumption that even an empty server keeps
+  // sending a snapshot every ~30s. It does not. The league's servers sit in an
+  // open practice session all week, and once nobody is driving, the upstream
+  // goes quiet for far longer than that — so the page answered "No session
+  // running" while a practice session was up, with its entry list and everyone's
+  // best laps sitting in the very snapshot it was hiding.
+  //
+  // The case the old rule was written for is still covered by `connected`: a
+  // race server that goes away drops the relay's upstream socket, so a finished
+  // race cannot linger on screen for days.
+  const offAir = !session || !board?.connected;
+  // A session that is there but has nothing happening in it. Perfectly normal on
+  // any day that is not race day, and it must not be reported as a fault: the
+  // board still holds what the session has produced so far.
+  const idle = !offAir && !!board?.stale;
   // Only for the off-air card: what to point people at instead. The answer is
   // the whole reason someone opens this page on a non-race day.
   //
@@ -1402,11 +1413,18 @@ export default function Live() {
           </>
           )}
 
-          {!connected && (
+          {/* A quiet session and a broken connection both mean "these numbers
+              are not moving", and they used to print the same alarming line.
+              They are not the same thing: one is a Tuesday. */}
+          {idle ? (
+            <p className="text-center font-mono text-[11px] uppercase tracking-wider text-light">
+              Nobody on track right now. Showing the session as it stands.
+            </p>
+          ) : !connected ? (
             <p className="text-center font-mono text-[11px] uppercase tracking-wider text-warn">
               Connection lost. Showing last known data, reconnecting…
             </p>
-          )}
+          ) : null}
         </div>
       )}
     </div>

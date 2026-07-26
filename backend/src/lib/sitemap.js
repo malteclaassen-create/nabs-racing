@@ -7,11 +7,22 @@
 // the handover. A file would carry a hard-coded address that is wrong on three
 // of those, and a sitemap with the wrong host is worse than none at all.
 //
-// What is listed: the public pages plus one entry per driver and per team of
-// every PUBLIC season. Private (unpublished) seasons are left out entirely, the
-// same rule the link previews follow, so an announced-but-hidden season cannot
-// be discovered through here. Member-only areas (profile, downloads, admin) are
-// excluded and additionally turned away in robots.txt.
+// What is listed: the public pages, one entry per driver and per team of every
+// PUBLIC season, every season's tables, and every race that has been run.
+//
+// Those last two are the reason this file grew. The listing pages show one season
+// at a time and default to the active one, and the races page opens on one round
+// at a time; both select what they show through a query parameter. So without an
+// entry each, six of seven seasons of tables and about a hundred race results
+// existed on the site but not as addresses, and could not be found. They are
+// spelled exactly as the canonical tag spells them (see lib/seo.js) down to the
+// parameter order, because a sitemap that disagrees with the canonical lists
+// pages that get dropped again.
+//
+// Private (unpublished) seasons are left out entirely, the same rule the link
+// previews follow, so an announced-but-hidden season cannot be discovered
+// through here. Member-only areas (profile, downloads, admin) are excluded and
+// additionally turned away in robots.txt.
 //
 // No lastmod dates: the driver and team rows carry no reliable "changed at"
 // timestamp, and a made-up one is worse than none (search engines learn to
@@ -19,6 +30,7 @@
 // ---------------------------------------------------------------------------
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { primarySlug } from "./seo.js";
+import { readRaceTypes } from "./raceTypes.js";
 
 // Areas that have no business in a search index. Written as a denylist because
 // the interesting pages are all public by default.
@@ -102,6 +114,43 @@ export async function buildSitemapXml(prisma, origin) {
     ]);
     for (const d of drivers) urls.push(`${base}/drivers/${encodeURIComponent(d.id)}`);
     for (const t of teams) urls.push(`${base}/constructors/${encodeURIComponent(t.id)}`);
+
+    // The ARCHIVE. The listing pages above show one season at a time and default
+    // to the active one, so without these the six finished seasons of tables have
+    // no address of their own and cannot be found at all. ?season=<n> is the
+    // address the canonical tag hands them (see lib/seo.js), which is why it is
+    // spelled the same way here: a sitemap that disagrees with the canonical is
+    // a sitemap of pages Google will drop again.
+    const seasons = await prisma.season
+      .findMany({ where: { id: { in: ids } }, select: { id: true, number: true, isActive: true } })
+      .catch(() => []);
+    for (const season of seasons) {
+      // /records is deliberately absent: it is all-time, not per season.
+      if (!season.isActive) {
+        for (const page of ["drivers", "constructors", "races"]) {
+          urls.push(`${base}/${page}?season=${season.number}`);
+        }
+      }
+      // Every round, of every season. The one thing on this site with a date, a
+      // circuit and a winner attached, and until now all of it lived on a single
+      // address. Training sessions are left out on purpose: they score nothing
+      // and there is no result to look up.
+      const races = await prisma.race
+        .findMany({
+          where: { seasonId: season.id },
+          select: { id: true, number: true, isCompleted: true },
+          orderBy: { number: "asc" },
+        })
+        .catch(() => []);
+      const types = await readRaceTypes(prisma, races.map((r) => r.id)).catch(() => new Map());
+      for (const r of races) {
+        if ((types.get(r.id) || "CHAMPIONSHIP") === "TRAINING") continue;
+        if (!r.isCompleted && !season.isActive) continue; // a race that never ran
+        // Same parameter order as the canonical tag builds, to the character.
+        const q = season.isActive ? "" : `season=${season.number}&`;
+        urls.push(`${base}/races?${q}race=${encodeURIComponent(r.id)}`);
+      }
+    }
   }
 
   const body = [...new Set(urls)]
