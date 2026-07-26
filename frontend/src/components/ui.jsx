@@ -403,11 +403,11 @@ export function PageHeader({ index, eyebrow, title, subtitle, right, rightInline
             : "flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4"
         }
       >
-        <div className="flex items-end gap-4">
+        <div className="flex min-w-0 items-end gap-4">
           {index && (
             <span className="font-display text-4xl font-black leading-none text-faint">{index}</span>
           )}
-          <div>
+          <div className="min-w-0">
             {eyebrow && (
               <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow sm:text-[13px] sm:tracking-[0.2em]">
                 {eyebrow}
@@ -415,7 +415,10 @@ export function PageHeader({ index, eyebrow, title, subtitle, right, rightInline
             )}
             {/* rightInline shares the phone row with controls, so the title
                 steps down a notch there to leave them room. */}
-            <h1 className={`font-display font-extrabold uppercase tracking-tight text-dark sm:text-4xl ${rightInline ? "text-2xl" : "text-3xl"}`}>
+            {/* break-words because a title can be someone's own display name
+                (the welcome screen greets a new member by theirs), and a long
+                one without spaces would otherwise push the row sideways. */}
+            <h1 className={`break-words font-display font-extrabold uppercase tracking-tight text-dark sm:text-4xl ${rightInline ? "text-2xl" : "text-3xl"}`}>
               {title}
             </h1>
           </div>

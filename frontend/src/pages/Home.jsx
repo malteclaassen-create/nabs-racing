@@ -389,6 +389,14 @@ function NextSeasonPanel({ teaser, discord, signupRace }) {
   const carSrc = carFor(teaser);
   const openerFlag = opener?.track ? flagFor(opener.track) : null;
   const mark = opener?.track ? circuitMark(opener.track) : null;
+  // Is the race the button leads to actually THIS season's opener? Matched on
+  // the track, or on the same kickoff time for a season that runs the same
+  // circuit twice.
+  const sameTrack = (a, b) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+  const isOpenerSignup =
+    !!signupRace &&
+    (sameTrack(signupRace.track, opener?.track) ||
+      (!!opener?.date && new Date(signupRace.date).getTime() === new Date(opener.date).getTime()));
   // "Season 8" reads fine; a season literally named "8" gets the prefix.
   const title = /^\d+$/.test(String(teaser.name).trim()) ? `Season ${teaser.name}` : teaser.name;
 
@@ -510,7 +518,11 @@ function NextSeasonPanel({ teaser, discord, signupRace }) {
                 to={`/attendance?race=${signupRace.id}`}
                 className="shine group mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
               >
-                Sign up for the opener
+                {/* The sign-up is for whatever race is actually next, which in
+                    the off-season is this opener. A training race or a special
+                    event slotted in before it would take that place, and then
+                    calling it the opener would simply be wrong. */}
+                {isOpenerSignup ? "Sign up for the opener" : "Sign up for the next race"}
                 <span className="transition group-hover:translate-x-0.5">→</span>
               </Link>
             ) : discord ? (
@@ -576,11 +588,12 @@ export default function Home() {
   const seasonOver =
     !isPast && !isUpcomingSeason && champRaces.length > 0 && champRaces.every((r) => r.isCompleted);
 
-  // The announced next season, for the hero's off-season half. Only asked for
-  // once the running season has crowned its champion, so a season in progress
-  // doesn't pay for a request it has no place to show (the "Coming up" strip
-  // further down fetches its own).
-  const teaser = useApi(useCallback(() => (seasonOver ? api.seasonTeaser() : Promise.resolve(null)), [seasonOver]));
+  // The announced next season. Asked for right away, not once the season turns
+  // out to be over: waiting made the hero paint its off-season layout twice,
+  // first centred without the card and then shifted aside when the answer
+  // arrived. One request either way, because the "Coming up" strip further down
+  // is handed this same answer instead of fetching its own.
+  const teaser = useApi(useCallback(() => api.seasonTeaser(), []));
   // Dev-only knobs for the off-season hero, same idea as ?demo=1 for the title
   // fight and just as absent from a build:
   //   ?opener=<days>       how the panel reads that many days out (6 = a
@@ -658,7 +671,15 @@ export default function Home() {
     };
   }, [seasonOver, isPast, season?.number]);
 
-  if (drivers.loading || t1.loading || t2.loading || races.loading)
+  // The announcement is part of this list ONLY while the season is over, which
+  // is the one state where the hero's layout depends on it: with an announced
+  // season the celebration shares the hero, without one it stands alone and
+  // centred. Waiting the extra moment (the request runs in parallel with the
+  // four above and is the smallest of them) means whichever of the two the
+  // visitor gets is the one that paints, instead of one turning into the other
+  // in front of them. A running season never waits for it, and an error is
+  // treated as "nothing announced" rather than stalling the page.
+  if (drivers.loading || t1.loading || t2.loading || races.loading || (seasonOver && teaser.loading))
     return (
       <div className="space-y-6 sm:space-y-12">
         <Skeleton className="h-[460px] w-full rounded-[1.75rem]" />
@@ -941,6 +962,12 @@ export default function Home() {
                 </Link>
               </div>
             </div>
+            {/* Off-season with an announced season: the celebration shares the
+                hero. Without one (nothing announced yet, or the announcement
+                pulled again) this is simply absent and the hero is the plain
+                champion layout it has always been, centred and full width. The
+                page waits for the answer before painting, so neither state is
+                ever built twice on screen. */}
             {offSeason && (
               <NextSeasonPanel teaser={teased} discord={social.data?.discord} signupRace={signupRace} />
             )}
@@ -1517,7 +1544,7 @@ export default function Home() {
           it's being set up. On an archive season this renders nothing, and in the
           off-season the hero already carries the announcement (with the same
           countdown), so the strip stays away rather than repeating it. */}
-      {season?.isActive && !offSeason && <NextSeasonTeaser />}
+      {season?.isActive && !offSeason && <NextSeasonTeaser data={teaser.data} />}
 
       {/* ===================== DRIVERS' CHAMPIONSHIP ===================== */}
       <section className="reveal">

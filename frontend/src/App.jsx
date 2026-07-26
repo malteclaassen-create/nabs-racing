@@ -26,6 +26,7 @@ import Attendance from "./pages/Attendance.jsx";
 import Live from "./pages/Live.jsx";
 import Downloads from "./pages/Downloads.jsx";
 import DiscordCallback from "./pages/DiscordCallback.jsx";
+import SteamCallback from "./pages/SteamCallback.jsx";
 import NotFound from "./pages/NotFound.jsx";
 
 // Pages that only a signed-in member or the admin ever opens are split into
@@ -202,6 +203,9 @@ function AppRoutes() {
         <Route path="/market" element={<ToSeries sub="/races" />} />
         <Route path="/driver-market" element={<ToSeries sub="/races" />} />
         <Route path="/auth/discord/callback" element={<DiscordCallback />} />
+        {/* Steam sends the member back here; the page hands the answer to the
+            API with their session attached (see SteamCallback). */}
+        <Route path="/auth/steam/callback" element={<SteamCallback />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

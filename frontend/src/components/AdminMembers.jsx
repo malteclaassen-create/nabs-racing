@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { ErrorBox, DriverAvatar } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
+import IdChip from "./IdChip.jsx";
 import AdminPersons from "./AdminPersons.jsx";
 
 // Admin "Members" tab: every Discord account that has ever logged in on the
@@ -100,9 +101,35 @@ export default function AdminMembers() {
     act(m.discordId, () => api.banMember(m.discordId, false));
   }
 
+  // What happened to a Steam account the member had connected while waiting for
+  // a driver row. Silence when there was nothing to carry over; anything that
+  // did NOT land needs the admin to know, because from then on race results
+  // match by name again.
+  function steamNote(steam, who) {
+    if (!steam || steam.reason === "no-claim") return null;
+    if (steam.written) return { ok: true, text: `${who} is set up. Their Steam account was carried over.` };
+    if (steam.reason === "already-set") return null;
+    if (steam.reason === "held-by-other")
+      return {
+        ok: false,
+        text: `${who} is set up, but their Steam account is already on ${steam.byName} this season. Clear it there, then re-enter it under Drivers.`,
+      };
+    if (steam.reason === "would-change")
+      return {
+        ok: false,
+        text: `${who} is set up. Their driver entry already carries a different Steam account, so it was left alone. Check it under Drivers.`,
+      };
+    return { ok: false, text: `${who} is set up, but their Steam account could not be carried over. Enter it under Drivers.` };
+  }
+
   function link(m, driverId) {
     if (!driverId) return;
-    act(m.discordId, () => api.linkMember(m.discordId, driverId));
+    const who = m.displayName || m.username;
+    act(m.discordId, async () => {
+      const res = await api.linkMember(m.discordId, driverId);
+      const note = steamNote(res?.steam, who);
+      if (note) setMsg(note);
+    });
   }
 
   // Safe name-based SUGGESTION for an unlinked account: pre-selects the
@@ -138,9 +165,12 @@ export default function AdminMembers() {
 
   function createDriver(m) {
     if (!createForm.name.trim() || !createForm.teamId) return;
+    const who = createForm.name.trim();
     act(m.discordId, async () => {
-      await api.createDriverFromMember(m.discordId, { name: createForm.name.trim(), teamId: createForm.teamId });
+      const res = await api.createDriverFromMember(m.discordId, { name: who, teamId: createForm.teamId });
       setCreating(null);
+      const note = steamNote(res?.steam, who);
+      if (note) setMsg(note);
     });
   }
 
@@ -179,8 +209,20 @@ export default function AdminMembers() {
                   <DriverAvatar name={m.displayName || m.username} photoUrl={m.avatarUrl} color="#64748b" size={36} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold text-dark">{m.displayName || m.username}</span>
-                    <span className="block font-mono text-xs text-light">
-                      @{m.username} · ID {m.discordId} · last login {fmtDate(m.lastLoginAt)}
+                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-light">
+                      <span>@{m.username}</span>
+                      <IdChip platform="discord" value={m.discordId} />
+                      <IdChip
+                        platform="steam"
+                        value={m.steamId}
+                        state={m.steamId ? "connected" : "not set"}
+                        title={
+                          m.steamId
+                            ? `Connected their Steam account themselves${m.steamVerifiedAt ? ` on ${fmtDate(m.steamVerifiedAt)}` : ""}. It moves onto the driver row when you link or create one.`
+                            : "No Steam account connected yet. Race results still match by name until one is on file."
+                        }
+                      />
+                      <span>last login {fmtDate(m.lastLoginAt)}</span>
                     </span>
                     {suggested && sel === suggested.id && (
                       <span className="block font-mono text-[11px] text-emerald-600">
@@ -306,8 +348,41 @@ export default function AdminMembers() {
                 <DriverAvatar name={m.displayName || m.username} photoUrl={m.avatarUrl} color={m.driver?.team?.color || "#64748b"} size={36} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold text-dark">{m.displayName || m.username}</span>
-                  <span className="block font-mono text-xs text-light">
-                    @{m.username} · ID {m.discordId} · first {fmtDate(m.firstLoginAt)} · last {fmtDate(m.lastLoginAt)} · {m.loginCount}×
+                  <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-light">
+                    <span>@{m.username}</span>
+                    <IdChip platform="discord" value={m.discordId} />
+                    {/* Four situations, and the difference has to be readable
+                        without hovering (this tab gets used on a phone):
+                        connected by the member, captured from a race import,
+                        the two disagreeing, or nothing on file. */}
+                    <IdChip
+                      platform="steam"
+                      value={m.steamId || m.driver?.steamId || null}
+                      tone={m.steamId && m.driver?.steamId && m.steamId !== m.driver.steamId ? "warn" : "muted"}
+                      state={
+                        m.steamId && m.driver?.steamId && m.steamId !== m.driver.steamId
+                          ? "differs from driver row"
+                          : m.steamId && m.driver && !m.driver.steamId
+                            ? "not on driver row"
+                            : m.steamId
+                              ? "connected"
+                              : m.driver?.steamId
+                                ? "from import"
+                                : "not set"
+                      }
+                      title={
+                        m.steamId && m.driver?.steamId && m.steamId !== m.driver.steamId
+                          ? `The account is connected to ${m.steamId}, but the driver row carries ${m.driver.steamId}. Fix the driver row in the Drivers tab.`
+                          : m.driver && m.steamId && !m.driver.steamId
+                            ? "Connected on the account, but not on the driver row yet. Unlink and link again to carry it over, or type it into the Drivers tab."
+                            : m.driver?.steamId && !m.steamId
+                              ? "Captured from a race import on the driver row (the member did not connect Steam themselves)."
+                              : m.steamId
+                                ? `Connected through Steam${m.steamVerifiedAt ? ` on ${fmtDate(m.steamVerifiedAt)}` : ""}.`
+                                : "No Steam account on file. Race results match by name for this person."
+                      }
+                    />
+                    <span>first {fmtDate(m.firstLoginAt)} · last {fmtDate(m.lastLoginAt)} · {m.loginCount}×</span>
                   </span>
                 </span>
                 {m.driver && (

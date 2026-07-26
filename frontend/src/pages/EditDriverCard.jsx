@@ -335,7 +335,11 @@ function EditDriverCardInner() {
     return (
       <div className="mx-auto max-w-md">
         <div className="card p-6 text-center text-sm text-medium">
-          Your Discord account isn't linked to a driver yet, so there's no card to edit. Please contact an admin.
+          You don&rsquo;t have a driver entry yet, so there&rsquo;s no card to edit.{" "}
+          <Link to="/profile" className="font-semibold text-primary hover:underline">
+            Start on your profile
+          </Link>{" "}
+          to connect your Steam account and ask for a seat.
         </div>
       </div>
     );

@@ -20,6 +20,7 @@ import seriesRoutes from "./routes/series.js";
 import settingsRoutes from "./routes/settings.js";
 import authRoutes from "./routes/auth.js";
 import discordAuthRoutes from "./routes/discordAuth.js";
+import steamAuthRoutes from "./routes/steamAuth.js";
 import downloadsRoutes from "./routes/downloads.js";
 import notificationsRoutes from "./routes/notifications.js";
 import searchRoutes from "./routes/search.js";
@@ -30,6 +31,7 @@ import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
 import { buildPageMeta, applyPageMeta } from "./lib/pageMeta.js";
+import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
@@ -189,6 +191,7 @@ app.use("/api/seasons", seasonsRoutes);
 app.use("/api/series", seriesRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/auth/discord", discordAuthRoutes);
+app.use("/api/auth/steam", steamAuthRoutes);
 app.use("/api/downloads", downloadsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/search", searchRoutes);
@@ -196,6 +199,30 @@ app.use("/api/search", searchRoutes);
 // Admin
 app.use("/api/admin", authRoutes); // /api/admin/login
 app.use("/api/admin", adminRoutes); // everything else (auth-guarded)
+
+// Search engines: what may be crawled, and the list of pages worth crawling.
+// Generated per request because the site's address is not fixed (localhost, a
+// tunnel, the league domain, and whatever the admin uses after the handover) —
+// a sitemap naming the wrong host is worse than none. `trust proxy` is set
+// above, so the protocol is the one the visitor actually used.
+const publicOrigin = (req) => `${req.protocol}://${req.get("host")}`;
+
+app.get("/robots.txt", (req, res) => {
+  res.type("text/plain");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(buildRobotsTxt(publicOrigin(req)));
+});
+
+app.get("/sitemap.xml", async (req, res, next) => {
+  try {
+    const xml = await buildSitemapXml(prisma, publicOrigin(req));
+    res.type("application/xml");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(xml);
+  } catch (e) {
+    next(e);
+  }
+});
 
 // Optionally serve the built frontend from this same process, so the whole site
 // (website + API + downloads) runs as ONE program under ONE origin — no separate

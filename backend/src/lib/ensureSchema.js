@@ -255,6 +255,16 @@ export async function ensureAppSchema(prisma) {
   // created for it.
   await addColumn(prisma, "MemberAccount", "raceRequestAt", "DATETIME");
   await addColumn(prisma, "MemberAccount", "raceRequestText", "TEXT");
+  // Steam account proved via "Sign in through Steam". Lives on the ACCOUNT
+  // because a fresh login has no Driver row yet; copied onto Driver.steamId as
+  // soon as one exists (see lib/members.js applyMemberSteamId). Unique, so one
+  // Steam account cannot be claimed by two logins — NULLs stay distinct in
+  // SQLite, so accounts without one never collide.
+  await addColumn(prisma, "MemberAccount", "steamId", "TEXT");
+  await addColumn(prisma, "MemberAccount", "steamVerifiedAt", "DATETIME");
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "MemberAccount_steamId_key" ON "MemberAccount"("steamId")`
+  );
 
   // --- Phase 3: cross-season person links. One row per driver row that belongs
   // to a person; all driver rows of the same person share one personId.

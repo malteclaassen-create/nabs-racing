@@ -261,6 +261,21 @@ export const api = {
   myRaceRequest: () => request("/me/race-request", { userAuth: true }),
   requestRace: (raceId) => request("/me/race-request", { method: "POST", body: { raceId }, userAuth: true }),
 
+  // "Sign in through Steam": start returns the URL to send the browser to;
+  // Steam then comes back to /auth/steam/callback in this app, and THAT page
+  // hands the answer to verify with the member's own session attached. The
+  // detour through our own page is deliberate (see backend/routes/steamAuth.js):
+  // it is what proves the browser finishing the flow is the signed-in member.
+  steamLinkStart: () =>
+    request("/auth/steam/start", {
+      method: "POST",
+      body: { returnTo: `${window.location.origin}/auth/steam/callback` },
+      userAuth: true,
+    }),
+  steamLinkVerify: (query) =>
+    request("/auth/steam/verify", { method: "POST", body: { query }, userAuth: true }),
+  steamUnlink: () => request("/auth/steam", { method: "DELETE", userAuth: true }),
+
   // notifications (the nav-bar bell; member-only)
   notifications: () => request("/notifications", { userAuth: true }),
   notificationsCount: () => request("/notifications/count", { userAuth: true }),

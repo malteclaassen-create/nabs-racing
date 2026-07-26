@@ -52,6 +52,19 @@ async function readCardPhotoUrl(prisma, driverId) {
 }
 
 // Resolve the logged-in driver id (fresh from the DB) or send a 401.
+// The member's own Steam link for GET /api/me. Reads the raw columns
+// defensively: schema upkeep runs fire-and-forget at boot, so a brand-new
+// database can answer a request before the columns exist.
+async function steamStateFor(discordId) {
+  if (!discordId) return { linked: false, id: null, verifiedAt: null };
+  const acct = await dbGetMember(prisma, discordId).catch(() => null);
+  return {
+    linked: !!acct?.steamId,
+    id: acct?.steamId || null,
+    verifiedAt: acct?.steamVerifiedAt || null,
+  };
+}
+
 // Returns null when not allowed.
 async function requireDriver(req, res) {
   const driverId = await resolveDriverId(prisma, req.user);
@@ -68,8 +81,11 @@ router.get("/", async (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: "Sign in with Discord first" });
     // Logged in via Discord but not (or no longer) matched to a roster driver.
     const driverId = await resolveDriverId(prisma, req.user);
+    // The member's own Steam link, so the profile can show it and offer to
+    // change it. Their own id only; nobody else's ever leaves the server here.
+    const steam = await steamStateFor(req.user.discordId);
     if (!driverId) {
-      return res.json({ isLinked: false, discordName: req.user.discordName || null });
+      return res.json({ isLinked: false, discordName: req.user.discordName || null, steam });
     }
     const driver = await prisma.driver.findUnique({
       where: { id: driverId },
@@ -78,6 +94,7 @@ router.get("/", async (req, res, next) => {
     if (!driver) return res.status(404).json({ error: "Driver not found" });
     res.json({
       isLinked: true,
+      steam,
       driverId: driver.id,
       // The row's own season — the rating card must label itself with THIS
       // season, not whichever one the site's switcher happens to be on.

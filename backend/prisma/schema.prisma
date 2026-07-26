@@ -448,6 +448,17 @@ model MemberAccount {
   // When this member last opened the notification bell — everything newer
   // counts as unread (raw-SQL column, migration notifications).
   notificationsSeenAt DateTime?
+  // Steam account the member proved through "Sign in through Steam", captured
+  // on the ACCOUNT because a new login usually has no Driver row yet (that may
+  // only be created weeks later). Copied onto Driver.steamId the moment a
+  // driver row becomes available, which is what lets the AC result import
+  // recognise a newcomer on their very first race. Unique: one Steam account
+  // can back exactly one login (SQLite treats NULLs as distinct, so the many
+  // accounts without one never collide). Raw-SQL columns (see
+  // lib/members.js + lib/ensureSchema.js), mirrored by migration
+  // member_steam_id for production.
+  steamId         String?   @unique
+  steamVerifiedAt DateTime?
 }
 
 // In-site notifications behind the nav-bar bell. recipientId null = broadcast

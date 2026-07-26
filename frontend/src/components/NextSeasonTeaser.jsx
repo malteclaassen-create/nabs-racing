@@ -12,9 +12,13 @@ import RaceCountdown from "./RaceCountdown.jsx";
 // teaser facts (name, game, opener), so nothing else leaks early. The strip
 // disappears by itself once the season is activated. If the season has a car
 // showroom shot (public/cars/s<n>.jpg), it rides along on a dark panel.
-export default function NextSeasonTeaser() {
+// `data` lets a page that has already asked for the teaser hand the answer in
+// (Home needs it for its own hero and would otherwise ask twice). Left out, the
+// strip fetches for itself, which is what the Welcome page does.
+export default function NextSeasonTeaser({ data }) {
   const social = useSocial();
-  const teaser = useApi(useCallback(() => api.seasonTeaser(), []));
+  const given = data !== undefined;
+  const teaser = useApi(useCallback(() => (given ? Promise.resolve(data) : api.seasonTeaser()), [given, data]));
   // The car picture is optional per season: the panel stays hidden until the
   // image actually loads, so a season without a shot loses nothing. Besides
   // onLoad, an effect checks the element directly — a cached image can be

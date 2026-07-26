@@ -17,7 +17,8 @@ import AdminMembers from "../components/AdminMembers.jsx";
 import AdminNotifications from "../components/AdminNotifications.jsx";
 import AdminAllTime from "../components/AdminAllTime.jsx";
 import RacePreview from "../components/RacePreview.jsx";
-import { SOCIAL_META } from "../components/SocialLinks.jsx";
+import { SOCIAL_META, SocialIcon } from "../components/SocialLinks.jsx";
+import { isSteamId64 } from "../utils/steamId.js";
 import { fmtTimeCell } from "../utils/raceDuration.js";
 
 // The admin's tabs, clustered by what they're for — same ids (and therefore
@@ -1776,10 +1777,12 @@ function Drivers() {
       <div className="card max-h-[640px] overflow-y-auto p-5">
         <CardHead eyebrow="Roster" title={`Drivers by team (${allDrivers.length})`} />
         <p className="mb-3 text-xs text-light">
-          Use the dropdowns to move a driver to another team or change their tier. The Discord user ID field links
-          the driver to their Discord account: it makes their website login connect instantly and lets the results
+          Use the dropdowns to move a driver to another team or change their tier. The Discord field links the
+          driver to their Discord account: it makes their website login connect instantly and lets the results
           post @mention them, even before their first login. (Discord: Settings → Advanced → Developer Mode, then
-          right-click the user → Copy User ID.)
+          right-click the user → Copy User ID.) The Steam field holds the id race imports match on. It normally
+          fills itself, from the first race a driver runs or from them connecting Steam on their profile, so only
+          touch it to correct a wrong one.
         </p>
         <div className="divide-y divide-border border-y border-border">
           {teamGroups.map((t) => (
@@ -1887,6 +1890,8 @@ function Drivers() {
                     </button>
                     <DriverDiscordId d={d} busy={busy} accounts={accounts}
                       onSave={(v) => patchDriver(d, { discordUserId: v })} />
+                    <DriverSteamId d={d} busy={busy}
+                      onSave={(v) => patchDriver(d, { steamId: v })} />
                   </li>
                 ))}
               </ul>
@@ -1939,6 +1944,13 @@ function DriverDiscordId({ d, busy, accounts, onSave }) {
   const inherited = !d.discordUserId && !!d.inheritedDiscordUserId;
   return (
     <span className="flex w-full flex-wrap items-center gap-2">
+      {/* Both id fields sit on their own row and look identical, so each one
+          keeps a label that stays put once a value is typed (a placeholder
+          would be gone exactly then). */}
+      <span className="inline-flex w-24 shrink-0 items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+        <SocialIcon name="discord" className="h-3 w-3" />
+        Discord
+      </span>
       <input
         className="input w-52 py-1 font-mono text-xs"
         placeholder={inherited ? `${d.inheritedDiscordUserId} (inherited)` : "Discord user ID (not set)"}
@@ -1978,6 +1990,66 @@ function DriverDiscordId({ d, busy, accounts, onSave }) {
           </button>
           <button className="text-xs font-semibold text-light hover:underline" disabled={busy}
             onClick={() => setVal(d.discordUserId || "")}>
+            Cancel
+          </button>
+        </>
+      )}
+    </span>
+  );
+}
+
+// Per-driver Steam ID (SteamID64), the id race results are matched on.
+// Normally it fills itself: the result import captures it from the AC file the
+// first time this person races, and a member who linked their Steam account on
+// their profile brings it with them. This field exists for the case that used
+// to be a dead end: a WRONG id. The import only ever writes into an empty
+// field, so a wrong one blocked automatic capture for good and produced a
+// "Steam ID conflict" note after every race.
+function DriverSteamId({ d, busy, onSave }) {
+  const [val, setVal] = useState(d.steamId || "");
+  useEffect(() => setVal(d.steamId || ""), [d.steamId]);
+  const dirty = val.trim() !== (d.steamId || "");
+  // The same rule the server enforces: 17 digits AND inside the band Steam uses
+  // for personal accounts. Checking it here means the warning shows while
+  // typing instead of after a rejected save.
+  const shaped = isSteamId64(val.trim());
+  return (
+    <span className="flex w-full flex-wrap items-center gap-2">
+      <span className="inline-flex w-24 shrink-0 items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+        <SocialIcon name="steam" className="h-3 w-3" />
+        Steam
+      </span>
+      <input
+        className="input w-52 py-1 font-mono text-xs"
+        placeholder="Steam ID (not set)"
+        title="The 17-digit SteamID64 the race import matches on (steamcommunity.com/profiles/7656...). Usually captured automatically from the first race, or brought along when the member links their Steam account on their profile. Only fill this in to correct a wrong one."
+        value={val}
+        onChange={(e) => setVal(e.target.value.trim())}
+      />
+      {val.trim() && !shaped && (
+        <span className="font-mono text-[10px] font-bold text-amber-600" title="A SteamID64 is exactly 17 digits and starts with 7656. A Discord ID looks similar but is not the same thing.">
+          does not look like a Steam ID
+        </span>
+      )}
+      {val.trim() && shaped && !dirty && (
+        <a
+          className="font-mono text-[10px] text-light hover:text-primary hover:underline"
+          href={`https://steamcommunity.com/profiles/${val.trim()}`}
+          target="_blank"
+          rel="noreferrer noopener"
+          title="Open this Steam profile in a new tab to check who it is"
+        >
+          open profile
+        </a>
+      )}
+      {dirty && (
+        <>
+          <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+            onClick={() => onSave(val.trim())}>
+            Save
+          </button>
+          <button className="text-xs font-semibold text-light hover:underline" disabled={busy}
+            onClick={() => setVal(d.steamId || "")}>
             Cancel
           </button>
         </>

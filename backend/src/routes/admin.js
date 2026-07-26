@@ -35,7 +35,10 @@ import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFo
 import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq, writeWelcomeFaq } from "../lib/welcomeFaq.js";
-import { dbListMembers, dbGetMember, dbSetBanned, dbClearRaceRequest, shapeMember } from "../lib/members.js";
+import {
+  dbListMembers, dbGetMember, dbSetBanned, dbClearRaceRequest, shapeMember, applyMemberSteamId,
+} from "../lib/members.js";
+import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import { dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups } from "../lib/persons.js";
 import {
@@ -221,11 +224,18 @@ async function getSeatTakeovers(prismaClient, seasonId) {
 async function attachSteamIds(drivers) {
   if (!drivers.length) return drivers;
   try {
-    const rows = await prisma.$queryRawUnsafe(
-      `SELECT "id", "steamId" FROM "Driver" WHERE "id" IN (${drivers.map(() => "?").join(", ")})`,
-      ...drivers.map((d) => d.id)
-    );
-    const byId = new Map(rows.map((r) => [r.id, r.steamId ?? null]));
+    const byId = new Map();
+    // Chunked: one placeholder per driver would run into SQLite's 999-variable
+    // limit once the all-seasons roster grows past it (it is in the hundreds
+    // already, one more season per year).
+    for (let i = 0; i < drivers.length; i += 400) {
+      const chunk = drivers.slice(i, i + 400);
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT "id", "steamId" FROM "Driver" WHERE "id" IN (${chunk.map(() => "?").join(", ")})`,
+        ...chunk.map((d) => d.id)
+      );
+      for (const r of rows) byId.set(r.id, r.steamId ?? null);
+    }
     for (const d of drivers) d.steamId = byId.get(d.id) ?? null;
   } catch {
     for (const d of drivers) d.steamId = d.steamId ?? null;
@@ -1120,13 +1130,43 @@ router.post("/drivers/from-db", async (req, res, next) => {
         .catch(() => []);
       steamId = rows[0]?.steamId || null;
     }
+    // Nothing captured from a race yet? The person may have proved their Steam
+    // account themselves on the profile page while waiting for a roster row.
+    // Ranked above the name fallback below: this one was confirmed by Steam.
+    if (!steamId) {
+      const discordId =
+        source.discordUserId ||
+        (linked.length
+          ? (
+              await prisma
+                .$queryRawUnsafe(
+                  `SELECT "discordUserId" FROM "Driver" WHERE "id" IN (${linked.map(() => "?").join(",")}) AND "discordUserId" IS NOT NULL LIMIT 1`,
+                  ...linked
+                )
+                .catch(() => [])
+            )[0]?.discordUserId || null
+          : null);
+      if (discordId) {
+        const acct = await dbGetMember(prisma, discordId).catch(() => null);
+        steamId = acct?.steamId || null;
+      }
+    }
     // Unlinked archive rows of the same name can donate too (the database
-    // groups by name when no person link exists yet).
+    // groups by name when no person link exists yet). Scoped to THIS series:
+    // across series, two different people sharing a display name would hand
+    // each other's Steam ID over, and the import only writes once, so the wrong
+    // value would stick for good.
     if (!steamId) {
       const rows = await prisma
         .$queryRawUnsafe(
-          `SELECT "steamId" FROM "Driver" WHERE lower("name") = lower(?) AND "steamId" IS NOT NULL LIMIT 1`,
-          source.name
+          `SELECT d."steamId" FROM "Driver" d
+             JOIN "Season" s ON s."id" = d."seasonId"
+            WHERE lower(d."name") = lower(?)
+              AND d."steamId" IS NOT NULL
+              AND s."seriesId" IS (SELECT "seriesId" FROM "Season" WHERE "id" = ?)
+            LIMIT 1`,
+          source.name,
+          team.season.id
         )
         .catch(() => []);
       steamId = rows[0]?.steamId || null;
@@ -1146,7 +1186,7 @@ router.post("/drivers/from-db", async (req, res, next) => {
 
 router.put("/drivers/:id", async (req, res, next) => {
   try {
-    const { name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role, hideFromStandings } = req.body || {};
+    const { name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role, hideFromStandings, steamId } = req.body || {};
     // Special league role ('safety' = safety car driver, "" clears). Raw-SQL
     // column, so it's written after the prisma update below.
     if (role !== undefined && role !== "" && role !== null && !DRIVER_ROLES.includes(role)) {
@@ -1230,6 +1270,46 @@ router.put("/drivers/:id", async (req, res, next) => {
     }
     if (role !== undefined) {
       driver.role = await writeDriverRole(prisma, driver.id, role);
+    }
+    // The Steam ID (SteamID64) the result import matches on. Normally captured
+    // automatically from the first AC import, or carried over from the member's
+    // own Steam link — but a wrong value used to be unfixable, because the
+    // import only ever writes into an EMPTY field and would then report a
+    // conflict after every race. Hence this editable field; "" clears it.
+    // Raw-SQL column (see the note on attachSteamIds), so it is written after
+    // the prisma update, like role and hideFromStandings.
+    if (steamId !== undefined) {
+      const v = String(steamId || "").trim();
+      if (v && !isIndividualSteamId(v)) {
+        return res.status(400).json({
+          error:
+            "A Steam ID is the 17-digit number of a personal account (steamcommunity.com/profiles/7656...). Note it is not the Discord ID.",
+        });
+      }
+      // Unique PER SEASON, so only the same season can collide. Checked here to
+      // name the other driver, instead of the generic unique-violation message
+      // below, which talks about Discord IDs.
+      if (v) {
+        const clash = await prisma
+          .$queryRawUnsafe(
+            `SELECT "id", "name" FROM "Driver" WHERE "steamId" = ? AND "seasonId" IS ? AND "id" != ?`,
+            v,
+            driver.seasonId,
+            driver.id
+          )
+          .catch(() => []);
+        if (clash.length) {
+          return res.status(409).json({
+            error: `That Steam ID is already on ${clash[0].name} in this season. Clear it there first if the two entries are the same person.`,
+          });
+        }
+      }
+      await prisma.$executeRawUnsafe(
+        `UPDATE "Driver" SET "steamId" = ? WHERE "id" = ?`,
+        v || null,
+        driver.id
+      );
+      driver.steamId = v || null;
     }
     // Hide from the public driver standings (raw-SQL column). An explicit value
     // wins; reactivating a driver clears the flag so nobody ends up active but
@@ -1451,6 +1531,9 @@ router.get("/members", async (req, res, next) => {
       getAdminDiscordIds(prisma),
     ]);
     const activeIds = new Set(activeSeasons.map((s) => s.id));
+    // Whether the Steam ID has actually reached the roster row (raw column, so
+    // read the way every other admin path reads it).
+    await attachSteamIds(drivers);
     const shapeDriver = (d) =>
       d && {
         id: d.id,
@@ -1461,6 +1544,7 @@ router.get("/members", async (req, res, next) => {
         seasonId: d.seasonId,
         seasonName: d.season?.name || null,
         isActiveSeason: activeIds.has(d.seasonId),
+        steamId: d.steamId || null,
       };
     const members = rows.map((r) => {
       const m = shapeMember(r);
@@ -1548,7 +1632,11 @@ router.post("/members/:discordId/link", async (req, res, next) => {
     ]);
     // Linked = their "I want to race" hand-raise (if any) is answered.
     await dbClearRaceRequest(prisma, req.params.discordId);
-    res.json({ ok: true });
+    // If they linked their Steam account while waiting for a driver row, the
+    // proved id moves onto that row now, so the next result import matches them
+    // by Steam GUID instead of by name.
+    const steam = await applyMemberSteamId(prisma, req.params.discordId, driverId);
+    res.json({ ok: true, steam });
   } catch (e) {
     next(e);
   }
@@ -1593,7 +1681,10 @@ router.post("/members/:discordId/create-driver", async (req, res, next) => {
     ]);
     // A fresh driver answers their "I want to race" hand-raise (if any).
     await dbClearRaceRequest(prisma, req.params.discordId);
-    res.status(201).json({ ok: true, driver });
+    // This is the main case for the member-side Steam link: they proved their
+    // account weeks ago, the driver row only exists now. Seed it here.
+    const steam = await applyMemberSteamId(prisma, req.params.discordId, driver.id);
+    res.status(201).json({ ok: true, driver, steam });
   } catch (e) {
     next(e);
   }
@@ -1602,6 +1693,22 @@ router.post("/members/:discordId/create-driver", async (req, res, next) => {
 // POST /api/admin/members/:discordId/unlink
 router.post("/members/:discordId/unlink", async (req, res, next) => {
   try {
+    // Take back what the link put there. The account's own Steam claim was
+    // copied onto the driver row when it was linked; leaving it behind would
+    // strand it on a row that is no longer this person's, and the per-season
+    // uniqueness would then block linking them anywhere else. Only an id that
+    // still MATCHES the claim is cleared, so a value captured from a real race
+    // import (which may differ) is never touched.
+    const account = await dbGetMember(prisma, req.params.discordId).catch(() => null);
+    if (account?.steamId) {
+      await prisma
+        .$executeRawUnsafe(
+          `UPDATE "Driver" SET "steamId" = NULL WHERE "discordUserId" = ? AND "steamId" = ?`,
+          req.params.discordId,
+          account.steamId
+        )
+        .catch(() => {});
+    }
     await prisma.driver.updateMany({
       where: { discordUserId: req.params.discordId },
       data: { discordUserId: null },
@@ -2627,6 +2734,13 @@ router.post("/seasons/:id/clone-roster", async (req, res, next) => {
     }
 
     let driversCreated = 0;
+    // Steam ids ride along (raw column, read the way the rest of this file does).
+    // Without them the cloned roster starts every season blind: the result
+    // import would fall back to matching display names until it re-captured a
+    // GUID per driver, which is exactly what the id is meant to avoid. No
+    // collision is possible, the target season is empty and the source already
+    // holds at most one row per id.
+    await attachSteamIds(sourceDrivers);
     for (const d of sourceDrivers) {
       const newId = `${d.id}${suffix}`;
       const newTeamId = teamIdMap.get(d.teamId);
@@ -2651,6 +2765,11 @@ router.post("/seasons/:id/clone-roster", async (req, res, next) => {
           socials: d.socials,
         },
       });
+      if (d.steamId) {
+        await prisma
+          .$executeRawUnsafe(`UPDATE "Driver" SET "steamId" = ? WHERE "id" = ?`, d.steamId, newId)
+          .catch(() => {});
+      }
       driversCreated++;
     }
     res.json({ ok: true, teamsCreated, driversCreated });

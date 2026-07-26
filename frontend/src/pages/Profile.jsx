@@ -11,7 +11,7 @@ import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar } from 
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { COUNTRIES } from "../data/countries.js";
-import { SocialIcon, SOCIAL_META } from "../components/SocialLinks.jsx";
+import { SocialIcon, SOCIAL_META, useSocial } from "../components/SocialLinks.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import DriverProfile from "./DriverProfile.jsx";
 import MyRating from "./MyRating.jsx";
@@ -72,6 +72,237 @@ function normalizeSocials(map) {
 // /profile — login when logged out, the driver's own editable profile when in.
 // Replaces the old Sign-Up page (RSVP + Driver Market moved to /races).
 // ---------------------------------------------------------------------------
+
+// The Steam connection, shown to newcomers on the welcome screen and to drivers
+// who already have a profile (theirs may be missing or wrong: an id is only
+// captured automatically once they have actually raced).
+function SteamLinkCard({ steam, onChanged, demo = false }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function connect() {
+    if (demo) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.steamLinkStart();
+      window.location.href = res.url;
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    if (demo) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.steamUnlink();
+      onChanged?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-start gap-4">
+        <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1b2838] text-[#66c0f4]">
+          <SocialIcon name="steam" className="h-6 w-6" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
+            Connect your Steam account
+          </h3>
+          <p className="mt-1 text-sm leading-relaxed text-medium">
+            We import race results straight out of Assetto Corsa, and the game identifies you by your Steam
+            account, not by your name. Connect it once and your results are added to your profile
+            automatically.
+          </p>
+          {error && <p className="mt-2 text-sm font-semibold text-rose-500">{error}</p>}
+          {steam?.linked ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-emerald-600">
+                <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                Connected
+              </span>
+              {steam.id && (
+                <a
+                  className="font-mono text-[11px] text-light hover:text-primary hover:underline"
+                  href={`https://steamcommunity.com/profiles/${steam.id}`}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {steam.id}
+                </a>
+              )}
+              <button className="text-xs font-semibold text-light hover:text-medium hover:underline" disabled={busy} onClick={disconnect}>
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button className="btn-primary mt-3 inline-flex items-center gap-2" disabled={busy} onClick={connect}>
+              <SocialIcon name="steam" className="h-4 w-4" />
+              {busy ? "Opening Steam…" : "Sign in through Steam"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// The banner after coming back from Steam, shared by both profile states.
+// Returns the message and clears the parameter, so a refresh does not repeat it.
+function useSteamResult(onDone) {
+  const [params, setParams] = useSearchParams();
+  const [note, setNote] = useState(null);
+  const result = params.get("steam");
+  useEffect(() => {
+    if (!result) return;
+    if (result === "ok") setNote("Steam account connected. Your results will be matched to you automatically.");
+    else if (result === "carried")
+      setNote(
+        "Steam account connected, but a different Steam account is already stored on your driver entry. An admin needs to look at that one."
+      );
+    else if (result === "cancelled") setNote("Steam sign-in was cancelled. Nothing was saved.");
+    setParams({}, { replace: true });
+    onDone?.();
+    // onDone is a refetch; re-running on its identity would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, setParams]);
+  return note;
+}
+
+// The screen a brand-new login lands on: signed in, but not on any roster yet.
+//
+// Two things they can do here, and both save the admin work later:
+//   1. Link their Steam account. Race results come out of Assetto Corsa
+//      identified by SteamID64, so a linked account means their very first race
+//      lands on their name automatically instead of on a fuzzy name match.
+//   2. Raise a hand. That shows up in the admin's Members tab as "wants to
+//      race", which is the queue the admin works through.
+// The hand-raise used to live only on the Attendance page, which is hidden from
+// the menu whenever no sign-up window is open — so in the off-season, exactly
+// when newcomers arrive, it was unreachable.
+function NewMemberWelcome({ me, reload, logout, demo = false }) {
+  const social = useSocial();
+  // `demo` shows the screen without a session (dev only, see the Profile route
+  // below), so it must not ask for anything a signed-out visitor can't have.
+  const request = useApi(
+    useCallback(() => (demo ? Promise.resolve({ pending: me.demoPending || false }) : api.myRaceRequest()), [demo, me.demoPending])
+  );
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState(null);
+  const note = useSteamResult(reload);
+
+  async function raiseHand() {
+    if (demo) return;
+    setBusy("hand");
+    setError(null);
+    try {
+      await api.requestRace();
+      request.reload();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const pending = !!request.data?.pending;
+
+  return (
+    <div>
+      <PageHeader
+        eyebrow="Welcome"
+        title={me.discordName || "Welcome"}
+        subtitle="You're signed in, but you're not on a race roster yet. Two things get you started."
+      />
+      <div className="mx-auto max-w-xl space-y-4">
+        {error && <ErrorBox message={error} />}
+        {note && (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+            {note}
+          </div>
+        )}
+
+        {/* Step 1: Steam. Stated in terms of what it does for THEM. */}
+        <SteamLinkCard steam={me.steam} onChanged={reload} demo={demo} />
+
+        {/* Step 2: tell the admin you exist. */}
+        <div className="card p-5">
+          <div className="flex items-start gap-4">
+            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand/15 text-brand">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M7 11V7a5 5 0 0110 0v4M5 11h14l-1 9H6z" />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
+                Ask for a seat
+              </h3>
+              {pending ? (
+                <p className="mt-1 text-sm leading-relaxed text-medium">
+                  <span className="font-semibold text-emerald-600">Your request is in.</span> An admin will get
+                  back to you. Once you are set up, this page becomes your driver profile, with your card,
+                  your stats and the sign-ups for each race.
+                </p>
+              ) : (
+                <>
+                  <p className="mt-1 text-sm leading-relaxed text-medium">
+                    Tell the league you want to drive. An admin sees it, sets up your driver profile and puts
+                    you on a team.
+                  </p>
+                  <button className="btn-primary mt-3" disabled={busy === "hand"} onClick={raiseHand}>
+                    {busy === "hand" ? "Sending…" : "I want to race"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Where the league actually talks. For a newcomer this is the useful
+            next click, and it was missing from the old dead end entirely. */}
+        {social.data?.discord && (
+          <a
+            href={social.data.discord}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="card flex items-center gap-4 p-5 transition hover:border-brand/40"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#5865F2]/15 text-[#5865F2]">
+              <SocialIcon name="discord" className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-display text-base font-extrabold uppercase tracking-tight text-dark">
+                Say hello on Discord
+              </span>
+              <span className="mt-1 block text-sm text-medium">
+                Race nights, seat offers and everything else happen there.
+              </span>
+            </span>
+          </a>
+        )}
+
+        <div className="flex items-center justify-between pt-1">
+          <span className="font-mono text-[11px] uppercase tracking-wider text-faint">
+            Signed in as {me.discordName}
+          </span>
+          <button className="text-xs font-semibold text-light hover:text-medium hover:underline" onClick={logout}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function DiscordLogin() {
   const discord = useApi(useCallback(() => api.discordConfig(), []));
@@ -545,25 +776,19 @@ function MyProfile() {
     return () => clearTimeout(t);
   }, [draft]);
 
-  if (me.loading) return <Spinner label="Loading your profile…" />;
+  // Only the FIRST load blanks the page. A refetch (e.g. after connecting a
+  // Steam account) used to unmount the screen mid-render, which threw away the
+  // message that was the whole point of coming back here.
+  if (me.loading && !me.data) return <Spinner label="Loading your profile…" />;
   if (me.error) return <ErrorBox message={me.error} />;
 
-  // Logged in with Discord but not yet matched to a roster driver.
+  // Logged in with Discord but not yet matched to a roster driver. This used to
+  // be a dead end ("contact an admin") on the page every new login lands on
+  // after signing in, which is a poor first impression and left them nothing to
+  // do. It is now the welcome screen: what happens next, plus the two things
+  // they CAN do right away.
   if (me.data && me.data.isLinked === false) {
-    return (
-      <div>
-        <PageHeader eyebrow="Profile" title="Almost there" />
-        <div className="mx-auto max-w-md space-y-4">
-          <div className="card p-6 text-center">
-            <p className="text-sm text-medium">
-              You're signed in as <span className="font-bold text-dark">{me.data.discordName}</span>, but your
-              Discord account isn't linked to a driver yet. Please contact an admin to get linked.
-            </p>
-          </div>
-          <button className="btn-secondary w-full" onClick={logout}>Sign out</button>
-        </div>
-      </div>
-    );
+    return <NewMemberWelcome me={me.data} reload={me.reload} logout={logout} />;
   }
 
   const d = me.data;
@@ -667,5 +892,25 @@ function MyProfile() {
 
 export default function Profile() {
   const { isLoggedIn } = useAuth();
+  // Dev-only (?demo=newmember, or ?demo=newmember-done for the state after
+  // both steps): shows the screen a brand-new login lands on, WITHOUT needing
+  // to be one. There is no way to reach it otherwise on a local machine, since
+  // Discord cannot redirect a login to localhost. Same idea as ?opener= on the
+  // home page, and equally absent from a build.
+  const demo = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("demo") : null;
+  if (demo === "newmember" || demo === "newmember-done") {
+    const done = demo === "newmember-done";
+    return (
+      <NewMemberWelcome
+        demo
+        me={{
+          discordName: "New driver",
+          demoPending: done,
+          steam: done ? { linked: true, id: "76561198000000000", verifiedAt: new Date().toISOString() } : { linked: false },
+        }}
+        logout={() => {}}
+      />
+    );
+  }
   return isLoggedIn ? <MyProfile /> : <DiscordLogin />;
 }

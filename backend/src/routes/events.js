@@ -8,6 +8,7 @@ import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
 import { seasonRowForDriver, dbLinkDrivers } from "../lib/persons.js";
 import { ensureReservePool } from "../lib/reservePool.js";
+import { applyMemberSteamId } from "../lib/members.js";
 import { readNotifySettings, attendanceOpensAt } from "../lib/notifications.js";
 
 const router = Router();
@@ -210,7 +211,16 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // season's Reserve pool on the spot — the admin then sees the sign-up AND
     // the person in the roster, and the race import checks who actually drove.
     // Accounts never linked to any driver still can't RSVP (the 401 above).
-    if (!driver) driver = await addToReservePool(prisma, base, race.seasonId);
+    if (!driver) {
+      driver = await addToReservePool(prisma, base, race.seasonId);
+      // A row created here is brand new, so it carries no Steam id yet. If the
+      // member proved their Steam account on their profile, seed it now, or the
+      // import of the very race they just signed up for would be matching them
+      // by name again. Never throws.
+      if (driver && req.user?.discordId) {
+        await applyMemberSteamId(prisma, req.user.discordId, driver.id);
+      }
+    }
     if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
 
     await prisma.raceRsvp.upsert({
