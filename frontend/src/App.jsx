@@ -166,9 +166,22 @@ function AppRoutes() {
         <Route path="/s/:seriesSlug/attendance" element={<Attendance />} />
         <Route path="/s/:seriesSlug/live" element={<Live />} />
 
+        {/* The root shows the primary series' home ITSELF instead of bouncing to
+            /s/<slug>. It used to be a redirect that happened in the browser,
+            which meant the address everyone shares had no content of its own:
+            Google fetched it, saw an empty page on its way somewhere else, and
+            classified nabsracing.com as a soft 404 — which is why the homepage
+            could not appear in search results at all. Nothing else changes: the
+            series-scoped reads fall back to the primary series when the address
+            carries no slug, and every link in the nav is built from the active
+            series either way. */}
+        <Route path="/" element={<HomeRoute />} />
+
         {/* Legacy flat paths -> the same page inside the current series, so
-            old bookmarks and unprefixed internal links keep working. */}
-        <Route path="/" element={<ToSeries />} />
+            old bookmarks and unprefixed internal links keep working. A direct
+            hit from outside is answered by a real redirect on the server (see
+            legacyRedirects in the backend); this handles in-app navigation,
+            which never reaches the server. */}
         <Route path="/drivers" element={<ToSeries sub="/drivers" />} />
         <Route path="/drivers/:id" element={<ToSeries sub="/drivers/:id" />} />
         <Route path="/constructors" element={<ToSeries sub="/constructors" />} />

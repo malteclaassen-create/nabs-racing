@@ -18,6 +18,7 @@
 // distrust the whole file).
 // ---------------------------------------------------------------------------
 import { getPrivateSeasonIds } from "../services/seasonService.js";
+import { primarySlug } from "./seo.js";
 
 // Areas that have no business in a search index. Written as a denylist because
 // the interesting pages are all public by default.
@@ -81,11 +82,17 @@ export async function buildSitemapXml(prisma, origin) {
     urls.push("/drivers", "/constructors", "/races", "/records", "/live");
   }
 
+  // The primary series' home IS the root, so listing /s/<slug> as well would
+  // offer the same page under two addresses (the canonical tag says the short
+  // one wins, and a sitemap should agree with it).
+  const primary = await primarySlug(prisma).catch(() => null);
+
   for (const s of seriesList) {
     const ids = seasonsOfSeries.get(s.id) || [];
     if (!ids.length) continue;
     const base = `/s/${s.slug}`;
-    urls.push(base, `${base}/drivers`, `${base}/constructors`, `${base}/races`, `${base}/records`, `${base}/live`);
+    if (s.slug !== primary) urls.push(base);
+    urls.push(`${base}/drivers`, `${base}/constructors`, `${base}/races`, `${base}/records`, `${base}/live`);
 
     const [drivers, teams] = await Promise.all([
       prisma.driver

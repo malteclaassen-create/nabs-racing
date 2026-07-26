@@ -32,6 +32,7 @@ import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
 import { buildPageMeta, applyPageMeta } from "./lib/pageMeta.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
+import { legacyRedirects, canonicalUrl, applyCanonical, primarySlug } from "./lib/seo.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
@@ -231,7 +232,15 @@ app.get("/sitemap.xml", async (req, res, next) => {
 // server keeps serving the site and proxying /api here).
 const DIST_DIR = join(__dir, "../../frontend/dist");
 if (existsSync(join(DIST_DIR, "index.html"))) {
+  // Old flat addresses (/drivers, /races, …) answer with a real redirect into
+  // the series they belong to, instead of the app rewriting the address after
+  // it has loaded. Before the static files, so it also catches a crawler.
+  app.use(legacyRedirects(prisma));
   app.use(express.static(DIST_DIR, {
+    // Do NOT answer "/" with index.html from here. The handler below adds the
+    // link preview and the canonical address, and static delivery would skip
+    // both on the one page that needs them most.
+    index: false,
     // Tell browsers to keep static files instead of re-asking on every page
     // switch (matters a lot over a tunnel, where each request costs ~0.5s).
     setHeaders(res, filePath) {
@@ -257,19 +266,29 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
   app.get("*", async (req, res, next) => {
     if (req.path.startsWith("/api")) return next();
     const indexPath = join(DIST_DIR, "index.html");
-    let meta = null;
+    let html;
     try {
-      meta = await buildPageMeta(prisma, req.path);
+      html = readFileSync(indexPath, "utf8");
+    } catch {
+      return res.sendFile(indexPath); // unreadable for once: at least send the file
+    }
+    // Link preview for the shareable routes (driver, team, …).
+    try {
+      const meta = await buildPageMeta(prisma, req.path);
+      if (meta) html = applyPageMeta(html, meta);
     } catch {
       /* a preview must never cost us the page */
     }
-    if (!meta) return res.sendFile(indexPath);
+    // The official address of whatever this renders. Every page gets one: the
+    // site links with ?season=<n> in places, and without this each of those
+    // variants competes with the plain page for the same content.
     try {
-      const html = readFileSync(indexPath, "utf8");
-      res.type("html").send(applyPageMeta(html, meta));
+      html = applyCanonical(html, canonicalUrl(req, await primarySlug(prisma)));
     } catch {
-      res.sendFile(indexPath);
+      /* same rule: never lose the page over a tag */
     }
+    res.setHeader("Cache-Control", "no-cache"); // matches the static index.html
+    res.type("html").send(html);
   });
   console.log("Serving built frontend from", DIST_DIR);
 }
