@@ -5,6 +5,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { readRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq } from "../lib/welcomeFaq.js";
+import { discordMemberCount, leagueSince, yearsOfRacing } from "../lib/leagueStats.js";
 
 const router = Router();
 
@@ -41,6 +42,19 @@ export async function readLiveLinks(prismaClient) {
 router.get("/social", async (req, res, next) => {
   try {
     res.json(await readSocialLinks(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/settings/league-stats -> the two headline numbers the database has
+// no answer for: how many people are in the Discord, and how long the league has
+// been running. See lib/leagueStats.js for why neither can be derived. Both may
+// be null, and the landing page has a fallback for each.
+router.get("/league-stats", async (req, res, next) => {
+  try {
+    const [members, since] = await Promise.all([discordMemberCount(prisma), leagueSince(prisma)]);
+    res.json({ discordMembers: members, since, years: yearsOfRacing(since) });
   } catch (e) {
     next(e);
   }

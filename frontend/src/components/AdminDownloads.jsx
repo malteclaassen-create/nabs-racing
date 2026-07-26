@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, CardBar } from "./ui.jsx";
+import { ErrorBox, CardBar, CardHead } from "./ui.jsx";
 import Icon from "./InfoIcon.jsx";
 
 const EMPTY = { title: "", folderId: "", raceId: "", version: "", description: "", installNote: "", fileName: "", externalUrl: "", sortOrder: 0, published: true };
@@ -121,6 +121,9 @@ function Folders({ folders, reload, onMsg }) {
 
 export default function AdminDownloads() {
   const { data, loading, error, reload } = useApi(useCallback(() => api.adminDownloads(), []));
+  // Files with no catalogue entry left. Everything the old "remove the entry,
+  // keep the file" delete left behind is in here, plus any replaced upload.
+  const orphans = useApi(useCallback(() => api.downloadOrphans(), []));
   // Races of the season being edited, for linking a replay to its round.
   const { data: racesData } = useApi(useCallback(() => api.races(), []));
   const [form, setForm] = useState(EMPTY);
@@ -233,12 +236,31 @@ export default function AdminDownloads() {
     }
   }
 
+  // Two questions, in the order that keeps the destructive one optional: first
+  // "remove this from the catalogue?", then, only for entries that actually own
+  // a file, "and delete the file too?". Cancelling the second still removes the
+  // entry, which is exactly what this did before, so nobody loses the old
+  // behaviour by accident. External links skip the second question entirely —
+  // there is no file of ours to delete.
   async function remove(d) {
-    if (!window.confirm(`Remove "${d.title}" from the catalogue?\nThe file on disk is NOT deleted.`)) return;
+    if (!window.confirm(`Remove "${d.title}" from the catalogue?`)) return;
+    let alsoFile = false;
+    if (d.fileName) {
+      alsoFile = window.confirm(
+        `Also delete the uploaded file from the server?\n\n` +
+          `${d.fileName}${d.sizeText ? ` (${d.sizeText})` : ""}\n\n` +
+          `OK deletes it and frees the space. Cancel keeps the file on disk and only removes the entry.`
+      );
+    }
     try {
-      await api.deleteDownload(d.id);
+      const r = await api.deleteDownload(d.id, alsoFile);
+      setMsg({
+        ok: true,
+        text: r?.fileDeleted ? `"${d.title}" and its file are gone.` : `"${d.title}" removed from the catalogue.`,
+      });
       if (editingId === d.id) startNew();
       reload();
+      orphans.reload();
     } catch (err) {
       setMsg({ ok: false, text: err.message });
     }
@@ -453,6 +475,74 @@ export default function AdminDownloads() {
           </ul>
         )}
       </div>
+
+      <OrphanFiles orphans={orphans} onMessage={setMsg} />
     </div>
   );
+}
+
+// Files sitting in the downloads folder that no catalogue entry points at.
+//
+// They are the residue of years of "remove the entry, keep the file": every
+// replaced pack and every mistaken upload is still on the volume, and nothing in
+// the admin could show them. Hidden entirely when there are none, so this only
+// appears when there is genuinely something to clean up.
+function OrphanFiles({ orphans, onMessage }) {
+  const [busy, setBusy] = useState(null);
+  const files = orphans.data?.files || [];
+  if (orphans.loading || orphans.error || files.length === 0) return null;
+
+  async function wipe(f) {
+    if (
+      !window.confirm(
+        `Delete "${f.fileName}" (${f.sizeText}) from the server?\n\n` +
+          `No download in the catalogue uses this file. This frees the space and cannot be undone.`
+      )
+    )
+      return;
+    setBusy(f.fileName);
+    try {
+      await api.deleteDownloadOrphan(f.fileName);
+      onMessage?.({ ok: true, text: `${f.fileName} deleted.` });
+      orphans.reload();
+    } catch (e) {
+      onMessage?.({ ok: false, text: e.message });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="card p-5">
+      <CardHead eyebrow="Clean-up" title={`Unused files (${files.length})`} />
+      <p className="-mt-2 mb-4 text-sm text-light">
+        These sit in the downloads folder but no entry in the catalogue uses them, so nobody can
+        reach them. Together they take {orphans.data?.totalBytes ? fmtBytes(orphans.data.totalBytes) : "space"} on
+        the server.
+      </p>
+      <ul className="divide-y divide-border">
+        {files.map((f) => (
+          <li key={f.fileName} className="flex items-center gap-3 py-2.5">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-mono text-xs text-medium">{f.fileName}</span>
+              <span className="block font-mono text-[11px] text-light">{f.sizeText}</span>
+            </span>
+            <button
+              onClick={() => wipe(f)}
+              disabled={busy === f.fileName}
+              className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-bad transition hover:bg-red-500/10 disabled:opacity-50"
+            >
+              {busy === f.fileName ? "Deleting…" : "Delete file"}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function fmtBytes(n) {
+  if (n > 1024 * 1024 * 1024) return `${(n / 1024 / 1024 / 1024).toFixed(1)} GB`;
+  if (n > 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(n / 1024))} KB`;
 }

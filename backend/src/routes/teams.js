@@ -5,6 +5,8 @@ import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides, discordIdsForDrivers } from "../lib/persons.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import { stripPrivateDriverFields } from "../lib/privacy.js";
+import { getT1ConstructorStandings, getT2ConstructorStandings } from "../services/standingsService.js";
+import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 
 const router = Router();
 
@@ -74,6 +76,80 @@ router.get("/", async (req, res, next) => {
       }
     }
     res.json(teams);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/teams/:id/history -> every season this team has raced, with where it
+// finished the constructors' table.
+//
+// A team page showed one season and stopped there: no history, and none of the
+// constructor titles the team had won, while a driver profile has both. The
+// league has run the same names for eight seasons, so that is most of what a
+// team page is for.
+//
+// Teams are matched across seasons by NAME within the same series. There is no
+// link table for them the way PersonLink joins driver rows, and the ids are
+// per-season and inconsistent ("ferrari", "s6_ferrari"), so the name is the only
+// thing that actually travels. Season numbers only compare within one series, so
+// the search never leaves it.
+router.get("/:id/history", async (req, res, next) => {
+  try {
+    const team = await prisma.team.findUnique({ where: { id: req.params.id }, include: { season: true } });
+    if (!team) return res.status(404).json({ error: "Team not found" });
+    const seriesId = team.season?.seriesId ?? null;
+    const admin = isAdminRequest(req);
+
+    const seasons = await prisma.season.findMany({
+      where: { seriesId, ...(admin ? {} : { isPublic: true }) },
+      orderBy: { number: "desc" },
+    });
+    const siblings = await prisma.team.findMany({
+      where: { name: team.name, seasonId: { in: seasons.map((s) => s.id) } },
+    });
+    const bySeason = new Map(siblings.map((t) => [t.seasonId, t]));
+
+    // "Is this season's table final?" — see the note on `concluded` below.
+    const active = seasons.find((s) => s.isActive) || null;
+    const activeComplete = active ? await isSeasonComplete(prisma, active.id) : false;
+    const isConcluded = (num) => seasonConcluded(num, active?.number ?? null, activeComplete);
+
+    const rows = [];
+    for (const season of seasons) {
+      const t = bySeason.get(season.id);
+      if (!t) continue;
+      // Reserve rows (tier 0) have no constructors' table of their own.
+      if (t.tier !== 1 && t.tier !== 2) {
+        rows.push({ seasonId: season.id, seasonNumber: season.number, seasonName: season.name, teamId: t.id, tier: t.tier, position: null, points: null, of: null });
+        continue;
+      }
+      const table = await (t.tier === 1 ? getT1ConstructorStandings : getT2ConstructorStandings)(prisma, season.id);
+      const row = (table?.standings || []).find((x) => x.teamId === t.id);
+      rows.push({
+        seasonId: season.id,
+        seasonNumber: season.number,
+        seasonName: season.name,
+        teamId: t.id,
+        tier: t.tier,
+        position: row?.position ?? null,
+        points: row?.total ?? null,
+        of: table?.standings?.length ?? null,
+        // Whether that position is a RESULT or just today's order. An announced
+        // season has every team on zero and sorts them alphabetically, so
+        // without this the team first in the alphabet collected a championship
+        // it has not raced for. Same rule the driver profile's seals use.
+        concluded: isConcluded(season.number),
+      });
+    }
+
+    // Top-three finishes, for the seal shelf — same shape the driver profile
+    // uses, and only from seasons that are actually over.
+    const badges = rows
+      .filter((r) => r.concluded && r.position != null && r.position >= 1 && r.position <= 3)
+      .map((r) => ({ position: r.position, seasonNumber: r.seasonNumber, tier: r.tier }));
+
+    res.json({ name: team.name, seasons: rows, badges });
   } catch (e) {
     next(e);
   }

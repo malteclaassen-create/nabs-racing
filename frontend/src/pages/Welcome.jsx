@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -77,6 +77,79 @@ function Icon({ name, className = "" }) {
       strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
       <path d={ICONS[name]} />
     </svg>
+  );
+}
+
+// What the league actually did last Friday.
+//
+// The newcomer page talked about racing at length and never once showed a
+// result — the one thing that proves any of it happens. The winner comes free
+// with the calendar the page already loads (name, photo and team are on the
+// race row), so the card paints immediately; P2 and P3 need the round's own
+// results, which are fetched separately and simply slot in when they land. The
+// page never waits on them.
+function LastRaceCard({ race }) {
+  const [podium, setPodium] = useState(null);
+  useEffect(() => {
+    if (!race?.id) return setPodium(null);
+    let alive = true;
+    api
+      .raceResults(race.id)
+      .then((d) => {
+        if (!alive) return;
+        const rows = (d?.results || []).filter((r) => r.position && r.position <= 3);
+        setPodium(rows.length ? rows : null);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [race?.id]);
+
+  if (!race?.winner) return null;
+  const circuit = flagFor(race.track, race.country);
+  const rows = podium || [{ position: 1, driverId: race.winner.driverId, driverName: race.winner.name, photoUrl: race.winner.photoUrl, team: race.winner.team }];
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Last time out</h3>
+        <Link to="/races" className="font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:text-dark">
+          All results →
+        </Link>
+      </div>
+      <div className="flex items-center gap-2.5 border-b border-border px-5 py-3">
+        {circuit && <Flag code={circuit.country} title={circuit.countryName} w={22} h={16} />}
+        <span className="min-w-0 flex-1 truncate font-display text-lg font-extrabold uppercase tracking-tight text-dark">
+          {race.track}
+        </span>
+        {race.date && (
+          <span className="shrink-0 font-mono text-[11px] uppercase tracking-wider text-light">
+            {new Date(race.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+          </span>
+        )}
+      </div>
+      <div className="divide-y divide-border">
+        {rows.map((r, i) => (
+          <Link
+            key={r.driverId || i}
+            to={`/drivers/${r.driverId}`}
+            className="flex items-center gap-3 px-5 py-3 transition hover:bg-surface2"
+          >
+            <span
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-display text-sm font-black text-ink"
+              style={{ backgroundColor: MEDAL[i] }}
+            >
+              {r.position ?? i + 1}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-display text-base font-bold uppercase tracking-tight text-dark">
+                {r.driverName || r.name}
+              </span>
+              {r.team?.name && <span className="block truncate text-xs text-light">{r.team.name}</span>}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -221,11 +294,16 @@ export default function Welcome() {
   const races = useApi(useCallback(() => api.races(activeNum), [activeNum]));
   // Admin-editable FAQ override (null = show the built-in season-aware defaults).
   const faq = useApi(useCallback(() => api.welcomeFaq(), []));
+  // Discord size + starting year: the two headline figures the database has no
+  // answer for (see backend lib/leagueStats.js).
+  const stats = useApi(useCallback(() => api.leagueStats(), []));
 
   const heroImgRef = useParallax(0.08);
 
   const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
   const nextRace = champRaces.find((r) => !r.isCompleted);
+  // The most recent round that actually ran, for the "Last time out" card.
+  const lastRace = [...champRaces].reverse().find((r) => r.isCompleted && r.winner) || null;
   const totalRounds = champRaces.length;
 
   const standings = drivers.data?.standings || [];
@@ -387,20 +465,50 @@ export default function Welcome() {
       </section>
 
       {/* ====================== BY THE NUMBERS ====================== */}
-      <section className="cascade -mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        {[
-          { label: "Seasons of racing", value: seasonCount || 1 },
-          { label: "Drivers this season", value: driverCount },
-          { label: "Constructors", value: teamCount },
-          { label: "Rounds this season", value: totalRounds },
-        ].map((s, i) => (
-          <div key={s.label} className="card shine relative overflow-hidden p-5 text-center sm:p-6" style={{ "--i": i }}>
-            <div className="font-display text-4xl font-black tabular-nums text-dark sm:text-5xl">
-              <CountUp end={s.value} />
-            </div>
-            <div className="mt-1.5 font-mono text-[11px] font-bold uppercase tracking-widest text-light">{s.label}</div>
-          </div>
-        ))}
+      {/* The four figures a newcomer actually wants: how long this has been
+          running, how big the community is, how many teams, how many seasons.
+          They used to be season-scoped counts ("drivers this season", "rounds
+          this season"), which measure the current calendar rather than the
+          league — a visitor landing between seasons met a page boasting about
+          twelve rounds and ninety-nine drivers of something already finished.
+          Both numbers the database cannot answer (the Discord size and the
+          starting year) come from /settings/league-stats; a tile whose figure is
+          missing simply drops out rather than showing a zero. */}
+      {/* No boxes. Four equal cards each holding one big number is the stat row
+          every product page on the internet has, which is exactly why it read as
+          generic no matter what went inside them — a scattered-artwork version
+          was tried and thrown out for the same reason. This is the language the
+          rest of the site already speaks: figures in the display face, mono
+          labels underneath, separated by hairlines and sitting straight on the
+          page. Closer to a timing board than to marketing. */}
+      {/* The vertical rules only from sm up. On a phone the 2x2 grid with both
+          rules drew a cross through a bordered block, which turns the band back
+          into the boxed card this was meant to get away from. Two figures side
+          by side with one rule between the rows is enough separation there. */}
+      <section className="cascade -mt-6 border-y border-border sm:-mt-8">
+        <div className="grid grid-cols-2 divide-y divide-border sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+          {[
+            { label: "years of racing", value: stats.data?.years },
+            { label: "Discord members", value: stats.data?.discordMembers, round: true },
+            { label: "teams", value: teamCount },
+            { label: "seasons and counting", value: seasonCount || 1 },
+          ]
+            .filter((s) => Number(s.value) > 0)
+            .map((s, i) => (
+              <div key={s.label} className="px-4 py-6 text-center sm:px-6 sm:py-8" style={{ "--i": i }}>
+                <div className="font-display text-4xl font-black leading-none tabular-nums text-dark sm:text-5xl">
+                  {/* The community size is an approximation from Discord and
+                      moves by a few every week, so it is shown as "900+" rather
+                      than a precise 945 that is wrong an hour later. */}
+                  <CountUp end={s.round ? Math.floor(s.value / 100) * 100 : s.value} />
+                  {s.round && "+"}
+                </div>
+                <div className="mt-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
+                  {s.label}
+                </div>
+              </div>
+            ))}
+        </div>
       </section>
 
       {/* =============== NEXT SEASON (transition period only) =============== */}
@@ -636,6 +744,8 @@ export default function Welcome() {
               <RaceCountdown date={nextRace.date} className="mt-4" />
             </div>
           )}
+
+          <LastRaceCard race={lastRace} />
 
           {top3.length > 0 && (
             <div className="card overflow-hidden">

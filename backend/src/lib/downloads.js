@@ -10,7 +10,7 @@
 // server locks the client engine on Windows.
 // ---------------------------------------------------------------------------
 import { join, basename } from "path";
-import { existsSync, mkdirSync, statSync, readdirSync } from "fs";
+import { existsSync, mkdirSync, statSync, readdirSync, unlinkSync } from "fs";
 import { randomUUID } from "crypto";
 import { DOWNLOADS_DIR } from "./dataDirs.js";
 
@@ -42,6 +42,33 @@ export function statFile(fileName) {
   if (!p || !existsSync(p)) return { exists: false, size: null };
   try { return { exists: true, size: statSync(p).size }; }
   catch { return { exists: false, size: null }; }
+}
+
+// Remove a stored file from disk. Returns true when a file was actually
+// deleted, false when there was nothing there (already gone, or the entry was
+// an external link and never had one). Never throws: a catalogue entry must
+// still be removable when the file underneath has vanished by other means.
+export function deleteStoredFile(fileName) {
+  const p = resolveDownloadPath(fileName);
+  if (!p || !existsSync(p)) return false;
+  try {
+    unlinkSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Files on disk that no catalogue entry points at any more.
+//
+// Uploads never overwrite and, until now, removing a download only deleted its
+// database row — so every replaced pack, every mistaken upload and every entry
+// ever deleted is still sitting on the volume, invisible, counting against the
+// hosting plan. Nothing in the admin could even show them. `keep` is the set of
+// file names the catalogue still uses.
+export function listOrphanFiles(keep) {
+  const used = new Set([...keep].filter(Boolean).map((f) => basename(f)));
+  return listDiskFiles().filter((f) => !used.has(f.fileName));
 }
 
 // Every file currently sitting in the downloads dir (so the admin can register

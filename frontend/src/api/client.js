@@ -241,6 +241,13 @@ export const api = {
     ),
   // The next ANNOUNCED upcoming season for the "Coming up" strip (or null).
   seasonTeaser: () => request(`/seasons/teaser${seriesQ()}`),
+  leagueStats: () => request("/settings/league-stats"),
+  // Every season this team has raced and where it finished, for the team page's
+  // career table and its constructor seals.
+  teamHistory: (id) => request(`/teams/${id}/history`, { auth: true }),
+  // Tiny "is anything happening" poll for the nav bar's live dot. Deliberately
+  // not the timing board, which is the whole grid.
+  liveStatus: () => request(`/live/status${seriesQ()}`),
   // Live championship projection (only { active: true } while a league race is
   // running). auth:true so an admin's ?simulate demo request is recognised.
   liveChampionship: (simulate = false) =>
@@ -600,7 +607,13 @@ export const api = {
     }),
   createDownload: (body) => request("/admin/downloads", { method: "POST", body, auth: true }),
   updateDownload: (id, body) => request(`/admin/downloads/${id}`, { method: "PATCH", body, auth: true }),
-  deleteDownload: (id) => request(`/admin/downloads/${id}`, { method: "DELETE", auth: true }),
+  // `alsoFile` also removes the uploaded file from the server's disk.
+  deleteDownload: (id, alsoFile = false) =>
+    request(`/admin/downloads/${id}${alsoFile ? "?file=1" : ""}`, { method: "DELETE", auth: true }),
+  // Files on disk no catalogue entry points at any more (the clean-up view).
+  downloadOrphans: () => request("/admin/downloads/orphans", { auth: true }),
+  deleteDownloadOrphan: (fileName) =>
+    request(`/admin/downloads/orphans/${encodeURIComponent(fileName)}`, { method: "DELETE", auth: true }),
 
   // download folders (admin)
   createDownloadFolder: (body) => request("/admin/download-folders", { method: "POST", body, auth: true }),

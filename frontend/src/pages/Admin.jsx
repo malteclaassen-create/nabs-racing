@@ -650,6 +650,26 @@ function SocialAdmin() {
           </div>
         ))}
       </div>
+
+      {/* Lives here rather than in a settings tab of its own because it belongs
+          with the Discord link: both feed the newcomer page's headline numbers.
+          It cannot be worked out from the data — the archived seasons carry no
+          dates at all, so the earliest race the site knows about is months old
+          while the league is years old. */}
+      <div className="border-t border-border pt-4">
+        <label className="mb-1 block text-sm font-semibold text-medium">Racing since (year)</label>
+        <input
+          className="input sm:max-w-[12rem]"
+          inputMode="numeric"
+          placeholder="e.g. 2023"
+          value={form.since ?? ""}
+          onChange={(e) => setForm((f) => ({ ...f, since: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
+        />
+        <p className="mt-1 text-xs text-light">
+          Shown on the front page as “N years of racing”. Leave empty to hide that tile.
+        </p>
+      </div>
+
       <button className="btn-primary" onClick={save} disabled={busy}>
         {busy ? "Saving…" : "Save links"}
       </button>

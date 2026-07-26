@@ -152,6 +152,32 @@ app.get("/api/live/timing", async (req, res) =>
   res.json(getBoard(await serverKeyForSeries(prisma, req.query.series)))
 );
 
+// Is anything actually happening right now? Two numbers and a word, so the nav
+// bar can carry a live dot on its Live item without every page pulling the whole
+// timing board (which is the full grid with sectors, stints and positions —
+// kilobytes, several times a minute, on every page of the site).
+//
+// Nothing anywhere told a visitor a session was running: Live Timing sat in the
+// nav looking exactly the same on a Tuesday afternoon as it does mid-race, so
+// the one moment the page is worth opening was the one moment nothing pointed
+// at it. `stale` is the relay's own "no upstream data for 75 seconds" flag, and
+// a quiet server still reports every ~30s, so this only says live when it is.
+app.get("/api/live/status", async (req, res) => {
+  try {
+    const board = getBoard(await serverKeyForSeries(prisma, req.query.series));
+    const onTrack = (board.entries || []).filter((e) => e.onTrack).length;
+    res.json({
+      live: !!board.ok && !board.stale && !!board.session,
+      onTrack,
+      session: board.session?.type || null,
+      track: board.session?.trackName || board.session?.track || null,
+    });
+  } catch {
+    // Never let a decoration break a page: unknown simply reads as "not live".
+    res.json({ live: false, onTrack: 0, session: null, track: null });
+  }
+});
+
 // The real overhead track map (proxied + cached from the server manager's public
 // content), drawn under the live car dots. 404 until a track with a usable map is
 // loaded; the frontend then falls back to the stylised outline. The ?v= token in

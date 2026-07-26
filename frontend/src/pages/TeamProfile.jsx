@@ -5,7 +5,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSpecificTitle } from "../utils/pageTitle.js";
-import { ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, MEDAL_TEXT, DriverAvatar, CountUp } from "../components/ui.jsx";
+import { ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, MEDAL, MEDAL_TEXT, DriverAvatar, CountUp } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import PointsChart from "../components/PointsChart.jsx";
@@ -319,8 +319,83 @@ export default function TeamProfile() {
         </div>
       )}
 
+      <TeamHistory teamId={team.id} currentSeasonId={team.seasonId} />
+
       <div>
         <Link to="/constructors" className="text-sm font-semibold text-link hover:underline">← All constructors</Link>
+      </div>
+    </div>
+  );
+}
+
+// Every season the team has raced, and the constructor seals it earned.
+//
+// The page used to show one season and stop, while a driver profile carries a
+// full career table and a shelf of seals. For a league that has run the same
+// team names for eight seasons, that history IS most of what a team page is
+// about. Rows link to the same team in that season, so the archive is one click
+// deep rather than a season-switcher hunt.
+function TeamHistory({ teamId, currentSeasonId }) {
+  const { data } = useApi(useCallback(() => api.teamHistory(teamId), [teamId]));
+  const rows = data?.seasons || [];
+  // One season on its own is just the page you are already looking at.
+  if (rows.length < 2) return null;
+  const badges = data?.badges || [];
+
+  return (
+    <div className="reveal space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
+          Season by season
+        </h2>
+        {badges.length > 0 && (
+          <span className="flex flex-wrap items-center gap-1.5">
+            {badges.map((b, i) => (
+              <span
+                key={i}
+                title={`${b.position === 1 ? "Constructors' champion" : b.position === 2 ? "Runner-up" : "Third"} in Season ${b.seasonNumber}${b.tier === 2 ? " (Tier 2)" : ""}`}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider"
+                style={{ backgroundColor: `${MEDAL[b.position - 1]}22`, color: `var(--medal-${b.position})` }}
+              >
+                <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" />
+                </svg>
+                S{b.seasonNumber}
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+      <div className="card divide-y divide-border overflow-hidden">
+        {rows.map((r) => {
+          const here = r.seasonId === currentSeasonId;
+          return (
+            <Link
+              key={r.seasonId}
+              to={`/teams/${r.teamId}?season=${r.seasonNumber}`}
+              className={`flex items-center gap-3 px-4 py-3 transition sm:px-5 ${here ? "bg-surface2" : "hover:bg-surface2"}`}
+            >
+              <span className="w-16 shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                S{r.seasonNumber}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm text-medium">
+                {r.tier === 0 ? "Reserve" : `Tier ${r.tier}`}
+                {here && <span className="ml-2 font-mono text-[10px] uppercase tracking-wider text-light">this page</span>}
+              </span>
+              {/* A position from a season still running is today's order, not a
+                  result, so it is shown plainly without a medal colour. */}
+              <span
+                className="w-16 shrink-0 text-right font-display text-base font-extrabold tabular-nums"
+                style={r.concluded && r.position >= 1 && r.position <= 3 ? { color: `var(--medal-${r.position})` } : undefined}
+              >
+                {r.position != null ? `P${r.position}` : "—"}
+              </span>
+              <span className="w-16 shrink-0 text-right font-mono text-sm tabular-nums text-medium">
+                {r.points != null ? r.points : "—"}
+              </span>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

@@ -157,7 +157,12 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
       // "nothing selected" instead.
       setActive((i) => (i <= 0 ? -1 : i - 1));
     } else if (e.key === "Enter") {
-      if (active >= 0 && flat[active]) { e.preventDefault(); go(flat[active]); }
+      // Enter used to require arrowing down first: type a driver's name, press
+      // Enter, and nothing at all happened, which reads as a broken search box.
+      // With nothing highlighted it now takes the top result — the one the
+      // results are already sorted to put first, and the one the typist means.
+      const pick = active >= 0 ? flat[active] : flat[0];
+      if (pick) { e.preventDefault(); go(pick); }
     } else if (e.key === "Escape") {
       setOpen(false);
       inputRef.current?.blur();

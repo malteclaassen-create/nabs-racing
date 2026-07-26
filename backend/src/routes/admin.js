@@ -22,10 +22,12 @@ import { RACE_TYPES, writeRaceType } from "../lib/raceTypes.js";
 import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
+import { leagueSince, setLeagueSince } from "../lib/leagueStats.js";
 import {
   dbListDownloads, dbGetDownload, dbCreateDownload, dbUpdateDownload, dbDeleteDownload, ensureReplaysFolder,
   dbListFolders, dbGetFolder, dbCreateFolder, dbUpdateFolder, dbDeleteFolder,
   listDiskFiles, statFile, fmtSize, shapeDownload, ensureDownloadsDir, DOWNLOADS_DIR,
+  deleteStoredFile, listOrphanFiles,
 } from "../lib/downloads.js";
 import { stashIncoming, archiveCommitted } from "../lib/resultsArchive.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
@@ -760,7 +762,10 @@ router.get("/traffic", async (req, res, next) => {
 // GET /api/admin/social -> current social links for the editor.
 router.get("/social", async (req, res, next) => {
   try {
-    res.json(await readSocialLinks(prisma));
+    // `since` rides along with the social links because it belongs with the
+    // Discord invite: both are "who the league is" rather than race data, and
+    // the landing page reads them together (see lib/leagueStats.js).
+    res.json({ ...(await readSocialLinks(prisma)), since: await leagueSince(prisma) });
   } catch (e) {
     next(e);
   }
@@ -780,7 +785,8 @@ router.put("/social", async (req, res, next) => {
         create: { key: `social_${k}`, value: val },
       });
     }
-    res.json(await readSocialLinks(prisma));
+    if ("since" in body) await setLeagueSince(prisma, body.since);
+    res.json({ ...(await readSocialLinks(prisma)), since: await leagueSince(prisma) });
   } catch (e) {
     next(e);
   }
@@ -3203,11 +3209,50 @@ router.patch("/downloads/:id", async (req, res, next) => {
   }
 });
 
-// DELETE /api/admin/downloads/:id -> remove the catalogue entry (leaves the
-// file on disk untouched, so this is non-destructive to data).
+// DELETE /api/admin/downloads/:id[?file=1] -> remove the catalogue entry, and
+// with ?file=1 the uploaded file as well.
+//
+// Removing the entry alone stays the default and stays non-destructive. But it
+// was the ONLY option, and uploads never overwrite, so every replaced pack and
+// every mistaken multi-gigabyte upload stayed on the volume forever with nothing
+// in the admin able to see it, let alone remove it. External links have no file
+// of their own, so `file=1` is simply a no-op for them.
 router.delete("/downloads/:id", async (req, res, next) => {
   try {
+    const alsoFile = req.query.file === "1" || req.query.file === "true";
+    const row = alsoFile ? await dbGetDownload(prisma, req.params.id) : null;
     await dbDeleteDownload(prisma, req.params.id);
+    const fileDeleted = alsoFile && row?.fileName ? deleteStoredFile(row.fileName) : false;
+    res.json({ ok: true, fileDeleted });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/downloads/orphans -> files on disk no catalogue entry uses.
+// The clean-up view for everything the old delete left behind.
+router.get("/downloads/orphans", async (req, res, next) => {
+  try {
+    const rows = await dbListDownloads(prisma);
+    const files = listOrphanFiles(rows.map((r) => r.fileName));
+    res.json({ files, totalBytes: files.reduce((a, f) => a + (f.size || 0), 0) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/downloads/orphans/:fileName -> delete one unused file.
+// Guarded twice: resolveDownloadPath refuses anything that escapes the folder,
+// and a file still referenced by a catalogue entry is rejected outright, so a
+// stale list in a long-open tab can never take out a live download.
+router.delete("/downloads/orphans/:fileName", async (req, res, next) => {
+  try {
+    const name = req.params.fileName;
+    const rows = await dbListDownloads(prisma);
+    if (rows.some((r) => r.fileName === name)) {
+      return res.status(409).json({ error: "That file belongs to a download in the catalogue" });
+    }
+    if (!deleteStoredFile(name)) return res.status(404).json({ error: "File not found" });
     res.json({ ok: true });
   } catch (e) {
     next(e);

@@ -299,6 +299,24 @@ export default function NavBar() {
   const closing = menu === "closing";
   const location = useLocation();
 
+  // Cars on track right now, for the dot on the Live item. Its own tiny endpoint
+  // rather than the timing board (that is the whole grid, and this runs on every
+  // page of the site). 45s is plenty: the point is "there is something on", not
+  // a live feed.
+  const [liveNow, setLiveNow] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      api
+        .liveStatus()
+        .then((d) => alive && setLiveNow(d?.onTrack || 0))
+        // A decoration must never make noise: unreachable simply means no dot.
+        .catch(() => alive && setLiveNow(0));
+    load();
+    const id = setInterval(load, 45_000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
   const openMenu = () => setMenu("open");
   // Functional update: only an OPEN menu starts closing, so a stray second
   // call (scrim + button both firing, ghost clicks) can't restart the exit.
@@ -430,10 +448,15 @@ export default function NavBar() {
           </div>
 
           {/* On season-scoped pages the season switcher docks into the bar too
-              (it stays on the Home ticker line as before). It sits out the
-              packed lg→xl range; phones get it in the burger menu instead. */}
+              (it stays on the Home ticker line as before). From lg up, which is
+              exactly where the burger menu — the only other place it lives —
+              disappears: at xl it left the 1024–1280 range with no way to change
+              season at all on the standings and races pages. The compact pill is
+              about 120px and the bar has roughly 195px spare at 1100px, so it
+              fits the range it was being kept out of. Phones still get it in the
+              burger menu. */}
           {dock.render && (
-            <div className={`nav-season-dock ml-3 hidden shrink-0 xl:flex ${dock.shown ? "" : "is-hidden"}`}>
+            <div className={`nav-season-dock ml-3 hidden shrink-0 lg:flex ${dock.shown ? "" : "is-hidden"}`}>
               <SeasonPicker compact />
             </div>
           )}
@@ -462,8 +485,23 @@ export default function NavBar() {
                   desktopLinkClass({ isActive: isActive || l.alsoActiveOn === location.pathname })
                 }
                 ref={l.label === "Live" ? liveRef : undefined}
+                title={l.label === "Live" && liveNow ? `${liveNow} on track right now` : undefined}
               >
                 {l.label}
+                {/* The one thing on the site that says a session is happening.
+                    Keyed on cars actually ON TRACK, not on "a server answered":
+                    the league's practice server is up around the clock, so a
+                    connection-based marker would be lit permanently and mean
+                    nothing.
+                    It is the plain count in the site's own "label + number"
+                    style — the same shape the Races page uses for its session
+                    tabs. A pulsing dot was tried and thrown out: it is the
+                    generic dashboard cliché, and it says less than the number
+                    does. Fourteen cars out is the interesting fact. */}
+                {l.label === "Live" && liveNow > 0 && (
+                  <span className="ml-1.5 font-mono text-[11px] font-bold tabular-nums opacity-70">{liveNow}</span>
+                )}
+                {l.label === "Live" && liveNow > 0 && <span className="sr-only"> ({liveNow} on track)</span>}
               </NavLink>
             )
           )}
@@ -548,7 +586,12 @@ export default function NavBar() {
               {attendanceOpen && (
                 <MobileRow to={seriesPath("/attendance")} icon={NAV_ICONS.attendance} label="Attendance" sub="Race sign-up" />
               )}
-              <MobileRow to={seriesPath("/live")} icon={NAV_ICONS.live} label="Live" sub="Live timing" />
+              <MobileRow
+                to={seriesPath("/live")}
+                icon={NAV_ICONS.live}
+                label="Live"
+                sub={liveNow > 0 ? `${liveNow} on track right now` : "Live timing"}
+              />
 
               <MobileMenuLabel>Standings</MobileMenuLabel>
               <MobileRow to={seriesPath("/drivers")} icon={NAV_ICONS.drivers} label="Drivers" />

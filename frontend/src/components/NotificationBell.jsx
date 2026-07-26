@@ -3,12 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useTour } from "./Tour.jsx";
+import { SettingsDrawer, GearIcon } from "./SettingsPanel.jsx";
 
 // The bell in the nav bar. Logged-in members see league notifications
 // (results, race day, downloads, driver market); the unread count polls once
 // a minute, opening the panel loads the list and marks everything seen.
-// Logged-out visitors still get the bell — it explains the feature. Settings
-// moved to the driver's own public profile page (next to "Edit my profile").
+// Logged-out visitors still get the bell — it explains the feature. It also
+// carries the Settings row at the bottom of the panel: theme and the Lite
+// performance mode otherwise hang off the "Settings" tab on /profile, which
+// needs a Discord login and a linked driver row, so a plain visitor could not
+// reach either. The bell is in the bar for everyone, which makes it the one
+// place those two are always available from.
 
 function BellIcon() {
   return (
@@ -105,6 +110,7 @@ export default function NotificationBell({ className = "" }) {
   const navigate = useNavigate();
   const { startTour } = useTour();
   const [open, setOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState(null); // null = not loaded yet
   const [loading, setLoading] = useState(false);
@@ -241,9 +247,27 @@ export default function NotificationBell({ className = "" }) {
                 </ul>
               )}
             </div>
+
+            {/* Settings live down here, and that is the whole point: theme and
+                the Lite performance mode used to be reachable only through the
+                "Settings" tab on /profile, which needs a Discord login AND a
+                driver row behind it. A visitor who just wants the light theme,
+                or someone on a slow machine who wants the animations off, could
+                not get to either. The bell is in the bar for everyone, signed in
+                or not, so it is the one place that always works. */}
+            <button
+              type="button"
+              onClick={() => { close(); setSettingsOpen(true); }}
+              className="flex w-full items-center gap-2.5 border-t border-border px-4 py-3 text-left text-sm font-semibold text-medium transition hover:bg-surface2 hover:text-dark"
+            >
+              <GearIcon />
+              Settings
+            </button>
           </div>
         </>
       )}
+
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }
