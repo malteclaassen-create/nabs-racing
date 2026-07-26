@@ -24,12 +24,12 @@ function StatusPills({ m }) {
   return (
     <span className="flex flex-wrap items-center gap-1.5">
       {m.isAdmin && (
-        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary" title="Has full admin access on Discord login">
+        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-link" title="Has full admin access on Discord login">
           admin
         </span>
       )}
       {m.banned && (
-        <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-600" title={m.banReason || undefined}>
+        <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-bad" title={m.banReason || undefined}>
           banned{m.banReason ? ` · ${m.banReason}` : ""}
         </span>
       )}
@@ -40,7 +40,7 @@ function StatusPills({ m }) {
           </span>
         )
       ) : (
-        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
+        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-warn">
           not linked to a driver
         </span>
       )}
@@ -191,7 +191,7 @@ export default function AdminMembers() {
         <div className="card border-amber-500/40 p-5">
           <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
             Needs attention: logged in, but no driver
-            <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 font-mono text-xs text-amber-600">{unlinked.length}</span>
+            <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 font-mono text-xs text-warn">{unlinked.length}</span>
           </h3>
           <p className="mt-1 text-sm text-light">
             These people signed in but aren&rsquo;t connected to a roster driver yet. (Logins only auto-connect via a
@@ -225,14 +225,14 @@ export default function AdminMembers() {
                       <span>last login {fmtDate(m.lastLoginAt)}</span>
                     </span>
                     {suggested && sel === suggested.id && (
-                      <span className="block font-mono text-[11px] text-emerald-600">
+                      <span className="block font-mono text-[11px] text-ok">
                         name matches {suggested.name} · check, then hit Link
                       </span>
                     )}
                   </span>
                   {m.raceRequestAt && (
                     <span
-                      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-emerald-600"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-ok"
                       title={`Asked to race${m.raceRequestText ? `: ${m.raceRequestText}` : ""} (${fmtDate(m.raceRequestAt)}). Link them or create a driver — that answers the request.`}
                     >
                       <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -275,7 +275,7 @@ export default function AdminMembers() {
                       </button>
                     ) : (
                       <button
-                        className="rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-red-600 transition hover:bg-red-500/10"
+                        className="rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-bad transition hover:bg-red-500/10"
                         disabled={busy === m.discordId}
                         onClick={() => ban(m)}
                       >
@@ -399,7 +399,7 @@ export default function AdminMembers() {
                 <StatusPills m={m} />
                 <span className="flex items-center gap-2">
                   <button
-                    className={`py-1.5 text-sm font-semibold ${m.isAdmin ? "text-light hover:text-primary" : "text-primary hover:underline"}`}
+                    className={`py-1.5 text-sm font-semibold ${m.isAdmin ? "text-light hover:text-link" : "text-link hover:underline"}`}
                     disabled={busy === m.discordId}
                     onClick={() => toggleAdmin(m)}
                     title={m.isAdmin ? "Revoke admin access" : "Grant full admin access on Discord login"}
@@ -417,7 +417,7 @@ export default function AdminMembers() {
                     </button>
                   ) : (
                     <button
-                      className="rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-red-600 transition hover:bg-red-500/10"
+                      className="rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-bad transition hover:bg-red-500/10"
                       disabled={busy === m.discordId}
                       onClick={() => ban(m)}
                     >

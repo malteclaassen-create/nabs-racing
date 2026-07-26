@@ -80,7 +80,7 @@ function AttendanceNudge() {
         </button>
       </div>
       {state && (
-        <p className={`mt-2 text-sm font-medium ${state.ok ? "text-emerald-600" : "text-red-500"}`}>{state.text}</p>
+        <p className={`mt-2 text-sm font-medium ${state.ok ? "text-ok" : "text-bad"}`}>{state.text}</p>
       )}
     </div>
   );
@@ -320,7 +320,7 @@ export default function AdminNotifications() {
         >
           {busy ? "Saving…" : "Save"}
         </button>
-        {msg && <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-red-500"}`}>{msg.text}</span>}
+        {msg && <span className={`text-sm font-medium ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</span>}
       </div>
     </div>
   );

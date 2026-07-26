@@ -390,14 +390,14 @@ export default function AdminImport({ onCommitted }) {
             <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">
               From the race server
             </span>
-            <span className="pill bg-emerald-500/15 text-emerald-600">recommended · penalty-corrected</span>
+            <span className="pill bg-emerald-500/15 text-ok">recommended · penalty-corrected</span>
           </div>
           <p className="mt-1 text-sm text-light">
             Pull any finished race, current or past rounds, straight from NABS Server 1. No file
             export needed.
           </p>
           {remote.error ? (
-            <p className="mt-3 text-sm text-amber-600">
+            <p className="mt-3 text-sm text-warn">
               Couldn’t reach the race server. Use the file upload below instead.
             </p>
           ) : (
@@ -455,7 +455,7 @@ export default function AdminImport({ onCommitted }) {
                     ))}
                   </select>
                   {qualiAuto && qualiRemoteId && (
-                    <span className="pill bg-emerald-500/15 text-emerald-600">qualifying auto-found</span>
+                    <span className="pill bg-emerald-500/15 text-ok">qualifying auto-found</span>
                   )}
                 </div>
               )}
@@ -555,7 +555,7 @@ export default function AdminImport({ onCommitted }) {
               ))}
             </select>
             {qualiAttachAuto && qualiAttachRemoteId && (
-              <span className="pill bg-emerald-500/15 text-emerald-600">auto-found</span>
+              <span className="pill bg-emerald-500/15 text-ok">auto-found</span>
             )}
             <button className="btn-primary" onClick={attachRemoteQuali} disabled={!qualiAttachRemoteId || qualiBusy}>
               {qualiBusy ? "Saving…" : "Attach"}
@@ -686,7 +686,7 @@ export default function AdminImport({ onCommitted }) {
                           {!r.driverId && !r.isSafetyCar && (
                             <button
                               type="button"
-                              className="mt-1 text-xs font-semibold text-primary hover:underline disabled:opacity-50"
+                              className="mt-1 text-xs font-semibold text-link hover:underline disabled:opacity-50"
                               disabled={busy || creatingRow != null}
                               title="Creates this entrant as a new driver in the reserve pool and maps the row to them. Move them into a team later in the Drivers tab."
                               onClick={() => createFromRow(i)}
@@ -696,7 +696,7 @@ export default function AdminImport({ onCommitted }) {
                           )}
                           {r.driverId && r.matchedBy === "steam" && (
                             <div
-                              className="mt-1 font-mono text-[10px] uppercase tracking-wider text-emerald-600"
+                              className="mt-1 font-mono text-[10px] uppercase tracking-wider text-ok"
                               title="Matched by Steam ID, not by name. This one is certain."
                             >
                               ✓ matched by Steam ID
@@ -742,7 +742,7 @@ export default function AdminImport({ onCommitted }) {
                               ))}
                           </select>
                           {r.marketFor && r.subForTeamId && (
-                            <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-emerald-600">
+                            <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-ok">
                               ↩ Driver Market · for {r.marketFor}
                             </div>
                           )}

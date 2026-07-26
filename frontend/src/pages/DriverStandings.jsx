@@ -13,6 +13,20 @@ import RatingCard from "../components/RatingCard.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { countryFor } from "../data/driverCountries.js";
 
+// The caption under a driver's points, on the podium cards and in every row.
+//
+// Who leads is decided by RANK, never by the points gap. Before a season's
+// first round everybody sits on zero, so a gap-based test called the entire
+// podium "Leader" at once — which is what an announced-but-not-started season
+// showed. And a driver who is genuinely level with the leader reads "level"
+// rather than "−0", which looked like a rounding fault.
+function standingCaption(position, gap, { decided = false, unit = "", lower = false } = {}) {
+  const cased = (s) => (lower ? s.toLowerCase() : s);
+  if (position === 1) return cased(decided ? "Champion" : "Leader");
+  if (gap <= 0) return cased("Level");
+  return `−${gap}${unit}`;
+}
+
 function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champion = false }) {
   const gap = leaderTotal - row.total;
   const tiltRef = useTilt({ max: 5, lift: 5 });
@@ -71,7 +85,7 @@ function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champi
             style={champion ? { color: "var(--medal-1)" } : undefined}
           >
             <span className={champion ? "font-bold" : "text-light"}>
-              {champion ? "Champion" : gap === 0 ? "Leader" : `−${gap} pts`}
+              {champion ? "Champion" : standingCaption(row.position, gap, { unit: " pts" })}
             </span>
           </div>
         </div>
@@ -83,6 +97,13 @@ function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champi
 
 // Movement since the previous round: green up-arrow, red down-arrow, or a
 // quiet dash for no change. `delta` is null while there's nothing to compare.
+//
+// Shown on phones too. This was the one element switched off below sm, which
+// meant the single most interesting thing about a standings table the morning
+// after a race — who moved, and by how much — was missing on the device most
+// people read it on. It costs a narrow column: on phones the arrow carries the
+// number as a superscript-sized digit instead of a full second glyph, and the
+// "no change" dash sits out entirely rather than spending width on nothing.
 function PosDelta({ delta }) {
   if (delta == null) return null;
   if (delta === 0)
@@ -90,8 +111,8 @@ function PosDelta({ delta }) {
   const up = delta > 0;
   return (
     <span
-      className={`hidden w-7 shrink-0 items-center justify-center gap-0.5 font-mono text-[11px] font-bold tabular-nums sm:flex ${
-        up ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+      className={`flex w-5 shrink-0 items-center justify-center gap-0.5 font-mono text-[10px] font-bold tabular-nums sm:w-7 sm:text-[11px] ${
+        up ? "text-ok" : "text-bad"
       }`}
       title={`${up ? "Up" : "Down"} ${Math.abs(delta)} since the last round`}
     >
@@ -104,7 +125,6 @@ function PosDelta({ delta }) {
 }
 
 function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = false, decided = false, delta = null }) {
-  const isLeader = d.position === 1;
   const gap = leaderTotal - d.total;
   const pct = d.total > 0 && leaderTotal > 0 ? Math.max(4, (d.total / leaderTotal) * 100) : 0;
   return (
@@ -158,7 +178,7 @@ function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = fals
           <CountUp end={d.total} duration={900} />
         </div>
         <div className="font-mono text-[11px] tabular-nums text-light">
-          {isLeader ? "leader" : `−${gap}`}
+          {standingCaption(d.position, gap, { lower: true })}
         </div>
       </div>
     </Link>
@@ -201,9 +221,13 @@ function usePersistentState(key, initial) {
 
 export default function DriverStandings() {
   useSeasonParam(); // honour a ?season=N deep link (e.g. from the global search)
-  const { data, loading, error } = useApi(useCallback(() => api.driverStandings(), []));
+  const { data, loading, error, reload } = useApi(useCallback(() => api.driverStandings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const { current: season, active } = useSeason();
+  // Default OFF on purpose: the full field, reserves included, is what the
+  // standings are meant to show. Defaulting this to ON was tried and taken back
+  // out — the crowded table is the intended one. The count line under the table
+  // still says how many rows a ticked box is holding back.
   const [onlyScoring, setOnlyScoring] = usePersistentState("nabs.standings.onlyScoring", false);
   const [tier, setTier] = usePersistentState("nabs.standings.tier", "all");
   // "list" = the ranked cards/rows; "grid" = the per-round points matrix (same
@@ -236,7 +260,15 @@ export default function DriverStandings() {
         <TableSkeleton rows={12} />
       </div>
     );
-  if (error) return <ErrorBox message={error} />;
+  // Header stays up on a failed read, so the page still reads as the standings
+  // rather than as a broken site.
+  if (error)
+    return (
+      <div>
+        <PageHeader eyebrow="Championship" title="Driver Standings" />
+        <ErrorBox message={error} onRetry={reload} />
+      </div>
+    );
 
   const all = data.standings;
   // Archived single-class seasons (S1–S5) have only one tier: hide the tier
@@ -254,7 +286,18 @@ export default function DriverStandings() {
   // Filter by tier, then optionally hide point-less drivers, then re-rank the
   // resulting view 1..n so a tier sub-table reads as its own standings.
   let rows = activeTier === "all" ? all : all.filter((r) => String(r.tier) === activeTier);
-  if (onlyScoring) rows = rows.filter((r) => r.total > 0);
+  // A full reserve pool joins the season roster whether or not those drivers
+  // ever start a race, so the table opened on 99 rows of which 56 sat on zero,
+  // alphabetical, every one of them showing the same gap to the leader. That is
+  // most of the page, and none of it is the championship. Hiding them is the
+  // default now — but only when there is a championship to show: before a
+  // season's first round nobody has scored, and defaulting to "scorers only"
+  // there would answer with an empty table. `hiddenCount` feeds the line under
+  // the table, so nothing disappears without saying so.
+  const anyScorer = rows.some((r) => r.total > 0);
+  const hideScoreless = onlyScoring && anyScorer;
+  const hiddenCount = hideScoreless ? rows.filter((r) => r.total <= 0).length : 0;
+  if (hideScoreless) rows = rows.filter((r) => r.total > 0);
   rows = rows.map((d, i) => ({ ...d, position: i + 1 }));
 
   const leaderTotal = rows[0]?.total ?? 0;
@@ -361,7 +404,7 @@ export default function DriverStandings() {
               type="checkbox"
               checked={onlyScoring}
               onChange={(e) => setOnlyScoring(e.target.checked)}
-              className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
+              className="h-4 w-4 rounded border-border text-link focus:ring-primary/30"
             />
             Only drivers with points
           </label>
@@ -379,6 +422,18 @@ export default function DriverStandings() {
             <span className="font-mono font-bold uppercase tracking-wider text-dark">Final standings</span>
           )}
         </span>
+        {/* Says out loud what the default filter is doing, and undoes it in one
+            click. Without this the reserve pool would simply be missing with no
+            explanation, which is worse than the crowded table it replaces. */}
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setOnlyScoring(false)}
+            className="text-light underline decoration-dotted underline-offset-4 transition hover:text-dark"
+          >
+            <span className="font-mono font-bold tabular-nums">{hiddenCount}</span> without points hidden
+          </button>
+        )}
       </div>
 
       {rows.length === 0 ? (
@@ -411,7 +466,7 @@ export default function DriverStandings() {
                         <span className="flex items-center gap-2.5">
                           <Rank position={d.position} />
                           <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">
-                            {d.position === 1 ? (seasonDecided ? "Champion" : "Leader") : `−${leaderTotal - d.total} pts`}
+                            {standingCaption(d.position, leaderTotal - d.total, { decided: seasonDecided, unit: " pts" })}
                           </span>
                         </span>
                         <span className="font-display text-xl font-black leading-none tabular-nums text-dark">
@@ -475,6 +530,23 @@ export default function DriverStandings() {
             />
           ))}
         </div>
+      )}
+
+      {/* The season total is NOT the sum of a driver's results: the lowest N
+          rounds come off first. That was explained in exactly one place, the
+          footnote under the round matrix — so in the two views most people
+          actually read, the headline number of the whole page was unexplained
+          and did not add up. The matrix has its own, fuller wording (it can
+          point at the struck-through cells), so this only fills the other two. */}
+      {activeView !== "grid" && data.dropWorst > 0 && data.raceNumbers.length > 0 && (
+        <p className="mt-4 text-xs leading-relaxed text-light">
+          Points are the season total after the drop rule: each driver&rsquo;s {data.dropWorst} lowest-scoring
+          round{data.dropWorst === 1 ? " doesn't" : "s don't"} count
+          {data.raceNumbers.length > data.dropWorst && (
+            <> (best {data.raceNumbers.length - data.dropWorst} of {data.raceNumbers.length})</>
+          )}
+          . Switch to <button type="button" onClick={() => setView("grid")} className="underline decoration-dotted underline-offset-2 transition hover:text-dark">By round</button> to see which rounds were dropped.
+        </p>
       )}
     </div>
   );

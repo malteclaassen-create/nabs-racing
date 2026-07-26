@@ -95,7 +95,7 @@ function Folders({ folders, reload, onMsg }) {
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
                   </button>
                   <button onClick={() => setRenaming({ id: f.id, name: f.name })} className="rounded-lg bg-surface2 px-3 py-1.5 text-xs font-semibold text-medium transition hover:bg-border">Rename</button>
-                  <button onClick={() => remove(f)} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-500/10">Delete</button>
+                  <button onClick={() => remove(f)} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-bad transition hover:bg-red-500/10">Delete</button>
                 </>
               )}
             </li>
@@ -291,11 +291,11 @@ export default function AdminDownloads() {
                 <span className="flex shrink-0 items-center gap-3">
                   <span className="font-mono text-xs text-light">{f.sizeText}</span>
                   {f.registered ? (
-                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">registered</span>
+                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-ok">registered</span>
                   ) : (
                     <button
                       onClick={() => { startNew(); set("fileName", f.fileName); set("title", f.fileName.replace(/\.[^.]+$/, "")); jumpToForm(); }}
-                      className="rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary transition hover:bg-primary/20"
+                      className="rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-link transition hover:bg-link/20"
                     >
                       Register
                     </button>
@@ -412,7 +412,7 @@ export default function AdminDownloads() {
           <button type="submit" disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white transition hover:bg-primary/90 disabled:opacity-50">
             {busy ? "Saving…" : editingId ? "Save changes" : "Add download"}
           </button>
-          {msg && <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-red-500"}`}>{msg.text}</span>}
+          {msg && <span className={`text-sm font-medium ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</span>}
         </div>
       </form>
 
@@ -435,19 +435,19 @@ export default function AdminDownloads() {
                       {folderName(d.folderId) || "More files"}
                     </span>
                     {d.raceId && (
-                      <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary">
+                      <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-link">
                         {raceName(d.raceId) || "Replay"}
                       </span>
                     )}
-                    {!d.published && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">hidden</span>}
-                    {!d.fileExists && !d.externalUrl && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-500">file missing</span>}
+                    {!d.published && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-warn">hidden</span>}
+                    {!d.fileExists && !d.externalUrl && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-bad">file missing</span>}
                   </div>
                   <div className="mt-0.5 font-mono text-[11px] text-light">
                     {d.fileName || d.externalUrl || "—"}{d.sizeText ? ` · ${d.sizeText}` : ""}{d.version ? ` · v${d.version}` : ""}
                   </div>
                 </div>
                 <button onClick={() => startEdit(d)} className="rounded-lg bg-surface2 px-3 py-1.5 text-xs font-semibold text-medium transition hover:bg-border">Edit</button>
-                <button onClick={() => remove(d)} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-500/10">Delete</button>
+                <button onClick={() => remove(d)} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-bad transition hover:bg-red-500/10">Delete</button>
               </li>
             ))}
           </ul>

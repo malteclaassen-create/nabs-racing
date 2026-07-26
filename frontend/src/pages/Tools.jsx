@@ -634,7 +634,7 @@ function PracticeStrategy({ store, update }) {
             {sessions[0].track ? ` · ${sessions[0].track}` : ""}
             <button
               type="button"
-              className="font-semibold text-red-600 hover:underline"
+              className="font-semibold text-bad hover:underline"
               onClick={() => {
                 setSessions([]);
                 setDriverKey(null);
@@ -647,14 +647,14 @@ function PracticeStrategy({ store, update }) {
         {sessions.length === 0 && (
           <button
             type="button"
-            className="ml-auto text-sm font-semibold text-primary hover:underline"
+            className="ml-auto text-sm font-semibold text-link hover:underline"
             onClick={() => setManual((m) => !m)}
           >
             {manual ? "Hide manual entry" : "Type lap times by hand"}
           </button>
         )}
       </div>
-      {fileError && <p className="text-sm font-semibold text-red-600">{fileError}</p>}
+      {fileError && <p className="text-sm font-semibold text-bad">{fileError}</p>}
 
       {manual && sessions.length === 0 && (
         <div className="space-y-4 rounded-xl border border-border bg-surface2/30 p-4">
@@ -694,7 +694,7 @@ function PracticeStrategy({ store, update }) {
               {list.length > 1 && (
                 <button
                   type="button"
-                  className="mt-6 text-xs font-semibold text-red-600 hover:underline"
+                  className="mt-6 text-xs font-semibold text-bad hover:underline"
                   onClick={() => setManualEntries(list.filter((_, k) => k !== i))}
                 >
                   Remove
@@ -876,7 +876,7 @@ export default function Tools({ embedded = false }) {
       <FuelCalculator store={store} update={update} />
       <PracticeStrategy store={store} update={update} />
       <div>
-        <Link to="/races" className="text-sm font-semibold text-primary hover:underline">Race calendar</Link>
+        <Link to="/races" className="text-sm font-semibold text-link hover:underline">Race calendar</Link>
       </div>
     </div>
   );

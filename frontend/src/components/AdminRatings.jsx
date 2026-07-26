@@ -161,7 +161,7 @@ function ListField({ label, value, onChange, hint }) {
     <div>
       <div className="mb-1 flex items-baseline justify-between gap-3">
         <span className="text-sm font-semibold text-medium">{label}</span>
-        <span className={`font-mono text-[11px] ${parsed.hasInvalid ? "text-amber-500" : "text-light"}`}>
+        <span className={`font-mono text-[11px] ${parsed.hasInvalid ? "text-warn" : "text-light"}`}>
           {parsed.nums.length} values{parsed.hasInvalid ? " · some entries ignored" : ""}
         </span>
       </div>
@@ -194,13 +194,13 @@ function TierTables({ label, rows, onChange, hint }) {
                 onChange={(e) => set(i, "values", e.target.value)}
                 className="input flex-1 py-1 font-mono text-xs" aria-label="Values per position"
               />
-              <span className={`w-14 shrink-0 text-right font-mono text-[10px] ${parsed.hasInvalid ? "text-amber-500" : "text-faint"}`}>
+              <span className={`w-14 shrink-0 text-right font-mono text-[10px] ${parsed.hasInvalid ? "text-warn" : "text-faint"}`}>
                 {parsed.nums.length} pos
               </span>
               <button
                 type="button"
                 onClick={() => onChange(rows.filter((_, j) => j !== i))}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-light transition hover:bg-red-500/10 hover:text-red-500"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-light transition hover:bg-red-500/10 hover:text-bad"
                 title="Remove this table"
               >
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -212,7 +212,7 @@ function TierTables({ label, rows, onChange, hint }) {
       <button
         type="button"
         onClick={() => onChange([...rows, { teams: "", values: "" }])}
-        className="mt-2 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary transition hover:bg-primary/20"
+        className="mt-2 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-bold text-link transition hover:bg-link/20"
       >
         Add field size
       </button>
@@ -328,7 +328,7 @@ export default function AdminRatings() {
           against this season&rsquo;s field. Changes here preview live in the table and go public only when
           you press <b>Save</b>.{" "}
           {hasSaved ? (
-            <span className="font-semibold text-emerald-600">The public site is using your saved settings.</span>
+            <span className="font-semibold text-ok">The public site is using your saved settings.</span>
           ) : (
             <span className="font-semibold">The public site is using the league defaults.</span>
           )}
@@ -425,7 +425,7 @@ export default function AdminRatings() {
               values={form.pac}
               onChange={setGroup("pac")}
             />
-            <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
+            <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-warn">
               <b>Gap to pole</b> stays at 0% until qualifying times are imported (the current AC import reads
               race sessions only). Once the quali files are in, raise this weight to bring it into PAC.
             </p>
@@ -477,7 +477,7 @@ export default function AdminRatings() {
           </Section>
 
           <button
-            className="text-sm font-semibold text-primary hover:underline"
+            className="text-sm font-semibold text-link hover:underline"
             onClick={() => setAdvanced((a) => !a)}
           >
             {advanced ? "Hide racecraft & awareness weights" : "Show racecraft & awareness weights (RAC / AWA)"}
@@ -516,7 +516,7 @@ export default function AdminRatings() {
               Load defaults
             </button>
             {hasSaved && (
-              <button className="text-sm font-semibold text-red-600 hover:underline" onClick={clearWeights} disabled={saving}>
+              <button className="text-sm font-semibold text-bad hover:underline" onClick={clearWeights} disabled={saving}>
                 Clear saved
               </button>
             )}
@@ -558,7 +558,7 @@ export default function AdminRatings() {
                     <td className="px-2 py-1.5">
                       <span className="font-semibold text-dark">{r.name}</span>
                       <span className="ml-1.5 font-mono text-[10px] text-light">{TIER[r.tier]}</span>
-                      {r.provisional && <span className="ml-1 text-[10px] text-amber-500">·prov</span>}
+                      {r.provisional && <span className="ml-1 text-[10px] text-warn">·prov</span>}
                     </td>
                     <td className="px-1 py-1.5 text-center font-mono text-xs text-light">{r.starts}</td>
                     <td className="px-1 py-1.5 text-center font-mono text-xs text-light">{r.career?.starts ?? "–"}</td>

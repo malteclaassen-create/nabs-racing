@@ -67,7 +67,7 @@ function PrivateSeasonBanner() {
   if (!current || current.isPublic !== false) return null;
   return (
     <div className="border-b border-amber-500/30 bg-amber-500/10">
-      <div className="container-page flex items-center justify-center gap-2 py-2 text-center font-mono text-[11px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400">
+      <div className="container-page flex items-center justify-center gap-2 py-2 text-center font-mono text-[11px] font-bold uppercase tracking-widest text-warn">
         <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
           <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />

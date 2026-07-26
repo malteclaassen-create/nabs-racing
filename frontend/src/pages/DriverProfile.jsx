@@ -22,7 +22,7 @@ const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 // Amber pill marking the league's safety car driver, next to the tier badge.
 function SafetyCarBadge() {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-amber-600 ring-1 ring-amber-500/40 dark:text-amber-400">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-warn ring-1 ring-amber-500/40">
       <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M3 17h18M5 17l1.5-4.5A3 3 0 019.3 10h5.4a3 3 0 012.8 2l1.5 5M7.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM16.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
       </svg>
@@ -564,8 +564,18 @@ function FormChart({ perRace, color }) {
 
 function HeadToHead({ me, meRow, standings }) {
   const others = useMemo(
-    () => standings.filter((s) => s.driverId !== me.driver.id).sort((a, b) => a.position - b.position),
-    [standings, me.driver.id]
+    () =>
+      standings
+        .filter((s) => s.driverId !== me.driver.id)
+        // Drivers who never scored are the reserve pool that joins the roster
+        // whether or not they start a race, and there were more of them than
+        // actual racers — a comparison picker listing all 99, most of whom
+        // share an identical empty record, is not a picker. Anyone who scored
+        // stays, and so does the driver's own team mate even on zero, since a
+        // team mate is the one comparison a driver always wants.
+        .filter((s) => s.total > 0 || s.team?.id === me.driver.team?.id)
+        .sort((a, b) => a.position - b.position),
+    [standings, me.driver.id, me.driver.team?.id]
   );
   const defaultOpp = useMemo(() => {
     const mate = others.find((o) => o.team.id === me.driver.team.id);
@@ -670,7 +680,7 @@ function HeadToHead({ me, meRow, standings }) {
           <span className="shrink-0 font-display text-xl font-black text-faint">VS</span>
           <Link to={`/drivers/${opp.driverId}`} className="group flex min-w-0 flex-1 flex-col items-center gap-2 text-center">
             <DriverAvatar name={opp.name} photoUrl={opp.photoUrl} color={oppColor} size={60} />
-            <div className="truncate font-display text-base font-extrabold uppercase tracking-tight text-dark group-hover:text-primary">{opp.name}</div>
+            <div className="truncate font-display text-base font-extrabold uppercase tracking-tight text-dark group-hover:text-link">{opp.name}</div>
             <TeamLogo id={opp.team.id} name={opp.team.name} color={opp.team.color} logoUrl={opp.team.logoUrl} size={16} showName className="justify-center" nameClassName="truncate text-[11px] text-light" />
           </Link>
         </div>
@@ -795,7 +805,11 @@ function TeamPanel({ driver, standings, career }) {
   const collapsible = mates.length > CAP + 3;
   const shownMates = collapsible && !showAllMates ? mates.slice(0, CAP) : mates;
   return (
-    <div className="reveal card overflow-hidden">
+    // `relative` so the seam below lands on THIS card. It is absolutely
+    // positioned, and without a positioned parent it anchored to the page and
+    // drew as a full-width bar across the top of the profile once the reveal
+    // animation's transform stopped standing in as a containing block.
+    <div className="reveal card relative overflow-hidden">
       <CardBar title="Team" />
       {/* Team-colour seam along the card's top edge, like the hero banner. */}
       <span className="absolute inset-x-0 top-0 z-10 h-1" style={{ backgroundColor: c }} />
@@ -830,7 +844,7 @@ function TeamPanel({ driver, standings, career }) {
               <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light">Points</div>
             </div>
             <div className="py-3">
-              <div className={`font-display text-2xl font-black tabular-nums leading-none ${consRow.position === 1 ? "text-emerald-600" : "text-dark"}`}>
+              <div className={`font-display text-2xl font-black tabular-nums leading-none ${consRow.position === 1 ? "text-ok" : "text-dark"}`}>
                 {consRow.position === 1
                   ? consNext ? `+${consRow.total - consNext.total}` : "+0"
                   : consAhead ? `-${consAhead.total - consRow.total}` : "–"}
@@ -1413,7 +1427,7 @@ export default function DriverProfile({ previewId, preview }) {
                 </Link>
               ))}
           </div>
-          <Link to="/drivers" className="text-sm font-semibold text-primary hover:underline">
+          <Link to="/drivers" className="text-sm font-semibold text-link hover:underline">
             All drivers of {seasonLabel} →
           </Link>
         </div>
@@ -1475,11 +1489,11 @@ export default function DriverProfile({ previewId, preview }) {
             <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">finishing position by round</span>
             {stats.bestFinish != null && (
               <span className="ml-auto flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-wider">
-                <span className="flex items-center gap-1.5 text-emerald-600">
+                <span className="flex items-center gap-1.5 text-ok">
                   <span className="h-2 w-2 rounded-full ring-2 ring-emerald-500" /> Best P{stats.bestFinish}
                 </span>
                 {stats.worstFinish != null && stats.worstFinish !== stats.bestFinish && (
-                  <span className="flex items-center gap-1.5 text-red-500">
+                  <span className="flex items-center gap-1.5 text-bad">
                     <span className="h-2 w-2 rounded-full ring-2 ring-red-500" /> Worst P{stats.worstFinish}
                   </span>
                 )}
@@ -1582,7 +1596,7 @@ export default function DriverProfile({ previewId, preview }) {
       <CareerBlock career={p.career} otherSeries={p.otherSeries} />
 
       <div>
-        <Link to="/drivers" className="text-sm font-semibold text-primary hover:underline">← All drivers</Link>
+        <Link to="/drivers" className="text-sm font-semibold text-link hover:underline">← All drivers</Link>
       </div>
     </div>
   );

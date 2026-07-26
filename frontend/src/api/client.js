@@ -534,6 +534,12 @@ export const api = {
   },
   activity: () => request("/admin/activity", { auth: true }),
   createTeam: (body) => request("/admin/teams", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
+  // Teams of every OTHER season in this series, for the "bring one over" search
+  // next to Add team. `seasonId` is the season being edited.
+  teamLibrary: (seasonId, q = "") =>
+    request(`/admin/teams/library?seasonId=${encodeURIComponent(seasonId || "")}&q=${encodeURIComponent(q)}`, { auth: true }),
+  importTeam: (fromTeamId, seasonId) =>
+    request("/admin/teams/import", { method: "POST", body: { ...seriesBody(), fromTeamId, seasonId }, auth: true }),
   updateTeam: (id, body) => request(`/admin/teams/${id}`, { method: "PUT", body, auth: true }),
   deleteTeam: (id) => request(`/admin/teams/${id}`, { method: "DELETE", auth: true }),
   uploadTeamLogo: (id, file) => {

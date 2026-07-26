@@ -17,8 +17,17 @@ const DEFAULT_POINTS = [35, 30, 25, 22, 20, 18, 16, 14, 12, 10, 8, 7, 6, 5, 4, 3
 // strings. Two tiny render helpers turn those strings into JSX:
 //   fill(...)  resolves {rounds}/{platform}/... placeholders,
 //   rich(...)  turns **spans** into the bold highlight.
+// An unresolved placeholder used to be echoed literally, so a season with no
+// calendar yet (or a failed read) printed "Best {counted} of {rounds}" on a
+// public page. Dropping the token leaves a slightly thin sentence; leaving it in
+// leaves something that reads as broken software. Collapse the double spaces the
+// removal creates, and tidy a token that was the whole value ("{rounds} rounds"
+// with no number is not worth a line).
 function fill(s, tokens) {
-  return String(s ?? "").replace(/\{(\w+)\}/g, (m, k) => (tokens[k] != null && tokens[k] !== "" ? String(tokens[k]) : m));
+  return String(s ?? "")
+    .replace(/\{(\w+)\}/g, (m, k) => (tokens[k] != null && tokens[k] !== "" ? String(tokens[k]) : ""))
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 function rich(s) {
   const parts = String(s ?? "").split(/\*\*(.+?)\*\*/g);
@@ -107,7 +116,7 @@ function DownloadCard({ item, highlight = false }) {
       {item.description && <p className="mt-3 text-sm leading-relaxed text-medium">{item.description}</p>}
 
       {item.installNote && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 ring-1 ring-amber-500/20 dark:text-amber-400">
+        <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs font-medium text-warn ring-1 ring-amber-500/20">
           <Icon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{item.installNote}</span>
         </div>
@@ -127,7 +136,7 @@ function DownloadCard({ item, highlight = false }) {
         )}
       </div>
 
-      {err && <p className="mt-2 text-xs font-medium text-red-500">{err}</p>}
+      {err && <p className="mt-2 text-xs font-medium text-bad">{err}</p>}
     </div>
   );
 }
@@ -162,7 +171,7 @@ function FolderSection({ name, description, items, index = 0, defaultOpen = fals
 }
 
 function Catalogue() {
-  const { data, loading, error } = useApi(useCallback(() => api.downloads(), []));
+  const { data, loading, error, reload } = useApi(useCallback(() => api.downloads(), []));
   // Deep link from the Races page ("Replay" button): /downloads?dl=<id> opens
   // the folder holding that entry, scrolls to it and highlights the card.
   const [params] = useSearchParams();
@@ -204,7 +213,7 @@ function Catalogue() {
         {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}
       </div>
     );
-  if (error) return <ErrorBox message={error} />;
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
 
   if (!groups.length)
     return (

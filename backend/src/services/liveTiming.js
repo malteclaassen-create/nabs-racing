@@ -24,8 +24,41 @@
 //                   IsInPits, DRSActive, NumPits, NormalisedSplinePos…).
 //   EventType 57  — chat (ignored).
 import { WebSocketServer, WebSocket } from "ws";
+import { createHash, randomBytes } from "node:crypto";
 import prisma from "../lib/prisma.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries } from "../lib/liveServers.js";
+
+// ---------------------------------------------------------------------------
+// Public driver id for the live board.
+//
+// Assetto Corsa identifies a driver by their SteamID64, and that is what the
+// upstream server manager sends us as the GUID. lib/privacy.js is explicit that
+// a Steam id must never reach a public response — the league is pseudonymous,
+// and a Steam profile usually carries the real name and the friend list. The
+// roster endpoint strips it; the live board, which anyone can open without
+// signing in, was handing it out for every driver on track next to their name.
+//
+// The frontend only ever uses this value as an identity key: React keys, the
+// flip-animation id, and the track map's per-car state. It never sends it back
+// and never matches a driver with it (that is done by name). So a stable stand-in
+// is all it needs.
+//
+// The salt is required, not decoration: a SteamID64 is "7656119" plus ten
+// digits, so an unsalted hash is a ten-digit brute force and reverses in
+// seconds. Random per process start means the ids change on restart, which
+// costs nothing — the board simply re-keys its rows on the next frame.
+const PUBLIC_ID_SALT = randomBytes(16).toString("hex");
+const publicIdCache = new Map(); // real guid -> public id (hashing runs per driver, not per frame)
+
+function publicDriverId(guid) {
+  if (!guid) return guid;
+  let id = publicIdCache.get(guid);
+  if (!id) {
+    id = createHash("sha256").update(PUBLIC_ID_SALT).update(String(guid)).digest("hex").slice(0, 16);
+    publicIdCache.set(guid, id);
+  }
+  return id;
+}
 
 const BROADCAST_MS = 700; // how often we push a fresh board to frontend clients
 // Quiet servers (nobody on track) only send the full snapshot every ~30s and
@@ -416,7 +449,9 @@ function createRelay(server) {
     const racePos = live.RacePosition ?? d.RacePosition ?? null;
     if (onTrack && racePos != null) lastRacePosByGuid.set(guid, racePos);
     return {
-      guid,
+      // The real GUID stays server-side (it keys the stint and race-position
+      // maps above); what leaves the building is the pseudonymous stand-in.
+      guid: publicDriverId(guid),
       name: ci.DriverName || "—",
       initials: ci.DriverInitials || "",
       raceNumber: ci.RaceNumber ?? null,
@@ -798,7 +833,17 @@ export function initLiveTiming(server) {
 
   const wss = new WebSocketServer({ server, path: "/api/live/ws" });
 
+  // A socket that errors with no 'error' listener re-throws inside ws, and an
+  // uncaught exception ends the process — which here is the whole site, the API
+  // and the downloads, not just live timing. Sockets die for entirely ordinary
+  // reasons on race night (a phone leaving wifi mid-frame, a proxy resetting an
+  // idle connection), so this needs a listener on both the server and every
+  // client. There is nothing to do about it beyond not dying: ws closes the
+  // socket itself, and the next broadcast simply skips it.
+  wss.on("error", (e) => console.error("[live] client WS server error:", e.message));
+
   wss.on("connection", async (ws, req) => {
+    ws.on("error", (e) => console.error("[live] client socket error:", e.message));
     ws.isDemo = wantsDemo(req);
     if (ws.isDemo) await ensureDemoState();
     // Which race server this client follows: resolved once, from the series it
@@ -825,13 +870,21 @@ export function initLiveTiming(server) {
     let demoJson = null;
     for (const c of wss.clients) {
       if (c.readyState !== WebSocket.OPEN) continue;
-      if (c.isDemo) {
-        demoJson ??= JSON.stringify(getDemoBoard());
-        c.send(demoJson);
-      } else {
-        const key = c.serverKey || DEFAULT_SERVER_KEY;
-        if (!jsonByKey.has(key)) jsonByKey.set(key, JSON.stringify(getBoard(key)));
-        c.send(jsonByKey.get(key));
+      // OPEN can go stale between the check and the send (the socket dies in
+      // between), and one client's failure must not cost the rest of the grid
+      // its update — so each send stands on its own, same as the snapshot sent
+      // on connect.
+      try {
+        if (c.isDemo) {
+          demoJson ??= JSON.stringify(getDemoBoard());
+          c.send(demoJson);
+        } else {
+          const key = c.serverKey || DEFAULT_SERVER_KEY;
+          if (!jsonByKey.has(key)) jsonByKey.set(key, JSON.stringify(getBoard(key)));
+          c.send(jsonByKey.get(key));
+        }
+      } catch {
+        /* dead socket — ws will clean it up */
       }
     }
   }, BROADCAST_MS);

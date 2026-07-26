@@ -122,7 +122,7 @@ export default function AdminPersons() {
 
           {msg && <ErrorBox message={msg} />}
           {note && (
-            <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-600">{note}</p>
+            <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-ok">{note}</p>
           )}
           {loading && <p className="text-sm text-light">Loading…</p>}
 
@@ -165,7 +165,7 @@ export default function AdminPersons() {
                     {/* skipped by the auto button: a duplicate row within one
                         season, or two existing links that would merge */}
                     {group.ambiguous && (
-                      <span className="pill bg-amber-500/15 font-mono text-[10px] font-bold uppercase text-amber-600">
+                      <span className="pill bg-amber-500/15 font-mono text-[10px] font-bold uppercase text-warn">
                         check first
                       </span>
                     )}
@@ -307,7 +307,7 @@ export default function AdminPersons() {
                           <span className="font-semibold text-dark">{d.name}</span>
                           {d.teamName && <span className="text-xs text-light">{d.teamName}</span>}
                           <button
-                            className="ml-auto text-xs font-semibold text-red-600 hover:underline disabled:opacity-50"
+                            className="ml-auto text-xs font-semibold text-bad hover:underline disabled:opacity-50"
                             disabled={busy}
                             onClick={() => unlink(d.id)}
                             title="Remove this entry from the person"
@@ -329,7 +329,7 @@ export default function AdminPersons() {
             <button
               type="button"
               onClick={() => setShowAll(true)}
-              className="block w-full border-t border-border px-5 py-2.5 text-center text-sm font-semibold text-primary transition hover:bg-surface2"
+              className="block w-full border-t border-border px-5 py-2.5 text-center text-sm font-semibold text-link transition hover:bg-surface2"
             >
               Show all {filteredPersons.length}
             </button>

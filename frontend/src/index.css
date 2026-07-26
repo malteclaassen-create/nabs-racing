@@ -38,11 +38,32 @@
   --medal-3: #c2410c;
   /* Eyebrow/mono-label colour (`text-eyebrow`): brand pink is too pale on the
      light theme, so light mode deepens it to a strong pink (NOT rose/red — it
-     must still read as pink); dark mode keeps brand pink. */
-  --c-eyebrow: var(--c-eyebrow-light-dynamic, #db2777);
+     must still read as pink); dark mode keeps brand pink.
+     #db2777 cleared 4.5:1 against pure white, but these labels sit on the PAGE,
+     not on a card, and the page carries the brand-tinted glow behind them —
+     measured there it came out at 3.87:1. One step deeper (pink-700) puts it at
+     5.5:1 against the real background and still reads unmistakably pink. */
+  --c-eyebrow: var(--c-eyebrow-light-dynamic, #be185d);
   /* Same idea with alpha support (`accent` in tailwind.config): raw RGB triple
      for borders/fills like accent/40 that must stay visible on white. */
   --c-accent: var(--c-accent-light-dynamic, 219 39 119);
+  /* --- Status colours, as TEXT -------------------------------------------
+     Same split the brand colour already makes: `primary`/`emerald-500`/… stay
+     fixed for FILLS (a filled chip carries white text and must stay dark in
+     both themes), while these are the tones those things are written IN.
+     A single fixed value cannot do both jobs: #4251A8 reads at 4.6:1 on a white
+     card and 2.25:1 on a dark one, and the small status pills (VIEW RESULTS,
+     FL, the position arrows) all sat between 3.0 and 3.8 where 4.5 is the mark
+     for text this size. Raw RGB triples so `text-link`, `bg-link/10` and
+     friends all work off one token. Every value below is measured against its
+     own theme's card colour. */
+  --c-link: 55 69 148;   /* deeper indigo than the fill: 5.9:1 on white */
+  --c-ok: 4 108 78;      /* emerald, 5.1:1 on white */
+  --c-bad: 185 28 28;    /* red, 5.9:1 on white */
+  --c-warn: 146 64 14;   /* amber-800: 4.8 on plain white was not enough once
+                            the label sat on its own amber/15 tint (4.1), and
+                            warn carries DNF and the reserve "sub" chip */
+  --c-fl: 112 26 175;    /* fastest-lap purple, 7.4:1 on white */
 }
 
 .dark {
@@ -64,6 +85,13 @@
   --medal-3: #c2410c;
   --c-eyebrow: var(--c-eyebrow-dark-dynamic, #f4afc6);
   --c-accent: var(--c-accent-dark-dynamic, 244 175 198);
+  /* Status text on dark: the light-theme tones invert to their pale siblings.
+     Measured against the dark card (#131c2e), same 4.5:1 bar. */
+  --c-link: 165 180 252;  /* indigo-300, 8.9:1 */
+  --c-ok: 52 211 153;     /* emerald-400, 9.5:1 */
+  --c-bad: 248 113 113;   /* red-400, 6.4:1 */
+  --c-warn: 251 191 36;   /* amber-400, 10.6:1 */
+  --c-fl: 192 132 252;    /* purple-400, 6.7:1 */
 }
 
 /* --- Motion scale ---------------------------------------------------------

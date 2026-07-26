@@ -9,8 +9,15 @@
 // The classic six a profile shows out of the box.
 export const DEFAULT_PROFILE_TILES = ["wins", "podiums", "bestFinish", "avgFinish", "poles", "gained"];
 
-// Everything a driver may opt into. Telemetry-based tiles (overtakes, contacts,
-// consistency) only render when the season actually has that data.
+// Everything a driver may opt into. Telemetry-based tiles (overtakes, lapsLed,
+// contacts, consistency) only render when the season actually has that data.
+//
+// Order matters twice over: it is the canonical order a saved selection is
+// stored in (routes/me.js filters the request against this list), and it must
+// stay in step with PROFILE_TILES in frontend/src/pages/Profile.jsx. A key the
+// editor offers but this list omits fails the whole save, not just that tile,
+// so the driver loses their name and bio edits too — which is exactly what
+// happened to "lapsLed".
 export const PROFILE_TILE_KEYS = [
   ...DEFAULT_PROFILE_TILES,
   "top5",
@@ -20,6 +27,7 @@ export const PROFILE_TILE_KEYS = [
   "avgGrid",
   "fastestLap",
   "overtakes",
+  "lapsLed",
   "contacts",
   "consistency",
   "penalties",

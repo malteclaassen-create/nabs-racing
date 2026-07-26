@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
+import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { useApi } from "../hooks/useApi.js";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
 import { PageHeader, SectionHeading } from "../components/ui.jsx";
@@ -214,14 +216,17 @@ function SessionHeader({ session, receivedAt }) {
 }
 
 // One best-lap sector chip, coloured purple (overall best) / green (personal
-// best) / amber (other), matching sim-racing timing convention.
+// best) / amber (other), matching sim-racing timing convention. The purple is
+// the shared fastest-lap token rather than a fixed violet-500, which sat at
+// 2.9:1 on the dark board — the same tone the FL badge uses elsewhere, so the
+// convention reads the same across the site and stays legible in both themes.
 function Sector({ s }) {
   if (!s) return <span className="inline-block w-[52px] text-center font-mono text-xs text-faint">—</span>;
   const cls = s.best
-    ? "bg-violet-500/20 text-violet-500"
+    ? "bg-fl/20 text-fl"
     : s.driversBest
-    ? "bg-emerald-500/15 text-emerald-600"
-    : "bg-amber-500/10 text-amber-600";
+    ? "bg-ok/15 text-ok"
+    : "bg-warn/10 text-warn";
   return (
     <span className={`inline-block w-[52px] rounded text-center font-mono text-xs font-semibold tabular-nums ${cls}`}>
       {formatSector(s.ms)}
@@ -236,7 +241,7 @@ function CurrentLap({ lastLapAt, inPits }) {
     const t = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(t);
   }, []);
-  if (inPits) return <span className="font-mono text-[11px] font-bold uppercase text-amber-600">In pit</span>;
+  if (inPits) return <span className="font-mono text-[11px] font-bold uppercase text-warn">In pit</span>;
   if (!lastLapAt) return <span className="font-mono tabular-nums text-light">—</span>;
   const ms = now - lastLapAt;
   if (ms < 0 || ms > 15 * 60 * 1000) return <span className="font-mono tabular-nums text-light">—</span>;
@@ -292,7 +297,7 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false }) {
           {mobileBadges && (e.drs || e.inPits) && (
             <span className="flex shrink-0 gap-1 sm:hidden">
               {e.drs && <span className="pill bg-sky-500/15 text-sky-600">DRS</span>}
-              {e.inPits && <span className="pill bg-amber-500/15 text-amber-600">PIT</span>}
+              {e.inPits && <span className="pill bg-amber-500/15 text-warn">PIT</span>}
             </span>
           )}
         </span>
@@ -309,7 +314,7 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false }) {
 
 // A row in the "On Track Now" table — live current lap + delta to personal best.
 function OnTrackRow({ e, match, index = 0 }) {
-  const deltaCls = e.deltaSelfMs == null ? "text-light" : e.deltaSelfMs < 0 ? "text-emerald-600" : "text-amber-600";
+  const deltaCls = e.deltaSelfMs == null ? "text-light" : e.deltaSelfMs < 0 ? "text-ok" : "text-warn";
   return (
     <tr
       data-flip-id={e.guid}
@@ -363,7 +368,7 @@ function OnTrackRow({ e, match, index = 0 }) {
       <td className="py-3 pr-5 text-right">
         <div className="flex justify-end gap-1.5">
           {e.drs && <span className="pill bg-sky-500/15 text-sky-600">DRS</span>}
-          {e.inPits && <span className="pill bg-amber-500/15 text-amber-600">PIT</span>}
+          {e.inPits && <span className="pill bg-amber-500/15 text-warn">PIT</span>}
         </div>
       </td>
     </tr>
@@ -430,7 +435,7 @@ function Row({ e, match, index = 0 }) {
         ) : null}
       </td>
       <td className="hidden py-3 pr-4 text-right md:table-cell">
-        <span className="font-mono text-sm tabular-nums text-violet-500" title="Ideal lap (sum of best sectors)">
+        <span className="font-mono text-sm tabular-nums text-fl" title="Ideal lap (sum of best sectors)">
           {formatLap(e.potentialMs)}
         </span>
       </td>
@@ -462,7 +467,7 @@ function Row({ e, match, index = 0 }) {
       <td className="hidden py-3 pr-5 text-right sm:table-cell">
         <div className="flex justify-end gap-1.5">
           {e.drs && <span className="pill bg-sky-500/15 text-sky-600">DRS</span>}
-          {e.inPits && <span className="pill bg-amber-500/15 text-amber-600">PIT</span>}
+          {e.inPits && <span className="pill bg-amber-500/15 text-warn">PIT</span>}
         </div>
       </td>
     </tr>
@@ -527,7 +532,7 @@ function MovePill({ move }) {
   return (
     <span
       className={`inline-flex h-6 min-w-[2.5rem] items-center justify-center gap-0.5 rounded-full px-2 font-mono text-xs font-bold tabular-nums ${
-        up ? "bg-emerald-500/15 text-emerald-600" : "bg-red-500/10 text-red-500"
+        up ? "bg-emerald-500/15 text-ok" : "bg-red-500/10 text-bad"
       }`}
       title={up ? `Up ${move} vs. the standings before this race` : `Down ${-move} vs. the standings before this race`}
     >
@@ -578,7 +583,7 @@ function TeamProjection({ title, rows, flipKey }) {
               <td className="py-3 pr-5 text-right">
                 <span className="font-mono text-base font-bold tabular-nums text-dark">{t.total}</span>
                 {t.gained > 0 && (
-                  <span className="ml-2 font-mono text-xs font-bold tabular-nums text-emerald-600">+{t.gained}</span>
+                  <span className="ml-2 font-mono text-xs font-bold tabular-nums text-ok">+{t.gained}</span>
                 )}
               </td>
             </tr>
@@ -619,7 +624,7 @@ function ChampionshipProjection({ data }) {
         right={
           <span className="flex items-center gap-2">
             {standalone && <span className="pill bg-sky-500/15 text-sky-600">Not scored</span>}
-            {data.simulated && <span className="pill bg-amber-500/15 text-amber-600">Demo</span>}
+            {data.simulated && <span className="pill bg-amber-500/15 text-warn">Demo</span>}
             <span className="inline-flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">
               <span className="relative flex h-2.5 w-2.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
@@ -690,7 +695,7 @@ function ChampionshipProjection({ data }) {
                     {d.livePosition != null ? (
                       <span className="pill bg-surface2 font-mono text-medium">P{d.livePosition}</span>
                     ) : d.dnf ? (
-                      <span className="pill bg-red-500/10 font-mono text-red-500">DNF</span>
+                      <span className="pill bg-red-500/10 font-mono text-bad">DNF</span>
                     ) : (
                       <span className="font-mono text-xs text-faint">—</span>
                     )}
@@ -714,7 +719,7 @@ function ChampionshipProjection({ data }) {
                   <td className="py-3 pr-5 text-right">
                     <span className="font-mono text-base font-bold tabular-nums text-dark sm:text-lg">{d.total}</span>
                     {d.gained > 0 && (
-                      <span className="ml-2 font-mono text-xs font-bold tabular-nums text-emerald-600">+{d.gained}</span>
+                      <span className="ml-2 font-mono text-xs font-bold tabular-nums text-ok">+{d.gained}</span>
                     )}
                   </td>
                 </tr>
@@ -1087,6 +1092,67 @@ function CompoundLegend({ entries }) {
   );
 }
 
+// Nothing is running. The league races roughly once a week, so this is what
+// the page looks like most of the time, and it used to be an endless spinner
+// reading "Waiting for the server…" — which says "this is broken" far more than
+// it says "come back on Friday". Say so plainly instead, and answer the
+// question the visitor actually came with: when is the next one.
+function OffAir({ nextRace }) {
+  const kick = nextRace?.date ? raceKickoff(nextRace.date) : null;
+  return (
+    <div className="card flex flex-col items-center px-6 py-14 text-center sm:py-20">
+      <svg viewBox="0 0 24 24" className="h-9 w-9 text-faint" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M8 12h8" />
+      </svg>
+      <h2 className="mt-4 font-display text-xl font-extrabold uppercase tracking-tight text-dark">
+        No session running
+      </h2>
+      <p className="mt-1.5 max-w-md text-sm leading-relaxed text-medium">
+        Live timing comes to life when a race server is up. Nothing is on track right now.
+      </p>
+
+      {nextRace && (
+        <div className="mt-6 w-full max-w-sm rounded-xl border border-border bg-surface2 p-4">
+          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+            {nextRace.seasonName ? `Next up · ${nextRace.seasonName}` : "Next up"}
+          </div>
+          <div className="mt-1 font-display text-lg font-extrabold uppercase tracking-tight text-dark">
+            {nextRace.track}
+          </div>
+          {/* Date AND time. fmtRaceTime deliberately returns the time alone
+              (callers pair it with their own date), and on a page you might open
+              a fortnight out, "19:00 CEST" on its own answers nothing. */}
+          {kick && (
+            <div className="mt-0.5 font-mono text-sm text-medium">
+              {kick.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" })}
+              {" · "}
+              {fmtRaceTime(nextRace.date)}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+        <Link
+          to="../races"
+          relative="path"
+          className="inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
+        >
+          Race calendar
+        </Link>
+        <Link
+          to="../drivers"
+          relative="path"
+          className="inline-flex items-center rounded-lg border border-border px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-dark transition hover:bg-surface2"
+        >
+          Standings
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 export default function Live() {
   const { board, socketState } = useLiveTiming();
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
@@ -1100,6 +1166,33 @@ export default function Live() {
 
   const connected = board?.connected && !board?.stale && socketState === "open";
   const session = board?.session;
+  // Off air vs a momentary blip. The relay keeps its last snapshot on purpose,
+  // so a reconnect resumes instantly instead of blanking the board mid-race —
+  // but that also meant a finished race stayed on screen as if it were running,
+  // for as long as the race server was down. `stale` is the relay's own "no
+  // upstream data for 75 seconds" flag, and a quiet server still sends a
+  // snapshot every ~30s, so stale genuinely means nothing is on.
+  const offAir = !session || !!board?.stale;
+  // Only for the off-air card: what to point people at instead. The answer is
+  // the whole reason someone opens this page on a non-race day.
+  //
+  // Two sources, because one is not enough at the moment it matters most. The
+  // season's own calendar covers mid-season; between seasons every round is run
+  // and it has nothing left to offer, which is exactly when the teaser (the
+  // announced next season and its opener) has the answer. Both are public, so
+  // this works for a logged-out visitor too.
+  const racesApi = useApi(useCallback(() => api.races(), []));
+  const teaserApi = useApi(useCallback(() => api.seasonTeaser(), []));
+  const nextRace = useMemo(() => {
+    const upcoming = (racesApi.data || [])
+      .filter((r) => !r.isCompleted && r.date)
+      .map((r) => ({ r, t: raceKickoff(r.date)?.getTime() ?? null }))
+      .filter((x) => x.t != null && x.t > Date.now() - LIVE_WINDOW_MS)
+      .sort((a, b) => a.t - b.t);
+    if (upcoming[0]) return upcoming[0].r;
+    const opener = teaserApi.data?.firstRace;
+    return opener?.date ? { ...opener, seasonName: teaserApi.data?.name } : null;
+  }, [racesApi.data, teaserApi.data]);
   const entries = board?.entries || [];
   const onTrack = entries.filter((e) => e.onTrack);
   const receivedAt = useMemo(() => Date.now(), [board?.updatedAt]);
@@ -1205,7 +1298,7 @@ export default function Live() {
       {/* legend */}
       <div className="reveal flex flex-wrap items-center gap-4 px-1 font-mono text-[11px] uppercase tracking-wider text-light">
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded bg-violet-500/40" /> Fastest sector
+          <span className="h-3 w-3 rounded bg-fl/40" /> Fastest sector
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded bg-emerald-500/30" /> Personal best
@@ -1229,19 +1322,25 @@ export default function Live() {
         // session card moves up to just under the header.
         right={
           <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
-            {board?.demo && <span className="pill bg-amber-500/15 text-amber-600">Demo</span>}
+            {board?.demo && <span className="pill bg-amber-500/15 text-warn">Demo</span>}
             <ExternalButtons links={extLinks} patreonUrl={social.data?.patreon} />
           </div>
         }
       />
 
-      {!session ? (
-        <div className="card flex flex-col items-center justify-center gap-3 py-12 text-center sm:py-20">
-          <span className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand" />
-          <p className="font-mono text-[13px] uppercase tracking-wider text-light">
-            {socketState === "open" ? "Waiting for the server…" : "Connecting to the server…"}
-          </p>
-        </div>
+      {offAir ? (
+        socketState !== "open" && !board ? (
+          // Genuinely still opening the connection. This is the only case that
+          // gets a spinner, and it lasts a moment — it used to be the ONLY
+          // state, which meant the page span forever on the six days a week
+          // when no session is running.
+          <div className="card flex flex-col items-center justify-center gap-3 py-12 text-center sm:py-20">
+            <span className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand" />
+            <p className="font-mono text-[13px] uppercase tracking-wider text-light">Connecting to the server…</p>
+          </div>
+        ) : (
+          <OffAir nextRace={nextRace} />
+        )
       ) : (
         <div className="content-in space-y-8">
           {/* ===== Session bar across the top ===== */}
@@ -1304,7 +1403,7 @@ export default function Live() {
           )}
 
           {!connected && (
-            <p className="text-center font-mono text-[11px] uppercase tracking-wider text-amber-600">
+            <p className="text-center font-mono text-[11px] uppercase tracking-wider text-warn">
               Connection lost. Showing last known data, reconnecting…
             </p>
           )}

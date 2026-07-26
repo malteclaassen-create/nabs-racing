@@ -32,11 +32,11 @@ import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
 import { buildPageMeta, applyPageMeta } from "./lib/pageMeta.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
-import { legacyRedirects, canonicalUrl, applyCanonical, primarySlug } from "./lib/seo.js";
+import { legacyRedirects, canonicalUrl, applyCanonical, primarySlug, isKnownRoute, applyNoindex } from "./lib/seo.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
-import { backfillCardIntro, announceFeatures } from "./lib/notifications.js";
+import { backfillCardIntro, announceFeatures, ensureRaceReminders } from "./lib/notifications.js";
 import { UPLOADS_DIR } from "./lib/dataDirs.js";
 
 // Schema upkeep that runs outside `prisma migrate` (raw SQL — see the comment
@@ -279,13 +279,23 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
     } catch {
       /* a preview must never cost us the page */
     }
-    // The official address of whatever this renders. Every page gets one: the
-    // site links with ?season=<n> in places, and without this each of those
-    // variants competes with the plain page for the same content.
-    try {
-      html = applyCanonical(html, canonicalUrl(req, await primarySlug(prisma)));
-    } catch {
-      /* same rule: never lose the page over a tag */
+    // An address the app has no page for. It still gets index.html (the app
+    // renders its own 404 screen, which is friendlier than a server error page),
+    // but with the honest status and without a canonical tag telling a crawler
+    // this nonsense URL is a real page worth keeping.
+    const known = isKnownRoute(req.path);
+    if (!known) {
+      html = applyNoindex(html);
+      res.status(404);
+    } else {
+      // The official address of whatever this renders. Every page gets one: the
+      // site links with ?season=<n> in places, and without this each of those
+      // variants competes with the plain page for the same content.
+      try {
+        html = applyCanonical(html, canonicalUrl(req, await primarySlug(prisma)));
+      } catch {
+        /* same rule: never lose the page over a tag */
+      }
     }
     res.setHeader("Cache-Control", "no-cache"); // matches the static index.html
     res.type("html").send(html);
@@ -315,9 +325,57 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: showDetail ? err.message : "Something went wrong on our side." });
 });
 
+// Last-resort net. This one process is the entire site: the pages, the API, the
+// downloads and the live relay. Node's default for an unhandled rejection is to
+// end the process, so a single forgotten .catch() somewhere off the request path
+// (a background timer, a fire-and-forget write) would take the league offline
+// mid-race with nothing in the log to explain it.
+//
+// Staying up is the right trade here rather than the usual "log and exit": the
+// specific failure this was written for, a client socket dying mid-frame, is now
+// handled where it happens (see initLiveTiming), so anything reaching this point
+// is already unexpected, and a hobby league is better served by a site that is
+// still answering than by a clean shutdown nobody is watching for. Express keeps
+// its own per-request error handling either way — these only catch what escapes
+// it entirely. Anything logged here is a real bug and should be chased down.
+process.on("unhandledRejection", (reason) => {
+  console.error("[fatal] unhandled promise rejection:", reason?.stack || reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[fatal] uncaught exception:", err?.stack || err);
+});
+
 const server = app.listen(PORT, () => {
   console.log(`NABS Racing API listening on http://localhost:${PORT}`);
 });
 
+// A listen failure is the one error we must NOT survive. The handlers above
+// deliberately keep the process alive through unexpected faults, but if the port
+// could not be taken there is nothing to keep alive: the process would sit there
+// answering nothing while a supervisor (Railway, node --watch) believes it is up.
+// Say why and stop, so the restart actually happens.
+server.on("error", (e) => {
+  if (e.code === "EADDRINUSE") {
+    console.error(`[fatal] port ${PORT} is already in use. Is another copy of the server running?`);
+  } else {
+    console.error("[fatal] server error:", e?.stack || e);
+  }
+  process.exit(1);
+});
+
 // Live timing relay + frontend WebSocket (/api/live/ws).
 initLiveTiming(server);
+
+// Race reminders on a clock of their own. They used to exist only as a side
+// effect of somebody's bell polling, which meant the reminder that matters most
+// (the one an hour before lights out) was never created at all if no member
+// happened to have a tab open in that hour — and it is never caught up later,
+// because each offset only fires inside its own slice of the countdown.
+// ensureRaceReminders throttles itself to one real check per 5 minutes and
+// dedupes what it posts, so calling it here as well costs nothing and simply
+// removes the dependency on someone being online. unref() so this timer never
+// holds the process open on its own.
+const REMINDER_TICK_MS = 5 * 60 * 1000;
+setInterval(() => {
+  ensureRaceReminders(prisma).catch((e) => console.error("[reminders]", e?.message || e));
+}, REMINDER_TICK_MS).unref();

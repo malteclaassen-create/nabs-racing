@@ -223,6 +223,15 @@ router.get("/:id/results", async (req, res, next) => {
         const bf = b.status === "FINISHED" && b.position != null;
         if (af && bf) return a.position - b.position;
         if (af !== bf) return af ? -1 : 1;
+        // Neither has a position. That is the normal shape of an archived round
+        // scored from the official sheet, where only points were recorded — and
+        // the old tie-break compared 999 with 999, so every row was "equal" and
+        // the table came out in whatever order the database returned, with the
+        // round winner somewhere in the middle. Points are the only ranking
+        // those rows carry, so rank by them, highest first.
+        const ap = a.points ?? 0;
+        const bp = b.points ?? 0;
+        if (ap !== bp) return bp - ap;
         return (a.position ?? 999) - (b.position ?? 999);
       });
 
@@ -296,6 +305,12 @@ router.get("/:id/results", async (req, res, next) => {
         raceLaps: format.raceLaps ?? null,
         replayDownloadId: replays.get(race.id) || null,
         hasPositions,
+        // Championship round, training session or special event. The list
+        // endpoint has always sent this; the detail one did not, so the results
+        // table had no way to tell them apart and showed a points column for
+        // sessions that score nothing.
+        isSpecialEvent: race.isSpecialEvent,
+        type: (await readRaceTypes(prisma, [race.id])).get(race.id) || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
         driverOfTheDay,
       },
       results: rows,

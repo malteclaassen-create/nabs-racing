@@ -12,7 +12,7 @@ import {
   DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
 import { getSeasonScoring } from "./seasonService.js";
-import { getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
+import { getNameOverrides, getIdentityOverrides, getPersonGroups } from "../lib/persons.js";
 
 // Apply each race's position penalties before scoring. Grouping by race keeps a
 // penalty's re-ranking contained to its own round. With no penalties this is a
@@ -316,7 +316,53 @@ async function getRaceNumbers(prisma, seasonId) {
 // RaceResult, raceId must belong to the season) on top of the stored ones —
 // the live championship projection runs the running race order through the
 // exact same scoring pipeline this way. Empty/omitted = plain stored standings.
-export async function getDriverStandings(prisma, seasonId, { extraResults = [] } = {}) {
+// Where each driver of `seasonId` finished LAST season, as a sort key.
+//
+// A season that has not run a round yet has every driver on zero, so the only
+// thing left to order by was the name — an announced season's table opened
+// alphabetically, which tells a visitor nothing and reads as if the roster were
+// unranked. Last season's finishing order is the closest thing to a meaningful
+// starting grid, and it is what a reader expects to see before round one.
+//
+// Drivers are matched across seasons by person link (Driver rows are per-season
+// and ids/handles change), falling back to the id and then the name. Anyone with
+// no previous season sorts after everyone who has one.
+//
+// `depth` stops the lookup chaining: if last season also never ran, we do not
+// walk back through the whole archive — those drivers simply have no key.
+async function previousSeasonOrder(prisma, seasonId, depth) {
+  if (depth <= 0) return null;
+  const season = await prisma.season.findUnique({ where: { id: seasonId } });
+  if (!season) return null;
+  const prev = await prisma.season.findFirst({
+    where: { seriesId: season.seriesId ?? null, number: { lt: season.number } },
+    orderBy: { number: "desc" },
+  });
+  if (!prev) return null;
+  const prevStandings = await getDriverStandings(prisma, prev.id, { _depth: depth - 1 });
+  if (!prevStandings.standings.length) return null;
+  const { byDriver } = await getPersonGroups(prisma);
+  const byPerson = new Map();
+  const byId = new Map();
+  const byName = new Map();
+  for (const r of prevStandings.standings) {
+    const person = byDriver.get(r.driverId);
+    if (person && !byPerson.has(person)) byPerson.set(person, r.position);
+    if (!byId.has(r.driverId)) byId.set(r.driverId, r.position);
+    const key = (r.name || "").trim().toLowerCase();
+    if (key && !byName.has(key)) byName.set(key, r.position);
+  }
+  return (driverId, name) => {
+    const person = byDriver.get(driverId);
+    if (person && byPerson.has(person)) return byPerson.get(person);
+    if (byId.has(driverId)) return byId.get(driverId);
+    const key = (name || "").trim().toLowerCase();
+    if (key && byName.has(key)) return byName.get(key);
+    return null;
+  };
+}
+
+export async function getDriverStandings(prisma, seasonId, { extraResults = [], _depth = 1 } = {}) {
   const [drivers, races, results, scoring, nameOverrides, identity] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
@@ -390,7 +436,23 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [] }
     };
   });
 
-  rows.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  // Nothing scored yet this season: fall back to last season's finishing order
+  // rather than the alphabet (see previousSeasonOrder). The moment the first
+  // round is in, points take over again and this never runs.
+  const anyPoints = rows.some((r) => r.total > 0);
+  const prevPos = anyPoints ? null : await previousSeasonOrder(prisma, seasonId, _depth);
+  if (prevPos) {
+    rows.sort((a, b) => {
+      const pa = prevPos(a.driverId, a.name);
+      const pb = prevPos(b.driverId, b.name);
+      if (pa != null && pb != null && pa !== pb) return pa - pb;
+      if (pa != null && pb == null) return -1; // newcomers line up behind
+      if (pa == null && pb != null) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  } else {
+    rows.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  }
   rows.forEach((row, i) => (row.position = i + 1));
   // Archived seasons: official totals & order win over the computed ones.
   applyFinalStandings(rows, scoring.finalStandings?.drivers, "driverId");

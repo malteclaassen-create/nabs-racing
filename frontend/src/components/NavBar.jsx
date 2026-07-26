@@ -60,7 +60,12 @@ const SEASON_PAGES = ["/drivers", "/constructors", "/races"];
 // of the series being viewed; Race Info (downloads) is global and has none.
 function navLinks(p) {
   return [
-    { to: p(""), label: "Home", end: true },
+    // `alsoActiveOn`: the root renders the primary series' home ITSELF rather
+    // than redirecting to /s/<slug>, so the address stays "/" while this link
+    // points at "/s/<slug>". NavLink compares the two, finds no match, and left
+    // the nav with nothing highlighted on the one page everybody lands on and
+    // shares. Both addresses are the same page, so both light the same item.
+    { to: p(""), label: "Home", end: true, alsoActiveOn: "/" },
     // Drivers + Constructors are folded into one "Standings" item with a
     // hover flyout (see StandingsNav); on mobile they show as two links.
     { standings: true, label: "Standings" },
@@ -82,18 +87,24 @@ const desktopLinkClass = ({ isActive }) =>
 // Mobile menu row: a quiet line-list item with a small stroke icon, so the
 // pages stop reading as one indistinguishable text column. Colour only with
 // meaning: the active page gets the usual brand tint, everything else is calm.
-function MobileRow({ to, end, icon, label, sub }) {
+// `alsoActiveOn` mirrors the desktop nav: the root and /s/<slug> are the same
+// page, so both have to light the Home row (see navLinks).
+function MobileRow({ to, end, icon, label, sub, alsoActiveOn }) {
+  const { pathname } = useLocation();
+  const forced = alsoActiveOn === pathname;
   return (
     <NavLink
       to={to}
       end={end}
       className={({ isActive }) =>
         `flex items-center gap-3 rounded-lg px-2 py-2.5 transition ${
-          isActive ? "bg-brand/20 ring-1 ring-inset ring-brand/50" : "hover:bg-surface2"
+          isActive || forced ? "bg-brand/20 ring-1 ring-inset ring-brand/50" : "hover:bg-surface2"
         }`
       }
     >
-      {({ isActive }) => (
+      {({ isActive: active }) => {
+        const isActive = active || forced;
+        return (
         <>
           <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${isActive ? "bg-brand text-ink" : "bg-surface2 text-medium"}`}>
             <StandIcon d={icon} />
@@ -103,7 +114,8 @@ function MobileRow({ to, end, icon, label, sub }) {
             {sub && <span className="mt-0.5 block truncate font-mono text-[10px] text-light">{sub}</span>}
           </span>
         </>
-      )}
+        );
+      }}
     </NavLink>
   );
 }
@@ -446,7 +458,9 @@ export default function NavBar() {
                 key={l.to}
                 to={l.to}
                 end={l.end}
-                className={desktopLinkClass}
+                className={({ isActive }) =>
+                  desktopLinkClass({ isActive: isActive || l.alsoActiveOn === location.pathname })
+                }
                 ref={l.label === "Live" ? liveRef : undefined}
               >
                 {l.label}
@@ -529,7 +543,7 @@ export default function NavBar() {
               )}
 
               <MobileMenuLabel>League</MobileMenuLabel>
-              <MobileRow to={seriesPath("")} end icon={NAV_ICONS.home} label="Home" />
+              <MobileRow to={seriesPath("")} end alsoActiveOn="/" icon={NAV_ICONS.home} label="Home" />
               <MobileRow to={seriesPath("/races")} icon={NAV_ICONS.races} label="Races" sub="Calendar & results" />
               {attendanceOpen && (
                 <MobileRow to={seriesPath("/attendance")} icon={NAV_ICONS.attendance} label="Attendance" sub="Race sign-up" />

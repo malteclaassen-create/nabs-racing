@@ -40,7 +40,7 @@ function RowControls({ onUp, onDown, onRemove, upDisabled, downDisabled }) {
       <button type="button" onClick={onDown} disabled={downDisabled} className={smallBtn} title="Move down">
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
       </button>
-      <button type="button" onClick={onRemove} className={`${smallBtn} text-red-500 hover:bg-red-500/10`} title="Remove">
+      <button type="button" onClick={onRemove} className={`${smallBtn} text-bad hover:bg-red-500/10`} title="Remove">
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
       </button>
     </div>
@@ -103,7 +103,7 @@ export default function AdminWelcomeFaq() {
           <button
             type="button"
             onClick={() => setForm([...form, { q: "", a: "" }])}
-            className="rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-primary/20"
+            className="rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-bold text-link transition hover:bg-link/20"
           >
             Add question
           </button>
@@ -141,7 +141,7 @@ export default function AdminWelcomeFaq() {
         <button onClick={resetToDefaults} className="rounded-lg bg-surface2 px-4 py-2.5 text-sm font-semibold text-medium transition hover:bg-border">
           Reset to standard FAQ
         </button>
-        {msg && <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-red-500"}`}>{msg.text}</span>}
+        {msg && <span className={`text-sm font-medium ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</span>}
       </div>
     </div>
   );

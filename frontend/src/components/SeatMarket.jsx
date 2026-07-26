@@ -9,7 +9,7 @@ function ReserveChip({ driverId, name, country, highlight }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm ${
-        highlight ? "bg-emerald-500/15 font-semibold text-emerald-600" : "bg-surface2 text-dark"
+        highlight ? "bg-emerald-500/15 font-semibold text-ok" : "bg-surface2 text-dark"
       }`}
     >
       {name}
@@ -86,11 +86,11 @@ export default function SeatMarket({ race, me, reload }) {
                     <span className="text-sm font-normal text-light">· seat of {offer.offeredBy.name}</span>
                   </div>
                   {offer.status === "FILLED" ? (
-                    <span className="pill bg-emerald-500/15 text-emerald-600">
+                    <span className="pill bg-emerald-500/15 text-ok">
                       Filled · {offer.filledBy.name}
                     </span>
                   ) : (
-                    <span className="pill bg-amber-500/15 text-amber-600">Looking for a reserve</span>
+                    <span className="pill bg-amber-500/15 text-warn">Looking for a reserve</span>
                   )}
                 </div>
 
@@ -145,7 +145,7 @@ export default function SeatMarket({ race, me, reload }) {
                         </div>
                       )}
                       <button
-                        className="text-sm font-semibold text-primary hover:underline disabled:opacity-50"
+                        className="text-sm font-semibold text-link hover:underline disabled:opacity-50"
                         disabled={busy === `withdraw:${offer.id}`}
                         onClick={() => act(`withdraw:${offer.id}`, () => api.withdrawOffer(offer.id))}
                       >
@@ -167,7 +167,7 @@ export default function SeatMarket({ race, me, reload }) {
                             Withdraw interest
                           </button>
                           {iAmPicked && (
-                            <span className="text-sm font-semibold text-emerald-600">
+                            <span className="text-sm font-semibold text-ok">
                               You've been picked for this seat!
                             </span>
                           )}

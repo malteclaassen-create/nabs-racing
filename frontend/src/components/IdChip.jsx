@@ -66,7 +66,7 @@ export default function IdChip({ platform, value, state, title, tone = "muted", 
   const masked = `…${String(value).slice(-6)}`;
   const toneClass =
     tone === "warn"
-      ? "border-amber-500/40 text-amber-600"
+      ? "border-amber-500/40 text-warn"
       : "border-border text-medium hover:border-brand/50 hover:text-dark";
 
   return (
@@ -80,7 +80,7 @@ export default function IdChip({ platform, value, state, title, tone = "muted", 
       <SocialIcon name={platform} className="h-3 w-3" />
       <span className="normal-case tracking-normal">{shown ? value : masked}</span>
       {state && <span className="text-faint">· {state}</span>}
-      <span role="status" aria-live="polite" className={copied ? "font-bold text-emerald-600" : "sr-only"}>
+      <span role="status" aria-live="polite" className={copied ? "font-bold text-ok" : "sr-only"}>
         {copied ? "copied" : ""}
       </span>
     </button>

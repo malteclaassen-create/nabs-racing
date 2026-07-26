@@ -16,6 +16,7 @@ import { circuitFor, flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
 import { heroFor, heroOnError, carFor } from "../utils/heroImage.js";
+import { seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
@@ -287,7 +288,7 @@ function CarReveal({ season }) {
       )}
       {showCar && (
         <div className="pointer-events-none absolute bottom-3 left-4 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">
-          The {season?.name} car{season?.game ? ` · ${season.game}` : ""}
+          The {season?.name} car{season?.game ? ` · ${seasonGameLabel(season)}` : ""}
         </div>
       )}
     </div>
@@ -478,7 +479,7 @@ function NextSeasonPanel({ teaser, discord, signupRace }) {
             </div>
             {teaser.game && (
               <div className="relative mt-2 font-mono text-[10px] font-bold uppercase tracking-wider text-ink/55 dark:text-white/55">
-                {teaser.game}
+                {seasonGameLabel(teaser)}
               </div>
             )}
           </div>
@@ -860,11 +861,11 @@ export default function Home() {
       {/* ===================== SEASON TICKER ===================== */}
       <div className="-mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">
-          <SeasonPicker />
+          <SeasonPicker finished={seasonOver} />
           {season?.game && (
             <>
               <span className="hidden h-3 w-px bg-border sm:inline-block" />
-              <span className="hidden sm:inline">{season.game}</span>
+              <span className="hidden sm:inline">{seasonGameLabel(season)}</span>
             </>
           )}
           <span className="hidden h-3 w-px bg-border sm:inline-block" />
@@ -989,7 +990,7 @@ export default function Home() {
                 </h1>
                 {season?.game && (
                   <div className="hero-anim font-mono text-[13px] font-bold uppercase tracking-wider text-ink/60 dark:text-white/60" style={{ animationDelay: "0.16s" }}>
-                    {season.game}
+                    {seasonGameLabel(season)}
                   </div>
                 )}
                 <p className="hero-anim max-w-lg text-base leading-relaxed text-ink/75 dark:text-white/75" style={{ animationDelay: "0.2s" }}>
@@ -1572,8 +1573,11 @@ export default function Home() {
       )}
 
       {/* ===================== POINTS PROGRESSION ===================== */}
-      {/* Hidden on phones (the dense line charts don't read well there); shown
-          from md up. Skipped entirely for archived seasons with no per-race data. */}
+      {/* Hidden on phones ON PURPOSE (the dense line charts don't read well
+          there); shown from md up. This is a deliberate call, not an oversight —
+          making the chart fit a narrow screen was tried and reverted, so please
+          leave the breakpoint alone. Skipped entirely for archived seasons with
+          no per-race data. */}
       {completedNumbers.length > 0 && (
         <>
           <section className="reveal hidden md:block">
@@ -1597,10 +1601,13 @@ export default function Home() {
 
 function Heading({ index, eyebrow, title, to }) {
   return (
-    <div className="mb-6 flex items-end justify-between gap-4 border-b border-border pb-4">
-      <div className="flex items-end gap-4">
+    // min-w-0 + a title that may wrap: without them the heading block could not
+    // give way, and on a 375px phone "Drivers' Standings" next to the shrink-0
+    // "Full table" link pushed the whole page 20px past the viewport.
+    <div className="mb-6 flex items-end justify-between gap-3 border-b border-border pb-4 sm:gap-4">
+      <div className="flex min-w-0 items-end gap-3 sm:gap-4">
         <span className="font-display text-3xl font-black leading-none text-faint">{index}</span>
-        <div>
+        <div className="min-w-0">
           <div className="font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow">{eyebrow}</div>
           <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-3xl">
             {title}
@@ -1610,9 +1617,11 @@ function Heading({ index, eyebrow, title, to }) {
       {to && (
         <Link
           to={to}
-          className="group shrink-0 font-mono text-[13px] font-bold uppercase tracking-wider text-light transition hover:text-dark"
+          className="group shrink-0 whitespace-nowrap font-mono text-[13px] font-bold uppercase tracking-wider text-light transition hover:text-dark"
         >
-          Full table <span className="text-brand transition group-hover:translate-x-0.5">→</span>
+          {/* text-eyebrow, not text-brand: brand pink on the light page measures
+              1.78:1, and this arrow is the only coloured thing in the row. */}
+          Full table <span className="text-eyebrow transition group-hover:translate-x-0.5">→</span>
         </Link>
       )}
     </div>

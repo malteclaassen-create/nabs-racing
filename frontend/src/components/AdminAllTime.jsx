@@ -12,7 +12,7 @@ function SeasonChip({ item }) {
   return (
     <span
       className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${
-        item.seasonActive ? "bg-emerald-500/15 text-emerald-600" : "bg-surface2 text-medium"
+        item.seasonActive ? "bg-emerald-500/15 text-ok" : "bg-surface2 text-medium"
       }`}
     >
       {item.seasonName || (item.seasonNumber != null ? `Season ${item.seasonNumber}` : "?")}

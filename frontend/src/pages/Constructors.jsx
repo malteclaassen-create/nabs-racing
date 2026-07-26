@@ -141,7 +141,16 @@ export default function Constructors() {
         ))}
       </div>
     );
-  if (t1.error || t2.error || teams.error) return <ErrorBox message={t1.error || t2.error || teams.error} />;
+  if (t1.error || t2.error || teams.error)
+    return (
+      <div>
+        <PageHeader eyebrow="Championship" title="Constructors" />
+        <ErrorBox
+          message={t1.error || t2.error || teams.error}
+          onRetry={() => { t1.reload(); t2.reload(); teams.reload(); }}
+        />
+      </div>
+    );
 
   const t1Teams = teams.data.filter((t) => t.tier === 1);
   const t2Teams = teams.data.filter((t) => t.tier === 2);

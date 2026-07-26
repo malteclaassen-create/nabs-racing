@@ -8,8 +8,8 @@ import { ErrorBox, Notice, CardHead } from "./ui.jsx";
 // the recent admin activity log.
 
 const SEVERITY_META = {
-  error: { label: "Error", cls: "bg-red-500/15 text-red-500 border-red-500/30" },
-  warning: { label: "Warning", cls: "bg-amber-500/15 text-amber-500 border-amber-500/30" },
+  error: { label: "Error", cls: "bg-red-500/15 text-bad border-red-500/30" },
+  warning: { label: "Warning", cls: "bg-amber-500/15 text-warn border-amber-500/30" },
   info: { label: "Note", cls: "bg-sky-500/15 text-sky-500 border-sky-500/30" },
 };
 
@@ -198,8 +198,13 @@ export default function AdminHealth() {
           machine ever dies, that zip is the whole league.
         </Notice>
         <div className="mt-4">
-          {(backups.data?.backups || []).length === 0 ? (
-            <p className="text-sm text-light">No backups yet.</p>
+          {/* "No backups yet" on a failed read is the worst possible wording on
+              this particular panel: it tells the admin their safety net is empty
+              when the truth is that we could not look. */}
+          {backups.error ? (
+            <ErrorBox message={backups.error} onRetry={backups.reload} title="Couldn't read the backup list" />
+          ) : (backups.data?.backups || []).length === 0 ? (
+            <p className="text-sm text-light">{backups.loading ? "Reading the backup list…" : "No backups yet."}</p>
           ) : (
             <ul className="divide-y divide-border font-mono text-xs">
               {(backups.data?.backups || []).slice(0, 12).map((b) => (
@@ -220,8 +225,10 @@ export default function AdminHealth() {
         <CardHead title="Recent admin activity" />
         <p className="-mt-2 mb-4 text-sm text-light">What changed in the admin panel and when (logged automatically).</p>
         <div className="mt-4">
-          {(activity.data?.entries || []).length === 0 ? (
-            <p className="text-sm text-light">No logged actions yet.</p>
+          {activity.error ? (
+            <ErrorBox message={activity.error} onRetry={activity.reload} title="Couldn't read the activity log" />
+          ) : (activity.data?.entries || []).length === 0 ? (
+            <p className="text-sm text-light">{activity.loading ? "Reading the activity log…" : "No logged actions yet."}</p>
           ) : (
             <ul className="divide-y divide-border text-sm">
               {(activity.data?.entries || []).slice(0, 25).map((e, i) => (

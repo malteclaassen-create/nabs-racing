@@ -298,7 +298,7 @@ export function CardEditionPicker({ seasons, activeDriverId, onPickSeason, editi
                     {locked ? (
                       <span className="text-light"><LockIcon /></span>
                     ) : earned ? (
-                      <span className="text-emerald-500" title="Unlocked"><CheckIcon /></span>
+                      <span className="text-ok" title="Unlocked"><CheckIcon /></span>
                     ) : null}
                   </span>
                   <span className="block truncate text-[11px] text-light">{e.tagline}</span>

@@ -49,6 +49,7 @@ function SearchIcon() {
 export default function GlobalSearch({ mobile = false, className = "", alignLeftRef = null }) {
   const [q, setQ] = useState("");
   const [data, setData] = useState(null);
+  const [searchError, setSearchError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1); // highlighted flat index
@@ -113,8 +114,11 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
     const t = setTimeout(() => {
       api
         .search(term)
-        .then((d) => { if (alive) { setData(d); setActive(-1); } })
-        .catch(() => alive && setData(null))
+        .then((d) => { if (alive) { setData(d); setActive(-1); setSearchError(null); } })
+        // A failed search is not an empty one. Swallowing the error left the
+        // dropdown claiming "No matches for <term>", which tells the visitor
+        // their driver is not on the site when in fact nothing was searched.
+        .catch((e) => { if (alive) { setData(null); setSearchError(e.message); } })
         .finally(() => alive && setLoading(false));
     }, 180);
     return () => { alive = false; clearTimeout(t); };
@@ -223,6 +227,10 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
           <div id="global-search-results" role="listbox" aria-label="Search results" className="max-h-[min(28rem,70vh)] overflow-y-auto py-1">
             {loading && !data ? (
               <p className="px-4 py-6 text-center text-sm text-light">Searching…</p>
+            ) : searchError ? (
+              <p role="alert" className="px-4 py-6 text-center text-sm font-medium text-bad">
+                Search is not answering right now. Try again in a moment.
+              </p>
             ) : !data || data.groups.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-light">
                 No matches for “{q.trim()}”.

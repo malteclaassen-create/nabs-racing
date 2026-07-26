@@ -12,7 +12,7 @@ import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 import { heroFor, heroOnError } from "../utils/heroImage.js";
-import { seasonGameParts } from "../utils/seasonGame.js";
+import { seasonGameParts, seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 
 // League default points per finishing position — only the fallback: seasons
@@ -377,7 +377,13 @@ export default function Welcome() {
               today and still wraps into tidy rows once all 8 are entered. */}
           <div className="cascade flex flex-wrap justify-center gap-3">
             {timeline.map((s, i) => {
-              const status = s.isActive ? "live" : s.number > activeNumber ? "next" : "done";
+              // "Live now" needs a race still to come, not just the isActive
+              // flag: that flag stays set on the running season for weeks after
+              // its finale, so the strip kept advertising a season whose last
+              // round was long gone. `nextRace` is the same signal the rest of
+              // this page uses (null once every round is run).
+              const status =
+                s.isActive && nextRace ? "live" : s.number > activeNumber ? "next" : "done";
               return (
                 <div key={s.id} className="card shine relative w-full overflow-hidden p-5 sm:w-64" style={{ "--i": i }}>
                   {/* the season's own hero photo (admin upload or the static
@@ -424,7 +430,7 @@ export default function Welcome() {
                     {/^\d+$/.test(String(s.name).trim()) ? `Season ${s.name}` : s.name}
                   </div>
                   <div className="relative mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-                    {s.game || "Era to be announced"}
+                    {seasonGameLabel(s) || "Era to be announced"}
                   </div>
                 </div>
               );
@@ -550,7 +556,12 @@ export default function Welcome() {
           {top3.length > 0 && (
             <div className="card overflow-hidden">
               <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-                <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Title race right now</h3>
+                {/* "right now" only while there IS a race on. With every round
+                    run the same card was still promising a live title fight
+                    over a table that had not moved in weeks. */}
+                <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
+                  {nextRace ? "Title race right now" : "How the season finished"}
+                </h3>
                 <Link to="/drivers" className="font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:text-dark">
                   Full table →
                 </Link>

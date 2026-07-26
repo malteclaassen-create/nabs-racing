@@ -30,6 +30,16 @@ export default {
         // Same theme-aware pink but with alpha support (accent/40 etc.) for
         // borders and fills that wash out on white (see --c-accent).
         accent: "rgb(var(--c-accent) / <alpha-value>)",
+        // Status colours as TEXT, theme-aware (see --c-link/--c-ok/… in
+        // index.css). `primary` above stays fixed because it also fills buttons
+        // that carry white text; these are for writing ON a card, where one
+        // fixed value cannot satisfy both themes. Alpha works too, so the tinted
+        // pill behind the label recolours with it (bg-ok/15 text-ok).
+        link: "rgb(var(--c-link) / <alpha-value>)",
+        ok: "rgb(var(--c-ok) / <alpha-value>)",
+        bad: "rgb(var(--c-bad) / <alpha-value>)",
+        warn: "rgb(var(--c-warn) / <alpha-value>)",
+        fl: "rgb(var(--c-fl) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { TeamDot } from "./ui.jsx";
 import SeatMarket from "./SeatMarket.jsx";
@@ -14,7 +15,7 @@ const STATUS_UI = {
     title: "Accepted",
     icon: "M4.5 12.5l5 5L19.5 7",
     idle: "border-border bg-card text-medium hover:border-green-600/60 hover:text-dark",
-    idleIcon: "text-green-600",
+    idleIcon: "text-ok",
     active: "border-green-600 bg-green-600 text-white",
     bar: "bg-green-600",
   },
@@ -23,7 +24,7 @@ const STATUS_UI = {
     title: "Declined",
     icon: "M6 6l12 12M18 6L6 18",
     idle: "border-border bg-card text-medium hover:border-red-600/60 hover:text-dark",
-    idleIcon: "text-red-600",
+    idleIcon: "text-bad",
     active: "border-red-600 bg-red-600 text-white",
     bar: "bg-red-600",
   },
@@ -32,7 +33,7 @@ const STATUS_UI = {
     title: "Tentative",
     icon: "M9 9.2a3 3 0 115.4 1.8c-.8 1-2.4 1.5-2.4 3M12 17.5h.01",
     idle: "border-border bg-card text-medium hover:border-amber-500/60 hover:text-dark",
-    idleIcon: "text-amber-500",
+    idleIcon: "text-warn",
     active: "border-amber-500 bg-amber-500 text-white",
     bar: "bg-amber-500",
   },
@@ -72,6 +73,21 @@ export default function RaceSignupCard({
   // Sign-up window (admin-configured): before it opens, the buttons make way
   // for a note saying when. Which answer columns show is also the admin's call.
   const opensAt = ev.attendanceOpensAt ? new Date(ev.attendanceOpensAt) : null;
+  // The lock has to expire on its own. This was read once during render and
+  // nothing re-rendered the card when the moment arrived, so a member sitting
+  // on the page as sign-ups opened — which is exactly what the "sign-ups are
+  // open" notification produces — kept looking at the padlock until they
+  // reloaded. One timer, armed for the opening moment and only while it is
+  // still ahead of us.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (!opensAt) return;
+    const ms = opensAt.getTime() - Date.now();
+    if (ms <= 0) return;
+    // setTimeout clamps above ~24.8 days; re-arm daily until we are inside range.
+    const t = setTimeout(() => forceTick((n) => n + 1), Math.min(ms + 250, 6 * 60 * 60 * 1000));
+    return () => clearTimeout(t);
+  }, [opensAt?.getTime()]);
   const locked = opensAt && opensAt.getTime() > Date.now();
   const visible = ["ACCEPTED", "DECLINED", "TENTATIVE"].filter(
     (s) => !Array.isArray(ev.visibleStatuses) || ev.visibleStatuses.includes(s)
@@ -138,7 +154,7 @@ export default function RaceSignupCard({
           // Members tab and can create their driver from there.
           raceRequest?.pending ? (
             <div className="text-sm leading-relaxed text-medium">
-              <span className="font-semibold text-emerald-600">Request sent.</span> The league admin will set up your
+              <span className="font-semibold text-ok">Request sent.</span> The league admin will set up your
               driver profile and get back to you. Once that's done, the sign-up buttons appear here.
             </div>
           ) : (
@@ -156,7 +172,7 @@ export default function RaceSignupCard({
             </div>
           )
         ) : (
-          <Link to="/profile" className="text-sm font-semibold text-primary hover:underline">
+          <Link to="/profile" className="text-sm font-semibold text-link hover:underline">
             Sign in to respond
           </Link>
         )}

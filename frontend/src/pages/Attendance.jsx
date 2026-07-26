@@ -197,9 +197,15 @@ export default function Attendance() {
 
       {events.loading && <TableSkeleton rows={6} />}
 
-      {!events.loading && list.length === 0 && (
+      {/* A failed read is not an empty calendar. Without this the page answered
+          a server problem with "Nothing on the calendar", which reads as "no
+          races are scheduled" — the one message that makes a member close the
+          page instead of trying again. */}
+      {!events.loading && events.error && <ErrorBox message={events.error} onRetry={events.reload} />}
+
+      {!events.loading && !events.error && list.length === 0 && (
         <EmptyState title="Nothing on the calendar" hint="The next race will show up here as soon as it is scheduled.">
-          <Link to="/races" className="mt-3 inline-block text-sm font-semibold text-primary hover:underline">See the calendar →</Link>
+          <Link to="/races" className="mt-3 inline-block text-sm font-semibold text-link hover:underline">See the calendar →</Link>
         </EmptyState>
       )}
 

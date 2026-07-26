@@ -299,6 +299,7 @@ export default function TeamProfile() {
           Hidden on phones — the dense line chart doesn't read well there, same
           as on the home page. */}
       {teamRow && completedNumbers.length > 0 && (
+        // Phones sit this one out on purpose, same as on the home page.
         <div className="hidden md:block">
           <h2 className="mb-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
             Championship Progression
@@ -308,7 +309,7 @@ export default function TeamProfile() {
       )}
 
       <div>
-        <Link to="/constructors" className="text-sm font-semibold text-primary hover:underline">← All constructors</Link>
+        <Link to="/constructors" className="text-sm font-semibold text-link hover:underline">← All constructors</Link>
       </div>
     </div>
   );

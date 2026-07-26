@@ -1,5 +1,11 @@
 import { useRef, useState } from "react";
 
+// Desktop-only by design: all three call sites wrap this in `hidden md:block`.
+// A phone-sized variant (narrower viewBox, bigger axis type, thinned round
+// labels) was built and taken back out — the dense multi-line graph is not
+// wanted on a phone regardless of how legible the labels are. So this file
+// only ever has to serve one width.
+
 // Combined points-progression chart: every team's cumulative points as lines in
 // one graph. Hover a round to read exact points; hover/click a team in the
 // legend to highlight its line. Lines draw themselves in on mount.
@@ -23,6 +29,7 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
   const [pinned, setPinned] = useState(null); // clicked team
   const [hover, setHover] = useState(null); // { idx, x, w }
   const svgRef = useRef(null);
+
 
   if (!completed.length) {
     return <div className="card p-6 text-sm text-light">No completed rounds yet.</div>;

@@ -52,7 +52,14 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
     return (
       <td
         title="Dropped: scored in the lowest rounds, not counted toward the total"
-        className={`${base} text-sm text-faint line-through decoration-2`}
+        // `relative` for the sr-only span below. Tailwind's sr-only is
+        // position:absolute, so without a positioned ancestor its containing
+        // block is the page itself: it escaped both the horizontal scroller and
+        // the card's overflow:hidden, and 28 of them stretched the document to
+        // 572px on a 375px phone. Chrome refuses to scroll to clipped content so
+        // nothing showed for it, but the page still measured wrong, and other
+        // engines are less forgiving.
+        className={`${base} relative text-sm text-faint line-through decoration-2`}
       >
         {label || 0}
         {/* The strike-through is the only visual marker, and the footnote under
@@ -83,7 +90,7 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
 
   const { points, status, position } = cell;
   if (status && status !== "FINISHED") {
-    const cls = status === "DNF" ? "text-amber-600" : status === "DSQ" ? "text-primary" : "text-light";
+    const cls = status === "DNF" ? "text-warn" : status === "DSQ" ? "text-link" : "text-light";
     return <td className={`${base} text-[11px] font-semibold ${cls}`}>{status}</td>;
   }
   // Podium finishes light up in the medal colours (gold/silver/bronze), so a
@@ -134,21 +141,31 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
           are there to avoid. */}
       <div ref={scrollRef} className="overflow-x-auto overscroll-x-none">
         <table className="w-full min-w-[720px] border-collapse">
+          {/* scope="col" on every header: 92 header cells across the site
+              carried none, and this is the table where a screen reader most
+              needs to say which round a number belongs to.
+              No sticky top row here, deliberately. It was tried: the horizontal
+              scroller around this table computes overflow-y to `auto` (CSS will
+              not let one axis be `auto` and the other `visible`), which makes it
+              the containing block for `position: sticky` — so the header pins to
+              a box that itself scrolls away with the page, and nothing sticks.
+              Making it work needs the table to scroll vertically inside a
+              fixed-height box, which is a different page layout, not a tweak. */}
           <thead>
             <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-              <th className="sticky left-0 z-20 w-14 bg-card px-3 py-3 text-center">Pos</th>
-              <th className={`sticky left-14 z-20 max-w-[34vw] sm:max-w-none bg-card px-3 py-3 transition-shadow ${leftShadow}`}>
+              <th scope="col" className="sticky left-0 z-20 w-14 bg-card px-3 py-3 text-center">Pos</th>
+              <th scope="col" className={`sticky left-14 z-20 max-w-[34vw] sm:max-w-none bg-card px-3 py-3 transition-shadow ${leftShadow}`}>
                 {isDriver ? "Driver" : "Team"}
               </th>
-              {isDriver && <th className="hidden px-3 py-3 lg:table-cell">Discord</th>}
-              {isDriver && <th className="hidden px-3 py-3 md:table-cell">Team</th>}
-              {isDriver && <th className="px-3 py-3 text-center">Tier</th>}
+              {isDriver && <th scope="col" className="hidden px-3 py-3 lg:table-cell">Discord</th>}
+              {isDriver && <th scope="col" className="hidden px-3 py-3 md:table-cell">Team</th>}
+              {isDriver && <th scope="col" className="px-3 py-3 text-center">Tier</th>}
               {raceNumbers.map((n) => (
-                <th key={n} className="px-2.5 py-3 text-center tabular-nums">
+                <th scope="col" key={n} className="px-2.5 py-3 text-center tabular-nums">
                   R{n}
                 </th>
               ))}
-              <th className={`sticky right-0 z-20 border-l border-border bg-card px-4 py-3 text-right transition-shadow ${rightShadow}`}>
+              <th scope="col" className={`sticky right-0 z-20 border-l border-border bg-card px-4 py-3 text-right transition-shadow ${rightShadow}`}>
                 Pts
               </th>
             </tr>

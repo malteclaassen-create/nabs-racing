@@ -153,7 +153,7 @@ export default function AdminTracks() {
                     type="button"
                     aria-label="Remove this fact"
                     title="Remove this fact"
-                    className="text-light hover:text-red-600"
+                    className="text-light hover:text-bad"
                     onClick={() => setFacts((fs) => fs.filter((_, idx) => idx !== i))}
                   >
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -164,7 +164,7 @@ export default function AdminTracks() {
               ))}
             </div>
             {facts.length < 8 && (
-              <button className="mt-2 text-sm font-semibold text-primary hover:underline" onClick={() => setFacts((fs) => [...fs, { label: "", value: "" }])}>
+              <button className="mt-2 text-sm font-semibold text-link hover:underline" onClick={() => setFacts((fs) => [...fs, { label: "", value: "" }])}>
                 + Add fact
               </button>
             )}

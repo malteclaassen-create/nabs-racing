@@ -35,7 +35,13 @@ function LockIcon({ className = "h-3 w-3" }) {
 // text and no pulsing live dot, and nothing at all when there's only one season
 // to show, since a switcher would be pointless there.
 // `onPick` lets a host (the mobile nav menu) react to a season being chosen.
-export default function SeasonPicker({ compact = false, onPick }) {
+// `finished` marks the CURRENT season as run to the end. "Live" is otherwise
+// decided purely by "this is the newest season", which stays true for weeks
+// after the finale — so the ticker sat on "Season 7 · Live" directly above a
+// hero reading "Championship complete". Only the Home page knows this (it has
+// the calendar), so it passes the answer in rather than this component fetching
+// a race list of its own.
+export default function SeasonPicker({ compact = false, onPick, finished = false }) {
   const { seasons, season, setSeason, current, active } = useSeason();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -52,7 +58,7 @@ export default function SeasonPicker({ compact = false, onPick }) {
     };
   }, [open]);
 
-  const isPast = current && active && current.number < active.number;
+  const isPast = (current && active && current.number < active.number) || finished;
   const isPrivate = current && current.isPublic === false;
   const label = current ? nameOf(current) : "Season";
 
@@ -94,13 +100,13 @@ export default function SeasonPicker({ compact = false, onPick }) {
         title="Switch season"
       >
         {isPrivate ? (
-          <LockIcon className="h-3 w-3 shrink-0 text-amber-600" />
+          <LockIcon className="h-3 w-3 shrink-0 text-warn" />
         ) : (
           !isPast && !compact && <LiveDot />
         )}
         <span>{label}</span>
         {!compact && (
-          <span className={isPrivate ? "text-amber-600" : isPast ? "text-emerald-600" : "text-eyebrow"}>
+          <span className={isPrivate ? "text-warn" : isPast ? "text-ok" : "text-eyebrow"}>
             · {isPrivate ? "Private" : isPast ? "Complete" : "Live"}
           </span>
         )}
@@ -157,7 +163,7 @@ export default function SeasonPicker({ compact = false, onPick }) {
                     <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{nameOf(s)}</span>
                     {s.isActive && <LiveDot />}
                     {priv && (
-                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-warn">
                         <LockIcon className="h-2.5 w-2.5" />
                         Private
                       </span>

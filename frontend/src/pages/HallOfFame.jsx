@@ -321,7 +321,7 @@ function TopListPanel({ lists }) {
 }
 
 export default function HallOfFame() {
-  const { data, loading, error } = useApi(useCallback(() => api.seriesRecords(), []));
+  const { data, loading, error, reload } = useApi(useCallback(() => api.seriesRecords(), []));
   const [champMode, setChampMode] = useState("drivers");
   const [listKey, setListKey] = useState(null);
 
@@ -337,7 +337,16 @@ export default function HallOfFame() {
         <TableSkeleton rows={10} />
       </div>
     );
-  if (error) return <ErrorBox message={error} />;
+  // Keep the page's own header above the error, the way the empty state below
+  // already does: a failed read should still look like the page you asked for,
+  // not like the site lost its way.
+  if (error)
+    return (
+      <div>
+        <PageHeader eyebrow="All-time" title="Hall of Fame" />
+        <ErrorBox message={error} onRetry={reload} />
+      </div>
+    );
   if (!data || (!data.lists.length && !data.champions.length))
     return (
       <div>

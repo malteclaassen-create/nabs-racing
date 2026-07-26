@@ -614,13 +614,22 @@ export async function announceFeatures(prisma) {
 }
 
 // --- race reminders ------------------------------------------------------------
-// No cron needed: whenever anyone asks the bell for data, upcoming championship
-// races of the active public seasons get their (deduped) reminder broadcasts.
-// WHEN reminders go out is admin-configured (settings.reminders, hours before
-// kickoff — e.g. [72, 24, 1] posts three staggered notes per race). Each
-// enabled offset only fires inside ITS slice of the countdown (between it and
-// the next enabled smaller offset), so a race entered late doesn't dump every
-// stage at once. Throttled to roughly one check per 5 minutes.
+// Upcoming championship races of the active public seasons get their (deduped)
+// reminder broadcasts. WHEN reminders go out is admin-configured
+// (settings.reminders, hours before kickoff — e.g. [72, 24, 1] posts three
+// staggered notes per race). Each enabled offset only fires inside ITS slice of
+// the countdown (between it and the next enabled smaller offset), so a race
+// entered late doesn't dump every stage at once. Throttled to roughly one check
+// per 5 minutes.
+//
+// This runs from two places, and it needs both. Every bell request calls it, so
+// an active site keeps itself current; and index.js also runs it on a timer,
+// because the request-driven path alone silently loses reminders. An offset only
+// fires inside its own slice of the countdown, so if nobody happens to have a
+// tab open during the "1 hour before" window, that reminder is never created for
+// anyone and is never caught up afterwards — the one hour before lights out
+// being exactly when members are least likely to be sitting on the website.
+// The throttle and the dedupe key make the extra caller free.
 const REMINDER_CHECK_MS = 5 * 60 * 1000;
 let remindersCheckedAt = 0;
 

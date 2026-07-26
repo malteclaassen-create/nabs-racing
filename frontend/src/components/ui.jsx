@@ -90,7 +90,7 @@ export function TierBadge({ tier }) {
   if (tier === 1)
     return <span className="pill bg-brand/20 text-dark" title="Scores in the Tier 1 constructors' table">T1</span>;
   if (tier === 2)
-    return <span className="pill bg-primary/10 text-primary" title="Scores in the Tier 2 table (re-ranked among Tier-2 cars)">T2</span>;
+    return <span className="pill bg-link/10 text-link" title="Scores in the Tier 2 table (re-ranked among Tier-2 cars)">T2</span>;
   return <span className="pill bg-surface2 text-light" title="Reserve: scores only for the team it subs for">RES</span>;
 }
 
@@ -201,12 +201,12 @@ export function StatusPill({ status }) {
   if (!status || status === "FINISHED") return null;
   // Tinted with the site's usual <colour>-500/15 wash rather than the solid
   // -100 shades: those were the only near-white chips in the app and glared out
-  // of a dark card. DSQ also used to be styled `text-primary`, i.e. the blue
+  // of a dark card. DSQ also used to be styled `text-link`, i.e. the blue
   // accent on a red chip, which read as a mistake next to amber-on-amber DNF.
   const map = {
     DNS: "bg-border text-medium",
-    DNF: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-    DSQ: "bg-red-500/15 text-red-600 dark:text-red-400",
+    DNF: "bg-amber-500/15 text-warn",
+    DSQ: "bg-red-500/15 text-bad",
   };
   return <span className={`pill ${map[status] || "bg-surface2"}`}>{status}</span>;
 }
@@ -316,13 +316,42 @@ export function EmptyState({ title, hint, children, className = "" }) {
   );
 }
 
-export function ErrorBox({ message }) {
+// The site's shared "this didn't load" state.
+//
+// Most pages hand their whole body to this on a failed read (`if (error) return
+// <ErrorBox …/>`), so what it renders IS the page in that moment. It used to be
+// a bare red strip carrying whatever string came back, which left a visitor on
+// an otherwise empty screen with one technical line and no way forward. It now
+// carries a heading, the message, and — when the caller passes `onRetry` — a
+// button, because a failed read is usually a blip and asking again fixes it.
+// useApi already returns `reload`, so wiring it up at a call site is one prop.
+//
+// role="alert" so a screen reader hears it: this appears after an action, and
+// the reader is not looking at the part of the page that changed.
+//
+// — the 600 shade sits under 4.5:1 on a dark card, and this
+// is shared feedback, so every page that shows an error inherited that.
+export function ErrorBox({ message, onRetry, title = "That didn't load" }) {
   return (
-    // dark:text-red-400 — the 600 shade sits under 4.5:1 on a dark card, and
-    // these two boxes are the site's shared feedback, so every page that shows
-    // an error inherited that.
-    <div className="card border-red-500/30 bg-red-500/10 p-4 text-sm font-medium text-red-600 dark:text-red-400">
-      {message || "Something went wrong."}
+    <div
+      role="alert"
+      className="card border-red-500/30 bg-red-500/10 p-5 text-bad"
+    >
+      <div className="font-display text-base font-extrabold uppercase tracking-tight">{title}</div>
+      <p className="mt-1 text-sm font-medium">{message || "Something went wrong."}</p>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold transition hover:bg-red-500/10"
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+            <path d="M20 5v6h-6" />
+          </svg>
+          Try again
+        </button>
+      )}
     </div>
   );
 }
@@ -331,9 +360,9 @@ export function ErrorBox({ message }) {
 // admin area (replaces ad-hoc green/red boxes; works in light & dark mode).
 export function Notice({ kind = "success", children }) {
   const styles = {
-    success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    success: "border-emerald-500/30 bg-emerald-500/10 text-ok",
     info: "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-300",
-    error: "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400",
+    error: "border-red-500/30 bg-red-500/10 text-bad",
   };
   if (!children) return null;
   return (

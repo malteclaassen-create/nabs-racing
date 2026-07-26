@@ -53,13 +53,26 @@ const SERIES_SEGMENTS = new Set([
 // Aliases the app maps onto a page of their own.
 const ALIASES = { signup: "/races", rennen: "/races" };
 
-// Express middleware. Only ever redirects GET/HEAD, never touches /api or an
-// address that already names a series.
+// A path that ends in a file extension is a FILE, not a page: /teams/porsche.png
+// is the bundled team logo, not the Porsche team's page. Both live under the
+// same first segment, and this middleware runs before express.static so it also
+// catches crawlers — which meant every /public/teams/*.png answered with a 301
+// into /s/<slug>/teams/<file>.png, where the SPA fallback handed back index.html.
+// The browser got HTML where it asked for a PNG, the <img> failed, and every
+// team fell back to its monogram badge. Only teams whose logo had been re-uploaded
+// through the admin survived, because those are served from /api/uploads/… and
+// leave by the guard below. Pages never carry an extension, so skipping these is
+// free.
+const FILE_LIKE = /\.[a-z0-9]{2,5}$/i;
+
+// Express middleware. Only ever redirects GET/HEAD, never touches /api, a static
+// file, or an address that already names a series.
 export function legacyRedirects(prisma) {
   return async (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     const path = req.path;
     if (path.startsWith("/api") || path.startsWith("/s/")) return next();
+    if (FILE_LIKE.test(path)) return next(); // let express.static answer it
     const [, first] = path.split("/");
     if (!first) return next(); // the root renders itself now
     const alias = ALIASES[first];
@@ -72,6 +85,55 @@ export function legacyRedirects(prisma) {
     // is to have search engines merge them into the prefixed ones.
     res.redirect(301, `/s/${slug}${rest}${query}`);
   };
+}
+
+// Global pages that live outside any series (see the route table in App.jsx).
+const GLOBAL_SEGMENTS = new Set([
+  "downloads",
+  "tools",
+  "profile",
+  "cockpit",
+  "cards",
+  "rules",
+  "info",
+  "admin",
+  "auth",
+  "market",
+  "driver-market",
+]);
+
+// Does this address correspond to a page the app actually has?
+//
+// The SPA fallback answers every non-API address with index.html and a 200, so
+// a typo'd or long-dead URL was served as a perfectly good page — with a
+// canonical tag naming itself, which invites a search engine to index it. The
+// app renders its own 404 there, but nothing ever said so in the HTTP status.
+//
+// This is deliberately shape-based, not exhaustive: it recognises the route
+// patterns, not the ids inside them. /s/<slug>/drivers/<id> for a driver who
+// does not exist stays a 200 — answering that needs a database lookup per
+// request, and the app's own "not found" copy covers it. What this catches is
+// the address that was never a page at all.
+export function isKnownRoute(path) {
+  if (path === "/" || path === "") return true;
+  const parts = path.replace(/^\/+|\/+$/g, "").split("/");
+  // /s/<slug>[/<segment>[/<id>]]
+  if (parts[0] === "s") {
+    if (parts.length === 2) return true; // the series home
+    if (parts.length === 3 || parts.length === 4) return SERIES_SEGMENTS.has(parts[2]);
+    return false;
+  }
+  const first = parts[0];
+  if (ALIASES[first] || SERIES_SEGMENTS.has(first)) return parts.length <= 2;
+  if (GLOBAL_SEGMENTS.has(first)) return true; // these have their own sub-paths
+  if (first === "signup" || first === "rennen") return parts.length === 1;
+  return false;
+}
+
+// Tell a crawler not to keep an address the app answers with its 404 page.
+export function applyNoindex(html) {
+  if (/<meta[^>]+name=["']robots["'][^>]*>/i.test(html)) return html;
+  return html.replace(/<\/head>/i, `  <meta name="robots" content="noindex" />\n  </head>`);
 }
 
 // The address that counts as official for what this request renders.

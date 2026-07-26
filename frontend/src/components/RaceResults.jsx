@@ -103,7 +103,7 @@ function QualiTable({ rows }) {
                         {r.driverId && <Flag code={countryFor(r.driverId, r.country)} />}
                       </span>
                       {pole && (
-                        <span className="pill bg-purple-500/15 text-purple-500" title="Pole position">
+                        <span className="pill bg-purple-500/15 text-fl" title="Pole position">
                           Pole
                         </span>
                       )}
@@ -141,7 +141,7 @@ function QualiTable({ rows }) {
                         <td
                           key={si}
                           className={`hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums lg:table-cell ${
-                            isBest ? "font-bold text-purple-500" : "text-light"
+                            isBest ? "font-bold text-fl" : "text-light"
                           }`}
                           title={isBest ? "Fastest sector of the session" : undefined}
                         >
@@ -151,7 +151,7 @@ function QualiTable({ rows }) {
                     })}
                   <td
                     className={`hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums md:table-cell ${
-                      pole ? "font-bold text-purple-500" : "text-medium"
+                      pole ? "font-bold text-fl" : "text-medium"
                     }`}
                   >
                     {fmtLap(r.bestLapMs) || <span className="text-faint">—</span>}
@@ -173,6 +173,12 @@ function QualiTable({ rows }) {
 // the round header row on the Races page, not inside this component.
 export default function RaceResults({ race, results, quali = null, session = "race" }) {
   const detailed = race.hasPositions;
+  // Training sessions and special events are run for fun and score nothing, but
+  // they open in this same table and it printed a full 35/30/25 points column
+  // plus the Tier-2 constructor column for them — numbers that look official and
+  // are not in any standing. The importer still stores them, so the fix is to
+  // stop showing what does not count.
+  const scores = (race.type || "CHAMPIONSHIP") === "CHAMPIONSHIP";
   const hasQuali = Array.isArray(quali) && quali.length > 0;
   // Which drivers' tyre strategies are folded open (rows with stint data from
   // the AC import are clickable; older rounds simply have none).
@@ -233,7 +239,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                   column (those drivers score 0 anyway). */}
               {detailed && hasTimes && <th className="hidden px-3 py-3 text-right md:table-cell">Time</th>}
               {detailed && hasLaps && <th className="hidden px-3 py-3 text-right md:table-cell">Best Lap</th>}
-              {detailed && (
+              {detailed && scores && (
                 <th className="hidden px-3 py-3 text-center lg:table-cell">
                   <span className="inline-flex items-center">
                     Tier 2
@@ -241,7 +247,10 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                   </span>
                 </th>
               )}
-              <th className="px-4 py-3 text-right">Pts</th>
+              {/* The column stays even when nothing scores: it is also where a
+                  DNF or DSQ is shown, and a retirement is just as real in a
+                  training session. Only the points number goes. */}
+              <th className="px-4 py-3 text-right">{scores ? "Pts" : ""}</th>
             </tr>
           </thead>
           {/* cascade: rows rise in one after another, like the standings tables */}
@@ -254,13 +263,13 @@ export default function RaceResults({ race, results, quali = null, session = "ra
               const stintsOpen = hasStints && openStints.has(r.driverId);
               // Total column count for the expander row's colSpan.
               const colCount =
-                2 + // driver + pts
+                2 + // driver + the points/status column
                 1 + // team (sm+)
                 (detailed ? 1 : 0) +
                 (detailed && hasGrid ? 1 : 0) +
                 (detailed && hasTimes ? 1 : 0) +
                 (detailed && hasLaps ? 1 : 0) +
-                (detailed ? 1 : 0);
+                (detailed && scores ? 1 : 0); // the Tier-2 column
               return (
                 <Fragment key={r.driverId}>
                 <tr
@@ -289,7 +298,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                           {gridDelta != null && gridDelta !== 0 && (
                             <span
                               className={`font-mono text-[10px] font-bold ${
-                                gridDelta > 0 ? "text-emerald-600" : "text-red-500"
+                                gridDelta > 0 ? "text-ok" : "text-bad"
                               }`}
                             >
                               {gridDelta > 0 ? `▲${gridDelta}` : `▼${-gridDelta}`}
@@ -328,15 +337,15 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                         </span>
                       )}
                       {isFastest && (
-                        <span className="pill bg-purple-500/15 text-purple-500" title="Fastest lap of the race">
+                        <span className="pill bg-purple-500/15 text-fl" title="Fastest lap of the race">
                           FL
                         </span>
                       )}
                       {r.isSub && r.subForTeam && (
-                        <span className="pill bg-amber-100 text-amber-700">sub · {r.subForTeam.name}</span>
+                        <span className="pill bg-warn/15 text-warn">sub · {r.subForTeam.name}</span>
                       )}
                       {r.penaltySeconds > 0 && (
-                        <span className="pill bg-red-500/15 text-red-500" title="Time penalty applied">
+                        <span className="pill bg-red-500/15 text-bad" title="Time penalty applied">
                           +{r.penaltySeconds}s pen
                         </span>
                       )}
@@ -396,18 +405,18 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                   {detailed && hasLaps && (
                     <td
                       className={`hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums md:table-cell ${
-                        isFastest ? "font-bold text-purple-500" : "text-medium"
+                        isFastest ? "font-bold text-fl" : "text-medium"
                       }`}
                     >
                       {fmtLap(r.bestLapMs) || <span className="text-faint">—</span>}
                     </td>
                   )}
 
-                  {detailed && (
+                  {detailed && scores && (
                     <td className="hidden px-3 py-3.5 text-center lg:table-cell">
                       {r.t2 ? (
                         <span className="inline-flex items-center gap-2">
-                          <span className="pill bg-primary/10 text-primary">P{r.t2.rank}</span>
+                          <span className="pill bg-link/10 text-link">P{r.t2.rank}</span>
                           {r.t2.scoresForTeam ? (
                             <span className="font-mono text-sm font-bold tabular-nums text-dark">
                               +{r.t2.points}
@@ -430,9 +439,9 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                   <td className="px-4 py-3.5 text-right">
                     {r.status && r.status !== "FINISHED" ? (
                       <StatusPill status={r.status} />
-                    ) : (
+                    ) : scores ? (
                       <span className="font-mono text-lg font-bold tabular-nums text-dark">{r.points}</span>
-                    )}
+                    ) : null}
                   </td>
                 </tr>
                 {stintsOpen && (
@@ -485,7 +494,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
           </span>
           {hasLaps && (
             <span className="flex items-center gap-1.5">
-              <span className="pill bg-purple-500/15 text-purple-500">FL</span> Fastest lap
+              <span className="pill bg-purple-500/15 text-fl">FL</span> Fastest lap
             </span>
           )}
           <span>

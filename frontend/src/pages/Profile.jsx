@@ -125,7 +125,7 @@ function SteamLinkCard({ steam, onChanged, demo = false }) {
           {error && <p className="mt-2 text-sm font-semibold text-rose-500">{error}</p>}
           {steam?.linked ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-emerald-600">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-ok">
                 <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M20 6L9 17l-5-5" />
                 </svg>
@@ -133,7 +133,7 @@ function SteamLinkCard({ steam, onChanged, demo = false }) {
               </span>
               {steam.id && (
                 <a
-                  className="font-mono text-[11px] text-light hover:text-primary hover:underline"
+                  className="font-mono text-[11px] text-light hover:text-link hover:underline"
                   href={`https://steamcommunity.com/profiles/${steam.id}`}
                   target="_blank"
                   rel="noreferrer noopener"
@@ -227,7 +227,7 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
       <div className="mx-auto max-w-xl space-y-4">
         {error && <ErrorBox message={error} />}
         {note && (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-ok">
             {note}
           </div>
         )}
@@ -249,7 +249,7 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
               </h3>
               {pending ? (
                 <p className="mt-1 text-sm leading-relaxed text-medium">
-                  <span className="font-semibold text-emerald-600">Your request is in.</span> An admin will get
+                  <span className="font-semibold text-ok">Your request is in.</span> An admin will get
                   back to you. Once you are set up, this page becomes your driver profile, with your card,
                   your stats and the sign-ups for each race.
                 </p>
@@ -649,7 +649,7 @@ function ProfileEditor({ me, onDraftChange }) {
             </span>
             <span
               className={`ml-auto font-mono text-[11px] font-bold tabular-nums ${
-                tiles.length >= MAX_TILES ? "text-amber-600" : "text-light"
+                tiles.length >= MAX_TILES ? "text-warn" : "text-light"
               }`}
             >
               {tiles.length}/{MAX_TILES}
@@ -698,7 +698,7 @@ function ProfileEditor({ me, onDraftChange }) {
           <button type="button" onClick={save} disabled={saving} className="btn-primary">
             {saving ? "Saving…" : "Save changes"}
           </button>
-          {savedAt && <span className="text-sm font-semibold text-emerald-600">Saved.</span>}
+          {savedAt && <span className="text-sm font-semibold text-ok">Saved.</span>}
         </div>
       </div>
     </div>
@@ -851,7 +851,7 @@ function MyProfile() {
           </div>
           <span className="text-xs text-light">
             Updates as you edit above; unsaved changes included.{" "}
-            <Link to={`/drivers/${d.driverId}`} className="font-semibold text-primary hover:underline">
+            <Link to={`/drivers/${d.driverId}`} className="font-semibold text-link hover:underline">
               Open the real page →
             </Link>
           </span>

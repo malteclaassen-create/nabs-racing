@@ -86,7 +86,7 @@ function AdminSeasonBar({ tab }) {
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-center gap-3 border-l-4 pl-3" style={{ borderColor: isActive ? "#10b981" : isPrivate ? "#f43f5e" : "#f59e0b" }}>
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-link/10 text-link">
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v13a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 3v4M16 3v4" />
           </svg>
@@ -99,11 +99,11 @@ function AdminSeasonBar({ tab }) {
               {current?.name || "—"}
             </span>
             {isActive ? (
-              <span className="pill bg-emerald-500/15 text-emerald-600">active · public</span>
+              <span className="pill bg-emerald-500/15 text-ok">active · public</span>
             ) : isPrivate ? (
               <span className="pill bg-rose-500/15 text-rose-600">private · hidden</span>
             ) : (
-              <span className="pill bg-amber-500/15 text-amber-600">archive · public</span>
+              <span className="pill bg-amber-500/15 text-warn">archive · public</span>
             )}
           </div>
           {current?.game && <div className="mt-0.5 text-xs text-light">{current.game}</div>}
@@ -254,7 +254,7 @@ export default function Admin() {
                   onClick={() => setTab(t.id)}
                   className={`-mb-px rounded-t-lg border-b-2 px-3 py-2 text-sm font-semibold transition ${
                     tab === t.id
-                      ? "border-primary text-primary"
+                      ? "border-primary text-link"
                       : "border-transparent text-light hover:text-medium"
                   }`}
                 >
@@ -421,10 +421,10 @@ function MarketAdmin() {
                   </span>
                   <span className="ml-auto flex items-center gap-1.5">
                     {o.confirmedInResult === true && (
-                      <span className="pill bg-emerald-500/15 font-mono text-[10px] font-bold uppercase text-emerald-600">in the result</span>
+                      <span className="pill bg-emerald-500/15 font-mono text-[10px] font-bold uppercase text-ok">in the result</span>
                     )}
                     {o.confirmedInResult === false && (
-                      <span className="pill bg-amber-500/15 font-mono text-[10px] font-bold uppercase text-amber-600">not in the result</span>
+                      <span className="pill bg-amber-500/15 font-mono text-[10px] font-bold uppercase text-warn">not in the result</span>
                     )}
                     {o.confirmedInResult === null && o.status === "FILLED" && (
                       <span className="pill bg-surface2 font-mono text-[10px] font-bold uppercase text-light">agreed · race pending</span>
@@ -455,9 +455,9 @@ function OfferAdminRow({ offer, reserves, busy, onAssign, onDelete }) {
           <span className="ml-1 text-sm font-normal text-light">· seat of {offer.offeredBy.name}</span>
         </div>
         {offer.status === "FILLED" ? (
-          <span className="pill bg-emerald-500/15 text-emerald-600">Filled · {offer.filledBy.name}</span>
+          <span className="pill bg-emerald-500/15 text-ok">Filled · {offer.filledBy.name}</span>
         ) : (
-          <span className="pill bg-amber-500/15 text-amber-600">Open</span>
+          <span className="pill bg-amber-500/15 text-warn">Open</span>
         )}
       </div>
 
@@ -495,7 +495,7 @@ function OfferAdminRow({ offer, reserves, busy, onAssign, onDelete }) {
           </button>
         )}
         <button
-          className="text-sm font-semibold text-primary hover:underline disabled:opacity-50"
+          className="text-sm font-semibold text-link hover:underline disabled:opacity-50"
           disabled={busy === `del:${offer.id}`}
           onClick={onDelete}
         >
@@ -597,7 +597,7 @@ function TrafficAdmin() {
 
 // --- SOCIAL LINKS ----------------------------------------------------------
 function SocialAdmin() {
-  const { data, loading, error } = useApi(useCallback(() => api.getSocial(), []));
+  const { data, loading, error, reload } = useApi(useCallback(() => api.getSocial(), []));
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -607,8 +607,11 @@ function SocialAdmin() {
     if (data) setForm(data);
   }, [data]);
 
+  // Error first. `form` is derived from `data`, so a failed read leaves it null
+  // forever — with the loading guard on top, the panel sat on "Loading…" for
+  // good and the ErrorBox below was unreachable.
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (loading || !form) return <div className="text-sm text-light">Loading…</div>;
-  if (error) return <ErrorBox message={error} />;
 
   async function save() {
     setBusy(true);
@@ -658,7 +661,7 @@ function SocialAdmin() {
 // The two external buttons on the Live page: the server manager's own live
 // timing page, and a Content Manager "join" deep link for the running server.
 function LiveLinksAdmin() {
-  const { data, loading, error } = useApi(useCallback(() => api.getLiveLinks(), []));
+  const { data, loading, error, reload } = useApi(useCallback(() => api.getLiveLinks(), []));
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -668,8 +671,9 @@ function LiveLinksAdmin() {
     if (data) setForm({ liveTimingUrl: data.liveTimingUrl || "", cmJoinUrl: data.cmJoinUrl || "" });
   }, [data]);
 
+  // Error first — see the note on the Social panel above.
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (loading || !form) return <div className="card p-5 text-sm text-light">Loading…</div>;
-  if (error) return <ErrorBox message={error} />;
 
   async function save() {
     setBusy(true);
@@ -734,7 +738,7 @@ function LiveLinksAdmin() {
 // The league runs more than one race server; this picks which one each SERIES'
 // live page follows. Viewers pick the change up on their next reload.
 function LiveServersAdmin() {
-  const { data, loading, error } = useApi(useCallback(() => api.getLiveServers(), []));
+  const { data, loading, error, reload } = useApi(useCallback(() => api.getLiveServers(), []));
   const [map, setMap] = useState(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -744,8 +748,9 @@ function LiveServersAdmin() {
     if (data) setMap(data.map || {});
   }, [data]);
 
+  // Error first — see the note on the Social panel above.
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (loading || !map) return <div className="card p-5 text-sm text-light">Loading…</div>;
-  if (error) return <ErrorBox message={error} />;
 
   async function save() {
     setBusy(true);
@@ -1324,7 +1329,7 @@ function EditResults() {
             </div>
             <button
               type="button"
-              className="btn-secondary shrink-0 border-red-500/50 text-red-500 hover:bg-red-500/10"
+              className="btn-secondary shrink-0 border-red-500/50 text-bad hover:bg-red-500/10"
               disabled={busy}
               onClick={clearResults}
             >
@@ -1341,7 +1346,7 @@ function EditResults() {
             </div>
             <button
               type="button"
-              className="btn-secondary shrink-0 border-red-500/50 text-red-500 hover:bg-red-500/10"
+              className="btn-secondary shrink-0 border-red-500/50 text-bad hover:bg-red-500/10"
               disabled={busy}
               onClick={deleteRace}
             >
@@ -1469,7 +1474,7 @@ function DiscordResultsPost({ raceId }) {
         <div className="text-sm">
           Results channel webhook:{" "}
           {hook?.configured ? (
-            <span className="font-semibold text-emerald-600">connected ({hook.preview})</span>
+            <span className="font-semibold text-ok">connected ({hook.preview})</span>
           ) : (
             <span className="font-semibold text-light">not connected (copy still works)</span>
           )}
@@ -1867,14 +1872,14 @@ function Drivers() {
                       <option value="">Driver</option>
                       <option value="safety">Safety Car</option>
                     </select>
-                    <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                    <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
                       onClick={() => patchDriver(d, { isActive: !d.isActive })}>
                       {d.isActive ? "Deactivate" : "Reactivate"}
                     </button>
                     {/* Only a deactivated driver can be removed from the public
                         standings; reactivating brings them back automatically. */}
                     {!d.isActive && (
-                      <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                      <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
                         title="Hidden drivers disappear from the public driver standings (everyone below moves up). Their race results and their team's points stay untouched."
                         onClick={() => patchDriver(d, { hideFromStandings: !d.hideFromStandings })}>
                         {d.hideFromStandings ? "Show in standings" : "Hide from standings"}
@@ -1960,7 +1965,7 @@ function DriverDiscordId({ d, busy, accounts, onSave }) {
       />
       {acct && (
         <span
-          className="font-mono text-[10px] font-bold text-emerald-600"
+          className="font-mono text-[10px] font-bold text-ok"
           title={`This ID belongs to the login of ${acct.displayName || acct.username}`}
         >
           = @{acct.username}
@@ -1968,7 +1973,7 @@ function DriverDiscordId({ d, busy, accounts, onSave }) {
       )}
       {inherited && !val.trim() && (
         <span
-          className="font-mono text-[10px] font-bold text-emerald-600"
+          className="font-mono text-[10px] font-bold text-ok"
           title="The ID is stored on one of this person's earlier season rows and works here too (login, @mentions). Saving it in this field moves it onto this season's row."
         >
           ✓ linked via earlier season
@@ -1984,7 +1989,7 @@ function DriverDiscordId({ d, busy, accounts, onSave }) {
       )}
       {dirty && (
         <>
-          <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+          <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
             onClick={() => onSave(val.trim())}>
             Save
           </button>
@@ -2027,13 +2032,13 @@ function DriverSteamId({ d, busy, onSave }) {
         onChange={(e) => setVal(e.target.value.trim())}
       />
       {val.trim() && !shaped && (
-        <span className="font-mono text-[10px] font-bold text-amber-600" title="A SteamID64 is exactly 17 digits and starts with 7656. A Discord ID looks similar but is not the same thing.">
+        <span className="font-mono text-[10px] font-bold text-warn" title="A SteamID64 is exactly 17 digits and starts with 7656. A Discord ID looks similar but is not the same thing.">
           does not look like a Steam ID
         </span>
       )}
       {val.trim() && shaped && !dirty && (
         <a
-          className="font-mono text-[10px] text-light hover:text-primary hover:underline"
+          className="font-mono text-[10px] text-light hover:text-link hover:underline"
           href={`https://steamcommunity.com/profiles/${val.trim()}`}
           target="_blank"
           rel="noreferrer noopener"
@@ -2044,7 +2049,7 @@ function DriverSteamId({ d, busy, onSave }) {
       )}
       {dirty && (
         <>
-          <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+          <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
             onClick={() => onSave(val.trim())}>
             Save
           </button>
@@ -2196,7 +2201,7 @@ function DiscordEvents() {
         <div className="rounded-lg bg-surface2 p-3 text-sm">
           Status:{" "}
           {hook?.configured ? (
-            <span className="font-semibold text-emerald-600">connected ({hook.preview})</span>
+            <span className="font-semibold text-ok">connected ({hook.preview})</span>
           ) : (
             <span className="font-semibold text-light">not connected</span>
           )}
@@ -2275,13 +2280,13 @@ function DiscordEvents() {
                     )}
                   </span>
                   <span className="flex shrink-0 items-center gap-3">
-                    <button className="text-xs font-semibold text-primary hover:underline"
+                    <button className="text-xs font-semibold text-link hover:underline"
                       disabled={busy} onClick={() => (editingId === r.id ? setEditingId(null) : startEdit(r))}>
                       {editingId === r.id ? "Close" : "Edit"}
                     </button>
                     {/* Rounds AND training sessions get the RSVP post; specials stay site-only. */}
                     {r.type !== "SPECIAL" && !r.isCompleted && (
-                      <button className="text-xs font-semibold text-primary hover:underline"
+                      <button className="text-xs font-semibold text-link hover:underline"
                         disabled={busy} onClick={() => announce(r.id)}>
                         Post to Discord
                       </button>
@@ -2726,7 +2731,7 @@ function Seasons({ gotoRaces }) {
               <div className="flex items-center justify-between">
                 <div>
                   <span className="font-display text-base font-bold text-dark">{s.name}</span>
-                  {s.isActive && <span className="ml-2 pill bg-emerald-500/15 text-emerald-600">active</span>}
+                  {s.isActive && <span className="ml-2 pill bg-emerald-500/15 text-ok">active</span>}
                   {!s.isActive && s.isPublic === false && (
                     <span className="ml-2 pill bg-rose-500/15 text-rose-600">private · hidden</span>
                   )}
@@ -2738,21 +2743,21 @@ function Seasons({ gotoRaces }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                  <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
                     onClick={() => gotoRaces?.(s)}
                     title="Switch to this season and open the race calendar">
                     Schedule races →
                   </button>
                   {!s.isActive && (
                     <>
-                      <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                      <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
                         onClick={() => togglePublic(s)}
                         title={s.isPublic ? "Hide this season from the public" : "Publish this season to the public"}>
                         {s.isPublic ? "Make private" : "Make public"}
                       </button>
                       {/* only an UPCOMING season can advertise itself */}
                       {s.number > ((seasons || []).find((o) => o.isActive)?.number ?? -Infinity) && (
-                        <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                        <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
                           onClick={() => toggleAnnounce(s)}
                           title={s.isAnnounced
                             ? "Remove the 'Coming up' strip from the home page"
@@ -2760,11 +2765,11 @@ function Seasons({ gotoRaces }) {
                           {s.isAnnounced ? "Stop announcing" : "Announce on Home"}
                         </button>
                       )}
-                      <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                      <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
                         onClick={() => activate(s.id)}>Make active</button>
                       {/* any non-active season is deletable; a filled one requires
                           typing its name and is backed up first (server-enforced) */}
-                      <button className="text-xs font-semibold text-light transition hover:text-primary" disabled={busy}
+                      <button className="text-xs font-semibold text-light transition hover:text-link" disabled={busy}
                         onClick={() => remove(s)}>Delete</button>
                     </>
                   )}
@@ -2832,12 +2837,12 @@ function SeriesLogo({ series, onSaved, onError }) {
   return (
     <>
       <input ref={fileRef} type="file" accept="image/png,image/webp,image/svg+xml" className="hidden" onChange={pick} />
-      <button type="button" className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+      <button type="button" className="text-xs font-semibold text-link hover:underline" disabled={busy}
         onClick={() => fileRef.current?.click()} title="Dark-mode nav logo, recommended: transparent PNG, square, 512px+">
         {series.logoDarkUrl ? "Replace logo" : "Upload logo"}
       </button>
       {series.logoDarkUrl && (
-        <button type="button" className="text-xs font-semibold text-light transition hover:text-primary" disabled={busy}
+        <button type="button" className="text-xs font-semibold text-light transition hover:text-link" disabled={busy}
           onClick={clear}>
           Reset logo
         </button>
@@ -2963,7 +2968,7 @@ function SeriesPanel() {
           <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
             <div className="min-w-0">
               <span className="font-display text-base font-bold text-dark">{s.name}</span>
-              {s.isActive && <span className="ml-2 pill bg-emerald-500/15 text-emerald-600">primary</span>}
+              {s.isActive && <span className="ml-2 pill bg-emerald-500/15 text-ok">primary</span>}
               {!s.isActive && s.isPublic === false && (
                 <span className="ml-2 pill bg-rose-500/15 text-rose-600">private · hidden</span>
               )}
@@ -3003,27 +3008,27 @@ function SeriesPanel() {
                 className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border border-border bg-transparent"
               />
               {s.accentColor && (
-                <button className="text-xs font-semibold text-light transition hover:text-primary" disabled={busy}
+                <button className="text-xs font-semibold text-light transition hover:text-link" disabled={busy}
                   onClick={() => saveColor(s, null)} title="Back to the default NABS pink">
                   Reset colour
                 </button>
               )}
               <SeriesLogo series={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-              <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+              <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
                 onClick={() => setSlug(s.slug)} title="Point the admin at this series (the bar above follows)">
                 Edit this series →
               </button>
-              <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+              <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
                 onClick={() => rename(s)}>Rename</button>
               {!s.isActive && (
                 <>
-                  <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                  <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
                     onClick={() => togglePublic(s)}>
                     {s.isPublic ? "Make private" : "Make public"}
                   </button>
-                  <button className="text-xs font-semibold text-primary hover:underline" disabled={busy}
+                  <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
                     onClick={() => activate(s)}>Make primary</button>
-                  <button className="text-xs font-semibold text-light transition hover:text-primary" disabled={busy}
+                  <button className="text-xs font-semibold text-light transition hover:text-link" disabled={busy}
                     onClick={() => remove(s)}>Delete</button>
                 </>
               )}
@@ -3164,6 +3169,105 @@ function SeatBoxes({ team, db, rosterNames, onAdded, onError, onRemove, busy }) 
   );
 }
 
+// "Bring a team over" — the quick path next to Add team.
+//
+// Most teams on a new season's grid have raced before, and Add team asks the
+// admin to retype the name, invent a globally unique id, pick the tier and the
+// colour again, then re-upload a logo the league already has on file. Cloning a
+// whole season (Seasons tab) is the opposite problem: it drags in everyone.
+// This searches every other season of the series and copies one team across
+// with its name, tier, colour and logo intact.
+function TeamImport({ seasonId, onImported, onError }) {
+  const [q, setQ] = useState("");
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+
+  // Debounced so a fast typist does not fire a request per keystroke. Also runs
+  // on an empty box: with nothing typed the list is simply "the newest seasons
+  // first", which is the common case (last season's grid).
+  useEffect(() => {
+    if (!seasonId) return;
+    let alive = true;
+    setLoading(true);
+    const t = setTimeout(() => {
+      api
+        .teamLibrary(seasonId, q.trim())
+        .then((r) => alive && setRows(r))
+        .catch((e) => alive && onError?.(e.message))
+        .finally(() => alive && setLoading(false));
+    }, 200);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q, seasonId]);
+
+  async function bringOver(t) {
+    setBusyId(t.id);
+    try {
+      await api.importTeam(t.id, seasonId);
+      onImported?.(t);
+      // Refresh the list so the team we just took now shows as already here.
+      setRows((prev) => (prev || []).map((r) => (r.name === t.name ? { ...r, alreadyHere: true } : r)));
+    } catch (e) {
+      onError?.(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const list = (rows || []).slice(0, 40);
+  return (
+    <div className="card space-y-3 p-5">
+      <CardHead eyebrow="Teams" title="Bring one over" />
+      <p className="-mt-2 text-sm text-light">
+        Search every earlier season and copy a team into this one, with its colour and logo.
+      </p>
+      <input
+        className="input"
+        placeholder="Search past teams, e.g. Mercedes"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        aria-label="Search teams from earlier seasons"
+      />
+      {loading && !rows ? (
+        <p className="text-sm text-light">Looking…</p>
+      ) : list.length === 0 ? (
+        <p className="text-sm text-light">
+          {q.trim() ? `No earlier team matches “${q.trim()}”.` : "No other season has teams yet."}
+        </p>
+      ) : (
+        <ul className="-mx-1 max-h-80 divide-y divide-border overflow-y-auto">
+          {list.map((t) => (
+            <li key={t.id} className="flex items-center gap-3 px-1 py-2">
+              <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={30} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-dark">{t.name}</span>
+                <span className="block font-mono text-[11px] uppercase tracking-wider text-light">
+                  {t.seasonName || `Season ${t.seasonNumber}`} · {t.tier === 0 ? "Reserve" : `Tier ${t.tier}`}
+                </span>
+              </span>
+              {t.alreadyHere ? (
+                <span className="shrink-0 font-mono text-[11px] uppercase tracking-wider text-light">already here</span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-secondary shrink-0 px-3 py-1.5 text-xs"
+                  disabled={busyId === t.id}
+                  onClick={() => bringOver(t)}
+                >
+                  {busyId === t.id ? "Adding…" : "Add"}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {rows && rows.length > list.length && (
+        <p className="text-xs text-light">Showing the first {list.length} of {rows.length}. Type to narrow it down.</p>
+      )}
+    </div>
+  );
+}
+
 function Teams() {
   const { current } = useSeason();
   const { data: teams, reload } = useApi(useCallback(() => api.teams(), []));
@@ -3260,8 +3364,11 @@ function Teams() {
       {error && <div className="mb-4"><Notice kind="error">{error}</Notice></div>}
       {msg && <div className="mb-4"><Notice kind="success">{msg}</Notice></div>}
       <div className="grid items-start gap-6 lg:grid-cols-3">
+        {/* Left column: the two ways to put a team on the grid — copy an
+            existing one, or type a brand-new one. */}
+        <div className="space-y-6 lg:col-span-1">
         {/* Add team */}
-        <form onSubmit={create} className="card space-y-4 p-5 lg:col-span-1">
+        <form onSubmit={create} className="card space-y-4 p-5">
           <CardHead eyebrow="Teams" title="Add team" />
           <div className="space-y-1.5">
             <label className="text-xs font-semibold uppercase tracking-wide text-light">Name</label>
@@ -3294,6 +3401,15 @@ function Teams() {
           <button className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Create team"}</button>
           <p className="text-xs text-light">Upload each team's logo from the list after creating it.</p>
         </form>
+        </div>
+
+        {/* Same column as Add team: reach for this first when the team has
+            raced before, and only type a new one in when it genuinely is new. */}
+        <TeamImport
+          seasonId={current?.id}
+          onImported={(t) => { setError(null); setMsg(`${t.name} added to ${current?.name || "this season"}.`); reload(); }}
+          onError={(m) => { setMsg(null); setError(m); }}
+        />
 
         {/* Roster */}
         <div className="card p-5 lg:col-span-2">

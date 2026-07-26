@@ -2858,6 +2858,102 @@ router.delete("/seasons/:id/car", async (req, res, next) => {
 // TEAMS
 // ---------------------------------------------------------------------------
 // POST /api/admin/teams  { id, name, tier, color, seasonId? }
+// GET /api/admin/teams/library?q=&seasonId=   -> teams from EVERY OTHER season
+// Building next season's grid meant retyping each team by hand (name, a
+// hand-invented unique id, tier, colour) and re-uploading its logo, for teams
+// that already exist in the archive with all of that filled in. Cloning a whole
+// season is the other extreme and drags along teams that are not coming back.
+// This is the middle: search what the league has ever run and take the ones you
+// want. Newest seasons first, and a team whose NAME is already on the target
+// season is marked so it can be greyed out rather than imported twice.
+router.get("/teams/library", async (req, res, next) => {
+  try {
+    const q = String(req.query.q || "").trim().toLowerCase();
+    const targetSeasonId =
+      req.query.seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.query.series }));
+    const target = await prisma.season.findUnique({ where: { id: targetSeasonId } });
+    // Same series only: a team from another championship is not a suggestion,
+    // it is a mistake waiting to happen.
+    const seasons = await prisma.season.findMany({
+      where: { seriesId: target?.seriesId ?? null },
+      orderBy: { number: "desc" },
+    });
+    const seasonById = new Map(seasons.map((s) => [s.id, s]));
+    const existing = await prisma.team.findMany({ where: { seasonId: targetSeasonId } });
+    const takenNames = new Set(existing.map((t) => t.name.trim().toLowerCase()));
+
+    const teams = await prisma.team.findMany({
+      where: { seasonId: { in: seasons.map((s) => s.id).filter((id) => id !== targetSeasonId) } },
+    });
+    const rows = teams
+      .filter((t) => !q || t.name.toLowerCase().includes(q) || t.id.toLowerCase().includes(q))
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        tier: t.tier,
+        color: t.color,
+        logoUrl: t.logoUrl,
+        seasonId: t.seasonId,
+        seasonNumber: seasonById.get(t.seasonId)?.number ?? null,
+        seasonName: seasonById.get(t.seasonId)?.name ?? null,
+        alreadyHere: takenNames.has(t.name.trim().toLowerCase()),
+      }))
+      .sort(
+        (a, b) =>
+          (b.seasonNumber ?? 0) - (a.seasonNumber ?? 0) || a.name.localeCompare(b.name)
+      );
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/teams/import  { fromTeamId, seasonId? }
+// Copies ONE archived team into the season being edited, keeping its name, tier,
+// colour and logo. The new id gets the target season's suffix so ids stay unique
+// across seasons (same convention as clone-teams).
+router.post("/teams/import", async (req, res, next) => {
+  try {
+    const { fromTeamId, seasonId } = req.body || {};
+    if (!fromTeamId) return res.status(400).json({ error: "fromTeamId required" });
+    const targetSeasonId =
+      seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
+    const target = await prisma.season.findUnique({ where: { id: targetSeasonId } });
+    if (!target) return res.status(404).json({ error: "Target season not found" });
+    const source = await prisma.team.findUnique({ where: { id: fromTeamId } });
+    if (!source) return res.status(404).json({ error: "Team not found" });
+    if (source.seasonId === targetSeasonId) {
+      return res.status(400).json({ error: "That team is already in this season" });
+    }
+    const clash = await prisma.team.findFirst({
+      where: { seasonId: targetSeasonId, name: source.name },
+    });
+    if (clash) return res.status(409).json({ error: `${source.name} is already in this season` });
+
+    // Strip any previous season suffix before adding this one, so a team
+    // travelling S6 -> S7 -> S8 does not end up as "mclaren_s7_s8".
+    const base = source.id.replace(/_s\d+$/i, "");
+    let newId = `${base}_s${target.number}`;
+    for (let n = 2; await prisma.team.findUnique({ where: { id: newId } }); n++) {
+      newId = `${base}_s${target.number}_${n}`;
+    }
+    const team = await prisma.team.create({
+      data: {
+        id: newId,
+        name: source.name,
+        tier: source.tier,
+        color: source.color,
+        logoUrl: source.logoUrl,
+        seasonId: targetSeasonId,
+      },
+    });
+    res.status(201).json(team);
+  } catch (e) {
+    if (e.code === "P2002") return res.status(409).json({ error: "Team id already exists" });
+    next(e);
+  }
+});
+
 router.post("/teams", async (req, res, next) => {
   try {
     const { id, name, tier, color, seasonId } = req.body || {};

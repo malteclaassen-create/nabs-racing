@@ -87,8 +87,8 @@ function DeltaPill({ value, code }) {
     d == null || d === 0
       ? "bg-surface2 text-light"
       : d > 0
-        ? "bg-emerald-500/[0.12] text-emerald-700 dark:text-emerald-300"
-        : "bg-red-500/[0.12] text-red-700 dark:text-red-300";
+        ? "bg-emerald-500/[0.12] text-ok"
+        : "bg-red-500/[0.12] text-bad";
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[13px] font-bold tabular-nums ${cls}`}>
       <span className="text-[10px] uppercase tracking-wider opacity-60">{code}</span>
@@ -102,9 +102,9 @@ function DeltaPill({ value, code }) {
 function Cause({ tone, children }) {
   const cls =
     tone === "good"
-      ? "bg-emerald-500/[0.07] text-emerald-700 ring-emerald-600/35 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/35"
+      ? "bg-emerald-500/[0.07] text-ok ring-emerald-600/35 dark:bg-emerald-400/10 dark:ring-emerald-400/35"
       : tone === "bad"
-        ? "bg-red-500/[0.07] text-red-700 ring-red-600/35 dark:bg-red-400/10 dark:text-red-300 dark:ring-red-400/35"
+        ? "bg-red-500/[0.07] text-bad ring-red-600/35 dark:bg-red-400/10 dark:ring-red-400/35"
         : "bg-surface2 text-medium ring-border";
   return (
     <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-[13px] font-bold ring-1 ${cls}`}>
@@ -740,7 +740,7 @@ export default function MyRating({ me }) {
   ].filter(Boolean);
 
   const provisionalPill = rating.provisional && (
-    <span className="rounded-full bg-amber-500/15 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-amber-600 ring-1 ring-amber-500/40 dark:text-amber-400">
+    <span className="rounded-full bg-amber-500/15 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-warn ring-1 ring-amber-500/40">
       Provisional
     </span>
   );
@@ -968,8 +968,8 @@ export default function MyRating({ me }) {
                       }`}
                     >
                       {[
-                        { list: goodCauses, arrow: "▲", mark: "text-emerald-600 dark:text-emerald-400" },
-                        { list: badCauses, arrow: "▼", mark: "text-red-600 dark:text-red-400" },
+                        { list: goodCauses, arrow: "▲", mark: "text-ok" },
+                        { list: badCauses, arrow: "▼", mark: "text-bad" },
                       ].map(
                         (col) =>
                           col.list.length > 0 && (

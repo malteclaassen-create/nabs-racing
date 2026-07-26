@@ -336,7 +336,7 @@ function EditDriverCardInner() {
       <div className="mx-auto max-w-md">
         <div className="card p-6 text-center text-sm text-medium">
           You don&rsquo;t have a driver entry yet, so there&rsquo;s no card to edit.{" "}
-          <Link to="/profile" className="font-semibold text-primary hover:underline">
+          <Link to="/profile" className="font-semibold text-link hover:underline">
             Start on your profile
           </Link>{" "}
           to connect your Steam account and ask for a seat.

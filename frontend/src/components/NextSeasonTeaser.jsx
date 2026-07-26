@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSocial } from "./SocialLinks.jsx";
 import { carFor } from "../utils/heroImage.js";
+import { seasonGameLabel } from "../utils/seasonGame.js";
 import RaceCountdown from "./RaceCountdown.jsx";
 
 // Announcement strip for the NEXT season, fed by /api/seasons/teaser: the
@@ -57,7 +58,7 @@ export default function NextSeasonTeaser({ data }) {
           </div>
           <h2 className="mt-1.5 font-display text-2xl font-black uppercase tracking-tight text-dark dark:text-white sm:text-3xl">
             {title}
-            {next.game && <span className="ml-3 align-middle font-mono text-[11px] font-bold uppercase tracking-wider text-light dark:text-white/50">{next.game}</span>}
+            {next.game && <span className="ml-3 align-middle font-mono text-[11px] font-bold uppercase tracking-wider text-light dark:text-white/50">{seasonGameLabel(next)}</span>}
           </h2>
           <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-medium dark:text-white/70">
             {firstRace

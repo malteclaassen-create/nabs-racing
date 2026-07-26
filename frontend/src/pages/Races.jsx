@@ -176,13 +176,13 @@ function RoundRail({ races, selectedId, onSelect }) {
             aria-pressed={active}
             className={`group flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition lg:w-full lg:shrink ${border}`}
           >
-            <span className={`font-display text-lg font-black leading-none tabular-nums ${active ? "text-dark" : done ? "text-emerald-600" : "text-faint group-hover:text-light"}`}>
+            <span className={`font-display text-lg font-black leading-none tabular-nums ${active ? "text-dark" : done ? "text-ok" : "text-faint group-hover:text-light"}`}>
               {r.number != null ? String(r.number).padStart(2, "0") : kindOf(r) === "TRAINING" ? "TR" : "SE"}
             </span>
             {flag && <Flag code={flag.country} title={flag.countryName} />}
             <span className="flex min-w-0 flex-col leading-tight">
               <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{r.track}</span>
-              <span className={`flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider ${done ? "text-emerald-600" : "text-light"}`}>
+              <span className={`flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider ${done ? "text-ok" : "text-light"}`}>
                 {done && (
                   <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor" aria-hidden="true">
                     <path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z" />
@@ -231,8 +231,8 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
 
   let pill;
   if (training) pill = <span className="pill bg-sky-500/15 text-sky-600">Training</span>;
-  else if (se) pill = <span className="pill bg-emerald-500/15 text-emerald-600">Special Event</span>;
-  else if (done) pill = <span className="pill bg-emerald-500/15 text-emerald-600">View results</span>;
+  else if (se) pill = <span className="pill bg-emerald-500/15 text-ok">Special Event</span>;
+  else if (done) pill = <span className="pill bg-emerald-500/15 text-ok">View results</span>;
   else if (isNext) pill = <span className="pill bg-brand/30 text-dark">Next up</span>;
   else pill = <span className="pill bg-surface2 text-light">Upcoming</span>;
 
@@ -255,7 +255,7 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
         </div>
       ) : (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className={`ghost-numeral select-none text-[7rem] leading-none ${training ? "text-sky-500/10" : "text-emerald-500/10"}`}>
+          <span className={`ghost-numeral select-none text-[7rem] leading-none ${training ? "text-sky-500/10" : "text-ok/10"}`}>
             {training ? "TR" : "SE"}
           </span>
         </div>
@@ -276,7 +276,7 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
               {flag && <Flag code={flag.country} title={flag.countryName} />}
-              <h4 className={`truncate font-display text-xl font-extrabold uppercase tracking-tight ${training ? "text-sky-600" : se ? "text-emerald-600" : "text-dark"}`}>
+              <h4 className={`truncate font-display text-xl font-extrabold uppercase tracking-tight ${training ? "text-sky-600" : se ? "text-ok" : "text-dark"}`}>
                 {e.track}
               </h4>
             </div>
@@ -346,7 +346,7 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
 }
 
 export default function Races() {
-  const { data: races, loading, error } = useApi(useCallback(() => api.races(), []));
+  const { data: races, loading, error, reload } = useApi(useCallback(() => api.races(), []));
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -450,7 +450,15 @@ export default function Races() {
         <TableSkeleton rows={10} />
       </div>
     );
-  if (error) return <ErrorBox message={error} />;
+  // Header stays up on a failed read (the session-type switcher does not: it
+  // needs the calendar it just failed to load).
+  if (error)
+    return (
+      <div>
+        <PageHeader eyebrow="Schedule & Results" title="Races" />
+        <ErrorBox message={error} onRetry={reload} />
+      </div>
+    );
 
   const now = Date.now();
   // Sort/compare by the resolved kickoff (date-only entries fall back to the

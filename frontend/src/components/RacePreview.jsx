@@ -8,7 +8,7 @@ function Delta({ value }) {
   if (!value) return <span className="font-mono text-xs text-faint">–</span>;
   const up = value > 0;
   return (
-    <span className={`font-mono text-xs font-bold ${up ? "text-emerald-600" : "text-rose-500"}`}>
+    <span className={`font-mono text-xs font-bold ${up ? "text-ok" : "text-rose-500"}`}>
       {up ? "▲" : "▼"}
       {Math.abs(value)}
     </span>
@@ -172,13 +172,13 @@ export default function RacePreview({ request }) {
                             <span className="font-semibold text-dark">{r.name}</span>
                             <TierBadge tier={r.tier} />
                             {r.isSub && r.team && (
-                              <span className="pill bg-amber-100 text-amber-700" title={`Reserve driving for ${r.team.name}`}>
+                              <span className="pill bg-warn/15 text-warn" title={`Reserve driving for ${r.team.name}`}>
                                 sub · {r.team.name}
                               </span>
                             )}
                             {dnf && <span className="pill bg-surface2 text-light">{r.status}</span>}
                             {r.penalty > 0 && (
-                              <span className="pill bg-red-500/15 text-red-500" title={`Finished P${r.rawPosition}, +${r.penalty}s time penalty`}>
+                              <span className="pill bg-red-500/15 text-bad" title={`Finished P${r.rawPosition}, +${r.penalty}s time penalty`}>
                                 +{r.penalty}s pen
                               </span>
                             )}

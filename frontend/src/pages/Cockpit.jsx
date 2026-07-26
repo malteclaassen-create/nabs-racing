@@ -135,7 +135,7 @@ function Hero() {
         {q.loading ? (
           <div className="h-24 animate-pulse rounded-xl bg-white/5" />
         ) : q.error ? (
-          <div className="text-sm text-red-300">{q.error}</div>
+          <div className="text-sm text-bad">{q.error}</div>
         ) : (
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex items-center gap-4">
@@ -166,7 +166,7 @@ function Hero() {
                     {ordinal(ch?.position)}
                   </span>
                   {ch?.trend ? (
-                    <span className={`font-mono text-sm font-bold ${ch.trend > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    <span className={`font-mono text-sm font-bold ${ch.trend > 0 ? "text-ok" : "text-bad"}`}>
                       {ch.trend > 0 ? "▲" : "▼"}{Math.abs(ch.trend)}
                     </span>
                   ) : null}
@@ -311,8 +311,8 @@ function InsightsTab() {
   const nemesis = duelList.find((x) => x.key === duels.data?.nemesisKey);
   const favourite = duelList.find((x) => x.key === duels.data?.favouriteKey);
   const rivalRows = [
-    ...(nemesis ? [{ ...nemesis, badge: "Nemesis", badgeTone: "text-red-500" }] : []),
-    ...(favourite ? [{ ...favourite, badge: "Favourite rival", badgeTone: "text-emerald-600" }] : []),
+    ...(nemesis ? [{ ...nemesis, badge: "Nemesis", badgeTone: "text-bad" }] : []),
+    ...(favourite ? [{ ...favourite, badge: "Favourite rival", badgeTone: "text-ok" }] : []),
     ...duelList.filter((x) => x !== nemesis && x !== favourite).slice(0, 3),
   ];
 
@@ -359,7 +359,7 @@ function InsightsTab() {
               eyebrow="Lap one, on average"
               value={`${d.starts.avgLap1Delta > 0 ? "+" : ""}${d.starts.avgLap1Delta ?? "–"}`}
               unit="places"
-              tone={d.starts.avgLap1Delta > 0 ? "text-emerald-600" : d.starts.avgLap1Delta < 0 ? "text-red-500" : undefined}
+              tone={d.starts.avgLap1Delta > 0 ? "text-ok" : d.starts.avgLap1Delta < 0 ? "text-bad" : undefined}
               sub={`grid position vs position after lap 1, over ${d.starts.races} starts`}
             />
             <div className="mt-5 max-w-md space-y-3 text-[15px] leading-relaxed text-medium">
@@ -370,7 +370,7 @@ function InsightsTab() {
               {d.starts.bestStart && (
                 <p>
                   Your best launch: <span className="font-bold text-dark">{d.starts.bestStart.track}</span> in Season {d.starts.bestStart.seasonNumber},
-                  {" "}<span className="font-mono font-bold text-emerald-600">+{d.starts.bestStart.gained}</span> places before the field reached the line again.
+                  {" "}<span className="font-mono font-bold text-ok">+{d.starts.bestStart.gained}</span> places before the field reached the line again.
                 </p>
               )}
             </div>
@@ -409,7 +409,7 @@ function InsightsTab() {
                       {t.tyre}
                       <span className="font-mono text-[11px] font-normal text-faint">{t.laps} laps · longest stint {t.longestStint}</span>
                     </span>
-                    <span className={`font-mono text-sm font-bold tabular-nums ${rising ? "text-red-500" : "text-emerald-600"}`}>
+                    <span className={`font-mono text-sm font-bold tabular-nums ${rising ? "text-bad" : "text-ok"}`}>
                       {rising ? "+" : "−"}{Math.abs(t.degMsPerLap / 1000).toFixed(2)}s/lap
                     </span>
                   </div>
@@ -480,9 +480,9 @@ function InsightsTab() {
                       {x.isTeammate && !x.badge && <span className="ml-2 font-mono text-[10px] font-bold uppercase tracking-wider text-sky-600">Teammate</span>}
                     </span>
                     <span className="font-display text-lg font-black tabular-nums leading-none">
-                      <span className="text-emerald-600">{x.raceWins}</span>
+                      <span className="text-ok">{x.raceWins}</span>
                       <span className="mx-1 text-faint">:</span>
-                      <span className="text-red-500">{x.raceLosses}</span>
+                      <span className="text-bad">{x.raceLosses}</span>
                     </span>
                   </div>
                   <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-red-400/60">
@@ -554,7 +554,7 @@ function RaceAnalysis({ raceId }) {
             <div className="text-sm text-light">
               from {ordinal(d.result.grid)} on the grid
               {gain != null && gain !== 0 && (
-                <span className={`ml-1.5 font-mono font-bold ${gain > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                <span className={`ml-1.5 font-mono font-bold ${gain > 0 ? "text-ok" : "text-bad"}`}>
                   {gain > 0 ? `▲${gain}` : `▼${Math.abs(gain)}`}
                 </span>
               )}
@@ -652,7 +652,7 @@ function RaceAnalysis({ raceId }) {
                               {c.label === "winner" ? "Winner" : c.label === "ahead" ? "Ahead of you" : "Behind you"}
                             </span>
                           </span>
-                          <span className={`font-mono text-sm font-bold tabular-nums ${youFaster ? "text-emerald-600" : "text-red-500"}`}>
+                          <span className={`font-mono text-sm font-bold tabular-nums ${youFaster ? "text-ok" : "text-bad"}`}>
                             {youFaster ? "you" : "they"} {(Math.abs(delta) / 1000).toFixed(3)}s/lap faster
                           </span>
                         </div>
@@ -723,7 +723,7 @@ function RacesTab() {
               <span className={`mt-0.5 block truncate text-[13px] font-bold ${active ? "text-dark" : "text-medium"}`}>{r.track}</span>
               <span
                 className={`mt-1.5 inline-flex h-6 min-w-8 items-center justify-center rounded-md px-1.5 font-display text-[13px] font-black tabular-nums ${
-                  podium ? "text-ink" : r.status === "DNF" || r.status === "DSQ" ? "bg-red-500/10 text-red-500" : "bg-surface2 text-medium"
+                  podium ? "text-ink" : r.status === "DNF" || r.status === "DSQ" ? "bg-red-500/10 text-bad" : "bg-surface2 text-medium"
                 }`}
                 style={podium ? { backgroundColor: MEDAL[r.position - 1] } : undefined}
               >
