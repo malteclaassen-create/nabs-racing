@@ -512,6 +512,29 @@ model DownloadFolder {
   sortOrder   Int     @default(0)
 }
 
+// Bug reports and feature wishes sent from the site's Feedback button (the
+// floating one bottom right on desktop, the menu row on a phone). discordId +
+// senderName are filled in when the sender was signed in; a logged-out visitor
+// can leave a contact line instead. Never shown publicly — the admin works
+// through them in the Feedback tab. Managed via raw SQL like Notification —
+// see backend/src/lib/feedback.js, which must be kept in sync with this model.
+model Feedback {
+  id         String   @id
+  kind       String   @default("OTHER") // BUG | IDEA | OTHER
+  message    String
+  status     String   @default("NEW") // NEW | PLANNED | DONE | DECLINED
+  pageUrl    String? // which page they were on when they wrote it
+  userAgent  String? // browser/device, so a bug report can be reproduced
+  discordId  String? // MemberAccount.discordId, or null when logged out
+  senderName String? // display-name snapshot at the time of writing
+  contact    String? // optional way back to a logged-out sender
+  adminNote  String? // private admin scribble
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime?
+
+  @@index([createdAt])
+}
+
 // Cross-season identity. Driver rows are per-season (a person racing in three
 // seasons has three Driver rows); this table groups those rows under one shared
 // personId so career stats aggregate and archive tables can show the person's

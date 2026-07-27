@@ -8,6 +8,7 @@ import SeasonPicker from "./SeasonPicker.jsx";
 import SeriesSwitcher from "./SeriesSwitcher.jsx";
 import NotificationBell from "./NotificationBell.jsx";
 import GlobalSearch from "./GlobalSearch.jsx";
+import { openFeedback } from "./FeedbackWidget.jsx";
 import { DriverAvatar } from "./ui.jsx";
 import { useSlidingHighlight } from "./SlidingTabs.jsx";
 
@@ -120,6 +121,26 @@ function MobileRow({ to, end, icon, label, sub, alsoActiveOn }) {
   );
 }
 
+// Same row, but it DOES something instead of going somewhere (the feedback
+// panel). Never "active", so it stays in the calm idle style.
+function MobileActionRow({ icon, label, sub, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition hover:bg-surface2"
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface2 text-medium">
+        <StandIcon d={icon} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-medium">{label}</span>
+        {sub && <span className="mt-0.5 block truncate font-mono text-[10px] text-light">{sub}</span>}
+      </span>
+    </button>
+  );
+}
+
 // Section eyebrow inside the mobile menu — same mono label style as the page
 // eyebrows, with a hairline running out to the right edge.
 function MobileMenuLabel({ children }) {
@@ -141,6 +162,7 @@ const NAV_ICONS = {
   drivers: <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>,
   constructors: <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>,
   records: <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>,
+  feedback: <><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></>,
 };
 
 // The two pages the "Standings" item covers (matched with the series prefix
@@ -600,6 +622,17 @@ export default function NavBar() {
 
               <MobileMenuLabel>More</MobileMenuLabel>
               <MobileRow to="/downloads" icon={NAV_ICONS.info} label="Race Info" sub="Rules & downloads" />
+              {/* The phone's way to the feedback panel: the floating button in
+                  the corner is desktop-only, so this row is what opens it here. */}
+              <MobileActionRow
+                icon={NAV_ICONS.feedback}
+                label="Feedback"
+                sub="Report a bug or an idea"
+                onClick={() => {
+                  closeMenu();
+                  openFeedback();
+                }}
+              />
             </div>
           </div>
         </div>

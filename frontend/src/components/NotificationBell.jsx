@@ -80,6 +80,12 @@ function TypeIcon({ type }) {
           <path d="M12 7.5l1.3 2.6 2.9.4-2.1 2 .5 2.9-2.6-1.4-2.6 1.4.5-2.9-2.1-2 2.9-.4z" />
         </svg>
       );
+    case "FEEDBACK": // speech bubble — a bug report / idea landed (admins only)
+      return (
+        <svg {...common}>
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+        </svg>
+      );
     case "AWARD": // laurel medal — achievement unlocks (Cockpit)
       return (
         <svg {...common}>

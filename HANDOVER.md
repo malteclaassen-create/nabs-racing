@@ -217,6 +217,14 @@ everything needed to rebuild the site.
 **Downloads for members:** upload files in the admin Downloads tab or add
 external links. Members see them immediately.
 
+**Feedback from the drivers:** the site has a small **Feedback** button
+(bottom right on a computer, in the menu on a phone) that anyone can use to
+report a bug or ask for a feature. Everything written there lands in
+**Admin -> Feedback**, and the number next to that tab is how many you have
+not looked at yet. Mark an entry planned, done or won't do to file it away;
+nobody is notified either way, so anything that needs an answer you give in
+Discord.
+
 **Cost:** the Hobby plan is $5/month. On top, Railway charges for storage
 and **outgoing traffic**. Database and images are tiny; the danger is
 members downloading multi-GB car packs from the site, which can make a month

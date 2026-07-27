@@ -916,6 +916,9 @@ body::before {
   .notif-pop { animation: none !important; }
   .search-pop { animation: none !important; }
   .collapse-row { transition: none !important; }
+  /* The feedback button still shrinks and grows with the scroll direction —
+     it just does it instantly instead of gliding. */
+  .fab-morph { transition: none !important; }
   .proj-flash-up, .proj-flash-down { animation: none !important; }
   .shine::after { display: none; }
   .tilt { transform: none !important; }
@@ -960,6 +963,7 @@ body::before {
 .fx-lite .nav-drop, .fx-lite .nav-scrim { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .nav-drop.is-closing, .fx-lite .nav-scrim.is-closing { opacity: 0; }
 .fx-lite .collapse-row { transition: none !important; }
+.fx-lite .fab-morph { transition: none !important; }
 .fx-lite .nav-season-dock { animation: none !important; transition: none !important; }
 .fx-lite .notif-pop { animation: none !important; }
 .fx-lite .search-pop { animation: none !important; }

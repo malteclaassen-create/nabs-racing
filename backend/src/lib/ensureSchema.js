@@ -266,6 +266,28 @@ export async function ensureAppSchema(prisma) {
     `CREATE UNIQUE INDEX IF NOT EXISTS "MemberAccount_steamId_key" ON "MemberAccount"("steamId")`
   );
 
+  // --- Feedback from the site's visitors (migration feedback): bug reports and
+  // feature wishes sent from the floating Feedback button. discordId is set
+  // when the sender was signed in, null for a logged-out visitor (who may
+  // leave a contact line instead). See lib/feedback.js.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Feedback" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "kind" TEXT NOT NULL DEFAULT 'OTHER',
+    "message" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'NEW',
+    "pageUrl" TEXT,
+    "userAgent" TEXT,
+    "discordId" TEXT,
+    "senderName" TEXT,
+    "contact" TEXT,
+    "adminNote" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "Feedback_createdAt_idx" ON "Feedback"("createdAt")`
+  );
+
   // --- Phase 3: cross-season person links. One row per driver row that belongs
   // to a person; all driver rows of the same person share one personId.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PersonLink" (

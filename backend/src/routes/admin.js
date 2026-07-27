@@ -37,6 +37,7 @@ import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFo
 import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq, writeWelcomeFaq } from "../lib/welcomeFaq.js";
+import { dbListFeedback, dbGetFeedback, dbUpdateFeedback, dbDeleteFeedback } from "../lib/feedback.js";
 import {
   dbListMembers, dbGetMember, dbSetBanned, dbClearRaceRequest, shapeMember, applyMemberSteamId,
 } from "../lib/members.js";
@@ -3339,6 +3340,43 @@ router.put("/welcome-faq", async (req, res, next) => {
   try {
     const content = await writeWelcomeFaq(prisma, req.body?.content ?? null);
     res.json({ ok: true, content });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Feedback (bug reports & feature wishes from the site) -------------------
+// Written by anyone through the floating Feedback button (routes/feedback.js);
+// read, sorted and worked through here. Private throughout — a report can name
+// a driver or quote something said in Discord, so it never leaves this tab.
+
+router.get("/feedback", async (req, res, next) => {
+  try {
+    const items = await dbListFeedback(prisma);
+    res.json({ items, newCount: items.filter((i) => i.status === "NEW").length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch("/feedback/:id", async (req, res, next) => {
+  try {
+    const existing = await dbGetFeedback(prisma, req.params.id);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    const item = await dbUpdateFeedback(prisma, req.params.id, {
+      status: req.body?.status,
+      adminNote: req.body?.adminNote,
+    });
+    res.json({ ok: true, item });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/feedback/:id", async (req, res, next) => {
+  try {
+    await dbDeleteFeedback(prisma, req.params.id);
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }

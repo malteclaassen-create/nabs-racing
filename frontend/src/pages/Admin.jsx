@@ -16,6 +16,7 @@ import AdminHealth from "../components/AdminHealth.jsx";
 import AdminMembers from "../components/AdminMembers.jsx";
 import AdminNotifications from "../components/AdminNotifications.jsx";
 import AdminAllTime from "../components/AdminAllTime.jsx";
+import AdminFeedback, { FEEDBACK_CHANGED_EVENT } from "../components/AdminFeedback.jsx";
 import RacePreview from "../components/RacePreview.jsx";
 import { SOCIAL_META, SocialIcon } from "../components/SocialLinks.jsx";
 import { isSteamId64 } from "../utils/steamId.js";
@@ -48,6 +49,7 @@ const TAB_GROUPS = [
     label: "Community",
     tabs: [
       { id: "members", label: "Members" },
+      { id: "feedback", label: "Feedback" },
       { id: "notify", label: "Notifications" },
       { id: "downloads", label: "Downloads" },
       { id: "social", label: "Social & Live" },
@@ -153,6 +155,25 @@ function AdminSeasonBar({ tab }) {
   );
 }
 
+// Unread-style counter on the Feedback tab, so a bug report can't sit there
+// unnoticed. Rendered inside the tab strip (i.e. only once signed in), and it
+// simply disappears when there is nothing new.
+function FeedbackCount() {
+  const { data, reload } = useApi(useCallback(() => api.adminFeedback(), []));
+  // Working through an entry in the tab below must take the number down with it.
+  useEffect(() => {
+    window.addEventListener(FEEDBACK_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(FEEDBACK_CHANGED_EVENT, reload);
+  }, [reload]);
+  const n = data?.newCount || 0;
+  if (!n) return null;
+  return (
+    <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 font-mono text-[10px] font-bold leading-none text-ink">
+      {n > 9 ? "9+" : n}
+    </span>
+  );
+}
+
 // Red launch-checklist banner while the shipped dev defaults are still in use.
 // Disappears on its own once the PIN is changed / a real JWT secret is set.
 function SecurityBanner() {
@@ -192,7 +213,13 @@ export default function Admin() {
   // to Races & Events) survives via sessionStorage.
   // (Read-only initializer: React may run it twice in dev StrictMode, so the
   // clean-up happens in the effect below, not here.)
-  const [tab, setTab] = useState(() => sessionStorage.getItem("nabs_admin_tab") || "seasons");
+  // ?tab=<id> wins over the stash, so a link can point straight at a tab (the
+  // "new feedback" notification does exactly that).
+  const [tab, setTab] = useState(() => {
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    const known = TAB_GROUPS.some((g) => g.tabs.some((t) => t.id === wanted));
+    return (known && wanted) || sessionStorage.getItem("nabs_admin_tab") || "seasons";
+  });
   useEffect(() => {
     sessionStorage.removeItem("nabs_admin_tab");
   }, []);
@@ -259,6 +286,7 @@ export default function Admin() {
                   }`}
                 >
                   {t.label}
+                  {t.id === "feedback" && <FeedbackCount />}
                 </button>
               ))}
             </div>
@@ -301,6 +329,7 @@ export default function Admin() {
         {tab === "market" && <MarketAdmin />}
         {tab === "drivers" && <Drivers />}
         {tab === "members" && <AdminMembers />}
+        {tab === "feedback" && <AdminFeedback />}
         {tab === "notify" && <AdminNotifications />}
         {tab === "social" && (
           <div className="space-y-4">

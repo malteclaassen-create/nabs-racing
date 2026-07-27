@@ -23,6 +23,7 @@ import discordAuthRoutes from "./routes/discordAuth.js";
 import steamAuthRoutes from "./routes/steamAuth.js";
 import downloadsRoutes from "./routes/downloads.js";
 import notificationsRoutes from "./routes/notifications.js";
+import feedbackRoutes from "./routes/feedback.js";
 import searchRoutes from "./routes/search.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
@@ -221,6 +222,7 @@ app.use("/api/auth/discord", discordAuthRoutes);
 app.use("/api/auth/steam", steamAuthRoutes);
 app.use("/api/downloads", downloadsRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/feedback", feedbackRoutes);
 app.use("/api/search", searchRoutes);
 
 // Admin

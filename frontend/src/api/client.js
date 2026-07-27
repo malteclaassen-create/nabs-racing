@@ -293,6 +293,14 @@ export const api = {
   adminAttendancePing: (raceId) =>
     request(`/admin/races/${raceId}/attendance-ping`, { method: "POST", auth: true }),
 
+  // feedback (the floating Feedback button). Open to everyone — userAuth only
+  // attaches the session when there is one, so a signed-in member's report
+  // carries their name and a visitor's doesn't need an account at all.
+  sendFeedback: (body) => request("/feedback", { method: "POST", body, userAuth: true }),
+  adminFeedback: () => request("/admin/feedback", { auth: true }),
+  updateFeedback: (id, body) => request(`/admin/feedback/${id}`, { method: "PATCH", body, auth: true }),
+  deleteFeedback: (id) => request(`/admin/feedback/${id}`, { method: "DELETE", auth: true }),
+
   // logged-in driver self-service
   me: () => request("/me", { userAuth: true }),
   setMyCountry: (country) => request("/me/country", { method: "PUT", body: { country }, userAuth: true }),
