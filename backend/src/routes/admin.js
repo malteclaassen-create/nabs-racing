@@ -18,7 +18,7 @@ import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, createFullBackupZip } from "../services/backupService.js";
 import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
 import { parseFormatNumber } from "../lib/raceFormat.js";
-import { RACE_TYPES, writeRaceType } from "../lib/raceTypes.js";
+import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
 import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
@@ -32,7 +32,7 @@ import {
 import { stashIncoming, archiveCommitted } from "../lib/resultsArchive.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
-import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
+import { readTrackInfo, writeTrackInfo, readHotlapFallback, writeHotlapFallback } from "../lib/trackInfo.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
@@ -55,6 +55,11 @@ import {
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
   sendAttendancePing,
 } from "../lib/notifications.js";
+import {
+  readFeedConfig, writeFeedConfig, readPosts, writePosts,
+  resolveChannelId, fetchChannelVideos, lookupPost, downloadImage, extractUrls,
+} from "../lib/socialFeed.js";
+import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride } from "../lib/attendanceGate.js";
 import { UPLOADS_DIR, LOGS_DIR } from "../lib/dataDirs.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap } from "../lib/liveServers.js";
 
@@ -103,6 +108,8 @@ const TEAMS_DIR = join(UPLOADS_DIR, "teams");
 const TRACKS_DIR = join(UPLOADS_DIR, "tracks");
 const SEASONS_DIR = join(UPLOADS_DIR, "seasons");
 const SERIES_DIR = join(UPLOADS_DIR, "series");
+// Cover images for social cards the platform gives us no thumbnail for.
+const SOCIAL_DIR = join(UPLOADS_DIR, "social");
 const LOGO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg" };
 // A track key is a slug (letters/digits only) — validate before touching the FS.
 const safeTrackKey = (k) => (normKey(k) === String(k || "").toLowerCase() && k ? k : null);
@@ -788,6 +795,261 @@ router.put("/social", async (req, res, next) => {
     }
     if ("since" in body) await setLeagueSince(prisma, body.since);
     res.json({ ...(await readSocialLinks(prisma)), since: await leagueSince(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// SOCIAL WALL (the cards on the home page)
+// The channel links above say where to find us; this says what we posted.
+// See lib/socialFeed.js for why YouTube is automatic and the rest is not.
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/social-feed -> config + every stored post, newest first, plus
+// what the YouTube channel currently returns, so the editor can show the admin
+// exactly which videos will appear before anything is saved.
+router.get("/social-feed", async (req, res, next) => {
+  try {
+    const [config, posts] = await Promise.all([readFeedConfig(prisma), readPosts(prisma)]);
+    const channelVideos = config.youtubeChannelId ? await fetchChannelVideos(config.youtubeChannelId) : [];
+    res.json({ config, posts, channelVideos: channelVideos.slice(0, 6) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/social-feed  { config } — saves the settings and, when the
+// channel URL changed, resolves it to the UC… id the RSS feed needs. A URL we
+// can't resolve is saved anyway (so the typo stays visible in the field) and
+// reported back, rather than silently dropped.
+router.put("/social-feed", async (req, res, next) => {
+  try {
+    const incoming = req.body?.config || req.body || {};
+    const current = await readFeedConfig(prisma);
+    const url = String(incoming.youtubeChannelUrl || "").trim();
+    let channelId = current.youtubeChannelId;
+    let channelError = null;
+    if (!url) {
+      channelId = "";
+    } else if (url !== current.youtubeChannelUrl || !channelId) {
+      channelId = (await resolveChannelId(url)) || "";
+      if (!channelId) channelError = "Couldn't read a channel from that link. Open the channel on YouTube and copy the address from the browser bar.";
+    }
+    const config = await writeFeedConfig(prisma, { ...incoming, youtubeChannelId: channelId });
+    const channelVideos = config.youtubeChannelId ? await fetchChannelVideos(config.youtubeChannelId, { force: true }) : [];
+    res.json({ config, channelError, channelVideos: channelVideos.slice(0, 6) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/social-feed/lookup { url } -> title/thumbnail we can read for
+// that link, so adding a post is "paste, check, save" instead of typing it all.
+router.post("/social-feed/lookup", async (req, res, next) => {
+  try {
+    res.json(await lookupPost(req.body?.url));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Take our own copy of a card's picture. Instagram and TikTok both hand out
+// links that expire within days (see lib/socialFeed.js), so a card pointing at
+// one goes blank on its own. Best-effort: a picture we can't fetch just leaves
+// the card on the platform's link, which the admin can still replace by hand.
+// Mutates `post`: writes the local cover URL and, for a platform that told us
+// nothing about the post's shape, the shape read out of the picture itself.
+async function mirrorCover(post) {
+  if (!post?.thumbUrl || !isSafeId(post.id)) return null;
+  const img = await downloadImage(post.thumbUrl);
+  if (!img) return null;
+  mkdirSync(SOCIAL_DIR, { recursive: true });
+  const filename = `${post.id}${img.ext}`;
+  const dest = safeUploadPath(SOCIAL_DIR, filename);
+  if (!dest) return null;
+  writeFileSync(dest, img.buffer);
+  // Instagram publishes no dimensions, so the cover's own are all we get — and
+  // they're what makes a Reel stand up instead of lying down.
+  if (!post.aspect && img.width && img.height) post.aspect = img.width / img.height;
+  post.coverUrl = `/api/uploads/social/${filename}?v=${Date.now()}`;
+  return post.coverUrl;
+}
+
+// POST /api/admin/social-feed/posts { post } -> add a card.
+router.post("/social-feed/posts", async (req, res, next) => {
+  try {
+    const posts = await readPosts(prisma);
+    const incoming = req.body?.post || req.body || {};
+    // Ask the platform for anything the caller didn't bring. The editor already
+    // does this through /lookup so the admin can see it first, but the route
+    // must not DEPEND on that: a post added without it would otherwise be a
+    // bare link with no picture and no words.
+    let found = {};
+    if (!incoming.thumbUrl || !incoming.title || !incoming.postedAt) {
+      try {
+        found = await lookupPost(incoming.url);
+      } catch {
+        /* an unreadable link is still allowed as a hand-written card */
+      }
+    }
+    const post = {
+      ...incoming,
+      id: undefined,
+      title: incoming.title || found.title || "",
+      thumbUrl: incoming.thumbUrl || found.thumbUrl || null,
+      embedUrl: incoming.embedUrl || found.embedUrl || null,
+      aspect: incoming.aspect || found.aspect || null,
+      // Cards are ordered by date. Only Instagram tells us when a post went up,
+      // so anything else counts as posted now unless the admin dated it —
+      // otherwise every hand-added post would sink to the bottom of the wall.
+      postedAt: incoming.postedAt || found.postedAt || new Date().toISOString(),
+    };
+    let saved = await writePosts(prisma, [post, ...posts]);
+    if (saved.length === posts.length) return res.status(400).json({ error: "That link can't be shown as a card" });
+    // The card now has an id, so its picture has somewhere to live.
+    const cover = await mirrorCover(saved[0]);
+    if (cover) saved = await writePosts(prisma, saved);
+    res.json({ ok: true, posts: saved, cover: !!cover });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/social-feed/posts/bulk { text } -> add a whole batch at once.
+// Instagram and TikTok publish nothing we could subscribe to (their profile
+// pages hand out no list of posts, by their own design), so the links have to
+// come from a person. This is that job made cheap: paste a week's worth in one
+// go, prose around them is fine, and pasting the same batch twice is harmless
+// because a link already on the wall is skipped rather than doubled.
+const BULK_AT_ONCE = 4; // how many we ask the platforms about in parallel
+
+router.post("/social-feed/posts/bulk", async (req, res, next) => {
+  try {
+    const urls = extractUrls(req.body?.text ?? req.body?.urls);
+    if (!urls.length) return res.status(400).json({ error: "No links found in what you pasted" });
+
+    const existing = await readPosts(prisma);
+    const known = new Set(existing.map((p) => p.url));
+    const results = [];
+    const fresh = [];
+
+    // In small groups: each link costs the platform a request or three, and
+    // firing twenty at once is both rude and a good way to get rate-limited.
+    const todo = urls.filter((url) => {
+      if (!known.has(url)) return true;
+      results.push({ url, status: "duplicate" });
+      return false;
+    });
+    for (let i = 0; i < todo.length; i += BULK_AT_ONCE) {
+      const batch = todo.slice(i, i + BULK_AT_ONCE);
+      const looked = await Promise.all(
+        batch.map((url) => lookupPost(url).catch((e) => ({ url, error: e.message })))
+      );
+      for (const found of looked) {
+        if (found.error) {
+          results.push({ url: found.url, status: "failed", error: found.error });
+          continue;
+        }
+        fresh.push({ ...found, postedAt: found.postedAt || new Date().toISOString() });
+      }
+    }
+
+    // Newest additions on top, then everything that was already there.
+    let saved = await writePosts(prisma, [...fresh, ...existing]);
+    const added = saved.filter((p) => fresh.some((f) => f.url === p.url));
+    // Ids exist now, so each picture has somewhere to live.
+    for (const p of added) await mirrorCover(p);
+    saved = await writePosts(prisma, saved);
+
+    for (const p of added) {
+      results.push({ url: p.url, status: "added", platform: p.platform, title: p.title, picture: !!p.coverUrl });
+    }
+    res.json({ ok: true, posts: saved, results });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/social-feed/posts/:id/refresh -> ask the platform again for
+// the title and picture. The repair button for a card that lost its image.
+router.post("/social-feed/posts/:id/refresh", async (req, res, next) => {
+  try {
+    const posts = await readPosts(prisma);
+    const post = posts.find((p) => p.id === req.params.id);
+    if (!post) return res.status(404).json({ error: "Post not found" });
+    const fresh = await lookupPost(post.url);
+    post.thumbUrl = fresh.thumbUrl || post.thumbUrl;
+    post.embedUrl = fresh.embedUrl || post.embedUrl;
+    post.aspect = fresh.aspect || null; // re-derived below from the picture
+    // The admin's own title always wins — refreshing must not overwrite it.
+    if (!post.title) post.title = fresh.title;
+    const cover = await mirrorCover(post);
+    res.json({ ok: true, posts: await writePosts(prisma, posts), cover: !!cover });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// PUT /api/admin/social-feed/posts/:id { post } -> edit one card in place.
+router.put("/social-feed/posts/:id", async (req, res, next) => {
+  try {
+    const posts = await readPosts(prisma);
+    const idx = posts.findIndex((p) => p.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ error: "Post not found" });
+    posts[idx] = { ...posts[idx], ...(req.body?.post || req.body), id: posts[idx].id };
+    const saved = await writePosts(prisma, posts);
+    res.json({ ok: true, posts: saved });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/social-feed/posts/:id
+router.delete("/social-feed/posts/:id", async (req, res, next) => {
+  try {
+    const posts = await readPosts(prisma);
+    const saved = await writePosts(prisma, posts.filter((p) => p.id !== req.params.id));
+    res.json({ ok: true, posts: saved });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/social-feed/posts/:id/cover (multipart: file=<image>)
+// The cover image for platforms that give us nothing — Instagram above all.
+// It always wins over whatever thumbnail the platform reported.
+router.post("/social-feed/posts/:id/cover", upload.single("file"), async (req, res, next) => {
+  try {
+    const posts = await readPosts(prisma);
+    const post = posts.find((p) => p.id === req.params.id);
+    if (!post) return res.status(404).json({ error: "Post not found" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = LOGO_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
+    if (!isSafeId(post.id)) return res.status(400).json({ error: "Invalid post id" });
+    mkdirSync(SOCIAL_DIR, { recursive: true });
+    const filename = `${post.id}${ext}`;
+    const dest = safeUploadPath(SOCIAL_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "Invalid post id" });
+    writeFileSync(dest, req.file.buffer);
+    post.coverUrl = `/api/uploads/social/${filename}?v=${Date.now()}`;
+    const saved = await writePosts(prisma, posts);
+    res.json({ ok: true, coverUrl: post.coverUrl, posts: saved });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/social-feed/posts/:id/cover -> back to the platform's own
+// thumbnail (or the plain card, when there is none).
+router.delete("/social-feed/posts/:id/cover", async (req, res, next) => {
+  try {
+    const posts = await readPosts(prisma);
+    const post = posts.find((p) => p.id === req.params.id);
+    if (!post) return res.status(404).json({ error: "Post not found" });
+    post.coverUrl = null;
+    res.json({ ok: true, posts: await writePosts(prisma, posts) });
   } catch (e) {
     next(e);
   }
@@ -3087,6 +3349,113 @@ router.post("/tracks/:key/map", upload.single("file"), async (req, res, next) =>
     const current = await readTrackInfo(prisma, key);
     const saved = await writeTrackInfo(prisma, key, { ...current, mapImageUrl });
     res.json({ ok: true, mapImageUrl, content: saved });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/races/:id/attendance { state: "auto" | "open" | "closed" }
+// Decide by hand whether a race takes sign-ups, whatever the general rule says.
+router.put("/races/:id/attendance", async (req, res, next) => {
+  try {
+    const state = String(req.body?.state || "auto");
+    if (!ATTENDANCE_STATES.includes(state)) return res.status(400).json({ error: "Unknown state" });
+    const race = await prisma.race.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    res.json({ ok: true, overrides: await writeAttendanceOverride(prisma, race.id, state) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/attendance-history -> what people answered for the races that
+// have already run. The answers are never deleted when a result is saved, so
+// this is a straight read of what was there at the time.
+//
+// The reason to keep it rather than just count it: an answer is a promise, and
+// the interesting column is where the promise and the result disagree. Someone
+// who accepted and never appeared cost the grid a seat; someone who raced
+// without ever answering is a planning problem of a different kind. Both are
+// worked out here by comparing the sign-up against the classification.
+router.get("/attendance-history", async (req, res, next) => {
+  try {
+    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true, series: req.query.series });
+    if (!seasonId) return res.json({ races: [] });
+
+    const races = await prisma.race.findMany({
+      where: { seasonId, isCompleted: true },
+      orderBy: [{ date: "desc" }, { number: "desc" }],
+      include: {
+        rsvps: { include: { driver: { select: { id: true, name: true } } } },
+        // The driver comes along because the "raced without answering" list can
+        // only get its names from here — those people have no sign-up row.
+        results: { select: { driverId: true, status: true, driver: { select: { name: true } } } },
+      },
+    });
+    const types = await readRaceTypes(prisma, races.map((r) => r.id));
+
+    const out = races
+      // A race nobody ever answered has nothing to show; listing it would bury
+      // the ones that do under a wall of empty rows.
+      .filter((race) => race.rsvps.length > 0)
+      .map((race) => {
+        const grouped = { ACCEPTED: [], DECLINED: [], TENTATIVE: [] };
+        for (const r of race.rsvps) {
+          (grouped[r.status] || (grouped[r.status] = [])).push({ driverId: r.driverId, name: r.driver.name });
+        }
+        // "Raced" means classified in any way — a DNF still turned up.
+        const started = new Set(race.results.filter((r) => r.status !== "DNS").map((r) => r.driverId));
+        const answered = new Set(race.rsvps.map((r) => r.driverId));
+        return {
+          id: race.id,
+          number: race.number,
+          type: types.get(race.id) || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
+          track: race.track,
+          date: race.date,
+          counts: {
+            ACCEPTED: grouped.ACCEPTED.length,
+            DECLINED: grouped.DECLINED.length,
+            TENTATIVE: grouped.TENTATIVE.length,
+          },
+          rsvps: grouped,
+          // Said yes, never started.
+          noShows: grouped.ACCEPTED.filter((d) => !started.has(d.driverId)).map((d) => d.name),
+          // Started without ever answering.
+          unannounced: race.results
+            .filter((r) => r.status !== "DNS" && !answered.has(r.driverId))
+            .map((r) => r.driver?.name)
+            .filter(Boolean),
+          starters: started.size,
+        };
+      });
+    res.json({ races: out });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/attendance-gates -> the per-race overrides an admin has set.
+router.get("/attendance-gates", async (req, res, next) => {
+  try {
+    res.json(await readAttendanceOverrides(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/hotlap-fallback -> the stand-in lap's settings.
+router.get("/hotlap-fallback", async (req, res, next) => {
+  try {
+    res.json(await readHotlapFallback(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/hotlap-fallback { enabled, videoId|url, label }
+router.put("/hotlap-fallback", async (req, res, next) => {
+  try {
+    res.json(await writeHotlapFallback(prisma, req.body || {}));
   } catch (e) {
     next(e);
   }

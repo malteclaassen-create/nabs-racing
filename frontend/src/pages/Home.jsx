@@ -21,6 +21,7 @@ import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
+import SocialFeed from "../components/SocialFeed.jsx";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
@@ -1546,6 +1547,12 @@ export default function Home() {
           off-season the hero already carries the announcement (with the same
           countdown), so the strip stays away rather than repeating it. */}
       {season?.isActive && !offSeason && <NextSeasonTeaser data={teaser.data} />}
+
+      {/* ===================== SOCIAL WALL ===================== */}
+      {/* What we posted lately, on YouTube, Instagram and TikTok. Kept off the
+          archive seasons: "latest from our channels" under a two-year-old
+          championship table would be this week's clip in a museum. */}
+      {!isPast && <SocialFeed />}
 
       {/* ===================== DRIVERS' CHAMPIONSHIP ===================== */}
       <section className="reveal">

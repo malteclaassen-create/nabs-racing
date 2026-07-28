@@ -63,6 +63,9 @@ export default function RaceSignupCard({
   busy,
   onSetStatus,
   onClear,
+  // Lets the page place the card — the attendance layout hands it `lg:grow` so
+  // it fills whatever height the video beside it leaves over.
+  className = "",
 }) {
   const myStatus = ["ACCEPTED", "DECLINED", "TENTATIVE"].find((s) =>
     ev.rsvps[s].some((r) => r.driverId === driverId)
@@ -88,7 +91,15 @@ export default function RaceSignupCard({
     const t = setTimeout(() => forceTick((n) => n + 1), Math.min(ms + 250, 6 * 60 * 60 * 1000));
     return () => clearTimeout(t);
   }, [opensAt?.getTime()]);
-  const locked = opensAt && opensAt.getTime() > Date.now();
+  // Two ways to be shut: not open YET (a countdown to a known moment), or shut
+  // by an admin for this race (no moment to name — it opens when they say so).
+  const closedByAdmin = !!ev.attendanceClosed;
+  // `locked` = no answering. `notYetOpen` additionally hides the entry list,
+  // because before a sign-up opens there is nothing in it worth showing. A race
+  // an admin CLOSED is the opposite case: the list is the whole point — it's
+  // the final grid — so it stays, only the buttons go.
+  const notYetOpen = !closedByAdmin && !!opensAt && opensAt.getTime() > Date.now();
+  const locked = closedByAdmin || notYetOpen;
   const visible = ["ACCEPTED", "DECLINED", "TENTATIVE"].filter(
     (s) => !Array.isArray(ev.visibleStatuses) || ev.visibleStatuses.includes(s)
   );
@@ -102,7 +113,7 @@ export default function RaceSignupCard({
     });
 
   return (
-    <div className="card overflow-hidden">
+    <div className={`card flex flex-col overflow-hidden ${className}`}>
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-border px-5 py-4">
         <div>
           <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Sign-Up</h3>
@@ -117,7 +128,7 @@ export default function RaceSignupCard({
               <rect x="5" y="11" width="14" height="9" rx="2" />
               <path d="M8 11V8a4 4 0 118 0v3" />
             </svg>
-            Sign-up opens {opensLabel}
+            {closedByAdmin ? "Sign-up closed" : `Sign-up opens ${opensLabel}`}
           </div>
         ) : canSignUp ? (
           <div className="flex flex-wrap gap-2">
@@ -179,7 +190,7 @@ export default function RaceSignupCard({
       </div>
 
       {/* grid fill: how many of the available seats are taken */}
-      {!locked && visible.includes("ACCEPTED") && (
+      {!notYetOpen && visible.includes("ACCEPTED") && (
       <div className="border-b border-border px-5 py-3">
         <div className="flex items-center justify-between font-mono text-[10px] font-bold uppercase tracking-wider text-light">
           <span>Grid</span>
@@ -194,7 +205,7 @@ export default function RaceSignupCard({
       </div>
       )}
 
-      {locked ? (
+      {notYetOpen ? (
         <div className="p-5 text-sm leading-relaxed text-light">
           The attendance list opens {opensLabel}. You&rsquo;ll find the sign-up
           buttons and everyone&rsquo;s answers right here once it does.

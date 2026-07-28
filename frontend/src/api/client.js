@@ -394,6 +394,22 @@ export const api = {
   getSocial: () => request("/admin/social", { auth: true }),
   setSocial: (body) => request("/admin/social", { method: "PUT", body, auth: true }),
 
+  // Social wall on the home page: the league's latest posts. YouTube arrives on
+  // its own (channel feed), the rest is added by an admin.
+  socialFeed: () => request("/settings/social-feed"),
+  getSocialFeed: () => request("/admin/social-feed", { auth: true }),
+  setSocialFeed: (config) => request("/admin/social-feed", { method: "PUT", body: { config }, auth: true }),
+  addSocialPostsBulk: (text) => request("/admin/social-feed/posts/bulk", { method: "POST", body: { text }, auth: true }),
+  updateSocialPost: (id, post) => request(`/admin/social-feed/posts/${id}`, { method: "PUT", body: { post }, auth: true }),
+  deleteSocialPost: (id) => request(`/admin/social-feed/posts/${id}`, { method: "DELETE", auth: true }),
+  refreshSocialPost: (id) => request(`/admin/social-feed/posts/${id}/refresh`, { method: "POST", auth: true }),
+  uploadSocialCover: (id, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/social-feed/posts/${id}/cover`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  clearSocialCover: (id) => request(`/admin/social-feed/posts/${id}/cover`, { method: "DELETE", auth: true }),
+
   // Live Timing page external links (public read + admin manage)
   liveLinks: () => request("/settings/live"),
   getLiveLinks: () => request("/admin/live-links", { auth: true }),
@@ -638,6 +654,18 @@ export const api = {
     return request(`/admin/tracks/${key}/map`, { method: "POST", body: fd, auth: true, form: true });
   },
   clearTrackMap: (key) => request(`/admin/tracks/${key}/map`, { method: "DELETE", auth: true }),
+
+  // Who answered what for the races that have already run (season-scoped).
+  attendanceHistory: () => request(`/admin/attendance-history${seasonQ()}`, { auth: true }),
+
+  // Per-race sign-up switch (auto / forced open / forced closed).
+  attendanceGates: () => request("/admin/attendance-gates", { auth: true }),
+  setAttendanceGate: (raceId, state) =>
+    request(`/admin/races/${raceId}/attendance`, { method: "PUT", body: { state }, auth: true }),
+
+  // The stand-in hotlap: what a circuit with no real lap on file plays instead.
+  hotlapFallback: () => request("/admin/hotlap-fallback", { auth: true }),
+  saveHotlapFallback: (body) => request("/admin/hotlap-fallback", { method: "PUT", body, auth: true }),
 
   // Race Info page content (public read + admin edit)
   raceInfo: () => request("/settings/race-info"),

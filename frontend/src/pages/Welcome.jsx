@@ -9,6 +9,7 @@ import { useParallax, useTilt, useMagnetic, motionOff } from "../hooks/motion.js
 import Flag from "../components/Flag.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
+import SocialFeed from "../components/SocialFeed.jsx";
 import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
@@ -834,6 +835,22 @@ export default function Welcome() {
           )}
         </div>
       </section>
+
+      {/* ================= WHAT WE POST ================== */}
+      {/* The same wall as the member home page. On a newcomer landing it does a
+          different job: everything above is us describing ourselves, this is
+          the racing itself. Renders nothing at all until there is something to
+          show — see SocialFeed. */}
+      <SocialFeed
+        header={
+          <SectionHead
+            center
+            eyebrow="Off the track"
+            title="See us race"
+            sub="Onboards, highlights and the odd disaster, straight from our channels."
+          />
+        }
+      />
 
       {/* ====================== FINAL CTA ======================= */}
       <section className="reveal relative overflow-hidden rounded-[1.75rem] bg-ink p-10 text-center shadow-xl shadow-ink/20 sm:p-14">

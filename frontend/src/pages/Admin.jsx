@@ -12,6 +12,8 @@ import AdminDownloads from "../components/AdminDownloads.jsx";
 import AdminRaceInfo from "../components/AdminRaceInfo.jsx";
 import AdminWelcomeFaq from "../components/AdminWelcomeFaq.jsx";
 import AdminTracks from "../components/AdminTracks.jsx";
+import AdminAttendance from "../components/AdminAttendance.jsx";
+import AdminSocialFeed from "../components/AdminSocialFeed.jsx";
 import AdminHealth from "../components/AdminHealth.jsx";
 import AdminMembers from "../components/AdminMembers.jsx";
 import AdminNotifications from "../components/AdminNotifications.jsx";
@@ -30,6 +32,7 @@ const TAB_GROUPS = [
     label: "Race weekend",
     tabs: [
       { id: "discord", label: "Races & Events" },
+      { id: "attendance", label: "Attendance" },
       { id: "import", label: "Import Race" },
       { id: "edit", label: "Edit Results" },
     ],
@@ -334,10 +337,12 @@ export default function Admin() {
         {tab === "social" && (
           <div className="space-y-4">
             <SocialAdmin />
+            <AdminSocialFeed />
             <LiveLinksAdmin />
             <LiveServersAdmin />
           </div>
         )}
+        {tab === "attendance" && <AdminAttendance />}
         {tab === "tracks" && <AdminTracks />}
         {tab === "raceinfo" && <AdminRaceInfo />}
         {tab === "faq" && <AdminWelcomeFaq />}

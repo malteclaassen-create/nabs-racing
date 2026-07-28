@@ -14,7 +14,7 @@ import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { resolveSeries, seasonSeriesMap } from "../lib/series.js";
 import { getPersonGroups, getNameOverrides, getLinkedDriverIds } from "../lib/persons.js";
 import { telemetryForRaces } from "../lib/telemetryRead.js";
-import { readTrackInfo } from "../lib/trackInfo.js";
+import { readTrackInfo, readHotlapFallback, videosWithFallback } from "../lib/trackInfo.js";
 import { readTrackCountries, staticCountryFor } from "../lib/raceCountries.js";
 
 const router = Router();
@@ -65,7 +65,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
     const raceWhere = { isCompleted: true, isSpecialEvent: false };
     if (allowedSeasonIds) raceWhere.seasonId = { in: allowedSeasonIds };
 
-    const [races, groups, nameOverrides, info] = await Promise.all([
+    const [races, groups, nameOverrides, info, fallback] = await Promise.all([
       prisma.race.findMany({
         where: raceWhere,
         // Only the fields this endpoint actually reads.
@@ -81,7 +81,11 @@ router.get("/history", optionalUser, async (req, res, next) => {
       getPersonGroups(prisma),
       getNameOverrides(prisma),
       readTrackInfo(prisma, groupKey),
+      readHotlapFallback(prisma),
     ]);
+    // Real laps if there are any, the stand-in if there aren't and it's on.
+    const displayName = key ? displayNameFor(key) : track;
+    const videos = videosWithFallback(info.videos, fallback, displayName);
 
     // Races at this circuit: this series' seasons only, and only public
     // (non-private) ones unless we're admin.
@@ -97,7 +101,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
 
     if (!raceIds.length) {
       return res.json({
-        track: key ? displayNameFor(key) : track,
+        track: displayName,
         key: groupKey,
         country: dbCountry || staticCountryFor(track),
         stats: {},
@@ -105,6 +109,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
         customFacts: info.facts,
         mapImageUrl: info.mapImageUrl,
         mapRotation: info.mapRotation || 0,
+        videos,
         me: null,
       });
     }
@@ -236,7 +241,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
     }
 
     res.json({
-      track: key ? displayNameFor(key) : track,
+      track: displayName,
       key: groupKey,
       country: dbCountry || staticCountryFor(track),
       stats,
@@ -244,6 +249,8 @@ router.get("/history", optionalUser, async (req, res, next) => {
       customFacts: info.facts,
       mapImageUrl: info.mapImageUrl,
       mapRotation: info.mapRotation || 0,
+      // Hotlap videos for the circuit — the attendance page's own player.
+      videos,
       me,
     });
   } catch (e) {

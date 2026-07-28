@@ -9,7 +9,8 @@ import { readRaceTypes } from "../lib/raceTypes.js";
 import { seasonRowForDriver, dbLinkDrivers } from "../lib/persons.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import { applyMemberSteamId } from "../lib/members.js";
-import { readNotifySettings, attendanceOpensAt } from "../lib/notifications.js";
+import { readNotifySettings } from "../lib/notifications.js";
+import { readAttendanceOverrides, attendanceGate } from "../lib/attendanceGate.js";
 
 const router = Router();
 const VALID = ["ACCEPTED", "DECLINED", "TENTATIVE"];
@@ -106,9 +107,10 @@ router.get("/", async (req, res, next) => {
     const format = await readRaceFormat(prisma, races.map((r) => r.id));
 
     // Sign-up gating + which answer columns the page shows (admin-configured).
-    const notify = await readNotifySettings(prisma);
+    const [notify, overrides] = await Promise.all([readNotifySettings(prisma), readAttendanceOverrides(prisma)]);
 
     const events = races.map((race) => {
+      const gate = attendanceGate(race, notify, overrides);
       const grouped = { ACCEPTED: [], DECLINED: [], TENTATIVE: [] };
       for (const r of race.rsvps) {
         (grouped[r.status] || (grouped[r.status] = [])).push({
@@ -129,7 +131,10 @@ router.get("/", async (req, res, next) => {
         info: race.info,
         qualiMinutes: format.get(race.id)?.qualiMinutes ?? null,
         raceLaps: format.get(race.id)?.raceLaps ?? null,
-        attendanceOpensAt: attendanceOpensAt(race, notify)?.toISOString() ?? null,
+        attendanceOpensAt: gate.opensAt?.toISOString() ?? null,
+        // An admin shut this one: the card says so instead of counting down to
+        // an opening that isn't coming.
+        attendanceClosed: gate.forced === "closed",
         visibleStatuses: notify.attendanceShow,
         counts: {
           ACCEPTED: grouped.ACCEPTED.length,
@@ -159,13 +164,11 @@ router.get("/open", async (req, res, next) => {
       select: { id: true, date: true, isSpecialEvent: true },
     });
     const types = await readRaceTypes(prisma, upcoming.map((r) => r.id));
-    const notify = await readNotifySettings(prisma);
-    const now = Date.now();
+    const [notify, overrides] = await Promise.all([readNotifySettings(prisma), readAttendanceOverrides(prisma)]);
     const open = upcoming.some((r) => {
       const type = types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
       if (type === "SPECIAL") return false;
-      const opens = attendanceOpensAt(r, notify);
-      return !opens || opens.getTime() <= now;
+      return attendanceGate(r, notify, overrides).open;
     });
     res.json({ open });
   } catch (e) {
@@ -188,9 +191,13 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     if (!race) return res.status(404).json({ error: "Race not found" });
     if (race.isCompleted) return res.status(400).json({ error: "Race already completed" });
 
-    // The sign-up window (admin-configured) is enforced here too, so the
-    // buttons can't be worked around via the API before it opens.
-    const opens = attendanceOpensAt(race, await readNotifySettings(prisma));
+    // Enforced here too, so the buttons can't be worked around via the API.
+    const [notify, overrides] = await Promise.all([readNotifySettings(prisma), readAttendanceOverrides(prisma)]);
+    const gate = attendanceGate(race, notify, overrides);
+    if (gate.forced === "closed") {
+      return res.status(403).json({ error: "Sign-up for this race is closed" });
+    }
+    const opens = gate.opensAt;
     if (opens && opens.getTime() > Date.now()) {
       const when = new Intl.DateTimeFormat("en-GB", {
         timeZone: "UTC", weekday: "short", day: "2-digit", month: "short",
@@ -246,6 +253,14 @@ router.delete("/:id/rsvp/:driverId", optionalUser, async (req, res, next) => {
     // actually answered. (The :driverId param is ignored on purpose — the
     // caller can only ever remove their OWN response.)
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    // A race an admin has closed is closed both ways: the entry list they took
+    // it off the page to freeze must not quietly lose people afterwards.
+    if (race) {
+      const [notify, overrides] = await Promise.all([readNotifySettings(prisma), readAttendanceOverrides(prisma)]);
+      if (attendanceGate(race, notify, overrides).forced === "closed") {
+        return res.status(403).json({ error: "Sign-up for this race is closed" });
+      }
+    }
     const base = await prisma.driver.findUnique({ where: { id: driverId } });
     const driver = race && base ? await seasonRowForDriver(prisma, base, race.seasonId, req.user?.discordId) : base;
     await prisma.raceRsvp.deleteMany({

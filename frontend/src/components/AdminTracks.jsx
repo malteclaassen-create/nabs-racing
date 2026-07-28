@@ -14,6 +14,10 @@ export default function AdminTracks() {
   const { data: races } = useApi(useCallback(() => api.races(), []));
   const [selected, setSelected] = useState(""); // track display name
   const [facts, setFacts] = useState([]);
+  // The hotlap videos are edited in the Attendance tab, not here — but they
+  // live in the same stored record, so they are carried through a save from
+  // this page untouched. Without this, saving a fun fact would wipe the laps.
+  const [keepVideos, setKeepVideos] = useState([]);
   const [mapImageUrl, setMapImageUrl] = useState(null);
   const [country, setCountry] = useState(""); // effective flag code ("" = none)
   const [mapRotation, setMapRotation] = useState(0);
@@ -42,6 +46,7 @@ export default function AdminTracks() {
       .adminTrackInfo(key)
       .then((d) => {
         setFacts(d.facts?.length ? d.facts : [{ label: "", value: "" }]);
+        setKeepVideos(d.videos || []);
         setMapImageUrl(d.mapImageUrl || null);
         setMapRotation(d.mapRotation || 0);
         setCountry(d.country || "");
@@ -58,8 +63,14 @@ export default function AdminTracks() {
     setError(null);
     setMsg(null);
     try {
-      const content = { facts: facts.filter((f) => f.label.trim() || f.value.trim()), mapImageUrl, mapRotation };
-      await api.saveTrackInfo(key, content);
+      const content = {
+        facts: facts.filter((f) => f.label.trim() || f.value.trim()),
+        videos: keepVideos,
+        mapImageUrl,
+        mapRotation,
+      };
+      const res = await api.saveTrackInfo(key, content);
+      setKeepVideos(res?.content?.videos || []);
       // Flag country lives on the races themselves (all seasons of this
       // circuit), not in the info blob.
       await api.saveTrackCountry(key, country || null);
@@ -107,6 +118,8 @@ export default function AdminTracks() {
         <p className="mt-1 text-sm text-light">
           Add fun facts and a custom map image for a circuit. They show on the upcoming-race panel and the attendance
           page, on top of the automatic track record (wins, fastest lap, poles, crashes) computed from every season.
+          Everything here is per circuit, so it comes back every time the track is raced. The hotlap videos moved to
+          their own tab: Race weekend &rarr; Attendance.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="text-sm font-semibold text-medium">Track</label>

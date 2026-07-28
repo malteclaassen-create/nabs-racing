@@ -6,6 +6,7 @@ import prisma from "../lib/prisma.js";
 import { readRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq } from "../lib/welcomeFaq.js";
 import { discordMemberCount, leagueSince, yearsOfRacing } from "../lib/leagueStats.js";
+import { buildFeed } from "../lib/socialFeed.js";
 
 const router = Router();
 
@@ -74,6 +75,18 @@ router.get("/live", async (req, res, next) => {
 router.get("/race-info", async (req, res, next) => {
   try {
     res.json({ content: await readRaceInfo(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/settings/social-feed -> the cards for the home page's social wall:
+// the league's latest YouTube videos (read from the channel's public feed) mixed
+// with the Instagram/TikTok posts an admin added by hand. See lib/socialFeed.js.
+// Never fails the page: a platform that doesn't answer just means fewer cards.
+router.get("/social-feed", async (req, res, next) => {
+  try {
+    res.json(await buildFeed(prisma));
   } catch (e) {
     next(e);
   }

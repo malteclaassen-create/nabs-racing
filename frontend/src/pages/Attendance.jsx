@@ -7,6 +7,7 @@ import { ErrorBox, PageHeader, TableSkeleton, EmptyState, Notice } from "../comp
 import RaceSignupCard from "../components/RaceSignupCard.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
+import VideoEmbed from "../components/VideoEmbed.jsx";
 import Flag from "../components/Flag.jsx";
 import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
@@ -24,6 +25,54 @@ function fmtLap(ms) {
 }
 function fmtDate(d) {
   return new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
+}
+
+// Hotlap videos for the circuit, from the admin's Attendance tab. One player
+// with a picker above it when there's more than one lap on file (a season's car
+// each, say). Renders nothing at all for a track without videos — an empty
+// player window would just be a hole in the page.
+function TrackVideos({ track, videos }) {
+  const [i, setI] = useState(0);
+  useEffect(() => setI(0), [track]);
+  if (!videos?.length) return null;
+  const current = videos[Math.min(i, videos.length - 1)];
+  return (
+    <div className="card overflow-hidden p-5">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Hotlap</h3>
+        <span className="font-mono text-[11px] uppercase tracking-wider text-light">Learn {track} before Friday</span>
+      </div>
+      {videos.length > 1 && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {videos.map((v, idx) => (
+            <button
+              key={v.id}
+              type="button"
+              aria-pressed={idx === i}
+              onClick={() => setI(idx)}
+              className={`inline-flex min-h-[36px] items-center rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+                idx === i ? "bg-brand text-ink" : "bg-surface2 text-medium hover:text-dark"
+              }`}
+            >
+              {v.title || `Lap ${idx + 1}`}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* `poster` is normally absent, and the player uses YouTube's own still.
+          The stand-in lap sends `false`, meaning "no still" — see the backend's
+          lib/trackInfo.js for why. */}
+      <VideoEmbed
+        videoId={current.id}
+        poster={current.poster}
+        title={current.title || `${track} hotlap`}
+        className="rounded-xl"
+      />
+      {current.title && videos.length === 1 && (
+        <p className="mt-2.5 text-sm font-semibold text-medium">{current.title}</p>
+      )}
+    </div>
+  );
 }
 
 // Personal history at the selected track (from trackHistory.me).
@@ -234,9 +283,17 @@ export default function Attendance() {
             </div>
           )}
 
-          {/* hero strip: race identity on the left, the live broadcast-style
-              countdown (same clock as the home page) on the right. No circuit
-              watermark here on purpose — it collided with the countdown tiles. */}
+          {/* From here on the page is composed rather than written out: with a
+              lap on file it splits in two — everything about the race and
+              signing up on the left, the video on the right — and without one it
+              stays the single column it has always been. Building the pieces as
+              values first is what keeps those two arrangements from drifting
+              apart as separate copies of the same JSX. */}
+          {(() => {
+          const heroCard = (
+          /* hero strip: race identity on the left, the live broadcast-style
+             countdown (same clock as the home page) on the right. No circuit
+             watermark here on purpose — it collided with the countdown tiles. */
           <div className="card relative overflow-hidden p-5 sm:p-6">
             <div className="relative flex flex-wrap items-center justify-between gap-x-8 gap-y-4">
               <div className="min-w-0">
@@ -276,54 +333,94 @@ export default function Attendance() {
               </p>
             )}
           </div>
+          );
 
-          {error && <ErrorBox message={error} />}
+          const ratingCard =
+            canSignUp && mine.data && mine.data[1] ? (
+              <RatingCard driver={mine.data[0].driver} rating={mine.data[1]} />
+            ) : null;
 
-          {/* driver card top-left, sign-up next to it; the personal track
-              history sits under the sign-up. Members without a linked driver
-              (and logged-out visitors) just get the sign-up list full width. */}
-          {canSignUp && mine.data && mine.data[1] ? (
-            <div className="grid gap-6 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
-              <div className="flex justify-center lg:sticky lg:top-28">
-                <RatingCard driver={mine.data[0].driver} rating={mine.data[1]} />
+          const signUpCard = (
+            <RaceSignupCard
+              ev={ev}
+              marketRace={marketByRace.get(ev.id)}
+              me={market.data?.me}
+              reloadMarket={market.reload}
+              driverId={driverId}
+              canSignUp={canSignUp}
+              isLoggedIn={isLoggedIn}
+              raceRequest={raceRequest.data}
+              onRequestSeat={requestSeat}
+              busy={busy}
+              onSetStatus={setStatus}
+              onClear={clearStatus}
+              // Takes the height the video leaves over in the split layout; no
+              // effect in the single-column one, where nothing is flexing.
+              className="lg:grow"
+            />
+          );
+
+          // Shown to everyone, signed in or not: the lap is public.
+          const hasVideo = (hist.data?.videos || []).length > 0;
+          const videoPanel = <TrackVideos track={ev.track} videos={hist.data?.videos} />;
+          const history = canSignUp ? <MyTrackHistory track={ev.track} me={hist.data?.me} /> : null;
+          const errorBox = error ? <ErrorBox message={error} /> : null;
+
+          // With a lap on file the page splits: the race and the sign-up down
+          // the left, the video on the right, and NOTHING else. The driver card
+          // and the track history are deliberately left off this version —
+          // both were tried alongside the video and made the page a wall, and
+          // the driver card in particular ran the right column some 300px past
+          // anything the left had to fill it with, which landed inside the
+          // sign-up card as blank panel. They come back on their own when a
+          // circuit has no lap on file (below).
+          //
+          // Half and half, so the video is a window you can actually watch
+          // rather than a thumbnail parked in a margin. Shares rather than a
+          // fixed sidebar width: the split then holds on a wider screen
+          // instead of leaving the video behind.
+          if (hasVideo) {
+            return (
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <div className="flex min-w-0 flex-col gap-6">
+                  {heroCard}
+                  {errorBox}
+                  {signUpCard}
+                </div>
+                {/* The sticky wrapper sits INSIDE the stretched column: a
+                    sticky element that is itself as tall as the row has nothing
+                    left to scroll within. */}
+                <div className="min-w-0">
+                  <div className="lg:sticky lg:top-28">{videoPanel}</div>
+                </div>
               </div>
-              <div className="min-w-0 space-y-6">
-                <RaceSignupCard
-                  ev={ev}
-                  marketRace={marketByRace.get(ev.id)}
-                  me={market.data?.me}
-                  reloadMarket={market.reload}
-                  driverId={driverId}
-                  canSignUp={canSignUp}
-                  isLoggedIn={isLoggedIn}
-                  raceRequest={raceRequest.data}
-                  onRequestSeat={requestSeat}
-                  busy={busy}
-                  onSetStatus={setStatus}
-                  onClear={clearStatus}
-                />
-                <MyTrackHistory track={ev.track} me={hist.data?.me} />
-              </div>
+            );
+          }
+
+          // No lap: the page it has always been — driver card top-left, sign-up
+          // next to it, personal history underneath. Members without a linked
+          // driver (and logged-out visitors) get the sign-up list full width.
+          return (
+            <div className="space-y-6">
+              {heroCard}
+              {errorBox}
+              {ratingCard ? (
+                <div className="grid gap-6 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
+                  <div className="flex justify-center lg:sticky lg:top-28">{ratingCard}</div>
+                  <div className="min-w-0 space-y-6">
+                    {signUpCard}
+                    {history}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {signUpCard}
+                  {history}
+                </>
+              )}
             </div>
-          ) : (
-            <>
-              <RaceSignupCard
-                ev={ev}
-                marketRace={marketByRace.get(ev.id)}
-                me={market.data?.me}
-                reloadMarket={market.reload}
-                driverId={driverId}
-                canSignUp={canSignUp}
-                isLoggedIn={isLoggedIn}
-                raceRequest={raceRequest.data}
-                onRequestSeat={requestSeat}
-                busy={busy}
-                onSetStatus={setStatus}
-                onClear={clearStatus}
-              />
-              {canSignUp && <MyTrackHistory track={ev.track} me={hist.data?.me} />}
-            </>
-          )}
+          );
+          })()}
         </>
       )}
     </div>
