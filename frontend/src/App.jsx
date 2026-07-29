@@ -12,6 +12,7 @@ import Logo from "./components/Logo.jsx";
 import SocialLinks, { useSocial, SocialIcon } from "./components/SocialLinks.jsx";
 import { useAuth } from "./hooks/useAuth.js";
 import PreviewToggle from "./components/PreviewToggle.jsx";
+import ScrollBar from "./components/ScrollBar.jsx";
 import FeedbackWidget from "./components/FeedbackWidget.jsx";
 import { Skeleton } from "./components/ui.jsx";
 import { usePreviewMode, applyPreviewFromUrl } from "./preview.js";
@@ -383,6 +384,7 @@ function SeriesScopedApp() {
           <Footer />
         </div>
         <PreviewToggle />
+        <ScrollBar />
         {/* Bug reports & feature wishes. Its own floating button on desktop
             (bottom right); on phones it has no button of its own and is opened
             from the "Feedback" row in the burger menu. */}

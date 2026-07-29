@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { SocialIcon } from "./SocialLinks.jsx";
+import { SocialIcon, SOCIAL_META, useSocial } from "./SocialLinks.jsx";
 import VideoEmbed from "./VideoEmbed.jsx";
 
 // The league's own posts on the home page: the newest YouTube videos (pulled
@@ -34,9 +34,13 @@ function caption(title) {
   return s.replace(/(\s+#[\p{L}\p{N}_]+)+$/u, "").trim() || s;
 }
 
-function PostCard({ post }) {
+function PostCard({ post, channel }) {
   const meta = PLATFORM[post.platform] || { label: post.platform, accent: "#64748b" };
   const aspect = post.aspect || 16 / 9;
+  // The heading doubles as the way to the channel itself — same address the
+  // footer icons use, so there is one place to change it. Without a link
+  // configured for that platform it stays plain text rather than a dead one.
+  const hover = SOCIAL_META.find((m) => m.key === post.platform)?.hover || "";
 
   return (
     // Every window is the SAME HEIGHT, and the row fills the page edge to edge.
@@ -57,11 +61,28 @@ function PostCard({ post }) {
           text, and both given fixed room whether they fill it or not — a caption
           one line longer than its neighbour would otherwise push its window down
           and leave the row's top edge crooked. */}
-      <div className="mb-1.5 flex h-4 items-center gap-1.5">
-        <span style={{ color: meta.accent }}>
-          <SocialIcon name={post.platform} className="h-3.5 w-3.5" />
-        </span>
-        <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">{meta.label}</span>
+      <div className="mb-1.5 flex h-4 items-center">
+        {channel ? (
+          <a
+            href={channel}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Our ${meta.label} channel`}
+            className={`inline-flex items-center gap-1.5 text-eyebrow transition ${hover}`}
+          >
+            <span style={{ color: meta.accent }}>
+              <SocialIcon name={post.platform} className="h-3.5 w-3.5" />
+            </span>
+            <span className="font-mono text-[11px] font-bold uppercase tracking-widest">{meta.label}</span>
+          </a>
+        ) : (
+          <span className="inline-flex items-center gap-1.5">
+            <span style={{ color: meta.accent }}>
+              <SocialIcon name={post.platform} className="h-3.5 w-3.5" />
+            </span>
+            <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">{meta.label}</span>
+          </span>
+        )}
       </div>
       <p className="mb-2 line-clamp-2 h-9 text-[13px] font-semibold leading-snug text-medium">{caption(post.title)}</p>
 
@@ -120,6 +141,8 @@ function PostCard({ post }) {
 // a title over nothing is worse than no section at all.
 export default function SocialFeed({ header }) {
   const { data } = useApi(useCallback(() => api.socialFeed(), []));
+  // The league's own channel addresses, shared with the footer icons.
+  const social = useSocial();
   const posts = data?.posts || [];
   // Nothing configured yet, the switch is off, or every platform stayed quiet:
   // the section simply isn't there. No empty state on the page.
@@ -135,7 +158,7 @@ export default function SocialFeed({ header }) {
           fill, which is why it stays centred. */}
       <div className="cascade flex flex-col gap-4 [--cap-h:32rem] [--row-h:15rem] sm:flex-row sm:flex-wrap sm:justify-center lg:[--row-h:17rem]">
         {posts.map((p) => (
-          <PostCard key={p.id} post={p} />
+          <PostCard key={p.id} post={p} channel={social.data?.[p.platform] || null} />
         ))}
       </div>
     </section>
