@@ -300,6 +300,14 @@ export const api = {
   adminFeedback: () => request("/admin/feedback", { auth: true }),
   updateFeedback: (id, body) => request(`/admin/feedback/${id}`, { method: "PATCH", body, auth: true }),
   deleteFeedback: (id) => request(`/admin/feedback/${id}`, { method: "DELETE", auth: true }),
+  // The conversation on a report: the admin answers (the sender's bell rings),
+  // the sender writes back (the admins' bells ring). Member side needs a login,
+  // so it rides on the user token.
+  replyToFeedback: (id, body, status) =>
+    request(`/admin/feedback/${id}/reply`, { method: "POST", body: { body, status }, auth: true }),
+  myFeedback: () => request("/feedback/mine", { userAuth: true }),
+  sendFeedbackReply: (id, body) =>
+    request(`/feedback/${id}/reply`, { method: "POST", body: { body }, userAuth: true }),
 
   // logged-in driver self-service
   me: () => request("/me", { userAuth: true }),

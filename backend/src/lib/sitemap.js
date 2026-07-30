@@ -38,6 +38,7 @@ const DISALLOW = [
   "/api/", // the JSON API itself
   "/admin", // league office
   "/profile", // a member's own area
+  "/feedback", // a member's own messages to the admins
   "/cockpit",
   "/cards",
   "/downloads", // member-only files

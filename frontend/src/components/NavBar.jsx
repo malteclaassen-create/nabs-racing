@@ -312,6 +312,9 @@ function ScrollProgressLine() {
 
 export default function NavBar() {
   const { seriesPath } = useSeriesPath();
+  // Members get the extra menu row to their own feedback threads; a visitor has
+  // no threads to read (there is no account for an answer to land in).
+  const { isLoggedIn } = useAuth();
   // One state machine, so open/closing can never contradict each other:
   // "closed" -> "open" (panel mounts, drop-in plays) -> "closing" (stays
   // mounted while the drop-out plays) -> "closed" (unmount). Tapping the
@@ -633,6 +636,9 @@ export default function NavBar() {
                   openFeedback();
                 }}
               />
+              {isLoggedIn && (
+                <MobileRow to="/feedback" icon={NAV_ICONS.feedback} label="Your messages" sub="What the admins replied" />
+              )}
             </div>
           </div>
         </div>

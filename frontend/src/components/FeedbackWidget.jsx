@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
 import SlidingTabs from "./SlidingTabs.jsx";
@@ -248,6 +248,15 @@ export default function FeedbackWidget() {
                   Your message is with the admins. If it was a bug, it helps to know they can see which page
                   you were on and what browser you use.
                 </p>
+                {isLoggedIn && (
+                  <p className="text-sm leading-relaxed text-medium">
+                    If they answer, you get a notification and can write back on{" "}
+                    <Link to="/feedback" onClick={close} className="font-semibold text-link hover:underline">
+                      your messages page
+                    </Link>
+                    .
+                  </p>
+                )}
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setSent(false)} className="btn-secondary flex-1">
                     Write another
@@ -288,9 +297,18 @@ export default function FeedbackWidget() {
                 )}
 
                 <p className="text-xs leading-relaxed text-light">
-                  {isLoggedIn
-                    ? `Sent as ${user?.driverName || user?.discordName || "your account"}, along with the page you're on.`
-                    : "Nobody needs an account for this. Leave a name above if you'd like an answer."}
+                  {isLoggedIn ? (
+                    <>
+                      Sent as {user?.driverName || user?.discordName || "your account"}, along with the page
+                      you&rsquo;re on. Answers land in your bell and on{" "}
+                      <Link to="/feedback" onClick={close} className="font-semibold text-link hover:underline">
+                        your messages page
+                      </Link>
+                      .
+                    </>
+                  ) : (
+                    "Nobody needs an account for this. Leave a name above if you'd like an answer."
+                  )}
                 </p>
 
                 {error && <p className="text-sm font-medium text-bad">{error}</p>}

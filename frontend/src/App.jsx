@@ -46,6 +46,9 @@ const CardGallery = lazy(() => import("./pages/CardGallery.jsx"));
 const Profile = lazy(() => import("./pages/Profile.jsx"));
 const Cockpit = lazy(() => import("./pages/Cockpit.jsx"));
 const Tools = lazy(() => import("./pages/Tools.jsx"));
+// Your own feedback threads. Only ever opened from a notification or the
+// feedback panel, so it has no business in the initial bundle.
+const MyFeedback = lazy(() => import("./pages/MyFeedback.jsx"));
 
 // Keeps the browser-tab title in sync with the page and the season being viewed.
 //
@@ -215,6 +218,9 @@ function AppRoutes() {
             upcoming-race panel and the private profile. */}
         <Route path="/tools" element={<Tools />} />
         <Route path="/profile" element={<Profile />} />
+        {/* Your own feedback threads. Reached from the notification the admins'
+            answer sends (/feedback?id=…) and from the feedback panel itself. */}
+        <Route path="/feedback" element={<MyFeedback />} />
         {/* The member's private driver area (login required). */}
         <Route path="/cockpit" element={<Cockpit />} />
         {/* Focused editor for just the driver's rating card (linked from /profile). */}

@@ -288,6 +288,21 @@ export async function ensureAppSchema(prisma) {
     `CREATE INDEX IF NOT EXISTS "Feedback_createdAt_idx" ON "Feedback"("createdAt")`
   );
 
+  // --- The thread on a piece of feedback (migration feedback_replies): the
+  // admins' answer (author ADMIN) and the sender writing back (author SENDER).
+  // Only feedback from a signed-in member can have one. See lib/feedback.js.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "FeedbackReply" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "feedbackId" TEXT NOT NULL,
+    "author" TEXT NOT NULL,
+    "authorName" TEXT,
+    "body" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "FeedbackReply_feedbackId_idx" ON "FeedbackReply"("feedbackId")`
+  );
+
   // --- Phase 3: cross-season person links. One row per driver row that belongs
   // to a person; all driver rows of the same person share one personId.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PersonLink" (

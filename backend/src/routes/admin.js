@@ -37,7 +37,14 @@ import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFo
 import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq, writeWelcomeFaq } from "../lib/welcomeFaq.js";
-import { dbListFeedback, dbGetFeedback, dbUpdateFeedback, dbDeleteFeedback } from "../lib/feedback.js";
+import {
+  dbListFeedback,
+  dbGetFeedback,
+  dbUpdateFeedback,
+  dbDeleteFeedback,
+  dbAddFeedbackReply,
+  notifySenderOfReply,
+} from "../lib/feedback.js";
 import {
   dbListMembers, dbGetMember, dbSetBanned, dbClearRaceRequest, shapeMember, applyMemberSteamId,
 } from "../lib/members.js";
@@ -3722,7 +3729,15 @@ router.put("/welcome-faq", async (req, res, next) => {
 router.get("/feedback", async (req, res, next) => {
   try {
     const items = await dbListFeedback(prisma);
-    res.json({ items, newCount: items.filter((i) => i.status === "NEW").length });
+    // The tab's badge counts everything the office still owes an answer: reports
+    // nobody has touched, plus threads where the sender wrote back last (which
+    // can sit under an entry that was long since marked done).
+    const needsAttention = (i) => {
+      if (i.status === "NEW") return true;
+      const last = i.replies[i.replies.length - 1];
+      return !!last && last.author === "SENDER";
+    };
+    res.json({ items, newCount: items.filter(needsAttention).length });
   } catch (e) {
     next(e);
   }
@@ -3746,6 +3761,39 @@ router.delete("/feedback/:id", async (req, res, next) => {
   try {
     await dbDeleteFeedback(prisma, req.params.id);
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Answer a piece of feedback. The reply lands in the sender's notification bell
+// with a link to their own /feedback page, where they can write back — so this
+// is a conversation, not a receipt. Only works for a sender who was signed in;
+// a logged-out one left a contact line instead and has to be reached there.
+// `status` may ride along, since answering and filing usually happen in one go.
+router.post("/feedback/:id/reply", async (req, res, next) => {
+  try {
+    const entry = await dbGetFeedback(prisma, req.params.id);
+    if (!entry) return res.status(404).json({ error: "Not found" });
+    if (!entry.discordId) {
+      return res.status(400).json({
+        error: "This was sent without a login, so there's no account to answer to.",
+      });
+    }
+    const reply = await dbAddFeedbackReply(prisma, {
+      feedbackId: entry.id,
+      author: "ADMIN",
+      // A designated Discord admin signs with their name; the PIN admin has no
+      // name to give, so the thread simply says it came from the league office.
+      authorName: req.user?.driverName || req.user?.discordName || null,
+      body: req.body?.body,
+    });
+    if (req.body?.status !== undefined) {
+      await dbUpdateFeedback(prisma, entry.id, { status: req.body.status });
+    }
+    // Never make the admin's request wait on (or fail with) a bell write.
+    notifySenderOfReply(prisma, entry, reply).catch(() => {});
+    res.json({ ok: true, item: await dbGetFeedback(prisma, entry.id) });
   } catch (e) {
     next(e);
   }

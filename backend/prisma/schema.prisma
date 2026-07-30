@@ -535,6 +535,22 @@ model Feedback {
   @@index([createdAt])
 }
 
+// One message in the conversation about a piece of feedback: the admins' answer
+// (author ADMIN) or the sender writing back (author SENDER). Only exists for
+// feedback that came from a signed-in member — a logged-out sender has no
+// account to answer to. Each message pings the other side's notification bell.
+// Raw SQL like Feedback itself; see backend/src/lib/feedback.js.
+model FeedbackReply {
+  id         String   @id
+  feedbackId String
+  author     String // ADMIN | SENDER
+  authorName String? // who wrote it, for the thread's byline
+  body       String
+  createdAt  DateTime @default(now())
+
+  @@index([feedbackId])
+}
+
 // Cross-season identity. Driver rows are per-season (a person racing in three
 // seasons has three Driver rows); this table groups those rows under one shared
 // personId so career stats aggregate and archive tables can show the person's

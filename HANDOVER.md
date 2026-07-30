@@ -220,10 +220,17 @@ external links. Members see them immediately.
 **Feedback from the drivers:** the site has a small **Feedback** button
 (bottom right on a computer, in the menu on a phone) that anyone can use to
 report a bug or ask for a feature. Everything written there lands in
-**Admin -> Feedback**, and the number next to that tab is how many you have
-not looked at yet. Mark an entry planned, done or won't do to file it away;
-nobody is notified either way, so anything that needs an answer you give in
-Discord.
+**Admin -> Feedback**, and the number next to that tab is how many still need
+something from you. Mark an entry planned, done or won't do to file it away;
+that on its own tells the sender nothing.
+
+To answer somebody, press **Reply** on their entry. They get a notification
+with your answer and can write back from their own **Your messages** page,
+which brings the entry back to the top of your list with a "new reply" mark
+(the **Waiting on you** filter shows only those). This only works for reports
+sent by someone who was signed in; a logged-out visitor has no account for an
+answer to arrive in, so their entry shows whatever contact line they left and
+you reach them there.
 
 **Cost:** the Hobby plan is $5/month. On top, Railway charges for storage
 and **outgoing traffic**. Database and images are tiny; the danger is
