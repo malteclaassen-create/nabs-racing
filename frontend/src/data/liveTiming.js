@@ -45,6 +45,14 @@ export function formatGap(ms) {
   return `+${(ms / 1000).toFixed(3)}`;
 }
 
+// Top speed -> "312.47" (km/h, two decimals). The server sends the value with
+// its decimals intact; a bare integer hid how close two cars actually were down
+// the straight. Anything missing (or a car with no lap yet) -> "—".
+export function formatSpeed(kmh) {
+  if (kmh == null || !Number.isFinite(Number(kmh)) || Number(kmh) <= 0) return "—";
+  return Number(kmh).toFixed(2);
+}
+
 // Sector time -> "31.116". null -> "—".
 export function formatSector(ms) {
   if (!ms || ms <= 0) return "—";

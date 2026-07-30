@@ -528,7 +528,11 @@ function createRelay(server) {
       // clock from here (now - lastLapAt) for on-track drivers.
       lastLapAt: car?.LastLapCompletedTime ? Date.parse(car.LastLapCompletedTime) || null : null,
       lapCount: car?.NumLaps ?? d.TotalNumLaps ?? 0,
-      topSpeed: car && car.TopSpeedBestLap ? Math.round(car.TopSpeedBestLap) : null,
+      // Two decimals, not a whole number: on a long straight two cars are often
+      // within a tenth of a km/h of each other, and rounding threw exactly the
+      // digits away that tell them apart. The frontend decides how many of them
+      // to print.
+      topSpeed: car && car.TopSpeedBestLap ? Math.round(car.TopSpeedBestLap * 100) / 100 : null,
       sectors: sectorsOf(car?.BestLapSplits),
       potentialMs: potentialOf(car?.BestSplits),
       inPits: live.IsInPits ?? d.IsInPits ?? false,
@@ -820,9 +824,13 @@ function getDemoBoard() {
       // timestamp made every clock run in lockstep.
       lastLapAt: Date.now() - Math.round(spline * (80500 + idx * 200)),
       lapCount: c.lapBase + lapsDone,
-      topSpeed: 330 - idx,
+      // Fractional, like the real thing (see buildEntry), so the demo exercises
+      // the two decimals the timing table prints.
+      topSpeed: Math.round((330.4 - idx * 1.37) * 100) / 100,
       sectors: [null, null, null],
-      potentialMs: null,
+      // No sector times in the demo, but an ideal lap the table can sort by:
+      // a few tenths under each car's best, as a real one always is.
+      potentialMs: 80000 + idx * 180 - (140 + idx * 9),
       numPits: Math.max(0, c.stints.length - 1),
       ping: 30 + idx,
       drs: false,

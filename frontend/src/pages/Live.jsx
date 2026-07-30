@@ -13,6 +13,8 @@ import { circuitForLive } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { SocialIcon, useSocial } from "../components/SocialLinks.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import { LiveSortMenu, LiveColumnsMenu } from "../components/LiveTableMenu.jsx";
+import { useLiveTablePrefs } from "../hooks/useLiveTablePrefs.js";
 import {
   makeDriverMatcher,
   formatLap,
@@ -21,6 +23,7 @@ import {
   formatCountdown,
   formatRunning,
   formatDelta,
+  formatSpeed,
   countryCodeFromName,
   tyreCompound,
   COMPOUND_ORDER,
@@ -258,8 +261,10 @@ function carLabel(carName) {
 
 // Shared driver identity cell (team colour bar, flag, name, team).
 // `mobileBadges`: on phones the DRS/PIT badges have no column of their own, so
-// they ride along with the driver's name (see COLS).
-function DriverCell({ e, match, showLiveDot, mobileBadges = false }) {
+// they ride along with the driver's name (see TIMING_COLUMNS).
+// `badgesAlways`: same thing at every width, for a reader who switched the flags
+// column off entirely — the badges are the only place PIT is visible.
+function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways = false }) {
   const name = match?.nabsName || e.name;
   const color = match?.teamColor || "var(--c-border)";
   return (
@@ -294,8 +299,8 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false }) {
           )}
           {/* DRS/PIT sit in their own column from sm up; on phones that column
               is 55px of mostly-empty width, so the badges ride with the name. */}
-          {mobileBadges && (e.drs || e.inPits) && (
-            <span className="flex shrink-0 gap-1 sm:hidden">
+          {(mobileBadges || badgesAlways) && (e.drs || e.inPits) && (
+            <span className={`flex shrink-0 gap-1 ${badgesAlways ? "" : "sm:hidden"}`}>
               {e.drs && <span className="pill bg-sky-500/15 text-sky-600">DRS</span>}
               {e.inPits && <span className="pill bg-amber-500/15 text-warn">PIT</span>}
             </span>
@@ -392,84 +397,380 @@ const ONTRACK_COLS = [
   { label: "", cls: "py-3 pr-5" },
 ];
 
-function Row({ e, match, index = 0 }) {
+/* ===== Session Best Times: the columns ==================================== */
+//
+// One entry per column of the classification, in table order. Everything about a
+// column lives in its entry — the header, how a cell renders, what sorting by it
+// means — so the table itself is a loop and adding a column is one object here.
+//
+//   bp      the width from which the column appears in AUTOMATIC mode ("" =
+//           always). A phone gets the essentials, a wide monitor the lot.
+//   optIn   not in the automatic set at all: only shows if someone ticks it in
+//           the Table menu. Answers that are interesting to ask for and clutter
+//           the rest of the time.
+//   locked  can't be switched off (position, driver, best lap: without those
+//           three the board isn't a classification).
+//   sortValue / sortDir  makes the column sortable, and says which way round it
+//           reads naturally (lap times low to high, speeds and laps high to low).
+//
+// See components/LiveTableMenu.jsx for the picker and hooks/useLiveTablePrefs.js
+// for what gets remembered.
+const TIMING_COLUMNS = [
+  {
+    key: "pos",
+    label: "Pos",
+    locked: true,
+    bp: "",
+    align: "center",
+    extraCls: "w-14",
+    padCls: "pl-3.5 pr-2 sm:pl-5",
+    cell: (e) => (
+      <span
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums ${
+          e.position === 1 ? "bg-brand text-ink" : "text-medium"
+        }`}
+      >
+        {e.position}
+      </span>
+    ),
+  },
+  {
+    key: "driver",
+    label: "Driver",
+    locked: true,
+    bp: "",
+    align: "left",
+    padCls: "pl-1 pr-3",
+    cell: (e, ctx) => (
+      <DriverCell
+        e={e}
+        match={ctx.match(e.name)}
+        showLiveDot
+        mobileBadges={ctx.badges === "mobile"}
+        badgesAlways={ctx.badges === "always"}
+      />
+    ),
+  },
+  {
+    key: "number",
+    label: "No.",
+    sortLabel: "Race number",
+    optIn: true,
+    align: "center",
+    hint: "The number on the car",
+    sortValue: (e) => e.raceNumber ?? null,
+    cell: (e) => (
+      <span className="font-mono text-sm font-bold tabular-nums text-light">
+        {e.raceNumber != null ? `#${e.raceNumber}` : "—"}
+      </span>
+    ),
+  },
+  {
+    key: "car",
+    label: "Car",
+    optIn: true,
+    align: "left",
+    hint: "Which car they're driving",
+    cell: (e) => (
+      <span className="block max-w-[12rem] truncate text-xs text-light" title={e.carName || ""}>
+        {carLabel(e.carName) || "—"}
+      </span>
+    ),
+  },
+  {
+    key: "sectors",
+    label: "Sectors",
+    bp: "lg",
+    align: "left",
+    hint: "The three sectors of their best lap",
+    cell: (e) => (
+      <div className="flex gap-1">
+        {e.sectors.map((s, i) => (
+          <Sector key={i} s={s} />
+        ))}
+      </div>
+    ),
+  },
+  {
+    key: "best",
+    label: "Best",
+    sortLabel: "Best lap",
+    locked: true,
+    bp: "",
+    align: "right",
+    sortValue: (e) => e.bestLapMs || null,
+    sortDir: "asc",
+    cell: (e, ctx) => (
+      <>
+        <span className={`font-mono text-base font-bold tabular-nums ${e.position === 1 ? "text-eyebrow" : "text-dark"}`}>
+          {formatLap(e.bestLapMs)}
+        </span>
+        {/* When the gap has no column of its own it sits directly under the lap
+            it refers to: on phones in automatic mode (where the Gap column is
+            sm-and-up), and at any width for someone who switched that column
+            off. Nothing for the leader (gap 0) or a driver without a time. */}
+        {e.gapToBestMs && ctx.inlineGap !== "never" ? (
+          <span
+            className={`block font-mono text-xs tabular-nums text-light ${
+              ctx.inlineGap === "mobile" ? "sm:hidden" : ""
+            }`}
+          >
+            {formatGap(e.gapToBestMs)}
+          </span>
+        ) : null}
+      </>
+    ),
+  },
+  {
+    key: "potential",
+    label: "Potential",
+    sortLabel: "Potential lap",
+    bp: "md",
+    align: "right",
+    hint: "Their three best sectors added up",
+    sortValue: (e) => e.potentialMs || null,
+    sortDir: "asc",
+    cell: (e) => (
+      <span className="font-mono text-sm tabular-nums text-fl" title="Ideal lap (sum of best sectors)">
+        {formatLap(e.potentialMs)}
+      </span>
+    ),
+  },
+  {
+    key: "ideal",
+    label: "Left",
+    sortLabel: "Time left on the table",
+    optIn: true,
+    align: "right",
+    hint: "Between their best lap and their potential one",
+    sortValue: (e) => (e.bestLapMs && e.potentialMs ? e.bestLapMs - e.potentialMs : null),
+    sortDir: "desc",
+    cell: (e) => {
+      const left = e.bestLapMs && e.potentialMs ? e.bestLapMs - e.potentialMs : null;
+      return (
+        <span
+          className="font-mono text-sm tabular-nums text-light"
+          title="How much quicker their potential lap is than their best one"
+        >
+          {left == null ? "—" : (left / 1000).toFixed(3)}
+        </span>
+      );
+    },
+  },
+  {
+    key: "gap",
+    label: "Gap",
+    sortLabel: "Gap to the fastest",
+    bp: "sm",
+    align: "right",
+    hint: "To the fastest lap of the session",
+    sortValue: (e) => e.gapToBestMs ?? null,
+    sortDir: "asc",
+    cell: (e) => <span className="font-mono text-sm tabular-nums text-light">{formatGap(e.gapToBestMs)}</span>,
+  },
+  {
+    key: "interval",
+    label: "Int.",
+    sortLabel: "Interval",
+    optIn: true,
+    align: "right",
+    hint: "To the car ahead on best lap",
+    cell: (e, ctx) => (
+      <span className="font-mono text-sm tabular-nums text-light" title="Gap to the car ahead on best lap">
+        {formatGap(ctx.intervals.get(e.guid) ?? null)}
+      </span>
+    ),
+  },
+  {
+    key: "last",
+    label: "Last",
+    sortLabel: "Last lap",
+    bp: "sm",
+    align: "right",
+    hint: "Their most recent lap time",
+    sortValue: (e) => e.lastLapMs || null,
+    sortDir: "asc",
+    cell: (e) => <span className="font-mono text-sm tabular-nums text-medium">{formatLap(e.lastLapMs)}</span>,
+  },
+  {
+    key: "delta",
+    label: "Δ PB",
+    sortLabel: "Delta to personal best",
+    optIn: true,
+    align: "right",
+    hint: "How their current lap compares to their own best",
+    sortValue: (e) => e.deltaSelfMs ?? null,
+    sortDir: "asc",
+    cell: (e) => (
+      <span
+        className={`font-mono text-sm tabular-nums ${
+          e.deltaSelfMs == null ? "text-light" : e.deltaSelfMs < 0 ? "text-ok" : "text-warn"
+        }`}
+      >
+        {formatDelta(e.deltaSelfMs)}
+      </span>
+    ),
+  },
+  {
+    key: "laps",
+    label: "Laps",
+    sortLabel: "Laps done",
+    bp: "md",
+    align: "center",
+    hint: "How many laps they've completed",
+    sortValue: (e) => e.lapCount || 0,
+    sortDir: "desc",
+    cell: (e) => <span className="font-mono text-sm tabular-nums text-medium">{e.lapCount}</span>,
+  },
+  {
+    key: "tyre",
+    label: "Tyre",
+    bp: "lg",
+    align: "center",
+    hint: "The compound their best lap was set on",
+    cell: (e) =>
+      e.tyre ? (
+        <span className="inline-grid place-items-center align-middle" title={tyreCompound(e.tyre).name}>
+          <TyreBadge t={tyreCompound(e.tyre)} size={22} />
+        </span>
+      ) : null,
+  },
+  {
+    key: "top",
+    label: "Top",
+    sortLabel: "Top speed",
+    bp: "xl",
+    align: "right",
+    hint: "Fastest they went on their best lap, in km/h",
+    sortValue: (e) => e.topSpeed || null,
+    sortDir: "desc",
+    cell: (e) => (
+      <span className="font-mono text-sm tabular-nums text-light" title="Top speed on their best lap (km/h)">
+        {formatSpeed(e.topSpeed)}
+      </span>
+    ),
+  },
+  {
+    key: "pits",
+    label: "Pits",
+    sortLabel: "Pit stops",
+    bp: "xl",
+    align: "center",
+    hint: "Number of pit stops",
+    sortValue: (e) => e.numPits || 0,
+    sortDir: "desc",
+    cell: (e) => <span className="font-mono text-sm tabular-nums text-light">{e.numPits}</span>,
+  },
+  {
+    key: "ping",
+    label: "Ping",
+    bp: "xl",
+    align: "right",
+    hint: "Their connection to the server",
+    sortValue: (e) => (e.onTrack ? e.ping ?? null : null),
+    sortDir: "asc",
+    cell: (e) => (
+      <span className="font-mono text-sm tabular-nums text-light">
+        {e.onTrack && e.ping != null ? e.ping : "—"}
+      </span>
+    ),
+  },
+  {
+    key: "flags",
+    label: "",
+    sortLabel: "DRS / pit flags",
+    bp: "sm",
+    align: "right",
+    hint: "The DRS and PIT badges",
+    cell: (e) => (
+      <div className="flex justify-end gap-1.5">
+        {e.drs && <span className="pill bg-sky-500/15 text-sky-600">DRS</span>}
+        {e.inPits && <span className="pill bg-amber-500/15 text-warn">PIT</span>}
+      </div>
+    ),
+  },
+];
+
+// Written out in full rather than built from the breakpoint name: Tailwind reads
+// the source as text to decide which classes to generate, and a class assembled
+// at runtime (`hidden ${bp}:table-cell`) is one it never sees.
+const BP_HIDE = {
+  sm: "hidden sm:table-cell",
+  md: "hidden md:table-cell",
+  lg: "hidden lg:table-cell",
+  xl: "hidden xl:table-cell",
+};
+
+// The <th>/<td> classes for one column: its alignment, the padding that depends
+// on where in the row it sits, and — in automatic mode only — the breakpoint
+// below which it stays out of the way. Once someone has picked their own
+// columns there is nothing to hide: what they asked for shows at every width and
+// the table scrolls sideways instead.
+function cellClass(col, { first, last, auto }) {
+  const align = col.align === "center" ? "text-center" : col.align === "left" ? "text-left" : "text-right";
+  const pad = col.padCls || (first ? "pl-3.5 pr-2 sm:pl-5" : last ? "pr-5" : "pr-4");
+  const hide = auto && col.bp ? BP_HIDE[col.bp] || "" : "";
+  return `py-3 whitespace-nowrap ${align} ${pad} ${hide} ${col.extraCls || ""}`;
+}
+
+// Gap to the car AHEAD on best lap. Computed off the best-lap ranking rather
+// than off the rows above it in the table, so the column keeps meaning the same
+// thing when the board is sorted by top speed or laps.
+function intervalMap(entries) {
+  const ranked = entries.filter((e) => e.bestLapMs).sort((a, b) => a.bestLapMs - b.bestLapMs);
+  const m = new Map();
+  ranked.forEach((e, i) => m.set(e.guid, i === 0 ? 0 : e.bestLapMs - ranked[i - 1].bestLapMs));
+  return m;
+}
+
+// Re-order the board for display. No sort key = the session's own order, exactly
+// as the server ranked it (race running order, or fastest lap in a practice
+// session). A driver with nothing in the sorted column always sits at the bottom,
+// whichever way round it is, and ties fall back to that session order.
+function sortEntries(entries, sort) {
+  const col = sort?.key ? TIMING_COLUMNS.find((c) => c.key === sort.key) : null;
+  if (!col?.sortValue) return entries;
+  const dir = sort.dir === "desc" ? -1 : 1;
+  return [...entries].sort((a, b) => {
+    const va = col.sortValue(a);
+    const vb = col.sortValue(b);
+    if (va == null && vb == null) return a.position - b.position;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    if (va === vb) return a.position - b.position;
+    return (va - vb) * dir;
+  });
+}
+
+function SortArrow({ dir }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
+      {dir === "desc" ? <path d="M12 19L5 8h14z" /> : <path d="M12 5l7 11H5z" />}
+    </svg>
+  );
+}
+
+function TimingRow({ e, cols, ctx, index = 0 }) {
   const isP1 = e.position === 1;
   return (
     <tr
+      // Whenever the order changes — someone sets a faster lap, or the sort key
+      // switches to top speed — the row glides to its new slot instead of the
+      // table snapping (useFlipList, keyed on this id).
+      data-flip-id={e.guid}
       style={{ "--i": Math.min(index, 16) }}
       className={`group border-b border-border last:border-0 transition hover:bg-surface2 ${
         isP1 ? "bg-brand/5" : ""
       }`}
     >
-      <td className="py-3 pl-3.5 pr-2 text-center sm:pl-5">
-        <span
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums ${
-            isP1 ? "bg-brand text-ink" : "text-medium"
-          }`}
+      {cols.map((col, i) => (
+        <td
+          key={col.key}
+          className={cellClass(col, { first: i === 0, last: i === cols.length - 1, auto: ctx.auto })}
         >
-          {e.position}
-        </span>
-      </td>
-      <td className="py-3 pl-1 pr-3">
-        <DriverCell e={e} match={match} showLiveDot mobileBadges />
-      </td>
-      {/* sectors */}
-      <td className="hidden py-3 pr-4 lg:table-cell">
-        <div className="flex gap-1">
-          {e.sectors.map((s, i) => (
-            <Sector key={i} s={s} />
-          ))}
-        </div>
-      </td>
-      <td className="py-3 pr-4 text-right">
-        <span className={`font-mono text-base font-bold tabular-nums ${isP1 ? "text-eyebrow" : "text-dark"}`}>
-          {formatLap(e.bestLapMs)}
-        </span>
-        {/* On phones the gap has no column of its own, so it sits directly
-            under the lap it refers to. Nothing for the leader (gap 0) or for
-            a driver without a time yet. */}
-        {e.gapToBestMs ? (
-          <span className="block font-mono text-xs tabular-nums text-light sm:hidden">
-            {formatGap(e.gapToBestMs)}
-          </span>
-        ) : null}
-      </td>
-      <td className="hidden py-3 pr-4 text-right md:table-cell">
-        <span className="font-mono text-sm tabular-nums text-fl" title="Ideal lap (sum of best sectors)">
-          {formatLap(e.potentialMs)}
-        </span>
-      </td>
-      <td className="hidden py-3 pr-4 text-right sm:table-cell">
-        <span className="font-mono text-sm tabular-nums text-light">{formatGap(e.gapToBestMs)}</span>
-      </td>
-      <td className="hidden py-3 pr-4 text-right sm:table-cell">
-        <span className="font-mono text-sm tabular-nums text-medium">{formatLap(e.lastLapMs)}</span>
-      </td>
-      <td className="hidden py-3 pr-4 text-center tabular-nums md:table-cell">
-        <span className="font-mono text-sm text-medium">{e.lapCount}</span>
-      </td>
-      <td className="hidden py-3 pr-4 text-center lg:table-cell">
-        {e.tyre && (
-          <span className="inline-grid place-items-center align-middle" title={tyreCompound(e.tyre).name}>
-            <TyreBadge t={tyreCompound(e.tyre)} size={22} />
-          </span>
-        )}
-      </td>
-      <td className="hidden py-3 pr-4 text-right xl:table-cell">
-        <span className="font-mono text-sm tabular-nums text-light">{e.topSpeed || "—"}</span>
-      </td>
-      <td className="hidden py-3 pr-4 text-center tabular-nums xl:table-cell">
-        <span className="font-mono text-sm text-light">{e.numPits}</span>
-      </td>
-      <td className="hidden py-3 pr-4 text-right xl:table-cell">
-        <span className="font-mono text-sm tabular-nums text-light">{e.onTrack && e.ping != null ? e.ping : "—"}</span>
-      </td>
-      <td className="hidden py-3 pr-5 text-right sm:table-cell">
-        <div className="flex justify-end gap-1.5">
-          {e.drs && <span className="pill bg-sky-500/15 text-sky-600">DRS</span>}
-          {e.inPits && <span className="pill bg-amber-500/15 text-warn">PIT</span>}
-        </div>
-      </td>
+          {col.cell(e, ctx)}
+        </td>
+      ))}
     </tr>
   );
 }
@@ -511,6 +812,12 @@ function useFlipList(containerRef, dep) {
           () => it.classList.remove("proj-flash-up", "proj-flash-down"),
           { once: true }
         );
+        // Hand the row's transitions back once it has arrived. The inline
+        // property above is transform-only, so leaving it in place would
+        // permanently cancel the row's own hover fade — which used to be a
+        // curiosity on a table that reorders a few times a race, and is not one
+        // on the timing board, where every faster lap moves somebody.
+        it.addEventListener("transitionend", () => { it.style.transition = ""; }, { once: true });
       }
     }
     prevTops.current = next;
@@ -754,29 +1061,6 @@ function ChampionshipProjection({ data }) {
     </section>
   );
 }
-
-const COLS = [
-  // pl-3.5: with the card's 1px border and the 2px the fixed-width cell leaves
-  // when it centres the 32px chip, that lands the chip ~17px from the card's
-  // left edge — matching the ~16.5px it sits below the row's top edge.
-  { label: "Pos", cls: "w-14 py-3 pl-3.5 text-center sm:pl-5" },
-  { label: "Driver", cls: "py-3 pl-1" },
-  { label: "Sectors", cls: "hidden py-3 pr-4 lg:table-cell" },
-  { label: "Best", cls: "py-3 pr-4 text-right" },
-  { label: "Potential", cls: "hidden py-3 pr-4 text-right md:table-cell" },
-  // On phones the gap rides along under the driver's name instead of taking a
-  // column of its own — that room goes to the best lap, which is what you're
-  // actually here to read.
-  { label: "Gap", cls: "hidden py-3 pr-4 text-right sm:table-cell" },
-  { label: "Last", cls: "hidden py-3 pr-4 text-right sm:table-cell" },
-  { label: "Laps", cls: "hidden py-3 pr-4 text-center md:table-cell" },
-  { label: "Tyre", cls: "hidden py-3 pr-4 text-center lg:table-cell" },
-  { label: "Top", cls: "hidden py-3 pr-4 text-right xl:table-cell" },
-  { label: "Pits", cls: "hidden py-3 pr-4 text-center xl:table-cell" },
-  { label: "Ping", cls: "hidden py-3 pr-4 text-right xl:table-cell" },
-  // DRS/PIT badges — folded into the driver cell on phones (see DriverCell).
-  { label: "", cls: "hidden py-3 pr-5 sm:table-cell" },
-];
 
 /* ===== External links, view switch, track map ============================= */
 
@@ -1153,8 +1437,40 @@ function OffAir({ nextRace }) {
   );
 }
 
+// How long a gap in the feed is treated as a hiccup rather than the end of the
+// session. The relay's own reconnect backs off up to 15s and a quiet server can
+// leave ~30s between snapshots, so anything under this is routine.
+const LIVE_GRACE_MS = 40000;
+
+// Hold on to the last board that carried a live session, and only let go of it
+// once the feed has really been gone for a while.
+//
+// The page used to swap itself for the "No session running" card the instant one
+// board arrived with the upstream marked closed — which happens routinely: the
+// race server's socket gets dropped and reconnected, the API restarts, a
+// snapshot is skipped. Every one of those blinks blanked the whole page for a
+// second and then put it back. Nothing on screen was wrong in those moments, so
+// the board simply stays; the "reconnecting" line under it carries the news, and
+// only a real gap gives up on it.
+function useHeldBoard(board) {
+  const live = board?.session && board?.connected ? board : null;
+  const [held, setHeld] = useState(null);
+  useEffect(() => {
+    if (live) {
+      setHeld(live);
+      return;
+    }
+    if (!held) return;
+    const t = setTimeout(() => setHeld(null), LIVE_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [live, held]);
+  // `gap` = what's on screen is the last good board, not a current one.
+  return { shown: live || held, gap: !live && !!held };
+}
+
 export default function Live() {
-  const { board, socketState } = useLiveTiming();
+  const { board: feed, socketState } = useLiveTiming();
+  const { shown: board, gap } = useHeldBoard(feed);
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const match = useMemo(() => makeDriverMatcher(teams), [teams]);
   // Admin-configured external buttons (server-manager live timing + CM join).
@@ -1164,22 +1480,24 @@ export default function Live() {
   // Timing ⇄ Strategy switch (the track map sits above both).
   const [view, setView] = useState("timing");
 
-  const connected = board?.connected && !board?.stale && socketState === "open";
+  // The state of the feed RIGHT NOW (not of the board on screen, which may be a
+  // held one): everything arriving, fresh, and our own socket up.
+  const connected = feed?.connected && !feed?.stale && socketState === "open";
   const session = board?.session;
-  // Off air means one of two things, and neither of them is "quiet".
+  // Off air = there is no session to show at all. Not "the upstream socket is
+  // closed this second": that flaps (see useHeldBoard), and it used to blank the
+  // page for a beat every time it did.
   //
-  // This used to treat the relay's `stale` flag ("no upstream data for 75
-  // seconds") as off air, on the assumption that even an empty server keeps
-  // sending a snapshot every ~30s. It does not. The league's servers sit in an
-  // open practice session all week, and once nobody is driving, the upstream
-  // goes quiet for far longer than that — so the page answered "No session
-  // running" while a practice session was up, with its entry list and everyone's
-  // best laps sitting in the very snapshot it was hiding.
+  // The relay's `stale` flag ("no upstream data for 75 seconds") is deliberately
+  // not part of this either. The league's servers sit in an open practice session
+  // all week, and once nobody is driving the upstream goes quiet for far longer
+  // than that — so the page answered "No session running" while a practice
+  // session was up, with its entry list and everyone's best laps sitting in the
+  // very snapshot it was hiding.
   //
-  // The case the old rule was written for is still covered by `connected`: a
-  // race server that goes away drops the relay's upstream socket, so a finished
-  // race cannot linger on screen for days.
-  const offAir = !session || !board?.connected;
+  // A race server that really goes away still clears the page: the board it left
+  // behind is dropped once the feed has been down for LIVE_GRACE_MS.
+  const offAir = !session;
   // A session that is there but has nothing happening in it. Perfectly normal on
   // any day that is not race day, and it must not be reported as a fault: the
   // board still holds what the session has produced so far.
@@ -1246,12 +1564,48 @@ export default function Live() {
     if (view === "standings" && champ && !champ.active) setView("timing");
   }, [champ, view]);
 
+  // Which columns the classification shows and what it is sorted by. Remembered
+  // per browser, so a reader who always wants top-speed order gets it without
+  // asking twice (see hooks/useLiveTablePrefs.js).
+  const tablePrefs = useLiveTablePrefs(TIMING_COLUMNS);
+  const cols = tablePrefs.visible;
+  const auto = !tablePrefs.custom;
+  // Everything the cell renderers need beyond the entry itself. Two of them
+  // depend on the chosen columns: the DRS/PIT badges and the gap under the best
+  // lap only ride along with the driver's name while they have no column of
+  // their own, otherwise the same fact would be on the row twice.
+  const tableCtx = useMemo(
+    () => ({
+      match,
+      auto,
+      intervals: intervalMap(entries),
+      badges: auto ? "mobile" : tablePrefs.enabled.has("flags") ? "none" : "always",
+      inlineGap: auto ? "mobile" : tablePrefs.enabled.has("gap") ? "never" : "always",
+    }),
+    [match, auto, entries, tablePrefs.enabled]
+  );
+  const ordered = useMemo(() => sortEntries(entries, tablePrefs.sort), [entries, tablePrefs.sort]);
+
   // Mobile: keep the classification to a single screenful, expandable on tap.
   const narrow = useIsNarrow();
   const [showAllTimes, setShowAllTimes] = useState(false);
   const TIMES_LIMIT = 10;
-  const collapseTimes = narrow && !showAllTimes && entries.length > TIMES_LIMIT;
-  const shownEntries = collapseTimes ? entries.slice(0, TIMES_LIMIT) : entries;
+  const collapseTimes = narrow && !showAllTimes && ordered.length > TIMES_LIMIT;
+  const shownEntries = collapseTimes ? ordered.slice(0, TIMES_LIMIT) : ordered;
+
+  // Rows glide to their new slot whenever the order changes, with the short
+  // green/red flash for the direction — a faster lap, or switching the sort to
+  // top speed, moves the whole field visibly rather than redrawing it. Same
+  // hook, dep shape and lite-graphics opt-out as the Driving Now table.
+  //
+  // The dep also carries the view and the mobile collapse: both move the table
+  // on the page without reordering it, and re-measuring there keeps the next
+  // real reorder from gliding out of a position the rows no longer have.
+  const timesBodyRef = useRef(null);
+  useFlipList(
+    timesBodyRef,
+    `${view}|${collapseTimes}|${shownEntries.map((e) => e.guid).join("|")}`
+  );
 
   // The best-times section renders in two spots — as the Timing view of the
   // full layout, and alone right under the header when the server is quiet —
@@ -1260,7 +1614,18 @@ export default function Live() {
     <>
       {/* ===== Full session-best leaderboard (all drivers) ===== */}
       <section className="reveal space-y-4">
-        <SectionHeading eyebrow="Classification" title="Session Best Times" />
+        <SectionHeading
+          eyebrow="Classification"
+          title="Session Best Times"
+          // Sorting and the column picker sit on the heading's own row, right
+          // above the table they change: two buttons, one question each.
+          right={
+            <div className="flex shrink-0 items-center gap-2">
+              <LiveSortMenu columns={TIMING_COLUMNS} prefs={tablePrefs} />
+              <LiveColumnsMenu columns={TIMING_COLUMNS} prefs={tablePrefs} />
+            </div>
+          }
+        />
         {entries.length === 0 ? (
           <div className="card py-16 text-center text-light">
             Session is live, no times set yet.
@@ -1268,24 +1633,49 @@ export default function Live() {
         ) : (
           <div className="card overflow-hidden">
             <div className="scrollbar-slim overflow-x-auto">
-              {/* The min-width was sized for the full desktop column set,
-                  so phones had to scroll sideways to reach Best even
-                  though only four columns were showing. It now kicks in
-                  at md, where those extra columns actually appear. */}
-              <table className="w-full md:min-w-[680px]">
+              {/* The min-width only applies in automatic mode, where it was
+                  sized for the full desktop column set: it kicks in at md,
+                  where those extra columns actually appear, so a phone
+                  doesn't have to scroll sideways to reach Best. A chosen set
+                  of columns takes whatever width it needs and scrolls. */}
+              <table className={`w-full ${auto ? "md:min-w-[680px]" : ""}`}>
                 <thead>
                   <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
-                    {COLS.map((c, i) => (
-                      <th key={i} className={c.cls}>
-                        {c.label}
-                      </th>
-                    ))}
+                    {cols.map((c, i) => {
+                      const cls = cellClass(c, { first: i === 0, last: i === cols.length - 1, auto });
+                      const active = tablePrefs.sort.key === c.key;
+                      // A sortable header is a button: clicking it sorts by that
+                      // column, clicking it again turns it round. Same thing the
+                      // Table menu does, one tap closer.
+                      return (
+                        <th key={c.key} className={cls} aria-sort={active ? (tablePrefs.sort.dir === "desc" ? "descending" : "ascending") : "none"}>
+                          {c.sortValue ? (
+                            <button
+                              type="button"
+                              onClick={() => tablePrefs.setSort(c.key)}
+                              title={`Sort by ${(c.sortLabel || c.label).toLowerCase()}`}
+                              className={`inline-flex items-center gap-1 uppercase tracking-widest transition hover:text-dark ${
+                                active ? "text-dark" : ""
+                              }`}
+                            >
+                              {c.label}
+                              {active && <SortArrow dir={tablePrefs.sort.dir} />}
+                            </button>
+                          ) : (
+                            c.label
+                          )}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
-                {/* cascade: rows rise in one after another, like the standings tables */}
-                <tbody className="cascade">
+                {/* No cascade here anymore (matching the Driving Now and
+                    projection tables): reordering rows moves the DOM nodes,
+                    which REPLAYED the entrance fade over the whole field on
+                    every faster lap. The FLIP glide above is the movement. */}
+                <tbody ref={timesBodyRef}>
                   {shownEntries.map((e, i) => (
-                    <Row key={e.guid} e={e} match={match(e.name)} index={i} />
+                    <TimingRow key={e.guid} e={e} cols={cols} ctx={tableCtx} index={i} />
                   ))}
                 </tbody>
               </table>
@@ -1308,16 +1698,28 @@ export default function Live() {
 
       {/* legend */}
       <div className="reveal flex flex-wrap items-center gap-4 px-1 font-mono text-[11px] uppercase tracking-wider text-light">
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded bg-fl/40" /> Fastest sector
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded bg-emerald-500/30" /> Personal best
-        </span>
+        {tablePrefs.enabled.has("sectors") && (
+          <>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded bg-fl/40" /> Fastest sector
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded bg-emerald-500/30" /> Personal best
+            </span>
+          </>
+        )}
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> On track now
         </span>
-        <span className="text-faint">Potential = sum of best sectors</span>
+        {tablePrefs.enabled.has("potential") && (
+          <span className="text-faint">Potential = sum of best sectors</span>
+        )}
+        {tablePrefs.sort.key && (
+          <span className="text-faint">
+            Sorted by{" "}
+            {(TIMING_COLUMNS.find((c) => c.key === tablePrefs.sort.key)?.sortLabel || "").toLowerCase()}
+          </span>
+        )}
       </div>
     </>
   );
@@ -1415,12 +1817,15 @@ export default function Live() {
 
           {/* A quiet session and a broken connection both mean "these numbers
               are not moving", and they used to print the same alarming line.
-              They are not the same thing: one is a Tuesday. */}
-          {idle ? (
+              They are not the same thing: one is a Tuesday.
+              A gap in the feed is the third case: the page is holding the last
+              board it got (see useHeldBoard), and that is worth saying rather
+              than tearing the page down over. */}
+          {idle && !gap ? (
             <p className="text-center font-mono text-[11px] uppercase tracking-wider text-light">
               Nobody on track right now. Showing the session as it stands.
             </p>
-          ) : !connected ? (
+          ) : gap || !connected ? (
             <p className="text-center font-mono text-[11px] uppercase tracking-wider text-warn">
               Connection lost. Showing last known data, reconnecting…
             </p>
