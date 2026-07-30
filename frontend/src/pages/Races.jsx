@@ -593,7 +593,13 @@ export default function Races() {
                 market for rounds that haven't been run yet. */}
             <div className="min-w-0">
               {selectedRace && !selectedRace.isCompleted ? (
-                <UpcomingRacePanel race={selectedRace} />
+                /* Keyed on the race so switching rounds REMOUNTS the panel. Its
+                   track history (and with it the outline's admin-set rotation)
+                   is fetched per track, and without the remount the new round
+                   rendered for a frame against the previous round's answer —
+                   which is how a circuit the admin had turned appeared upright
+                   first and then span into place. */
+                <UpcomingRacePanel key={selectedRace.id} race={selectedRace} />
               ) : (
                 <>
                   {/* The previous round's table stays up while the next one

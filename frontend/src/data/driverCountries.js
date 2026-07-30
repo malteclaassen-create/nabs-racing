@@ -53,5 +53,16 @@ export const DRIVER_COUNTRY = {
 export function countryFor(driverId, dbCountry) {
   if (dbCountry) return dbCountry;
   const id = String(driverId || "");
-  return DRIVER_COUNTRY[id] || DRIVER_COUNTRY[id.replace(/^s\d+_/, "")] || "";
+  return DRIVER_COUNTRY[id] || DRIVER_COUNTRY[baseDriverId(id)] || "";
+}
+
+// The same person carries a different row id in every season, and the two
+// generations of the roster spell that differently: the imported archive
+// seasons PREFIX the id ("s4_takoda"), while every season the admin clones or
+// that gains a reserve row SUFFIXES it ("takoda_s8", plus a short random tail
+// when the plain id was already taken). Only the prefix used to be stripped, so
+// from Season 8 on the baseline lookup missed every driver and the only flags
+// left were the handful of members who had picked a country themselves.
+function baseDriverId(id) {
+  return id.replace(/^s\d+_/, "").replace(/_s\d+(_[a-z0-9]+)?$/i, "");
 }

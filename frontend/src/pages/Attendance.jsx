@@ -153,12 +153,16 @@ export default function Attendance() {
     () => [...(events.data || [])].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)),
     [events.data]
   );
-  const [selectedId, setSelectedId] = useState(null);
-  useEffect(() => {
-    if (!list.length) return;
-    setSelectedId((cur) => cur || (wantRace && list.find((e) => e.id === wantRace) ? wantRace : list[0].id));
-  }, [list, wantRace]);
-  const ev = list.find((e) => e.id === selectedId) || list[0] || null;
+  // The page shows exactly ONE race: the next one on the calendar. It used to
+  // put every upcoming round on screen as a row of buttons, which on a full
+  // season meant the whole year sat on top of a page whose entire job is the
+  // question "are you racing on Friday". A ?race= link still wins, so a one-tap
+  // answer out of a notification or a Discord post lands on the round it was
+  // sent for even when that isn't the next one.
+  const ev = useMemo(
+    () => (wantRace ? list.find((e) => e.id === wantRace) : null) || list[0] || null,
+    [list, wantRace]
+  );
 
   // RSVP actions (identity from the Discord login; forgery-proof server-side).
   const [busy, setBusy] = useState(null);
@@ -260,29 +264,6 @@ export default function Attendance() {
 
       {ev && (
         <>
-          {/* race picker (when more than one upcoming) */}
-          {list.length > 1 && (
-            /* This is the page's main navigation, so these are real buttons and
-               not the .pill status badge they used to borrow — that made them
-               about 18px tall and packed tightly together, a poor target on a
-               phone. */
-            <div className="flex flex-wrap gap-2">
-              {list.map((e) => (
-                <button
-                  key={e.id}
-                  type="button"
-                  aria-pressed={e.id === ev.id}
-                  onClick={() => setSelectedId(e.id)}
-                  className={`inline-flex min-h-[44px] items-center rounded-full px-4 py-2 text-sm font-bold uppercase tracking-wide transition ${
-                    e.id === ev.id ? "bg-brand text-ink" : "bg-surface2 text-medium hover:text-dark"
-                  }`}
-                >
-                  {e.type === "TRAINING" ? "Training" : `R${e.number}`} {e.track}
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* From here on the page is composed rather than written out: with a
               lap on file it splits in two — everything about the race and
               signing up on the left, the video on the right — and without one it

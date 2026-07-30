@@ -56,6 +56,7 @@ const CIRCUITS = {
   Bathurst: { circuit: "Mount Panorama", country: "au" },
   LeMans: { circuit: "Circuit de la Sarthe", country: "fr" },
   Daytona: { circuit: "Daytona", country: "us" },
+  Poznan: { circuit: "Tor Poznań", country: "pl" },
 };
 
 // Raw track strings (AC ids, country names, alternate spellings) -> CIRCUITS key.
@@ -63,6 +64,15 @@ const TRACK_ALIASES = {
   australia: "Melbourne",
   austria: "RedBullRing",
   "red bull ring": "RedBullRing",
+  spielberg: "RedBullRing",
+  a1ring: "RedBullRing",
+  osterreichring: "RedBullRing",
+  poland: "Poznan",
+  // normKey() strips the diacritic to "pozna", so the Polish spelling needs its
+  // own entry to reach the key.
+  "poznań": "Poznan",
+  "tor poznań": "Poznan",
+  "tor poznan": "Poznan",
   azerbaijan: "Baku",
   spain: "Barcelona",
   japan: "Suzuka",

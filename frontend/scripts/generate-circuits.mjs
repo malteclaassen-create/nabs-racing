@@ -3,7 +3,8 @@
 // Sources:
 //   * F1 circuits -> bacinger/f1-circuits (MIT), derived from OpenStreetMap.
 //   * Most (cz)   -> OpenStreetMap way "Autodrom Most" (id 60905520), vendored.
-//   * 6 non-F1 tracks (Fuji, Road America, Zolder, Daytona, Bathurst, Le Mans)
+//   * 7 non-F1 tracks (Fuji, Road America, Zolder, Daytona, Bathurst, Le Mans,
+//     Tor Poznań)
 //     -> raw Overpass responses vendored in frontend/scripts/osm/. These circuits
 //     are mapped in OSM as many named corner/straight segments (or a route
 //     relation), so we stitch the segments end-to-end into one ring (see stitch()).
@@ -98,6 +99,10 @@ const EXTRA_TRACKS = {
   // Daytona is an oval + an intertwined road course; use the iconic banked tri-oval.
   Daytona:     { file: "daytona.json",     kind: "way", country: "us", countryName: "United States", circuit: "Daytona",
                  keep: (w) => w.tags.embankment === "yes" },
+  // Poznań shares its ground with a karting track, a motocross course and a
+  // paddock road ("Depot"), none of which the name filter would catch — so the
+  // vendored file holds ONLY the 24 ways of the main loop. See osm/README.md.
+  Poznan:      { file: "poznan.json",      kind: "way", country: "pl", countryName: "Poland",        circuit: "Tor Poznań" },
 };
 
 // Extra spellings a stored track name might use, mapped onto a canonical key.
@@ -111,6 +116,16 @@ const ALIASES = {
   australia: "Melbourne",
   austria: "RedBullRing",
   "red bull ring": "RedBullRing",
+  // The Red Bull Ring is scheduled by its town as often as by its name.
+  spielberg: "RedBullRing",
+  a1ring: "RedBullRing",
+  osterreichring: "RedBullRing",
+  poland: "Poznan",
+  // normKey() strips the diacritic to "pozna", so the Polish spelling needs its
+  // own entry to reach the key.
+  "poznań": "Poznan",
+  "tor poznań": "Poznan",
+  "tor poznan": "Poznan",
   azerbaijan: "Baku",
   spain: "Barcelona",
   japan: "Suzuka",
@@ -394,6 +409,76 @@ export function canonicalTrack(track) {
     if (c.nk.length >= 5 && (n.startsWith(c.nk) || n.startsWith(c.cnk))) return c.key;
   }
   return track;
+}
+
+// Live sessions name the track by the MOD's display name ("NABS Monza F1 2025"),
+// which circuitFor()'s startsWith test can't resolve, while the AC id it also
+// carries ("monza") usually does. Try the clean resolvers on both first, then a
+// last-ditch "contains" match on the mod name, guarded to circuit tokens of
+// length >= 5 so short keys (Spa, Most, COTA) can't grab an unrelated name
+// ("spain" must never become "Spa"). Live-only, because contains is looser than
+// the tidy startsWith match circuitFor uses everywhere else.
+export function circuitForLive(trackName, track) {
+  return circuitFor(track) || circuitFor(trackName) || containsCircuit(trackName) || containsCircuit(track);
+}
+
+function containsCircuit(track) {
+  if (!track) return null;
+  const n = normKey(track);
+  for (const c of NORM_KEYS) {
+    if (c.nk.length >= 5 && (n.includes(c.nk) || n.includes(c.cnk))) return CIRCUITS[c.key];
+  }
+  return null;
+}
+
+
+// ---------------------------------------------------------------------------
+// Track flag resolution. The DB (Race.country, admin-editable per circuit) is
+// the source of truth; the static CIRCUITS table above is the fallback for
+// anything the server hasn't stamped yet. App.jsx loads the stored overrides
+// once at boot (GET /api/tracks/countries) so circuit-less tracks (e.g.
+// Donington) get their flag site-wide too.
+// ---------------------------------------------------------------------------
+let COUNTRY_OVERRIDES = {}; // trackKey -> ISO alpha-2
+
+export function setTrackCountryOverrides(map) {
+  COUNTRY_OVERRIDES = map && typeof map === "object" ? map : {};
+}
+
+const REGION_NAMES = (() => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" });
+  } catch {
+    return null;
+  }
+})();
+
+// "gb" -> "United Kingdom" (falls back to the upper-cased code).
+export function countryNameOf(code) {
+  if (!code) return "";
+  try {
+    return REGION_NAMES?.of(code.toUpperCase()) || code.toUpperCase();
+  } catch {
+    return code.toUpperCase();
+  }
+}
+
+// Flag data for a track: an explicit code from a race payload wins, then the
+// admin override map, then the static circuit table. null = no flag known.
+export function flagFor(track, dbCountry) {
+  const c = circuitFor(track);
+  const code = dbCountry || COUNTRY_OVERRIDES[trackKey(track)] || c?.country || null;
+  // \`circuit\` (the real-world circuit name) rides along for callers that show
+  // it next to the flag — same shape as a CIRCUITS entry, minus the geometry.
+  return code ? { country: code, countryName: countryNameOf(code), circuit: c?.circuit } : null;
+}
+
+// Stable grouping key for a track, matching the backend's groupKeyFor: a
+// canonical CIRCUITS key when known, else the normalized string. Used to address
+// per-track admin settings (fun facts / map image).
+export function trackKey(track) {
+  const c = canonicalTrack(track);
+  return CIRCUITS[c] ? c : normKey(track);
 }
 `;
 

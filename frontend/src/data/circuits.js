@@ -334,6 +334,13 @@ export const CIRCUITS = {
     box: "0 0 85.9 100",
     path: "M11.4,49.9 L10.6,53.2 L10.2,54.7 L7.1,67.2 L6.8,68.6 L6.5,70.3 L6.2,72 L6,74.2 L6,75.2 L6,76.2 L6.1,77.3 L6.1,78 L6.2,78.8 L6.4,79.7 L6.7,80.8 L7.1,81.9 L7.5,83 L8,84 L8.8,85.2 L9.6,86.4 L10.3,87.3 L11.3,88.3 L12.2,89.3 L13.3,90.1 L14.3,90.9 L15.3,91.5 L16.8,92.3 L17.8,92.7 L18.9,93.1 L20.3,93.5 L21.8,93.8 L23.1,93.9 L24.4,94 L25.8,94 L27.1,93.8 L28.4,93.6 L29.7,93.2 L31.3,92.7 L32.8,92 L34.2,91.3 L35.1,90.7 L36,90 L36.9,89.3 L37.9,88.3 L38.9,87.3 L40.2,85.8 L41.5,84.1 L42.8,82.3 L47.9,75.2 L62.1,55.6 L71,43.3 L75.5,37.2 L76.8,35.1 L77.8,33.3 L78.1,32.6 L78.5,31.6 L79.1,29.9 L79.4,28.6 L79.6,27.5 L79.8,26.8 L79.8,26.1 L79.9,25.1 L79.9,24 L79.8,22.7 L79.6,21.3 L79.4,20.2 L78.8,18.4 L78.4,17.3 L77.8,16.1 L77,14.7 L76.2,13.5 L75.4,12.5 L74.4,11.4 L73.6,10.6 L72.4,9.7 L71.1,8.8 L70,8.2 L69,7.7 L68.1,7.2 L66.8,6.8 L65.6,6.5 L64.2,6.2 L63,6.1 L62.1,6 L61.2,6 L59.9,6.1 L59.1,6.2 L58.1,6.3 L57.1,6.6 L56.2,6.8 L55.2,7.1 L54.1,7.6 L53.2,7.9 L52.2,8.4 L51.1,8.9 L47.1,11.2 L43.7,13.3 L43.1,13.7 L37.6,17.2 L34.1,19.4 L29.7,22.2 L28.1,23.2 L26.6,24.3 L25.4,25.1 L24.9,25.5 L24.4,25.8 L23.9,26.3 L23.3,26.8 L22.8,27.3 L22.2,27.8 L21.6,28.4 L21.1,29 L20.5,29.6 L20,30.2 L19.4,30.9 L18.9,31.6 L18.4,32.2 L17.9,32.9 L17.5,33.6 L17,34.3 L16.7,35 L16.1,36.2 L15.5,37.2 L14.9,38.4 L14.3,40 L13.3,43.2 L12.3,46.4 L11.4,49.9 Z",
   },
+  Poznan: {
+    country: "pl",
+    countryName: "Poland",
+    circuit: "Tor Poznań",
+    box: "0 0 100 72.2",
+    path: "M82.7,27.7 L74,28 L70.6,28 L68.5,27.9 L66.9,27.6 L64.6,26.8 L62.6,25.9 L58.8,24 L57.1,23.2 L54.9,22.5 L42.9,19.4 L39.7,18.5 L38.7,18.4 L37.8,18.4 L37.3,18.5 L36.9,18.7 L36.3,19.1 L35.8,19.7 L35.5,20.7 L35.5,21.9 L35.8,23.1 L40.1,35.5 L40.6,36.9 L41.1,38.2 L41.7,39.1 L42.4,39.9 L43.3,40.6 L44.3,40.9 L45.3,41.1 L46.4,41 L47.5,40.7 L48.7,39.9 L51,38.3 L52.9,36.9 L54.3,36.2 L56,35.5 L57.6,35.2 L59.3,35 L63.4,35.2 L70.8,35.6 L77.6,36.1 L88.1,36.7 L89.1,36.8 L90,37.2 L90.7,37.6 L91.2,38.2 L91.5,38.8 L91.8,39.5 L91.8,40.3 L91.8,41.3 L91.3,42.4 L90,43.7 L88.2,44.9 L85,47 L81.8,49.3 L80.8,50 L79.9,50.7 L79.2,51.5 L78.7,52.6 L78.4,53.7 L78.3,55 L78.3,56.8 L78.5,59 L78.5,60.4 L78.5,60.8 L78.3,62 L78,62.9 L77.4,63.8 L76.5,64.8 L75.5,65.4 L74.5,65.9 L73.2,66.2 L71.9,66.2 L68,65.8 L63.1,65.4 L53.7,64.4 L52.5,64.3 L51.3,64 L50.2,63.5 L49.2,62.9 L48.3,62.2 L46.6,60.3 L41.6,54.3 L41.2,53.8 L40.4,53 L39.4,52.3 L38.1,51.7 L36.6,51.6 L35.3,51.8 L20.7,55.7 L19.6,56 L18.8,56.4 L17.9,57 L16.7,58.4 L16,59.1 L15,60 L14.3,60.4 L13.3,60.6 L12,60.5 L10.9,60.4 L9.8,60.2 L8.7,59.9 L7.8,59.3 L7,58.6 L6.5,57.8 L6.2,57 L6,56.1 L6,55.1 L6.1,54 L6.9,50.6 L9.1,41 L11.1,31.6 L12.5,23.9 L13.3,19.7 L14.2,14.8 L14.7,13 L15.3,11.6 L15.9,10.3 L16.9,9.1 L18.2,7.9 L19.7,7 L21.1,6.5 L22.8,6.1 L24.5,6 L26.5,6 L33.2,6.3 L48.7,6.9 L79.4,8.1 L83.1,8.3 L84.8,8.4 L86.5,8.7 L87.8,9.1 L89.2,9.7 L90.3,10.5 L91.3,11.4 L92.2,12.4 L92.8,13.4 L93.3,14.5 L93.8,15.9 L94,17 L94,18.4 L93.9,19.6 L93.6,20.9 L93.2,22 L92.7,22.9 L92,23.8 L91.3,24.7 L90.6,25.4 L89.5,26.1 L88.3,26.7 L86.8,27.2 L84.9,27.5 L82.7,27.7 Z",
+  },
 };
 
 // Raw track strings (Assetto Corsa ids, country names, alternate spellings) ->
@@ -342,6 +349,13 @@ const TRACK_ALIASES = {
   "australia": "Melbourne",
   "austria": "RedBullRing",
   "red bull ring": "RedBullRing",
+  "spielberg": "RedBullRing",
+  "a1ring": "RedBullRing",
+  "osterreichring": "RedBullRing",
+  "poland": "Poznan",
+  "poznań": "Poznan",
+  "tor poznań": "Poznan",
+  "tor poznan": "Poznan",
   "azerbaijan": "Baku",
   "spain": "Barcelona",
   "japan": "Suzuka",
@@ -428,6 +442,24 @@ export function circuitFor(track) {
   return null;
 }
 
+// Resolve a raw track string to its clean canonical name ("istanbul_park" ->
+// "Turkey"). Used at import time so stored race names stay tidy. Unknown tracks
+// are returned unchanged for the admin to edit.
+export function canonicalTrack(track) {
+  if (!track) return track;
+  if (CIRCUITS[track]) return track;
+  const n = normKey(track);
+  const alias = TRACK_ALIASES[track] || TRACK_ALIASES[String(track).toLowerCase()] || NORM_ALIASES[n];
+  if (alias && CIRCUITS[alias]) return alias;
+  for (const c of NORM_KEYS) {
+    if (c.nk === n || c.cnk === n) return c.key;
+  }
+  for (const c of NORM_KEYS) {
+    if (c.nk.length >= 5 && (n.startsWith(c.nk) || n.startsWith(c.cnk))) return c.key;
+  }
+  return track;
+}
+
 // Live sessions name the track by the MOD's display name ("NABS Monza F1 2025"),
 // which circuitFor()'s startsWith test can't resolve, while the AC id it also
 // carries ("monza") usually does. Try the clean resolvers on both first, then a
@@ -448,23 +480,6 @@ function containsCircuit(track) {
   return null;
 }
 
-// Resolve a raw track string to its clean canonical name ("istanbul_park" ->
-// "Turkey"). Used at import time so stored race names stay tidy. Unknown tracks
-// are returned unchanged for the admin to edit.
-export function canonicalTrack(track) {
-  if (!track) return track;
-  if (CIRCUITS[track]) return track;
-  const n = normKey(track);
-  const alias = TRACK_ALIASES[track] || TRACK_ALIASES[String(track).toLowerCase()] || NORM_ALIASES[n];
-  if (alias && CIRCUITS[alias]) return alias;
-  for (const c of NORM_KEYS) {
-    if (c.nk === n || c.cnk === n) return c.key;
-  }
-  for (const c of NORM_KEYS) {
-    if (c.nk.length >= 5 && (n.startsWith(c.nk) || n.startsWith(c.cnk))) return c.key;
-  }
-  return track;
-}
 
 // ---------------------------------------------------------------------------
 // Track flag resolution. The DB (Race.country, admin-editable per circuit) is

@@ -149,24 +149,31 @@ export default function UpcomingRacePanel({ race }) {
       <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
         <div className="card flex flex-col overflow-hidden">
           <CardHeader title="Circuit">
-            {circuit && !history?.mapImageUrl && (
+            {circuit && !loading && !history?.mapImageUrl && (
               <button className="btn-secondary px-3 py-1 text-xs" onClick={downloadPng} title="Export the outline as a PNG, e.g. to label the corners and upload the finished map in the admin Tracks tab.">
                 Download PNG
               </button>
             )}
           </CardHeader>
           <div ref={mapRef} className="flex flex-1 items-center justify-center p-5 py-8">
-            {/* An admin-uploaded map (e.g. the outline with labelled corners)
-                replaces the plain generated outline entirely. */}
-            {history?.mapImageUrl ? (
-              <img src={history.mapImageUrl} alt={`${race.track} track map`} className="max-h-80 w-full rounded-lg object-contain" />
+            {/* Nothing is drawn until the track history has landed. WHICH map to
+                draw (an uploaded one or the generated outline) and at WHAT ANGLE
+                both come from that answer, so painting early means painting the
+                wrong thing first: a track the admin turned 90° appeared upright
+                for a frame or two on every visit and then snapped round. The
+                slot is held open at the outline's own height instead, so the
+                card doesn't jump when the answer arrives. */}
+            {loading ? (
+              <div className="h-56 w-full sm:h-72" />
+            ) : history?.mapImageUrl ? (
+              <img src={history.mapImageUrl} alt={`${race.track} track map`} className="content-in max-h-80 w-full rounded-lg object-contain" />
             ) : circuit ? (
               <CircuitMap
                 track={race.track}
                 rotate={history?.mapRotation || 0}
                 stroke="var(--c-text)"
                 strokeWidth={2}
-                className="h-56 w-full text-dark sm:h-72"
+                className="content-in h-56 w-full text-dark sm:h-72"
               />
             ) : (
               <div className="py-10 text-center text-sm text-light">No outline for this track yet.</div>
