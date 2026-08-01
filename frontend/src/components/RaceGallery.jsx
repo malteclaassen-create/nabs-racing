@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 // The round's photos: the night's screenshots, uploaded by an admin in the
 // Photos tab. A quiet thumbnail grid under the race facts, and a full-screen
@@ -66,7 +67,12 @@ function Lightbox({ photos, index, onIndex, onClose, title }) {
     if (Math.abs(dx) > 45) go(dx < 0 ? 1 : -1);
   }
 
-  return (
+  // Portalled to <body>: the viewer sits deep inside the round explorer, whose
+  // entrance animations put a transform on the ancestors — and a transformed
+  // ancestor turns position:fixed into "fixed to that ancestor". The viewer
+  // then rendered down at the gallery's place in the page instead of over the
+  // screen. From <body> there is nothing between it and the viewport.
+  return createPortal(
     <div
       className="fixed inset-0 z-[68] flex flex-col bg-ink/95 backdrop-blur-sm"
       role="dialog"
@@ -125,7 +131,8 @@ function Lightbox({ photos, index, onIndex, onClose, title }) {
       {photo.caption && (
         <p className="px-6 pb-5 pt-1 text-center text-sm leading-relaxed text-white/75">{photo.caption}</p>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
 

@@ -58,7 +58,7 @@ import {
 } from "../lib/series.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import {
-  notifyResultsSaved, notifyDownloadAdded, notifySeatFilled, notifyCardUnlocksForSeason,
+  notifyResultsSaved, notifyRacePhotosAdded, notifyDownloadAdded, notifySeatFilled, notifyCardUnlocksForSeason,
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
   sendAttendancePing,
 } from "../lib/notifications.js";
@@ -3411,7 +3411,11 @@ const PHOTO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".w
 const photoFileTag = (raceId) => String(raceId).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40) || "race";
 
 async function loadRace(id) {
-  return prisma.race.findUnique({ where: { id }, select: { id: true } });
+  // Enough of the race for the "photos are up" notification to name and link it.
+  return prisma.race.findUnique({
+    where: { id },
+    select: { id: true, number: true, track: true, seasonId: true, isSpecialEvent: true, isCompleted: true },
+  });
 }
 
 // GET /api/admin/races/:id/photos -> { photos: [{ id, url, caption }] }
@@ -3465,6 +3469,10 @@ router.post("/races/:id/photos", upload.array("files", MAX_PHOTOS), async (req, 
       return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or GIF)" });
     }
     const saved = await writeRacePhotos(prisma, race.id, [...current, ...added]);
+    // Ring the bell — once per race (deduped), and only when the round already
+    // has its result: the gallery renders under the results, so on an upcoming
+    // round the link would lead to a page without it.
+    if (race.isCompleted) notifyRacePhotosAdded(prisma, race, added.length);
     res.json({
       ok: true,
       photos: withUrls(saved),

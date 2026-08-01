@@ -405,7 +405,11 @@ export default function Races() {
   useSpecificTitle(
     linkedRace
       ? `${prettyTrack(linkedRace.track)}${linkedRace.isCompleted ? " results" : ""} · ${
-          linkedRace.number != null ? `Round ${linkedRace.number}` : "Special event"
+          linkedRace.number != null
+            ? `Round ${linkedRace.number}`
+            : kindOf(linkedRace) === "TRAINING"
+              ? "Training session"
+              : "Special event"
         }, ${current?.name || `Season ${season}`} · NABS Racing League`
       : null
   );

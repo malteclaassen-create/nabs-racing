@@ -93,6 +93,7 @@ export const ATTENDANCE_STATUSES = ["ACCEPTED", "DECLINED", "TENTATIVE"];
 
 export const NOTIFY_DEFAULTS = {
   results: true, // "results are in" broadcast
+  photos: true, // "photos from the round are up" broadcast (first batch only)
   downloads: true, // "new download" broadcast
   seatOffers: "reserves", // who hears about seat offers: "reserves" | "all" | "off"
   seatFilled: true, // personal "you got the seat" note to the picked reserve
@@ -108,6 +109,7 @@ export function sanitizeNotifySettings(input) {
   const o = input && typeof input === "object" ? input : {};
   return {
     results: o.results !== false,
+    photos: o.photos !== false,
     downloads: o.downloads !== false,
     seatOffers: ["reserves", "all", "off"].includes(o.seatOffers) ? o.seatOffers : "reserves",
     seatFilled: o.seatFilled !== false,
@@ -226,6 +228,36 @@ async function seasonIsPublic(prisma, seasonId) {
 
 const roundName = (race) => (race?.number ? `Round ${race.number}` : race?.track || "the race");
 
+// Deep link to ONE race on the calendar: series prefix, the season (the bell
+// outlives a season switch, and a training result of next season must not open
+// on the current one) and the race id — the Races page picks the round AND the
+// right session tab (rounds/training/special) from it. Falls back to the plain
+// calendar when the season row is gone.
+async function racePageLink(prisma, race) {
+  const prefix = await seriesPrefixForSeason(prisma, race?.seasonId);
+  if (!race?.id) return `${prefix}/races`;
+  let seasonNumber = null;
+  try {
+    const rows = await prisma.$queryRawUnsafe(`SELECT "number" FROM "Season" WHERE "id" = ?`, race.seasonId);
+    seasonNumber = rows[0]?.number ?? null;
+  } catch {
+    /* season lookup is a nicety; the race param alone still lands on the page */
+  }
+  const q = seasonNumber != null ? `season=${seasonNumber}&race=${race.id}` : `race=${race.id}`;
+  return `${prefix}/races?${q}`;
+}
+
+// "Round 3" / "Training session" / "Special event" — what a notification calls
+// the race. Reads the stored type so a training session is announced as one
+// instead of as a bare track name.
+async function raceLabel(prisma, race) {
+  const type =
+    (await readRaceTypes(prisma, [race.id])).get(race.id) || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+  if (type === "TRAINING") return { type, label: `the training session at ${race.track}` };
+  if (type === "SPECIAL") return { type, label: `the special event at ${race.track}` };
+  return { type, label: roundName(race) };
+}
+
 // --- event triggers ----------------------------------------------------------
 // All of these swallow their own errors: the caller's action already succeeded
 // and must stay successful even if the notification write goes wrong.
@@ -237,13 +269,37 @@ export async function notifyResultsSaved(prisma, race) {
     if (!race?.id) return;
     if (!(await readNotifySettings(prisma)).results) return;
     if (!(await seasonIsPublic(prisma, race.seasonId))) return;
-    const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
+    const { type, label } = await raceLabel(prisma, race);
     await dbCreateNotification(prisma, {
       type: "RESULTS",
-      title: `${roundName(race)} results are in`,
+      // A training session has no round number; "Results are in from the
+      // training session at Monza" beats the bare "monza results are in".
+      title: type === "CHAMPIONSHIP" ? `${label} results are in` : `Results are in from ${label}`,
       body: race.track ? `Full classification from ${race.track} is up.` : null,
-      link: `${prefix}/races`,
+      // Straight to the round: right season, right session tab, row selected.
+      link: await racePageLink(prisma, race),
       dedupeKey: `results:${race.id}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// The first photos of a round's gallery. Deduped per RACE, on purpose: the
+// admin uploads in batches while sorting the night's screenshots, and one
+// "photos are up" is an invitation — five would be spam.
+export async function notifyRacePhotosAdded(prisma, race, count) {
+  try {
+    if (!race?.id || !count) return;
+    if (!(await readNotifySettings(prisma)).photos) return;
+    if (!(await seasonIsPublic(prisma, race.seasonId))) return;
+    const { label } = await raceLabel(prisma, race);
+    await dbCreateNotification(prisma, {
+      type: "PHOTOS",
+      title: `Photos from ${label} are up`,
+      body: `The gallery from ${race.track} is live. See the night as it happened.`,
+      link: await racePageLink(prisma, race),
+      dedupeKey: `race-photos:${race.id}`,
     });
   } catch {
     /* best-effort */
@@ -680,11 +736,17 @@ export async function ensureRaceReminders(prisma) {
     if (offsets.length || announceOpening) {
       // Championship rounds always; TRAINING sessions too unless the admin
       // switched them off. SPECIAL events stay announcement-only.
+      //
+      // EVERY season's upcoming races, not just the active one's: the
+      // attendance page takes sign-ups for next season's rounds while the
+      // current season finishes (eventSeasonIds does the same), and a training
+      // session scheduled there was getting no reminder and no "sign-up open"
+      // broadcast. Private seasons are filtered per race below, exactly like
+      // before; past dates fall out of the dt<=0 check.
       const races = await prisma.race.findMany({
         where: {
           isCompleted: false,
           date: { not: null },
-          season: { isActive: true },
         },
       });
       const types = await readRaceTypes(prisma, races.map((r) => r.id));
@@ -724,11 +786,12 @@ export async function ensureRaceReminders(prisma) {
         );
         if (idx === -1) continue;
         if (!(await seasonIsPublic(prisma, race.seasonId))) continue;
-        const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
         await dbCreateNotification(prisma, {
           type: "REMINDER",
           ...reminderText(race, kick, now, type === "TRAINING"),
-          link: `${prefix}/races`,
+          // The round itself, not the calendar's front page — for a training
+          // session that also switches the explorer onto the Training tab.
+          link: await racePageLink(prisma, race),
           dedupeKey: `reminder:${race.id}:${offsets[idx]}`,
         });
       }

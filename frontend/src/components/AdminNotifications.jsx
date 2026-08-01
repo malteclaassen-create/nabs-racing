@@ -143,6 +143,12 @@ export default function AdminNotifications() {
             onChange={(v) => set("results", v)}
           />
           <ToggleRow
+            label="Race photos"
+            help="One note per round when its photo gallery first goes up (later batches for the same round stay silent)."
+            value={form.photos}
+            onChange={(v) => set("photos", v)}
+          />
+          <ToggleRow
             label="New downloads"
             help="Everyone gets a note when a published download or link is added."
             value={form.downloads}

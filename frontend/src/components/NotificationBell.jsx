@@ -59,6 +59,13 @@ function TypeIcon({ type }) {
           <path d="M4 17v3h16v-3" />
         </svg>
       );
+    case "PHOTOS": // camera — a round's gallery went up
+      return (
+        <svg {...common}>
+          <path d="M3 8a2 2 0 012-2h2.5l1.2-2h6.6L16.5 6H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
+          <circle cx="12" cy="12.5" r="3.5" />
+        </svg>
+      );
     case "MARKET": // swap arrows
       return (
         <svg {...common}>
