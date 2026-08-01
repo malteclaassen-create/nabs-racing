@@ -3607,6 +3607,49 @@ router.post("/races/:id/photos", upload.array("files", MAX_PHOTOS), async (req, 
   }
 });
 
+// POST /api/admin/races/:id/photos/:photoId/replace  (multipart: file=<image>)
+// Swap the FILE behind one gallery entry, keeping its id, caption and place in
+// the running order. The admin tab uses it to re-upload a shrunk copy of a
+// photo that went up at full weight: without this, fixing one picture would
+// mean deleting it and adding it again at the end of the gallery.
+router.post("/races/:id/photos/:photoId/replace", upload.single("file"), async (req, res, next) => {
+  try {
+    const race = await loadRace(req.params.id);
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = PHOTO_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or GIF)" });
+
+    const current = await readRacePhotos(prisma, race.id);
+    const idx = current.findIndex((p) => p.id === String(req.params.photoId));
+    if (idx === -1) return res.status(404).json({ error: "No such photo" });
+
+    mkdirSync(RACES_DIR, { recursive: true });
+    // A NEW file name, never the old one: the served URL carries no cache
+    // buster, so writing over the same name would leave every browser showing
+    // the old picture for as long as its 30-day cache lasts.
+    const fresh = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const filename = `${photoFileTag(race.id)}-${fresh}${ext}`;
+    const dest = safeUploadPath(RACES_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "Could not store the file" });
+    writeFileSync(dest, req.file.buffer);
+
+    const old = current[idx];
+    const next_ = current.map((p, i) => (i === idx ? { ...p, file: filename } : p));
+    const saved = await writeRacePhotos(prisma, race.id, next_);
+    // The old file goes only once the blob points at the new one.
+    try {
+      const prev = safeUploadPath(RACES_DIR, old.file);
+      if (prev && existsSync(prev)) unlinkSync(prev);
+    } catch {
+      /* an orphan file is not worth failing the swap over */
+    }
+    res.json({ ok: true, photos: withAdminPhotoInfo(saved) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // PUT /api/admin/races/:id/photos  { photos: [{ id, caption }] }
 // The whole gallery in one go: the order is the order sent, a caption is
 // whatever is sent with it, and anything left out is deleted (file included).

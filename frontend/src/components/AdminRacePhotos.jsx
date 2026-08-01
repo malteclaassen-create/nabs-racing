@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Notice, EmptyState } from "./ui.jsx";
-import { shrinkImages } from "../utils/imageResize.js";
+import { shrinkImage, shrinkImages, REENCODE_OVER_BYTES } from "../utils/imageResize.js";
 
 // Admin: the photo gallery of a round. Pick a race, drop the night's
 // screenshots in, caption and order them, and they appear as a carousel under
@@ -108,6 +108,54 @@ export default function AdminRacePhotos() {
     }
   }
 
+  // Photos already on the server that are heavier than a shrunk one ever is.
+  // Uploads before 2026-08-01 slipped through untouched when their dimensions
+  // were already small enough, however much they weighed.
+  const heavy = photos.filter((p) => (p.bytes || 0) > REENCODE_OVER_BYTES);
+
+  // Fetch each heavy photo back, shrink it the same way an upload is shrunk,
+  // and swap the file in place. Id, caption and order survive; the gallery
+  // just gets lighter. A photo that can't be improved is left exactly as it is.
+  async function optimise() {
+    if (!heavy.length) return;
+    if (dirty) {
+      const ok = await save({ silent: true });
+      if (!ok) return;
+    }
+    setBusy(true);
+    setError(null);
+    let done = 0;
+    let saved = 0;
+    try {
+      for (const [i, p] of heavy.entries()) {
+        setMsg(`Optimising photo ${i + 1} of ${heavy.length}…`);
+        const res = await fetch(p.url);
+        if (!res.ok) continue;
+        const blob = await res.blob();
+        const original = new File([blob], `${p.id}.jpg`, { type: blob.type || "image/jpeg" });
+        const smaller = await shrinkImage(original, SHRINK);
+        // shrinkImage hands back the SAME object when it couldn't do better.
+        if (smaller === original) continue;
+        const d = await api.replaceRacePhoto(raceId, p.id, smaller);
+        setPhotos(d.photos || []);
+        setLoaded(d.photos || []);
+        done++;
+        saved += original.size - smaller.size;
+      }
+      setMsg(
+        done
+          ? `${done} photo${done === 1 ? "" : "s"} optimised, ${fmtSize(saved)} freed.`
+          : "Nothing to gain — these are already as small as they get."
+      );
+      reloadRaces();
+    } catch (err) {
+      setError(err.message);
+      setMsg(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function save({ silent = false } = {}) {
     if (!raceId) return false;
     setBusy(true);
@@ -203,6 +251,17 @@ export default function AdminRacePhotos() {
               </button>
             </>
           )}
+          {heavy.length > 0 && (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy}
+              onClick={optimise}
+              title="Fetches these photos back, shrinks them the way a new upload is shrunk, and puts them back in place. Captions and order stay."
+            >
+              Shrink {heavy.length} large photo{heavy.length === 1 ? "" : "s"}
+            </button>
+          )}
           {raceId && (
             <span className="font-mono text-[11px] uppercase tracking-wider text-light">
               {photos.length} / {MAX_PHOTOS}
@@ -257,7 +316,18 @@ export default function AdminRacePhotos() {
                   {i + 1}
                 </span>
                 {fmtSize(p.bytes) && (
-                  <span className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 font-mono text-[11px] font-bold tabular-nums text-white/85">
+                  /* Amber on the heavy ones, so "which of these is the problem"
+                     is answered by looking rather than by comparing numbers. */
+                  <span
+                    className={`absolute right-2 top-2 rounded-md px-2 py-0.5 font-mono text-[11px] font-bold tabular-nums ${
+                      (p.bytes || 0) > REENCODE_OVER_BYTES ? "bg-amber-500/90 text-ink" : "bg-black/60 text-white/85"
+                    }`}
+                    title={
+                      (p.bytes || 0) > REENCODE_OVER_BYTES
+                        ? "Larger than a shrunk photo ever is — use Shrink large photos above"
+                        : undefined
+                    }
+                  >
                     {fmtSize(p.bytes)}
                   </span>
                 )}

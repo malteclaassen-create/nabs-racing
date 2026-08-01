@@ -572,6 +572,17 @@ export const api = {
     for (const f of files) fd.append("files", f);
     return request(`/admin/races/${raceId}/photos`, { method: "POST", body: fd, auth: true, form: true });
   },
+  // Swap the file behind one photo, keeping its id, caption and position.
+  replaceRacePhoto: (raceId, photoId, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/races/${raceId}/photos/${encodeURIComponent(photoId)}/replace`, {
+      method: "POST",
+      body: fd,
+      auth: true,
+      form: true,
+    });
+  },
   // The whole gallery in one call: order, captions and deletions. Anything left
   // out of the list is removed, file and all.
   saveRacePhotos: (raceId, photos) =>

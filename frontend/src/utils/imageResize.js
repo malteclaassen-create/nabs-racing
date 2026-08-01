@@ -15,7 +15,15 @@ const SKIP_TYPES = new Set([
   "image/gif",
 ]);
 
-export async function shrinkImage(file, { maxSide = 1920, quality = 0.82 } = {}) {
+// Above this, a JPEG is re-encoded even when its dimensions are already fine.
+// A 1920x1080 screenshot exported at maximum quality is several megabytes, and
+// the old "right size, so leave it alone" rule waved exactly those through at
+// full weight — the one case where somebody notices their photos went up
+// untouched. A 1920px JPEG at the quality below lands well under this, so
+// anything heavier has something to give back.
+export const REENCODE_OVER_BYTES = 500 * 1024;
+
+export async function shrinkImage(file, { maxSide = 1920, quality = 0.82, maxBytes = REENCODE_OVER_BYTES } = {}) {
   if (!file || !file.type?.startsWith("image/") || SKIP_TYPES.has(file.type)) return file;
   if (typeof createImageBitmap !== "function" || typeof document === "undefined") return file;
 
@@ -27,8 +35,9 @@ export async function shrinkImage(file, { maxSide = 1920, quality = 0.82 } = {})
   }
   try {
     const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-    // Already small enough AND already a compressed format: nothing to gain.
-    if (scale === 1 && file.type === "image/jpeg") return file;
+    // Nothing to gain: already within the size limit, already a compressed
+    // format, and not heavy enough to be worth re-encoding.
+    if (scale === 1 && file.type === "image/jpeg" && file.size <= maxBytes) return file;
 
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));
