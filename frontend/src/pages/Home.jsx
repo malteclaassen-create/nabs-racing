@@ -374,7 +374,10 @@ function circuitMark(track) {
 // Everything here comes from the teaser endpoint (name, game, opener track and
 // date), so a season that is still private gives away nothing beyond what the
 // admin chose to announce.
-function NextSeasonPanel({ teaser, discord, signupRace }) {
+// `eyebrow`: the little label over the season name — "Next season" on the
+// off-season hero, "New season" when the panel serves the season already
+// running (same card, one word made honest).
+function NextSeasonPanel({ teaser, discord, signupRace, eyebrow = "Next season" }) {
   // Same guard the "Coming up" strip uses: the car band stays hidden until the
   // file really loads, and a cached image can be complete before React attaches
   // its load listener, so the element is checked directly too.
@@ -473,7 +476,7 @@ function NextSeasonPanel({ teaser, discord, signupRace }) {
               </div>
             )}
             <div className="relative font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
-              Next season
+              {eyebrow}
             </div>
             <div className="relative mt-2.5 break-words font-display text-2xl font-black uppercase leading-none tracking-tight text-ink dark:text-white sm:text-3xl">
               {title}
@@ -554,9 +557,6 @@ export default function Home() {
   const races = useApi(useCallback(() => api.races(), []));
   const events = useApi(useCallback(() => api.events(), []));
   const [latest, setLatest] = useState(null);
-  // Previous season's final standings — shown in the hero while the selected
-  // season hasn't run its opener yet (so the "latest race" side isn't empty).
-  const [prevChamps, setPrevChamps] = useState(null);
   // Personal widgets: rank within the whole field vs. within the driver's tier.
   const [tierView, setTierView] = useState(false);
 
@@ -573,12 +573,11 @@ export default function Home() {
   // Is the season being viewed an archived (past) one? Computed up here because
   // the hero needs it before the data-loading guard below.
   const isPast = !!season && !!active && season.number < active.number;
-  // The season immediately before the one being viewed (highest number below it).
-  const prevSeason = season
-    ? seasons.filter((s) => s.number < season.number).sort((a, b) => b.number - a.number)[0] || null
-    : null;
-  // A live (not archived) season whose opener hasn't been run yet: the "latest
-  // race" hero would be blank, so fall back to last season's champions.
+  // A live (not archived) season whose opener hasn't been run yet. Since
+  // 2026-08-01 this state keeps the SAME pre-season page a future season shows
+  // (coming-soon hero + the opener/rounds/grid tiles) instead of switching to
+  // a champions-of-last-season hero the moment the season is activated — the
+  // page only changes once the first result is actually in.
   const awaitingOpener = !isPast && !!races.data && completedRaces.length === 0;
   // A FUTURE season being viewed (higher number than the running one): it hasn't
   // started, so the hero shows a "Coming soon" card (with a reserved slot for a
@@ -638,21 +637,6 @@ export default function Home() {
       alive = false;
     };
   }, [lastRace?.id]);
-
-  useEffect(() => {
-    let alive = true;
-    if (awaitingOpener && prevSeason?.number != null) {
-      api
-        .driverStandings(prevSeason.number)
-        .then((d) => alive && setPrevChamps(d))
-        .catch(() => alive && setPrevChamps(null));
-    } else {
-      setPrevChamps(null);
-    }
-    return () => {
-      alive = false;
-    };
-  }, [awaitingOpener, prevSeason?.number]);
 
   // End-of-season honours — for the live finale AND archived seasons (the API
   // reads the selected season; awards without data simply stay away, so old
@@ -743,24 +727,29 @@ export default function Home() {
       ? standings.slice(0, 3).map((d, i) => ({ driverId: d.driverId, position: i + 1, name: d.name, country: d.country, team: d.team, total: d.total, photoUrl: d.photoUrl }))
       : podium;
 
-  // Last season's champions, shown on the hero's left while this season waits
-  // for its opener. Only when we actually have the previous standings loaded.
-  const prevChampsRows = prevChamps?.standings || [];
-  const showPrevChamps = awaitingOpener && prevChampsRows.length > 0;
-  const prevChampion = showPrevChamps ? prevChampsRows[0] : null;
-  const prevPodium = showPrevChamps
-    ? prevChampsRows.slice(0, 3).map((d, i) => ({ driverId: d.driverId, position: i + 1, name: d.name, country: d.country, team: d.team, total: d.total, photoUrl: d.photoUrl }))
-    : [];
-  // The podium strip in the hero's left column uses whichever set applies.
-  const leftPodium = showPrevChamps ? prevPodium : heroPodium;
-
   // The "Coming soon" hero (season name, countdown to the opener, Join Discord)
-  // was built for a future season previewed before it's activated. A brand-new
-  // SERIES' first-ever season hits the exact same "nothing has happened yet"
-  // state while already ACTIVE (awaitingOpener), just with no previous season
-  // to fall back to (showPrevChamps false) — so it gets the same treatment
-  // instead of the "Latest Race" hero faking a result that doesn't exist yet.
-  const showComingSoonHero = isUpcomingSeason || (awaitingOpener && !showPrevChamps);
+  // covers every season that hasn't run its opener yet: a future season being
+  // previewed AND the active season before round one. The page a season was
+  // announced with is the page it keeps until it produces its first result —
+  // it used to jump to a champions-of-last-season hero on activation, which
+  // read as if something had happened when nothing had.
+  const showComingSoonHero = isUpcomingSeason || awaitingOpener;
+  // The running season's own opener panel (right half of that hero): the same
+  // card the off-season teaser uses, fed from the season itself — the teaser
+  // endpoint only ever announces a season AHEAD of the active one, so it goes
+  // silent the moment the admin flips the switch, which is exactly when this
+  // takes over.
+  const openerAwaited = awaitingOpener && !isUpcomingSeason;
+  const openerPanel =
+    openerAwaited && season
+      ? {
+          number: season.number,
+          name: season.name,
+          game: season.game,
+          carImageUrl: season.carImageUrl,
+          firstRace: nextRace ? { track: nextRace.track, date: nextRace.date } : null,
+        }
+      : null;
   const comingSoonCopy = isUpcomingSeason
     ? {
         eyebrow: "Coming soon",
@@ -998,8 +987,11 @@ export default function Home() {
                   {comingSoonCopy.blurb}
                 </p>
                 {/* Big countdown to the opener — the same broadcast clock the
-                    next-race panel uses, so race day reads the same site-wide. */}
-                {nextRace?.date && (
+                    next-race panel uses, so race day reads the same site-wide.
+                    Once the season is ACTIVE the opener panel on the right
+                    carries this clock, so it stands down here rather than
+                    ticking twice in one hero. */}
+                {nextRace?.date && !openerAwaited && (
                   <div className="hero-anim max-w-md" style={{ animationDelay: "0.26s" }}>
                     <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-ink/55 dark:text-white/55">
                       Season opener · Round {nextRace.number}{nextRace.track ? ` · ${nextRace.track}` : ""}
@@ -1022,47 +1014,49 @@ export default function Home() {
                   </div>
                 )}
               </div>
-              <CarReveal season={season} />
+              {/* Right half: previewing a FUTURE season shows the plain car
+                  reveal, as before. The ACTIVE season awaiting its opener gets
+                  the full opener card instead — the same one the off-season
+                  teaser shows (car on top, opener + flag, countdown, sign-up) —
+                  so activating the season keeps the page's promise until the
+                  first result replaces it. */}
+              {openerAwaited ? (
+                <NextSeasonPanel
+                  teaser={openerPanel}
+                  discord={social.data?.discord}
+                  signupRace={signupRace}
+                  eyebrow="New season"
+                />
+              ) : (
+                <CarReveal season={season} />
+              )}
             </div>
           ) : (
           <>
-          {/* LEFT — latest race, or (before the opener) last season's champions */}
+          {/* LEFT — the latest race. Before the opener the hero is the
+              coming-soon variant above, so this side always has a result. */}
           <div className="flex flex-1 flex-col justify-end">
-            {showPrevChamps ? (
-              <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
-                <Flag code={countryFor(prevChampion.driverId, prevChampion.country)} w={26} h={19} />
-                <span>Last Season</span>
-                <span className="h-px w-10 bg-accent/50" />
-                <span className="text-ink/40 dark:text-white/50">{prevSeason?.name}</span>
-              </div>
-            ) : (
-              <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
-                {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
-                <span>Latest Race</span>
-                <span className="h-px w-10 bg-accent/50" />
-                <span className="text-ink/40 dark:text-white/50">Round {roundNo}</span>
-              </div>
-            )}
+            <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
+              {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
+              <span>Latest Race</span>
+              <span className="h-px w-10 bg-accent/50" />
+              <span className="text-ink/40 dark:text-white/50">Round {roundNo}</span>
+            </div>
 
             <h1 className="hero-anim mt-4 max-w-3xl break-words font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
-              {showPrevChamps ? prevChampion.name : lastRace?.track || "Season opener"}
+              {lastRace?.track || "Season opener"}
             </h1>
             <p className="hero-anim mt-3 font-mono text-[13px] uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
-              {showPrevChamps
-                ? `${prevSeason?.name} Champion · ${prevChampion.total} pts`
-                : `${lastCircuit && lastCircuit.circuit?.toLowerCase() !== lastRace?.track?.toLowerCase() ? `${lastCircuit.circuit} · ` : ""}${fmtFull(lastRace?.date)}`}
+              {`${lastCircuit && lastCircuit.circuit?.toLowerCase() !== lastRace?.track?.toLowerCase() ? `${lastCircuit.circuit} · ` : ""}${fmtFull(lastRace?.date)}`}
             </p>
 
-            {/* podium strip — latest-race (or last-season) top 3 */}
-            {leftPodium.length > 0 && (
+            {/* podium strip — latest-race top 3 */}
+            {heroPodium.length > 0 && (
               <div className="mt-8 grid max-w-2xl gap-2 sm:grid-cols-3">
-                {leftPodium.map((p, i) => (
+                {heroPodium.map((p, i) => (
                   <Link
                     key={p.driverId}
                     to={`/drivers/${p.driverId}`}
-                    // In "last season" mode these are previous-season drivers, so
-                    // drop the whole site down to that season as we open them.
-                    onClick={showPrevChamps && prevSeason ? () => setSeason(prevSeason.number) : undefined}
                     // Each card rises on its own beat (P1 first), instead of the
                     // whole strip fading in as one block.
                     style={{ animationDelay: `${0.26 + i * 0.14}s` }}
@@ -1118,43 +1112,22 @@ export default function Home() {
               </div>
             )}
 
-            {showPrevChamps ? (
-              <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
-                <Link
-                  ref={ctaRef}
-                  to="/drivers"
-                  onClick={() => prevSeason && setSeason(prevSeason.number)}
-                  className="shine group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
-                >
-                  {prevSeason?.name} Standings
-                  <span className="transition group-hover:translate-x-0.5">→</span>
-                </Link>
-                <Link
-                  to="/constructors"
-                  onClick={() => prevSeason && setSeason(prevSeason.number)}
-                  className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
-                >
-                  Constructors
-                </Link>
-              </div>
-            ) : (
-              <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
-                <Link
-                  ref={ctaRef}
-                  to="/races"
-                  className="shine group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
-                >
-                  Full Results
-                  <span className="transition group-hover:translate-x-0.5">→</span>
-                </Link>
-                <Link
-                  to="/drivers"
-                  className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
-                >
-                  Standings
-                </Link>
-              </div>
-            )}
+            <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
+              <Link
+                ref={ctaRef}
+                to="/races"
+                className="shine group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
+              >
+                Full Results
+                <span className="transition group-hover:translate-x-0.5">→</span>
+              </Link>
+              <Link
+                to="/drivers"
+                className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
+              >
+                Standings
+              </Link>
+            </div>
           </div>
 
           {/* RIGHT — next race panel */}

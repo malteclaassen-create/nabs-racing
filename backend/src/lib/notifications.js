@@ -800,7 +800,33 @@ export async function ensureRaceReminders(prisma) {
     // anything older than 90 days can go.
     const cutoff = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString();
     await prisma.$executeRaw`DELETE FROM "Notification" WHERE "createdAt" < ${cutoff}`;
+    await fixLegacyRaceLinks(prisma);
   } catch {
     /* reminders must never take the bell down */
+  }
+}
+
+// One-shot repair for race notifications minted before their links carried the
+// season and the race (they pointed at the calendar's front page, which shows
+// the running season's championship rounds — a note about another season's
+// training session left the reader somewhere else entirely). The dedupe key
+// has always carried the race id, so the stored rows can be rewritten to the
+// deep link new ones get. Runs once per boot; rows for a since-deleted race
+// are left alone (their round is gone either way).
+let legacyLinksChecked = false;
+async function fixLegacyRaceLinks(prisma) {
+  if (legacyLinksChecked) return;
+  legacyLinksChecked = true;
+  const rows = await prisma.notification.findMany({
+    where: { type: { in: ["RESULTS", "PHOTOS", "REMINDER"] } },
+    select: { id: true, link: true, dedupeKey: true },
+  });
+  for (const n of rows) {
+    if (!n.dedupeKey || (n.link || "").includes("race=")) continue;
+    const m = /^(?:results|race-photos|reminder):([^:]+)/.exec(n.dedupeKey);
+    if (!m) continue;
+    const race = await prisma.race.findUnique({ where: { id: m[1] }, select: { id: true, seasonId: true } });
+    if (!race) continue;
+    await prisma.notification.update({ where: { id: n.id }, data: { link: await racePageLink(prisma, race) } });
   }
 }
