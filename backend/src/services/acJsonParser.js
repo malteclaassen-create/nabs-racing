@@ -66,7 +66,7 @@ export function parseAcRaceJson(json, drivers) {
   // Full per-driver telemetry keyed by Steam GUID, attached to each entry below
   // so the admin import carries cleanliness/pace data through to the stored
   // result. safetyCarGuids lets the review UI flag and deprioritise the SC.
-  const { byGuid, safetyCarGuids } = extractTelemetry(json);
+  const { byGuid, safetyCarGuids, suspectedSafetyCarGuids } = extractTelemetry(json);
 
   const entries = json.Result
     // AC includes spectators / non-finishers with 0 laps & huge time; we keep
@@ -88,6 +88,10 @@ export function parseAcRaceJson(json, drivers) {
       const best = suggestions[0];
       const guid = r.DriverGuid ?? null;
       const isSafetyCar = guid != null && safetyCarGuids.has(guid);
+      // Name matched the known-SC list but the car didn't. Almost always a
+      // training session where the league's safety-car driver simply raced, so
+      // the row stays fully usable — the flag only asks the admin to look.
+      const maybeSafetyCar = guid != null && suspectedSafetyCarGuids.has(guid);
       // GUID-first suggestion: a Steam GUID that exactly matches a roster
       // driver's stored steamId is a certain identity (far more reliable than
       // the fuzzy display name), so it wins over any name score. Otherwise fall
@@ -99,8 +103,14 @@ export function parseAcRaceJson(json, drivers) {
       if (isSafetyCar) {
         // never auto-map the safety car
       } else if (steamMatch) {
+        // A Steam GUID is a certain identity, so it settles a merely SUSPECTED
+        // safety car too: this is the person, whatever car they were in.
         suggestedDriverId = steamMatch.id;
         matchedBy = "steam";
+      } else if (maybeSafetyCar) {
+        // Name-only evidence on both sides — a fuzzy name match against a
+        // known-SC name is exactly the guess that shouldn't be made silently.
+        // The admin picks from the list instead.
       } else if (best && best.score >= 0.55) {
         suggestedDriverId = best.driverId;
         matchedBy = "name";
@@ -116,6 +126,9 @@ export function parseAcRaceJson(json, drivers) {
         // The safety car shows up in Result[] as a normal entrant; flag it so
         // the admin review can dim it and never auto-map it to a real driver.
         isSafetyCar,
+        // "Usually drives the safety car, but this car isn't one." Shown as a
+        // question in the review; changes nothing else about the row.
+        maybeSafetyCar,
         // Car-to-car contact incidents (0 when none; null when no Guid).
         contacts: tel ? tel.contacts : null,
         // Extra AC telemetry (null when the entry has no Guid / no laps).

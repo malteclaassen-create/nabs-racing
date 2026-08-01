@@ -36,14 +36,42 @@ describe("safety car detection", () => {
     expect(byGuid.has("a")).toBe(true);
   });
 
-  it("falls back to the known SC name list when the skin is generic", () => {
+  // The name list is a HINT, not a verdict: the people on it also race. In a
+  // training session they turn up in an ordinary car, and treating the name as
+  // proof threw away their laps and left the import unable to map them.
+  it("only SUSPECTS a known SC name when the car isn't a safety car", () => {
     const json = {
       Cars: [car("t", "Tyler27")],
       Result: [res("t", 1)],
       Laps: [lap("t", 90000, 100)],
     };
-    const { safetyCarGuids } = extractTelemetry(json);
+    const { safetyCarGuids, suspectedSafetyCarGuids } = extractTelemetry(json);
+    expect(safetyCarGuids.has("t")).toBe(false);
+    expect(suspectedSafetyCarGuids.has("t")).toBe(true);
+  });
+
+  it("keeps a suspected driver's telemetry, unlike a real safety car", () => {
+    const json = {
+      Cars: [car("t", "Tyler27"), car("sc", "Marshal", "!NABS_Safety_Car")],
+      Result: [res("t", 1), res("sc", 2)],
+      Laps: [lap("t", 90000, 100), lap("t", 90500, 200), lap("sc", 130000, 100)],
+      Events: [ev("COLLISION_WITH_CAR", "t", 40, 150), ev("COLLISION_WITH_CAR", "sc", 40, 150)],
+      Penalties: [],
+    };
+    const { byGuid } = extractTelemetry(json);
+    expect(byGuid.get("t").contacts).toBe(1); // raced, so it counts
+    expect(byGuid.has("sc")).toBe(false); // the actual safety car still doesn't
+  });
+
+  it("a name on the list driving the actual safety car is still certain", () => {
+    const json = {
+      Cars: [car("t", "Tyler27", "!NABS_Safety_Car")],
+      Result: [res("t", 1)],
+      Laps: [lap("t", 130000, 100)],
+    };
+    const { safetyCarGuids, suspectedSafetyCarGuids } = extractTelemetry(json);
     expect(safetyCarGuids.has("t")).toBe(true);
+    expect(suspectedSafetyCarGuids.has("t")).toBe(false);
   });
 });
 

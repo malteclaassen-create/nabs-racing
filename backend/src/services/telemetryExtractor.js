@@ -17,7 +17,11 @@
 export const CONTACT_DEFAULTS = { impactThreshold: 10, mergeWindowMs: 3000 };
 export const ENV_CONTACT_DEFAULTS = { impactThreshold: 15, mergeWindowMs: 3000 };
 
-// Known safety-car driver names (fallback when the skin doesn't say "safety").
+// People who USUALLY drive the safety car, by AC name. A fallback for files
+// where the skin doesn't say "safety" — and only ever a SUSPICION, never a
+// verdict: these are members of the league who also race, and in a training
+// session they turn up in an ordinary car like everyone else. Treating the
+// name as proof wiped their telemetry and left the import unable to map them.
 const DEFAULT_SC_NAMES = ["Tyler27", "Janelko", "Samuel Foniok"];
 
 const CLEAN_LAP_WINDOW_MS = 10000; // a lap counts as "clean" within 10s of own best
@@ -217,21 +221,33 @@ export function extractTelemetry(json, opts = {}) {
   const penalties = Array.isArray(json?.Penalties) ? json.Penalties : [];
 
   // --- Safety car (guid-based, robust to the SC appearing in Result[] as a
-  // normal entrant). A car is the SC if its skin mentions "safety" or its driver
-  // name is a known SC name.
+  // normal entrant). Two strengths of evidence, and they are NOT the same:
+  //
+  //   safetyCarGuids   — the car's SKIN says safety. That is the car itself,
+  //                      so it is a fact: its telemetry is thrown away and it
+  //                      is never mapped to a driver.
+  //   suspectedGuids   — only the driver's NAME matches the known-SC list. The
+  //                      same person races in the training sessions, in an
+  //                      ordinary car, and then this is simply wrong. It is
+  //                      passed on as a flag for the import to show, and
+  //                      nothing else: their telemetry is kept and they can be
+  //                      mapped like anybody else.
   const safetyCarGuids = new Set();
+  const suspectedSafetyCarGuids = new Set();
+  const knownName = (n) => safetyCarNames.has(String(n || "").toLowerCase());
   for (const c of cars) {
     const guid = c?.Driver?.Guid;
     if (!guid) continue;
-    if (/safety/i.test(String(c.Skin || "")) || safetyCarNames.has(String(c?.Driver?.Name || "").toLowerCase())) {
-      safetyCarGuids.add(guid);
-    }
+    if (/safety/i.test(String(c.Skin || ""))) safetyCarGuids.add(guid);
+    else if (knownName(c?.Driver?.Name)) suspectedSafetyCarGuids.add(guid);
     if (Array.isArray(c?.Driver?.GuidsList) && c.Driver.GuidsList.length > 1) {
       console.warn(`telemetry: car ${c.CarId} lists multiple GUIDs; attributing to ${guid}`);
     }
   }
   for (const r of results) {
-    if (r?.DriverGuid && safetyCarNames.has(String(r.DriverName || "").toLowerCase())) safetyCarGuids.add(r.DriverGuid);
+    if (r?.DriverGuid && knownName(r.DriverName) && !safetyCarGuids.has(r.DriverGuid)) {
+      suspectedSafetyCarGuids.add(r.DriverGuid);
+    }
   }
 
   const contactsByGuid = countIncidents(events, {
@@ -412,5 +428,5 @@ export function extractTelemetry(json, opts = {}) {
     });
   }
 
-  return { byGuid, safetyCarGuids };
+  return { byGuid, safetyCarGuids, suspectedSafetyCarGuids };
 }

@@ -146,6 +146,62 @@ describe("parseAcRaceJson · Steam GUID matching", () => {
   });
 });
 
+// The league's safety-car drivers also race, above all in the training
+// sessions, where nobody is in their usual car. An entrant whose NAME is on the
+// known-SC list but whose CAR isn't a safety car is a normal drive.
+describe("parseAcRaceJson · the safety-car driver actually racing", () => {
+  const roster = [
+    { id: "lewis", name: "Lewis Hamilton", discordName: "lewis_h", teamId: "alpha", tier: 1 },
+    { id: "sam", name: "Samuel Foniok", discordName: "sam", teamId: "reserve", tier: 0, steamId: "STEAM_SAM" },
+  ];
+  const training = (extra = {}) => ({
+    Type: "RACE",
+    TrackName: "spa",
+    Cars: [{ CarId: 0, Skin: "red_bull_2023", Driver: { Guid: "STEAM_SAM", Name: "Samuel Foniok" } }],
+    Result: [{ DriverName: "Samuel Foniok", DriverGuid: "STEAM_SAM", NumLaps: 20, BestLap: 90000, TotalTime: 1000 }],
+    ...extra,
+  });
+
+  it("flags the row as a question, not as the safety car", () => {
+    const e = parseAcRaceJson(training(), roster).entries[0];
+    expect(e.isSafetyCar).toBe(false);
+    expect(e.maybeSafetyCar).toBe(true);
+  });
+
+  it("still maps them when the Steam GUID says who they are", () => {
+    const e = parseAcRaceJson(training(), roster).entries[0];
+    expect(e.suggestedDriverId).toBe("sam");
+    expect(e.matchedBy).toBe("steam");
+  });
+
+  it("leaves the pick to the admin when only the name matches", () => {
+    const noGuid = {
+      Type: "RACE",
+      TrackName: "spa",
+      Cars: [{ CarId: 0, Skin: "red_bull_2023", Driver: { Guid: "STEAM_OTHER", Name: "Samuel Foniok" } }],
+      Result: [{ DriverName: "Samuel Foniok", DriverGuid: "STEAM_OTHER", NumLaps: 20 }],
+    };
+    const e = parseAcRaceJson(noGuid, roster).entries[0];
+    expect(e.maybeSafetyCar).toBe(true);
+    expect(e.suggestedDriverId).toBeNull();
+    // The list is still offered — the admin picks from it.
+    expect(e.suggestions.map((s) => s.driverId)).toContain("sam");
+  });
+
+  it("is unchanged when they really are in the safety car", () => {
+    const real = {
+      Type: "RACE",
+      TrackName: "spa",
+      Cars: [{ CarId: 0, Skin: "!NABS_Safety_Car", Driver: { Guid: "STEAM_SAM", Name: "Samuel Foniok" } }],
+      Result: [{ DriverName: "Samuel Foniok", DriverGuid: "STEAM_SAM", NumLaps: 20 }],
+    };
+    const e = parseAcRaceJson(real, roster).entries[0];
+    expect(e.isSafetyCar).toBe(true);
+    expect(e.maybeSafetyCar).toBe(false);
+    expect(e.suggestedDriverId).toBeNull();
+  });
+});
+
 describe("countCarContacts", () => {
   const ev = (guid, other, ImpactSpeed, Timestamp) => ({
     Type: "COLLISION_WITH_CAR",

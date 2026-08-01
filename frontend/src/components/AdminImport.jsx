@@ -161,6 +161,9 @@ export default function AdminImport({ onCommitted }) {
           // The safety car appears in the result file as a normal entrant; the
           // backend flags it so we can dim it and leave it unmapped.
           isSafetyCar: !!en.isSafetyCar,
+          // Drives the safety car most weekends, but not in this car. The row
+          // behaves like any other; the badge just says why it wasn't guessed.
+          maybeSafetyCar: !!en.maybeSafetyCar,
           // Steam GUID (SteamID64) and how the suggestion was made ("steam" =
           // exact GUID, "name" = fuzzy). The GUID is forwarded on commit so the
           // backend can capture it onto the driver for future auto-matching.
@@ -668,6 +671,14 @@ export default function AdminImport({ onCommitted }) {
                           {r.acDriverName}
                           {r.isSafetyCar && (
                             <span className="ml-2 pill bg-surface2 text-light">safety car</span>
+                          )}
+                          {!r.isSafetyCar && r.maybeSafetyCar && (
+                            <span
+                              className="ml-2 pill bg-surface2 text-light"
+                              title="Usually drives the safety car, but this car isn't one — so this looks like a real drive. Nothing was guessed for it; pick them from the list. Their lap and incident data is kept either way."
+                            >
+                              safety car?
+                            </span>
                           )}
                         </td>
                         <td className="px-3 py-2">
