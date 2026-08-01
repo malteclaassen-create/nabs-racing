@@ -583,6 +583,8 @@ export const api = {
 
   // health (admin): integrity check, backups, activity log
   integrity: () => request(`/admin/integrity${seasonQ()}`, { auth: true }),
+  // Disk usage per area (race photos, downloads, backups, DB …) for Health.
+  storage: () => request("/admin/storage", { auth: true }),
   backups: () => request("/admin/backups", { auth: true }),
   createBackup: () => request("/admin/backups", { method: "POST", auth: true }),
   // Full backup (DB + uploads) as a zip blob. Fetched with the auth header and

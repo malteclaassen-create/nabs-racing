@@ -1,8 +1,9 @@
 import { Router } from "express";
 import multer from "multer";
 import bcrypt from "bcryptjs";
-import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync } from "fs";
-import { join, extname, basename } from "path";
+import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, readdirSync, statSync } from "fs";
+import { join, extname, basename, dirname } from "path";
+import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { isSafeId, safeUploadPath } from "../lib/safeUpload.js";
@@ -69,7 +70,8 @@ import {
 import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride } from "../lib/attendanceGate.js";
 import { writeHiddenRace } from "../lib/attendanceHidden.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, withUrls } from "../lib/racePhotos.js";
-import { UPLOADS_DIR, LOGS_DIR } from "../lib/dataDirs.js";
+// DOWNLOADS_DIR arrives via lib/downloads.js above.
+import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap } from "../lib/liveServers.js";
 
 const router = Router();
@@ -192,6 +194,95 @@ router.post("/backups", async (req, res, next) => {
   try {
     const backup = await createBackup(prisma, "manual");
     res.json({ ok: true, backup });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// STORAGE OVERVIEW
+// What is actually on the disk, area by area — asked for when the race photo
+// galleries arrived: "how much space are the photos eating?". On Railway all
+// of this lives on the mounted volume, whose size is capped, so the answer
+// matters beyond curiosity.
+// ---------------------------------------------------------------------------
+
+// Total bytes + file count of a directory tree. Sync on purpose: these trees
+// are a few hundred files at most (the big AC downloads are the exception, and
+// even a thousand stat calls are milliseconds), and the admin taps this once.
+function dirUsage(dir) {
+  let bytes = 0;
+  let files = 0;
+  try {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      const st = statSync(p);
+      if (st.isDirectory()) {
+        const sub = dirUsage(p);
+        bytes += sub.bytes;
+        files += sub.files;
+      } else {
+        bytes += st.size;
+        files += 1;
+      }
+    }
+  } catch {
+    /* a missing folder is simply empty */
+  }
+  return { bytes, files };
+}
+
+// The SQLite file behind DATABASE_URL ("file:./dev.db" resolves relative to
+// backend/prisma, where the schema lives). Null when it can't be found — the
+// overview then just leaves the database row out rather than guessing.
+function databaseFileSize() {
+  try {
+    const url = process.env.DATABASE_URL || "";
+    if (!url.startsWith("file:")) return null;
+    const raw = url.slice(5);
+    const prismaDir = join(dirname(fileURLToPath(import.meta.url)), "../../prisma");
+    const p = raw.startsWith("/") || /^[A-Za-z]:/.test(raw) ? raw : join(prismaDir, raw);
+    return statSync(p).size;
+  } catch {
+    return null;
+  }
+}
+
+// GET /api/admin/storage -> { areas: [{ key, label, bytes, files }], databaseBytes }
+router.get("/storage", async (_req, res, next) => {
+  try {
+    // The uploads folder split by what lives in each subfolder, so "the race
+    // photos" is its own line instead of hiding inside one uploads number.
+    const UPLOAD_AREAS = [
+      ["races", "Race photos"],
+      ["avatars", "Driver photos"],
+      ["teams", "Team logos"],
+      ["seasons", "Season images"],
+      ["series", "Series logos"],
+      ["tracks", "Track maps"],
+      ["social", "Social covers"],
+      ["cards", "Card photos"],
+    ];
+    const areas = [];
+    const seen = new Set(UPLOAD_AREAS.map(([key]) => key));
+    for (const [key, label] of UPLOAD_AREAS) {
+      areas.push({ key: `uploads/${key}`, label, ...dirUsage(join(UPLOADS_DIR, key)) });
+    }
+    // A future upload folder this list doesn't know yet still gets counted,
+    // under its own name — the overview must never quietly omit disk usage.
+    try {
+      for (const name of readdirSync(UPLOADS_DIR)) {
+        if (seen.has(name) || !statSync(join(UPLOADS_DIR, name)).isDirectory()) continue;
+        areas.push({ key: `uploads/${name}`, label: `Uploads: ${name}`, ...dirUsage(join(UPLOADS_DIR, name)) });
+      }
+    } catch {
+      /* no uploads folder yet */
+    }
+    areas.push({ key: "downloads", label: "Downloads (AC files)", ...dirUsage(DOWNLOADS_DIR) });
+    areas.push({ key: "backups", label: "Backups", ...dirUsage(BACKUPS_DIR) });
+    areas.push({ key: "results-archive", label: "Raw result files", ...dirUsage(RESULTS_ARCHIVE_DIR) });
+    areas.push({ key: "logs", label: "Logs", ...dirUsage(LOGS_DIR) });
+    res.json({ areas, databaseBytes: databaseFileSize() });
   } catch (e) {
     next(e);
   }

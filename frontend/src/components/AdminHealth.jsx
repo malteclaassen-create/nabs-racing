@@ -24,6 +24,7 @@ function SeverityBadge({ severity }) {
 
 function fmtSize(bytes) {
   if (bytes == null) return "";
+  if (bytes > 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
   if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
@@ -75,6 +76,9 @@ export default function AdminHealth() {
 
   const backups = useApi(useCallback(() => api.backups(), [backupDone]));
   const activity = useApi(useCallback(() => api.activity(), []));
+  // Disk usage per area. Reloaded together with the backup list: creating a
+  // backup is the one admin action on this page that visibly moves the number.
+  const storage = useApi(useCallback(() => api.storage(), [backupDone]));
 
   async function runCheck() {
     setError(null);
@@ -218,6 +222,59 @@ export default function AdminHealth() {
             </ul>
           )}
         </div>
+      </section>
+
+      {/* --- Storage ----------------------------------------------------------- */}
+      <section className="card p-5">
+        <CardHead title="Disk usage" />
+        <p className="-mt-2 mb-4 text-sm text-light">
+          What the league keeps on disk, area by area. Race photos are shrunk in the browser before they
+          are uploaded (long side 1920px, JPEG), so a full gallery costs a few megabytes, not hundreds.
+        </p>
+        {storage.error ? (
+          <ErrorBox message={storage.error} onRetry={storage.reload} title="Couldn't read the disk usage" />
+        ) : !storage.data ? (
+          <p className="text-sm text-light">Measuring…</p>
+        ) : (
+          (() => {
+            const areas = [...(storage.data.areas || [])]
+              .filter((a) => a.files > 0 || a.bytes > 0)
+              .sort((a, b) => b.bytes - a.bytes);
+            const db = storage.data.databaseBytes;
+            const total = areas.reduce((s, a) => s + a.bytes, 0) + (db || 0);
+            const max = Math.max(1, ...areas.map((a) => a.bytes), db || 0);
+            const Row = ({ label, bytes, files }) => (
+              <li className="py-2">
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="text-medium">{label}</span>
+                  <span className="shrink-0 font-mono text-xs tabular-nums text-light">
+                    {files != null && `${files} file${files === 1 ? "" : "s"} · `}
+                    <span className="font-bold text-dark">{fmtSize(bytes)}</span>
+                  </span>
+                </div>
+                {/* One shared scale, so the bar answers "what is the big one?"
+                    at a glance without reading a single number. */}
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface2">
+                  <div className="h-full rounded-full bg-brand/70" style={{ width: `${Math.max(1, (bytes / max) * 100)}%` }} />
+                </div>
+              </li>
+            );
+            return (
+              <>
+                <div className="mb-3 flex items-baseline justify-between border-b border-border pb-3">
+                  <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Total</span>
+                  <span className="font-display text-xl font-black tabular-nums text-dark">{fmtSize(total)}</span>
+                </div>
+                <ul className="divide-y divide-border">
+                  {db != null && <Row label="Database" bytes={db} />}
+                  {areas.map((a) => (
+                    <Row key={a.key} label={a.label} bytes={a.bytes} files={a.files} />
+                  ))}
+                </ul>
+              </>
+            );
+          })()
+        )}
       </section>
 
       {/* --- Activity log ------------------------------------------------------ */}
