@@ -567,10 +567,17 @@ export const api = {
   // Race photo gallery (admin). The public side reads the photos straight off
   // the round detail, so there is no public call here.
   racePhotos: (raceId) => request(`/admin/races/${raceId}/photos`, { auth: true }),
-  uploadRacePhotos: (raceId, files) => {
+  // `silent` skips the "photos are up" bell — for filling in old galleries,
+  // which is housekeeping rather than news.
+  uploadRacePhotos: (raceId, files, silent = false) => {
     const fd = new FormData();
     for (const f of files) fd.append("files", f);
-    return request(`/admin/races/${raceId}/photos`, { method: "POST", body: fd, auth: true, form: true });
+    return request(`/admin/races/${raceId}/photos${silent ? "?silent=1" : ""}`, {
+      method: "POST",
+      body: fd,
+      auth: true,
+      form: true,
+    });
   },
   // Swap the file behind one photo, keeping its id, caption and position.
   replaceRacePhoto: (raceId, photoId, file) => {

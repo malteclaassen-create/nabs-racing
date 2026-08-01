@@ -51,6 +51,12 @@ export default function AdminRacePhotos() {
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const fileRef = useRef(null);
+  // Whether the upload rings the members' bell. On by default, and it stays as
+  // set while the tab is open, so working through a season's worth of old
+  // galleries is one click here rather than one per round. Deliberately NOT
+  // remembered beyond that: a switch that silences notifications forever is one
+  // nobody remembers having flipped.
+  const [notify, setNotify] = useState(true);
 
   const race = (races || []).find((r) => r.id === raceId) || null;
   const dirty = loaded != null && JSON.stringify(photos) !== JSON.stringify(loaded);
@@ -92,7 +98,7 @@ export default function AdminRacePhotos() {
     try {
       const shrunk = await shrinkImages(files, SHRINK);
       setMsg(`Uploading ${shrunk.length} photo${shrunk.length === 1 ? "" : "s"}…`);
-      const d = await api.uploadRacePhotos(raceId, shrunk);
+      const d = await api.uploadRacePhotos(raceId, shrunk, !notify);
       setPhotos(d.photos || []);
       setLoaded(d.photos || []);
       const parts = [`${d.added} photo${d.added === 1 ? "" : "s"} added.`];
@@ -233,6 +239,21 @@ export default function AdminRacePhotos() {
           >
             Add photos
           </button>
+          {/* Sits next to the button it governs, and keeps its setting while
+              the tab is open — untick once, then work through as many old
+              rounds as you like. */}
+          <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-light">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-brand"
+              checked={notify}
+              disabled={busy}
+              onChange={(e) => setNotify(e.target.checked)}
+            />
+            <span title="A round's gallery rings the bell once, the first time photos go up. Untick this when filling in old races — nobody needs a notification for a season that finished months ago.">
+              Tell members
+            </span>
+          </label>
           {dirty && (
             <>
               <button type="button" className="btn-secondary" disabled={busy} onClick={() => save()}>

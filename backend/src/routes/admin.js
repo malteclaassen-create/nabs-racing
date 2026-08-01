@@ -3593,7 +3593,13 @@ router.post("/races/:id/photos", upload.array("files", MAX_PHOTOS), async (req, 
     // Ring the bell — once per race (deduped), and only when the round already
     // has its result: the gallery renders under the results, so on an upcoming
     // round the link would lead to a page without it.
-    if (race.isCompleted) notifyRacePhotosAdded(prisma, race, added.length);
+    //
+    // ?silent=1 skips it. Filling in the galleries of seasons gone by is not
+    // news, and without this every old round the admin works through would
+    // ring the whole grid's bell. Nothing is recorded either, so the round can
+    // still announce itself later if it ever earns it.
+    const silent = req.query.silent === "1";
+    if (race.isCompleted && !silent) notifyRacePhotosAdded(prisma, race, added.length);
     res.json({
       ok: true,
       photos: withAdminPhotoInfo(saved),
