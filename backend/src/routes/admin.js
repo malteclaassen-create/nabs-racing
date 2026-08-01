@@ -16,7 +16,7 @@ import { getWebhookUrl, setWebhookUrl, getResultsWebhookUrl, setResultsWebhookUr
 import { buildResultsPost } from "../services/resultsPostService.js";
 import { resolveSeasonId, invalidatePrivateSeasonCache } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
-import { createBackup, tryCreateBackup, listBackups, createFullBackupZip } from "../services/backupService.js";
+import { createBackup, tryCreateBackup, listBackups, createFullBackupZip, deleteBackup, pruneBackupsTo } from "../services/backupService.js";
 import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
 import { parseFormatNumber } from "../lib/raceFormat.js";
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
@@ -69,7 +69,7 @@ import {
 } from "../lib/socialFeed.js";
 import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride } from "../lib/attendanceGate.js";
 import { writeHiddenRace } from "../lib/attendanceHidden.js";
-import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, withUrls } from "../lib/racePhotos.js";
+import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap } from "../lib/liveServers.js";
@@ -187,6 +187,20 @@ router.get("/integrity", async (req, res, next) => {
 // GET /api/admin/backups -> list of snapshot files (newest first).
 router.get("/backups", (req, res) => {
   res.json({ backups: listBackups() });
+});
+
+// POST /api/admin/backups/prune { keep } -> delete every snapshot but the
+// newest `keep`. The admin's broom for "the old ones can go" — the automatic
+// 40-file cap stays untouched.
+router.post("/backups/prune", (req, res) => {
+  const removed = pruneBackupsTo(req.body?.keep ?? 5);
+  res.json({ ok: true, removed, backups: listBackups() });
+});
+
+// DELETE /api/admin/backups/:file -> delete one snapshot by name.
+router.delete("/backups/:file", (req, res) => {
+  if (!deleteBackup(req.params.file)) return res.status(404).json({ error: "No such backup" });
+  res.json({ ok: true, backups: listBackups() });
 });
 
 // POST /api/admin/backups -> create a manual snapshot now.
@@ -3509,10 +3523,26 @@ async function loadRace(id) {
   });
 }
 
-// GET /api/admin/races/:id/photos -> { photos: [{ id, url, caption }] }
+// The admin's view of a gallery: the public shape plus each file's size on
+// disk, so the Photos tab can say what a picture actually costs. Only here —
+// the public round page has no use for byte counts.
+function withAdminPhotoInfo(photos) {
+  return photos.map((p) => {
+    let bytes = null;
+    try {
+      const dest = safeUploadPath(RACES_DIR, p.file);
+      if (dest && existsSync(dest)) bytes = statSync(dest).size;
+    } catch {
+      /* a missing file shows as size unknown, not as a broken tab */
+    }
+    return { id: p.id, url: racePhotoUrl(p.file), caption: p.caption, bytes };
+  });
+}
+
+// GET /api/admin/races/:id/photos -> { photos: [{ id, url, caption, bytes }] }
 router.get("/races/:id/photos", async (req, res, next) => {
   try {
-    res.json({ photos: withUrls(await readRacePhotos(prisma, req.params.id)) });
+    res.json({ photos: withAdminPhotoInfo(await readRacePhotos(prisma, req.params.id)) });
   } catch (e) {
     next(e);
   }
@@ -3566,7 +3596,7 @@ router.post("/races/:id/photos", upload.array("files", MAX_PHOTOS), async (req, 
     if (race.isCompleted) notifyRacePhotosAdded(prisma, race, added.length);
     res.json({
       ok: true,
-      photos: withUrls(saved),
+      photos: withAdminPhotoInfo(saved),
       added: added.length,
       // Named so the admin UI can say exactly what didn't make it.
       rejected,
@@ -3611,7 +3641,7 @@ router.put("/races/:id/photos", async (req, res, next) => {
         /* the row is gone either way; an orphan file is not worth a 500 */
       }
     }
-    res.json({ ok: true, photos: withUrls(saved) });
+    res.json({ ok: true, photos: withAdminPhotoInfo(saved) });
   } catch (e) {
     next(e);
   }

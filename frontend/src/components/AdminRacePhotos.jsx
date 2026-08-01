@@ -35,6 +35,12 @@ function Icon({ d, className = "h-4 w-4" }) {
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "");
 
+function fmtSize(bytes) {
+  if (bytes == null) return null;
+  if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
 export default function AdminRacePhotos() {
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
   const [raceId, setRaceId] = useState("");
@@ -200,6 +206,10 @@ export default function AdminRacePhotos() {
           {raceId && (
             <span className="font-mono text-[11px] uppercase tracking-wider text-light">
               {photos.length} / {MAX_PHOTOS}
+              {/* What this round's gallery weighs on the server, after the
+                  browser-side shrink — the honest number, not the picked files'. */}
+              {photos.some((p) => p.bytes != null) &&
+                ` · ${fmtSize(photos.reduce((s, p) => s + (p.bytes || 0), 0))}`}
             </span>
           )}
         </div>
@@ -246,6 +256,11 @@ export default function AdminRacePhotos() {
                 <span className="absolute left-2 top-2 rounded-md bg-black/60 px-2 py-0.5 font-mono text-[11px] font-bold text-white">
                   {i + 1}
                 </span>
+                {fmtSize(p.bytes) && (
+                  <span className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 font-mono text-[11px] font-bold tabular-nums text-white/85">
+                    {fmtSize(p.bytes)}
+                  </span>
+                )}
               </div>
               <div className="space-y-2 p-3">
                 <input

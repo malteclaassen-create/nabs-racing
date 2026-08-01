@@ -80,6 +80,38 @@ export default function AdminHealth() {
   // backup is the one admin action on this page that visibly moves the number.
   const storage = useApi(useCallback(() => api.storage(), [backupDone]));
 
+  // Deleting snapshots (one, or everything but the newest few). Both reload
+  // the list AND the disk-usage card — the number moving is the whole point.
+  const [pruneBusy, setPruneBusy] = useState(false);
+  async function removeBackup(file) {
+    if (!window.confirm(`Delete the backup ${file}? This cannot be undone.`)) return;
+    setError(null);
+    setPruneBusy(true);
+    try {
+      await api.deleteBackup(file);
+      setBackupDone(Date.now());
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setPruneBusy(false);
+    }
+  }
+  async function pruneOldBackups() {
+    const total = (backups.data?.backups || []).length;
+    if (total <= 5) return;
+    if (!window.confirm(`Delete the ${total - 5} oldest backups and keep the newest 5?`)) return;
+    setError(null);
+    setPruneBusy(true);
+    try {
+      await api.pruneBackups(5);
+      setBackupDone(Date.now());
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setPruneBusy(false);
+    }
+  }
+
   async function runCheck() {
     setError(null);
     setChecking(true);
@@ -210,16 +242,40 @@ export default function AdminHealth() {
           ) : (backups.data?.backups || []).length === 0 ? (
             <p className="text-sm text-light">{backups.loading ? "Reading the backup list…" : "No backups yet."}</p>
           ) : (
-            <ul className="divide-y divide-border font-mono text-xs">
-              {(backups.data?.backups || []).slice(0, 12).map((b) => (
-                <li key={b.file} className="flex items-center justify-between gap-3 py-2">
-                  <span className="truncate text-medium">{b.file}</span>
-                  <span className="shrink-0 text-light">
-                    {fmtSize(b.size)} · {fmtTime(b.createdAt)}
+            <>
+              <ul className="divide-y divide-border font-mono text-xs">
+                {(backups.data?.backups || []).slice(0, 12).map((b) => (
+                  <li key={b.file} className="flex items-center justify-between gap-3 py-2">
+                    <span className="truncate text-medium">{b.file}</span>
+                    <span className="flex shrink-0 items-center gap-3 text-light">
+                      {fmtSize(b.size)} · {fmtTime(b.createdAt)}
+                      <button
+                        type="button"
+                        className="font-sans font-semibold transition hover:text-rose-500 disabled:opacity-50"
+                        disabled={pruneBusy}
+                        onClick={() => removeBackup(b.file)}
+                        title="Delete this snapshot"
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {(backups.data?.backups || []).length > 5 && (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                  <span className="text-xs text-light">
+                    {(backups.data?.backups || []).length} snapshots on disk
+                    {(backups.data?.backups || []).length > 12 && " (newest 12 listed)"}
+                    . New ones keep arriving before every results save.
                   </span>
-                </li>
-              ))}
-            </ul>
+                  <button type="button" className="btn-secondary px-3 py-1 text-xs" disabled={pruneBusy}
+                    onClick={pruneOldBackups}>
+                    {pruneBusy ? "Deleting…" : "Delete old backups (keep newest 5)"}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>

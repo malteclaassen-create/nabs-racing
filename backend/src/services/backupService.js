@@ -86,3 +86,36 @@ function pruneBackups() {
     }
   }
 }
+
+// A snapshot file name as this service writes them, and nothing else — the
+// delete endpoints go through this so a request can only ever name a backup,
+// never reach for another file on the disk.
+const isBackupFile = (name) => /^nabs-[a-z0-9-]+\.db$/i.test(String(name || "")) && basename(name) === name;
+
+// Delete ONE snapshot by name. True when it's gone, false for a name that
+// isn't a backup or doesn't exist.
+export function deleteBackup(file) {
+  if (!isBackupFile(file)) return false;
+  const p = join(BACKUP_DIR, file);
+  if (!existsSync(p)) return false;
+  unlinkSync(p);
+  return true;
+}
+
+// Keep the newest `keep` snapshots, delete the rest. Returns how many went.
+// The automatic KEEP_N cap stays what it is — this is the admin's hand, for
+// "the old ones can go now", not a change to the standing rule.
+export function pruneBackupsTo(keep) {
+  const n = Math.max(1, Math.min(KEEP_N, Math.round(Number(keep) || 0)));
+  const files = listBackups();
+  let removed = 0;
+  for (const f of files.slice(n)) {
+    try {
+      unlinkSync(join(BACKUP_DIR, f.file));
+      removed++;
+    } catch {
+      /* ignore */
+    }
+  }
+  return removed;
+}

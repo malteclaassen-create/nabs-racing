@@ -587,6 +587,9 @@ export const api = {
   storage: () => request("/admin/storage", { auth: true }),
   backups: () => request("/admin/backups", { auth: true }),
   createBackup: () => request("/admin/backups", { method: "POST", auth: true }),
+  deleteBackup: (file) => request(`/admin/backups/${encodeURIComponent(file)}`, { method: "DELETE", auth: true }),
+  // Keep the newest `keep` snapshots, delete the rest.
+  pruneBackups: (keep) => request("/admin/backups/prune", { method: "POST", body: { keep }, auth: true }),
   // Full backup (DB + uploads) as a zip blob. Fetched with the auth header and
   // saved by the caller — a plain <a href> couldn't send the admin token.
   downloadBackupZip: async () => {
