@@ -51,6 +51,9 @@ export async function writeAttendanceOverride(prisma, raceId, state) {
   return current;
 }
 
+// Whether a race is on the attendance page at all is a separate question,
+// answered by lib/attendanceHidden.js.
+
 // What a race's sign-up is doing right now.
 //   open    — answers accepted
 //   opensAt — when it will open on its own (null when it already is, or when an

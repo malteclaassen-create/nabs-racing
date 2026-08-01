@@ -9,6 +9,7 @@ import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
 import { dbReplaysByRace } from "../lib/downloads.js";
 import { readRaceCountries, staticCountryFor } from "../lib/raceCountries.js";
+import { readRacePhotos, readPhotoCounts, withUrls } from "../lib/racePhotos.js";
 
 const router = Router();
 
@@ -71,12 +72,15 @@ router.get("/", async (req, res, next) => {
     // Session format + race type (raw-SQL columns) for the upcoming-race panel
     // and the calendar's grouping, and any published replay downloads so the
     // calendar can offer a Replay button.
-    const [format, types, replays, winners, countries] = await Promise.all([
+    const [format, types, replays, winners, countries, photoCounts] = await Promise.all([
       readRaceFormat(prisma, races.map((r) => r.id)),
       readRaceTypes(prisma, races.map((r) => r.id)),
       dbReplaysByRace(prisma, races.map((r) => r.id)),
       raceWinners(races),
       readRaceCountries(prisma, races.map((r) => r.id)),
+      // How many gallery photos each round has, so the calendar can mark the
+      // ones worth opening without loading a single image.
+      readPhotoCounts(prisma, races.map((r) => r.id)),
     ]);
     res.json(
       races.map((r) => ({
@@ -93,6 +97,7 @@ router.get("/", async (req, res, next) => {
         qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
         raceLaps: format.get(r.id)?.raceLaps ?? null,
         replayDownloadId: replays.get(r.id) || null,
+        photoCount: photoCounts.get(r.id) || 0,
         winner: winners.get(r.id) || null,
       }))
     );
@@ -292,7 +297,12 @@ router.get("/:id/results", async (req, res, next) => {
     // plus the round's published replay (if any) for the Replay button.
     const format = (await readRaceFormat(prisma, [race.id])).get(race.id) || {};
     const replays = await dbReplaysByRace(prisma, [race.id]);
+    // The round's photo gallery. It travels with the round rather than on its
+    // own endpoint so the page opens complete, the same way the replay link and
+    // the session format already do.
+    const photos = withUrls(await readRacePhotos(prisma, race.id));
     res.json({
+      photos,
       race: {
         id: race.id,
         number: race.number,

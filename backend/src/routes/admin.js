@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import bcrypt from "bcryptjs";
-import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync } from "fs";
 import { join, extname, basename } from "path";
 import prisma from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
@@ -67,6 +67,8 @@ import {
   resolveChannelId, fetchChannelVideos, lookupPost, downloadImage, extractUrls,
 } from "../lib/socialFeed.js";
 import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride } from "../lib/attendanceGate.js";
+import { writeHiddenRace } from "../lib/attendanceHidden.js";
+import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, withUrls } from "../lib/racePhotos.js";
 import { UPLOADS_DIR, LOGS_DIR } from "../lib/dataDirs.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap } from "../lib/liveServers.js";
 
@@ -117,6 +119,9 @@ const SEASONS_DIR = join(UPLOADS_DIR, "seasons");
 const SERIES_DIR = join(UPLOADS_DIR, "series");
 // Cover images for social cards the platform gives us no thumbnail for.
 const SOCIAL_DIR = join(UPLOADS_DIR, "social");
+// Race-night photo galleries (one folder for all rounds; the file name carries
+// the race it belongs to, and the Setting blob is the actual index).
+const RACES_DIR = join(UPLOADS_DIR, "races");
 const LOGO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg" };
 // A track key is a slug (letters/digits only) — validate before touching the FS.
 const safeTrackKey = (k) => (normKey(k) === String(k || "").toLowerCase() && k ? k : null);
@@ -3375,6 +3380,144 @@ router.put("/races/:id/attendance", async (req, res, next) => {
   }
 });
 
+// PUT /api/admin/races/:id/attendance-visibility { hidden: true | false }
+// Take a race off the attendance page altogether, or put it back. Nothing else
+// about the race changes: it keeps its date, its calendar card and its results.
+router.put("/races/:id/attendance-visibility", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    const hidden = req.body?.hidden === true;
+    const list = await writeHiddenRace(prisma, race.id, hidden);
+    res.json({ ok: true, hidden, hiddenRaceIds: list });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// RACE PHOTOS
+// The gallery for a round: an admin uploads the night's screenshots, the round
+// page shows them as a carousel. Files on disk under uploads/races, the order
+// and the captions in a Setting blob (lib/racePhotos.js).
+// ---------------------------------------------------------------------------
+
+// No SVG here, unlike the logo uploads: a gallery is photographs, and an SVG is
+// a document that can carry script. GIF is in, because a three-second clip of
+// the crash is exactly what people post.
+const PHOTO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif" };
+// Uploads are named by us. The race id only rides along to make the folder
+// readable by hand; the Setting blob is what actually maps file -> round.
+const photoFileTag = (raceId) => String(raceId).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40) || "race";
+
+async function loadRace(id) {
+  return prisma.race.findUnique({ where: { id }, select: { id: true } });
+}
+
+// GET /api/admin/races/:id/photos -> { photos: [{ id, url, caption }] }
+router.get("/races/:id/photos", async (req, res, next) => {
+  try {
+    res.json({ photos: withUrls(await readRacePhotos(prisma, req.params.id)) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/races/:id/photos  (multipart: files=<image>[]) — add to the
+// gallery. Appends, so uploading a second batch keeps the first one.
+router.post("/races/:id/photos", upload.array("files", MAX_PHOTOS), async (req, res, next) => {
+  try {
+    const race = await loadRace(req.params.id);
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    const files = req.files || [];
+    if (!files.length) return res.status(400).json({ error: "No file uploaded" });
+
+    const current = await readRacePhotos(prisma, race.id);
+    const room = MAX_PHOTOS - current.length;
+    if (room <= 0) {
+      return res.status(400).json({ error: `This round already has the maximum of ${MAX_PHOTOS} photos` });
+    }
+    // Everything that doesn't fit is refused by name rather than dropped in
+    // silence — an admin who picked 20 files needs to know which 5 missed out.
+    const taking = files.slice(0, room);
+    const skipped = files.slice(room).map((f) => f.originalname);
+
+    mkdirSync(RACES_DIR, { recursive: true });
+    const added = [];
+    const rejected = [];
+    for (const file of taking) {
+      const ext = PHOTO_EXT[file.mimetype];
+      if (!ext) {
+        rejected.push(file.originalname);
+        continue;
+      }
+      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+      const filename = `${photoFileTag(race.id)}-${id}${ext}`;
+      const dest = safeUploadPath(RACES_DIR, filename);
+      if (!dest) {
+        rejected.push(file.originalname);
+        continue;
+      }
+      writeFileSync(dest, file.buffer);
+      added.push({ id, file: filename, caption: "" });
+    }
+    if (!added.length) {
+      return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or GIF)" });
+    }
+    const saved = await writeRacePhotos(prisma, race.id, [...current, ...added]);
+    res.json({
+      ok: true,
+      photos: withUrls(saved),
+      added: added.length,
+      // Named so the admin UI can say exactly what didn't make it.
+      rejected,
+      skipped,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/races/:id/photos  { photos: [{ id, caption }] }
+// The whole gallery in one go: the order is the order sent, a caption is
+// whatever is sent with it, and anything left out is deleted (file included).
+router.put("/races/:id/photos", async (req, res, next) => {
+  try {
+    const race = await loadRace(req.params.id);
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    const current = await readRacePhotos(prisma, race.id);
+    const byId = new Map(current.map((p) => [p.id, p]));
+
+    const wanted = Array.isArray(req.body?.photos) ? req.body.photos : [];
+    const next_ = [];
+    const keptIds = new Set();
+    for (const w of wanted) {
+      const known = byId.get(String(w?.id));
+      // Only rows that already exist survive: a client cannot invent a file
+      // name and have the gallery point at it.
+      if (!known || keptIds.has(known.id)) continue;
+      keptIds.add(known.id);
+      next_.push({ ...known, caption: typeof w?.caption === "string" ? w.caption : known.caption });
+    }
+
+    const saved = await writeRacePhotos(prisma, race.id, next_);
+    // Files only go once the blob no longer references them, so a failed write
+    // can never leave the gallery pointing at something that isn't there.
+    for (const p of current) {
+      if (keptIds.has(p.id)) continue;
+      const dest = safeUploadPath(RACES_DIR, p.file);
+      try {
+        if (dest && existsSync(dest)) unlinkSync(dest);
+      } catch {
+        /* the row is gone either way; an orphan file is not worth a 500 */
+      }
+    }
+    res.json({ ok: true, photos: withUrls(saved) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // GET /api/admin/attendance-history -> what people answered for the races that
 // have already run. The answers are never deleted when a result is saved, so
 // this is a straight read of what was there at the time.
@@ -3486,15 +3629,59 @@ router.delete("/teams/:id", async (req, res, next) => {
   try {
     const team = await prisma.team.findUnique({
       where: { id: req.params.id },
-      include: { _count: { select: { drivers: true, results: true, constructorScores: true } } },
+      include: {
+        season: { select: { name: true } },
+        // seatOffers used to be missing here, and it is the one relation that
+        // routinely survives a team with nothing else on it: a Driver Market
+        // listing stays on file after it is filled or cancelled. The guard
+        // passed, the delete hit the foreign key, and the admin got a raw
+        // "Foreign key constraint violated" with nothing to act on.
+        _count: { select: { drivers: true, results: true, constructorScores: true, seatOffers: true } },
+      },
     });
     if (!team) return res.status(404).json({ error: "Team not found" });
-    if (team._count.drivers > 0 || team._count.results > 0 || team._count.constructorScores > 0) {
-      return res.status(409).json({ error: "Team still has drivers or results; reassign them first." });
+
+    const c = team._count;
+    const where = `${team.name}${team.season?.name ? ` (${team.season.name})` : ""}`;
+
+    // Real history. None of this may be thrown away by deleting a team, and
+    // the message names what it actually found instead of a vague "or".
+    const hard = [];
+    if (c.drivers > 0) hard.push(`${c.drivers} driver(s) in its seats`);
+    if (c.results > 0) hard.push(`${c.results} race result(s) subbed for it`);
+    if (c.constructorScores > 0) hard.push(`${c.constructorScores} constructor score(s)`);
+    if (hard.length) {
+      return res.status(409).json({
+        error: `${where} still has ${hard.join(" and ")}. Move those first, then delete the team.`,
+      });
     }
-    await prisma.team.delete({ where: { id: team.id } });
-    res.json({ ok: true });
+
+    // Driver Market listings are the team's own paperwork: an offer for a seat
+    // at a team that no longer exists is meaningless, and leaving it behind
+    // would put a phantom team on the market page. So it goes WITH the team —
+    // after the admin has been told it exists.
+    if (c.seatOffers > 0 && !req.query.force) {
+      return res.status(409).json({
+        error:
+          `Delete ${where}? It has no drivers and no results, but ${c.seatOffers} driver-market seat ` +
+          `offer(s) point at it. Those will be deleted with the team.`,
+        needsConfirm: true,
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.seatOffer.deleteMany({ where: { teamId: team.id } });
+      await tx.team.delete({ where: { id: team.id } });
+    });
+    res.json({ ok: true, seatOffersRemoved: c.seatOffers });
   } catch (e) {
+    // Belt and braces for a relation nobody has added to the count above yet:
+    // an admin should never be handed a raw Prisma foreign-key message.
+    if (e?.code === "P2003" || /Foreign key constraint/i.test(e?.message || "")) {
+      return res.status(409).json({
+        error: "Something in the league still points at this team, so it can't be deleted yet.",
+      });
+    }
     next(e);
   }
 });

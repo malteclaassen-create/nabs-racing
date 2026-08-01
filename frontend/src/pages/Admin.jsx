@@ -8,6 +8,7 @@ import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar } from "../compone
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
 import AdminRatings from "../components/AdminRatings.jsx";
+import AdminRacePhotos from "../components/AdminRacePhotos.jsx";
 import AdminDownloads from "../components/AdminDownloads.jsx";
 import AdminRaceInfo from "../components/AdminRaceInfo.jsx";
 import AdminWelcomeFaq from "../components/AdminWelcomeFaq.jsx";
@@ -35,6 +36,7 @@ const TAB_GROUPS = [
       { id: "attendance", label: "Attendance" },
       { id: "import", label: "Import Race" },
       { id: "edit", label: "Edit Results" },
+      { id: "photos", label: "Photos" },
     ],
   },
   {
@@ -327,6 +329,7 @@ export default function Admin() {
         )}
         {tab === "import" && <AdminImport />}
         {tab === "edit" && <EditResults />}
+        {tab === "photos" && <AdminRacePhotos />}
         {tab === "ratings" && <AdminRatings />}
         {tab === "discord" && <DiscordEvents />}
         {tab === "market" && <MarketAdmin />}
@@ -3374,11 +3377,34 @@ function Teams() {
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // Same two-step as removing a driver: the server answers with what would go
+  // along with the team (its driver-market offers) and we ask before doing it.
   async function remove(t) {
     if (!window.confirm(`Delete team "${t.name}"? This only works if it has no drivers or results.`)) return;
     setBusy(true); setError(null); setMsg(null);
-    try { await api.deleteTeam(t.id); reload(); }
-    catch (err) { setError(err.message); } finally { setBusy(false); }
+    try {
+      await api.deleteTeam(t.id);
+      setMsg(`${t.name} deleted.`);
+      reload();
+    } catch (err) {
+      if (err.data?.needsConfirm && window.confirm(err.message)) {
+        try {
+          const out = await api.deleteTeam(t.id, true);
+          setMsg(
+            out.seatOffersRemoved
+              ? `${t.name} deleted, along with ${out.seatOffersRemoved} driver-market seat offer(s).`
+              : `${t.name} deleted.`
+          );
+          reload();
+        } catch (err2) {
+          setError(err2.message);
+        }
+      } else if (!err.data?.needsConfirm) {
+        setError(err.message);
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
   // Removing a driver from a seat box — the SAME endpoint and rules as the

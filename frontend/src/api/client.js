@@ -257,7 +257,14 @@ export const api = {
   // Attendance is about UPCOMING races, so these deliberately ignore the
   // season switcher (series only): next season's sign-ups must show while the
   // current season is still the one being viewed.
-  events: () => request(`/events${seriesQ()}`, { auth: true }),
+  // Races the attendance page asks about. Hidden ones are gone for everybody,
+  // admin included — only the admin's own Attendance tab passes includeHidden,
+  // which is the one place they can be brought back.
+  events: (includeHidden = false) => {
+    const q = seriesQ();
+    const extra = includeHidden ? `${q ? "&" : "?"}includeHidden=1` : "";
+    return request(`/events${q}${extra}`, { auth: true });
+  },
   attendanceOpen: () => request(`/events/open${seriesQ()}`, { auth: true }),
   rsvp: (raceId, driverId, status) =>
     request(`/events/${raceId}/rsvp`, { method: "POST", body: { driverId, status }, userAuth: true }),
@@ -557,6 +564,23 @@ export const api = {
   },
   clearSeasonCar: (id) => request(`/admin/seasons/${id}/car`, { method: "DELETE", auth: true }),
 
+  // Race photo gallery (admin). The public side reads the photos straight off
+  // the round detail, so there is no public call here.
+  racePhotos: (raceId) => request(`/admin/races/${raceId}/photos`, { auth: true }),
+  uploadRacePhotos: (raceId, files) => {
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+    return request(`/admin/races/${raceId}/photos`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  // The whole gallery in one call: order, captions and deletions. Anything left
+  // out of the list is removed, file and all.
+  saveRacePhotos: (raceId, photos) =>
+    request(`/admin/races/${raceId}/photos`, {
+      method: "PUT",
+      body: { photos: photos.map((p) => ({ id: p.id, caption: p.caption || "" })) },
+      auth: true,
+    }),
+
   // health (admin): integrity check, backups, activity log
   integrity: () => request(`/admin/integrity${seasonQ()}`, { auth: true }),
   backups: () => request("/admin/backups", { auth: true }),
@@ -580,7 +604,10 @@ export const api = {
   importTeam: (fromTeamId, seasonId) =>
     request("/admin/teams/import", { method: "POST", body: { ...seriesBody(), fromTeamId, seasonId }, auth: true }),
   updateTeam: (id, body) => request(`/admin/teams/${id}`, { method: "PUT", body, auth: true }),
-  deleteTeam: (id) => request(`/admin/teams/${id}`, { method: "DELETE", auth: true }),
+  // `force` confirms the one thing the server won't remove behind your back:
+  // the team's driver-market seat offers.
+  deleteTeam: (id, force = false) =>
+    request(`/admin/teams/${id}${force ? "?force=1" : ""}`, { method: "DELETE", auth: true }),
   uploadTeamLogo: (id, file) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -670,6 +697,10 @@ export const api = {
   attendanceGates: () => request("/admin/attendance-gates", { auth: true }),
   setAttendanceGate: (raceId, state) =>
     request(`/admin/races/${raceId}/attendance`, { method: "PUT", body: { state }, auth: true }),
+  // Whether the race is on the attendance page at all — a separate switch from
+  // the gate above, so hiding a race doesn't forget its open/closed setting.
+  setAttendanceVisible: (raceId, hidden) =>
+    request(`/admin/races/${raceId}/attendance-visibility`, { method: "PUT", body: { hidden }, auth: true }),
 
   // The stand-in hotlap: what a circuit with no real lap on file plays instead.
   hotlapFallback: () => request("/admin/hotlap-fallback", { auth: true }),

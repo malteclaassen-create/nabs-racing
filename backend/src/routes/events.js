@@ -11,6 +11,7 @@ import { ensureReservePool } from "../lib/reservePool.js";
 import { applyMemberSteamId } from "../lib/members.js";
 import { readNotifySettings } from "../lib/notifications.js";
 import { readAttendanceOverrides, attendanceGate } from "../lib/attendanceGate.js";
+import { readHiddenRaceIds } from "../lib/attendanceHidden.js";
 
 const router = Router();
 const VALID = ["ACCEPTED", "DECLINED", "TENTATIVE"];
@@ -101,7 +102,15 @@ router.get("/", async (req, res, next) => {
     });
     const types = await readRaceTypes(prisma, allUpcoming.map((r) => r.id));
     const typeOf = (r) => types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-    const races = allUpcoming.filter((r) => typeOf(r) !== "SPECIAL");
+    // Hidden races leave this feed for EVERYONE by default, admin included: an
+    // admin looking at the attendance page wants to see what the grid sees.
+    // Only ?includeHidden=1 brings them back, which is what the admin's own
+    // Attendance tab asks for — otherwise there would be no way to un-hide one.
+    const hidden = await readHiddenRaceIds(prisma);
+    const showHidden = isAdminRequest(req) && req.query.includeHidden === "1";
+    const races = allUpcoming.filter(
+      (r) => typeOf(r) !== "SPECIAL" && (showHidden || !hidden.has(r.id))
+    );
 
     // Session format (raw-SQL columns) for the attendance hero.
     const format = await readRaceFormat(prisma, races.map((r) => r.id));
@@ -135,6 +144,8 @@ router.get("/", async (req, res, next) => {
         // An admin shut this one: the card says so instead of counting down to
         // an opening that isn't coming.
         attendanceClosed: gate.forced === "closed",
+        // Only ever true in the admin's own view (see the filter above).
+        hidden: hidden.has(race.id),
         visibleStatuses: notify.attendanceShow,
         counts: {
           ACCEPTED: grouped.ACCEPTED.length,
@@ -164,10 +175,17 @@ router.get("/open", async (req, res, next) => {
       select: { id: true, date: true, isSpecialEvent: true },
     });
     const types = await readRaceTypes(prisma, upcoming.map((r) => r.id));
-    const [notify, overrides] = await Promise.all([readNotifySettings(prisma), readAttendanceOverrides(prisma)]);
+    const [notify, overrides, hidden] = await Promise.all([
+      readNotifySettings(prisma),
+      readAttendanceOverrides(prisma),
+      readHiddenRaceIds(prisma),
+    ]);
     const open = upcoming.some((r) => {
       const type = types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
       if (type === "SPECIAL") return false;
+      // A hidden race must not be the reason the nav offers Attendance — the
+      // page it would lead to has nothing on it.
+      if (hidden.has(r.id)) return false;
       return attendanceGate(r, notify, overrides).open;
     });
     res.json({ open });

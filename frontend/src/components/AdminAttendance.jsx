@@ -24,7 +24,9 @@ const MAX_VIDEOS = 6;
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "date TBA");
 
 export default function AdminAttendance() {
-  const events = useApi(useCallback(() => api.events(), []));
+  // includeHidden: this tab is the only place a race that was taken off the
+  // attendance page can be put back, so it has to be able to see them.
+  const events = useApi(useCallback(() => api.events(true), []));
   const { data: races } = useApi(useCallback(() => api.races(), []));
 
   const [view, setView] = useState("hotlaps");
@@ -45,6 +47,25 @@ export default function AdminAttendance() {
     api.attendanceGates().then(setGates).catch((e) => setError(e.message));
     api.adminNotificationSettings().then((d) => setRule(d.settings || d)).catch(() => {});
   }, []);
+
+  // On or off the attendance page. Separate from the gate below: a race that
+  // has been hidden keeps whatever open/closed setting it had for when it
+  // comes back.
+  async function setVisible(e, hidden) {
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      await api.setAttendanceVisible(e.id, hidden);
+      await events.reload();
+      const name = `${e.type === "TRAINING" ? "Training" : `Round ${e.number}`} · ${e.track}`;
+      setMsg(hidden ? `${name} is off the attendance page.` : `${name} is back on the attendance page.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function setGate(raceId, state) {
     setBusy(true);
@@ -403,6 +424,11 @@ export default function AdminAttendance() {
           <strong className="font-semibold text-medium">Closed</strong> decide one race yourself. A race stays on the
           page until you save its result, so a round that has already run keeps taking late answers.
         </p>
+        <p className="text-sm text-light">
+          The eye takes a race off the attendance page altogether, sign-up reminders included — for a session
+          that is in the calendar early, or one that isn&rsquo;t happening after all. It keeps its date, its
+          calendar card and its results, and a crossed-out eye here is the way back.
+        </p>
 
         {upcoming.length === 0 ? (
           <p className="text-sm text-light">No upcoming races in this series.</p>
@@ -417,21 +443,49 @@ export default function AdminAttendance() {
                   : "taking answers";
               return (
                 <li key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-2 last:border-0 last:pb-0">
-                  <div className="min-w-52 flex-1">
+                  {/* The eye: on the attendance page, or not there at all.
+                      A hidden row stays in THIS list (faded), because this is
+                      the only place it can be brought back from. */}
+                  <button
+                    type="button"
+                    aria-pressed={!!e.hidden}
+                    aria-label={e.hidden ? "Show on the attendance page" : "Hide from the attendance page"}
+                    title={
+                      e.hidden
+                        ? "Hidden: not on the attendance page, and it sends no sign-up reminders. Click to show it again."
+                        : "On the attendance page. Click to hide it."
+                    }
+                    disabled={busy}
+                    onClick={() => setVisible(e, !e.hidden)}
+                    className={`shrink-0 rounded-lg border p-1.5 transition disabled:opacity-50 ${
+                      e.hidden ? "border-border text-light hover:text-dark" : "border-brand/60 text-link"
+                    }`}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"
+                      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" />
+                      <circle cx="12" cy="12" r="3" />
+                      {e.hidden && <path d="M3 3l18 18" />}
+                    </svg>
+                  </button>
+                  <div className={`min-w-52 flex-1 ${e.hidden ? "opacity-55" : ""}`}>
                     <div className="text-sm font-semibold text-dark">
                       {e.type === "TRAINING" ? "Training" : `Round ${e.number}`} · {e.track}
                     </div>
                     <div className="font-mono text-[11px] uppercase tracking-wider text-light">
-                      {fmtDate(e.date)} · {effective} · {e.counts?.ACCEPTED ?? 0} in
+                      {fmtDate(e.date)} · {e.hidden ? "hidden" : effective} · {e.counts?.ACCEPTED ?? 0} in
                     </div>
                   </div>
-                  <div className="flex gap-1">
+                  {/* The open/closed switch is meaningless while the race isn't
+                      on the page. It stays visible (the setting is remembered),
+                      just out of reach until the eye is opened again. */}
+                  <div className={`flex gap-1 ${e.hidden ? "pointer-events-none opacity-40" : ""}`}>
                     {["auto", "open", "closed"].map((s) => (
                       <button
                         key={s}
                         type="button"
                         aria-pressed={state === s}
-                        disabled={busy}
+                        disabled={busy || e.hidden}
                         onClick={() => setGate(e.id, s)}
                         className={`rounded-lg border px-2.5 py-1 text-xs font-bold uppercase tracking-wide transition ${
                           state === s ? "border-brand bg-brand/10 text-dark" : "border-border text-light hover:text-dark"
@@ -444,7 +498,7 @@ export default function AdminAttendance() {
                   <button
                     type="button"
                     className="text-sm font-semibold text-link hover:underline disabled:opacity-50"
-                    disabled={busy}
+                    disabled={busy || e.hidden}
                     onClick={() => ping(e)}
                   >
                     Send reminder

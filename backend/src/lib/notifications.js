@@ -15,6 +15,7 @@
 import { randomUUID } from "crypto";
 import { raceKickoff } from "./raceKickoff.js";
 import { readRaceTypes } from "./raceTypes.js";
+import { readHiddenRaceIds } from "./attendanceHidden.js";
 import { unlockStateFor, CARD_EDITIONS } from "./cardEditions.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
 
@@ -687,9 +688,14 @@ export async function ensureRaceReminders(prisma) {
         },
       });
       const types = await readRaceTypes(prisma, races.map((r) => r.id));
+      // A race the admin took off the attendance page must not keep pinging the
+      // grid about it. Hiding it and then broadcasting "sign-up open" for a page
+      // it isn't on would be worse than leaving it visible.
+      const hidden = await readHiddenRaceIds(prisma);
       for (const race of races) {
         const type = types.get(race.id) || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
         if (type === "SPECIAL") continue;
+        if (hidden.has(race.id)) continue;
         if (type === "TRAINING" && !settings.trainingReminders) continue;
         const kick = raceKickoff(race.date);
         if (!kick) continue;

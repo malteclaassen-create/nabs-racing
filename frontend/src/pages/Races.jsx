@@ -8,6 +8,7 @@ import { useTheme } from "../hooks/useTheme.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import RaceResults from "../components/RaceResults.jsx";
 import RaceFacts from "../components/RaceFacts.jsx";
+import RaceGallery from "../components/RaceGallery.jsx";
 import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
@@ -306,7 +307,23 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
           </div>
           <div className="flex items-end justify-between gap-2">
             <div>
-              <div className="font-mono text-sm font-semibold tabular-nums text-medium">{fmtDate(e.date)}</div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm font-semibold tabular-nums text-medium">{fmtDate(e.date)}</span>
+                {/* Rounds with a gallery say so, quietly. Without this nobody
+                    would know to open the round to find the photos. */}
+                {r.photoCount > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 font-mono text-[11px] font-bold tabular-nums text-light"
+                    title={`${r.photoCount} photo${r.photoCount === 1 ? "" : "s"} from this round`}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2"
+                      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M3 8a2 2 0 012-2h2.5l1.2-2h6.6L16.5 6H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V8zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" />
+                    </svg>
+                    {r.photoCount}
+                  </span>
+                )}
+              </div>
               <div className="font-mono text-xs text-light">{e.date ? fmtRaceTime(e.date) : "Time TBA"}</div>
             </div>
             {isNext && !done && <Countdown date={e.date} />}
@@ -686,6 +703,9 @@ export default function Races() {
                       </div>
                       <RaceResults race={detail.race} results={detail.results} quali={detail.quali} session={session} />
                       {detail.race.hasPositions && <RaceFacts race={detail.race} results={detail.results} quali={detail.quali} />}
+                      {/* The night's photos, last: the classification is what
+                          people come for, the gallery is what they stay for. */}
+                      <RaceGallery photos={detail.photos} title={detail.race.track} />
                     </div>
                   )}
                 </>
