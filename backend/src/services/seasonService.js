@@ -142,7 +142,11 @@ export async function getSeasonTeaser(prisma, seriesRow) {
     seasonSeriesMap(prisma),
     prisma
       .$queryRawUnsafe(
-        `SELECT "id","number","name","game" FROM "Season" WHERE "isAnnounced" = 1 ORDER BY "number" ASC`
+        // carImageUrl rides along: the teased season's car shot IS the teaser
+        // panel's picture, so without it here the admin's upload had nowhere to
+        // travel and the panel was stuck on the static /cars/s<n>.jpg drop-in.
+        // Safe in the same statement as isAnnounced — ensureSchema adds both.
+        `SELECT "id","number","name","game","carImageUrl" FROM "Season" WHERE "isAnnounced" = 1 ORDER BY "number" ASC`
       )
       .catch(() => []),
   ]);
@@ -176,6 +180,7 @@ export async function getSeasonTeaser(prisma, seriesRow) {
     number: Number(teased.number),
     name: teased.name,
     game: teased.game || null,
+    carImageUrl: teased.carImageUrl || null,
     firstRace: firstRace ? { track: firstRace.track, date: firstRace.date } : null,
   };
 }

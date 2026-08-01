@@ -23,7 +23,12 @@ router.get("/teaser", async (req, res, next) => {
     // season's id for its server-side callers, and the teased season is usually
     // still private.
     const t = await getSeasonTeaser(prisma, series);
-    res.json(t && { number: t.number, name: t.name, game: t.game, firstRace: t.firstRace });
+    // carImageUrl belongs on the list: it is the picture the teaser panel
+    // shows, so an admin upload has to reach the page. It gives away no more
+    // than the panel already does.
+    res.json(
+      t && { number: t.number, name: t.name, game: t.game, carImageUrl: t.carImageUrl, firstRace: t.firstRace }
+    );
   } catch (e) {
     next(e);
   }
