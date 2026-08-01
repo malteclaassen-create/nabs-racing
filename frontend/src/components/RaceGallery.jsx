@@ -13,7 +13,17 @@ const ARROW = {
   next: "M9 5l7 7-7 7",
   close: "M6 6l12 12M6 18L18 6",
   camera: "M3 8a2 2 0 012-2h2.5l1.2-2h6.6L16.5 6H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V8zM12 16a3.5 3.5 0 100-7 3.5 3.5 0 000 7z",
+  download: "M12 3v12M7 10l5 5 5-5M4 17v3h16v-3",
 };
+
+// What the photo is called once it's on somebody's disk. The round and the
+// position in the gallery, so a folder of them from different races still
+// makes sense — "photo (3).jpg" from the raw URL would not.
+function downloadName(title, index, url) {
+  const ext = (String(url).split("?")[0].match(/\.([a-z0-9]+)$/i)?.[1] || "jpg").toLowerCase();
+  const slug = String(title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "race";
+  return `nabs-${slug}-${String(index + 1).padStart(2, "0")}.${ext}`;
+}
 
 function Icon({ d, className = "h-5 w-5" }) {
   return (
@@ -55,6 +65,33 @@ function Lightbox({ photos, index, onIndex, onClose, title }) {
     };
   }, [go, onClose]);
 
+  // Save the picture the visitor is looking at. Reads the bytes and hands them
+  // to the browser as a blob; anything that goes wrong falls through to the
+  // link's own behaviour rather than leaving the click doing nothing.
+  async function saveViaBlob(e) {
+    const href = e.currentTarget.href;
+    const name = e.currentTarget.getAttribute("download");
+    // Synchronously, before any await: after one, the browser has already
+    // decided what to do with the click and preventDefault comes too late.
+    e.preventDefault();
+    const save = (url, revoke) => {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      if (revoke) setTimeout(() => URL.revokeObjectURL(url), 10000);
+    };
+    try {
+      const res = await fetch(href);
+      if (!res.ok) throw new Error(String(res.status));
+      save(URL.createObjectURL(await res.blob()), true);
+    } catch {
+      // Offline, blocked, whatever: fall back to the plain link, which is
+      // what would have happened without this handler at all.
+      save(href, false);
+    }
+  }
+
   // Swipe: the only way this reads as a carousel on a phone.
   function onTouchStart(e) {
     touchX.current = e.touches[0]?.clientX ?? null;
@@ -85,15 +122,35 @@ function Lightbox({ photos, index, onIndex, onClose, title }) {
         <span className="min-w-0 truncate font-mono text-[11px] font-bold uppercase tracking-widest">
           {title} <span className="text-white/45">· {index + 1} / {total}</span>
         </span>
-        <button
-          ref={closeRef}
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="rounded-lg p-2 transition hover:bg-white/10 hover:text-white"
-        >
-          <Icon d={ARROW.close} />
-        </button>
+        <span className="flex shrink-0 items-center gap-1">
+          {/* A plain same-origin link with `download` would normally be enough,
+              and it stays the fallback (and keeps right-click "save link as"
+              working). But uploads are served under a locked-down CSP that
+              carries `sandbox`, and browsers have been known to refuse
+              downloads that touch a sandboxed resource. Fetching the bytes
+              ourselves and saving them from a blob takes that question off the
+              table; if the fetch fails for any reason we simply let the link do
+              what it was going to do. */}
+          <a
+            href={photo.url}
+            download={downloadName(title, index, photo.url)}
+            aria-label="Download this photo"
+            title="Download this photo"
+            onClick={saveViaBlob}
+            className="rounded-lg p-2 transition hover:bg-white/10 hover:text-white"
+          >
+            <Icon d={ARROW.download} />
+          </a>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-lg p-2 transition hover:bg-white/10 hover:text-white"
+          >
+            <Icon d={ARROW.close} />
+          </button>
+        </span>
       </div>
 
       {/* The image area takes what the header and caption leave over, and the
