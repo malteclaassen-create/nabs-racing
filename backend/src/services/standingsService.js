@@ -362,11 +362,42 @@ async function previousSeasonOrder(prisma, seasonId, depth) {
   };
 }
 
+// One driver's season laid out round by round: what they scored, how they
+// finished, and which rounds those were. Pure, so the rule that matters here
+// can be pinned down by a test.
+//
+// THE RULE: a result only counts when its race is one of this season's
+// CHAMPIONSHIP rounds, i.e. it appears in `raceNumberById`. A training session
+// or a special event carries no round number, and a result from one used to
+// land under the key "undefined" — invisible in the standings table, which
+// walks the real round list, but very visible on a driver profile, where the
+// head-to-head panel walks the keys of this map instead. A season whose only
+// completed session was a friendly showed duel records for whoever raced it.
+export function buildDriverPerRace(results, driverId, raceNumberById, table = DEFAULT_POINTS_TABLE) {
+  const perRace = {}; // raceNumber -> { points, status, position }
+  const pointsByRound = {};
+  for (const r of results) {
+    if (r.driverId !== driverId) continue;
+    const num = raceNumberById.get(r.raceId);
+    if (num == null) continue;
+    const pts = getDriverResultPoints(r, table);
+    pointsByRound[num] = pts;
+    perRace[num] = { points: pts, status: r.status, position: r.position };
+  }
+  return { perRace, pointsByRound };
+}
+
 export async function getDriverStandings(prisma, seasonId, { extraResults = [], _depth = 1 } = {}) {
   const [drivers, races, results, scoring, nameOverrides, identity] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
-    prisma.raceResult.findMany({ where: { race: { seasonId } } }),
+    // Championship rounds only, the same scope as the race list above. A
+    // training session carries isSpecialEvent, and its results have no round
+    // number to sit under — they used to land in perRace keyed "undefined",
+    // which the head-to-head on a driver profile then counted as a shared
+    // round. A season whose only completed session is a friendly showed
+    // records for the people who turned up to it.
+    prisma.raceResult.findMany({ where: { race: { seasonId, isSpecialEvent: false } } }),
     getSeasonScoring(prisma, seasonId),
     getNameOverrides(prisma),
     getIdentityOverrides(prisma),
@@ -387,20 +418,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   const hidden = new Set(hiddenRows.map((r) => r.id));
 
   const rows = drivers.filter((d) => !hidden.has(d.id)).map((driver) => {
-    const perRace = {}; // raceNumber -> { points, status, position }
-    const pointsByRound = {};
-
-    for (const r of appliedResults) {
-      if (r.driverId !== driver.id) continue;
-      const num = raceNumberById.get(r.raceId);
-      const pts = getDriverResultPoints(r, table);
-      pointsByRound[num] = pts;
-      perRace[num] = {
-        points: pts,
-        status: r.status,
-        position: r.position,
-      };
-    }
+    const { perRace, pointsByRound } = buildDriverPerRace(appliedResults, driver.id, raceNumberById, table);
 
     // Season total drops each driver's N lowest rounds (unscored / not-yet-run
     // rounds count as 0 and are dropped first). The per-race grid still shows

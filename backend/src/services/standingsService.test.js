@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   applyDropScores,
+  buildDriverPerRace,
   computeDriverDropRounds,
   buildConstructorRows,
   applyFinalStandings,
@@ -446,5 +447,48 @@ describe("buildTeamRoundDropConstructorRows", () => {
       raceNumbers: CAL, resultsByRound, teamDropN: 3,
     });
     expect(rows.find((r) => r.teamId === "tx").total).toBe(420);
+  });
+});
+
+// A training session or a special event is not a championship round. Its
+// results must not reach a driver's per-round map at all: the standings table
+// walks the real round list and never saw them, but the head-to-head panel on
+// a driver profile walks THESE keys, and a stray entry there turned a friendly
+// into a duel record in a season that hadn't run a single round.
+describe("buildDriverPerRace — only championship rounds land in perRace", () => {
+  // r1 and r2 are rounds 1 and 2; `tr` is a training session, so it is simply
+  // absent from the map, exactly as the query and the race list leave it.
+  const rounds = new Map([["r1", 1], ["r2", 2]]);
+  const result = (raceId, driverId, position, status = "FINISHED") => ({
+    raceId, driverId, position, status, penaltySeconds: 0,
+  });
+
+  it("keeps the rounds and drops the training session", () => {
+    const { perRace, pointsByRound } = buildDriverPerRace(
+      [result("r1", "a", 1), result("tr", "a", 1), result("r2", "a", 3)],
+      "a",
+      rounds
+    );
+    expect(Object.keys(perRace)).toEqual(["1", "2"]);
+    expect(Object.keys(pointsByRound)).toEqual(["1", "2"]);
+    expect(perRace[1].position).toBe(1);
+    expect(perRace[2].position).toBe(3);
+  });
+
+  it("leaves perRace empty when the only result is a training session", () => {
+    const { perRace, pointsByRound } = buildDriverPerRace([result("tr", "a", 1)], "a", rounds);
+    expect(perRace).toEqual({});
+    expect(pointsByRound).toEqual({});
+    // The head-to-head counts shared rounds off these keys — none means none.
+    expect(Object.keys(perRace)).toHaveLength(0);
+  });
+
+  it("ignores other drivers' results", () => {
+    const { perRace } = buildDriverPerRace(
+      [result("r1", "a", 1), result("r1", "b", 2)],
+      "b",
+      rounds
+    );
+    expect(perRace[1].position).toBe(2);
   });
 });
