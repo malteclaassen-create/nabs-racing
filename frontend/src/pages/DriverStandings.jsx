@@ -234,19 +234,24 @@ export default function DriverStandings() {
   // table the Constructors page uses); "cards" = the whole field as their
   // actual driver rating cards, in championship order.
   const [view, setView] = usePersistentState("nabs.standings.view", "list");
+  // Rating cards are a per-season switch (admin Seasons tab): the early seasons
+  // were raced without the telemetry the ratings are built from, so their cards
+  // would be guesswork. Off = the Cards option isn't offered at all here, and a
+  // remembered "cards" choice quietly falls back to the list.
+  const cardsEnabled = season?.cardsEnabled !== false;
 
   // Ratings (incl. each driver's card look) are only fetched once the Cards
   // view is opened — the list/matrix don't need them.
   const [cardData, setCardData] = useState(null);
   useEffect(() => {
-    if (view !== "cards" || cardData) return;
+    if (view !== "cards" || !cardsEnabled || cardData) return;
     let alive = true;
     api
       .seasonRatings()
       .then((d) => alive && setCardData(d || { ratings: [] }))
       .catch(() => alive && setCardData({ ratings: [] }));
     return () => { alive = false; };
-  }, [view, cardData]);
+  }, [view, cardsEnabled, cardData]);
 
   if (loading)
     return (
@@ -350,8 +355,9 @@ export default function DriverStandings() {
 
   const scopeLabel = activeTier === "all" ? "drivers" : TIER_FILTERS.find((t) => t.id === activeTier).label;
   // The per-round matrix needs actual rounds; archived totals-only seasons fall
-  // back to the list regardless of what's selected.
-  const activeView = hasRounds ? view : "list";
+  // back to the list regardless of what's selected — as does a season whose
+  // cards the admin switched off.
+  const activeView = !hasRounds || (view === "cards" && !cardsEnabled) ? "list" : view;
 
   return (
     <div className="content-in">
@@ -393,7 +399,9 @@ export default function DriverStandings() {
               items={[
                 { key: "list", label: "List" },
                 { key: "grid", label: "By round" },
-                { key: "cards", label: "Cards" },
+                // Seasons without rating cards don't get the option at all,
+                // rather than an option that leads to an empty grid.
+                ...(cardsEnabled ? [{ key: "cards", label: "Cards" }] : []),
               ]}
               value={activeView}
               onChange={setView}

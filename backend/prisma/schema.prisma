@@ -123,6 +123,12 @@ model Season {
   // static /cars/s<number>.jpg convention; missing too -> no panel at all.
   // Managed via raw SQL (ensureAppSchema); migration season_car_image.
   carImageUrl String?
+  // Driver rating cards for this season (migration season_cards_enabled). The
+  // early seasons were raced without the telemetry the ratings are built from,
+  // so their cards would be guesswork — OFF hides the Cards view in the driver
+  // standings and falls the driver page back to a plain avatar. Toggled on the
+  // admin Seasons tab; managed via raw SQL (ensureAppSchema).
+  cardsEnabled Boolean @default(true)
   createdAt DateTime @default(now())
 
   teams   Team[]

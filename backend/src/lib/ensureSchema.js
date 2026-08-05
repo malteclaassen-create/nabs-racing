@@ -10,11 +10,13 @@
 
 // Add a column only if it isn't already there (SQLite has no
 // ADD COLUMN IF NOT EXISTS). `def` is everything after the name, e.g. "INTEGER".
+// Returns true when the column was actually created, so a caller can run a
+// one-time backfill exactly once per database.
 async function addColumn(prisma, table, name, def) {
   const cols = await prisma.$queryRawUnsafe(`PRAGMA table_info("${table}")`);
-  if (!cols.some((c) => c.name === name)) {
-    await prisma.$executeRawUnsafe(`ALTER TABLE "${table}" ADD COLUMN "${name}" ${def}`);
-  }
+  if (cols.some((c) => c.name === name)) return false;
+  await prisma.$executeRawUnsafe(`ALTER TABLE "${table}" ADD COLUMN "${name}" ${def}`);
+  return true;
 }
 
 export async function ensureAppSchema(prisma) {
@@ -112,6 +114,20 @@ export async function ensureAppSchema(prisma) {
   // season_car_image). null = the static /cars/s<number>.jpg convention; if
   // that's missing too the panel disappears entirely (no placeholder).
   await addColumn(prisma, "Season", "carImageUrl", "TEXT");
+
+  // --- Driver rating cards per season (migration season_cards_enabled). The
+  // ratings are distilled from race telemetry the early seasons never produced,
+  // so a card there would be a guess dressed up as a number. OFF removes the
+  // "Cards" view from that season's driver standings and falls the driver page
+  // back to a plain avatar. The backfill runs ONCE, at column creation: from
+  // then on the admin toggle (Seasons tab) owns the value, so a season switched
+  // back on doesn't get switched off again on the next boot.
+  {
+    const fresh = await addColumn(prisma, "Season", "cardsEnabled", "BOOLEAN NOT NULL DEFAULT 1");
+    if (fresh) {
+      await prisma.$executeRawUnsafe(`UPDATE "Season" SET "cardsEnabled" = 0 WHERE "number" <= 4`);
+    }
+  }
 
   // --- Profile tiles: which of the six headline stat tiles a driver shows on
   // their public profile. JSON array of tile keys; null = all of them.

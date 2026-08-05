@@ -2794,9 +2794,9 @@ router.get("/seasons", async (req, res, next) => {
         orderBy: { number: "desc" },
         include: { _count: { select: { teams: true, drivers: true, races: true } } },
       }),
-      // teamDropWorst / teamDropMode / isPublic / isAnnounced / heroImageUrl
-      // aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic", "isAnnounced", "heroImageUrl", "carImageUrl" FROM "Season"`).catch(() => []),
+      // teamDropWorst / teamDropMode / isPublic / isAnnounced / heroImageUrl /
+      // cardsEnabled aren't in the generated client yet -> raw read.
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic", "isAnnounced", "heroImageUrl", "carImageUrl", "cardsEnabled" FROM "Season"`).catch(() => []),
       seasonSeriesMap(prisma),
       dbListSeries(prisma, { includePrivate: true }),
     ]);
@@ -2826,6 +2826,7 @@ router.get("/seasons", async (req, res, next) => {
             isAnnounced: !!Number(extra.isAnnounced ?? 0),
             heroImageUrl: extra.heroImageUrl || null,
             carImageUrl: extra.carImageUrl || null,
+            cardsEnabled: extra.cardsEnabled == null ? true : !!Number(extra.cardsEnabled),
           };
         })
     );
@@ -2890,6 +2891,7 @@ function parseSeasonRawFields(body) {
   }
   if (body.isPublic !== undefined) out.isPublic = body.isPublic ? 1 : 0;
   if (body.isAnnounced !== undefined) out.isAnnounced = body.isAnnounced ? 1 : 0;
+  if (body.cardsEnabled !== undefined) out.cardsEnabled = body.cardsEnabled ? 1 : 0;
   return out;
 }
 
@@ -2907,6 +2909,9 @@ async function writeSeasonRawFields(seasonId, raw) {
   }
   if (raw.isAnnounced !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Season" SET "isAnnounced" = ? WHERE "id" = ?`, raw.isAnnounced, seasonId);
+  }
+  if (raw.cardsEnabled !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Season" SET "cardsEnabled" = ? WHERE "id" = ?`, raw.cardsEnabled, seasonId);
   }
 }
 

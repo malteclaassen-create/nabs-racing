@@ -1046,7 +1046,7 @@ function AchievementBadge({ name, tagline, cat }) {
   );
 }
 
-function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges, teamBadges, pinnedAchievements }) {
+function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges, teamBadges, pinnedAchievements, cardsEnabled = true }) {
   // Season ⇄ All-time switch for the headline numbers. Only offered when the
   // driver actually spans several seasons (allTime comes with the career).
   const [scope, setScope] = useState("season");
@@ -1123,8 +1123,9 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
         <div className="flex items-center justify-center">
           {/* safety car drivers get their card even with no races (no rating).
               `explain`: hovering/tapping EXP·RAC·AWA·PAC pops a note on how
-              that value is computed. */}
-          {rating || driver.role === "safety" ? (
+              that value is computed. Seasons with the cards switched off show
+              the avatar instead — the same fallback as an unrated driver. */}
+          {cardsEnabled && (rating || driver.role === "safety") ? (
             <RatingCard driver={driver} rating={rating} explain />
           ) : (
             <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={160} className="text-6xl" />
@@ -1314,7 +1315,7 @@ export default function DriverProfile({ previewId, preview }) {
   // Honour a ?season=N deep link (search results / career-table links): steer
   // the season switcher to the row's own season before the sync below runs.
   useSeasonParam();
-  const { season, current: currentSeason } = useSeason();
+  const { season, current: currentSeason, seasons: seasonList } = useSeason();
   const [searchParams] = useSearchParams();
   const pendingSeasonParam = searchParams.get("season") != null;
 
@@ -1374,6 +1375,11 @@ export default function DriverProfile({ previewId, preview }) {
   // Preview mode: unsaved profile edits overlay the stored driver fields.
   const driver = preview ? { ...p.driver, ...preview } : p.driver;
   const color = driver.team.color;
+  // Rating cards are a per-season switch (admin Seasons tab). Keyed on the row's
+  // OWN season, not the switcher's, so an archived profile reached by deep link
+  // is judged by the season it belongs to. Off = the plain avatar instead.
+  const cardsEnabled =
+    ((seasonList || []).find((s) => s.number === driver.seasonNumber) || currentSeason)?.cardsEnabled !== false;
   const meRow = standingsData.standings.find((s) => s.driverId === driver.id);
   // Rounds dropped from this driver's total (the season's drop rule).
   const droppedRounds = new Set(meRow?.droppedRounds || []);
@@ -1459,7 +1465,7 @@ export default function DriverProfile({ previewId, preview }) {
           <ClassicHero driver={driver} championship={championship} color={color} />
 
           {/* Official rating card (FIFA/EA-style) + breakdown */}
-          {rating && (
+          {rating && cardsEnabled && (
             <div>
               <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-light">
                 Official Driver Rating
@@ -1486,6 +1492,7 @@ export default function DriverProfile({ previewId, preview }) {
           badges={p.badges}
           teamBadges={p.teamBadges}
           pinnedAchievements={p.pinnedAchievements}
+          cardsEnabled={cardsEnabled}
         />
       )}
 
