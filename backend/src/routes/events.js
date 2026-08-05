@@ -6,7 +6,7 @@ import { resolveSeasonId, getPrivateSeasonIds } from "../services/seasonService.
 import { resolveSeries, seasonIdsOfSeries } from "../lib/series.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
-import { seasonRowForDriver, dbLinkDrivers } from "../lib/persons.js";
+import { seasonRowForDriver, dbLinkDrivers, getIdentityOverrides } from "../lib/persons.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import { applyMemberSteamId } from "../lib/members.js";
 import { readNotifySettings } from "../lib/notifications.js";
@@ -116,7 +116,11 @@ router.get("/", async (req, res, next) => {
     const format = await readRaceFormat(prisma, races.map((r) => r.id));
 
     // Sign-up gating + which answer columns the page shows (admin-configured).
-    const [notify, overrides] = await Promise.all([readNotifySettings(prisma), readAttendanceOverrides(prisma)]);
+    const [notify, overrides, identity] = await Promise.all([
+      readNotifySettings(prisma),
+      readAttendanceOverrides(prisma),
+      getIdentityOverrides(prisma),
+    ]);
 
     const events = races.map((race) => {
       const gate = attendanceGate(race, notify, overrides);
@@ -126,7 +130,9 @@ router.get("/", async (req, res, next) => {
           driverId: r.driverId,
           name: r.driver.name,
           discordName: r.driver.discordName,
-          country: r.driver.country || null,
+          // Linked-person fallback: a row without its own flag shows the
+          // person's current one (same rule as the standings).
+          country: r.driver.country || identity.get(r.driverId)?.country || null,
           team: { name: r.driver.team.name, color: r.driver.team.color },
         });
       }

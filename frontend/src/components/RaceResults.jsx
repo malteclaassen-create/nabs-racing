@@ -195,7 +195,11 @@ export default function RaceResults({ race, results, quali = null, session = "ra
   const hasLaps = lapRows.length > 0;
   const hasGrid = results.some((r) => r.grid != null);
   const fastestMs = hasLaps ? Math.min(...lapRows.map((r) => r.bestLapMs)) : null;
-  const fastestDriverId = hasLaps ? lapRows.find((r) => r.bestLapMs === fastestMs)?.driverId : null;
+  // The admin-recorded holder (archive rounds without lap data) wins over the
+  // derivation from stored lap times, so the FL pill can show without a time.
+  const fastestDriverId =
+    race.fastestLapDriverId ||
+    (hasLaps ? lapRows.find((r) => r.bestLapMs === fastestMs)?.driverId : null);
   const dotdId = race.driverOfTheDay?.driverId || null;
 
   // Race time / gap column (F1-style): the winner's full race time, then each
@@ -492,7 +496,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
           <span className="flex items-center gap-1.5">
             <TierBadge tier={0} /> Reserve
           </span>
-          {hasLaps && (
+          {fastestDriverId && (
             <span className="flex items-center gap-1.5">
               <span className="pill bg-purple-500/15 text-fl">FL</span> Fastest lap
             </span>

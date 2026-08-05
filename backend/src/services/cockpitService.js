@@ -10,10 +10,11 @@ import { getDriverStandings } from "./standingsService.js";
 import { applyDropScores } from "./standingsService.js";
 import { getSeasonScoring, getActiveSeason } from "./seasonService.js";
 import { getDriverRatings } from "./driverRatingsService.js";
-import { getLinkedDriverIds, getNameOverrides, getPersonGroups } from "../lib/persons.js";
+import { getLinkedDriverIds, getNameOverrides, getPersonGroups, getIdentityOverrides } from "../lib/persons.js";
 import { seasonSeriesMap } from "../lib/series.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { telemetryForDriver, telemetryForRace } from "../lib/telemetryRead.js";
+import { readManualFastestLaps } from "../lib/raceHonours.js";
 import { groupKeyFor, displayNameFor, countryFor } from "../lib/trackKeys.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import { achievementStateFor } from "../lib/achievements.js";
@@ -162,13 +163,17 @@ export async function getCockpitOverview(prisma, driverId) {
     if (t.cuts != null) cuts += t.cuts;
   }
 
+  // Linked-person fallback for the header's flag/photo, same rule as the
+  // public standings: the row's own values win, the person's current ones fill
+  // the gaps.
+  const idov = (await getIdentityOverrides(prisma)).get(driver.id);
   return {
     driver: {
       id: driver.id,
       name: driver.name,
       number: driver.number ?? null,
-      country: driver.country || null,
-      photoUrl: driver.photoUrl || driver.discordAvatar || null,
+      country: driver.country || idov?.country || null,
+      photoUrl: driver.photoUrl || driver.discordAvatar || idov?.photoUrl || null,
       seasonNumber: driver.season?.number ?? null,
       seasonName: driver.season?.name ?? null,
       team: driver.team
@@ -602,9 +607,18 @@ export async function buildAchievementInputs(prisma, ctx, { standings } = {}) {
   }
 
   // Fastest laps: rounds where an own row held the race's overall best lap.
-  const withLap = rows.filter((r) => isLap(r.bestLapMs));
+  // Rounds with an admin-recorded holder (archive seasons, lib/raceHonours.js)
+  // are settled by that record alone, whatever partial lap data they carry.
+  const manualFl = await readManualFastestLaps(prisma, new Set(rows.map((r) => r.raceId)));
   let fastestLaps = 0;
   let fastestByRace = new Map();
+  for (const r of rows) {
+    if (manualFl.get(r.raceId) === r.driverId) {
+      fastestLaps += 1;
+      fastestByRace.set(r.raceId, true);
+    }
+  }
+  const withLap = rows.filter((r) => isLap(r.bestLapMs) && !manualFl.has(r.raceId));
   if (withLap.length) {
     const raceIds = [...new Set(withLap.map((r) => r.raceId))];
     const field = await prisma.raceResult.findMany({

@@ -242,6 +242,31 @@ export function buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNu
   });
 }
 
+// Countback tie-break (the FIA way): drivers on equal points rank by their
+// results — more wins first, then more second places, then thirds, and so on;
+// this also orders the zero-point drivers (a P12 beats a best of P14), and any
+// classified finish beats none at all. `a`/`b` are each driver's classified
+// finishing positions sorted ascending; comparing them element by element IS
+// the countback (equal prefixes fall through, the longer sheet — more finishes
+// at the deciding position — wins). Returns <0 when `a` ranks ahead. Pure core
+// exported for tests.
+export function compareFinishSheets(a, b) {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return b.length - a.length;
+}
+
+// The ascending list of classified finishes behind a standings row, for the
+// countback above.
+export function finishSheetOf(row) {
+  return Object.values(row.perRace || {})
+    .filter((v) => v.status === "FINISHED" && v.position != null)
+    .map((v) => v.position)
+    .sort((x, y) => x - y);
+}
+
 // Overlay official final standings on top of computed rows (archived seasons).
 // Rows whose id appears in `finals` take its official total and keep the given
 // array order; rows not listed keep their computed total and sort after, by
@@ -469,7 +494,16 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
       return a.name.localeCompare(b.name);
     });
   } else {
-    rows.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+    // Points first; equal points settled by countback (more wins, then more
+    // seconds, …) — see compareFinishSheets. Name only when even the results
+    // are identical. Archived seasons' official order still wins below.
+    const sheets = new Map(rows.map((r) => [r.driverId, finishSheetOf(r)]));
+    rows.sort(
+      (a, b) =>
+        b.total - a.total ||
+        compareFinishSheets(sheets.get(a.driverId), sheets.get(b.driverId)) ||
+        a.name.localeCompare(b.name)
+    );
   }
   rows.forEach((row, i) => (row.position = i + 1));
   // Archived seasons: official totals & order win over the computed ones.

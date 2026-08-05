@@ -29,6 +29,7 @@ import {
   getT2ConstructorStandings,
 } from "./standingsService.js";
 import { getActiveSeason, getSeasonScoring } from "./seasonService.js";
+import { getIdentityOverrides } from "../lib/persons.js";
 import { DEFAULT_POINTS_TABLE, getPointsForPosition } from "./pointsCalculator.js";
 
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -211,14 +212,17 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
     // race still scores nothing. Fills the otherwise sparse standalone table.
     const curStandings = await getDriverStandings(prisma, season.id);
     const curById = new Map(curStandings.standings.map((r) => [r.driverId, r]));
+    // Linked-person fallback for flag/photo, same rule as the standings rows.
+    const identity = await getIdentityOverrides(prisma);
     const row = (driverId, position, { dnf } = {}) => {
       const d = byId.get(driverId);
       const cur = curById.get(driverId);
+      const idov = identity.get(driverId);
       return {
         driverId,
         name: d?.name || "?",
-        country: d?.country || null,
-        photoUrl: d?.photoUrl || d?.discordAvatar || null,
+        country: d?.country || idov?.country || null,
+        photoUrl: d?.photoUrl || d?.discordAvatar || idov?.photoUrl || null,
         team: d?.team
           ? { id: d.team.id, name: d.team.name, color: d.team.color, logoUrl: d.team.logoUrl || null }
           : { id: null, name: "", color: "#888", logoUrl: null },

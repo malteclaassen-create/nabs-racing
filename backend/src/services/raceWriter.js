@@ -98,6 +98,12 @@ export async function saveRaceResults(prisma, raceId, results) {
     "contacts", "envContacts", "cuts", "overtakes", "lapsLed", "laps",
     "cleanLaps", "consistencyMs", "consistencyPct", "gamePenalties", "gamePenaltySeconds",
     "stints",
+    // Not telemetry, but preserved the same way: the admin-recorded fastest-lap
+    // marker (lib/raceHonours.js) must survive a manual results edit too, and so
+    // must the qualifying best lap (quali import or admin-recorded pole lap) —
+    // it was missing here before, so a manual edit silently wiped quali times.
+    "fastestLap",
+    "qualiTimeMs",
   ];
   const existing = await prisma.$queryRawUnsafe(
     `SELECT "driverId", "grid", "bestLapMs", "totalTimeMs", ${TELEMETRY_COLS.map((c) => `"${c}"`).join(", ")} FROM "RaceResult" WHERE "raceId" = ?`,

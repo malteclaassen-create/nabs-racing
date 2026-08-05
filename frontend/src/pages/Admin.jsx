@@ -23,7 +23,7 @@ import AdminFeedback, { FEEDBACK_CHANGED_EVENT } from "../components/AdminFeedba
 import RacePreview from "../components/RacePreview.jsx";
 import { SOCIAL_META, SocialIcon } from "../components/SocialLinks.jsx";
 import { isSteamId64 } from "../utils/steamId.js";
-import { fmtTimeCell } from "../utils/raceDuration.js";
+import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
 
 // The admin's tabs, clustered by what they're for — same ids (and therefore
 // the same components and hand-offs) as the old flat strip, just grouped so
@@ -934,6 +934,40 @@ function fromLocalInput(value) {
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+// Lap-time input for the honours card: "1:23.456" (or plain seconds "83.456")
+// -> milliseconds. null = empty or unreadable.
+function lapInputToMs(text) {
+  const t = String(text || "").trim().replace(",", ".");
+  if (!t) return null;
+  const m = t.match(/^(?:(\d+):)?(\d+(?:\.\d{1,3})?)$/);
+  if (!m) return null;
+  const ms = Math.round((Number(m[1] || 0) * 60 + Number(m[2])) * 1000);
+  return ms > 0 ? ms : null;
+}
+function msToLapInput(ms) {
+  if (!ms || ms <= 0 || ms > 1_800_000) return "";
+  const min = Math.floor(ms / 60000);
+  const sec = ((ms % 60000) / 1000).toFixed(3).padStart(6, "0");
+  return `${min}:${sec}`;
+}
+
+// Race-time input for the results editor. The winner gets their FULL race time
+// ("45:12.345" or "1:02:03.456"); everyone else either a full time too or a
+// gap behind the winner ("+12.345", "+1:05.231"). Returns the reading, not yet
+// anchored: {kind: "empty"|"bad"|"abs"|"gap", ms}.
+function parseRaceTimeInput(text) {
+  const t = String(text || "").trim().replace(",", ".");
+  if (!t) return { kind: "empty", ms: null };
+  const gap = t.startsWith("+");
+  const body = gap ? t.slice(1).trim() : t;
+  if (!/^\d+(:\d{1,2}){0,2}(\.\d{1,3})?$/.test(body)) return { kind: "bad", ms: null };
+  let s = 0;
+  for (const p of body.split(":")) s = s * 60 + Number(p);
+  const ms = Math.round(s * 1000);
+  if (!(ms > 0)) return { kind: "bad", ms: null };
+  return { kind: gap ? "gap" : "abs", ms };
+}
+
 function EditResults() {
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
@@ -942,6 +976,11 @@ function EditResults() {
   const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceLaps: "", info: "" }); // race details editor
   const [dotd, setDotd] = useState(""); // Driver of the Day pick
   const [dotdBy, setDotdBy] = useState(""); // who made the pick (streamer)
+  // Manually recorded honours (pole / fastest lap, each with an optional lap
+  // time of its own) — for archive rounds without imported data. Prefilled
+  // with what the round currently shows (recorded or derived), so saving
+  // unchanged is a no-op.
+  const [honours, setHonours] = useState({ pole: "", poleTime: "", fl: "", flTime: "" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
@@ -962,6 +1001,31 @@ function EditResults() {
         });
         setDotd(d.race?.driverOfTheDay?.driverId || "");
         setDotdBy(d.race?.driverOfTheDay?.pickedBy || "");
+        {
+          // Current honours: pole = the grid-1 row (its quali lap is the pole
+          // time); fastest lap = the recorded holder if there is one, else the
+          // best stored lap of the field.
+          const laps = d.results.filter((r) => r.bestLapMs > 0 && r.bestLapMs <= 1_800_000);
+          const derivedFl = laps.length
+            ? laps.reduce((b, r) => (r.bestLapMs < b.bestLapMs ? r : b)).driverId
+            : "";
+          const fl = d.race?.fastestLapDriverId || derivedFl;
+          const flRow = d.results.find((r) => r.driverId === fl);
+          const poleRow = d.results.find((r) => r.grid === 1);
+          setHonours({
+            pole: poleRow?.driverId || "",
+            poleTime: msToLapInput(poleRow?.qualiTimeMs),
+            fl,
+            flTime: msToLapInput(flRow?.bestLapMs),
+          });
+        }
+        // Stored race times prefill the Time / Gap inputs: the winner (and any
+        // car with a smaller total, e.g. lapped ones) as a full time, the rest
+        // as "+gap" behind the winner, exactly the way they'd be typed in.
+        const p1Row = d.results.find(
+          (x) => (x.rawPosition ?? x.position) === 1 && x.status === "FINISHED" && x.totalTimeMs > 0
+        );
+        const anchorMs = p1Row?.totalTimeMs ?? null;
         setRows(
           d.results.map((r) => {
             const raw = r.rawPosition ?? r.position ?? "";
@@ -977,13 +1041,37 @@ function EditResults() {
               subForTeamId: r.subForTeam?.id || "",
               ownTeamName: r.team?.name || "", // so the sub dropdown can say which team "own team" is
               penaltySeconds: r.penaltySeconds || 0,
-              totalTimeMs: r.totalTimeMs ?? null, // race time, needed to apply a time penalty
+              grid: r.grid ?? "", // starting position (1 = pole)
+              time:
+                r.totalTimeMs > 0
+                  ? anchorMs && r.driverId !== p1Row.driverId && r.totalTimeMs > anchorMs
+                    ? fmtGap(r.totalTimeMs - anchorMs)
+                    : fmtDuration(r.totalTimeMs)
+                  : "",
+              contacts: r.contacts ?? "", // car contacts ("Most incidents")
+              lapsLed: r.lapsLed ?? "",
               // The STORED points (null = derived from position). Never round-trip
               // the computed display points — that would freeze them as official.
               points: r.storedPoints ?? null,
               origPos: String(raw),
               origStatus: r.status,
               canSub: r.driverTier === 0,
+              // What this row looked like when it was loaded. The save compares
+              // against these and asks before overwriting or clearing stored
+              // values (a misclick shouldn't silently rewrite a finished
+              // round); filling blanks stays question-free.
+              origName: r.name,
+              origSub: r.subForTeam?.id || "",
+              origPenalty: r.penaltySeconds || 0,
+              origGrid: String(r.grid ?? ""),
+              origTime:
+                r.totalTimeMs > 0
+                  ? anchorMs && r.driverId !== p1Row.driverId && r.totalTimeMs > anchorMs
+                    ? fmtGap(r.totalTimeMs - anchorMs)
+                    : fmtDuration(r.totalTimeMs)
+                  : "",
+              origContacts: String(r.contacts ?? ""),
+              origLapsLed: String(r.lapsLed ?? ""),
             };
           })
         );
@@ -1024,30 +1112,111 @@ function EditResults() {
     );
   }
 
+  // Anchor for "+gap" time entries: the P1 row's full time (fallback: the
+  // smallest full time entered anywhere). null while no full time exists yet.
+  const timeAnchorOf = (rs) => {
+    const absMs = new Map();
+    for (const r of rs) {
+      const p = parseRaceTimeInput(r.time);
+      if (p.kind === "abs") absMs.set(r.driverId, p.ms);
+    }
+    const p1 = rs.find((r) => String(r.position).trim() === "1" && absMs.has(r.driverId));
+    if (p1) return absMs.get(p1.driverId);
+    return absMs.size ? Math.min(...absMs.values()) : null;
+  };
+
   // Normalised results for both the live preview and the save. A row keeps its
   // official points only while its finish/status are untouched; once changed,
   // points are derived from position (penalties are handled server-side).
-  const toResults = (rs) =>
-    rs.map((r) => ({
-      driverId: r.driverId,
-      // On a driver swap: tells the server whose stored race data this row
-      // inherits (undefined when unchanged — JSON drops it).
-      prevDriverId: r.origDriverId !== r.driverId ? r.origDriverId : undefined,
-      position: r.position === "" ? null : Number(r.position),
-      status: r.status,
-      subForTeamId: r.subForTeamId || null,
-      penaltySeconds: Number(r.penaltySeconds) || 0,
-      totalTimeMs: r.totalTimeMs ?? null,
-      points:
-        String(r.position) !== r.origPos || r.status !== r.origStatus ? null : r.points ?? null,
-    }));
-
-  // Leader's race time (fastest finisher) -> drives the gap column. Null for
-  // legacy rounds with no stored times (the column then shows "–").
-  const finishTimes = rows.filter((r) => r.status === "FINISHED" && r.totalTimeMs > 0).map((r) => r.totalTimeMs);
-  const leaderMs = finishTimes.length ? Math.min(...finishTimes) : null;
+  // Grid, race time, contacts and laps led are sent as entered (empty = none),
+  // so archive rounds can be backfilled by hand; unreadable time entries count
+  // as none here and block the save with a message instead.
+  const toResults = (rs) => {
+    const anchor = timeAnchorOf(rs);
+    const intOf = (v) => {
+      if (v === "" || v == null) return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.round(n) : null;
+    };
+    return rs.map((r) => {
+      const t = parseRaceTimeInput(r.time);
+      return {
+        driverId: r.driverId,
+        // On a driver swap: tells the server whose stored race data this row
+        // inherits (undefined when unchanged — JSON drops it).
+        prevDriverId: r.origDriverId !== r.driverId ? r.origDriverId : undefined,
+        position: r.position === "" ? null : Number(r.position),
+        status: r.status,
+        subForTeamId: r.subForTeamId || null,
+        penaltySeconds: Number(r.penaltySeconds) || 0,
+        totalTimeMs: t.kind === "abs" ? t.ms : t.kind === "gap" && anchor != null ? anchor + t.ms : null,
+        grid: intOf(r.grid),
+        contacts: intOf(r.contacts),
+        lapsLed: intOf(r.lapsLed),
+        points:
+          String(r.position) !== r.origPos || r.status !== r.origStatus ? null : r.points ?? null,
+      };
+    });
+  };
 
   async function save() {
+    // Time entries must be readable before anything is written.
+    for (const r of rows) {
+      if (parseRaceTimeInput(r.time).kind === "bad") {
+        setError(
+          `Race time for ${r.name} not readable. Winner: full time like 45:12.345, everyone else: full time or a gap like +12.345`
+        );
+        return;
+      }
+      for (const [field, value, min] of [
+        ["Grid", r.grid, 1],
+        ["Contacts", r.contacts, 0],
+        ["Laps led", r.lapsLed, 0],
+      ]) {
+        const t = String(value).trim();
+        if (t !== "" && (!/^\d+$/.test(t) || Number(t) < min)) {
+          setError(`${field} for ${r.name} must be a whole number of ${min} or more.`);
+          return;
+        }
+      }
+    }
+    if (rows.some((r) => parseRaceTimeInput(r.time).kind === "gap") && timeAnchorOf(rows) == null) {
+      setError("Gaps (+…) need the winner's full race time in the P1 row first.");
+      return;
+    }
+    // Guard against misclicks on a round that already has data: list every
+    // edit that overwrites or clears a STORED value and ask once. Filling
+    // blanks (the archive backfill workflow) never asks.
+    const changed = [];
+    for (const r of rows) {
+      const mods = [];
+      if (r.origDriverId !== r.driverId) mods.push(`driver ${r.origName} → ${r.name}`);
+      if (r.origPos !== "" && String(r.position).trim() !== r.origPos)
+        mods.push(`finish P${r.origPos} → ${String(r.position).trim() || "none"}`);
+      if (r.status !== r.origStatus) mods.push(`status ${r.origStatus} → ${r.status}`);
+      if ((r.subForTeamId || "") !== r.origSub && r.origSub) mods.push("race team changed");
+      if (r.origPenalty > 0 && Number(r.penaltySeconds) !== r.origPenalty)
+        mods.push(`penalty ${r.origPenalty}s → ${Number(r.penaltySeconds) || 0}s`);
+      if (r.origGrid !== "" && String(r.grid).trim() !== r.origGrid)
+        mods.push(`grid ${r.origGrid} → ${String(r.grid).trim() || "removed"}`);
+      if (r.origTime !== "" && r.time.trim() !== r.origTime)
+        mods.push(`race time ${r.origTime} → ${r.time.trim() || "removed"}`);
+      if (r.origContacts !== "" && String(r.contacts).trim() !== r.origContacts)
+        mods.push(`contacts ${r.origContacts} → ${String(r.contacts).trim() || "removed"}`);
+      if (r.origLapsLed !== "" && String(r.lapsLed).trim() !== r.origLapsLed)
+        mods.push(`laps led ${r.origLapsLed} → ${String(r.lapsLed).trim() || "removed"}`);
+      if (mods.length) changed.push(`${r.origName}: ${mods.join(", ")}`);
+    }
+    if (changed.length) {
+      const shown = changed.slice(0, 8).map((c) => `• ${c}`).join("\n");
+      const more = changed.length > 8 ? `\n… and ${changed.length - 8} more rows` : "";
+      if (
+        !window.confirm(
+          `This changes data the round already has stored:\n\n${shown}${more}\n\nSave anyway? (A backup is written automatically first.)`
+        )
+      )
+        return;
+    }
     setBusy(true);
     setError(null);
     setMsg(null);
@@ -1055,7 +1224,21 @@ function EditResults() {
       await api.editResults(raceId, toResults(rows));
       // The swap is stored now; a second save must not point prevDriverId at a
       // row that no longer exists (that would drop the preserved race data).
-      setRows((rs) => rs.map((r) => ({ ...r, origDriverId: r.driverId })));
+      // The overwrite guard's baselines move along too, so saving again without
+      // further edits doesn't re-ask about what was just written.
+      setRows((rs) =>
+        rs.map((r) => ({
+          ...r,
+          origDriverId: r.driverId,
+          origName: r.name,
+          origSub: r.subForTeamId || "",
+          origPenalty: Number(r.penaltySeconds) || 0,
+          origGrid: String(r.grid).trim(),
+          origTime: r.time.trim(),
+          origContacts: String(r.contacts).trim(),
+          origLapsLed: String(r.lapsLed).trim(),
+        }))
+      );
       setMsg("Results saved and standings recalculated.");
     } catch (e) {
       setError(e.message);
@@ -1139,6 +1322,38 @@ function EditResults() {
       setRows([]);
       setMsg(`${label} deleted. Standings updated.`);
       reloadRaces();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Manually recorded honours: pole and fastest lap of the round, each with
+  // its own optional lap time, for the archive seasons where no imported data
+  // exists to derive them from.
+  async function saveHonours() {
+    const poleMs = lapInputToMs(honours.poleTime);
+    if (honours.poleTime.trim() && poleMs == null) {
+      setError("Pole lap time not readable. Use minutes:seconds, e.g. 1:23.456");
+      return;
+    }
+    const flMs = lapInputToMs(honours.flTime);
+    if (honours.flTime.trim() && flMs == null) {
+      setError("Fastest lap time not readable. Use minutes:seconds, e.g. 1:23.456");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      await api.setRaceHonours(raceId, {
+        poleDriverId: honours.pole || null,
+        poleTimeMs: honours.pole ? poleMs : null,
+        fastestLapDriverId: honours.fl || null,
+        fastestLapMs: honours.fl ? flMs : null,
+      });
+      setMsg("Race honours saved.");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -1257,6 +1472,67 @@ function EditResults() {
       )}
 
       {rows.length > 0 && (
+        <div className="card flex flex-wrap items-end gap-3 p-4">
+          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+            Pole position
+            <select
+              className="input min-w-48"
+              value={honours.pole}
+              onChange={(e) => setHonours({ ...honours, pole: e.target.value })}
+            >
+              <option value="">Not on record</option>
+              {rows.map((r) => (
+                <option key={r.driverId} value={r.driverId}>{r.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+            Pole lap time (optional)
+            <input
+              className="input w-36"
+              type="text"
+              placeholder="1:23.456"
+              value={honours.poleTime}
+              onChange={(e) => setHonours({ ...honours, poleTime: e.target.value })}
+              disabled={!honours.pole}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+            Fastest lap
+            <select
+              className="input min-w-48"
+              value={honours.fl}
+              onChange={(e) => setHonours({ ...honours, fl: e.target.value })}
+            >
+              <option value="">Not on record</option>
+              {rows.map((r) => (
+                <option key={r.driverId} value={r.driverId}>{r.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
+            Fastest lap time (optional)
+            <input
+              className="input w-36"
+              type="text"
+              placeholder="1:23.456"
+              value={honours.flTime}
+              onChange={(e) => setHonours({ ...honours, flTime: e.target.value })}
+              disabled={!honours.fl}
+            />
+          </label>
+          <button className="btn-secondary" disabled={busy} onClick={saveHonours}>
+            Save honours
+          </button>
+          <span className="pb-2 text-xs text-light">
+            For old rounds without imported data: pole and fastest lap count towards the driver profiles, the
+            Hall of Fame and this race&rsquo;s page. Both lap times are optional. The pole lap shows on the race
+            facts; a fastest lap with a time also joins the track records.
+          </span>
+        </div>
+      )}
+
+      {rows.length > 0 && (
         <>
           <div className="card overflow-x-auto">
             <table className="w-full text-sm">
@@ -1264,7 +1540,8 @@ function EditResults() {
                 <tr className="border-b border-border bg-surface2 text-left text-light">
                   <th className="px-3 py-2">Driver</th>
                   <th className="px-3 py-2 w-20 text-center" title="Raw finishing position from the race">Finish</th>
-                  <th className="px-3 py-2 text-center" title="Total race time (leader) or gap behind the leader">Time / Gap</th>
+                  <th className="px-3 py-2 w-20 text-center" title="Starting position. 1 = pole, same as the Race honours card above. Powers the biggest-climber fact and the positions-gained stats.">Grid</th>
+                  <th className="px-3 py-2 text-center" title="The winner's full race time (45:12.345 or 1:02:03.456); everyone else a gap behind them (+12.345) or a full time. Fills the Time column, the gaps and the winning-margin fact on the race page.">Time / Gap</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Team (this race)</th>
                   <th
@@ -1273,6 +1550,8 @@ function EditResults() {
                   >
                     Penalty (sec)
                   </th>
+                  <th className="px-3 py-2 w-20 text-center" title="Car-to-car contacts in the race. Powers the most-incidents fact and the clean-driving stats.">Contacts</th>
+                  <th className="px-3 py-2 w-20 text-center" title="Laps spent in the lead. Powers the most-laps-led fact and the career stats.">Laps led</th>
                 </tr>
               </thead>
               <tbody>
@@ -1304,7 +1583,25 @@ function EditResults() {
                         onChange={(e) => setRow(i, { position: e.target.value })}
                       />
                     </td>
-                    <td className="px-3 py-2 text-center font-mono text-xs text-light">{fmtTimeCell(r, leaderMs)}</td>
+                    <td className="px-3 py-2 text-center">
+                      {/* text + numeric keypad instead of type="number": the
+                          browser's spin arrows covered two-digit values */}
+                      <input
+                        className="input w-14 py-1 text-center"
+                        type="text"
+                        inputMode="numeric"
+                        value={r.grid}
+                        onChange={(e) => setRow(i, { grid: e.target.value })}
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <input
+                        className="input w-32 py-1 text-center font-mono text-xs"
+                        placeholder={String(r.position).trim() === "1" ? "45:12.345" : "+12.345"}
+                        value={r.time}
+                        onChange={(e) => setRow(i, { time: e.target.value })}
+                      />
+                    </td>
                     <td className="px-3 py-2">
                       <select className="input py-1" value={r.status} onChange={(e) => setRow(i, { status: e.target.value })}>
                         {STATUSES.map((s) => (
@@ -1347,6 +1644,24 @@ function EditResults() {
                         onChange={(e) => setRow(i, { penaltySeconds: e.target.value })}
                       />
                     </td>
+                    <td className="px-3 py-2 text-center">
+                      <input
+                        className="input w-14 py-1 text-center"
+                        type="text"
+                        inputMode="numeric"
+                        value={r.contacts}
+                        onChange={(e) => setRow(i, { contacts: e.target.value })}
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <input
+                        className="input w-14 py-1 text-center"
+                        type="text"
+                        inputMode="numeric"
+                        value={r.lapsLed}
+                        onChange={(e) => setRow(i, { lapsLed: e.target.value })}
+                      />
+                    </td>
                   </tr>
                   );
                 })}
@@ -1362,6 +1677,17 @@ function EditResults() {
             in seconds. It&rsquo;s added to the driver&rsquo;s race time and the field is re-sorted, so they drop
             behind everyone now ahead on time. (Needs imported race times; rounds without them can&rsquo;t be
             re-sorted.) The final order, points and the championship update live below before you save.
+          </p>
+          <p className="text-xs text-light">
+            <span className="font-semibold text-medium">Grid</span>,{" "}
+            <span className="font-semibold text-medium">Time / Gap</span>,{" "}
+            <span className="font-semibold text-medium">Contacts</span> and{" "}
+            <span className="font-semibold text-medium">Laps led</span> can be filled in by hand for old rounds:
+            grid positions power the biggest-climber fact and the positions-gained stats (grid 1 is the pole, the
+            same value as the Race honours card), times fill the Time column, the gaps and the winning margin
+            (winner: full time like 45:12.345, everyone else a gap like +12.345), contacts and laps led feed the
+            most-incidents and most-laps-led facts. Entering times never changes the saved finishing order; only
+            a time penalty re-sorts.
           </p>
 
           <RacePreview request={{ raceId, results: toResults(rows) }} />

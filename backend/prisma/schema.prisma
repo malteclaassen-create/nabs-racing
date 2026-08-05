@@ -399,6 +399,14 @@ model RaceResult {
   // the AC file's per-lap Tyre field — the strategy expander on stored
   // results. Raw-SQL managed like the telemetry columns above.
   stints             String?
+  // Admin-recorded fastest-lap marker (migration result_fastest_lap): archive
+  // rounds carry no AC data, so the holder of the round's fastest lap can be
+  // entered by hand (admin Results tab, "Race honours"). Where lap times exist
+  // the fastest lap is DERIVED from bestLapMs; a set flag wins over that
+  // derivation (see lib/raceHonours.js). Poles need no column of their own —
+  // recording one writes grid = 1, which every consumer already counts.
+  // Raw-SQL managed (ensureAppSchema) like the telemetry columns above.
+  fastestLap         Boolean @default(false)
 
   @@unique([raceId, driverId])
   @@index([driverId])

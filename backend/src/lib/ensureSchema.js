@@ -52,6 +52,14 @@ export async function ensureAppSchema(prisma) {
   // strategy row on stored race results. null = imported before this existed.
   await addColumn(prisma, "RaceResult", "stints", "TEXT");
 
+  // --- Manual race honours (migration result_fastest_lap): the admin can
+  // record who took the FASTEST LAP of an archive round by hand (Results tab,
+  // "Race honours"), because the early seasons have no AC data to derive it
+  // from. A set flag wins over the bestLapMs derivation everywhere (see
+  // lib/raceHonours.js). Poles need no column of their own: recording one
+  // writes grid = 1, which every consumer already counts.
+  await addColumn(prisma, "RaceResult", "fastestLap", "BOOLEAN NOT NULL DEFAULT 0");
+
   // --- Phase 6: admin-picked Driver of the Day for a completed race.
   await addColumn(prisma, "Race", "driverOfTheDayId", "TEXT");
   // Who made the pick (the league's streamer decides each round). Free text.

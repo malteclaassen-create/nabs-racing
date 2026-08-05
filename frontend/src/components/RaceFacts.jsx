@@ -127,9 +127,15 @@ export default function RaceFacts({ race, results, quali = null }) {
 
   const facts = [];
 
-  // Fastest lap
+  // Fastest lap — an admin-recorded holder (archive rounds) wins over the
+  // derivation from stored lap times; the time shows only when it's on record.
   const lapRows = results.filter((r) => isLap(r.bestLapMs));
-  if (lapRows.length) {
+  const manualFl = race?.fastestLapDriverId ? rowById.get(race.fastestLapDriverId) : null;
+  if (manualFl) {
+    facts.push({ key: "fl", label: "Fastest lap", icon: "stopwatch",
+      driverId: manualFl.driverId, name: manualFl.name, country: countryFor(manualFl.driverId, manualFl.country),
+      value: fmtLap(manualFl.bestLapMs) });
+  } else if (lapRows.length) {
     const fl = lapRows.reduce((b, r) => (r.bestLapMs < b.bestLapMs ? r : b));
     facts.push({ key: "fl", label: "Fastest lap", icon: "stopwatch",
       driverId: fl.driverId, name: fl.name, country: countryFor(fl.driverId, fl.country), value: fmtLap(fl.bestLapMs) });
@@ -219,9 +225,13 @@ export default function RaceFacts({ race, results, quali = null }) {
   } else {
     const pole = results.find((r) => r.grid === 1);
     if (pole) {
+      // A recorded pole lap (quali import or admin-recorded honours) shows the
+      // real time; without one the fact falls back to the old wording.
+      const poleLap = fmtLap(pole.qualiTimeMs);
       facts.push({ key: "pole", label: "Pole position", icon: "flag",
         driverId: pole.driverId, name: pole.name, country: countryFor(pole.driverId, pole.country),
-        value: winner && pole.driverId === winner.driverId ? "Led from lights to flag" : "Started P1" });
+        value: poleLap || (winner && pole.driverId === winner.driverId ? "Led from lights to flag" : "Started P1"),
+        hint: poleLap ? "Fastest lap of the qualifying session." : undefined });
     }
   }
 

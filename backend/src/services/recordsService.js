@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 import { getDriverStandings, getT1ConstructorStandings, getT2ConstructorStandings } from "./standingsService.js";
 import { getPersonGroups } from "../lib/persons.js";
+import { readManualFastestLaps } from "../lib/raceHonours.js";
 import { resolveSeries, getActiveSeries } from "../lib/series.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
@@ -159,6 +160,13 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
       if (!cur || r.bestLapMs < cur.ms) bestLapByRace.set(r.raceId, { driverId: r.driverId, ms: r.bestLapMs });
     }
   }
+  // Admin-recorded fastest laps (archive rounds without AC data) win over the
+  // bestLapMs derivation: the flag is the round's official holder.
+  const manualFl = await readManualFastestLaps(prisma);
+  const raceIdsInPlay = new Set(results.map((r) => r.raceId));
+  for (const [raceId, driverId] of manualFl) {
+    if (raceIdsInPlay.has(raceId)) bestLapByRace.set(raceId, { driverId, ms: null });
+  }
   const fastestLaps = new Map();
   for (const fl of bestLapByRace.values()) addTo(fastestLaps, fl.driverId);
 
@@ -247,7 +255,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     topList("podiums", "Most podiums", "top-3 finishes", (b) => b.podiums, { unit: "podiums" }),
     topList("points", "Most career points", "official season totals, drop rules applied", (b) => b.points, { unit: "pts" }),
     topList("starts", "Most starts", "championship rounds started", (b) => b.starts, { unit: "starts" }),
-    topList("poles", "Most pole positions", "where grid data exists", (b, id) => poles.get(id) || 0, { unit: "poles" }),
+    topList("poles", "Most pole positions", "where the pole is on record", (b, id) => poles.get(id) || 0, { unit: "poles" }),
     topList("fastestLaps", "Most fastest laps", "best race lap of a round", (b, id) => fastestLaps.get(id) || 0, { unit: "laps" }),
     topList("overtakes", "Most overtakes", "on-track passes (telemetry seasons)", (b, id) => overtakes.get(id) || 0, { unit: "passes" }),
     topList("lapsLed", "Most laps led", "laps out front (telemetry seasons)", (b, id) => lapsLed.get(id) || 0, { unit: "laps" }),

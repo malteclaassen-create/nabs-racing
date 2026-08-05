@@ -751,7 +751,7 @@ function HeadToHead({ me, meRow, standings }) {
   );
 }
 
-function TeamPanel({ driver, standings, career }) {
+function TeamPanel({ driver, standings, career, teammateHistory = [] }) {
   const mates = standings
     .filter((s) => s.team.id === driver.team.id && s.driverId !== driver.id)
     .sort((a, b) => a.position - b.position);
@@ -786,9 +786,12 @@ function TeamPanel({ driver, standings, career }) {
   const shareTotal = shareRows.reduce((sum, r) => sum + (r.total || 0), 0);
 
   // (4) The driver's history with THIS team across their linked seasons.
-  // teamName can read "A / B" after a mid-season move, so match by inclusion.
+  // teamName can read "A / B" after a mid-season move, so match by inclusion —
+  // and NORMALISED, because team rows are per-season and their stored names
+  // drift in casing ("McLaren" vs "Mclaren"), which silently dropped seasons.
+  const normTeam = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const withTeam = (career?.seasons || [])
-    .filter((s) => s.teamName && s.teamName.split(" / ").includes(driver.team.name))
+    .filter((s) => s.teamName && s.teamName.split(" / ").some((n) => normTeam(n) === normTeam(driver.team.name)))
     // Only seasons actually raced (or the one being viewed) count — a signed
     // seat for next season shouldn't already read as a season together.
     .filter((s) => (s.starts || 0) > 0 || s.isCurrent)
@@ -914,7 +917,11 @@ function TeamPanel({ driver, standings, career }) {
           )}
         </div>
 
-        {/* (4) The driver's history with this team across their seasons */}
+        {/* (4) History: the driver with THIS team, and since when the current
+            line-up has been racing together (person-linked on both sides, so
+            handle changes and renamed team rows can't skew it). The two are
+            deliberately separate lines — "with the team since S5" and
+            "teammates since S7" are different facts. */}
         {!isReserve && withTeam.length > 0 && (
           <div className="relative mt-5 border-t border-border pt-4">
             <div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
@@ -922,7 +929,7 @@ function TeamPanel({ driver, standings, career }) {
             </div>
             <div className="space-y-1.5 text-sm">
               <div className="flex items-baseline justify-between gap-3">
-                <span className="text-light">Together</span>
+                <span className="text-light">With {driver.team.name}</span>
                 <span className="font-display font-bold tabular-nums text-dark">
                   {withTeam.length === 1
                     ? `First season (S${withTeam[0].seasonNumber})`
@@ -931,7 +938,7 @@ function TeamPanel({ driver, standings, career }) {
               </div>
               {historyBest && (
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-light">Best finish together</span>
+                  <span className="text-light">Best season with the team</span>
                   <span
                     className="font-display font-bold tabular-nums"
                     style={{ color: historyBest.position <= 3 ? MEDAL_TEXT[historyBest.position - 1] : undefined }}
@@ -944,12 +951,20 @@ function TeamPanel({ driver, standings, career }) {
               )}
               {withTeam.length > 1 && (
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-light">Wins together</span>
+                  <span className="text-light">Wins for the team</span>
                   <span className="font-display font-bold tabular-nums text-dark">
                     {withTeam.reduce((s, x) => s + (x.wins || 0), 0)}
                   </span>
                 </div>
               )}
+              {teammateHistory.map((m) => (
+                <div key={m.driverId} className="flex items-baseline justify-between gap-3">
+                  <span className="truncate text-light">Teammates with {m.name}</span>
+                  <span className="shrink-0 font-display font-bold tabular-nums text-dark">
+                    {m.seasons === 1 ? `First season (S${m.since})` : `${m.seasons} seasons · since S${m.since}`}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -1611,7 +1626,7 @@ export default function DriverProfile({ previewId, preview }) {
           )}
         </div>
 
-        <TeamPanel driver={driver} standings={standingsData.standings} career={p.career} />
+        <TeamPanel driver={driver} standings={standingsData.standings} career={p.career} teammateHistory={p.teammateHistory || []} />
       </div>
 
       {/* Career across linked seasons (only when this driver spans more than one) */}

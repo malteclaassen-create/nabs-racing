@@ -11,6 +11,7 @@ import { resolveSeasonId } from "../services/seasonService.js";
 import { getDriverRatings } from "../services/driverRatingsService.js";
 import { parseCardPhotoPos } from "../lib/cardPhoto.js";
 import { isKnownEdition, DEFAULT_CARD_EDITION } from "../lib/cardEditions.js";
+import { getIdentityOverrides } from "../lib/persons.js";
 import { isAdminRequest } from "../middleware/auth.js";
 
 const router = Router();
@@ -40,7 +41,7 @@ router.get("/ratings", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
     if (!seasonId) return res.json({ ratings: [] });
-    const [ratings, season, rows] = await Promise.all([
+    const [ratings, season, rows, identity] = await Promise.all([
       getDriverRatings(prisma, seasonId),
       prisma.season.findUnique({ where: { id: seasonId }, select: { number: true } }),
       // Card columns are raw-SQL columns; one bulk read for the whole field.
@@ -48,21 +49,27 @@ router.get("/ratings", async (req, res, next) => {
         SELECT "id","number","country","photoUrl","discordAvatar","role",
                "cardStyle","cardAnim","cardPhotoPos","cardPhotoUrl"
         FROM "Driver" WHERE "seasonId" = ${seasonId}`,
+      getIdentityOverrides(prisma),
     ]);
     const byId = new Map(rows.map((r) => [r.id, r]));
     res.json({
       seasonNumber: season?.number ?? null,
       ratings: ratings.map((r) => {
         const d = byId.get(r.driverId) || {};
+        // Linked-person fallback (same rule as the standings): a row without
+        // its own flag/photo shows the person's current one; a borrowed photo
+        // brings its own card framing along.
+        const idov = identity.get(r.driverId);
+        const ownPhoto = d.photoUrl || d.discordAvatar || null;
         return {
           ...r,
           number: d.number ?? null,
-          country: d.country || null,
+          country: d.country || idov?.country || null,
           role: d.role || null,
-          photoUrl: d.photoUrl || d.discordAvatar || null,
+          photoUrl: ownPhoto || idov?.photoUrl || null,
           cardStyle: isKnownEdition(d.cardStyle) && d.cardStyle !== DEFAULT_CARD_EDITION ? d.cardStyle : null,
           cardAnim: d.cardAnim === "off" ? "off" : null,
-          photoPos: parseCardPhotoPos(d.cardPhotoPos),
+          photoPos: parseCardPhotoPos(d.cardPhotoPos || (!ownPhoto && idov ? idov.photoPos : null)),
           cardPhotoUrl: d.cardPhotoUrl || null,
         };
       }),

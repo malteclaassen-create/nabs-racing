@@ -33,6 +33,7 @@ import {
 import { stashIncoming, archiveCommitted } from "../lib/resultsArchive.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
+import { invalidateRecordsCache } from "../services/recordsService.js";
 import { readTrackInfo, writeTrackInfo, readHotlapFallback, writeHotlapFallback } from "../lib/trackInfo.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
@@ -1294,6 +1295,138 @@ router.put("/races/:id/driver-of-the-day", async (req, res, next) => {
       race.id
     );
     res.json({ ok: true, driverOfTheDayId: driverId || null, driverOfTheDayBy: by });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/races/:id/honours
+//   { poleDriverId | null, poleTimeMs | null,
+//     fastestLapDriverId | null, fastestLapMs | null }
+// Records a round's honours by hand — built for the archive seasons, where no
+// AC data exists to derive them from. Pole is stored as grid = 1 on the chosen
+// driver's row (the site's own definition of a pole everywhere: profiles,
+// Hall of Fame, track history, achievements), the pole LAP as that row's
+// qualiTimeMs (the column reserved for qualifying best laps — shown on the
+// race facts). The fastest lap sets the raw-SQL flag (lib/raceHonours.js)
+// and, when the lap time is known, the real bestLapMs — which then also joins
+// the track records and season honours. Each time travels with its own honour.
+// null clears an honour; clearing the fastest lap leaves imported laps alone.
+router.put("/races/:id/honours", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    const { poleDriverId, poleTimeMs, fastestLapDriverId, fastestLapMs } = req.body || {};
+    const rows = await prisma.raceResult.findMany({
+      where: { raceId: race.id },
+      select: { driverId: true, grid: true, bestLapMs: true },
+    });
+    // qualiTimeMs is raw-SQL managed (the generated client may not know it),
+    // so the stored pole laps ride in via their own read.
+    const qualiTimes = new Map();
+    try {
+      const qt = await prisma.$queryRawUnsafe(
+        `SELECT "driverId", "qualiTimeMs" FROM "RaceResult" WHERE "raceId" = ? AND "qualiTimeMs" IS NOT NULL`,
+        race.id
+      );
+      for (const r of qt) qualiTimes.set(r.driverId, Number(r.qualiTimeMs));
+    } catch {
+      /* column missing pre-migration */
+    }
+    const rowIds = new Set(rows.map((r) => r.driverId));
+    for (const [label, id] of [["Pole", poleDriverId], ["Fastest lap", fastestLapDriverId]]) {
+      if (id && !rowIds.has(id)) {
+        return res.status(400).json({ error: `${label}: that driver has no result in this race` });
+      }
+    }
+    const times = {};
+    for (const [key, v, label] of [
+      ["fl", fastestLapMs, "Fastest lap time"],
+      ["pole", poleTimeMs, "Pole lap time"],
+    ]) {
+      if (v == null) {
+        times[key] = null;
+        continue;
+      }
+      const n = Math.round(Number(v));
+      if (!Number.isFinite(n) || n <= 0 || n > 1_800_000) {
+        return res.status(400).json({ error: `${label} must be under 30 minutes` });
+      }
+      times[key] = n;
+    }
+    const ms = times.fl;
+    const pms = times.pole;
+
+    // Snapshot only when the save OVERWRITES stored data (demoting a previous
+    // pole holder, replacing a stored lap or quali time): backfilling a blank
+    // archive round then never floods the rotating backups, a correction is
+    // still one file-copy away from being undone.
+    const prevPole = rows.find((r) => r.grid === 1)?.driverId || null;
+    const poleChanges = (poleDriverId || null) !== prevPole;
+    const poleRow = poleDriverId ? rows.find((r) => r.driverId === poleDriverId) : null;
+    const poleTimeChanges = !!poleRow && (qualiTimes.get(poleDriverId) ?? null) !== pms;
+    const flRow = fastestLapDriverId ? rows.find((r) => r.driverId === fastestLapDriverId) : null;
+    const lapChanges = !!flRow && (flRow.bestLapMs ?? null) !== ms;
+    if (
+      (poleChanges && prevPole) ||
+      (lapChanges && flRow.bestLapMs != null) ||
+      (poleTimeChanges && qualiTimes.has(poleDriverId))
+    ) {
+      await tryCreateBackup(prisma, `before-honours-r${race.number ?? "x"}`);
+    }
+
+    // Pole: exactly one grid-1 row per race; the previous holder is demoted to
+    // an unknown grid slot and loses any recorded pole lap with it, the chosen
+    // driver becomes grid 1.
+    if (poleChanges) {
+      if (prevPole) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE "RaceResult" SET "qualiTimeMs" = NULL WHERE "raceId" = ? AND "driverId" = ?`,
+          race.id,
+          prevPole
+        );
+      }
+      await prisma.raceResult.updateMany({ where: { raceId: race.id, grid: 1 }, data: { grid: null } });
+      if (poleDriverId) {
+        await prisma.raceResult.updateMany({
+          where: { raceId: race.id, driverId: poleDriverId },
+          data: { grid: 1 },
+        });
+      }
+    }
+    // The pole lap is written exactly as sent while a holder is set (null
+    // clears a recorded time); clearing the pole was handled above.
+    if (poleDriverId) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "RaceResult" SET "qualiTimeMs" = ? WHERE "raceId" = ? AND "driverId" = ?`,
+        pms,
+        race.id,
+        poleDriverId
+      );
+    }
+
+    // Fastest lap: clear the race's flags, then mark the holder. The time is
+    // written exactly as sent (null clears a manual one) but only while a
+    // holder is set; clearing the honour leaves stored lap times untouched.
+    await prisma.$executeRawUnsafe(`UPDATE "RaceResult" SET "fastestLap" = 0 WHERE "raceId" = ?`, race.id);
+    if (fastestLapDriverId) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "RaceResult" SET "fastestLap" = 1 WHERE "raceId" = ? AND "driverId" = ?`,
+        race.id,
+        fastestLapDriverId
+      );
+      await prisma.raceResult.updateMany({
+        where: { raceId: race.id, driverId: fastestLapDriverId },
+        data: { bestLapMs: ms },
+      });
+    }
+
+    // Honours move career stats, the Hall of Fame and the rating curves, and
+    // a first pole can unlock card editions and achievements.
+    invalidateRecordsCache();
+    invalidateRatingHistoryCache();
+    notifyCardUnlocksForSeason(prisma, race.seasonId);
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }

@@ -471,6 +471,10 @@ export const api = {
     request(`/admin/races/${id}/results`, { method: "PUT", body: { results }, auth: true }),
   setDriverOfTheDay: (raceId, driverId, pickedBy) =>
     request(`/admin/races/${raceId}/driver-of-the-day`, { method: "PUT", body: { driverId, pickedBy }, auth: true }),
+  // Manually recorded honours of a round (pole, fastest lap + optional time) —
+  // built for archive rounds that have no imported data to derive them from.
+  setRaceHonours: (raceId, body) =>
+    request(`/admin/races/${raceId}/honours`, { method: "PUT", body, auth: true }),
   // Live "what would change" preview for unsaved results (no DB writes).
   previewRace: (body) =>
     request("/admin/races/preview", { method: "POST", body: { ...body, season: getSelectedSeason(), ...seriesBody() }, auth: true }),

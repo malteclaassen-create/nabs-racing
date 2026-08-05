@@ -11,10 +11,11 @@ import {
   getT2ConstructorStandings,
 } from "./standingsService.js";
 import { parseSocials } from "../lib/socials.js";
-import { getLinkedDriverIds, getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
+import { getLinkedDriverIds, getNameOverrides, getIdentityOverrides, getPersonGroups } from "../lib/persons.js";
 import { getActiveSeason } from "./seasonService.js";
 import { seasonSeriesMap, dbListSeries } from "../lib/series.js";
 import { telemetryForDriver } from "../lib/telemetryRead.js";
+import { readManualFastestLaps } from "../lib/raceHonours.js";
 import { readProfileTiles } from "../lib/profileTiles.js";
 import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
@@ -35,10 +36,16 @@ const isLap = (ms) => ms != null && ms > 0 && ms <= MAX_LAP_MS;
 // i.e. the number of rounds where this driver set the fastest lap of anyone.
 // Needs the full field per race (a driver's own rows only know their own
 // laps), so it loads every result of the races involved. Ties count for both.
+// Rounds with an admin-recorded holder (archive seasons, lib/raceHonours.js)
+// are settled by that record alone, whatever partial lap data they carry.
 async function countFastestLaps(prisma, ownRows) {
-  const withLap = ownRows.filter((r) => isLap(r.bestLapMs));
+  if (!ownRows.length) return 0;
+  const manual = await readManualFastestLaps(prisma, new Set(ownRows.map((r) => r.raceId)));
+  let recorded = 0;
+  for (const r of ownRows) if (manual.get(r.raceId) === r.driverId) recorded += 1;
+  const withLap = ownRows.filter((r) => isLap(r.bestLapMs) && !manual.has(r.raceId));
   const raceIds = [...new Set(withLap.map((r) => r.raceId))];
-  if (!raceIds.length) return 0;
+  if (!raceIds.length) return recorded;
   const field = await prisma.raceResult.findMany({
     where: { raceId: { in: raceIds } },
     select: { raceId: true, bestLapMs: true },
@@ -49,7 +56,7 @@ async function countFastestLaps(prisma, ownRows) {
     const m = minByRace.get(r.raceId);
     if (m == null || r.bestLapMs < m) minByRace.set(r.raceId, r.bestLapMs);
   }
-  return withLap.filter((r) => r.bestLapMs === minByRace.get(r.raceId)).length;
+  return recorded + withLap.filter((r) => r.bestLapMs === minByRace.get(r.raceId)).length;
 }
 
 // All-time stats across a person's linked driver rows — the same shape as the
@@ -265,6 +272,86 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
   return { career: { seasons: merged, totals }, otherSeries };
 }
 
+// Team names travel by NAME across seasons (team ids are per-season) and the
+// stored spellings drift ("McLaren" vs "Mclaren"), so every cross-season team
+// comparison normalises first.
+const normTeamName = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+// Since when the profile driver and each CURRENT teammate have raced together:
+// both sides resolved to their PERSON (linked rows across handle changes), a
+// season counts when both had a row in the same team (by normalised name) of
+// the same series and actually started a round there (or it's the season being
+// viewed). The Reserve pool is not a line-up and never counts. Feeds the team
+// panel's history block — [{ driverId, name, since, seasons }].
+async function buildTeammateHistory(prisma, { driver, seasonId, privateSeasonIds, bySeriesMap, ownSeriesId, nameOverrides }) {
+  if (!driver.teamId || driver.team?.tier === 0) return [];
+  const mates = await prisma.driver.findMany({
+    where: { seasonId, teamId: driver.teamId, id: { not: driver.id } },
+    select: { id: true, name: true },
+  });
+  if (!mates.length) return [];
+
+  const { byDriver, byPerson } = await getPersonGroups(prisma);
+  const personRows = (id) => byPerson.get(byDriver.get(id)) || [id];
+  const allIds = [...new Set([...personRows(driver.id), ...mates.flatMap((m) => personRows(m.id))])];
+  const [rows, startedRows] = await Promise.all([
+    prisma.driver.findMany({
+      where: { id: { in: allIds } },
+      select: { id: true, seasonId: true, team: { select: { name: true, tier: true } }, season: { select: { number: true } } },
+    }),
+    // "Actually raced there": at least one non-DNS result on that row.
+    prisma.raceResult.findMany({
+      where: { driverId: { in: allIds }, status: { not: "DNS" } },
+      select: { driverId: true },
+      distinct: ["driverId"],
+    }),
+  ]);
+  const started = new Set(startedRows.map((r) => r.driverId));
+  const rowById = new Map(rows.map((r) => [r.id, r]));
+
+  // One person's sheet: seasonNumber -> Set of normalised team names that count.
+  const sheetOf = (ids) => {
+    const bySeasonNum = new Map();
+    for (const id of ids) {
+      const r = rowById.get(id);
+      if (!r || !r.seasonId || privateSeasonIds.has(r.seasonId)) continue;
+      if ((bySeriesMap.get(r.seasonId) ?? null) !== ownSeriesId) continue;
+      if (!r.team || r.team.tier === 0) continue;
+      if (!(started.has(r.id) || r.seasonId === seasonId)) continue;
+      const num = r.season?.number;
+      if (num == null) continue;
+      if (!bySeasonNum.has(num)) bySeasonNum.set(num, new Set());
+      bySeasonNum.get(num).add(normTeamName(r.team.name));
+    }
+    return bySeasonNum;
+  };
+
+  const mySheet = sheetOf(personRows(driver.id));
+  const history = [];
+  for (const m of mates) {
+    const mateSheet = sheetOf(personRows(m.id));
+    const shared = [];
+    for (const [num, teams] of mySheet) {
+      const other = mateSheet.get(num);
+      if (other && [...teams].some((t) => other.has(t))) shared.push(num);
+    }
+    if (!shared.length) continue;
+    shared.sort((a, b) => a - b);
+    history.push({
+      driverId: m.id,
+      name: nameOverrides.get(m.id)?.displayName || m.name,
+      since: shared[0],
+      seasons: shared.length,
+    });
+  }
+  return history;
+}
+
 // Everything unlockStateFor (lib/cardEditions.js) needs to judge one driver
 // row's card editions: the row's season number N, the person's career stats
 // capped at seasons <= N of THIS series, and the person's podium/team seals
@@ -425,6 +512,16 @@ export async function getDriverProfile(prisma, driverId) {
   if (career) {
     allTime = await buildAllTimeStats(prisma, linkedIds, privateSeasonIds);
   }
+
+  // Since when the current line-up has raced together (team panel).
+  const teammateHistory = await buildTeammateHistory(prisma, {
+    driver,
+    seasonId,
+    privateSeasonIds,
+    bySeriesMap,
+    ownSeriesId,
+    nameOverrides,
+  });
 
   // Podium badges — earned, never assigned: one seal per CONCLUDED season this
   // person finished in the championship top three (gold P1, silver P2, bronze
@@ -653,6 +750,10 @@ export async function getDriverProfile(prisma, driverId) {
     // Cross-season career within this row's series (null unless this driver is
     // linked to other seasons of the same series).
     career,
+    // Since when the current line-up has raced together, person-linked on both
+    // sides: [{ driverId, name, since, seasons }] per current teammate. Empty
+    // for the Reserve pool.
+    teammateHistory,
     // Compact per-series summary of the person's OTHER series (null when they
     // race only here) — the optional "across all series" look.
     otherSeries,

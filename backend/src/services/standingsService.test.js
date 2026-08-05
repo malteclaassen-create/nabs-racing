@@ -8,6 +8,8 @@ import {
   buildStoredConstructorRows,
   applyTeamDrop,
   buildTeamRoundDropConstructorRows,
+  compareFinishSheets,
+  finishSheetOf,
 } from "./standingsService.js";
 import { parseFinalStandings } from "./seasonService.js";
 
@@ -16,6 +18,49 @@ const CAL = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 // Build a roundNumber -> points map from a 10-long R1..R10 list (R11/R12 unrun).
 const upto10 = (arr) => Object.fromEntries(arr.map((p, i) => [i + 1, p]));
+
+describe("compareFinishSheets (countback tie-break on equal points)", () => {
+  it("the win beats the better average (P1 outranks two P2s)", () => {
+    // a: P1 + P5, b: P2 + P2 — countback: a has a win, b none -> a ahead.
+    expect(compareFinishSheets([1, 5], [2, 2])).toBeLessThan(0);
+  });
+
+  it("equal wins: the one with more second places ranks ahead", () => {
+    expect(compareFinishSheets([1, 2, 4], [1, 3, 3])).toBeLessThan(0);
+  });
+
+  it("orders zero-point drivers by their best finishes too", () => {
+    expect(compareFinishSheets([12, 15], [14, 15])).toBeLessThan(0);
+  });
+
+  it("identical results plus one extra finish: the extra finish wins", () => {
+    // Both have one P1; b also finished P9 once — more results at the deciding
+    // position, so b ranks ahead (classic countback).
+    expect(compareFinishSheets([1], [1, 9])).toBeGreaterThan(0);
+  });
+
+  it("any classified finish beats none at all", () => {
+    expect(compareFinishSheets([16], [])).toBeLessThan(0);
+  });
+
+  it("fully identical sheets are a tie (0), left to the caller's fallback", () => {
+    expect(compareFinishSheets([2, 3], [2, 3])).toBe(0);
+    expect(compareFinishSheets([], [])).toBe(0);
+  });
+
+  it("finishSheetOf collects only classified finishes, sorted ascending", () => {
+    const row = {
+      perRace: {
+        1: { status: "FINISHED", position: 5 },
+        2: { status: "DNF", position: null },
+        3: { status: "FINISHED", position: 1 },
+        4: { status: "DNS", position: null },
+        5: { status: "FINISHED", position: null }, // points-only archive round
+      },
+    };
+    expect(finishSheetOf(row)).toEqual([1, 5]);
+  });
+});
 
 describe("applyDropScores (drop worst 3 of the full calendar)", () => {
   it("drops the 3 lowest rounds and sums the rest", () => {

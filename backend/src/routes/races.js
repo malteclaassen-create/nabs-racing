@@ -3,8 +3,9 @@ import prisma from "../lib/prisma.js";
 import { getDriverResultPoints, getPointsForPosition, applyPenalties, DEFAULT_POINTS_TABLE } from "../services/pointsCalculator.js";
 import { resolveSeasonId, getSeasonScoring, getPrivateSeasonIds } from "../services/seasonService.js";
 import { isAdminRequest } from "../middleware/auth.js";
-import { getNameOverrides } from "../lib/persons.js";
+import { getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
+import { readManualFastestLaps } from "../lib/raceHonours.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
 import { dbReplaysByRace } from "../lib/downloads.js";
@@ -21,12 +22,13 @@ const router = Router();
 async function raceWinners(races) {
   const ids = races.filter((r) => r.isCompleted).map((r) => r.id);
   if (!ids.length) return new Map();
-  const [results, nameOverrides] = await Promise.all([
+  const [results, nameOverrides, identity] = await Promise.all([
     prisma.raceResult.findMany({
       where: { raceId: { in: ids } },
       include: { driver: { include: { team: true } }, subForTeam: true },
     }),
     getNameOverrides(prisma),
+    getIdentityOverrides(prisma),
   ]);
   const byRace = new Map();
   for (const r of results) {
@@ -49,7 +51,9 @@ async function raceWinners(races) {
     winners.set(raceId, {
       driverId: win.driverId,
       name: ov?.displayName || win.driver.name,
-      photoUrl: win.driver.photoUrl || win.driver.discordAvatar || null,
+      // Linked-person fallback: an archive winner without a photo of their own
+      // shows the person's current one (same rule as the standings).
+      photoUrl: win.driver.photoUrl || win.driver.discordAvatar || identity.get(win.driverId)?.photoUrl || null,
       team: team ? { id: team.id, name: team.name, color: team.color, logoUrl: team.logoUrl } : null,
     });
   }
@@ -116,7 +120,7 @@ router.get("/:id/results", async (req, res, next) => {
       return res.status(404).json({ error: "Race not found" });
     }
 
-    const [results, drivers, teams, scoring, nameOverrides, telemetry] = await Promise.all([
+    const [results, drivers, teams, scoring, nameOverrides, identity, telemetry] = await Promise.all([
       prisma.raceResult.findMany({
         where: { raceId: race.id },
         include: { driver: { include: { team: true } }, subForTeam: true },
@@ -125,9 +129,24 @@ router.get("/:id/results", async (req, res, next) => {
       prisma.team.findMany({ where: { seasonId: race.seasonId } }),
       getSeasonScoring(prisma, race.seasonId),
       getNameOverrides(prisma),
+      getIdentityOverrides(prisma),
       telemetryForRace(prisma, race.id),
     ]);
     const table = scoring.pointsTable || DEFAULT_POINTS_TABLE;
+
+    // Qualifying best laps (raw-SQL column): set by a quali import or by an
+    // admin-recorded pole lap (Race honours). Rides on each result row so the
+    // race facts and the honours editor can show the pole time.
+    const qualiTimes = new Map();
+    try {
+      const qt = await prisma.$queryRawUnsafe(
+        `SELECT "driverId", "qualiTimeMs" FROM "RaceResult" WHERE "raceId" = ? AND "qualiTimeMs" IS NOT NULL`,
+        race.id
+      );
+      for (const r of qt) qualiTimes.set(r.driverId, Number(r.qualiTimeMs));
+    } catch {
+      /* column missing pre-migration */
+    }
 
     const teamById = new Map(teams.map((t) => [t.id, t]));
 
@@ -181,7 +200,9 @@ router.get("/:id/results", async (req, res, next) => {
           name: ov?.displayName || r.driver.name,
           formerName: ov?.formerName || null,
           discordName: r.driver.discordName,
-          country: r.driver.country || null,
+          // Linked-person fallback (same rule as the standings): an archive row
+          // without its own flag shows the person's current one.
+          country: r.driver.country || identity.get(r.driverId)?.country || null,
           driverTier: r.driver.tier,
           position: r.position,
           rawPosition: rawById.get(r.driverId) ?? null,
@@ -191,6 +212,7 @@ router.get("/:id/results", async (req, res, next) => {
           penaltySeconds: r.penaltySeconds,
           grid: r.grid,
           bestLapMs: r.bestLapMs,
+          qualiTimeMs: qualiTimes.get(r.driverId) ?? null,
           totalTimeMs: r.totalTimeMs,
           contacts: tel.contacts ?? null,
           envContacts: tel.envContacts ?? null,
@@ -276,7 +298,7 @@ router.get("/:id/results", async (req, res, next) => {
             position: e.position,
             driverId: d ? e.driverId : null,
             name: ov?.displayName || d?.name || e.name || e.acDriverName,
-            country: d?.country || null,
+            country: d ? d.country || identity.get(d.id)?.country || null : null,
             bestLapMs: e.bestLapMs ?? null,
             // Sector times of the best lap ([s1,s2,s3] ms) — imports before
             // this feature simply have none and the columns hide.
@@ -322,6 +344,10 @@ router.get("/:id/results", async (req, res, next) => {
         isSpecialEvent: race.isSpecialEvent,
         type: (await readRaceTypes(prisma, [race.id])).get(race.id) || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
         driverOfTheDay,
+        // Admin-recorded fastest-lap holder (archive rounds, lib/raceHonours.js).
+        // When set, the race page marks THIS driver instead of deriving the
+        // holder from the stored lap times. null = derive as always.
+        fastestLapDriverId: (await readManualFastestLaps(prisma, [race.id])).get(race.id) || null,
       },
       results: rows,
       quali,
