@@ -2641,8 +2641,15 @@ function SeasonScoring({ season, onSaved, onError }) {
 
 function Seasons({ gotoRaces }) {
   const { data: seasons, reload } = useApi(useCallback(() => api.adminSeasons(), []));
+  const { season: editingSeason } = useSeason();
   const [form, setForm] = useState({ number: "", name: "", game: "", dropWorst: "3", points: "" });
   const [cloneFrom, setCloneFrom] = useState({}); // seasonId -> sourceSeasonId
+  // Which seasons are unfolded. Every season carries a photo, a car picture, a
+  // scoring block and a roster-copy row, so eight of them open at once was a
+  // wall of controls with no way to see the list itself. Collapsed, the row
+  // still says everything you'd scan for (name, state, contents).
+  // null = untouched, which reads as "the season you're editing is open".
+  const [openIds, setOpenIds] = useState(null);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -2681,6 +2688,23 @@ function Seasons({ gotoRaces }) {
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // Driver rating cards per season. The ratings are built from race telemetry
+  // the early seasons never produced, so their cards would be guesswork —
+  // seasons 1-4 start switched off. OFF removes the "Cards" view from that
+  // season's driver standings and leaves the driver page on a plain avatar.
+  async function toggleCards(s) {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.updateSeason(s.id, { cardsEnabled: !s.cardsEnabled });
+      setMsg(
+        s.cardsEnabled
+          ? `${s.name} no longer shows driver cards. The Cards view is gone from its standings.`
+          : `${s.name} shows driver cards again.`
+      );
+      reload();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
   // "Coming up" strip on Home/Welcome: an announced upcoming season advertises
   // itself there (name, game, opener + car picture) even while still private.
   async function toggleAnnounce(s) {
@@ -2711,6 +2735,16 @@ function Seasons({ gotoRaces }) {
       reload();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
+
+  const shownOpen =
+    openIds ?? new Set((seasons || []).filter((s) => s.number === editingSeason).map((s) => s.id));
+  const toggleOpen = (id) =>
+    setOpenIds(() => {
+      const next = new Set(shownOpen);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   async function remove(s) {
     const { teams, drivers, races } = s._count;
@@ -2783,10 +2817,20 @@ function Seasons({ gotoRaces }) {
       <div className="card p-5">
         <CardHead eyebrow="All seasons" title={`Seasons (${(seasons || []).length})`} />
         <ul className="divide-y divide-border">
-          {(seasons || []).map((s) => (
-            <li key={s.id} className="space-y-2 py-3">
-              <div className="flex items-center justify-between">
-                <div>
+          {(seasons || []).map((s) => {
+          const open = shownOpen.has(s.id);
+          return (
+            <li key={s.id}>
+              {/* Folded head: the whole row is the toggle, so everything below
+                  it stays out of the way until this season is the one being
+                  worked on. */}
+              <button
+                type="button"
+                onClick={() => toggleOpen(s.id)}
+                aria-expanded={open}
+                className="flex w-full items-center gap-3 py-3 text-left"
+              >
+                <div className="min-w-0 flex-1">
                   <span className="font-display text-base font-bold text-dark">{s.name}</span>
                   {s.isActive && <span className="ml-2 pill bg-emerald-500/15 text-ok">active</span>}
                   {!s.isActive && s.isPublic === false && (
@@ -2795,66 +2839,87 @@ function Seasons({ gotoRaces }) {
                   {s.isAnnounced && !s.isActive && (
                     <span className="ml-2 pill bg-sky-500/15 text-sky-600">announced</span>
                   )}
+                  {s.cardsEnabled === false && (
+                    <span className="ml-2 pill bg-amber-500/15 text-amber-600">no driver cards</span>
+                  )}
                   <div className="text-xs text-light">
                     {s.game || "—"} · {s._count.teams} teams · {s._count.drivers} drivers · {s._count.races} races
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
-                    onClick={() => gotoRaces?.(s)}
-                    title="Switch to this season and open the race calendar">
-                    Schedule races →
-                  </button>
-                  {!s.isActive && (
-                    <>
-                      <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
-                        onClick={() => togglePublic(s)}
-                        title={s.isPublic ? "Hide this season from the public" : "Publish this season to the public"}>
-                        {s.isPublic ? "Make private" : "Make public"}
-                      </button>
-                      {/* only an UPCOMING season can advertise itself */}
-                      {s.number > ((seasons || []).find((o) => o.isActive)?.number ?? -Infinity) && (
+                <svg viewBox="0 0 24 24" className={`h-4 w-4 shrink-0 text-light transition ${open ? "rotate-180" : ""}`}
+                  fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              {open && (
+                <div className="space-y-2 pb-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                      onClick={() => gotoRaces?.(s)}
+                      title="Switch to this season and open the race calendar">
+                      Schedule races →
+                    </button>
+                    {/* Deliberately outside the !isActive block: the running
+                        season may want its cards switched off just as much. */}
+                    <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                      onClick={() => toggleCards(s)}
+                      title={s.cardsEnabled === false
+                        ? "Show driver rating cards for this season again (Cards view in the standings, card on the driver page)"
+                        : "Hide the driver rating cards for this season — for seasons raced without the data the ratings are built from"}>
+                      {s.cardsEnabled === false ? "Enable driver cards" : "Disable driver cards"}
+                    </button>
+                    {!s.isActive && (
+                      <>
                         <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
-                          onClick={() => toggleAnnounce(s)}
-                          title={s.isAnnounced
-                            ? "Remove the 'Coming up' strip from the home page"
-                            : "Show a 'Coming up' strip on the home page (name, game and opener only), even while the season is private"}>
-                          {s.isAnnounced ? "Stop announcing" : "Announce on Home"}
+                          onClick={() => togglePublic(s)}
+                          title={s.isPublic ? "Hide this season from the public" : "Publish this season to the public"}>
+                          {s.isPublic ? "Make private" : "Make public"}
                         </button>
-                      )}
-                      <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
-                        onClick={() => activate(s.id)}>Make active</button>
-                      {/* any non-active season is deletable; a filled one requires
-                          typing its name and is backed up first (server-enforced) */}
-                      <button className="text-xs font-semibold text-light transition hover:text-link" disabled={busy}
-                        onClick={() => remove(s)}>Delete</button>
-                    </>
+                        {/* only an UPCOMING season can advertise itself */}
+                        {s.number > ((seasons || []).find((o) => o.isActive)?.number ?? -Infinity) && (
+                          <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                            onClick={() => toggleAnnounce(s)}
+                            title={s.isAnnounced
+                              ? "Remove the 'Coming up' strip from the home page"
+                              : "Show a 'Coming up' strip on the home page (name, game and opener only), even while the season is private"}>
+                            {s.isAnnounced ? "Stop announcing" : "Announce on Home"}
+                          </button>
+                        )}
+                        <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                          onClick={() => activate(s.id)}>Make active</button>
+                        {/* any non-active season is deletable; a filled one requires
+                            typing its name and is backed up first (server-enforced) */}
+                        <button className="text-xs font-semibold text-light transition hover:text-link" disabled={busy}
+                          onClick={() => remove(s)}>Delete</button>
+                      </>
+                    )}
+                  </div>
+                  <SeasonHero season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+                  <SeasonCar season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+                  <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.pointsTable || ""}`} season={s}
+                    onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+                  {/* clone teams (or the full roster) from another season */}
+                  {(seasons || []).length > 1 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select className="input py-1 text-xs" value={cloneFrom[s.id] || ""}
+                        onChange={(e) => setCloneFrom({ ...cloneFrom, [s.id]: e.target.value })}>
+                        <option value="">Copy from…</option>
+                        {(seasons || []).filter((o) => o.id !== s.id && o._count.teams > 0).map((o) => (
+                          <option key={o.id} value={o.id}>{o.name} ({o._count.teams} teams, {o._count.drivers} drivers)</option>
+                        ))}
+                      </select>
+                      <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
+                        onClick={() => clone(s.id, false)}>Teams only</button>
+                      <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
+                        onClick={() => clone(s.id, true)} title="Copies teams AND drivers as the new season's starting roster">
+                        Teams + drivers</button>
+                    </div>
                   )}
-                </div>
-              </div>
-              <SeasonHero season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-              <SeasonCar season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-              <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.pointsTable || ""}`} season={s}
-                onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-              {/* clone teams (or the full roster) from another season */}
-              {(seasons || []).length > 1 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <select className="input py-1 text-xs" value={cloneFrom[s.id] || ""}
-                    onChange={(e) => setCloneFrom({ ...cloneFrom, [s.id]: e.target.value })}>
-                    <option value="">Copy from…</option>
-                    {(seasons || []).filter((o) => o.id !== s.id && o._count.teams > 0).map((o) => (
-                      <option key={o.id} value={o.id}>{o.name} ({o._count.teams} teams, {o._count.drivers} drivers)</option>
-                    ))}
-                  </select>
-                  <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
-                    onClick={() => clone(s.id, false)}>Teams only</button>
-                  <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
-                    onClick={() => clone(s.id, true)} title="Copies teams AND drivers as the new season's starting roster">
-                    Teams + drivers</button>
                 </div>
               )}
             </li>
-          ))}
+          );
+          })}
         </ul>
       </div>
     </div>
