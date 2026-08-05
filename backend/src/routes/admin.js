@@ -16,7 +16,7 @@ import { getWebhookUrl, setWebhookUrl, getResultsWebhookUrl, setResultsWebhookUr
 import { buildResultsPost } from "../services/resultsPostService.js";
 import { resolveSeasonId, invalidatePrivateSeasonCache } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
-import { createBackup, tryCreateBackup, listBackups, createFullBackupZip, deleteBackup, pruneBackupsTo } from "../services/backupService.js";
+import { createBackup, tryCreateBackup, listBackups, streamFullBackupZip, deleteBackup, pruneBackupsTo } from "../services/backupService.js";
 import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
 import { parseFormatNumber } from "../lib/raceFormat.js";
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
@@ -304,16 +304,18 @@ router.get("/storage", async (_req, res, next) => {
 });
 
 // GET /api/admin/backups/download -> full backup (DB snapshot + uploads) as a
-// zip. This is the copy that belongs on ANOTHER machine — everything else in
+// zip, streamed while it's being built (see streamFullBackupZip for why).
+// This is the copy that belongs on ANOTHER machine — everything else in
 // backend/backups/ lives on the same disk as the live database.
 router.get("/backups/download", async (req, res, next) => {
   try {
-    const { name, buffer } = await createFullBackupZip(prisma);
-    res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
-    res.send(buffer);
+    await streamFullBackupZip(prisma, res);
   } catch (e) {
-    next(e);
+    // Once bytes are on the wire a clean error reply is no longer possible —
+    // cut the stream so the browser reports a failed download instead of
+    // saving a silently truncated zip.
+    if (res.headersSent) res.destroy();
+    else next(e);
   }
 });
 

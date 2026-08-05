@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 import { mkdirSync, readdirSync, statSync, unlinkSync, existsSync } from "fs";
 import { join, basename } from "path";
-import AdmZip from "adm-zip";
+import archiver from "archiver";
 import { BACKUPS_DIR as BACKUP_DIR, UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const KEEP_N = 40;
@@ -48,17 +48,45 @@ export async function tryCreateBackup(prisma, label) {
 
 // Full backup as one zip, meant to be DOWNLOADED and stored away from this
 // machine: a fresh consistent DB snapshot plus everything under uploads/
-// (team logos, avatars, hero images). The big AC files in downloads/ are
-// deliberately excluded — they are gigabytes and can be restored from the
-// original mod archives; the DB and uploads cannot.
-export async function createFullBackupZip(prisma) {
+// (team logos, avatars, hero images, race photos). The big AC files in
+// downloads/ are deliberately excluded — they are gigabytes and can be
+// restored from the original mod archives; the DB and uploads cannot.
+//
+// STREAMED into the response while it's being built. The old version
+// assembled the whole archive in memory and only then sent the first byte —
+// with a season's worth of race photos that meant a long dead silence, and on
+// the deployed instance the proxy killed the idle request (or the container
+// ran out of memory) before a single byte arrived: the admin clicked, nothing
+// downloaded, and it eventually just aborted. Streaming starts the download
+// immediately and keeps memory flat. Images are STORED rather than deflated
+// (they're already compressed); the DB snapshot still shrinks well.
+export async function streamFullBackupZip(prisma, res) {
   const snap = await createBackup(prisma, "full-download");
-  const zip = new AdmZip();
-  // Store the snapshot under the name the server expects on restore.
-  zip.addLocalFile(join(BACKUP_DIR, snap.file), "", "dev.db");
-  if (existsSync(UPLOADS_DIR)) zip.addLocalFolder(UPLOADS_DIR, "uploads");
   const stamp = snap.file.replace(/^nabs-/, "").replace(/-full-download\.db$/, "");
-  return { name: `nabs-full-backup-${stamp}.zip`, buffer: zip.toBuffer() };
+  const name = `nabs-full-backup-${stamp}.zip`;
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+
+  const archive = archiver("zip", { zlib: { level: 6 } });
+  // A failed disk walk must kill the response, not leave it hanging forever.
+  archive.on("error", (err) => {
+    console.error("Full backup stream failed:", err.message);
+    res.destroy(err);
+  });
+  // Download cancelled in the browser: stop reading the disk.
+  res.on("close", () => {
+    if (!res.writableEnded) archive.destroy();
+  });
+
+  archive.pipe(res);
+  // The snapshot goes in under the name the server expects on restore.
+  archive.file(join(BACKUP_DIR, snap.file), { name: "dev.db" });
+  if (existsSync(UPLOADS_DIR)) {
+    archive.directory(UPLOADS_DIR, "uploads", (entry) => ({ ...entry, store: true }));
+  }
+  await archive.finalize();
+  return { name };
 }
 
 export function listBackups() {
