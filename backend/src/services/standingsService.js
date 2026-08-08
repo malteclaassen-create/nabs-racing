@@ -412,6 +412,42 @@ export function buildDriverPerRace(results, driverId, raceNumberById, table = DE
   return { perRace, pointsByRound };
 }
 
+// Rank the same rows AGAIN with the latest completed round taken out, and pin
+// each driver's previous position onto their row — the movement arrows on the
+// standings table. Same drop rule, same countback comparator, so the delta can
+// never disagree with the logic that built the table itself. Pure (works on
+// the already-built rows, no queries) and exported for tests.
+//
+// After the season opener there IS no previous table (the pre-season order is
+// a courtesy sort, not standings), so prevPosition stays absent and the UI
+// shows no arrows until round two — the first moment movement means anything.
+export function attachPrevPositions(rows, raceNumbers, dropN) {
+  const completed = new Set();
+  for (const r of rows) for (const num of Object.keys(r.perRace)) completed.add(Number(num));
+  const latest = completed.size ? Math.max(...completed) : null;
+  if (latest == null || completed.size < 2) return;
+  const prior = rows.map((row) => {
+    const perRace = {};
+    const pointsByRound = {};
+    for (const [num, v] of Object.entries(row.perRace)) {
+      if (Number(num) === latest) continue;
+      perRace[num] = v;
+      pointsByRound[num] = v.points;
+    }
+    const { total } = applyDropScores(pointsByRound, raceNumbers, dropN);
+    return { driverId: row.driverId, name: row.name, perRace, total };
+  });
+  const priorSheets = new Map(prior.map((r) => [r.driverId, finishSheetOf(r)]));
+  prior.sort(
+    (a, b) =>
+      b.total - a.total ||
+      compareFinishSheets(priorSheets.get(a.driverId), priorSheets.get(b.driverId)) ||
+      a.name.localeCompare(b.name)
+  );
+  const prevPos = new Map(prior.map((r, i) => [r.driverId, i + 1]));
+  for (const row of rows) row.prevPosition = prevPos.get(row.driverId) ?? null;
+}
+
 export async function getDriverStandings(prisma, seasonId, { extraResults = [], _depth = 1 } = {}) {
   const [drivers, races, results, scoring, nameOverrides, identity] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
@@ -506,6 +542,12 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     );
   }
   rows.forEach((row, i) => (row.position = i + 1));
+
+  // Where everyone stood BEFORE the latest completed round, so the table can
+  // carry movement arrows the way championship tables do (see
+  // attachPrevPositions).
+  attachPrevPositions(rows, raceNumbers, scoring.dropWorst);
+
   // Archived seasons: official totals & order win over the computed ones.
   applyFinalStandings(rows, scoring.finalStandings?.drivers, "driverId");
 
@@ -566,19 +608,25 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
         ? "teamRounds"
         : "team"
       : "driver";
-  const rows =
+  // The whole mode dispatch as a function of its inputs, because it runs
+  // TWICE: once for the real table and once with the latest completed round
+  // taken out, which is where the movement arrows come from. Recomputing with
+  // the same builder is the only honest way to get the prior order — the team
+  // drop rules trace each round's points to the drivers who scored them, and
+  // that cannot be reconstructed from the finished rows.
+  const buildRows = (rbr, teamPerRace) =>
     dropMode === "official"
-      ? buildStoredConstructorRows({ tier, teams, raceNumbers, teamPerRace: scoring.finalStandings.teamPerRace, dropN: scoring.dropWorst })
+      ? buildStoredConstructorRows({ tier, teams, raceNumbers, teamPerRace, dropN: scoring.dropWorst })
       : dropMode === "teamRounds"
-        ? buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN: scoring.teamDropWorst, table })
+        ? buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound: rbr, teamDropN: scoring.teamDropWorst, table })
       : dropMode === "team"
-        ? buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN: scoring.teamDropWorst, table })
+        ? buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound: rbr, teamDropN: scoring.teamDropWorst, table })
         : buildConstructorRows({
             tier,
             teams,
             drivers,
             raceNumbers,
-            resultsByRound,
+            resultsByRound: rbr,
             dropN: scoring.dropWorst,
             table,
           }).map(({ team, perRace, droppedPerRace, total }) => ({
@@ -591,9 +639,37 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
             droppedPerRace,
             total,
           }));
+  const constructorOrder = (a, b) => b.total - a.total || a.name.localeCompare(b.name);
 
-  rows.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  const rows = buildRows(resultsByRound, scoring.finalStandings?.teamPerRace);
+  rows.sort(constructorOrder);
   rows.forEach((row, i) => (row.position = i + 1));
+
+  // Movement vs the previous round, same contract as the driver table: absent
+  // until two rounds are in, then prevPosition per team.
+  {
+    const playedRounds =
+      dropMode === "official"
+        ? [...new Set(Object.values(scoring.finalStandings.teamPerRace || {}).flatMap((m) => Object.keys(m || {}).map(Number)))]
+        : [...resultsByRound.keys()];
+    if (playedRounds.length >= 2) {
+      const latest = Math.max(...playedRounds);
+      let prior;
+      if (dropMode === "official") {
+        const trimmed = {};
+        for (const [teamId, m] of Object.entries(scoring.finalStandings.teamPerRace || {})) {
+          trimmed[teamId] = Object.fromEntries(Object.entries(m || {}).filter(([n]) => Number(n) !== latest));
+        }
+        prior = buildRows(resultsByRound, trimmed);
+      } else {
+        const priorByRound = new Map([...resultsByRound].filter(([n]) => n !== latest));
+        prior = buildRows(priorByRound, undefined);
+      }
+      prior.sort(constructorOrder);
+      const prevPos = new Map(prior.map((r, i) => [r.teamId, i + 1]));
+      for (const row of rows) row.prevPosition = prevPos.get(row.teamId) ?? null;
+    }
+  }
   // Archived seasons: official team totals & order win (finalStandings.teams
   // holds every team; only this tier's rows exist here, so the rest are ignored).
   applyFinalStandings(rows, scoring.finalStandings?.teams, "teamId");

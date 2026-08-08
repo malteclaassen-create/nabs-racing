@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
-import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar, CountUp, EmptyState } from "../components/ui.jsx";
-import { useTilt } from "../hooks/motion.js";
+import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar, CountUp, EmptyState, PosDelta } from "../components/ui.jsx";
+import { playStandingsReplay } from "../utils/standingsReplay.js";
+import { useTilt, motionOff } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import StandingsTable from "../components/StandingsTable.jsx";
@@ -38,7 +39,7 @@ function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champi
     <Link
       ref={tiltRef}
       to={`/drivers/${row.driverId}`}
-      className={`card shine tilt relative block h-full overflow-hidden p-5 hover:shadow-xl ${champion ? "champion-gold" : ""}`}
+      className={`transition card shine tilt relative block h-full overflow-hidden p-5 hover:shadow-xl ${champion ? "champion-gold" : ""}`}
     >
       <div className="flex items-start justify-between gap-3">
         {/* min-w-0 + truncate let a long name give way instead of pushing
@@ -95,34 +96,8 @@ function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champi
   );
 }
 
-// Movement since the previous round: green up-arrow, red down-arrow, or a
-// quiet dash for no change. `delta` is null while there's nothing to compare.
-//
-// Shown on phones too. This was the one element switched off below sm, which
-// meant the single most interesting thing about a standings table the morning
-// after a race — who moved, and by how much — was missing on the device most
-// people read it on. It costs a narrow column: on phones the arrow carries the
-// number as a superscript-sized digit instead of a full second glyph, and the
-// "no change" dash sits out entirely rather than spending width on nothing.
-function PosDelta({ delta }) {
-  if (delta == null) return null;
-  if (delta === 0)
-    return <span className="hidden w-7 shrink-0 text-center font-mono text-[11px] font-bold text-light/60 sm:block">–</span>;
-  const up = delta > 0;
-  return (
-    <span
-      className={`flex w-5 shrink-0 items-center justify-center gap-0.5 font-mono text-[10px] font-bold tabular-nums sm:w-7 sm:text-[11px] ${
-        up ? "text-ok" : "text-bad"
-      }`}
-      title={`${up ? "Up" : "Down"} ${Math.abs(delta)} since the last round`}
-    >
-      <svg viewBox="0 0 10 10" className="h-2 w-2" fill="currentColor" aria-hidden="true">
-        {up ? <path d="M5 1l4 7H1z" /> : <path d="M5 9L1 2h8z" />}
-      </svg>
-      {Math.abs(delta)}
-    </span>
-  );
-}
+// PosDelta (the ▲/▼ movement chip) lives in ui.jsx now — the constructors
+// round matrix shows the same movement, and two copies would drift.
 
 function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = false, decided = false, delta = null }) {
   const gap = leaderTotal - d.total;
@@ -130,6 +105,8 @@ function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = fals
   return (
     <Link
       to={`/drivers/${d.driverId}`}
+      data-driver-id={d.driverId}
+      data-replay-prev={d.prevPosition ?? ""}
       style={{ "--i": index }}
       className={`flex items-center gap-2.5 px-3 py-3 transition sm:gap-4 sm:px-5 ${
         champion ? (decided ? "row-gold" : "row-leader") : "hover:bg-surface2"
@@ -221,6 +198,14 @@ function usePersistentState(key, initial) {
 
 export default function DriverStandings() {
   useSeasonParam(); // honour a ?season=N deep link (e.g. from the global search)
+  // Whether this mount has already replayed the latest round's position moves
+  // (see replayRef below), and the replay's cancel handle so an unmount while
+  // it still waits for the list to scroll into view tears its listener down.
+  // Declared up here with the other hooks — everything below the early
+  // returns must stay hook-free.
+  const seasonReplayed = useRef(false);
+  const replayCancel = useRef(null);
+  const replayNode = useRef(null);
   const { data, loading, error, reload } = useApi(useCallback(() => api.driverStandings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const { current: season, active } = useSeason();
@@ -337,21 +322,58 @@ export default function DriverStandings() {
   // archive tables stay quiet.
   // Dev-only (?demo=1): preview the arrows on a finished season too.
   const demoArrows = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
+  // Movement vs the previous round comes from the SERVER (prevPosition on each
+  // standings row): the previous table is ranked there with the same drop rule
+  // and the same FIA countback as the real one, so the arrow can never
+  // disagree with the order it sits next to. This used to be approximated here
+  // in the browser with a plain points sort — no countback, name as the
+  // tie-break — which ranked level drivers differently than the table itself,
+  // and re-summed every driver's season inside a comparator on every render.
   const deltaById = new Map();
   if (!seasonDecided || demoArrows) {
-    const playedRounds = data.raceNumbers.filter((n) => all.some((r) => r.perRace[n] != null));
-    if (playedRounds.length >= 2) {
-      const lastRound = Math.max(...playedRounds);
-      const prevRounds = data.raceNumbers.filter((n) => n !== lastRound);
-      const dropN = data.dropWorst ?? 0;
-      const prevTotal = (r) => {
-        const vals = prevRounds.map((n) => r.perRace[n]?.points ?? 0).sort((a, b) => a - b);
-        return vals.slice(Math.min(dropN, vals.length)).reduce((s, v) => s + v, 0);
-      };
-      const prevOrder = [...rows].sort((a, b) => prevTotal(b) - prevTotal(a) || a.name.localeCompare(b.name));
-      prevOrder.forEach((r, i) => deltaById.set(r.driverId, i + 1 - r.position));
+    for (const r of rows) {
+      if (r.prevPosition != null) deltaById.set(r.driverId, r.prevPosition - r.position);
     }
   }
+
+  // Replay the latest round's shake-up ONCE per visit, live-page style: the
+  // list first paints in the PREVIOUS round's order, holds a beat, then every
+  // mover glides to their real slot and flashes green or red (same glide and
+  // the same flash the projection table uses on race night, so the two pages
+  // speak one language). Only on the full list — a tier filter re-sorts for a
+  // reason that is not a round landing, and replaying there would be a lie.
+  //
+  // Runs from the container's CALLBACK REF, not an effect: refs attach in the
+  // commit phase, before the browser paints, so the rows are already offset to
+  // their old slots by first paint — and a callback needs no hooks, which
+  // matters here because this code sits below the component's early returns
+  // (loading/error), where a hook would change the hook order between renders
+  // and crash the page. That is not hypothetical: the first version did
+  // exactly that. The rows are rendered in the FINAL order the whole time;
+  // only transforms move, so links, keys and the DOM order never change.
+  const replayArmed =
+    !seasonReplayed.current &&
+    activeTier === "all" &&
+    !motionOff() &&
+    [...deltaById.values()].some((v) => v !== 0);
+  // An INLINE callback ref is re-created every render, and React answers that
+  // by detaching (null) and re-attaching on EVERY render — not just on mount
+  // and unmount. So the detach arm must tell teardown from render noise, or a
+  // cancel fires mid-glide whenever anything re-renders: the node still being
+  // in the document means noise (do nothing), the node gone means the page
+  // really left (tear the scroll listener down).
+  const replayRef = (box) => {
+    if (box) {
+      replayNode.current = box;
+      if (!replayArmed || seasonReplayed.current) return;
+      seasonReplayed.current = true;
+      replayCancel.current = playStandingsReplay(box);
+    } else if (replayNode.current && !replayNode.current.isConnected) {
+      replayCancel.current?.();
+      replayCancel.current = null;
+      replayNode.current = null;
+    }
+  };
 
   const scopeLabel = activeTier === "all" ? "drivers" : TIER_FILTERS.find((t) => t.id === activeTier).label;
   // The per-round matrix needs actual rounds; archived totals-only seasons fall
@@ -522,9 +544,16 @@ export default function DriverStandings() {
           dropWorst={data.dropWorst}
           officialTotals={data.officialTotals}
           decided={seasonDecided}
+          showMovement={!seasonDecided || demoArrows}
         />
       ) : (
-        <div className="cascade card divide-y divide-border overflow-hidden">
+        <div
+          ref={replayRef}
+          // While the replay runs (and afterwards, for this mount) the cascade
+          // entrance stays off: its per-row rise animates transform, and the
+          // replay owns transform. The replay IS the entrance on those loads.
+          className={`${replayArmed || seasonReplayed.current ? "" : "cascade"} card divide-y divide-border overflow-hidden`}
+        >
           {rows.map((d, i) => (
             <DriverRow
               key={d.driverId}

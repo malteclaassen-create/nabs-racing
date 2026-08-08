@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { TierBadge, Rank } from "./ui.jsx";
+import { TierBadge, Rank, PosDelta, CountUp } from "./ui.jsx";
+import { playStandingsReplay } from "../utils/standingsReplay.js";
 import TeamLogo from "./TeamLogo.jsx";
 
 // Tracks how far a horizontal scroller is scrolled, so the frozen Pos/Team and
@@ -109,7 +110,7 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
 // `decided` — the season's title is settled (archived, or every round in):
 // first place wears gold; while the season still runs it gets the pink
 // leader wash instead.
-export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false }) {
+export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false, showMovement = false }) {
   const isDriver = variant === "driver";
   // Constructor tables can use a team-level drop rule instead of inheriting
   // each driver's dropped rounds — the footnote must match whichever is in
@@ -122,6 +123,31 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
       ? teamDropWorst > 0 && raceNumbers.length > 0
       : dropWorst > 0 && raceNumbers.length > 0;
   const [scrollRef, edge] = useScrollEdges();
+  // One-shot replay of the latest round's position moves (see
+  // utils/standingsReplay.js): rows paint at their previous ranks, then glide
+  // home with the green/red flash. Armed only when the caller wants movement
+  // shown and something actually moved; the cascade entrance stays off on
+  // those mounts because both would fight over the rows' transform.
+  const replayed = useRef(false);
+  const replayCancel = useRef(null);
+  const replayNode = useRef(null);
+  const replayArmed =
+    showMovement && !replayed.current && rows.some((r) => r.prevPosition != null && r.prevPosition !== r.position);
+  // Inline callback refs detach/re-attach on EVERY render, so teardown is
+  // only real when the node actually left the document (see the twin in
+  // DriverStandings for the full story).
+  const replayRef = (el) => {
+    if (el) {
+      replayNode.current = el;
+      if (!replayArmed || replayed.current) return;
+      replayed.current = true;
+      replayCancel.current = playStandingsReplay(el);
+    } else if (replayNode.current && !replayNode.current.isConnected) {
+      replayCancel.current?.();
+      replayCancel.current = null;
+      replayNode.current = null;
+    }
+  };
   // Archive seasons: totals are the league's official final sheet, while the
   // round columns are reconstructed from the era's result posts — the two can
   // legitimately differ (penalties, bonus points, gaps in the old data).
@@ -172,12 +198,13 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
           </thead>
           {/* cascade: rows rise in one after another, top to bottom, exactly
               like the driver standings list. --i drives the per-row stagger. */}
-          <tbody className="cascade">
+          <tbody ref={replayRef} className={replayArmed || replayed.current ? "" : "cascade"}>
             {rows.map((row, i) => {
               const droppedSet = new Set(row.droppedRounds || []);
               return (
                 <tr
                   key={row.driverId || row.teamId}
+                  data-replay-prev={showMovement ? row.prevPosition ?? "" : ""}
                   style={{ "--i": Math.min(i, 16) }}
                   className={`group border-b border-border last:border-0 transition ${
                     row.position === 1 && row.total > 0
@@ -188,7 +215,10 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   }`}
                 >
                   <td className="sticky left-0 z-10 px-3 py-3 text-center transition sticky-cell">
-                    <Rank position={row.position} />
+                    <span className="inline-flex flex-col items-center gap-0.5">
+                      <Rank position={row.position} />
+                      {showMovement && row.prevPosition != null && <PosDelta delta={row.prevPosition - row.position} />}
+                    </span>
                   </td>
 
                   {isDriver ? (
@@ -256,7 +286,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   ))}
 
                   <td className={`sticky right-0 z-10 border-l border-border px-4 py-3 text-right font-mono text-lg font-bold tabular-nums text-dark transition sticky-cell sm:text-xl ${rightShadow}`}>
-                    {row.total}
+                    <CountUp end={row.total} />
                   </td>
                 </tr>
               );

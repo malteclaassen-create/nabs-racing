@@ -17,7 +17,7 @@ function completedRounds(data) {
 // One tier shown as a unit: championship table, progression chart and the
 // line-ups of every team in that tier. `championTeamId` (set once the season
 // is decided) puts the golden champion treatment on that team.
-function TierBlock({ id, tier, standings, teams, title, championTeamId, decided = false }) {
+function TierBlock({ id, tier, standings, teams, title, championTeamId, decided = false, showMovement = false }) {
   const rows = standings.standings;
   const done = completedRounds(standings);
   const lastRound = done[done.length - 1];
@@ -46,7 +46,7 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
         }
       />
 
-      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} dropMode={standings.dropMode} teamDropWorst={standings.teamDropWorst} decided={decided} />
+      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} dropMode={standings.dropMode} teamDropWorst={standings.teamDropWorst} decided={decided} showMovement={showMovement} />
 
       <div className="space-y-3 pt-2">
         <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Line-ups</h3>
@@ -68,7 +68,7 @@ function TeamCard({ team, index = 0, champion = false }) {
     <div style={{ "--i": index }}>
     <div
       ref={tiltRef}
-      className={`card shine tilt group relative h-full overflow-hidden hover:shadow-xl ${champion ? "champion-gold" : ""}`}
+      className={`transition card shine tilt group relative h-full overflow-hidden hover:shadow-xl ${champion ? "champion-gold" : ""}`}
     >
       <div className="h-1.5 w-full" style={{ backgroundColor: team.color }} />
       <div className="p-5">
@@ -163,6 +163,11 @@ export default function Constructors() {
     (!!season && !!active && season.number < active.number) ||
     (champRounds.length > 0 && champRounds.every((r) => r.isCompleted));
   const champId = (data) => (seasonDecided && (data.standings[0]?.total ?? 0) > 0 ? data.standings[0].teamId : null);
+  // Movement arrows + the shake-up replay, same gate as the driver standings:
+  // live seasons only (a decided table should sit still), with the dev-only
+  // ?demo knob to preview on an archive.
+  const demoArrows = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
+  const showMovement = !seasonDecided || demoArrows;
 
   return (
     <div className="content-in space-y-10 sm:space-y-16">
@@ -176,8 +181,8 @@ export default function Constructors() {
         right={hasT2 ? <TierJump className="flex shrink-0" /> : null}
       />
 
-      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1.data)} decided={seasonDecided} />
-      {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} championTeamId={champId(t2.data)} decided={seasonDecided} />}
+      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1.data)} decided={seasonDecided} showMovement={showMovement} />
+      {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} championTeamId={champId(t2.data)} decided={seasonDecided} showMovement={showMovement} />}
     </div>
   );
 }

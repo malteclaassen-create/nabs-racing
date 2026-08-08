@@ -10,6 +10,7 @@ import {
   buildTeamRoundDropConstructorRows,
   compareFinishSheets,
   finishSheetOf,
+  attachPrevPositions,
 } from "./standingsService.js";
 import { parseFinalStandings } from "./seasonService.js";
 
@@ -535,5 +536,50 @@ describe("buildDriverPerRace — only championship rounds land in perRace", () =
       rounds
     );
     expect(perRace[1].position).toBe(2);
+  });
+});
+
+describe("attachPrevPositions (movement arrows)", () => {
+  const row = (driverId, perRace) => ({ driverId, name: driverId, perRace });
+  const pr = (obj) => Object.fromEntries(Object.entries(obj).map(([n, points]) => [n, { points, status: "FINISHED", position: 1 }]));
+
+  it("ranks the table without the latest round and pins the previous position", () => {
+    const rows = [
+      row("a", pr({ 1: 10, 2: 25 })), // 35 now; was 10 (P2)
+      row("b", pr({ 1: 18, 2: 4 })), // 22 now; was 18 (P1)
+    ];
+    attachPrevPositions(rows, [1, 2], 0);
+    expect(rows.find((r) => r.driverId === "a").prevPosition).toBe(2);
+    expect(rows.find((r) => r.driverId === "b").prevPosition).toBe(1);
+  });
+
+  it("stays silent after the season opener - one completed round is no history", () => {
+    const rows = [row("a", pr({ 1: 25 })), row("b", pr({ 1: 18 }))];
+    attachPrevPositions(rows, [1], 0);
+    expect(rows[0].prevPosition).toBeUndefined();
+    expect(rows[1].prevPosition).toBeUndefined();
+  });
+
+  it("a driver missing from the prior rounds still gets a prior rank (zero points)", () => {
+    const rows = [
+      row("a", pr({ 1: 25, 2: 10 })),
+      row("late", pr({ 2: 25 })), // first points in the latest round
+    ];
+    attachPrevPositions(rows, [1, 2], 0);
+    expect(rows.find((r) => r.driverId === "a").prevPosition).toBe(1);
+    expect(rows.find((r) => r.driverId === "late").prevPosition).toBe(2);
+  });
+
+  it("applies the drop rule to the prior table too", () => {
+    // With drop-1: a's prior total drops the 0 from round 2's absence, so the
+    // prior table must use the same rule or the delta lies.
+    const rows = [
+      row("a", pr({ 1: 10, 2: 2, 3: 25 })),
+      row("b", pr({ 1: 12, 2: 12, 3: 0 })),
+    ];
+    attachPrevPositions(rows, [1, 2, 3], 1);
+    // prior (rounds 1+2, drop 1): a = 10, b = 12 -> b ahead
+    expect(rows.find((r) => r.driverId === "b").prevPosition).toBe(1);
+    expect(rows.find((r) => r.driverId === "a").prevPosition).toBe(2);
   });
 });

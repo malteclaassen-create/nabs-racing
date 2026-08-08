@@ -236,6 +236,37 @@ export function Rank({ position, className = "" }) {
   );
 }
 
+// Movement since the previous round, championship-table style: ▲n climbed,
+// ▼n fell, a quiet dash for held station. null = no history to compare
+// against (season opener, or the season is decided and the table should sit
+// still).
+//
+// Shown on phones too. This was once switched off below sm, which meant the
+// single most interesting thing about a standings table the morning after a
+// race — who moved, and by how much — was missing on the device most people
+// read it on. It costs a narrow column: on phones the arrow carries a compact
+// digit, and the "no change" dash sits out entirely rather than spending
+// width on nothing.
+export function PosDelta({ delta }) {
+  if (delta == null) return null;
+  if (delta === 0)
+    return <span className="hidden w-7 shrink-0 text-center font-mono text-[11px] font-bold text-light/60 sm:block">–</span>;
+  const up = delta > 0;
+  return (
+    <span
+      className={`flex w-5 shrink-0 items-center justify-center gap-0.5 font-mono text-[10px] font-bold tabular-nums sm:w-7 sm:text-[11px] ${
+        up ? "text-ok" : "text-bad"
+      }`}
+      title={`${up ? "Up" : "Down"} ${Math.abs(delta)} since the last round`}
+    >
+      <svg viewBox="0 0 10 10" className="h-2 w-2" fill="currentColor" aria-hidden="true">
+        {up ? <path d="M5 1l4 7H1z" /> : <path d="M5 9L1 2h8z" />}
+      </svg>
+      {Math.abs(delta)}
+    </span>
+  );
+}
+
 export function Spinner({ label = "Loading…" }) {
   return (
     <div className="flex items-center justify-center gap-3 py-16 text-light">
