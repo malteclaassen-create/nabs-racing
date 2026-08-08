@@ -702,17 +702,14 @@ export default function Races() {
                 they fill in, and switching between a 37-row result and a
                 sign-up panel slides the calendar below instead of teleporting
                 it (measured: 1939px, in one frame). */}
-            {/* --t-draw (1.1s) is a sync, not a taste call. Measured on this
-                page: the row cascade runs to 1390ms (its stagger caps at 16
-                rows × 45ms, plus the reveal delay and the 450ms rise), so the
-                curtain reaches the bottom about 290ms before the last rows have
-                finished fading. Those rows are already in place and merely
-                settling by then, which is a world away from the thing being
-                fixed — 2257px of empty table standing there for two seconds
-                while it filled in. The longest step on the motion scale is
-                1.1s; matching 1390 exactly would mean inventing a duration
-                outside it, and 290ms of settle is not worth that. */}
-            <AutoHeight grow duration="var(--t-draw)" className="min-w-0">
+            {/* The panel unrolls, and that IS the table building itself: the
+                rows underneath are solid from the first frame (see the note in
+                RaceResults), so the growing edge is always the point the sheet
+                has reached. The first attempt at this kept the per-row fade and
+                grew the box alongside it, which could not work: two different
+                curves over the same distance, so at 200ms the box was half open
+                with four rows in it. */}
+            <AutoHeight grow duration="var(--t-tell)" className="min-w-0">
               {selectedRace && !selectedRace.isCompleted ? (
                 /* Keyed on the race so switching rounds REMOUNTS the panel. Its
                    track history (and with it the outline's admin-set rotation)
