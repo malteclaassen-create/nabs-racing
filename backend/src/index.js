@@ -147,6 +147,18 @@ app.use("/api/uploads", express.static(UPLOADS_DIR, {
   },
 }));
 
+// The API answers questions, it is not a set of pages. robots.txt opens the
+// public read endpoints for CRAWLING, because a crawler that cannot fetch
+// /api/standings/drivers renders this site as a heading above nothing (the whole
+// story is in lib/sitemap.js, API_ALLOW). This header is the other half of that
+// deal: fetch it to render a page, never list the raw JSON as a result of its
+// own. Deliberately mounted BELOW /api/uploads, whose driver photos and team
+// logos are the one thing here that IS worth turning up in a search.
+app.use("/api", (req, res, next) => {
+  res.setHeader("X-Robots-Tag", "noindex");
+  next();
+});
+
 // Live timing (Assetto Corsa Server Manager relay). REST snapshot for fallback/
 // debugging; the live stream is the WebSocket at /api/live/ws (set up below).
 // Every live read resolves WHICH race server through the series it's for

@@ -16,7 +16,7 @@ vi.mock("./siteIndex.js", () => ({
   invalidateSiteIndex: vi.fn(),
 }));
 
-import { buildSitemapXml, isCrawlable } from "./sitemap.js";
+import { buildSitemapXml, isCrawlable, buildRobotsTxt } from "./sitemap.js";
 import { buildCrawlLinks, applyCrawlLinks } from "./crawlLinks.js";
 
 const season8 = {
@@ -226,6 +226,81 @@ describe("the pre-rendered link block", () => {
     const html = await buildCrawlLinks({}, "/s/friday-f1/drivers", {});
     expect(html).not.toContain("<script>");
     expect(html).toContain("&amp;b=2");
+  });
+});
+
+// A blanket "Disallow: /api/" is what put the site at Soft 404: Googlebot obeys
+// robots.txt for the requests a page MAKES, and every page here loads its content
+// from that API. These tests answer the only question that matters about the
+// file — would a crawler be allowed to fetch this? — by resolving it the way a
+// robots parser does: longest matching rule wins.
+function crawlerMayFetch(robots, path) {
+  let best = { length: -1, allow: true };
+  for (const line of robots.split("\n")) {
+    const m = /^(Allow|Disallow):\s*(\S+)/.exec(line.trim());
+    if (!m) continue;
+    const [, kind, rule] = m;
+    // Ties go to Allow, same as Google's parser.
+    if (path.startsWith(rule) && rule.length >= best.length) {
+      best = { length: rule.length, allow: kind === "Allow" || (rule.length === best.length && best.allow) };
+    }
+  }
+  return best.allow;
+}
+
+describe("robots.txt", () => {
+  const robots = buildRobotsTxt("https://x.test");
+
+  it("lets a crawler fetch everything a public page needs to render", () => {
+    // Observed on the live site: without these the page renders empty.
+    for (const p of [
+      "/api/standings/drivers?season=8",
+      "/api/standings/constructors/t1",
+      "/api/standings/records",
+      "/api/races?season=8",
+      "/api/races/abc123/results",
+      "/api/drivers/13bot_s8/profile",
+      "/api/drivers/13bot_s8/rating",
+      "/api/teams",
+      "/api/seasons",
+      "/api/series",
+      "/api/tracks/countries",
+      "/api/events/open",
+      "/api/live/status",
+      "/api/settings/social",
+      "/api/uploads/avatars/13bot_s8.jpg",
+    ]) {
+      expect([p, crawlerMayFetch(robots, p)]).toEqual([p, true]);
+    }
+  });
+
+  it("keeps everything else in the API shut", () => {
+    for (const p of [
+      "/api/admin/seasons",
+      "/api/auth/discord/callback",
+      "/api/me/rating/history",
+      "/api/me/cockpit",
+      "/api/downloads/12",
+      "/api/feedback",
+      "/api/notifications",
+      "/api/market/offers",
+      "/api/search/admin",
+      "/api/hit",
+    ]) {
+      expect([p, crawlerMayFetch(robots, p)]).toEqual([p, false]);
+    }
+  });
+
+  it("still turns crawlers away from the member-only pages", () => {
+    for (const p of ["/admin", "/profile", "/feedback", "/cockpit", "/cards", "/downloads", "/tools", "/auth/discord"]) {
+      expect([p, crawlerMayFetch(robots, p)]).toEqual([p, false]);
+    }
+    expect(crawlerMayFetch(robots, "/s/friday-f1/drivers")).toBe(true);
+    expect(crawlerMayFetch(robots, "/")).toBe(true);
+  });
+
+  it("names the sitemap", () => {
+    expect(robots).toContain("Sitemap: https://x.test/sitemap.xml");
   });
 });
 

@@ -46,10 +46,9 @@
 // ---------------------------------------------------------------------------
 import { getSiteIndex } from "./siteIndex.js";
 
-// Areas that have no business in a search index. Written as a denylist because
+// PAGES that have no business in a search index. Written as a denylist because
 // the interesting pages are all public by default.
 const DISALLOW = [
-  "/api/", // the JSON API itself
   "/admin", // league office
   "/profile", // a member's own area
   "/feedback", // a member's own messages to the admins
@@ -60,11 +59,54 @@ const DISALLOW = [
   "/auth/", // login callbacks
 ];
 
-// Is this address one a crawler is allowed to have? Same list as above, so the
+// THE API, and the mistake that cost the site its indexing.
+//
+// This used to be one flat `Disallow: /api/`, which reads like ordinary
+// housekeeping: the JSON is not a page, so keep it out of the index. What it
+// actually did was break rendering. Every page on this site fetches its content
+// from here — /api/standings/drivers carries the entire driver table — and
+// Googlebot obeys robots.txt for the resources a page loads, not just for the
+// page itself. So Google fetched /s/<slug>/drivers, ran the app, watched the two
+// requests carrying the content get refused by our own rules, and was left with
+// a heading above nothing. Its verdict on that, in the URL inspector: Soft 404.
+// A page that renders empty is not a page worth keeping, and it was right.
+//
+// So the read endpoints the public pages need in order to RENDER are opened up.
+// Longest match wins in a robots parser, which is what lets these beat the
+// blanket Disallow below. The list is not guesswork: it is what the public pages
+// were observed to request (standings, teams, races and their results, driver
+// profiles and ratings, the season/series lists, circuit countries, the social
+// links in the footer, the live status the nav bar reads).
+//
+// Everything not named here stays shut, and that is the half worth checking on
+// every change: /api/admin, /api/auth, /api/me, /api/downloads, /api/feedback,
+// /api/notifications, /api/market, /api/search and /api/hit are all still
+// refused by the blanket rule.
+//
+// Opening these for CRAWLING does not mean the JSON should turn up in results;
+// that is what the X-Robots-Tag: noindex header on /api is for (see index.js).
+// Crawlable so the page can render, never indexable as a page of its own.
+const API_ALLOW = [
+  "/api/uploads/", // driver photos and team logos, worth finding in image search
+  "/api/standings", // the driver, constructor and records tables
+  "/api/drivers", // a driver's profile and rating card
+  "/api/teams",
+  "/api/races", // the calendar, and one round's results
+  "/api/seasons",
+  "/api/series",
+  "/api/tracks", // circuit countries -> the flags
+  "/api/events", // the sign-up state the race pages show
+  "/api/live", // the nav bar's "is a race on right now" badge
+  "/api/settings", // the social links in the footer
+];
+
+// Is this PAGE one a crawler is allowed to have? Same list as above, so the
 // pre-rendered link block (lib/crawlLinks.js) never bothers building an index
-// for a page robots.txt turns away.
+// for a page robots.txt turns away. The API is not a page and never reaches the
+// HTML handler, but it is checked here too so a stray call cannot slip through.
 export function isCrawlable(path) {
   const p = String(path || "/");
+  if (p.startsWith("/api/") || p === "/api") return false;
   return !DISALLOW.some((d) => p === d || p.startsWith(d) || p === d.replace(/\/$/, ""));
 }
 
@@ -72,8 +114,11 @@ export function buildRobotsTxt(origin) {
   return [
     "# NABS Racing League",
     "User-agent: *",
-    // Driver photos and team logos are served from here and are worth finding.
-    "Allow: /api/uploads/",
+    // These come FIRST and are more specific than the Disallow that follows, so
+    // a parser resolving longest-match lets them through. Without them the site
+    // renders empty for a crawler (see API_ALLOW above).
+    ...API_ALLOW.map((p) => `Allow: ${p}`),
+    "Disallow: /api/",
     ...DISALLOW.map((p) => `Disallow: ${p}`),
     "",
     `Sitemap: ${origin}/sitemap.xml`,
