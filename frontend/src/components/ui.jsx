@@ -1,6 +1,6 @@
 // Small shared presentational helpers — the site-wide design kit.
 
-import { cloneElement, isValidElement, useEffect, useId, useRef, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useId, useState } from "react";
 import { useInView } from "../hooks/motion.js";
 import { NO_VALUE } from "../utils/format.js";
 
@@ -280,118 +280,6 @@ export function NoData({ label = "no value", className = "" }) {
 // `tone` keeps the two label typographies that were worth keeping out of the
 // twenty-odd that had drifted: the mono eyebrow (public pages) and the compact
 // plain one (dense admin forms). Everything else was noise.
-// ---------------------------------------------------------------------------
-// <AutoHeight> — a box that moves to its content's height instead of jumping.
-//
-// Two problems, one cause: the box is always exactly as tall as whatever is
-// inside it, the instant it is inside it.
-//
-//   - A results table's rows arrive one after another (the cascade), but the
-//     table has its full height from the first frame, so what you watch is a
-//     tall empty shell filling in. The background should arrive with the rows.
-//   - Switching rounds swaps a 37-row table for a sign-up panel. Measured on
-//     the page, the heading below it teleports 1939px. Nothing is wrong at
-//     either end; it is the absence of anything in between that reads as cheap.
-//
-// So: watch the content, and when its height changes, take the old height, pin
-// it, and transition to the new one. Between animations the element is plain
-// `height: auto` with visible overflow — anything else would break the results
-// table's sticky header, which needs no clipping ancestor, and would clip the
-// focus rings and hover lifts inside.
-//
-// `grow` opens from zero on first mount (that is the table building itself);
-// without it the box only animates LATER changes and takes its opening height
-// as given.
-export function AutoHeight({ children, grow = false, duration = "var(--t-tell)", className = "" }) {
-  const outer = useRef(null);
-  const inner = useRef(null);
-
-  useEffect(() => {
-    const box = outer.current;
-    const content = inner.current;
-    if (!box || !content || typeof ResizeObserver === "undefined") return;
-    // Motion off: never touch the height. The box behaves exactly as it did
-    // before this component existed, which is the correct static answer.
-    const still = () =>
-      (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
-      document.documentElement.classList.contains("fx-lite");
-
-    let last = grow ? 0 : content.getBoundingClientRect().height;
-    let cleanup = null;
-
-    const settle = () => {
-      if (!cleanup) return;
-      cleanup();
-      cleanup = null;
-    };
-
-    const animateTo = (next) => {
-      const from = last;
-      last = next;
-      // A hidden tab runs no rendering steps: transitions do not advance and
-      // this observer does not fire at all. So a change made while the tab was
-      // in the background arrives all at once the moment it comes forward, and
-      // animating it there would replay a move nobody made. Take the new height
-      // as given instead.
-      if (document.hidden || still() || Math.abs(next - from) < 1) return;
-      settle(); // a change mid-animation restarts from wherever we are now
-      const current = box.getBoundingClientRect().height;
-      box.style.overflow = "hidden";
-      box.style.height = `${current}px`;
-      void box.offsetHeight; // commit the start value before transitioning off it
-      box.style.transition = `height ${duration} var(--e-out)`;
-      box.style.height = `${next}px`;
-      const done = () => {
-        box.style.transition = "";
-        box.style.height = "";
-        box.style.overflow = "";
-      };
-      const onEnd = (e) => {
-        if (e.target !== box || e.propertyName !== "height") return;
-        done();
-        box.removeEventListener("transitionend", onEnd);
-        clearTimeout(timer);
-        cleanup = null;
-      };
-      // The timeout is not decoration: a transition that never runs (a hidden
-      // tab, a browser that skips it) would otherwise leave the box pinned at a
-      // fixed height for good, and the page below it stuck.
-      const timer = setTimeout(() => {
-        done();
-        box.removeEventListener("transitionend", onEnd);
-        cleanup = null;
-      }, 1500);
-      box.addEventListener("transitionend", onEnd);
-      cleanup = () => {
-        done();
-        box.removeEventListener("transitionend", onEnd);
-        clearTimeout(timer);
-      };
-    };
-
-    if (grow) animateTo(content.getBoundingClientRect().height);
-
-    const ro = new ResizeObserver(() => {
-      const h = content.getBoundingClientRect().height;
-      // While WE are animating, the outer box changes size and the observer
-      // would chase its own tail; it watches the CONTENT, whose height is
-      // settled, so only real content changes get here.
-      if (Math.abs(h - last) >= 1) animateTo(h);
-    });
-    ro.observe(content);
-    return () => {
-      ro.disconnect();
-      settle();
-    };
-  }, [grow, duration]);
-
-  return (
-    <div ref={outer} className={className}>
-      <div ref={inner}>{children}</div>
-    </div>
-  );
-}
-
 export function Field({
   label,
   hint,

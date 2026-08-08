@@ -4,7 +4,7 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent, AutoHeight } from "../components/ui.jsx";
+import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent } from "../components/ui.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import RaceResults from "../components/RaceResults.jsx";
@@ -702,14 +702,7 @@ export default function Races() {
                 they fill in, and switching between a 37-row result and a
                 sign-up panel slides the calendar below instead of teleporting
                 it (measured: 1939px, in one frame). */}
-            {/* The panel unrolls, and that IS the table building itself: the
-                rows underneath are solid from the first frame (see the note in
-                RaceResults), so the growing edge is always the point the sheet
-                has reached. The first attempt at this kept the per-row fade and
-                grew the box alongside it, which could not work: two different
-                curves over the same distance, so at 200ms the box was half open
-                with four rows in it. */}
-            <AutoHeight grow duration="var(--t-tell)" className="min-w-0">
+            <div className="min-w-0">
               {selectedRace && !selectedRace.isCompleted ? (
                 /* Keyed on the race so switching rounds REMOUNTS the panel. Its
                    track history (and with it the outline's admin-set rotation)
@@ -816,7 +809,7 @@ export default function Races() {
                   )}
                 </>
               )}
-            </AutoHeight>
+            </div>
           </div>
         ) : (
           <div className="card p-8 text-center text-medium">

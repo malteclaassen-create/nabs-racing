@@ -440,8 +440,20 @@ body::before {
   from { clip-path: inset(-8px -8px -8px 100%); }
   to   { clip-path: inset(-8px -8px -8px -8px); }
 }
+/* The vertical one: a panel uncovers downward from its top edge, like a sheet
+   coming off a printer. Used by the race results card, where the alternative
+   (fading the rows in one by one) could not work — the card is at its full
+   height from the first frame, so any row not yet faded in leaves its own
+   background showing through, and on a 37-car grid that was two thirds of the
+   table sitting empty. Uncovering has no such gap: what is not shown yet is not
+   drawn at all, and what is drawn is finished. */
+@keyframes wipe-in-down {
+  from { clip-path: inset(-8px -8px 100% -8px); }
+  to   { clip-path: inset(-8px -8px -8px -8px); }
+}
 .wipe-ltr { clip-path: inset(-8px 100% -8px -8px); }
 .wipe-rtl { clip-path: inset(-8px -8px -8px 100%); }
+.wipe-down { clip-path: inset(-8px -8px 100% -8px); }
 /* Duration rides on --wipe-dur so slow, sweeping builds (season form) and
    snappier ones can share the same utility. Elements with the same duration
    and delay stay perfectly in sync (plot + result chips). */
@@ -453,6 +465,15 @@ body::before {
 .reveal.is-visible .wipe-rtl {
   animation: wipe-in-rtl var(--e-draw) both;
   animation-duration: var(--wipe-dur, 1.2s);
+  animation-delay: var(--reveal-delay, 0s);
+}
+.reveal.is-visible .wipe-down {
+  /* --e-draw, the same curve the horizontal wipes use: it eases IN, which is
+     what a shape that is growing wants. --e-out was tried first and is wrong
+     here — it is front-loaded, so two thirds of the card appeared in the first
+     quarter of the time and the remainder crawled. */
+  animation: wipe-in-down var(--e-draw) both;
+  animation-duration: var(--wipe-dur, var(--t-tell));
   animation-delay: var(--reveal-delay, 0s);
 }
 
@@ -938,7 +959,7 @@ body::before {
   }
   .reveal { opacity: 1; transform: none; }
   .chart-line { stroke-dashoffset: 0; }
-  .wipe-ltr, .wipe-rtl { clip-path: none; animation: none !important; }
+  .wipe-ltr, .wipe-rtl, .wipe-down { clip-path: none; animation: none !important; }
   .fade-out { animation: none !important; opacity: 1; }
   .lift:hover { transform: none; }
 
@@ -990,7 +1011,7 @@ body::before {
 .fx-lite body::before { display: none !important; }
 .fx-lite .reveal { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .chart-line { animation: none !important; stroke-dashoffset: 0; }
-.fx-lite .wipe-ltr, .fx-lite .wipe-rtl { clip-path: none !important; animation: none !important; }
+.fx-lite .wipe-ltr, .fx-lite .wipe-rtl, .fx-lite .wipe-down { clip-path: none !important; animation: none !important; }
 .fx-lite .fade-out { animation: none !important; opacity: 1; }
 .fx-lite .pop-in { animation: none !important; }
 .fx-lite .cascade > * { opacity: 1 !important; animation: none !important; }

@@ -46,7 +46,7 @@ function QualiTable({ rows }) {
     return vals.length ? Math.min(...vals) : null;
   });
   return (
-    <div className="card overflow-hidden">
+    <div className="wipe-down card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -225,7 +225,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
   if (hasQuali && session === "quali") return <QualiTable rows={quali} />;
 
   return (
-    <div className="card overflow-hidden">
+    <div className="wipe-down card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
