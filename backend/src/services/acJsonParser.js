@@ -5,6 +5,7 @@
 // overtakes, consistency, penalties) is distilled by telemetryExtractor.js.
 // ---------------------------------------------------------------------------
 import { extractTelemetry, countCarContacts, CONTACT_DEFAULTS } from "./telemetryExtractor.js";
+import { findPitFile, loadPitStops, pitTrackKey } from "../lib/pitEventsStore.js";
 
 // Re-exported for callers/tests that historically imported them from here.
 export { countCarContacts, CONTACT_DEFAULTS };
@@ -63,10 +64,61 @@ export function parseAcRaceJson(json, drivers) {
     throw new Error("Invalid AC race JSON: expected Type=RACE with Result[]");
   }
 
+  // Pit stops recorded LIVE for this very session, when the recorder was
+  // watching (lib/pitEventsStore.js): looked up by the same day+track identity
+  // the archive uses, with the session timestamp picking the right running out
+  // of a shared file. The lookup can never fail the import — worst case is
+  // exactly the old behaviour (the sector heuristic).
+  let pitStopsByGuid = null;
+  try {
+    const dayIso = json.Date ? String(json.Date).slice(0, 10) : null;
+    const file = findPitFile({ dayIso, trackKey: pitTrackKey(json.TrackConfig, json.TrackName) });
+    if (file) pitStopsByGuid = loadPitStops(file, { aroundIso: json.Date ? String(json.Date) : null });
+    if (pitStopsByGuid) {
+      // The identity is only day+track, and two servers can run the same
+      // circuit on the same evening (multi-series). Before trusting a
+      // recording as fact, demand that it is ABOUT these drivers: at least
+      // half of the recorded guids must appear in this result file, counting
+      // every alias the file lists (GuidsList — the same driver can connect
+      // under more than one guid). A recording that fails the check is
+      // dropped, and dropped loudly enough to find in the import log.
+      const resultGuids = new Set();
+      const aliasToPrimary = new Map();
+      for (const c of json.Cars || []) {
+        const primary = c?.Driver?.Guid;
+        if (!primary) continue;
+        resultGuids.add(String(primary));
+        for (const alias of c.Driver.GuidsList || []) {
+          resultGuids.add(String(alias));
+          aliasToPrimary.set(String(alias), String(primary));
+        }
+      }
+      let known = 0;
+      for (const guid of pitStopsByGuid.keys()) if (resultGuids.has(String(guid))) known++;
+      if (known < pitStopsByGuid.size / 2) {
+        console.warn(
+          `[import] ignoring pit recording ${file}: only ${known}/${pitStopsByGuid.size} recorded drivers appear in this result file`
+        );
+        pitStopsByGuid = null;
+      } else {
+        // Re-key aliases onto the primary guid the extractor works with.
+        for (const [guid, rec] of [...pitStopsByGuid]) {
+          const primary = aliasToPrimary.get(String(guid));
+          if (primary && primary !== String(guid) && !pitStopsByGuid.has(primary)) {
+            pitStopsByGuid.set(primary, rec);
+            pitStopsByGuid.delete(guid);
+          }
+        }
+      }
+    }
+  } catch {
+    /* recording unreadable — heuristic it is */
+  }
+
   // Full per-driver telemetry keyed by Steam GUID, attached to each entry below
   // so the admin import carries cleanliness/pace data through to the stored
   // result. safetyCarGuids lets the review UI flag and deprioritise the SC.
-  const { byGuid, safetyCarGuids, suspectedSafetyCarGuids } = extractTelemetry(json);
+  const { byGuid, safetyCarGuids, suspectedSafetyCarGuids } = extractTelemetry(json, { pitStopsByGuid });
 
   const entries = json.Result
     // AC includes spectators / non-finishers with 0 laps & huge time; we keep

@@ -27,6 +27,12 @@ const DEFAULT_SC_NAMES = ["Tyler27", "Janelko", "Samuel Foniok"];
 const CLEAN_LAP_WINDOW_MS = 10000; // a lap counts as "clean" within 10s of own best
 const CONSISTENCY_OUTLIER_MS = 21000; // simresults drops laps over best+21s from consistency
 const PIT_LAP_EXTRA_MS = 25000; // a lap this much over the driver's median = a pit lap
+// Entry-side gate of the paired pit signature: how much the in-lap must lose in
+// the learned pit-entry sector. Small on purpose — braking off the racing line
+// into the pit lane costs a couple of seconds, no more; the heavy loss lands on
+// the out-lap. Calibrated at Hockenheim S8R1: weakest accepted clean stop lost
+// 2.6s, strongest rejected crash 1.7s, so 2.5s sits in the measured gap.
+const PIT_IN_SECTOR_MIN_MS = 2500;
 const SC_LAP_FACTOR = 1.3; // a lap whose field median is 1.3x the race median = SC lap
 
 // AC stamps event/lap times in Unix SECONDS; normalise to ms (values already in
@@ -300,7 +306,59 @@ export function extractTelemetry(json, opts = {}) {
   // reading as pit stops. (League tracks differ a lot: ~20s at Monza, 30s+
   // elsewhere — a fixed threshold missed real stops.)
   const refFor = (ownMedian, lapNum) => Math.max(lapBaseline[lapNum] || 0, ownMedian);
+  // Sector medians across the whole field, so a lap's loss can be attributed to
+  // WHERE on the track it happened rather than only to how big it was.
+  const sectorPool = [[], [], []];
+  for (const arr of lapsByGuid.values()) {
+    for (const l of arr) {
+      const s = l.Sectors || [];
+      for (let k = 0; k < 3; k++) if (Number(s[k]) > 0) sectorPool[k].push(Number(s[k]));
+    }
+  }
+  const sectorMedian = sectorPool.map((v) => medianOf(v));
+  // Per-lap-number sector baselines (25th percentile), the sector-level twin of
+  // lapBaseline above and there for the same reason: under a safety car every
+  // sector balloons for the whole field, and measured against a global median
+  // an SC lap looks exactly like a pit lap. Measured against what the FIELD ran
+  // in that sector ON THAT LAP, an SC lap shows ~zero delta while a car diving
+  // into the pits still sticks out.
+  const sectorBaseline = []; // [lapNumber][sectorIdx] -> 25th percentile ms
+  for (let n = 1; n <= maxLapCount; n++) {
+    const pools = [[], [], []];
+    for (const a of lapsByGuid.values()) {
+      const s = a[n - 1]?.Sectors || [];
+      for (let k = 0; k < 3; k++) if (Number(s[k]) > 0) pools[k].push(Number(s[k]));
+    }
+    sectorBaseline[n] = pools.map((v) => {
+      v.sort((x, y) => x - y);
+      return v.length ? v[Math.floor((v.length - 1) * 0.25)] : 0;
+    });
+  }
+  // A lap's loss in one sector, against the stricter of the two baselines. The
+  // per-lap component kills safety-car phantoms; the global component stops a
+  // uniformly slow field from hiding a stop. null = no usable sector data.
+  const sectorDelta = (lap, lapNum, k) => {
+    const s = Number(lap?.Sectors?.[k]);
+    if (!(s > 0)) return null;
+    const base = Math.max(sectorBaseline[lapNum]?.[k] || 0, sectorMedian[k] || 0);
+    return base > 0 ? s - base : null;
+  };
+  // Which sector a lap lost its time in (null when the file has no sectors).
+  const worstSector = (lap) => {
+    const s = lap?.Sectors || [];
+    if (!sectorMedian.every((m) => m > 0) || ![0, 1, 2].every((k) => Number(s[k]) > 0)) return null;
+    const d = [0, 1, 2].map((k) => Number(s[k]) - sectorMedian[k]);
+    return d.indexOf(Math.max(...d));
+  };
+
   const pitLossSamples = [];
+  // How often each sector carries the loss on the lap a KNOWN stop was entered
+  // on, and on the lap after it. Learned per race rather than assumed: the pit
+  // lane sits in a different sector at every circuit, and at Hockenheim a stop
+  // straddles the line — time goes in sector 3 on the way in and sector 1 on
+  // the way out, with sector 2 untouched.
+  const inLapSectors = [0, 0, 0];
+  const outLapSectors = [0, 0, 0];
   for (const arr of lapsByGuid.values()) {
     const med = medianOf(arr.map((l) => Number(l.LapTime)).filter((t) => Number.isFinite(t) && t > 0));
     if (!med) continue;
@@ -312,14 +370,55 @@ export function extractTelemetry(json, opts = {}) {
         const dCur = (Number(arr[i].LapTime) || 0) - refFor(med, i + 1);
         const delta = Math.max(dPrev, dCur);
         if (delta > 5000) pitLossSamples.push(delta);
+        if (dPrev > 5000) {
+          const w = worstSector(arr[i - 1]);
+          if (w != null) inLapSectors[w]++;
+        }
+        if (dCur > 5000) {
+          const w = worstSector(arr[i]);
+          if (w != null) outLapSectors[w]++;
+        }
       }
     }
   }
+  // The dominant sector on each side of a stop, learned from the stops we can
+  // see for certain. At Hockenheim the pit lane straddles the line: entering
+  // costs sector 3 of the in-lap, leaving costs sector 1 of the next lap, and
+  // sector 2 is never touched. A driver going off costs whichever sector the
+  // mistake happened in — which is exactly what makes the pair below decisive.
+  // Both need enough known stops to be trustworthy; short of that they stay
+  // null and the fallback path below applies.
+  const domOf = (tally) => {
+    const total = tally.reduce((a, b) => a + b, 0);
+    if (total < 5) return null;
+    const k = tally.indexOf(Math.max(...tally));
+    return tally[k] / total >= 0.5 ? k : null;
+  };
+  const pitInSector = domOf(inLapSectors);
+  const pitOutSector = domOf(outLapSectors);
+  // Kept for the fallback path (no sector data in the file).
+  const pitSectors = new Set();
+  for (const tally of [inLapSectors, outLapSectors]) {
+    const total = tally.reduce((a, b) => a + b, 0);
+    if (total >= 5) tally.forEach((n, k) => { if (n / total >= 0.2) pitSectors.add(k); });
+  }
   const typicalPitLoss = pitLossSamples.length ? medianOf(pitLossSamples) : null;
-  // Threshold for a same-compound stop: ~70% of the race's real pit loss, but
-  // never under 14s (against small mistakes); without calibration stops (no
-  // compound change anywhere) fall back to the conservative 25s rule.
-  const pitDeltaMin = typicalPitLoss ? Math.max(15000, typicalPitLoss * 0.8) : PIT_LAP_EXTRA_MS;
+  // Threshold for a same-compound stop: 80% of what a stop demonstrably costs
+  // in THIS race. Without calibration stops (no compound change anywhere) fall
+  // back to the conservative fixed rule.
+  //
+  // The floor used to be 15s, and that quietly broke every short pit lane.
+  // Season 8 round 1 (Hockenheim) measured a typical loss of 14s from 58 real
+  // compound-change stops, so the floor sat ABOVE the cost of an actual stop
+  // and no same-compound stop could ever clear it: a driver's 10 medium / 18
+  // hard / 20 hard came out as "10 medium, 38 hard, one stop". Reported from
+  // the league Discord, and reproducible straight off the stored result file.
+  //
+  // A floor is still wanted, because with no calibration a small mistake must
+  // not read as a stop. It just has to sit below a real stop rather than above
+  // one, so it is now expressed against the measured loss and only guards the
+  // degenerate case where calibration returns something implausibly small.
+  const pitDeltaMin = typicalPitLoss ? Math.max(9000, typicalPitLoss * 0.8) : PIT_LAP_EXTRA_MS;
 
   const metrics = new Map();
   for (const [guid, arr] of lapsByGuid) {
@@ -344,39 +443,153 @@ export function extractTelemetry(json, opts = {}) {
       }
     }
     // Tyre stints, in completion order (the file is chronological). A stint
-    // ends on a COMPOUND CHANGE — or, since the file carries no pit flag, on a
-    // detected same-compound stop: a lap far slower than the driver's own
-    // median (same rule the overtake logic uses for pit laps), unless the
-    // whole field was slow there (safety car). The split lands AFTER the slow
-    // in-lap, so "M -> M" two-stoppers show two stops instead of one long run.
+    // ends on a COMPOUND CHANGE — or on a detected same-compound stop, since
+    // the file carries no pit flag (verified against the server manager's whole
+    // API surface: pit state exists only live, never in stored results).
+    //
+    // Same-compound detection is the PAIRED sector signature, validated against
+    // two driver-confirmed strategies from S8 round 1: a stop must cost time on
+    // BOTH sides of it — the in-lap loses in the learned pit-entry sector (a
+    // couple of seconds: braking into the lane) and the very next lap loses the
+    // big money in the learned pit-exit sector (standing still + the lane's
+    // speed limit). A spin, a crash or a safety-car train never produces that
+    // pair: a mistake costs one sector of one lap, and an SC inflates the
+    // per-lap baselines for everyone so nobody sticks out. One driver's phantom
+    // "three stints on the same mediums" under SC and another's vanished
+    // hard-hard stop both came down to the old single-lap rule; the pair
+    // reproduces the truth on all 59 compound-change stops in that race
+    // (57 with the entry gate; the 2 misses roll the entry so slowly the gate
+    // sees nothing, and the tyre label still catches those).
+    //
+    // The split lands so the OUT-lap starts the new stint — confirmed by a
+    // driver's own account (18/20 on his two hard sets, not 19/19).
     const median = medianOf(times);
+    // Recorded live pit data for this driver, when a recorder file exists for
+    // the session (see services/pitRecorder.js): the feed's absolute stop
+    // counter is authoritative, so with it present the heuristic is DEMOTED to
+    // placing the recorded stops on the lap chart rather than inventing any.
+    const recorded = opts.pitStopsByGuid?.get?.(guid) || null;
+    const pairEvidence = (i) => {
+      // Score for a same-compound split between arr[i-1] (in) and arr[i] (out).
+      const dIn = sectorDelta(arr[i - 1], i, pitInSector);
+      const dOut = sectorDelta(arr[i], i + 1, pitOutSector);
+      if (dIn == null || dOut == null) return null;
+      return { pass: dIn >= PIT_IN_SECTOR_MIN_MS && dOut >= pitDeltaMin, score: dIn + dOut };
+    };
+    const tyreAt = (i) => String(arr[i]?.Tyre || "").trim();
+    const compoundChangeAt = (i) => {
+      const a = tyreAt(i - 1);
+      const b = tyreAt(i);
+      return !!(a && b && a !== b);
+    };
+    // Same-compound split indices (the lap index that STARTS the new stint).
+    const splitAt = new Set();
+    if (recorded) {
+      // Truth mode: the recorder watched this driver, so the visit count is
+      // fact — including the fact of ZERO visits, which must silence the
+      // heuristic entirely rather than fall through to it. Each recorded entry
+      // happened on a known lap (give or take one: the feed's lap counter can
+      // lag a snapshot behind); place the split on the better-evidenced
+      // candidate around it, and skip stops already expressed by a compound
+      // change nearby.
+      for (const entryLap of recorded.stops || []) {
+        const covered = [entryLap, entryLap + 1, entryLap + 2].some((n) => n >= 1 && n < arr.length + 1 && compoundChangeAt(n));
+        if (covered) continue;
+        let bestIdx = null;
+        let bestScore = -Infinity;
+        for (const cand of [entryLap, entryLap + 1]) {
+          if (cand < 1 || cand >= arr.length) continue;
+          const ev = pairEvidence(cand);
+          const score = ev ? ev.score : 0;
+          if (score > bestScore) {
+            bestScore = score;
+            bestIdx = cand;
+          }
+        }
+        if (bestIdx != null) splitAt.add(bestIdx);
+      }
+      // Stops the recorder counted but could not put a lap to (made while the
+      // backend was down mid-race): the COUNT is still authoritative. Express
+      // the difference through the best remaining pair evidence on the chart.
+      const totalPits = Number(recorded.totalPits) || 0;
+      let expressed = splitAt.size;
+      for (let i = 1; i < arr.length; i++) if (compoundChangeAt(i)) expressed++;
+      if (totalPits > expressed) {
+        // Only laps that PASS the paired signature may soak up an unplaced
+        // count. A recorded stop with a known lap deserves best-effort
+        // placement above; an unplaced count does not license inventing a
+        // split on a lap with no pit evidence at all — if the evidence isn't
+        // there, the stint chart shows fewer stops than the recorder counted,
+        // which is honest, visible and debuggable. The first version accepted
+        // any lap with sector data (score 0 beat -Infinity) and quietly
+        // sprinkled phantom one-lap stints across the field.
+        const cands = [];
+        for (let i = 1; i < arr.length; i++) {
+          const a = tyreAt(i - 1);
+          const b = tyreAt(i);
+          if (!a || !b || a !== b || splitAt.has(i)) continue;
+          const ev = pairEvidence(i);
+          if (ev?.pass) cands.push({ i, score: ev.score });
+        }
+        cands.sort((x, y) => y.score - x.score);
+        for (const c of cands) {
+          if (expressed >= totalPits) break;
+          splitAt.add(c.i);
+          expressed++;
+        }
+      }
+    } else if (pitInSector != null && pitOutSector != null) {
+      // Paired-signature mode. No cooldown and no minimum stint length on
+      // purpose: back-to-back pit visits are real (two drivers at Hockenheim
+      // pitted on consecutive laps, both fully evidenced), and the pair itself
+      // is what keeps messy phases from over-splitting. No cuts guard either —
+      // a real stop can follow a car-damaging moment (that is often WHY the
+      // driver stopped), and one confirmed stop carried two cuts on its in-lap.
+      for (let i = 1; i < arr.length; i++) {
+        const a = tyreAt(i - 1);
+        const b = tyreAt(i);
+        if (!a || !b || a !== b) continue; // compound changes split below anyway
+        const ev = pairEvidence(i);
+        if (ev?.pass) splitAt.add(i);
+      }
+    } else {
+      // Fallback: no sector data in the file (or too few known stops to learn
+      // the pit sectors from). The old single-lap rule, cooldown and cuts guard
+      // included — coarse, but the only signal available. lastSplitIdx starts
+      // at 0, as the original loop had it (the first stint anchors there): the
+      // rewrite briefly set it to -Infinity, which let the 3-lap cooldown
+      // approve a split on lap 2 of the race.
+      let lastSplitIdx = 0;
+      let pendingPitSplit = false;
+      arr.forEach((l, i) => {
+        const changed = compoundChangeAt(i);
+        if (pendingPitSplit && !changed && i - lastSplitIdx >= 3 && tyreAt(i)) {
+          splitAt.add(i);
+          lastSplitIdx = i;
+        } else if (changed) {
+          lastSplitIdx = i;
+        }
+        const lt = Number(l.LapTime) || 0;
+        const delta = median > 0 ? lt - refFor(median, i + 1) : 0;
+        const looksLikeMistake = Number(l.Cuts) > 0 && (!typicalPitLoss || delta < typicalPitLoss * 1.2);
+        const w = worstSector(l);
+        const lostWhereStopsDo = !pitSectors.size || w == null || pitSectors.has(w);
+        pendingPitSplit = delta >= pitDeltaMin && !looksLikeMistake && lostWhereStopsDo;
+      });
+    }
     const stints = [];
-    let lastSplitIdx = -Infinity;
-    let pendingPitSplit = false;
     arr.forEach((l, i) => {
-      const t = String(l.Tyre || "").trim();
+      const t = tyreAt(i);
       const last = stints[stints.length - 1];
       const changed = !!(last && t && last.tyre !== "?" && t !== last.tyre);
-      // The heuristic pit split only fires when no compound change marks the
-      // stop anyway, and never within 3 laps of the previous split — nobody
-      // pits twice that quickly, but a messy phase produces several slow laps.
-      const pitSplit = pendingPitSplit && !changed && i - lastSplitIdx >= 3;
       if (!last) {
         stints.push({ tyre: t || "?", laps: 1 });
-        lastSplitIdx = i;
-      } else if (changed || pitSplit) {
+      } else if (changed || splitAt.has(i)) {
         stints.push({ tyre: t || last.tyre, laps: 1 });
-        lastSplitIdx = i;
       } else {
         last.laps += 1;
         if (last.tyre === "?" && t) last.tyre = t;
       }
-      const lt = Number(l.LapTime) || 0;
-      const delta = median > 0 ? lt - refFor(median, i + 1) : 0;
-      // A lap with track cuts is far more likely an off-track excursion than a
-      // stop — only a loss clearly ABOVE the usual pit loss overrules that.
-      const looksLikeMistake = Number(l.Cuts) > 0 && (!typicalPitLoss || delta < typicalPitLoss * 1.2);
-      pendingPitSplit = delta >= pitDeltaMin && !looksLikeMistake;
     });
 
     metrics.set(guid, {

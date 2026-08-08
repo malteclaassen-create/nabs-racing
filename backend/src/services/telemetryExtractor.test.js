@@ -220,3 +220,71 @@ describe("in-game penalties", () => {
     expect(t.gamePenaltySeconds).toBe(8);
   });
 });
+
+describe("tyre stints", () => {
+  const G = "76561198000000001";
+  // A race with an even field of four so the per-lap baselines are meaningful.
+  // All laps 90s with 30s sectors unless a lap is overridden.
+  const mkField = (overridesForG = {}) => {
+    const guids = [G, "g2", "g3", "g4"];
+    const laps = [];
+    for (let n = 1; n <= 30; n++) {
+      for (const g of guids) {
+        const o = (g === G && overridesForG[n]) || {};
+        laps.push({
+          DriverGuid: g,
+          DriverName: g,
+          CarId: guids.indexOf(g) + 1,
+          LapTime: o.lapTime ?? 90000,
+          Cuts: o.cuts ?? 0,
+          Tyre: o.tyre ?? "M",
+          Sectors: o.sectors ?? [30000, 30000, 30000],
+          Timestamp: 1786000000 + n * 90,
+        });
+      }
+    }
+    return {
+      Type: "RACE",
+      Cars: guids.map((g, i) => ({ CarId: i + 1, Driver: { Guid: g, Name: g } })),
+      Result: guids.map((g) => ({ DriverGuid: g, DriverName: g, BestLap: 90000, NumLaps: 30 })),
+      Laps: laps,
+      Events: [],
+      Penalties: [],
+    };
+  };
+
+  it("splits on a compound change", () => {
+    const o = {};
+    for (let n = 11; n <= 30; n++) o[n] = { tyre: "H" };
+    const m = extractTelemetry(mkField(o)).byGuid.get(G);
+    expect(m.stints).toEqual([
+      { tyre: "M", laps: 10 },
+      { tyre: "H", laps: 20 },
+    ]);
+  });
+
+  it("a flat run is one stint - no phantom stops", () => {
+    const m = extractTelemetry(mkField()).byGuid.get(G);
+    expect(m.stints).toEqual([{ tyre: "M", laps: 30 }]);
+  });
+
+  it("recorded pit stops override the heuristic and split a flat run", () => {
+    const m = extractTelemetry(mkField(), {
+      pitStopsByGuid: new Map([[G, { stops: [10, 20], totalPits: 2 }]]),
+    }).byGuid.get(G);
+    expect(m.stints).toEqual([
+      { tyre: "M", laps: 10 },
+      { tyre: "M", laps: 10 },
+      { tyre: "M", laps: 10 },
+    ]);
+  });
+
+  it("with a recording present, no heuristic stop is invented beyond it", () => {
+    // one huge slow lap that a naive time rule would call a stop
+    const o = { 15: { lapTime: 130000, sectors: [30000, 70000, 30000] } };
+    const m = extractTelemetry(mkField(o), {
+      pitStopsByGuid: new Map([[G, { stops: [], totalPits: 0 }]]),
+    }).byGuid.get(G);
+    expect(m.stints).toEqual([{ tyre: "M", laps: 30 }]);
+  });
+});

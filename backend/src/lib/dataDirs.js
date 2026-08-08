@@ -24,3 +24,7 @@ export const LOGS_DIR = join(DATA_ROOT, "logs");
 // Raw AC result JSONs, kept after import so telemetry can be recomputed later
 // (e.g. when the extractor improves) without re-downloading from the server.
 export const RESULTS_ARCHIVE_DIR = join(DATA_ROOT, "results-archive");
+// Pit-lane events observed on the live feed, per race (lib/pitEventsStore.js).
+// The stored result JSON carries no pit data at all, so what is recorded here
+// during a race is the only ground truth the importer will ever have.
+export const LIVE_PITS_DIR = join(DATA_ROOT, "live-pits");

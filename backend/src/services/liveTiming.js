@@ -27,6 +27,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import { createHash, randomBytes } from "node:crypto";
 import prisma from "../lib/prisma.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries } from "../lib/liveServers.js";
+import { ON_RAILWAY } from "../lib/deployment.js";
+import * as pitRecorder from "./pitRecorder.js";
 
 // ---------------------------------------------------------------------------
 // Public driver id for the live board.
@@ -76,6 +78,27 @@ const STALE_MS = 75000; // no upstream message for this long => mark stale
 // threshold on purpose: silence is normal and only means "nothing is happening",
 // while an unanswered ping means the server is not there at all.
 const HEARTBEAT_MS = 30000;
+// The same idea for the sockets on the OTHER side — the viewers. The upstream
+// connection has had a heartbeat since the day a dead race server could freeze
+// the board; the viewer sockets never got one, and they need it for the mirror
+// image of the same reason. A phone that walks out of wifi mid-race sends no
+// close frame, so its socket sits in wss.clients at readyState OPEN until the
+// operating system gives up on the TCP entry, and every broadcast keeps writing
+// a board into it. Over a race night that is the shape of a slow memory climb:
+// growth in buffered payloads rather than in the JS heap, which is exactly why
+// a heap snapshot of the 2026-08-07 climb showed nothing worth looking at.
+//
+// Browsers answer a ping frame themselves, at the protocol level, without the
+// page knowing — so unlike the race server upstream, silence here really does
+// mean gone. Two missed rounds before dropping, and the live page reconnects on
+// its own with backoff, so the cost of being wrong is a blink.
+const CLIENT_HEARTBEAT_MS = 30000;
+// A board is a few kB and a healthy socket drains it long before the next tick,
+// so anything holding this much has stopped draining altogether: at the ~60-85
+// kB/s a full grid generates, a megabyte is a good quarter minute of writing
+// into a socket nobody is reading. Far enough above a momentary spike on a slow
+// phone to never catch a real viewer.
+const MAX_BUFFERED_BYTES = 1024 * 1024;
 
 // Demo board (fabricated cars, moving splines, stint histories) so the track
 // map and strategy views can be seen working when no real session is on. It is
@@ -84,7 +107,9 @@ const HEARTBEAT_MS = 30000;
 // this server allows it. Allowed only when explicitly opted in (LIVE_TIMING_DEMO
 // =1) or on a plain local dev box — anything running on Railway (which injects
 // RAILWAY_* vars) is treated as live, even if NODE_ENV happens to be unset.
-const ON_RAILWAY = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_SERVICE_ID);
+// ON_RAILWAY comes from lib/deployment.js now (it was a third copy of the same
+// probe). Deliberately NOT the broader IS_DEPLOYED: the demo board should stay
+// reachable on a tunnelled preview build, which carries an https CORS origin.
 const DEMO_ENABLED =
   process.env.LIVE_TIMING_DEMO === "1" ||
   (process.env.NODE_ENV !== "production" && !ON_RAILWAY);
@@ -458,6 +483,9 @@ function createRelay(server) {
       }
     }
     accumulateStints(status); // grow the per-driver tyre-stint history
+    // Write pit-lane facts to disk while they exist — the stored result JSON
+    // carries none, so what this misses tonight is unknowable tomorrow.
+    pitRecorder.onSnapshot(server.key, status, sessionKeyOf(status?.SessionInfo || {}, status?.TrackInfo || {}));
     ensureTrackMap(status?.SessionInfo || {}); // (re)load the real map on track change
   }
 
@@ -511,6 +539,10 @@ function createRelay(server) {
         case 53: // per-car telemetry
           if (msg.Message && typeof msg.Message.CarID === "number") {
             liveByCar.set(msg.Message.CarID, msg.Message);
+            // Pit-lane edges (IsInPits flipping) are only visible here, at
+            // telemetry frequency — the recorder needs them the moment they
+            // happen, not at the next 30s snapshot.
+            pitRecorder.onTelemetry(server.key, carIdToGuid.get(msg.Message.CarID), msg.Message);
             // Fast lane: followers of THIS car get its cockpit numbers now,
             // not at the next 700ms board tick.
             relayFollowedTelemetry(server.key, carIdToGuid.get(msg.Message.CarID), msg.Message);
@@ -1134,6 +1166,12 @@ export function initLiveTiming(server) {
 
   wss.on("connection", async (ws, req) => {
     ws.on("error", (e) => console.error("[live] client socket error:", e.message));
+    // Liveness for the sweep below. The browser's own stack answers the ping,
+    // so this flips back to true for every viewer that still exists.
+    ws.isAlive = true;
+    ws.on("pong", () => {
+      ws.isAlive = true;
+    });
     // The one thing a client may say to us: which car it follows (the map's
     // focus mode). Anything else on the socket is ignored.
     ws.on("message", (buf) => {
@@ -1176,6 +1214,20 @@ export function initLiveTiming(server) {
       // between), and one client's failure must not cost the rest of the grid
       // its update — so each send stands on its own, same as the snapshot sent
       // on connect.
+      // A socket still carrying a backlog is not reading. Writing more into it
+      // only grows the backlog, so drop it instead: ws would otherwise hold
+      // every unsent board for as long as the TCP entry survives. terminate()
+      // rather than close(), for the same reason as upstream — a peer that is
+      // already gone never finishes a closing handshake.
+      if (c.bufferedAmount > MAX_BUFFERED_BYTES) {
+        console.log(`[live] dropping a viewer socket with ${Math.round(c.bufferedAmount / 1024)} kB unsent`);
+        try {
+          c.terminate();
+        } catch {
+          /* already gone */
+        }
+        continue;
+      }
       try {
         if (c.isDemo) {
           demoJson ??= JSON.stringify(getDemoBoard());
@@ -1190,6 +1242,27 @@ export function initLiveTiming(server) {
       }
     }
   }, BROADCAST_MS);
+
+  // Ping every viewer; anything that has not answered since the last round is
+  // gone and leaves wss.clients here rather than lingering for hours.
+  setInterval(() => {
+    for (const c of wss.clients) {
+      if (c.isAlive === false) {
+        try {
+          c.terminate();
+        } catch {
+          /* already gone */
+        }
+        continue;
+      }
+      c.isAlive = false;
+      try {
+        c.ping();
+      } catch {
+        /* the next round terminates it */
+      }
+    }
+  }, CLIENT_HEARTBEAT_MS);
 
   console.log(
     `[live] frontend WS ready on /api/live/ws (servers: ${LIVE_SERVERS.map((s) => s.key).join(", ")})` +
