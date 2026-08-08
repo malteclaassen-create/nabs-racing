@@ -1505,6 +1505,12 @@ function OffAir({ nextRace }) {
 // leave ~30s between snapshots, so anything under this is routine.
 const LIVE_GRACE_MS = 40000;
 
+// How long the page will wait for the relay's very first frame before it starts
+// answering questions on its own. Long enough to cover a cold container and a
+// phone on a bad connection; short enough that a genuinely unreachable relay
+// does not leave someone watching a spinner and wondering.
+const FIRST_FRAME_GRACE_MS = 5000;
+
 // Hold on to the last board that carried a live session, and only let go of it
 // once the feed has really been gone for a while.
 //
@@ -1547,6 +1553,26 @@ export default function Live() {
   // held one): everything arriving, fresh, and our own socket up.
   const connected = feed?.connected && !feed?.stale && socketState === "open";
   const session = board?.session;
+
+  // Has the relay said anything at all yet? `feed` is null only until the first
+  // frame lands and never goes back to null, so this is precisely "we have been
+  // told". Two ways out, and the page must not hang on either: a frame arrived,
+  // or we have waited long enough that a spinner stops being honest.
+  //
+  // A closed socket deliberately does NOT count as an answer, tempting as it is.
+  // The socket closes and reopens for ordinary reasons — the backend restarting
+  // is the obvious one — and letting that count would put the wrong card on
+  // screen for the second before the retry lands, which is the very flicker
+  // this is here to remove. Waiting it out costs a few seconds in the rare case
+  // where the relay really is gone, and the spinner is telling the truth the
+  // whole time: it IS still trying.
+  const [waitedOut, setWaitedOut] = useState(false);
+  useEffect(() => {
+    if (feed) return;
+    const t = setTimeout(() => setWaitedOut(true), FIRST_FRAME_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [feed]);
+  const heardFromRelay = !!feed || waitedOut;
   // Off air = there is no session to show at all. Not "the upstream socket is
   // closed this second": that flaps (see useHeldBoard), and it used to blank the
   // page for a beat every time it did.
@@ -1560,7 +1586,19 @@ export default function Live() {
   //
   // A race server that really goes away still clears the page: the board it left
   // behind is dropped once the feed has been down for LIVE_GRACE_MS.
-  const offAir = !session;
+  //
+  // …but only once the relay has actually told us something. "We have not been
+  // told yet" is not "nothing is running", and treating them as the same thing
+  // is what made this page flash "No session running" over a live race for the
+  // first moment after it loaded.
+  //
+  // The old guard tried to cover this with `socketState !== "open"`, which
+  // misses by exactly the window that matters: the socket reports itself OPEN
+  // as soon as the handshake completes, and the relay only sends its first
+  // snapshot AFTER a database read (which race server does this viewer's series
+  // follow). So there is a stretch — a query plus a round trip, not a tick —
+  // where the page is connected, knows nothing, and used to answer anyway.
+  const offAir = heardFromRelay && !session;
   // A session that is there but has nothing happening in it. Perfectly normal on
   // any day that is not race day, and it must not be reported as a fault: the
   // board still holds what the session has produced so far.
@@ -1804,19 +1842,21 @@ export default function Live() {
         }
       />
 
-      {offAir ? (
-        socketState !== "open" && !board ? (
-          // Genuinely still opening the connection. This is the only case that
-          // gets a spinner, and it lasts a moment — it used to be the ONLY
-          // state, which meant the page span forever on the six days a week
-          // when no session is running.
-          <div className="card flex flex-col items-center justify-center gap-3 py-12 text-center sm:py-20">
-            <span className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand" />
-            <p className="font-mono text-[13px] uppercase tracking-wider text-light">Connecting to the server…</p>
-          </div>
-        ) : (
-          <OffAir nextRace={nextRace} />
-        )
+      {!heardFromRelay && !board ? (
+        // Still asking. This is the only case that gets a spinner, and it lasts
+        // a moment — it used to be the ONLY state, which meant the page spun
+        // forever on the six days a week when no session is running, and then
+        // the fix for that overshot into asserting "No session running" before
+        // anyone had checked. Waiting is its own answer and says so.
+        //
+        // Shaped like the card it may become, so the page does not jump when it
+        // resolves either way.
+        <div className="card flex flex-col items-center justify-center gap-3 px-6 py-14 text-center sm:py-20">
+          <span className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand" />
+          <p className="font-mono text-[13px] uppercase tracking-wider text-light">Connecting to the server…</p>
+        </div>
+      ) : offAir ? (
+        <OffAir nextRace={nextRace} />
       ) : (
         <div className="content-in space-y-8">
           {/* ===== Session bar across the top ===== */}
