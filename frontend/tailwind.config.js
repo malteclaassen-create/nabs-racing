@@ -58,8 +58,6 @@ export default {
       // The named stacking tiers from index.css, so JSX writes `z-overlay`
       // instead of picking a number. See the --z-* block there for why.
       zIndex: {
-        sticky: "var(--z-sticky)",
-        header: "var(--z-header)",
         dropdown: "var(--z-dropdown)",
         chrome: "var(--z-chrome)",
         scrim: "var(--z-scrim)",

@@ -251,7 +251,7 @@ function StandingsNav({ seriesPath }) {
           starts flush with the button (top-full) and carries the visual gap as
           TRANSPARENT padding, so the pointer never leaves the hover region on
           the way down to the card. */}
-      <div className={`absolute left-0 top-full z-40 pt-2 ${open ? "" : "pointer-events-none"}`}>
+      <div className={`absolute left-0 top-full z-dropdown pt-2 ${open ? "" : "pointer-events-none"}`}>
         <div
           role="menu"
           className={`w-64 origin-top-left rounded-2xl border border-border bg-card p-1.5 shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-quick ${

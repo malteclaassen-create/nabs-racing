@@ -126,9 +126,11 @@
      decided by DOM order rather than by intent. Named tiers instead, and the
      modal primitive takes the tier by name so no call site invents a number.
      Floating page chrome sits BELOW the overlays on purpose: a button that
-     stays clickable on top of a dimmed dialog is the bug this replaces. */
-  --z-sticky: 20;
-  --z-header: 30;
+     stays clickable on top of a dimmed dialog is the bug this replaces.
+     The rungs below the dropdowns keep their plain numbers at the call sites
+     (z-10 content, z-20 sticky table headers, z-30 the site header): they were
+     never in dispute, and they sit on hundreds of table cells that are not
+     worth touching to gain a name. */
   --z-dropdown: 40;
   --z-chrome: 50; /* feedback button, preview toggle, custom scrollbar */
   --z-scrim: 60; /* the dimmed backdrop of any overlay */

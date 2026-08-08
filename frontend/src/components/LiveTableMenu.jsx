@@ -130,7 +130,7 @@ function Menu({ icon, label, hint, highlight, title, children, footer }) {
           so it catches nothing and leaves no phantom hover zone under the button.
           The wrapper starts flush with the button and carries the visual gap as
           TRANSPARENT padding — that is the bridge the pointer crosses. */}
-      <div className={`absolute right-0 top-full z-40 pt-2 ${open ? "" : "pointer-events-none"}`}>
+      <div className={`absolute right-0 top-full z-dropdown pt-2 ${open ? "" : "pointer-events-none"}`}>
         <div
           role="menu"
           className={`w-64 max-w-[calc(100vw-2rem)] origin-top-right overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-quick ${

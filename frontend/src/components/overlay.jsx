@@ -33,6 +33,13 @@ const FOCUSABLE =
 let lockCount = 0;
 let lockedOverflow = "";
 
+// The scroll lock as a hook, for an overlay that keeps its own markup (the
+// feedback sheet, whose panel is anchored to its floating button rather than
+// centred, so the Modal shells do not fit it).
+export function useScrollLock(active) {
+  useEffect(() => (active ? lockScroll() : undefined), [active]);
+}
+
 function lockScroll() {
   if (lockCount === 0) {
     lockedOverflow = document.body.style.overflow;
@@ -82,7 +89,7 @@ export function useDismiss(open, onDismiss, { ref, anchorRef, escape = true, out
 // when the overlay opened. The restore is the half everyone forgets and the
 // half a keyboard user notices most: without it, closing a dialog drops you at
 // the top of the document and you tab through the whole page to get back.
-function useFocusTrap(active, ref, { initialFocus } = {}) {
+export function useFocusTrap(active, ref, { initialFocus } = {}) {
   useEffect(() => {
     if (!active) return;
     const returnTo = document.activeElement;
@@ -129,11 +136,19 @@ function useFocusTrap(active, ref, { initialFocus } = {}) {
     return () => {
       clearTimeout(t);
       document.removeEventListener("keydown", onKey);
-      // Only take focus back if it is still ours to give — if something else
-      // has already claimed it (a toast, a redirect), leave it alone.
-      if (returnTo?.isConnected && (!document.activeElement || document.activeElement === document.body)) {
-        returnTo.focus?.({ preventScroll: true });
-      }
+      // Take focus back, but only if it is still ours to give: nobody home
+      // (body, or nothing), or focus is on something inside the overlay that is
+      // about to disappear with it. If some OTHER part of the page has claimed
+      // focus in the meantime — a toast, a redirect, a field the close handler
+      // itself focused — leave it where it is.
+      //
+      // Checking only for "nobody home" was not enough: depending on when React
+      // tears the subtree down, the element that had focus inside the panel can
+      // still be the active one at this moment, and the overlay then closed
+      // leaving focus on a node that no longer exists.
+      const active = document.activeElement;
+      const focusIsOurs = !active || active === document.body || !active.isConnected || panel?.contains(active);
+      if (returnTo?.isConnected && focusIsOurs) returnTo.focus?.({ preventScroll: true });
     };
   }, [active, ref, initialFocus]);
 }

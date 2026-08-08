@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDismiss, useFocusTrap, useScrollLock } from "./overlay.jsx";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -105,6 +106,8 @@ export default function FeedbackWidget() {
   const [error, setError] = useState(null);
   const [sent, setSent] = useState(false);
   const textRef = useRef(null);
+  const panelRef = useRef(null);
+  const fabRef = useRef(null);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -119,18 +122,15 @@ export default function FeedbackWidget() {
     return () => window.removeEventListener(FEEDBACK_OPEN_EVENT, onOpen);
   }, []);
 
-  // Escape closes, like every other overlay on the site.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => e.key === "Escape" && close();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, close]);
-
-  // Straight into the box — the panel exists to be typed in.
-  useEffect(() => {
-    if (open && !sent) textRef.current?.focus();
-  }, [open, sent]);
+  // Escape, the click outside, the focus trap and the scroll lock all come from
+  // the shared overlay layer. The panel keeps its own markup because it is
+  // anchored to its floating button on desktop rather than centred, which none
+  // of the Modal shells describe — but it should still behave like a dialog,
+  // and on a phone it IS one: a full-height sheet that used to let the page
+  // scroll away underneath it.
+  useDismiss(open, close, { ref: panelRef, anchorRef: fabRef });
+  useFocusTrap(open, panelRef, { initialFocus: sent ? undefined : textRef });
+  useScrollLock(open);
 
   // Walking off to another page closes it: the report names the page it was
   // written on, so a panel left open across a navigation would report the
@@ -187,6 +187,7 @@ export default function FeedbackWidget() {
           always shows the word again. */}
       <button
         type="button"
+        ref={fabRef}
         onClick={toggle}
         aria-expanded={open}
         title="Report a bug or suggest a feature"
@@ -208,18 +209,21 @@ export default function FeedbackWidget() {
 
       {open && (
         <>
-          {/* Click-catcher. On a phone the panel is a sheet over the page, so it
-              gets a real scrim; on desktop the catcher stays invisible and only
-              closes the panel on the next click outside it. */}
-          <button
-            type="button"
-            aria-label="Close feedback"
-            onClick={close}
-            className="fixed inset-0 z-scrim cursor-default bg-ink/40 backdrop-blur-sm lg:bg-transparent lg:backdrop-blur-none"
+          {/* The scrim. On a phone the panel is a sheet over the page and this
+              dims what it covers; on desktop it stays invisible. It used to be
+              a real <button> doing the closing as well, which put a second
+              "Close feedback" control in the tab order for no visual reason —
+              useDismiss above closes on any click outside the panel now, so
+              this is nothing but the dimming. */}
+          <div
+            aria-hidden="true"
+            className="fixed inset-0 z-scrim bg-ink/40 backdrop-blur-sm lg:bg-transparent lg:backdrop-blur-none"
           />
           {/* Bottom sheet on phones, a card above the button on desktop. */}
           <div
+            ref={panelRef}
             role="dialog"
+            aria-modal="true"
             aria-label="Feedback"
             className="notif-pop fixed inset-x-0 bottom-0 z-overlay max-h-[88dvh] overflow-y-auto rounded-t-2xl border border-border bg-card p-5 shadow-2xl shadow-ink/30 lg:inset-x-auto lg:bottom-20 lg:right-6 lg:w-[23rem] lg:rounded-2xl"
           >
