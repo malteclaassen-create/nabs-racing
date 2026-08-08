@@ -4,7 +4,7 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent } from "../components/ui.jsx";
+import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent, AutoHeight } from "../components/ui.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import RaceResults from "../components/RaceResults.jsx";
@@ -695,8 +695,24 @@ export default function Races() {
             </aside>
 
             {/* selected race: results for completed rounds, sign-up + driver
-                market for rounds that haven't been run yet. */}
-            <div className="min-w-0">
+                market for rounds that haven't been run yet.
+                AutoHeight so this column GROWS into its content instead of
+                being born at full height: the table's background then arrives
+                together with its rows rather than standing there empty while
+                they fill in, and switching between a 37-row result and a
+                sign-up panel slides the calendar below instead of teleporting
+                it (measured: 1939px, in one frame). */}
+            {/* --t-draw (1.1s) is a sync, not a taste call. Measured on this
+                page: the row cascade runs to 1390ms (its stagger caps at 16
+                rows × 45ms, plus the reveal delay and the 450ms rise), so the
+                curtain reaches the bottom about 290ms before the last rows have
+                finished fading. Those rows are already in place and merely
+                settling by then, which is a world away from the thing being
+                fixed — 2257px of empty table standing there for two seconds
+                while it filled in. The longest step on the motion scale is
+                1.1s; matching 1390 exactly would mean inventing a duration
+                outside it, and 290ms of settle is not worth that. */}
+            <AutoHeight grow duration="var(--t-draw)" className="min-w-0">
               {selectedRace && !selectedRace.isCompleted ? (
                 /* Keyed on the race so switching rounds REMOUNTS the panel. Its
                    track history (and with it the outline's admin-set rotation)
@@ -803,7 +819,7 @@ export default function Races() {
                   )}
                 </>
               )}
-            </div>
+            </AutoHeight>
           </div>
         ) : (
           <div className="card p-8 text-center text-medium">
