@@ -11,6 +11,7 @@ import VideoEmbed from "../components/VideoEmbed.jsx";
 import Flag from "../components/Flag.jsx";
 import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
+import { currentSignupRace } from "../utils/signupQueue.js";
 
 // Which answer a ?rsvp= link stands for. Deliberately a fixed map, so an
 // arbitrary value in the URL can never be forwarded to the API as a status.
@@ -153,16 +154,15 @@ export default function Attendance() {
     () => [...(events.data || [])].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)),
     [events.data]
   );
-  // The page shows exactly ONE race: the next one on the calendar. It used to
-  // put every upcoming round on screen as a row of buttons, which on a full
-  // season meant the whole year sat on top of a page whose entire job is the
-  // question "are you racing on Friday". A ?race= link still wins, so a one-tap
-  // answer out of a notification or a Discord post lands on the round it was
-  // sent for even when that isn't the next one.
-  const ev = useMemo(
-    () => (wantRace ? list.find((e) => e.id === wantRace) : null) || list[0] || null,
-    [list, wantRace]
-  );
+  // The page shows exactly ONE race. It used to put every upcoming round on
+  // screen as a row of buttons, which on a full season meant the whole year sat
+  // on top of a page whose entire job is the question "are you racing on
+  // Friday". Which one that is comes from the shared queue rule (utils/
+  // signupQueue.js), so this page and the Races page always name the same
+  // round — including when an admin has forced a later one open. A ?race= link
+  // still wins, so a one-tap answer out of a notification or a Discord post
+  // lands on the round it was sent for even when that isn't the next one.
+  const ev = useMemo(() => currentSignupRace(list, wantRace), [list, wantRace]);
 
   // RSVP actions (identity from the Discord login; forgery-proof server-side).
   const [busy, setBusy] = useState(null);

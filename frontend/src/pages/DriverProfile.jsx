@@ -386,12 +386,34 @@ function RatingBreakdown({ rating, stats, color }) {
 // the per-round result chips sitting directly under each round. The line only
 // connects rounds the driver actually finished — rounds they sat out (or
 // retired from) leave a gap and the line simply carries on to the next finish.
-function FormChart({ perRace, color }) {
-  const N = perRace.length;
+function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
+  // Every round of the season, run or not: a round already raced brings its
+  // result along, one still ahead is an empty slot that only carries its label.
+  // That way the chart reads as the whole campaign from round one instead of
+  // growing a column at a time.
+  const byNumber = new Map((perRace || []).map((r) => [r.number, r]));
+  const rounds = (seasonRounds && seasonRounds.length ? seasonRounds : perRace || []).map((s) => {
+    const r = byNumber.get(s.number);
+    return r ? { ...r, upcoming: false } : { number: s.number, track: s.track, status: null, upcoming: true };
+  });
+  const N = rounds.length;
   if (!N) return <div className="text-sm text-light">No races yet.</div>;
 
-  const finishes = perRace
-    .map((r, i) => (r.status === "FINISHED" && r.position != null ? { i, p: r.position } : null))
+  // What counts as a plotted point depends on the view: a finishing position in
+  // the Race view, a qualifying position in the Qualifying view (which is there
+  // even when the driver went on to retire, so it has no status condition).
+  const valueOf = (r) =>
+    mode === "quali"
+      ? r.qualiPosition ?? null
+      : r.status === "FINISHED" && r.position != null
+        ? r.position
+        : null;
+
+  const finishes = rounds
+    .map((r, i) => {
+      const p = valueOf(r);
+      return p != null ? { i, p } : null;
+    })
     .filter(Boolean);
   const positions = finishes.map((f) => f.p);
   const best = positions.length ? Math.min(...positions) : null;
@@ -484,15 +506,15 @@ function FormChart({ perRace, color }) {
                 />
               )}
             </svg>
-            {/* dots — finished rounds only; best ringed green, worst ringed red */}
+            {/* dots — plotted rounds only; best ringed green, worst ringed red */}
             <div className="absolute inset-0 flex">
-              {perRace.map((r, i) => {
-                const finished = r.status === "FINISHED" && r.position != null;
-                if (!finished) return <div key={i} className="flex-1" />;
-                const medal = r.position <= 3 ? MEDAL[r.position - 1] : null;
-                const isBest = r.position === best;
-                const isWorst = r.position === worst && worst !== best;
-                const top = `${yPct(r.position)}%`;
+              {rounds.map((r, i) => {
+                const p = valueOf(r);
+                if (p == null) return <div key={i} className="flex-1" />;
+                const medal = p <= 3 ? MEDAL[p - 1] : null;
+                const isBest = p === best;
+                const isWorst = p === worst && worst !== best;
+                const top = `${yPct(p)}%`;
                 return (
                   <div key={i} className="relative flex-1">
                     {(isBest || isWorst) && (
@@ -504,7 +526,7 @@ function FormChart({ perRace, color }) {
                     <span
                       className="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card"
                       style={{ left: "50%", top, backgroundColor: medal || color }}
-                      title={`R${r.number} ${r.track} · P${r.position}`}
+                      title={`R${r.number} ${r.track} · P${p}`}
                     />
                   </div>
                 );
@@ -522,11 +544,11 @@ function FormChart({ perRace, color }) {
         {/* same wipe, same duration as the plot above — chips surface exactly
             when the line reaches their round */}
         <div className="wipe-ltr flex flex-1" style={{ "--wipe-dur": "2s" }}>
-          {perRace.map((r) => {
-              const finished = r.status === "FINISHED" && r.position != null;
-              const medal = finished && r.position <= 3 ? MEDAL[r.position - 1] : null;
-              const isBest = finished && r.position === best;
-              const isWorst = finished && r.position === worst && worst !== best;
+          {rounds.map((r) => {
+              const p = valueOf(r);
+              const medal = p != null && p <= 3 ? MEDAL[p - 1] : null;
+              const isBest = p != null && p === best;
+              const isWorst = p != null && p === worst && worst !== best;
               const ring = isBest
                 ? "ring-2 ring-emerald-500"
                 : isWorst
@@ -534,23 +556,38 @@ function FormChart({ perRace, color }) {
                 : medal
                 ? ""
                 : "ring-1 ring-border";
+              // What the chip says when there is no number to show: a round
+              // that hasn't happened is a quiet dash, one that has is the
+              // reason there's no result (DNF/DNS/DSQ) — or, in the Qualifying
+              // view, simply no session on file.
+              const label = p != null ? p : r.upcoming ? "–" : mode === "quali" ? "–" : r.status;
               return (
                 <div
                   key={r.number}
-                  className="flex flex-1 flex-col items-center gap-1.5"
-                  title={`R${r.number} ${r.track} · ${finished ? "P" + r.position : r.status}`}
+                  className={`flex flex-1 flex-col items-center gap-1.5 ${r.upcoming ? "opacity-45" : ""}`}
+                  title={`R${r.number} ${r.track}${
+                    p != null ? ` · P${p}` : r.upcoming ? " · not raced yet" : mode === "quali" ? " · no qualifying on file" : ` · ${r.status}`
+                  }`}
                 >
                   <span
                     className={`flex h-9 w-9 items-center justify-center rounded-lg font-display font-black tabular-nums ${
-                      finished ? "text-sm" : "text-[10px] tracking-tight"
+                      p != null ? "text-sm" : "text-[10px] tracking-tight"
                     } ${
-                      medal ? "text-ink" : finished ? "bg-surface2 text-dark" : "bg-surface2 text-light"
+                      medal ? "text-ink" : p != null ? "bg-surface2 text-dark" : "bg-surface2 text-light"
                     } ${ring}`}
                     style={medal ? { backgroundColor: medal } : undefined}
                   >
-                    {finished ? r.position : r.status}
+                    {label}
                   </span>
-                  <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-light">
+                  {/* Round label with the circuit's flag, so the axis reads as
+                      a calendar rather than a row of numbers. The flag comes
+                      from the track itself (same resolver as everywhere else);
+                      a track we have no country for simply shows the number. */}
+                  <span className="flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-light">
+                    {(() => {
+                      const f = flagFor(r.track);
+                      return f ? <Flag code={f.country} title={f.countryName} w={14} h={10} /> : null;
+                    })()}
                     R{r.number}
                   </span>
                 </div>
@@ -1312,6 +1349,9 @@ export default function DriverProfile({ previewId, preview }) {
   const { data, loading, error } = useApi(
     useCallback(() => Promise.all([api.driverProfile(id), api.driverRating(id)]), [id])
   );
+  // Season-form view: race result or qualifying. Up here with the other hooks,
+  // above the loading/error returns below.
+  const [formMode, setFormMode] = useState("race");
 
   // The driver IS this page, so the tab and the search result should say so
   // rather than naming the season alone. Same wording as the title the server
@@ -1387,6 +1427,16 @@ export default function DriverProfile({ previewId, preview }) {
   // opened from an archived season still resolves against the right field.
   const standingsData = p.season;
   const { championship, stats, perRace } = p;
+  // Season-form header numbers, per view. The Race view keeps using the stored
+  // season stats; the Qualifying view derives its own from the rounds that have
+  // a qualifying result. `hasQuali` also decides whether the switch appears at
+  // all — no uploaded session, no tab.
+  const qualiPositions = (perRace || []).map((r) => r.qualiPosition).filter((v) => v != null);
+  const hasQuali = qualiPositions.length > 0;
+  const formBest =
+    formMode === "quali"
+      ? { best: qualiPositions.length ? Math.min(...qualiPositions) : null, worst: qualiPositions.length ? Math.max(...qualiPositions) : null }
+      : { best: stats.bestFinish ?? null, worst: stats.worstFinish ?? null };
   // Preview mode: unsaved profile edits overlay the stored driver fields.
   const driver = preview ? { ...p.driver, ...preview } : p.driver;
   const color = driver.team.color;
@@ -1521,24 +1571,50 @@ export default function DriverProfile({ previewId, preview }) {
       {/* Season form + Head to head */}
       <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">
         <div className="reveal card flex flex-col overflow-hidden lg:col-span-2">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-5 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-5 py-4 sm:px-6">
             <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Season Form</h2>
-            <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">finishing position by round</span>
-            {stats.bestFinish != null && (
-              <span className="ml-auto flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-wider">
+            <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+              {formMode === "quali" ? "qualifying position by round" : "finishing position by round"}
+            </span>
+            {formBest.best != null && (
+              <span className="flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-wider">
                 <span className="flex items-center gap-1.5 text-ok">
-                  <span className="h-2 w-2 rounded-full ring-2 ring-emerald-500" /> Best P{stats.bestFinish}
+                  <span className="h-2 w-2 rounded-full ring-2 ring-emerald-500" /> Best P{formBest.best}
                 </span>
-                {stats.worstFinish != null && stats.worstFinish !== stats.bestFinish && (
+                {formBest.worst != null && formBest.worst !== formBest.best && (
                   <span className="flex items-center gap-1.5 text-bad">
-                    <span className="h-2 w-2 rounded-full ring-2 ring-red-500" /> Worst P{stats.worstFinish}
+                    <span className="h-2 w-2 rounded-full ring-2 ring-red-500" /> Worst P{formBest.worst}
                   </span>
                 )}
               </span>
             )}
+            {/* Race ⇄ Qualifying. Only offered when a quali session has actually
+                been uploaded for this season — otherwise the tab would lead to
+                an empty chart and imply we lost the data. */}
+            {hasQuali && (
+              <SlidingTabs
+                className="ml-auto"
+                items={[
+                  { key: "race", label: "Race" },
+                  { key: "quali", label: "Qualifying" },
+                ]}
+                value={formMode}
+                onChange={setFormMode}
+                btnClassName="px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
+              />
+            )}
           </div>
           <div className="flex-1 p-5 sm:p-6">
-            <FormChart perRace={perRace} color={color} />
+            {/* Keyed on the view so switching REPLAYS the wipe-in: the chart
+                rebuilding itself round by round is the whole charm of it, and a
+                silent swap would look like a glitch. */}
+            <FormChart
+              key={formMode}
+              perRace={perRace}
+              seasonRounds={p.seasonRounds}
+              color={color}
+              mode={formMode}
+            />
           </div>
         </div>
 

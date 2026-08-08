@@ -61,6 +61,12 @@ function publicDriverId(guid) {
 }
 
 const BROADCAST_MS = 700; // how often we push a fresh board to frontend clients
+// How long a finished race's final classification stays on the board after the
+// server has already cycled on to the next session. Born after the first race
+// of season 8 (2026-08-07): the sim flips back to practice moments after the
+// flag, and the result vanished mid-celebration. A fresh RACE session starting
+// releases the hold early — a new race is never hidden behind an old one.
+const RESULT_HOLD_MS = 15 * 60 * 1000;
 // Quiet servers (nobody on track) only send the full snapshot every ~30s and
 // no per-car telemetry in between, so the stale threshold must sit comfortably
 // above that gap or the badge flaps to "Reconnecting" between snapshots.
@@ -208,6 +214,9 @@ function createRelay(server) {
 
   let status = null; // latest EventType 200 Message (full snapshot)
   const liveByCar = new Map(); // CarID -> latest EventType 53 telemetry
+  // CarID -> guid, rebuilt from every snapshot: ET53 only carries the CarID,
+  // but the follow fast-lane (relayFollowedTelemetry) speaks public driver ids.
+  const carIdToGuid = new Map();
   // guid -> last known race position, so a driver who leaves the server right
   // after the flag keeps their slot on the board instead of vanishing to the
   // bottom. Cleared with the stint history on a session change.
@@ -303,6 +312,20 @@ function createRelay(server) {
   const stintsByGuid = new Map(); // guid -> { stints:[{tyre,fromLap,toLap}], lastPits }
   let stintSessionKey = null;
 
+  // Every driver seen in the CURRENT race, raw upstream record and all. The
+  // upstream forgets a car some time after it disconnects; on race night that
+  // meant finishers dropped off the live board one by one as they left the
+  // server, and the classification crumbled while people were still looking at
+  // it. This map keeps each leaver's last known record so the board can keep
+  // showing them (with their held racePosition) until the session changes.
+  // Updated on every ET200 snapshot — deliberately NOT in getBoard, which only
+  // runs while somebody is watching. Cleared with the stints above.
+  const raceRosterByGuid = new Map();
+
+  // A finished race's final board, held past the session change (see the ET200
+  // handler and RESULT_HOLD_MS).
+  let finishedRace = null; // { board, until } | null
+
   function accumulateStints(msg) {
     if (!msg) return;
     const si = msg.SessionInfo || {};
@@ -310,6 +333,7 @@ function createRelay(server) {
     if (key !== stintSessionKey) {
       stintsByGuid.clear();
       lastRacePosByGuid.clear();
+      raceRosterByGuid.clear();
       stintSessionKey = key;
     }
     // In Practice/Qualifying a driver teleports back to the pits to end a run and
@@ -360,6 +384,17 @@ function createRelay(server) {
       }
       st.lastPits = pits;
     }
+
+    // Race roster upkeep: remember everyone's latest record, connected drivers
+    // winning over their stored (disconnected) counterpart.
+    if (isRace) {
+      for (const [guid, d] of Object.entries(msg.DisconnectedDrivers?.Drivers || {})) {
+        if (!d.CarInfo?.IsSpectator && !connected[guid]) raceRosterByGuid.set(guid, d);
+      }
+      for (const [guid, d] of Object.entries(connected)) {
+        if (!d.CarInfo?.IsSpectator) raceRosterByGuid.set(guid, d);
+      }
+    }
   }
 
   // The stint list a board entry ships: [{ tyre, laps }] plus the live compound.
@@ -385,8 +420,59 @@ function createRelay(server) {
     return upstream && upstream.readyState === WebSocket.OPEN;
   }
 
+  // One full ET200 snapshot, from the wire (or a test). Order matters here:
+  // the freeze check has to run BEFORE the new snapshot replaces `status` and
+  // before accumulateStints clears the per-session maps, or the result would
+  // be built from the wiped state it is supposed to preserve.
+  function ingestSnapshot(next) {
+    // Session change away from a RACE: freeze the final classification so the
+    // result stays on the board for RESULT_HOLD_MS (see getBoard).
+    const oldSi = status?.SessionInfo;
+    if (
+      oldSi?.Type === 3 &&
+      sessionKeyOf(next?.SessionInfo || {}, next?.TrackInfo || {}) !==
+        sessionKeyOf(oldSi || {}, status?.TrackInfo || {})
+    ) {
+      const board = buildBoard();
+      if (board.ok && board.session) {
+        // Frozen means over: the clock must not keep counting down.
+        board.session = { ...board.session, remainingMs: 0, finished: true };
+        finishedRace = { board, until: Date.now() + RESULT_HOLD_MS };
+      }
+    }
+    status = next;
+    // Keep the per-car telemetry across snapshots — clearing it here blanked
+    // every map dot for a beat (pos gone until each car's next ET53). Only
+    // drop cars that actually left the server.
+    {
+      const alive = new Set();
+      carIdToGuid.clear();
+      for (const [guid, d] of Object.entries(status?.ConnectedDrivers?.Drivers || {})) {
+        if (typeof d?.CarInfo?.CarID === "number") {
+          alive.add(d.CarInfo.CarID);
+          carIdToGuid.set(d.CarInfo.CarID, guid);
+        }
+      }
+      for (const id of [...liveByCar.keys()]) {
+        if (!alive.has(id)) liveByCar.delete(id);
+      }
+    }
+    accumulateStints(status); // grow the per-driver tyre-stint history
+    ensureTrackMap(status?.SessionInfo || {}); // (re)load the real map on track change
+  }
+
   function connectUpstream() {
-    upstream = new WebSocket(server.ws, { headers: { Origin: server.origin } });
+    // perMessageDeflate OFF, explicitly. The ws client OFFERS compression by
+    // default; if the server manager accepts, every telemetry message runs
+    // through native zlib contexts — memory that lives outside the JS heap,
+    // is known (ws docs say so themselves) to fragment under high message
+    // rates, and never shows up in a heap snapshot. A race evening is exactly
+    // that: hours of high-frequency ET53 messages. The payloads are small
+    // JSON — compression buys nothing here worth that risk.
+    upstream = new WebSocket(server.ws, {
+      headers: { Origin: server.origin },
+      perMessageDeflate: false,
+    });
 
     upstream.on("open", () => {
       reconnectDelay = 1000;
@@ -420,25 +506,14 @@ function createRelay(server) {
       }
       switch (msg.EventType) {
         case 200: // full snapshot — refreshes lap times
-          status = msg.Message;
-          // Keep the per-car telemetry across snapshots — clearing it here
-          // blanked every map dot for a beat (pos gone until each car's next
-          // ET53). Only drop cars that actually left the server.
-          {
-            const alive = new Set();
-            for (const d of Object.values(status?.ConnectedDrivers?.Drivers || {})) {
-              if (typeof d?.CarInfo?.CarID === "number") alive.add(d.CarInfo.CarID);
-            }
-            for (const id of [...liveByCar.keys()]) {
-              if (!alive.has(id)) liveByCar.delete(id);
-            }
-          }
-          accumulateStints(status); // grow the per-driver tyre-stint history
-          ensureTrackMap(status?.SessionInfo || {}); // (re)load the real map on track change
+          ingestSnapshot(msg.Message);
           break;
         case 53: // per-car telemetry
           if (msg.Message && typeof msg.Message.CarID === "number") {
             liveByCar.set(msg.Message.CarID, msg.Message);
+            // Fast lane: followers of THIS car get its cockpit numbers now,
+            // not at the next 700ms board tick.
+            relayFollowedTelemetry(server.key, carIdToGuid.get(msg.Message.CarID), msg.Message);
           }
           break;
         default:
@@ -461,20 +536,49 @@ function createRelay(server) {
     });
   }
 
-  // Ping every HEARTBEAT_MS; give up on the socket when nothing has come back
-  // for two rounds. terminate() rather than close(): a socket whose peer is gone
-  // never completes a closing handshake, and close() would sit in CLOSING.
+  // Ping every HEARTBEAT_MS; when nothing has come back for two rounds, check
+  // whether the server is actually gone before giving up on the socket.
+  //
+  // That second check exists because of what a week of Railway logs showed on
+  // 2026-08-07: this server manager NEVER answers WebSocket pings, and an
+  // empty server sends no messages either — so the old "no pong in 90s means
+  // dead" rule tore down a perfectly healthy connection every ~91 seconds,
+  // around the clock, on every configured server. Nearly ten thousand
+  // reconnects in one week, all false alarms (the moment cars were on track,
+  // the message flow counted as life and the churn stopped). So on silence we
+  // now ask the manager's HTTP side instead: if the website answers, the box
+  // is up and merely quiet — keep the socket. Only when HTTP is dead too is
+  // the socket really orphaned; terminate() rather than close(), because a
+  // peer that is gone never completes a closing handshake and close() would
+  // sit in CLOSING forever.
+  let probing = false; // one HTTP probe at a time; ticks during a probe skip
   function startHeartbeat() {
     stopHeartbeat();
     heartbeatTimer = setInterval(() => {
       if (Date.now() - lastAliveAt > HEARTBEAT_MS * 2) {
-        console.log(`${tag} upstream unresponsive for ${Math.round((Date.now() - lastAliveAt) / 1000)}s; dropping it`);
-        try {
-          upstream.terminate();
-        } catch {
-          /* already gone */
-        }
-        return; // the close handler stops this timer and schedules the reconnect
+        if (probing) return;
+        probing = true;
+        const probed = upstream; // the socket this verdict is about — if the
+        // connection dies and reconnects while the probe is in flight, the
+        // result must not touch its successor.
+        fetchUpstream(server.origin, 5000).then((body) => {
+          probing = false;
+          if (body != null) {
+            // Server is up, the socket is just silent (empty track, and the
+            // manager doesn't do pongs). Counts as proof of life.
+            lastAliveAt = Date.now();
+            return;
+          }
+          if (upstream !== probed) return;
+          console.log(`${tag} upstream unresponsive for ${Math.round((Date.now() - lastAliveAt) / 1000)}s and HTTP is down too; dropping it`);
+          try {
+            upstream.terminate();
+          } catch {
+            /* already gone */
+          }
+          // the close handler stops this timer and schedules the reconnect
+        });
+        return;
       }
       try {
         upstream.ping();
@@ -537,6 +641,16 @@ function createRelay(server) {
       potentialMs: potentialOf(car?.BestSplits),
       inPits: live.IsInPits ?? d.IsInPits ?? false,
       numPits: live.NumPits ?? d.NumPits ?? 0,
+      // Cockpit readouts for the map's follow mode. Speed is the magnitude of
+      // the ET53 velocity vector (m/s components -> km/h); gear stays in AC's
+      // raw convention (0 = reverse, 1 = neutral, 2 = first) — translating is
+      // the frontend's job. Only an on-track car streams telemetry.
+      speedKmh:
+        onTrack && live.Velocity
+          ? Math.round(Math.hypot(live.Velocity.X || 0, live.Velocity.Y || 0, live.Velocity.Z || 0) * 3.6)
+          : null,
+      gear: onTrack ? live.Gear ?? null : null,
+      rpm: onTrack ? live.EngineRPM ?? null : null,
       ping: live.Ping ?? d.Ping ?? null,
       drs: live.DRSActive ?? d.DRSActive ?? false,
       deltaSelfMs: onTrack ? live.DeltaToSelf ?? d.DeltaToSelf ?? null : null,
@@ -552,8 +666,23 @@ function createRelay(server) {
     };
   }
 
-  // Build the clean board we hand to the frontend.
+  // What the frontend gets. Usually the live board; for RESULT_HOLD_MS after a
+  // race session ended, the frozen final classification instead (a race result
+  // must survive the server cycling back to practice). A new RACE session
+  // releases the hold immediately.
   function getBoard() {
+    if (finishedRace) {
+      if (Date.now() > finishedRace.until || status?.SessionInfo?.Type === 3) {
+        finishedRace = null;
+      } else {
+        return { ...finishedRace.board, connected: upstreamOpen(), updatedAt: Date.now() };
+      }
+    }
+    return buildBoard();
+  }
+
+  // Build the clean board we hand to the frontend.
+  function buildBoard() {
     if (!status) {
       return { ok: false, connected: upstreamOpen(), server: server.key, session: null, entries: [], updatedAt: Date.now() };
     }
@@ -574,6 +703,19 @@ function createRelay(server) {
       if (d.CarInfo?.IsSpectator) continue;
       byGuid.set(guid, buildEntry(guid, d, true));
     }
+    // In a race, drivers the upstream has already forgotten (left the server,
+    // aged out of DisconnectedDrivers) come back from our own roster so the
+    // classification stays complete until the session changes.
+    const resurrected = new Set(); // public ids of roster-only entries
+    if (si.Type === 3) {
+      for (const [guid, d] of raceRosterByGuid) {
+        if (!byGuid.has(guid)) {
+          const e = buildEntry(guid, d, false);
+          byGuid.set(guid, e);
+          resurrected.add(e.guid);
+        }
+      }
+    }
     const entries = [...byGuid.values()];
 
     // Ranking. A RACE orders by the actual running order (telemetry
@@ -582,7 +724,22 @@ function createRelay(server) {
     // ranking: fastest best lap first; drivers without a lap go last.
     const isRace = si.Type === 3;
     if (isRace) {
+      // A resurrected leaver's held position goes stale as the race moves on:
+      // a lap-3 quitter would sit mid-field for the rest of the evening. So a
+      // leaver who has fallen more than a lap behind the leader is classified
+      // at the BOTTOM, by distance covered — a DNF, the way a timing tower
+      // shows one. A driver who left on (or near) full distance keeps their
+      // held position: that is the finisher who closed the game after the
+      // flag, the exact case the roster exists for.
+      const maxLaps = entries.reduce((m, e) => Math.max(m, e.lapCount || 0), 0);
+      const dropped = (e) => resurrected.has(e.guid) && (e.lapCount || 0) < maxLaps - 1;
       entries.sort((a, b) => {
+        const da = dropped(a);
+        const db = dropped(b);
+        if (da !== db) return da ? 1 : -1;
+        if (da && db) {
+          return (b.lapCount || 0) - (a.lapCount || 0) || (a.racePosition ?? 99) - (b.racePosition ?? 99);
+        }
         if (a.racePosition != null && b.racePosition != null) {
           if (a.racePosition !== b.racePosition) return a.racePosition - b.racePosition;
           // Same slot (the sim re-issues a leaver's position to the next car):
@@ -665,12 +822,31 @@ function createRelay(server) {
     connect: connectUpstream,
     getBoard,
     getTrackMapPng: () => trackMap?.png || null,
+    // Size of every per-relay structure that can grow, for the memory
+    // diagnostics. Counts only — the point is spotting the one that climbs.
+    stats: () => ({
+      connected: upstreamOpen(),
+      lastMessageAgoS: lastMessageAt ? Math.round((Date.now() - lastMessageAt) / 1000) : null,
+      cars: liveByCar.size,
+      stintDrivers: stintsByGuid.size,
+      heldPositions: lastRacePosByGuid.size,
+      raceRoster: raceRosterByGuid.size,
+      resultHold: !!finishedRace,
+      trackMapKb: trackMap?.png ? Math.round(trackMap.png.length / 1024) : 0,
+    }),
     // Test hooks (state is per-relay, so tests drive an unconnected instance).
     __accumulateStints: accumulateStints,
     __stintsFor: stintsFor,
+    __ingest: ingestSnapshot,
+    __getBoard: getBoard,
     __reset() {
       stintsByGuid.clear();
+      raceRosterByGuid.clear();
+      lastRacePosByGuid.clear();
+      liveByCar.clear();
+      finishedRace = null;
       stintSessionKey = null;
+      status = null;
     },
   };
 }
@@ -693,12 +869,61 @@ export function getTrackMapPng(serverKey) {
   return relayFor(serverKey).getTrackMapPng();
 }
 
+// Live-timing internals for the memory diagnostics (services/memoryDiagnostics
+// .js): how many frontend viewers hang on our socket, how many ids the
+// pseudonym cache holds, and each relay's growable structures. `clientWss` is
+// set once the frontend WebSocket exists — before initLiveTiming (or in tests)
+// the honest answer is simply zero viewers.
+let clientWss = null;
+
+// The follow fast-lane. The 700ms board tick is fine for the tables, but the
+// cockpit readout (speed/gear/revs) next to a followed car looked laggy next
+// to the server manager's own page, which repaints on every telemetry message.
+// So a client may declare ONE car it follows ({follow: <public id>} on the
+// socket, see initLiveTiming); that car's numbers are then relayed the moment
+// its ET53 arrives. A tiny message, one car, only to its followers — the
+// broadcast cadence for everyone else stays untouched.
+function relayFollowedTelemetry(serverKey, guid, live) {
+  if (!clientWss || !guid) return;
+  let json = null; // built lazily — most ticks nobody follows this car
+  for (const c of clientWss.clients) {
+    if (c.readyState !== WebSocket.OPEN || c.isDemo || !c.followGuid) continue;
+    if ((c.serverKey || DEFAULT_SERVER_KEY) !== serverKey) continue;
+    if (c.followGuid !== publicDriverId(guid)) continue;
+    json ??= JSON.stringify({
+      car: {
+        guid: publicDriverId(guid),
+        speedKmh: live.Velocity
+          ? Math.round(Math.hypot(live.Velocity.X || 0, live.Velocity.Y || 0, live.Velocity.Z || 0) * 3.6)
+          : null,
+        gear: live.Gear ?? null,
+        rpm: live.EngineRPM ?? null,
+      },
+    });
+    try {
+      c.send(json);
+    } catch {
+      /* dead socket — ws will clean it up */
+    }
+  }
+}
+
+export function getLiveStats() {
+  return {
+    viewers: clientWss ? clientWss.clients.size : 0,
+    publicIds: publicIdCache.size,
+    servers: Object.fromEntries([...relays].map(([key, r]) => [key, r.stats()])),
+  };
+}
+
 // Test hook: the stint accumulator carries per-relay state; tests drive a
 // dedicated detached relay (never connected) and reset between cases.
 const testRelay = createRelay({ key: "test", origin: "https://test.invalid", ws: "wss://test.invalid" });
 export const __testing = {
   accumulateStints: testRelay.__accumulateStints,
   stintsFor: testRelay.__stintsFor,
+  ingest: testRelay.__ingest,
+  getBoard: testRelay.__getBoard,
   reset: testRelay.__reset,
 };
 
@@ -896,6 +1121,7 @@ export function initLiveTiming(server) {
   for (const r of relays.values()) r.connect();
 
   const wss = new WebSocketServer({ server, path: "/api/live/ws" });
+  clientWss = wss; // memory diagnostics read the viewer count from here
 
   // A socket that errors with no 'error' listener re-throws inside ws, and an
   // uncaught exception ends the process — which here is the whole site, the API
@@ -908,6 +1134,18 @@ export function initLiveTiming(server) {
 
   wss.on("connection", async (ws, req) => {
     ws.on("error", (e) => console.error("[live] client socket error:", e.message));
+    // The one thing a client may say to us: which car it follows (the map's
+    // focus mode). Anything else on the socket is ignored.
+    ws.on("message", (buf) => {
+      try {
+        const m = JSON.parse(buf.toString());
+        if ("follow" in m) {
+          ws.followGuid = typeof m.follow === "string" && m.follow.length <= 64 ? m.follow : null;
+        }
+      } catch {
+        /* not a follow message — ignore */
+      }
+    });
     ws.isDemo = wantsDemo(req);
     if (ws.isDemo) await ensureDemoState();
     // Which race server this client follows: resolved once, from the series it

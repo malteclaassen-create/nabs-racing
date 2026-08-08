@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent } from "../components/ui.jsx";
@@ -15,6 +16,7 @@ import Flag from "../components/Flag.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { useSpecificTitle, prettyTrack } from "../utils/pageTitle.js";
 import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
+import { signupRaceIds } from "../utils/signupQueue.js";
 
 // The calendar is built entirely from the season's races (DB), so it stays in
 // sync with whatever the admin schedules. Championship rounds (number set) are
@@ -25,6 +27,61 @@ import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 // being redefined in two places.
 function kindOf(r) {
   return r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+}
+
+// The championship rounds in calendar order: the "Rounds" rail, and the list
+// the default selection below picks from.
+function championshipRounds(races) {
+  return (races || [])
+    .filter((r) => kindOf(r) === "CHAMPIONSHIP" && r.number != null)
+    .sort((a, b) => a.number - b.number);
+}
+
+// ---------------------------------------------------------------------------
+// Which round the page opens on when the address names none.
+//
+// Two wishes that pull apart: the evening a result lands, everyone comes to
+// SEE it; every visit after that, the thing they still have to do is sign up
+// for the round ahead. So a freshly saved result gets exactly one showing, and
+// from the next visit on the page opens on the coming round instead.
+//
+// "Already shown" is remembered per browser as a SET of race ids rather than a
+// single "last seen" marker: ids are unique across seasons, so browsing an
+// archive season (whose finale is also unseen) adds its own entry and can
+// never make the current season's result count as new again. Capped so the
+// list can't grow without end over the years.
+// ---------------------------------------------------------------------------
+const SEEN_CAP = 50;
+const seenKeyFor = (slug) => `races-seen-results:${slug || "default"}`;
+
+function readSeenResults(key) {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return []; // private mode / corrupt value: the result simply greets them again
+  }
+}
+
+function markResultSeen(key, id) {
+  try {
+    const list = readSeenResults(key).filter((x) => x !== id);
+    list.push(id);
+    localStorage.setItem(key, JSON.stringify(list.slice(-SEEN_CAP)));
+  } catch {
+    /* private mode — nothing to remember with, and nothing breaks without it */
+  }
+}
+
+// `fresh` = this is a result the visitor hasn't been shown yet, so it earns its
+// one showing (and gets marked). Otherwise: the next round, or the last result
+// again once a season has run out of rounds (an archive season opens on its
+// finale and stays there, exactly as it always did).
+function pickDefaultRound(rounds, seen) {
+  const lastDone = [...rounds].reverse().find((r) => r.isCompleted) || null;
+  const nextUp = rounds.find((r) => !r.isCompleted) || null;
+  if (lastDone && !seen.includes(lastDone.id)) return { race: lastDone, fresh: true };
+  return { race: nextUp || lastDone, fresh: false };
 }
 
 // A round whose date isn't fixed yet renders "Date TBA" rather than the literal
@@ -381,6 +438,9 @@ export default function Races() {
   const wantRaceId = searchParams.get("race");
   const wantSeason = searchParams.get("season");
   const { season, setSeason, current } = useSeason();
+  // Which series' "already seen" list to consult (each series runs its own
+  // calendar, so each keeps its own memory).
+  const { slug } = useSeriesPath();
   useEffect(() => {
     if (!wantSeason || season == null) return;
     const n = Number(wantSeason);
@@ -414,6 +474,18 @@ export default function Races() {
       : null
   );
 
+  // Which rounds carry the "Sign up now" button, and the sign-up state of the
+  // selected one. Both come from the events feed via the shared queue rule
+  // (utils/signupQueue.js), so this page can never offer a sign-up the
+  // Attendance page then refuses: normally just the round we are on, plus any
+  // round an admin has forced open. Fetched once here rather than per panel.
+  const events = useApi(useCallback(() => api.events(), []));
+  const signupIds = useMemo(() => signupRaceIds(events.data), [events.data]);
+  const eventById = useMemo(
+    () => new Map((events.data || []).map((e) => [e.id, e])),
+    [events.data]
+  );
+
   // Explicit deep link (?race=<id>): always honour it and bring the explorer
   // into view. Keyed only on the id/races so a later manual pick isn't reverted.
   useEffect(() => {
@@ -431,19 +503,17 @@ export default function Races() {
   }, [wantRaceId, races]);
 
   useEffect(() => {
-    if (races && races.length && !selectedId) {
-      // A valid ?race=<id> is handled above; otherwise default to the most
-      // recent completed CHAMPIONSHIP round (the "rounds" tab is the initial
-      // tab), falling back to the next upcoming one before any results exist
-      // so its sign-up is shown.
-      const wanted = wantRaceId ? races.find((r) => r.id === wantRaceId) : null;
-      if (wanted) return;
-      const last = [...races].reverse().find((r) => r.isCompleted && kindOf(r) === "CHAMPIONSHIP");
-      const nextUp = races.find((r) => !r.isCompleted && kindOf(r) === "CHAMPIONSHIP" && r.number != null);
-      const target = last || nextUp;
-      if (target) setSelectedId(target.id);
-    }
-  }, [races, selectedId, wantRaceId]);
+    if (!races || !races.length || selectedId) return;
+    // A valid ?race=<id> is handled by the effect above; anything else opens on
+    // the round pickDefaultRound chooses (fresh result once, then the round
+    // ahead). The "rounds" tab is the initial tab, so the pick stays inside it.
+    if (wantRaceId && races.some((r) => r.id === wantRaceId)) return;
+    const key = seenKeyFor(slug);
+    const { race, fresh } = pickDefaultRound(championshipRounds(races), readSeenResults(key));
+    if (!race) return;
+    if (fresh) markResultSeen(key, race.id);
+    setSelectedId(race.id);
+  }, [races, selectedId, wantRaceId, slug]);
 
   // Race | Qualifying view of the selected round (the switcher sits in the
   // round header row). The choice is STICKY across race switches on purpose:
@@ -505,9 +575,7 @@ export default function Races() {
   const withDate = (r) => raceKickoff(r.date)?.getTime() ?? Infinity;
   // Championship rounds (have a number), training sessions and special events,
   // each group in calendar order.
-  const rounds = races
-    .filter((r) => kindOf(r) === "CHAMPIONSHIP" && r.number != null)
-    .sort((a, b) => a.number - b.number);
+  const rounds = championshipRounds(races);
   const trainings = races.filter((r) => kindOf(r) === "TRAINING").sort((a, b) => withDate(a) - withDate(b));
   const specials = races.filter((r) => kindOf(r) === "SPECIAL").sort((a, b) => withDate(a) - withDate(b));
 
@@ -620,7 +688,12 @@ export default function Races() {
                    rendered for a frame against the previous round's answer —
                    which is how a circuit the admin had turned appeared upright
                    first and then span into place. */
-                <UpcomingRacePanel key={selectedRace.id} race={selectedRace} />
+                <UpcomingRacePanel
+                  key={selectedRace.id}
+                  race={selectedRace}
+                  ev={eventById.get(selectedRace.id) || null}
+                  canSignUp={signupIds.has(selectedRace.id)}
+                />
               ) : (
                 <>
                   {/* The previous round's table stays up while the next one

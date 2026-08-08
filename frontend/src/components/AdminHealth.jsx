@@ -76,6 +76,36 @@ export default function AdminHealth() {
 
   const backups = useApi(useCallback(() => api.backups(), [backupDone]));
   const activity = useApi(useCallback(() => api.activity(), []));
+  // Live memory breakdown. Loaded once on open; the Refresh button re-reads it,
+  // which is how you watch a suspicious climb without leaving the tab.
+  const memory = useApi(useCallback(() => api.memory(), []));
+  const [snapBusy, setSnapBusy] = useState(false);
+
+  // Full heap snapshot download. The confirm is not decoration: writing the
+  // snapshot freezes the whole site for a few seconds.
+  async function downloadMemorySnapshot() {
+    if (
+      !window.confirm(
+        "Writing the memory snapshot freezes the site for a few seconds (longer when memory is high). Visitors simply wait a moment. Continue?"
+      )
+    )
+      return;
+    setError(null);
+    setSnapBusy(true);
+    try {
+      const { blob, name } = await api.downloadHeapSnapshot();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSnapBusy(false);
+    }
+  }
   // Disk usage per area. Reloaded together with the backup list: creating a
   // backup is the one admin action on this page that visibly moves the number.
   const storage = useApi(useCallback(() => api.storage(), [backupDone]));
@@ -328,6 +358,69 @@ export default function AdminHealth() {
                   ))}
                 </ul>
               </>
+            );
+          })()
+        )}
+      </section>
+
+      {/* --- Server memory ----------------------------------------------------- */}
+      <section className="card p-5">
+        <CardHead title="Server memory">
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-secondary" onClick={memory.reload} disabled={memory.loading}>
+              {memory.loading ? "Reading…" : "Refresh"}
+            </button>
+            <button className="btn-secondary" onClick={downloadMemorySnapshot} disabled={snapBusy}>
+              {snapBusy ? "Writing snapshot…" : "Download memory snapshot"}
+            </button>
+          </div>
+        </CardHead>
+        <p className="-mt-2 mb-4 text-sm text-light">
+          What the server keeps in working memory right now. Total is the number the hosting
+          dashboard charts. If Total climbs while JS data stays small, the growth sits in
+          connections and buffers rather than in the site's own data. The same reading is written
+          to the server logs every 5 minutes.
+        </p>
+        {memory.error ? (
+          <ErrorBox message={memory.error} onRetry={memory.reload} title="Couldn't read the memory usage" />
+        ) : !memory.data ? (
+          <p className="text-sm text-light">Measuring…</p>
+        ) : (
+          (() => {
+            const m = memory.data;
+            const MemRow = ({ label, value, hint }) => (
+              <li className="flex items-baseline justify-between gap-3 py-2 text-sm">
+                <span className="text-medium">
+                  {label}
+                  {hint && <span className="ml-2 text-xs text-light">{hint}</span>}
+                </span>
+                <span className="shrink-0 font-mono text-xs font-bold tabular-nums text-dark">{value}</span>
+              </li>
+            );
+            const servers = Object.entries(m.live?.servers || {});
+            return (
+              <ul className="divide-y divide-border">
+                <MemRow label="Total" hint="the whole process" value={`${m.rssMb} MB`} />
+                <MemRow label="JS data" hint="the site's own structures" value={`${m.heapUsedMb} MB`} />
+                <MemRow
+                  label="Buffers"
+                  hint="connections, sockets, file reads"
+                  value={`${Math.round((m.externalMb + m.arrayBuffersMb) * 10) / 10} MB`}
+                />
+                <MemRow label="Running for" value={`${m.uptimeHours} h`} />
+                <MemRow label="Live timing viewers" value={m.live?.viewers ?? 0} />
+                {servers.map(([key, s]) => (
+                  <MemRow
+                    key={key}
+                    label={`Race server ${key}`}
+                    value={
+                      s.connected
+                        ? `connected, ${s.cars} car${s.cars === 1 ? "" : "s"} on track`
+                        : "not connected"
+                    }
+                  />
+                ))}
+              </ul>
             );
           })()
         )}

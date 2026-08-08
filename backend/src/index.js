@@ -27,6 +27,7 @@ import feedbackRoutes from "./routes/feedback.js";
 import searchRoutes from "./routes/search.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
+import { startMemoryLog } from "./services/memoryDiagnostics.js";
 import { serverKeyForSeries } from "./lib/liveServers.js";
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
@@ -408,6 +409,12 @@ server.on("error", (e) => {
 
 // Live timing relay + frontend WebSocket (/api/live/ws).
 initLiveTiming(server);
+
+// A [mem] line every 5 minutes: total memory vs JS heap vs native buffers,
+// plus live-timing sizes. Exists so the next unexplained memory climb (like
+// race night 2026-08-07) can be read straight out of the Railway logs instead
+// of being reconstructed from guesses. Same report as GET /api/admin/memory.
+startMemoryLog();
 
 // Race reminders on a clock of their own. They used to exist only as a side
 // effect of somebody's bell polling, which meant the reminder that matters most

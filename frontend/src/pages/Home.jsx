@@ -350,21 +350,26 @@ function previewOpener(teaser, spec, track) {
 // so the mark stays in the card's free top-right corner and never reaches down
 // into the countdown.
 const MARK_AREA = 6700; // px², about 100x67 for a typical layout
-function circuitMark(track) {
+// `area`, the clamps and `rotateBelow` are overridable because the next-race
+// card gives the outline a band of its own rather than tucking it into a
+// corner: it is wider, shorter, and lays every portrait track down.
+function circuitMark(track, { area = MARK_AREA, maxW = 120, maxH = 100, rotateBelow = 0.5 } = {}) {
   const c = circuitFor(track);
   if (!c) return null;
   const [, , w, h] = String(c.box || "0 0 100 100").split(/\s+/).map(Number);
   let aspect = w > 0 && h > 0 ? w / h : 1;
-  // A layout more than twice as tall as it is wide (Jeddah is 1:3, Montreal and
-  // Watkins Glen close behind) would come out as a thin scratch in the corner
-  // however much area it is given, because the corner is wider than it is tall.
-  // Those lie down, the same move the admin can make per track for the race
-  // pages. CircuitMap grows its viewBox to the rotated bounds, so nothing clips.
-  const rotate = aspect < 0.5 ? 90 : 0;
+  // A track taller than its slot is wide comes out as a thin scratch however
+  // much area it is given, because the area has nowhere to go. Those lie down,
+  // the same move the admin can make per track for the race pages. Where the
+  // cutoff sits depends on the slot: a squarish corner only needs to turn the
+  // extremes (Jeddah is 1:3, Montreal and Watkins Glen close behind), a wide
+  // band turns everything portrait. CircuitMap grows its viewBox to the rotated
+  // bounds, so nothing clips.
+  const rotate = aspect < rotateBelow ? 90 : 0;
   if (rotate) aspect = 1 / aspect;
-  const height = Math.sqrt(MARK_AREA / aspect);
+  const height = Math.sqrt(area / aspect);
   const width = aspect * height;
-  const fit = Math.min(1, 120 / width, 100 / height);
+  const fit = Math.min(1, maxW / width, maxH / height);
   return { rotate, style: { width: Math.round(width * fit), height: Math.round(height * fit) } };
 }
 
@@ -703,6 +708,17 @@ export default function Home() {
   const roundNo = lastRace?.number ?? completedRaces.length;
   const lastCircuit = flagFor(lastRace?.track, lastRace?.country);
   const nextCircuit = flagFor(nextRace?.track, nextRace?.country);
+  // The next round's outline. Same drawing and sizing rule as the off-season
+  // card's opener, but this card is narrower and its name fills the width, so
+  // the outline gets a band of its own instead of lying behind the letters
+  // (where it read as a scratch across the track name rather than a mark).
+  // rotateBelow 1: every portrait circuit (Spa, Silverstone, Interlagos, Abu
+  // Dhabi …) lies down for this band. It is wide and short, so upright they
+  // came out as thin slivers next to a landscape track's full-width drawing —
+  // turned, they all fill it about equally and the band keeps one height.
+  const nextMark = nextRace?.track
+    ? circuitMark(nextRace.track, { area: 14000, maxW: 236, maxH: 92, rotateBelow: 1 })
+    : null;
   const completedNumbers = completedRaces.map((r) => r.number).sort((a, b) => a - b);
   // Championship rounds in this season (excludes non-scoring special events).
   const totalRounds = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null).length;
@@ -1140,7 +1156,32 @@ export default function Home() {
                   <span className="ml-auto text-ink/40 dark:text-white/50">Round {nextRace.number}</span>
                 </div>
 
-                <div className="mt-3 break-words font-display text-2xl font-black uppercase leading-[1.05] tracking-tight text-ink dark:text-white sm:text-3xl">
+                {/* The circuit gets a band of its own between the label and the
+                    name: the card grows by exactly the drawing's height, and the
+                    outline never has to share space with the letters. Centred
+                    and near full width, because every other block in this card
+                    (name, countdown, button) runs the full width too — pinned to
+                    one side it left half the band empty. Same outline, colours
+                    and draw-on the off-season card uses. */}
+                {nextMark && (
+                  <div className="mt-4 flex justify-center" aria-hidden="true">
+                    <div
+                      className="pointer-events-none text-ink opacity-[0.16] dark:text-white dark:opacity-[0.22]"
+                      style={nextMark.style}
+                    >
+                      <CircuitMap
+                        track={nextRace.track}
+                        animate
+                        rotate={nextMark.rotate}
+                        className="h-full w-full"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 break-words font-display text-2xl font-black uppercase leading-[1.05] tracking-tight text-ink dark:text-white sm:text-3xl">
                   {nextRace.track}
                 </div>
                 {/* skip the circuit line when it just repeats the race name

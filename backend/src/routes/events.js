@@ -12,6 +12,7 @@ import { applyMemberSteamId } from "../lib/members.js";
 import { readNotifySettings } from "../lib/notifications.js";
 import { readAttendanceOverrides, attendanceGate } from "../lib/attendanceGate.js";
 import { readHiddenRaceIds } from "../lib/attendanceHidden.js";
+import { raceKickoff } from "../lib/raceKickoff.js";
 
 const router = Router();
 const VALID = ["ACCEPTED", "DECLINED", "TENTATIVE"];
@@ -147,9 +148,17 @@ router.get("/", async (req, res, next) => {
         qualiMinutes: format.get(race.id)?.qualiMinutes ?? null,
         raceLaps: format.get(race.id)?.raceLaps ?? null,
         attendanceOpensAt: gate.opensAt?.toISOString() ?? null,
-        // An admin shut this one: the card says so instead of counting down to
-        // an opening that isn't coming.
-        attendanceClosed: gate.forced === "closed",
+        // Shut, with no opening to count down to: an admin closed it, or the
+        // race started over an hour ago (the entry list is the final grid
+        // then, kept on show until the result replaces this race entirely).
+        attendanceClosed: gate.forced === "closed" || gate.closedForStart,
+        // The gate's own verdict, so the pages don't have to re-derive it, and
+        // whether a PERSON opened this one. The second one matters: sign-up
+        // normally runs one round at a time (see /open below), and an admin
+        // forcing a later round open is the documented way out of that queue —
+        // so that round has to be able to say so for itself.
+        attendanceOpen: gate.open,
+        attendanceForcedOpen: gate.forced === "open",
         // Only ever true in the admin's own view (see the filter above).
         hidden: hidden.has(race.id),
         visibleStatuses: notify.attendanceShow,
@@ -168,11 +177,17 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-// GET /api/events/open -> { open } — is any upcoming race currently taking
-// attendance answers? Drives whether the nav bar shows the Attendance item:
-// it appears when a sign-up window opens (or a race is scheduled, with no
-// window configured) and leaves again once the race's result is saved
-// (isCompleted takes it out of the upcoming set).
+// GET /api/events/open -> { open } — is the NEXT race currently taking
+// attendance answers? Drives whether the nav bar shows the Attendance item.
+//
+// The next race, not "any open race": the attendance page shows exactly one
+// race (the next one), so the nav must answer for that race alone. Sign-up
+// runs one round at a time — while the round that just ran waits for its
+// result (closed since an hour after its start, see attendanceGate), a later
+// round with a technically-open gate must NOT keep the nav item alive, or
+// the item would never disappear on race night. The result being saved is
+// what moves the queue along: it completes the round, the next one becomes
+// "next", and the item returns pointing at the new track.
 router.get("/open", async (req, res, next) => {
   try {
     const seasonIds = await eventSeasonIds(prisma, req);
@@ -186,14 +201,23 @@ router.get("/open", async (req, res, next) => {
       readAttendanceOverrides(prisma),
       readHiddenRaceIds(prisma),
     ]);
-    const open = upcoming.some((r) => {
+    const candidates = upcoming.filter((r) => {
       const type = types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
       if (type === "SPECIAL") return false;
       // A hidden race must not be the reason the nav offers Attendance — the
       // page it would lead to has nothing on it.
-      if (hidden.has(r.id)) return false;
-      return attendanceGate(r, notify, overrides).open;
+      return !hidden.has(r.id);
     });
+    // Next = earliest kickoff; a race without a date can't be "next" ahead of
+    // dated ones (it has no evening to sign up for yet).
+    const gates = candidates
+      .map((r) => ({ gate: attendanceGate(r, notify, overrides), t: raceKickoff(r.date)?.getTime() ?? Infinity }))
+      .sort((a, b) => a.t - b.t);
+    // The queue's own race, plus the escape hatch: a round an admin has
+    // explicitly forced open counts even when it isn't next in line. Without
+    // that, "open" in the admin's Attendance tab would silently do nothing
+    // while an earlier round waits for its result.
+    const open = !!gates[0]?.gate.open || gates.some((g) => g.gate.forced === "open");
     res.json({ open });
   } catch (e) {
     next(e);
@@ -220,6 +244,9 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     const gate = attendanceGate(race, notify, overrides);
     if (gate.forced === "closed") {
       return res.status(403).json({ error: "Sign-up for this race is closed" });
+    }
+    if (gate.closedForStart) {
+      return res.status(403).json({ error: "Sign-up is closed. This race is already under way" });
     }
     const opens = gate.opensAt;
     if (opens && opens.getTime() > Date.now()) {
@@ -277,11 +304,12 @@ router.delete("/:id/rsvp/:driverId", optionalUser, async (req, res, next) => {
     // actually answered. (The :driverId param is ignored on purpose — the
     // caller can only ever remove their OWN response.)
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
-    // A race an admin has closed is closed both ways: the entry list they took
-    // it off the page to freeze must not quietly lose people afterwards.
+    // A closed race is closed both ways — admin-closed or under way, the frozen
+    // entry list is the final grid and must not quietly lose people afterwards.
     if (race) {
       const [notify, overrides] = await Promise.all([readNotifySettings(prisma), readAttendanceOverrides(prisma)]);
-      if (attendanceGate(race, notify, overrides).forced === "closed") {
+      const gate = attendanceGate(race, notify, overrides);
+      if (gate.forced === "closed" || gate.closedForStart) {
         return res.status(403).json({ error: "Sign-up for this race is closed" });
       }
     }

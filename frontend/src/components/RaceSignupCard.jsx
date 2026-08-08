@@ -9,7 +9,10 @@ import { countryFor } from "../data/driverCountries.js";
 // buttons are neutral outlines with a tinted icon, and fill with their status
 // colour once picked. The race identity itself lives in the hero above this
 // card on the Attendance page, so the header only carries the question.
-const STATUS_UI = {
+// Exported: UpcomingRacePanel's "final entry list" card reuses the exact
+// column look (icons, titles, colours) so the outcome reads as the same
+// feature the members answered on.
+export const STATUS_UI = {
   ACCEPTED: {
     label: "Accept",
     title: "Accepted",
@@ -39,7 +42,7 @@ const STATUS_UI = {
   },
 };
 
-function StatusIcon({ d, className = "" }) {
+export function StatusIcon({ d, className = "" }) {
   return (
     <svg viewBox="0 0 24 24" className={`h-4 w-4 ${className}`} fill="none" stroke="currentColor" strokeWidth="2.5"
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

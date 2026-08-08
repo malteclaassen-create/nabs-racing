@@ -17,6 +17,7 @@ import { buildResultsPost } from "../services/resultsPostService.js";
 import { resolveSeasonId, invalidatePrivateSeasonCache } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, streamFullBackupZip, deleteBackup, pruneBackupsTo } from "../services/backupService.js";
+import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnostics.js";
 import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
 import { parseFormatNumber } from "../lib/raceFormat.js";
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
@@ -180,6 +181,33 @@ router.get("/integrity", async (req, res, next) => {
     const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true, series: req.query.series });
     if (!seasonId) return res.status(404).json({ error: "Season not found" });
     res.json(await checkSeasonIntegrity(prisma, seasonId));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/memory -> live memory breakdown (total vs JS heap vs native
+// buffers) plus the live-timing internals. The Health tab's "Server memory"
+// card; the same report is also written to the logs every 5 minutes (see
+// services/memoryDiagnostics.js for why it exists and the baseline numbers).
+router.get("/memory", (_req, res) => {
+  res.json(memoryReport());
+});
+
+// GET /api/admin/memory/heap-snapshot -> full V8 heap snapshot as a download.
+// Writing it BLOCKS the whole site for a few seconds (the admin UI warns), and
+// the file is deleted right after it has been streamed out — it is roughly
+// heap-sized and has no business staying on the capped volume.
+router.get("/memory/heap-snapshot", (req, res, next) => {
+  try {
+    const snap = writeHeapSnapshotFile();
+    res.download(snap.path, snap.name, () => {
+      try {
+        unlinkSync(snap.path);
+      } catch {
+        /* the next snapshot sweeps leftovers anyway */
+      }
+    });
   } catch (e) {
     next(e);
   }
@@ -1184,12 +1212,13 @@ router.delete("/social-feed/posts/:id/cover", async (req, res, next) => {
 router.get("/live-links", async (req, res, next) => {
   try {
     const rows = await prisma.setting.findMany({
-      where: { key: { in: ["live_timing_url", "live_cm_join_url"] } },
+      where: { key: { in: ["live_timing_url", "live_cm_join_url", "live_stream_url"] } },
     });
     const get = (k) => rows.find((r) => r.key === k)?.value || "";
     res.json({
       liveTimingUrl: get("live_timing_url"),
       cmJoinUrl: get("live_cm_join_url"),
+      streamUrl: get("live_stream_url"),
       defaults: LIVE_LINK_DEFAULTS,
     });
   } catch (e) {
@@ -1197,10 +1226,10 @@ router.get("/live-links", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/live-links  { liveTimingUrl, cmJoinUrl }
+// PUT /api/admin/live-links  { liveTimingUrl, cmJoinUrl, streamUrl }
 // Empty live-timing URL falls back to the server-manager default; empty CM link
-// hides that button. Bare values get https:// prefixed (CM's acstuff.ru scheme
-// links are left untouched).
+// hides that button, empty stream link hides the player. Bare values get
+// https:// prefixed (CM's acstuff.ru scheme links are left untouched).
 router.put("/live-links", async (req, res, next) => {
   try {
     const body = req.body || {};
@@ -1209,7 +1238,11 @@ router.put("/live-links", async (req, res, next) => {
       if (val && !/^[a-z]+:\/\//i.test(val)) val = `https://${val}`;
       return val;
     };
-    const map = { live_timing_url: clean(body.liveTimingUrl), live_cm_join_url: clean(body.cmJoinUrl) };
+    const map = {
+      live_timing_url: clean(body.liveTimingUrl),
+      live_cm_join_url: clean(body.cmJoinUrl),
+      live_stream_url: clean(body.streamUrl),
+    };
     for (const [key, value] of Object.entries(map)) {
       await prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
     }

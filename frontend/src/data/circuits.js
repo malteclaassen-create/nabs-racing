@@ -399,8 +399,18 @@ const TRACK_ALIASES = {
   "sarthe": "LeMans",
   "circuit de la sarthe": "LeMans",
   "mount panorama": "Bathurst",
-  "fuji speedway": "Fuji"
+  "fuji speedway": "Fuji",
+  "vhe_hockenheim": "Hockenheim"
 };
+
+// Mod authors prefix their track folder with their own tag ("ks_" Kunos,
+// "fn_", "vhe_", "acu_" …), and that raw folder name is what an AC result file
+// carries — so an imported race can end up called "vhe_hockenheim", with no
+// outline, no flag and no track history, because nothing matches it. Anything
+// short followed by an underscore is treated as such a tag and dropped as a
+// LAST resort, after every exact rule below has already failed, and only when
+// what remains matches a circuit on its own. Explicit entries above still win.
+const MOD_PREFIX = /^[a-z0-9]{1,4}_/;
 
 // lowercase + strip everything that isn't a letter or digit, so "United States",
 // "united_states" and "UNITED STATES" all collapse to the same token.
@@ -418,28 +428,41 @@ const NORM_KEYS = Object.keys(CIRCUITS)
   .map((key) => ({ key, nk: normKey(key), cnk: normKey(CIRCUITS[key].circuit) }))
   .sort((a, b) => b.nk.length - a.nk.length);
 
-export function circuitFor(track) {
+// The ONE resolver: a raw track string -> the CIRCUITS key it means, or null.
+// Both lookups below are this function; they only differ in what they hand back.
+function resolveKey(track, stripped = false) {
   if (!track) return null;
-  if (CIRCUITS[track]) return CIRCUITS[track];
+  if (CIRCUITS[track]) return track;
 
   const n = normKey(track);
 
   // explicit alias (country name / AC id / alt spelling)
   const alias = TRACK_ALIASES[track] || TRACK_ALIASES[String(track).toLowerCase()] || NORM_ALIASES[n];
-  if (alias && CIRCUITS[alias]) return CIRCUITS[alias];
+  if (alias && CIRCUITS[alias]) return alias;
 
   // exact normalized match against a key or the circuit's real name
   for (const c of NORM_KEYS) {
-    if (c.nk === n || c.cnk === n) return CIRCUITS[c.key];
+    if (c.nk === n || c.cnk === n) return c.key;
   }
 
   // layout-suffix match: "Watkins Glen 2.5", "Monza GP", "Suzuka East" all begin
   // with the circuit token. Guard on length >= 5 so short keys (Spa, Most, COTA)
   // can't swallow unrelated names ("spain" must not become "Spa").
   for (const c of NORM_KEYS) {
-    if (c.nk.length >= 5 && (n.startsWith(c.nk) || n.startsWith(c.cnk))) return CIRCUITS[c.key];
+    if (c.nk.length >= 5 && (n.startsWith(c.nk) || n.startsWith(c.cnk))) return c.key;
   }
+
+  // Last resort: drop a mod author's folder tag ("vhe_hockenheim" -> the real
+  // Hockenheim) and try once more. Only reached when every rule above has
+  // failed, so a name that means something on its own is never touched.
+  const raw = String(track).toLowerCase();
+  if (!stripped && MOD_PREFIX.test(raw)) return resolveKey(raw.replace(MOD_PREFIX, ""), true);
   return null;
+}
+
+export function circuitFor(track) {
+  const key = resolveKey(track);
+  return key ? CIRCUITS[key] : null;
 }
 
 // Resolve a raw track string to its clean canonical name ("istanbul_park" ->
@@ -447,17 +470,7 @@ export function circuitFor(track) {
 // are returned unchanged for the admin to edit.
 export function canonicalTrack(track) {
   if (!track) return track;
-  if (CIRCUITS[track]) return track;
-  const n = normKey(track);
-  const alias = TRACK_ALIASES[track] || TRACK_ALIASES[String(track).toLowerCase()] || NORM_ALIASES[n];
-  if (alias && CIRCUITS[alias]) return alias;
-  for (const c of NORM_KEYS) {
-    if (c.nk === n || c.cnk === n) return c.key;
-  }
-  for (const c of NORM_KEYS) {
-    if (c.nk.length >= 5 && (n.startsWith(c.nk) || n.startsWith(c.cnk))) return c.key;
-  }
-  return track;
+  return resolveKey(track) || track;
 }
 
 // Live sessions name the track by the MOD's display name ("NABS Monza F1 2025"),

@@ -5,9 +5,17 @@ import { useApi } from "../hooks/useApi.js";
 import CircuitMap from "./CircuitMap.jsx";
 import Flag from "./Flag.jsx";
 import RaceCountdown from "./RaceCountdown.jsx";
+import { TeamDot } from "./ui.jsx";
+import { STATUS_UI, StatusIcon } from "./RaceSignupCard.jsx";
+import { countryFor } from "../data/driverCountries.js";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { exportSvgToPng } from "../utils/svgExport.js";
-import { fmtRaceTime } from "../utils/raceTime.js";
+import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
+
+// The sign-up button's own curfew, matching the backend gate
+// (SIGNUP_CLOSE_AFTER_START_MS in lib/attendanceGate.js): an hour past
+// lights-out the grid is on track and the button leads nowhere useful.
+const SIGNUP_CLOSE_AFTER_START_MS = 60 * 60 * 1000;
 
 const MAX_LAP_MS = 1_800_000;
 function fmtLap(ms) {
@@ -53,6 +61,83 @@ function RecordRow({ icon, label, name, driverId, value }) {
   );
 }
 
+// How the sign-up ended — who is in, who was unsure, who passed — shown from an
+// hour after lights-out until the saved result replaces this panel entirely.
+// Deliberately the SAME look as the attendance page's answer card (exported
+// STATUS_UI/StatusIcon, side-by-side columns, team dots, flags), so the frozen
+// entry list reads as the feature the members answered on, just closed. The
+// admin's column-visibility rule applies here too.
+function SignupOutcome({ ev }) {
+  const visible = ["ACCEPTED", "TENTATIVE", "DECLINED"].filter(
+    (s) => !Array.isArray(ev.visibleStatuses) || ev.visibleStatuses.includes(s)
+  );
+  const accepted = ev.rsvps?.ACCEPTED?.length || 0;
+  const capacity = ev.capacity ?? 40;
+  const total = visible.reduce((n, s) => n + (ev.rsvps?.[s]?.length || 0), 0);
+  return (
+    <div className="card overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-border px-5 py-4">
+        <div>
+          <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Sign-Up</h3>
+          <p className="mt-0.5 font-display text-lg font-extrabold uppercase tracking-tight text-dark">
+            The final entry list
+          </p>
+        </div>
+        {/* the same lock chip the attendance page shows for a closed race */}
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-surface2/60 px-3 py-2 text-sm font-semibold text-medium">
+          <svg viewBox="0 0 24 24" className="h-4 w-4 text-light" fill="none" stroke="currentColor" strokeWidth="2"
+            strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="5" y="11" width="14" height="9" rx="2" />
+            <path d="M8 11V8a4 4 0 118 0v3" />
+          </svg>
+          Sign-up closed
+        </div>
+      </div>
+
+      {visible.includes("ACCEPTED") && (
+        <div className="border-b border-border px-5 py-3">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+            <span>Grid</span>
+            <span className="tabular-nums text-medium">{accepted}/{capacity} seats taken</span>
+          </div>
+          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface2">
+            <div
+              className="h-full rounded-full bg-green-600"
+              style={{ width: `${Math.min(100, (accepted / capacity) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {total === 0 ? (
+        <p className="p-5 text-sm text-light">No sign-ups were recorded for this race.</p>
+      ) : (
+        <div className={`grid gap-3 p-4 sm:gap-4 sm:p-5 ${visible.length === 1 ? "" : visible.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
+          {visible.map((status) => (
+            <div key={status} className="min-w-0">
+              <div className="mb-2 flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+                <StatusIcon d={STATUS_UI[status].icon} className={`h-3.5 w-3.5 shrink-0 ${STATUS_UI[status].idleIcon}`} />
+                <span className="hidden sm:inline">{STATUS_UI[status].title}</span>
+                <span className="text-light">({ev.rsvps[status].length})</span>
+              </div>
+              <ul className="space-y-1.5">
+                {ev.rsvps[status].map((r) => (
+                  <li key={r.driverId} className="flex min-w-0 items-center gap-1.5 text-sm sm:gap-2">
+                    <TeamDot color={r.team.color} />
+                    <span className="truncate text-dark">{r.name}</span>
+                    <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
+                  </li>
+                ))}
+                {ev.rsvps[status].length === 0 && <li className="text-sm text-faint">—</li>}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Slim ruled-line header used by both cards, matching the Race Facts panel.
 function CardHeader({ title, children }) {
   return (
@@ -63,7 +148,10 @@ function CardHeader({ title, children }) {
   );
 }
 
-export default function UpcomingRacePanel({ race }) {
+// `ev` is this race's row in the events feed (null for a special event, or
+// while it loads); `canSignUp` comes from the page's shared queue rule, so the
+// button never offers what the Attendance page would then refuse.
+export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }) {
   const mapRef = useRef(null);
   const { data: history, loading } = useApi(useCallback(() => api.trackHistory(race.track), [race.track]));
   const circuit = circuitFor(race.track); // outline (for the map card)
@@ -71,7 +159,16 @@ export default function UpcomingRacePanel({ race }) {
   // Training sessions have RSVP like a round; special events are announcement-
   // only (no attendance feature to sign up for) — see backend routes/events.js.
   const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-  const canSignUp = kind !== "SPECIAL";
+  const kick = raceKickoff(race.date);
+  const signupOver = !!kick && Date.now() >= kick.getTime() + SIGNUP_CLOSE_AFTER_START_MS;
+  // Race run, result pending: the frozen entry list takes the button's place.
+  // Not limited to the round we are on — any race that has been run without a
+  // result tells the same story, and two can coexist (a skipped training
+  // session and last night's round). Suppressed while sign-up is somehow still
+  // open (an admin reopening a past race), because then "closed" would be a
+  // lie. The moment the result is saved, this whole panel gives way to the
+  // results view anyway.
+  const outcome = kind !== "SPECIAL" && signupOver && !canSignUp ? ev : null;
   const eyebrow = race.number != null ? `Round ${race.number} · Up next` : kind === "TRAINING" ? "Training session" : "Special event";
 
   function downloadPng() {
@@ -144,6 +241,10 @@ export default function UpcomingRacePanel({ race }) {
           </p>
         )}
       </div>
+
+      {/* Race run, result pending: the frozen entry list, full width, in the
+          attendance page's own three-column look. */}
+      {outcome && <SignupOutcome ev={outcome} />}
 
       {/* Circuit map (left) + track record (right) */}
       <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">

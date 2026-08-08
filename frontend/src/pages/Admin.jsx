@@ -725,7 +725,13 @@ function LiveLinksAdmin() {
   const [err, setErr] = useState(null);
 
   useEffect(() => {
-    if (data) setForm({ liveTimingUrl: data.liveTimingUrl || "", cmJoinUrl: data.cmJoinUrl || "" });
+    if (data) {
+      setForm({
+        liveTimingUrl: data.liveTimingUrl || "",
+        cmJoinUrl: data.cmJoinUrl || "",
+        streamUrl: data.streamUrl || "",
+      });
+    }
   }, [data]);
 
   // Error first — see the note on the Social panel above.
@@ -738,7 +744,11 @@ function LiveLinksAdmin() {
     setSaved(false);
     try {
       const res = await api.setLiveLinks(form);
-      setForm({ liveTimingUrl: res.liveTimingUrl || "", cmJoinUrl: res.cmJoinUrl || "" });
+      setForm({
+        liveTimingUrl: res.liveTimingUrl || "",
+        cmJoinUrl: res.cmJoinUrl || "",
+        streamUrl: res.streamUrl || "",
+      });
       setSaved(true);
     } catch (e) {
       setErr(e.message);
@@ -749,10 +759,11 @@ function LiveLinksAdmin() {
 
   return (
     <div className="card space-y-5 p-5">
-      <CardHead eyebrow="Live Timing" title="External buttons" />
+      <CardHead eyebrow="Live Timing" title="Buttons & stream" />
       <p className="text-sm text-light">
-        The two buttons at the top of the Live page. Leave the live-timing URL blank to fall back to the server
-        manager default. Leave the Content Manager link blank to hide that button until a race is up.
+        The two buttons at the top of the Live page, plus the stream player beside the track map. Leave the
+        live-timing URL blank to fall back to the server manager default. Leave the Content Manager link blank to
+        hide that button until a race is up, and the stream link blank when nobody is broadcasting.
       </p>
       {err && <Notice kind="error">{err}</Notice>}
       {saved && <Notice kind="success">Saved.</Notice>}
@@ -781,6 +792,21 @@ function LiveLinksAdmin() {
           <p className="mt-1 text-xs text-light">
             The one-click Content Manager join link for the running server (from CM: right-click the server &rarr;
             &ldquo;Copy direct join link&rdquo;). Hidden while empty.
+          </p>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-medium">Stream (YouTube or Twitch)</label>
+          <input
+            className="input"
+            placeholder="twitch.tv/yourchannel  ·  youtube.com/watch?v=…"
+            value={form.streamUrl}
+            onChange={(e) => setForm((f) => ({ ...f, streamUrl: e.target.value }))}
+          />
+          <p className="mt-1 text-xs text-light">
+            Paste the ordinary share link. A Twitch channel address keeps working every race night; a YouTube
+            link points at one broadcast, so it needs re-pasting each time (unless you use the{" "}
+            <span className="font-mono">youtube.com/channel/&hellip;/live</span> form). The player appears above
+            the track map and only loads once a viewer presses play. Blank = no player.
           </p>
         </div>
       </div>

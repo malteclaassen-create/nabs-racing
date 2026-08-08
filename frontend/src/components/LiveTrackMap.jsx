@@ -103,6 +103,14 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo }) {
           dur: 700,
         });
       } else {
+        // Only a real movement counts as an update. The upstream's per-car
+        // telemetry is often sparser than the board tick, so the same position
+        // arrives on several boards in a row — and re-stamping those made the
+        // car sprint for one tick, then stand still until its next real fix
+        // (the surge-and-stall rhythm race night made visible). Skipped, the
+        // glide below spans the car's ACTUAL update gap instead: constant
+        // speed, however irregular the feed.
+        if (d.x === st.next.x && d.y === st.next.y) continue;
         const cur = interpNow(st, now);
         // Glide duration = the actual gap since the previous update, so the
         // car arrives exactly when the next update is due — constant speed
@@ -181,10 +189,6 @@ function CarDot({ d, r, fs, zoom, focused, isFocusTarget, counterRotate, onFocus
         onFocus(isFocusTarget ? null : d.guid);
       }}
     >
-      {/* a quiet halo marks the followed car (rotation-independent) */}
-      {isFocusTarget && (
-        <circle r={rr * 1.9} fill="none" stroke="#fff" strokeOpacity="0.85" strokeWidth={rr * 0.16} />
-      )}
       <title>{d.title}</title>
       <g data-car data-scale={s} transform={`rotate(${d.heading ?? 0}) scale(${s})`}>
         {/* generous invisible hit area — the silhouette alone is fiddly to tap */}
@@ -196,7 +200,9 @@ function CarDot({ d, r, fs, zoom, focused, isFocusTarget, counterRotate, onFocus
         <path d={CAR.rearWing} fill="#1f2937" />
         <path d={CAR.body} fill={d.color} stroke="rgba(15,23,42,0.85)" strokeWidth={0.5} />
       </g>
-      {/* the race number rides above the car, always upright */}
+      {/* the race number rides above the car, always upright; the followed
+          car shows the driver's name instead — that is the one you zoomed in
+          on, and "who is this" beats "which number is this" there */}
       <g transform={counterRotate ? "rotate(-90)" : undefined}>
         <text
           x="0"
@@ -211,7 +217,7 @@ function CarDot({ d, r, fs, zoom, focused, isFocusTarget, counterRotate, onFocus
           paintOrder="stroke"
           style={{ pointerEvents: "none" }}
         >
-          {d.label}
+          {isFocusTarget ? d.title : d.label}
         </text>
       </g>
     </g>
@@ -419,9 +425,49 @@ function StylisedTrackMap({ track, cars, matchFn, focusGuid, zoom, onFocus, clas
   );
 }
 
+// Cockpit readout for the followed car. Board values (700ms tick) paint the
+// first numbers; the follow fast-lane (onCarTelemetry) then overwrites them
+// with every telemetry message the race server sends — same immediacy as the
+// server manager's own live map. Kept as its own component so those frames
+// re-render this chip alone, not the whole map.
+function CockpitReadout({ car, onCarTelemetry }) {
+  const [tel, setTel] = useState(null);
+  useEffect(() => {
+    setTel(null); // switching cars: never show the previous car's numbers
+    if (!onCarTelemetry) return undefined;
+    return onCarTelemetry((t) => {
+      if (t.guid === car.guid) setTel(t);
+    });
+  }, [car.guid, onCarTelemetry]);
+  const speed = tel?.speedKmh ?? car.speedKmh;
+  const gear = tel?.gear ?? car.gear;
+  const rpm = tel?.rpm ?? car.rpm;
+  if (speed == null) return null;
+  return (
+    <div className="absolute left-2 top-9 flex items-baseline gap-2.5 rounded-lg bg-black/60 px-2.5 py-1.5 font-mono text-white backdrop-blur">
+      <span className="text-sm font-bold tabular-nums">
+        {speed}
+        <span className="ml-1 text-[9px] font-normal uppercase tracking-wider text-white/60">km/h</span>
+      </span>
+      {gear != null && (
+        <span className="text-sm font-bold tabular-nums">
+          {gear === 0 ? "R" : gear === 1 ? "N" : gear - 1}
+          <span className="ml-1 text-[9px] font-normal uppercase tracking-wider text-white/60">gear</span>
+        </span>
+      )}
+      {rpm != null && (
+        <span className="text-sm font-bold tabular-nums">
+          {rpm.toLocaleString("en-GB")}
+          <span className="ml-1 text-[9px] font-normal uppercase tracking-wider text-white/60">rpm</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
 // Picks the real map when calibration is present, else the stylised outline.
 // Owns the focus + zoom state so they survive a map-mode change mid-session.
-export default function LiveTrackMap({ track, cars, matchFn, map, className = "" }) {
+export default function LiveTrackMap({ track, cars, matchFn, map, follow, onCarTelemetry, className = "" }) {
   const [focusGuid, setFocusGuid] = useState(null);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
   // The followed car left the server -> drop the focus rather than staring at
@@ -430,6 +476,12 @@ export default function LiveTrackMap({ track, cars, matchFn, map, className = ""
   useEffect(() => {
     if (focusGuid && !focusedCar) setFocusGuid(null);
   }, [focusGuid, focusedCar]);
+  // Tell the backend which car this viewer follows, so its cockpit numbers
+  // arrive on the fast-lane instead of the 700ms tick. Cleared on unmount.
+  useEffect(() => {
+    follow?.(focusGuid);
+    return () => follow?.(null);
+  }, [focusGuid, follow]);
 
   const real = map && map.width && map.height && map.scaleFactor;
   const focusName = focusedCar ? (matchFn ? matchFn(focusedCar.name)?.nabsName : null) || focusedCar.name : null;
@@ -473,6 +525,10 @@ export default function LiveTrackMap({ track, cars, matchFn, map, className = ""
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
+          {/* Cockpit readout for the followed car — speed / gear / revs. Only
+              an on-track car carries them; a leaver or pitted car simply shows
+              no chip instead of stale numbers. */}
+          {focusedCar && <CockpitReadout car={focusedCar} onCarTelemetry={onCarTelemetry} />}
           {/* zoom controls — how close the follow-camera sits */}
           <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
             <button type="button" className={zoomBtn} onClick={() => zoomStep(-1)} title="Zoom out">

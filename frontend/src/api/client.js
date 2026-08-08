@@ -605,6 +605,18 @@ export const api = {
 
   // health (admin): integrity check, backups, activity log
   integrity: () => request(`/admin/integrity${seasonQ()}`, { auth: true }),
+  // Live memory breakdown (total vs JS data vs buffers) for Health.
+  memory: () => request("/admin/memory", { auth: true }),
+  // Full heap snapshot as a blob download. Same fetch-with-auth-header dance
+  // as the backup zip: a plain <a href> couldn't send the admin token.
+  downloadHeapSnapshot: async () => {
+    const res = await fetch(`${BASE}/api/admin/memory/heap-snapshot`, {
+      headers: { Authorization: `Bearer ${adminAuthToken()}` },
+    });
+    if (!res.ok) throw new Error(`Snapshot failed (${res.status})`);
+    const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "")?.[1];
+    return { blob: await res.blob(), name: name || "heap.heapsnapshot" };
+  },
   // Disk usage per area (race photos, downloads, backups, DB …) for Health.
   storage: () => request("/admin/storage", { auth: true }),
   backups: () => request("/admin/backups", { auth: true }),

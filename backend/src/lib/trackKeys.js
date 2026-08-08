@@ -145,8 +145,16 @@ const NORM_KEYS = Object.keys(CIRCUITS)
   .map((key) => ({ key, nk: normKey(key), cnk: normKey(CIRCUITS[key].circuit) }))
   .sort((a, b) => b.nk.length - a.nk.length);
 
+// Mod authors prefix their track folder with their own tag ("ks_", "fn_",
+// "vhe_", "acu_" …) and that raw folder name is what an AC result file carries.
+// The explicit list above covers the ones this league has actually run; this
+// catches the next one on its own, as a LAST resort — only after every rule
+// below has failed, and only when what remains matches a circuit by itself.
+// Mirrors the same fallback in frontend/src/data/circuits.js.
+const MOD_PREFIX = /^[a-z0-9]{1,4}_/;
+
 // Canonical circuit key for a raw track string, or null when unknown.
-export function trackKeyFor(track) {
+export function trackKeyFor(track, stripped = false) {
   if (!track) return null;
   if (CIRCUITS[track]) return track;
   const n = normKey(track);
@@ -154,6 +162,8 @@ export function trackKeyFor(track) {
   if (alias && CIRCUITS[alias]) return alias;
   for (const c of NORM_KEYS) if (c.nk === n || c.cnk === n) return c.key;
   for (const c of NORM_KEYS) if (c.nk.length >= 5 && (n.startsWith(c.nk) || n.startsWith(c.cnk))) return c.key;
+  const raw = String(track).toLowerCase();
+  if (!stripped && MOD_PREFIX.test(raw)) return trackKeyFor(raw.replace(MOD_PREFIX, ""), true);
   return null;
 }
 

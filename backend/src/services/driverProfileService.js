@@ -437,11 +437,21 @@ export async function getDriverProfile(prisma, driverId) {
 
   // A driver entry belongs to one season; their stats are scoped to it.
   const seasonId = driver.seasonId;
-  const [standings, races, results, telemetry, nameOverrides, profileTiles, photoPos, identityOverrides] = await Promise.all([
+  const [standings, races, allRounds, results, telemetry, nameOverrides, profileTiles, photoPos, identityOverrides] = await Promise.all([
     getDriverStandings(prisma, seasonId),
     prisma.race.findMany({
       where: { seasonId, isSpecialEvent: false, isCompleted: true },
       orderBy: { number: "asc" },
+    }),
+    // The WHOLE championship calendar, run or not. The season-form chart draws
+    // every round of the season from the start (R1…R12) instead of growing a
+    // label at a time, so an early-season profile shows the campaign ahead
+    // rather than a single lonely dot. Kept separate from `races` above on
+    // purpose: every stat below counts races that were actually RUN.
+    prisma.race.findMany({
+      where: { seasonId, isSpecialEvent: false, number: { not: null } },
+      orderBy: { number: "asc" },
+      select: { id: true, number: true, track: true, isCompleted: true },
     }),
     prisma.raceResult.findMany({ where: { driverId } }),
     telemetryForDriver(prisma, driverId),
@@ -626,6 +636,34 @@ export async function getDriverProfile(prisma, driverId) {
   }
   const teamBadges = [...teamBadgeBySeason.values()].sort((a, b) => a.seasonNumber - b.seasonNumber);
 
+  // This driver's qualifying result per round, for the season-form chart's
+  // Qualifying view. The classification lives in Race.qualiJson (written by the
+  // quali import, raw-SQL managed like the column itself), which carries the
+  // official order INCLUDING entrants who never started the race — so the
+  // position is read from there rather than re-ranked out of lap times.
+  // Rounds without an uploaded quali session simply have no entry.
+  const qualiByRaceId = new Map();
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "id", "qualiJson" FROM "Race" WHERE "seasonId" = ? AND "qualiJson" IS NOT NULL`,
+      seasonId
+    );
+    for (const row of rows) {
+      let blob;
+      try {
+        blob = JSON.parse(row.qualiJson);
+      } catch {
+        continue; // a corrupt blob must not cost the whole profile
+      }
+      const mine = (blob?.entries || []).find((e) => e.driverId === driverId);
+      if (mine?.position != null) {
+        qualiByRaceId.set(row.id, { position: mine.position, bestLapMs: mine.bestLapMs ?? null });
+      }
+    }
+  } catch {
+    /* column missing pre-migration — the chart just offers no Qualifying view */
+  }
+
   // One row per completed championship round, in calendar order. Rounds the
   // driver wasn't entered in still appear (status "DNS", 0 points) so the season
   // form and race-by-race show the whole campaign with the line simply carrying
@@ -634,6 +672,7 @@ export async function getDriverProfile(prisma, driverId) {
     const r = resultByRaceId.get(race.id);
     const official = standingRow?.perRace?.[race.number];
     const tel = r ? telemetry.get(race.id) : null;
+    const quali = qualiByRaceId.get(race.id) || null;
     if (!r) {
       return {
         raceId: race.id,
@@ -644,6 +683,10 @@ export async function getDriverProfile(prisma, driverId) {
         status: "DNS",
         points: official ? official.points : 0,
         bestLapMs: null,
+        // A driver can qualify and then not start, so this rides along even on
+        // a DNS row — the Qualifying view still has something to plot.
+        qualiPosition: quali?.position ?? null,
+        qualiTimeMs: quali?.bestLapMs ?? null,
       };
     }
     return {
@@ -655,6 +698,8 @@ export async function getDriverProfile(prisma, driverId) {
       status: r.status,
       points: official ? official.points : 0,
       bestLapMs: r.bestLapMs,
+      qualiPosition: quali?.position ?? null,
+      qualiTimeMs: quali?.bestLapMs ?? null,
       penaltySeconds: r.penaltySeconds || 0,
       overtakes: tel?.overtakes ?? null,
       contacts: tel?.contacts ?? null,
@@ -835,5 +880,14 @@ export async function getDriverProfile(prisma, driverId) {
       avgConsistencyMs: consDen ? Math.round(consNum / consDen) : null,
     },
     perRace,
+    // The season's full championship calendar, so the form chart can label
+    // R1…R12 from day one. `perRace` above only covers rounds that have been
+    // run; these carry the rest.
+    seasonRounds: allRounds.map((r) => ({
+      raceId: r.id,
+      number: r.number,
+      track: r.track,
+      isCompleted: r.isCompleted,
+    })),
   };
 }

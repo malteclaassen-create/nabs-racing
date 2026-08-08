@@ -12,6 +12,8 @@ import TyreStrategy, { TyreBadge } from "../components/TyreStrategy.jsx";
 import { circuitForLive } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { SocialIcon, useSocial } from "../components/SocialLinks.jsx";
+import VideoEmbed from "../components/VideoEmbed.jsx";
+import { streamEmbed } from "../utils/streamEmbed.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { LiveSortMenu, LiveColumnsMenu } from "../components/LiveTableMenu.jsx";
 import { useLiveTablePrefs } from "../hooks/useLiveTablePrefs.js";
@@ -1160,6 +1162,28 @@ function ViewSwitch({ view, setView, hasStandings }) {
   );
 }
 
+// The race stream, when someone is broadcasting it: a YouTube or Twitch player
+// sitting above the track map, from a single link in the admin's Social & Live
+// tab. Nothing renders when no link is set (the normal state) or when the link
+// isn't a platform we can embed, so a typo costs an empty card, not a broken
+// one. The frame itself is only created once a visitor presses play — see
+// VideoEmbed — so a race-night crowd doesn't all load Twitch's player for a
+// stream most of them are watching in another tab anyway.
+// "Twitch ↗" / "YouTube ↗" — out to the platform's own page, for anyone who
+// would rather watch it there (chat, full screen, a second monitor).
+function StreamLink({ url, stream }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="font-mono text-[11px] uppercase tracking-wider text-light transition hover:text-dark"
+    >
+      {stream.kind === "twitch" ? "Twitch" : "YouTube"} ↗
+    </a>
+  );
+}
+
 // Live track map card. Prefers the REAL overhead map with cars at their surveyed
 // world positions (session.map calibration present); otherwise the stylised
 // circuit outline with dots walked along the lap. Unknown circuits with no real
@@ -1167,21 +1191,50 @@ function ViewSwitch({ view, setView, hasStandings }) {
 // Shares a row with the session card on lg+ (the map used to be its own
 // full-width section, which was mostly empty margin), so the heading moved
 // inside the card as a compact header strip.
-function TrackMapSection({ session, entries, match, className = "" }) {
+function TrackMapSection({ session, entries, match, follow, onCarTelemetry, streamUrl, className = "" }) {
   const realMap = session.map || null;
   // Live sessions carry the mod's display name ("NABS Monza F1 2025") which the
   // tidy resolver can't place, so try the AC id (session.track) too.
   const stylised = circuitForLive(session.trackName, session.track);
   const hasMap = !!realMap || !!stylised;
   const cars = entries.filter((e) => e.onTrack || e.inPits);
+  // With a stream configured, map and player SHARE this card and a switch picks
+  // between them, rather than stacking two tall windows down a narrow column.
+  // No stream link, no switch — the card is the map, exactly as before.
+  const stream = useMemo(() => streamEmbed(streamUrl), [streamUrl]);
+  const [view, setView] = useState("map");
+  const showStream = !!stream && view === "stream";
   return (
     <section className={`reveal card flex flex-col overflow-hidden ${className}`}>
-      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Track map</span>
-        <span className="font-mono text-[11px] uppercase tracking-wider text-light">
-          {cars.filter((c) => !c.inPits).length} on track
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 sm:px-5">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+          {showStream ? "Stream" : "Track map"}
         </span>
+        {showStream ? (
+          <span className="ml-auto">
+            <StreamLink url={streamUrl} stream={stream} />
+          </span>
+        ) : (
+          <span className="ml-auto font-mono text-[11px] uppercase tracking-wider text-light">
+            {cars.filter((c) => !c.inPits).length} on track
+          </span>
+        )}
+        {stream && (
+          <SlidingTabs
+            className="w-full sm:w-auto"
+            items={[
+              { key: "map", label: "Map" },
+              { key: "stream", label: "Stream" },
+            ]}
+            value={view}
+            onChange={setView}
+            btnClassName="flex-1 px-3 py-1 text-[11px] font-bold uppercase tracking-wider sm:flex-none"
+          />
+        )}
       </div>
+      {showStream ? (
+        <VideoEmbed embedUrl={stream.embedUrl} poster={false} title={stream.title} accent={stream.accent} />
+      ) : (
       <div className="p-3 sm:p-4">
         {hasMap ? (
           <>
@@ -1190,6 +1243,8 @@ function TrackMapSection({ session, entries, match, className = "" }) {
               cars={cars}
               matchFn={match}
               map={realMap}
+              follow={follow}
+              onCarTelemetry={onCarTelemetry}
               className={realMap ? "" : "mx-auto h-auto max-h-[440px] w-full text-medium"}
             />
             {/* The caveat only applies to the stylised outline; real map is exact. */}
@@ -1207,6 +1262,7 @@ function TrackMapSection({ session, entries, match, className = "" }) {
           </div>
         )}
       </div>
+      )}
     </section>
   );
 }
@@ -1469,7 +1525,7 @@ function useHeldBoard(board) {
 }
 
 export default function Live() {
-  const { board: feed, socketState } = useLiveTiming();
+  const { board: feed, socketState, follow, onCarTelemetry } = useLiveTiming();
   const { shown: board, gap } = useHeldBoard(feed);
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const match = useMemo(() => makeDriverMatcher(teams), [teams]);
@@ -1761,7 +1817,10 @@ export default function Live() {
 
           {quiet ? (
             // Empty server: the best-times board takes the "right now" slot,
-            // everything else (driving now, map, pit lane, strategy) sits out.
+            // everything else (driving now, map, pit lane, strategy) sits out —
+            // and with the map goes the stream, which lives in that card as its
+            // second view. A lone player floating over the best-times table was
+            // the one thing on this page with nothing beside it.
             bestTimes
           ) : (
           <>
@@ -1772,7 +1831,14 @@ export default function Live() {
                  columns close flush. ===== */}
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-5 lg:items-stretch">
             <div className="flex flex-col gap-4 sm:gap-6 lg:col-span-2 lg:col-start-4 lg:row-start-1">
-              <TrackMapSection session={session} entries={entries} match={match} />
+              <TrackMapSection
+                session={session}
+                entries={entries}
+                match={match}
+                follow={follow}
+                onCarTelemetry={onCarTelemetry}
+                streamUrl={extLinks?.streamUrl}
+              />
               {/* Phones skip the pit-lane card: the same drivers already show
                   as dimmed dots on the map above and carry a PIT badge in the
                   timing table, so it was a third copy of the same fact for a

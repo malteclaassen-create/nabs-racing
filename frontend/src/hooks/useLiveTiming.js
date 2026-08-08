@@ -1,8 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // Connects to the backend live-timing relay (/api/live/ws, proxied by Vite to
 // the backend, which in turn holds the upstream AC Server Manager socket).
 // Auto-reconnects with backoff and exposes the latest board + a status flag.
+//
+// Besides the 700ms board there is a FOLLOW fast-lane: `follow(guid)` tells the
+// backend which car this viewer watches on the map, and that car's cockpit
+// numbers (speed/gear/revs) arrive as tiny `{car: …}` frames the moment the
+// race server sends them. Those frames deliberately do NOT go through React
+// state here — they fire several times a second and would re-render the whole
+// live page; instead `onCarTelemetry(cb)` hands them to whoever subscribed
+// (the map's readout chip), and only that component re-renders.
 export function useLiveTiming() {
   const [board, setBoard] = useState(null);
   const [socketState, setSocketState] = useState("connecting"); // connecting | open | closed
@@ -10,6 +18,8 @@ export function useLiveTiming() {
   const retryRef = useRef(1000);
   const timerRef = useRef(null);
   const aliveRef = useRef(true);
+  const followRef = useRef(null); // survives reconnects: re-announced on open
+  const telListeners = useRef(new Set());
 
   useEffect(() => {
     aliveRef.current = true;
@@ -43,10 +53,23 @@ export function useLiveTiming() {
       ws.onopen = () => {
         retryRef.current = 1000;
         setSocketState("open");
+        // A reconnect must not silently drop the follow — re-announce it.
+        if (followRef.current) {
+          try {
+            ws.send(JSON.stringify({ follow: followRef.current }));
+          } catch {
+            /* the next follow() call repeats it */
+          }
+        }
       };
       ws.onmessage = (ev) => {
         try {
-          setBoard(JSON.parse(ev.data));
+          const data = JSON.parse(ev.data);
+          if (data.car) {
+            telListeners.current.forEach((cb) => cb(data.car));
+            return; // fast-lane frame, not a board
+          }
+          setBoard(data);
         } catch {
           /* ignore malformed frame */
         }
@@ -89,5 +112,24 @@ export function useLiveTiming() {
     };
   }, []);
 
-  return { board, socketState };
+  // Which car this viewer follows on the map (null = none).
+  const follow = useCallback((guid) => {
+    followRef.current = guid || null;
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ follow: followRef.current }));
+      } catch {
+        /* reconnect re-announces */
+      }
+    }
+  }, []);
+
+  // Subscribe to fast-lane car telemetry; returns the unsubscribe.
+  const onCarTelemetry = useCallback((cb) => {
+    telListeners.current.add(cb);
+    return () => telListeners.current.delete(cb);
+  }, []);
+
+  return { board, socketState, follow, onCarTelemetry };
 }

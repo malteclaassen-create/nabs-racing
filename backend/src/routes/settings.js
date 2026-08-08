@@ -25,17 +25,24 @@ const LIVE_TIMING_ORIGIN = process.env.LIVE_TIMING_ORIGIN || "https://nabs1.empe
 export const LIVE_LINK_DEFAULTS = {
   liveTimingUrl: `${LIVE_TIMING_ORIGIN}/live-timing`,
   cmJoinUrl: "",
+  // A YouTube or Twitch address whose player is embedded on the live page while
+  // someone is streaming the race. Stored raw (as the admin pasted it): the
+  // embed address is built in the browser, because Twitch refuses to play
+  // unless the URL names the exact domain it is embedded on, which only the
+  // page itself knows. Empty = no player, which is the normal state.
+  streamUrl: "",
 };
 
 // Read the configured Live-page links, applying the defaults for anything unset.
 export async function readLiveLinks(prismaClient) {
   const rows = await prismaClient.setting.findMany({
-    where: { key: { in: ["live_timing_url", "live_cm_join_url"] } },
+    where: { key: { in: ["live_timing_url", "live_cm_join_url", "live_stream_url"] } },
   });
   const get = (k) => rows.find((r) => r.key === k)?.value || "";
   return {
     liveTimingUrl: get("live_timing_url") || LIVE_LINK_DEFAULTS.liveTimingUrl,
     cmJoinUrl: get("live_cm_join_url") || LIVE_LINK_DEFAULTS.cmJoinUrl,
+    streamUrl: get("live_stream_url") || LIVE_LINK_DEFAULTS.streamUrl,
   };
 }
 
