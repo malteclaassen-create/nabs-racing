@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { ErrorBox, Notice, CardHead } from "./ui.jsx";
+import { useAsk } from "./overlay.jsx";
 
 // Admin "Health" tab: one-click season integrity check, database backups, and
 // the recent admin activity log.
@@ -73,6 +74,7 @@ export default function AdminHealth() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupDone, setBackupDone] = useState(null);
   const [downloadBusy, setDownloadBusy] = useState(false);
+  const ask = useAsk();
 
   const backups = useApi(useCallback(() => api.backups(), [backupDone]));
   const activity = useApi(useCallback(() => api.activity(), []));
@@ -84,12 +86,12 @@ export default function AdminHealth() {
   // Full heap snapshot download. The confirm is not decoration: writing the
   // snapshot freezes the whole site for a few seconds.
   async function downloadMemorySnapshot() {
-    if (
-      !window.confirm(
-        "Writing the memory snapshot freezes the site for a few seconds (longer when memory is high). Visitors simply wait a moment. Continue?"
-      )
-    )
-      return;
+    const ok = await ask({
+      title: "Writing the memory snapshot freezes the site for a few seconds (longer when memory is high).",
+      body: "Visitors simply wait a moment. Continue?",
+      confirmLabel: "Continue",
+    });
+    if (!ok) return;
     setError(null);
     setSnapBusy(true);
     try {
@@ -114,7 +116,13 @@ export default function AdminHealth() {
   // the list AND the disk-usage card — the number moving is the whole point.
   const [pruneBusy, setPruneBusy] = useState(false);
   async function removeBackup(file) {
-    if (!window.confirm(`Delete the backup ${file}? This cannot be undone.`)) return;
+    const ok = await ask({
+      title: `Delete the backup ${file}?`,
+      body: "This cannot be undone.",
+      danger: true,
+      confirmLabel: "Delete backup",
+    });
+    if (!ok) return;
     setError(null);
     setPruneBusy(true);
     try {
@@ -129,7 +137,12 @@ export default function AdminHealth() {
   async function pruneOldBackups() {
     const total = (backups.data?.backups || []).length;
     if (total <= 5) return;
-    if (!window.confirm(`Delete the ${total - 5} oldest backups and keep the newest 5?`)) return;
+    const ok = await ask({
+      title: `Delete the ${total - 5} oldest backups and keep the newest 5?`,
+      danger: true,
+      confirmLabel: "Delete old backups",
+    });
+    if (!ok) return;
     setError(null);
     setPruneBusy(true);
     try {

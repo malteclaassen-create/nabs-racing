@@ -117,6 +117,23 @@
   --e-soft: cubic-bezier(0.4, 0.1, 0.2, 1);
   --e-pop: cubic-bezier(0.34, 1.4, 0.5, 1); /* slight overshoot */
   --e-in: cubic-bezier(0.5, 0, 0.75, 0); /* exits, accelerating away */
+
+  /* Stacking ladder. Everything up to the dropdowns already agreed on
+     10/20/30/40 (content, sticky headers, page chrome, dropdowns); above that
+     the numbers had been picked one bug at a time and drifted into 55/60/65/68
+     /70, with THREE different things sharing 60 — the settings drawer, the
+     feedback button and the preview toggle — so which one covered which was
+     decided by DOM order rather than by intent. Named tiers instead, and the
+     modal primitive takes the tier by name so no call site invents a number.
+     Floating page chrome sits BELOW the overlays on purpose: a button that
+     stays clickable on top of a dimmed dialog is the bug this replaces. */
+  --z-sticky: 20;
+  --z-header: 30;
+  --z-dropdown: 40;
+  --z-chrome: 50; /* feedback button, preview toggle, custom scrollbar */
+  --z-scrim: 60; /* the dimmed backdrop of any overlay */
+  --z-overlay: 61; /* the panel that backdrop belongs to */
+  --z-tour: 70; /* the guided tour points AT overlays, so it sits over them */
 }
 
 /* The native scrollbar is hidden site-wide: the rainbow accent line under the

@@ -143,7 +143,7 @@ export default function ScrollBar() {
     <div
       ref={trackRef}
       style={{ opacity: 0 }}
-      className="group fixed inset-y-0 right-1.5 z-[55] hidden w-2.5 cursor-pointer touch-none transition-opacity sm:block"
+      className="group fixed inset-y-0 right-1.5 z-chrome hidden w-2.5 cursor-pointer touch-none transition-opacity sm:block"
       aria-hidden="true"
     >
       <div

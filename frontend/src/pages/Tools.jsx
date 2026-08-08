@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { PageHeader } from "../components/ui.jsx";
+import { PageHeader, Field } from "../components/ui.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { fmtLap, NO_VALUE } from "../utils/format.js";
 
@@ -69,15 +69,6 @@ function ToolCard({ title, subtitle, children }) {
   );
 }
 
-function Field({ label, hint, children }) {
-  return (
-    <label className="block min-w-0">
-      <span className="mb-1.5 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium">{label}</span>
-      {children}
-      {hint && <span className="mt-1 block text-xs text-light">{hint}</span>}
-    </label>
-  );
-}
 
 // Small stat cell for the practice summary strip (hairline-ruled block, same
 // language as the profile tiles).

@@ -7,6 +7,7 @@ import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
 import { SeriesProvider, useSeries, useSeriesPath } from "./context/SeriesContext.jsx";
 import NavBar from "./components/NavBar.jsx";
 import { TourProvider } from "./components/Tour.jsx";
+import { ConfirmProvider } from "./components/overlay.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Logo from "./components/Logo.jsx";
 import SocialLinks, { useSocial, SocialIcon } from "./components/SocialLinks.jsx";
@@ -374,6 +375,9 @@ function SeriesScopedApp() {
     <SeasonProvider key={slug || "default"}>
       <TitleSync />
       <TourProvider>
+        {/* Confirmations render as the site's own dialog rather than the
+            browser's. High in the tree so any page can ask. */}
+        <ConfirmProvider>
         <div className="flex min-h-screen flex-col">
           {/* First thing in the tab order: jumps straight past the logo, series
               switcher, six nav links, search, profile chip and bell. Invisible
@@ -395,6 +399,7 @@ function SeriesScopedApp() {
             (bottom right); on phones it has no button of its own and is opened
             from the "Feedback" row in the burger menu. */}
         <FeedbackWidget />
+        </ConfirmProvider>
       </TourProvider>
     </SeasonProvider>
   );

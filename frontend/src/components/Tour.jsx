@@ -282,7 +282,7 @@ function TourOverlay({ step, index, total, onNext, onSkipAhead, onEnd }) {
   if (step.optional && mode === "searching") return null;
 
   return createPortal(
-    <div className="pointer-events-none fixed inset-0 z-[70]">
+    <div className="pointer-events-none fixed inset-0 z-tour">
       {/* Spotlight: dims the whole screen except a pulsing cut-out over the
           target, and lets clicks pass straight through to it. */}
       <div

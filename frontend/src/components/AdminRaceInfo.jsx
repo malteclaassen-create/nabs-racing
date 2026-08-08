@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox } from "./ui.jsx";
 import Icon, { PICKABLE_ICONS } from "./InfoIcon.jsx";
+import { useAsk } from "./overlay.jsx";
 import { RACE_INFO_DEFAULTS } from "../data/raceInfoDefaults.js";
 
 // Editor for the public Race Info page: the intro line, the "how the
@@ -86,6 +87,7 @@ function RowControls({ onUp, onDown, onRemove, upDisabled, downDisabled }) {
 }
 
 export default function AdminRaceInfo() {
+  const ask = useAsk();
   const { data, loading, error } = useApi(useCallback(() => api.adminRaceInfo(), []));
   const [form, setForm] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -115,8 +117,16 @@ export default function AdminRaceInfo() {
     }
   }
 
-  function resetToDefaults() {
-    if (!window.confirm("Replace everything in this form with the standard text? Nothing is saved until you press Save.")) return;
+  async function resetToDefaults() {
+    if (
+      !(await ask({
+        title: "Replace everything in this form with the standard text?",
+        body: "Nothing is saved until you press Save.",
+        danger: true,
+        confirmLabel: "Reset form",
+      }))
+    )
+      return;
     setForm(toForm(RACE_INFO_DEFAULTS));
     setMsg(null);
   }

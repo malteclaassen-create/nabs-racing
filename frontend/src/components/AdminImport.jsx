@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { Notice, CardHead } from "./ui.jsx";
 import RacePreview from "./RacePreview.jsx";
+import { useAsk } from "./overlay.jsx";
 import { canonicalTrack } from "../data/circuits.js";
 import { fmtTimeCell } from "../utils/raceDuration.js";
 import { fmtStamp } from "../utils/format.js";
@@ -19,6 +20,7 @@ function fmtRemote(r) {
 }
 
 export default function AdminImport({ onCommitted }) {
+  const ask = useAsk();
   const { current: currentSeason } = useSeason();
   const { data: teams, reload: reloadTeams } = useApi(useCallback(() => api.teams(), []));
   const remote = useApi(useCallback(() => api.remoteResults("RACE"), []));
@@ -347,7 +349,7 @@ export default function AdminImport({ onCommitted }) {
         // commit again with the explicit overwrite flag (a DB backup is taken
         // automatically right before the save).
         if (err.status === 409 && err.data?.needsConfirm) {
-          if (!window.confirm(`${err.message}\n\nOverwrite the stored results?`)) {
+          if (!(await ask({ title: "Overwrite the stored results?", body: err.message, danger: true, confirmLabel: "Overwrite results" }))) {
             setBusy(false);
             return;
           }

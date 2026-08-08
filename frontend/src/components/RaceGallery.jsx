@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { Modal } from "./overlay.jsx";
 
 // The round's photos: the night's screenshots, uploaded by an admin in the
 // Photos tab. A quiet thumbnail grid under the race facts, and a full-screen
@@ -47,23 +47,18 @@ function Lightbox({ photos, index, onIndex, onClose, title }) {
     [index, total, onIndex]
   );
 
+  // Escape, the scroll lock, the portal and the focus handling all come from
+  // <Modal> now; what stays here is the part only a photo viewer has, the
+  // arrow keys. Focus starts on the close button (initialFocus) rather than on
+  // the download link, which is the first control in the DOM.
   useEffect(() => {
     function onKey(e) {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowRight") go(1);
+      if (e.key === "ArrowRight") go(1);
       else if (e.key === "ArrowLeft") go(-1);
     }
     window.addEventListener("keydown", onKey);
-    // The page behind must not scroll away under the viewer, and on iOS it
-    // will unless the body is pinned.
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeRef.current?.focus();
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [go, onClose]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [go]);
 
   // Save the picture the visitor is looking at. Reads the bytes and hands them
   // to the browser as a blob; anything that goes wrong falls through to the
@@ -104,20 +99,21 @@ function Lightbox({ photos, index, onIndex, onClose, title }) {
     if (Math.abs(dx) > 45) go(dx < 0 ? 1 : -1);
   }
 
-  // Portalled to <body>: the viewer sits deep inside the round explorer, whose
-  // entrance animations put a transform on the ancestors — and a transformed
-  // ancestor turns position:fixed into "fixed to that ancestor". The viewer
-  // then rendered down at the gallery's place in the page instead of over the
-  // screen. From <body> there is nothing between it and the viewport.
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[68] flex flex-col bg-ink/95 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${title} photos`}
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
+  // `bare` keeps the full-bleed dark surface this viewer needs; the shared
+  // modal still portals it to <body>, which the viewer has always depended on
+  // (it sits deep inside the round explorer, whose entrance animations put a
+  // transform on the ancestors, and a transformed ancestor turns position:fixed
+  // into "fixed to that ancestor").
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      variant="bare"
+      closeLabel={`${title} photos`}
+      initialFocus={closeRef}
+      panelClassName="bg-ink/95 backdrop-blur-sm"
     >
+    <div className="flex min-h-0 flex-1 flex-col" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div className="flex items-center justify-between gap-4 px-4 py-3 text-white/80">
         <span className="min-w-0 truncate font-mono text-[11px] font-bold uppercase tracking-widest">
           {title} <span className="text-white/45">· {index + 1} / {total}</span>
@@ -188,8 +184,8 @@ function Lightbox({ photos, index, onIndex, onClose, title }) {
       {photo.caption && (
         <p className="px-6 pb-5 pt-1 text-center text-sm leading-relaxed text-white/75">{photo.caption}</p>
       )}
-    </div>,
-    document.body
+    </div>
+    </Modal>
   );
 }
 

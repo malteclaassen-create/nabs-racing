@@ -190,7 +190,7 @@ export default function FeedbackWidget() {
         onClick={toggle}
         aria-expanded={open}
         title="Report a bug or suggest a feature"
-        className={`fab-morph group fixed bottom-6 right-6 z-[60] hidden h-12 items-center justify-center overflow-hidden rounded-full border border-border bg-card text-sm font-bold text-medium shadow-lg shadow-ink/10 transition-[width,padding,color,border-color] duration-base ease-out-soft hover:border-brand/50 hover:text-dark lg:flex ${
+        className={`fab-morph group fixed bottom-6 right-6 z-chrome hidden h-12 items-center justify-center overflow-hidden rounded-full border border-border bg-card text-sm font-bold text-medium shadow-lg shadow-ink/10 transition-[width,padding,color,border-color] duration-base ease-out-soft hover:border-brand/50 hover:text-dark lg:flex ${
           collapsed ? "w-12 px-0 hover:w-[9.25rem] hover:pl-4 hover:pr-5" : "w-[9.25rem] pl-4 pr-5"
         } ${open ? "border-brand/50 text-dark" : ""}`}
       >
@@ -215,13 +215,13 @@ export default function FeedbackWidget() {
             type="button"
             aria-label="Close feedback"
             onClick={close}
-            className="fixed inset-0 z-[65] cursor-default bg-ink/40 backdrop-blur-sm lg:bg-transparent lg:backdrop-blur-none"
+            className="fixed inset-0 z-scrim cursor-default bg-ink/40 backdrop-blur-sm lg:bg-transparent lg:backdrop-blur-none"
           />
           {/* Bottom sheet on phones, a card above the button on desktop. */}
           <div
             role="dialog"
             aria-label="Feedback"
-            className="notif-pop fixed inset-x-0 bottom-0 z-[70] max-h-[88dvh] overflow-y-auto rounded-t-2xl border border-border bg-card p-5 shadow-2xl shadow-ink/30 lg:inset-x-auto lg:bottom-20 lg:right-6 lg:w-[23rem] lg:rounded-2xl"
+            className="notif-pop fixed inset-x-0 bottom-0 z-overlay max-h-[88dvh] overflow-y-auto rounded-t-2xl border border-border bg-card p-5 shadow-2xl shadow-ink/30 lg:inset-x-auto lg:bottom-20 lg:right-6 lg:w-[23rem] lg:rounded-2xl"
           >
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>

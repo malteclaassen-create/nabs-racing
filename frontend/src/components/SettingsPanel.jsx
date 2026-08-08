@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { useState } from "react";
 import { useTheme } from "../hooks/useTheme.js";
 import { useGraphics } from "../hooks/useGraphics.js";
 import { useAuth } from "../hooks/useAuth.js";
 import SlidingTabs from "./SlidingTabs.jsx";
+import { Modal } from "./overlay.jsx";
 
 export function GearIcon() {
   return (
@@ -71,115 +71,67 @@ function Segmented({ value, options, onChange }) {
 // via `open`/`onClose` so it can sit behind any trigger — the notification
 // bell's "Settings" row today, the standalone gear button below as a fallback.
 export function SettingsDrawer({ open, onClose }) {
-  const [render, setRender] = useState(false); // mounted in the DOM
-  const [show, setShow] = useState(false); // animated into place
   const { theme, toggle } = useTheme();
   const { mode, setMode } = useGraphics();
   const { user, isLoggedIn, logout } = useAuth();
-
-  useEffect(() => {
-    if (open) {
-      setRender(true);
-      // Next tick: flip to the visible state so the CSS transition plays in.
-      // (A timeout, not requestAnimationFrame — rAF can starve in occluded/
-      // embedded windows and the drawer would stay stuck off-screen.)
-      const t = setTimeout(() => setShow(true), 15);
-      return () => clearTimeout(t);
-    }
-    setShow(false); // animate out…
-    const t = setTimeout(() => setRender(false), 220); // …then unmount after the transition
-    return () => clearTimeout(t);
-  }, [open]);
-
-  useEffect(() => {
-    if (!render) return;
-    const onKey = (e) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [render, onClose]);
-
   const closePanel = onClose;
 
+  // Everything this used to do by hand — mount/unmount around the transition,
+  // the Escape listener, the portal, the scrim — now comes from <Modal>, plus
+  // the three things it never did: focus goes into the drawer, Tab stays
+  // inside it, and closing hands focus back to whatever opened it.
   return (
-    <>
-      {render &&
-        createPortal(
-          <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label="Settings">
-            <div
-              className={`settings-anim absolute inset-0 bg-ink/40 transition-opacity duration-quick ${show ? "opacity-100" : "opacity-0"}`}
-              onClick={closePanel}
-            />
-            <aside
-              className={`settings-anim absolute right-0 top-0 flex h-full w-80 max-w-[85vw] flex-col border-l border-border bg-card shadow-2xl transition-transform duration-quick ${show ? "translate-x-0" : "translate-x-full"}`}
+    <Modal open={open} onClose={closePanel} title="Settings" variant="drawer" closeLabel="Close settings">
+      <div className="space-y-6 p-5">
+        <section>
+          <h3 className="mb-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Appearance</h3>
+          <Segmented
+            value={theme}
+            onChange={(v) => v !== theme && toggle()}
+            options={[
+              { value: "light", label: "Light", icon: <SunIcon /> },
+              { value: "dark", label: "Dark", icon: <MoonIcon /> },
+            ]}
+          />
+        </section>
+
+        <section>
+          <h3 className="mb-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Performance</h3>
+          <Segmented
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "full", label: "Full", icon: <BoltIcon /> },
+              { value: "lite", label: "Lite", icon: <FeatherIcon /> },
+            ]}
+          />
+          <p className="mt-2 text-xs leading-relaxed text-light">
+            Lite turns off blur and animations for smoother performance on slower
+            machines or when your browser&rsquo;s hardware acceleration is off.
+          </p>
+        </section>
+
+        {/* Account: the sign-out moved here from the profile header. */}
+        {isLoggedIn && (
+          <section>
+            <h3 className="mb-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Account</h3>
+            <button
+              type="button"
+              onClick={() => {
+                logout();
+                closePanel();
+              }}
+              className="flex w-full items-center justify-between rounded-xl border border-border bg-surface2 px-4 py-3 text-sm font-semibold text-dark transition hover:border-red-400/60 hover:text-bad"
             >
-              <div className="flex items-center justify-between border-b border-border px-5 py-4">
-                <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">Settings</h2>
-                <button
-                  type="button"
-                  onClick={closePanel}
-                  aria-label="Close settings"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-light transition hover:bg-surface2"
-                >
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M6 6l12 12M18 6L6 18" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="space-y-6 p-5">
-                <section>
-                  <h3 className="mb-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Appearance</h3>
-                  <Segmented
-                    value={theme}
-                    onChange={(v) => v !== theme && toggle()}
-                    options={[
-                      { value: "light", label: "Light", icon: <SunIcon /> },
-                      { value: "dark", label: "Dark", icon: <MoonIcon /> },
-                    ]}
-                  />
-                </section>
-
-                <section>
-                  <h3 className="mb-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Performance</h3>
-                  <Segmented
-                    value={mode}
-                    onChange={setMode}
-                    options={[
-                      { value: "full", label: "Full", icon: <BoltIcon /> },
-                      { value: "lite", label: "Lite", icon: <FeatherIcon /> },
-                    ]}
-                  />
-                  <p className="mt-2 text-xs leading-relaxed text-light">
-                    Lite turns off blur and animations for smoother performance on slower
-                    machines or when your browser&rsquo;s hardware acceleration is off.
-                  </p>
-                </section>
-
-                {/* Account: the sign-out moved here from the profile header. */}
-                {isLoggedIn && (
-                  <section>
-                    <h3 className="mb-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Account</h3>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        logout();
-                        closePanel();
-                      }}
-                      className="flex w-full items-center justify-between rounded-xl border border-border bg-surface2 px-4 py-3 text-sm font-semibold text-dark transition hover:border-red-400/60 hover:text-bad"
-                    >
-                      <span>Sign out{user?.driverName ? ` (${user.driverName})` : ""}</span>
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
-                      </svg>
-                    </button>
-                  </section>
-                )}
-              </div>
-            </aside>
-          </div>,
-          document.body
+              <span>Sign out{user?.driverName ? ` (${user.driverName})` : ""}</span>
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+              </svg>
+            </button>
+          </section>
         )}
-    </>
+      </div>
+    </Modal>
   );
 }
 

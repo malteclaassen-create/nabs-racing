@@ -6,6 +6,7 @@ import { ErrorBox, DriverAvatar } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import IdChip from "./IdChip.jsx";
 import AdminPersons from "./AdminPersons.jsx";
+import { useAsk } from "./overlay.jsx";
 import { fmtStamp, NO_VALUE } from "../utils/format.js";
 
 // Admin "Members" tab: every Discord account that has ever logged in on the
@@ -58,6 +59,7 @@ export default function AdminMembers() {
   // "Create new driver" inline form: which account it's open for + its fields.
   const [creating, setCreating] = useState(null); // discordId | null
   const [createForm, setCreateForm] = useState({ name: "", teamId: "" });
+  const ask = useAsk();
 
   if (error) return <ErrorBox message={error} />;
 
@@ -84,6 +86,9 @@ export default function AdminMembers() {
     }
   }
 
+  // Still a native prompt: this one both CONFIRMS the ban and collects an
+  // optional free-text reason (null = cancelled, "" = ban without a reason),
+  // and our ask() dialog cannot take free text. Needs a real input dialog.
   function ban(m) {
     const reason = window.prompt(
       `Ban "${m.displayName || m.username}"?\n\nThey can no longer log in and their current session stops working.\nOptional: enter a reason (visible only to admins).`,
@@ -93,8 +98,8 @@ export default function AdminMembers() {
     act(m.discordId, () => api.banMember(m.discordId, true, reason.trim() || null));
   }
 
-  function unban(m) {
-    if (!window.confirm(`Lift the ban for "${m.displayName || m.username}"?`)) return;
+  async function unban(m) {
+    if (!(await ask({ title: `Lift the ban for "${m.displayName || m.username}"?`, confirmLabel: "Unban" }))) return;
     act(m.discordId, () => api.banMember(m.discordId, false));
   }
 
@@ -139,17 +144,32 @@ export default function AdminMembers() {
     return unclaimed.find((d) => keys.includes(norm(d.name)) || keys.includes(norm(d.discordName))) || null;
   }
 
-  function unlink(m) {
-    if (!window.confirm(`Unlink "${m.displayName || m.username}" from ${m.driver?.name}?\nThey stay logged in but lose their driver identity (RSVP, profile editing).`)) return;
+  async function unlink(m) {
+    const ok = await ask({
+      title: `Unlink "${m.displayName || m.username}" from ${m.driver?.name}?`,
+      body: "They stay logged in but lose their driver identity (RSVP, profile editing).",
+      danger: true,
+      confirmLabel: "Unlink",
+    });
+    if (!ok) return;
     act(m.discordId, () => api.unlinkMember(m.discordId));
   }
 
-  function toggleAdmin(m) {
+  async function toggleAdmin(m) {
     const next = !m.isAdmin;
     const name = m.displayName || m.username;
     const ok = next
-      ? window.confirm(`Give "${name}" full admin access?\n\nThey reach the whole admin area straight after logging in with Discord, no PIN needed. Only do this for people you fully trust.`)
-      : window.confirm(`Remove admin access from "${name}"? This takes effect immediately.`);
+      ? await ask({
+          title: `Give "${name}" full admin access?`,
+          body: "They reach the whole admin area straight after logging in with Discord, no PIN needed. Only do this for people you fully trust.",
+          confirmLabel: "Make admin",
+        })
+      : await ask({
+          title: `Remove admin access from "${name}"?`,
+          body: "This takes effect immediately.",
+          danger: true,
+          confirmLabel: "Remove admin",
+        });
     if (!ok) return;
     act(m.discordId, () => api.setMemberAdmin(m.discordId, next));
   }

@@ -55,6 +55,17 @@ export default {
         lift: "var(--c-shadow-lift)",
         nav: "0 1px 3px 0 rgba(15,23,42,0.06)",
       },
+      // The named stacking tiers from index.css, so JSX writes `z-overlay`
+      // instead of picking a number. See the --z-* block there for why.
+      zIndex: {
+        sticky: "var(--z-sticky)",
+        header: "var(--z-header)",
+        dropdown: "var(--z-dropdown)",
+        chrome: "var(--z-chrome)",
+        scrim: "var(--z-scrim)",
+        overlay: "var(--z-overlay)",
+        tour: "var(--z-tour)",
+      },
       // The motion scale from index.css, made reachable from JSX. It was five
       // documented durations and five curves that no component could actually
       // use: Tailwind's theme never exposed them, so ~290 `transition` classes

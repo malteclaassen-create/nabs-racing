@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox } from "./ui.jsx";
+import { useAsk } from "./overlay.jsx";
 import { WELCOME_FAQ_DEFAULTS } from "../data/welcomeFaqDefaults.js";
 
 // Editor for the public Welcome-page FAQ (the "Frequently asked" section shown
@@ -48,6 +49,7 @@ function RowControls({ onUp, onDown, onRemove, upDisabled, downDisabled }) {
 }
 
 export default function AdminWelcomeFaq() {
+  const ask = useAsk();
   const { data, loading, error } = useApi(useCallback(() => api.adminWelcomeFaq(), []));
   const [form, setForm] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -75,8 +77,16 @@ export default function AdminWelcomeFaq() {
     }
   }
 
-  function resetToDefaults() {
-    if (!window.confirm("Replace everything in this form with the standard FAQ? Nothing is saved until you press Save.")) return;
+  async function resetToDefaults() {
+    if (
+      !(await ask({
+        title: "Replace everything in this form with the standard FAQ?",
+        body: "Nothing is saved until you press Save.",
+        danger: true,
+        confirmLabel: "Reset form",
+      }))
+    )
+      return;
     setForm(toForm(WELCOME_FAQ_DEFAULTS));
     setMsg(null);
   }

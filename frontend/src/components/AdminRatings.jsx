@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { CardHead, Notice } from "./ui.jsx";
+import { useAsk } from "./overlay.jsx";
 
 // Admin Ratings tab: every knob of the rating formulas, editable live.
 // EXP and PAC follow the league admin's formula sheet (career window over the
@@ -221,6 +222,7 @@ function TierTables({ label, rows, onChange, hint }) {
 }
 
 export default function AdminRatings() {
+  const ask = useAsk();
   const [defaults, setDefaults] = useState(null);
   const [form, setForm] = useState(null);
   const [ratings, setRatings] = useState([]);
@@ -291,7 +293,14 @@ export default function AdminRatings() {
     }
   }
   async function clearWeights() {
-    if (!window.confirm("Throw away the saved settings and put the public ratings back on the league defaults?")) return;
+    if (
+      !(await ask({
+        title: "Throw away the saved settings and put the public ratings back on the league defaults?",
+        danger: true,
+        confirmLabel: "Reset to defaults",
+      }))
+    )
+      return;
     setSaving(true);
     setSavedNote(null);
     try {

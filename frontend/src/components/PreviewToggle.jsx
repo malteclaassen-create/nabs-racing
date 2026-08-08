@@ -20,7 +20,7 @@ export default function PreviewToggle() {
   const effective = mode || (isLoggedIn ? "home" : "welcome");
 
   return (
-    <div className="fixed bottom-4 left-4 z-[60] flex items-center gap-1 rounded-full border border-border bg-card/95 p-1 shadow-lg backdrop-blur">
+    <div className="fixed bottom-4 left-4 z-chrome flex items-center gap-1 rounded-full border border-border bg-card/95 p-1 shadow-lg backdrop-blur">
       <span className="px-2 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
         Preview
       </span>

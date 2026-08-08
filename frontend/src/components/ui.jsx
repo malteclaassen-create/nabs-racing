@@ -1,6 +1,6 @@
 // Small shared presentational helpers — the site-wide design kit.
 
-import { useEffect, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useId, useState } from "react";
 import { useInView } from "../hooks/motion.js";
 import { NO_VALUE } from "../utils/format.js";
 
@@ -259,6 +259,118 @@ export function NoData({ label = "no value", className = "" }) {
       <span aria-hidden="true">{NO_VALUE}</span>
       <span className="sr-only">{label}</span>
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// <Field> — one labelled form control.
+//
+// Two thirds of the site's 212 form controls had no programmatic label. Not for
+// want of labels: most of them HAVE visible label text, but written as a
+// SIBLING of the control rather than a parent, and there was not a single
+// `htmlFor` anywhere in the tree to tie the two together. A screen reader
+// therefore announced most of the admin as a series of unnamed edit boxes, and
+// clicking a label did not focus its field.
+//
+// This generates the id and wires it up: htmlFor on the label, aria-describedby
+// to the hint, aria-invalid + a described error. The control is cloned rather
+// than wrapped so a call site keeps writing a plain `<input className="input">`
+// and existing sizing overrides survive untouched.
+//
+// `tone` keeps the two label typographies that were worth keeping out of the
+// twenty-odd that had drifted: the mono eyebrow (public pages) and the compact
+// plain one (dense admin forms). Everything else was noise.
+export function Field({
+  label,
+  hint,
+  error,
+  required = false,
+  accessory, // right-aligned in the label row: a live readout, a counter
+  tone = "eyebrow",
+  className = "",
+  children,
+}) {
+  const id = useId();
+  const hintId = `${id}-hint`;
+  const errId = `${id}-err`;
+  const describedBy = [hint ? hintId : null, error ? errId : null].filter(Boolean).join(" ") || undefined;
+  // Clone the control so the caller writes plain markup. A caller that needs
+  // full control (a custom widget, several controls in one field) can pass a
+  // function and place the props itself.
+  const control =
+    typeof children === "function"
+      ? children({ id, "aria-describedby": describedBy, "aria-invalid": error ? true : undefined, required })
+      : isValidElement(children)
+        ? cloneElement(children, {
+            id: children.props.id || id,
+            "aria-describedby": children.props["aria-describedby"] || describedBy,
+            "aria-invalid": error ? true : children.props["aria-invalid"],
+            required: children.props.required ?? (required || undefined),
+          })
+        : children;
+  const labelCls =
+    tone === "plain"
+      ? "text-xs font-semibold text-light"
+      : "font-mono text-[11px] font-bold uppercase tracking-wider text-medium";
+  return (
+    <div className={`min-w-0 ${className}`}>
+      {label && (
+        <div className="mb-1.5 flex items-baseline justify-between gap-3">
+          <label htmlFor={id} className={labelCls}>
+            {label}
+            {required && (
+              <span className="ml-1 text-bad" title="Required">
+                *
+              </span>
+            )}
+          </label>
+          {accessory && <span className="shrink-0 text-xs tabular-nums text-light">{accessory}</span>}
+        </div>
+      )}
+      {control}
+      {hint && !error && (
+        <p id={hintId} className="mt-1 text-xs leading-relaxed text-light">
+          {hint}
+        </p>
+      )}
+      {error && (
+        <p id={errId} className="mt-1 text-xs font-semibold leading-relaxed text-warn">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// A checkbox and its text, which is the one field shape that inverts: the
+// control comes first and the whole row is the hit area. Fourteen of these
+// existed across nine files with the gap, the alignment and the accent colour
+// all chosen separately.
+export function CheckField({ checked, onChange, label, hint, disabled = false, className = "" }) {
+  const id = useId();
+  const hintId = `${id}-hint`;
+  return (
+    <div className={`flex items-start gap-2.5 ${className}`}>
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        aria-describedby={hint ? hintId : undefined}
+        className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--c-primary)] disabled:opacity-50"
+      />
+      <div className="min-w-0">
+        <label htmlFor={id} className={`text-sm font-semibold ${disabled ? "text-light" : "text-medium"} cursor-pointer`}>
+          {label}
+        </label>
+        {hint && (
+          <p id={hintId} className="mt-0.5 text-xs leading-relaxed text-light">
+            {hint}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 

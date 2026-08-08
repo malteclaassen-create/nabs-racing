@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
+import { useAsk } from "./overlay.jsx";
 
 // Everything members and visitors wrote through the Feedback button: bug
 // reports, feature wishes, the rest. Each entry can be moved along (new →
@@ -106,6 +107,7 @@ function Message({ r }) {
 }
 
 function Entry({ item, onChanged }) {
+  const ask = useAsk();
   const [note, setNote] = useState(item.adminNote || "");
   const [busy, setBusy] = useState(false);
   const [openNote, setOpenNote] = useState(false);
@@ -161,7 +163,7 @@ function Entry({ item, onChanged }) {
   }
 
   async function remove() {
-    if (!window.confirm("Delete this entry for good?")) return;
+    if (!(await ask({ title: "Delete this entry for good?", danger: true, confirmLabel: "Delete entry" }))) return;
     setBusy(true);
     try {
       await api.deleteFeedback(item.id);

@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, CardBar, CardHead } from "./ui.jsx";
 import Icon from "./InfoIcon.jsx";
+import { useAsk } from "./overlay.jsx";
 import { NO_VALUE } from "../utils/format.js";
 
 const EMPTY = { title: "", folderId: "", raceId: "", version: "", description: "", installNote: "", fileName: "", externalUrl: "", sortOrder: 0, published: true };
@@ -17,6 +18,7 @@ function Folders({ folders, reload, onMsg }) {
   const [newName, setNewName] = useState("");
   const [renaming, setRenaming] = useState(null); // { id, name }
   const [busy, setBusy] = useState(false);
+  const ask = useAsk();
 
   async function run(fn) {
     setBusy(true);
@@ -55,8 +57,14 @@ function Folders({ folders, reload, onMsg }) {
     });
   };
 
-  const remove = (f) => {
-    if (!window.confirm(`Delete the folder "${f.name}"?\nThe downloads inside are kept and move to "More files".`)) return;
+  const remove = async (f) => {
+    const ok = await ask({
+      title: `Delete the folder "${f.name}"?`,
+      body: 'The downloads inside are kept and move to "More files".',
+      danger: true,
+      confirmLabel: "Delete folder",
+    });
+    if (!ok) return;
     run(() => api.deleteDownloadFolder(f.id));
   };
 
@@ -134,6 +142,7 @@ export default function AdminDownloads() {
   const [upload, setUpload] = useState(null); // { name, pct } while uploading
   const [flash, setFlash] = useState(false); // brief highlight on the form after a jump
   const formRef = useRef(null);
+  const ask = useAsk();
 
   // "Register" and a finished upload both land the admin on the entry form —
   // scroll to the FORM itself (page top would show the folder manager instead)
@@ -237,21 +246,28 @@ export default function AdminDownloads() {
     }
   }
 
-  // Two questions, in the order that keeps the destructive one optional: first
-  // "remove this from the catalogue?", then, only for entries that actually own
-  // a file, "and delete the file too?". Cancelling the second still removes the
-  // entry, which is exactly what this did before, so nobody loses the old
-  // behaviour by accident. External links skip the second question entirely —
-  // there is no file of ours to delete.
+  // One question with three real answers, for entries that own a file: back
+  // out, remove the entry but leave the file on disk, or remove both. This used
+  // to be two chained yes/no boxes where cancelling the second one silently
+  // meant "keep the file" — the same three outcomes, but you had to know that
+  // Cancel was a choice rather than an escape. External links get the plain
+  // two-button version: there is no file of ours to delete.
   async function remove(d) {
-    if (!window.confirm(`Remove "${d.title}" from the catalogue?`)) return;
     let alsoFile = false;
     if (d.fileName) {
-      alsoFile = window.confirm(
-        `Also delete the uploaded file from the server?\n\n` +
+      const answer = await ask({
+        title: `Remove "${d.title}" from the catalogue?`,
+        body:
           `${d.fileName}${d.sizeText ? ` (${d.sizeText})` : ""}\n\n` +
-          `OK deletes it and frees the space. Cancel keeps the file on disk and only removes the entry.`
-      );
+          `Deleting the file frees the space. Keeping it leaves the file on disk and only removes the entry.`,
+        danger: true,
+        confirmLabel: "Remove entry and delete the file",
+        thirdLabel: "Remove entry, keep the file",
+      });
+      if (!answer) return;
+      alsoFile = answer === true;
+    } else if (!(await ask({ title: `Remove "${d.title}" from the catalogue?`, danger: true, confirmLabel: "Remove entry" }))) {
+      return;
     }
     try {
       const r = await api.deleteDownload(d.id, alsoFile);
@@ -490,17 +506,18 @@ export default function AdminDownloads() {
 // appears when there is genuinely something to clean up.
 function OrphanFiles({ orphans, onMessage }) {
   const [busy, setBusy] = useState(null);
+  const ask = useAsk();
   const files = orphans.data?.files || [];
   if (orphans.loading || orphans.error || files.length === 0) return null;
 
   async function wipe(f) {
-    if (
-      !window.confirm(
-        `Delete "${f.fileName}" (${f.sizeText}) from the server?\n\n` +
-          `No download in the catalogue uses this file. This frees the space and cannot be undone.`
-      )
-    )
-      return;
+    const ok = await ask({
+      title: `Delete "${f.fileName}" (${f.sizeText}) from the server?`,
+      body: "No download in the catalogue uses this file. This frees the space and cannot be undone.",
+      danger: true,
+      confirmLabel: "Delete file",
+    });
+    if (!ok) return;
     setBusy(f.fileName);
     try {
       await api.deleteDownloadOrphan(f.fileName);

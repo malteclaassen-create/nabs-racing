@@ -5,6 +5,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar } from "../components/ui.jsx";
+import { useAsk } from "../components/overlay.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
 import AdminRatings from "../components/AdminRatings.jsx";
@@ -1000,6 +1001,7 @@ function parseRaceTimeInput(text) {
 }
 
 function EditResults() {
+  const ask = useAsk();
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [raceId, setRaceId] = useState("");
@@ -1271,9 +1273,12 @@ function EditResults() {
       const shown = changed.slice(0, 8).map((c) => `• ${c}`).join("\n");
       const more = changed.length > 8 ? `\n… and ${changed.length - 8} more rows` : "";
       if (
-        !window.confirm(
-          `This changes data the round already has stored:\n\n${shown}${more}\n\nSave anyway? (A backup is written automatically first.)`
-        )
+        !(await ask({
+          title: "This changes data the round already has stored",
+          body: `${shown}${more}\n\nSave anyway? (A backup is written automatically first.)`,
+          danger: true,
+          confirmLabel: "Save anyway",
+        }))
       )
         return;
     }
@@ -1338,9 +1343,12 @@ function EditResults() {
       ? `${kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${race.number}`} · ${race.track}`
       : "this race";
     if (
-      !window.confirm(
-        `Delete only the RESULTS of ${label}?\n\nThe race stays on the calendar as "not run yet"; standings recalculate without it. A backup is saved automatically first.`
-      )
+      !(await ask({
+        title: `Delete only the RESULTS of ${label}?`,
+        body: `The race stays on the calendar as "not run yet"; standings recalculate without it. A backup is saved automatically first.`,
+        danger: true,
+        confirmLabel: "Delete results",
+      }))
     )
       return;
     setBusy(true);
@@ -1368,9 +1376,12 @@ function EditResults() {
       ? `${kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${race.number}`} · ${race.track}`
       : "this race";
     if (
-      !window.confirm(
-        `Delete ${label} and ALL its results?\n\nStandings will recalculate without this round. A backup is saved automatically, so it can be restored if this was a mistake.`
-      )
+      !(await ask({
+        title: `Delete ${label} and ALL its results?`,
+        body: "Standings will recalculate without this round. A backup is saved automatically, so it can be restored if this was a mistake.",
+        danger: true,
+        confirmLabel: "Delete round",
+      }))
     )
       return;
     setBusy(true);
@@ -1811,6 +1822,7 @@ function EditResults() {
 // post it straight to the results-channel webhook. Save the results first —
 // the draft is built from what's stored, not from unsaved edits above.
 function DiscordResultsPost({ raceId }) {
+  const ask = useAsk();
   const { data: hook, reload: reloadHook } = useApi(useCallback(() => api.getResultsWebhook(), []));
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
@@ -1850,8 +1862,15 @@ function DiscordResultsPost({ raceId }) {
       await navigator.clipboard.writeText(text);
     }, "Copied. Paste it into Discord.");
 
-  const post = () => {
-    if (!window.confirm("Post this message to the results channel? Mentioned drivers get pinged.")) return;
+  const post = async () => {
+    if (
+      !(await ask({
+        title: "Post this message to the results channel?",
+        body: "Mentioned drivers get pinged.",
+        confirmLabel: "Post to Discord",
+      }))
+    )
+      return;
     run(async () => {
       const r = await api.sendResultsPost(raceId, text);
       setMsg(r.messages > 1 ? `Posted as ${r.messages} messages (Discord length limit).` : "Posted to Discord.");
@@ -1867,8 +1886,16 @@ function DiscordResultsPost({ raceId }) {
 
   // Clearing only stops the "Post to Discord" button; Copy keeps working. The
   // URL itself stays usable in Discord until it's deleted there too.
-  const removeHook = () => {
-    if (!window.confirm("Remove the saved results webhook? Posting from here stops until a new one is saved. (To fully revoke the URL, also delete the webhook in Discord.)")) return;
+  const removeHook = async () => {
+    if (
+      !(await ask({
+        title: "Remove the saved results webhook?",
+        body: "Posting from here stops until a new one is saved. (To fully revoke the URL, also delete the webhook in Discord.)",
+        danger: true,
+        confirmLabel: "Remove webhook",
+      }))
+    )
+      return;
     run(async () => {
       await api.setResultsWebhook("");
       reloadHook();
@@ -2019,6 +2046,7 @@ function DbSeatSearch({ team, db, rosterNames, onAdded, onError, autoFocus = fal
 }
 
 function Drivers() {
+  const ask = useAsk();
   const { data: teams, reload } = useApi(useCallback(() => api.teams(), []));
   // The series-wide driver database feeding the per-team search fields.
   const driverDb = useApi(useCallback(() => api.adminDriverDb(), []));
@@ -2058,7 +2086,7 @@ function Drivers() {
       // attendance sign-up auto-created): the backend asks before creating a
       // twin — usually the right move is to move the existing entry instead.
       if (err.data?.needsConfirm) {
-        if (window.confirm(err.message)) {
+        if (await ask({ title: "Create this driver anyway?", body: err.message, confirmLabel: "Create driver" })) {
           try {
             await api.createDriver({
               name: form.name.trim(),
@@ -2096,7 +2124,7 @@ function Drivers() {
       reload(); driverDb.reload();
     } catch (err) {
       if (err.data?.needsConfirm) {
-        if (window.confirm(err.message)) {
+        if (await ask({ title: "Remove this driver?", body: err.message, danger: true, confirmLabel: "Remove driver" })) {
           try {
             const out = await api.deleteDriver(d.id, true);
             setMsg(
@@ -2159,7 +2187,15 @@ function Drivers() {
           (blocked.length
             ? `\n\nProtected (have race results, will be skipped): ${blocked.map((r) => r.name).join(", ")}`
             : "");
-        if (going.length && window.confirm(text)) {
+        if (
+          going.length &&
+          (await ask({
+            title: "Remove the selected drivers?",
+            body: text,
+            danger: true,
+            confirmLabel: "Remove drivers",
+          }))
+        ) {
           try {
             const out = await api.bulkDeleteDrivers(ids, true);
             setMsg(
@@ -2511,6 +2547,7 @@ function DriverSteamId({ d, busy, onSave }) {
 
 // --- DISCORD & EVENTS ------------------------------------------------------
 function DiscordEvents() {
+  const ask = useAsk();
   const { current } = useSeason();
   const { data: hook, reload } = useApi(useCallback(() => api.getWebhook(), []));
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
@@ -2545,7 +2582,15 @@ function DiscordEvents() {
   // Clearing the webhook stops all event posts/updates; the URL itself keeps
   // working in Discord until it's deleted there too, hence the hint.
   async function removeWebhook() {
-    if (!window.confirm("Remove the saved webhook? Event posts and RSVP updates to Discord stop until a new one is saved. (To fully revoke the URL, also delete the webhook in Discord.)")) return;
+    if (
+      !(await ask({
+        title: "Remove the saved webhook?",
+        body: "Event posts and RSVP updates to Discord stop until a new one is saved. (To fully revoke the URL, also delete the webhook in Discord.)",
+        danger: true,
+        confirmLabel: "Remove webhook",
+      }))
+    )
+      return;
     setBusy(true); setError(null); setMsg(null);
     try {
       await api.setWebhook("");
@@ -2582,7 +2627,15 @@ function DiscordEvents() {
   }
 
   async function deleteRace(id) {
-    if (!window.confirm("Delete this race? Only works if it has no stored results.")) return;
+    if (
+      !(await ask({
+        title: "Delete this race?",
+        body: "Only works if it has no stored results.",
+        danger: true,
+        confirmLabel: "Delete race",
+      }))
+    )
+      return;
     setBusy(true); setError(null); setMsg(null);
     try { await api.deleteEvent(id); setMsg("Race deleted."); reloadRaces(); }
     catch (err) { setError(err.message); } finally { setBusy(false); }
@@ -2837,6 +2890,7 @@ function parsePointsInput(text) {
 // needed, e.g. Railway); a season without one falls back to the static
 // /heroes/s<number>.jpg drop-in convention, then the shared default photo.
 function SeasonHero({ season, onSaved, onError }) {
+  const ask = useAsk();
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
 
@@ -2852,7 +2906,15 @@ function SeasonHero({ season, onSaved, onError }) {
   }
 
   async function clear() {
-    if (!window.confirm(`Remove ${season.name}'s custom photo? The home page falls back to the default.`)) return;
+    if (
+      !(await ask({
+        title: `Remove ${season.name}'s custom photo?`,
+        body: "The home page falls back to the default.",
+        danger: true,
+        confirmLabel: "Remove photo",
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await api.clearSeasonHero(season.id);
@@ -2891,6 +2953,7 @@ function SeasonHero({ season, onSaved, onError }) {
 // the new mod). Without one (and without a static /cars/s<n>.jpg) the panel
 // simply doesn't render — no placeholder.
 function SeasonCar({ season, onSaved, onError }) {
+  const ask = useAsk();
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
 
@@ -2906,7 +2969,15 @@ function SeasonCar({ season, onSaved, onError }) {
   }
 
   async function clear() {
-    if (!window.confirm(`Remove ${season.name}'s car image? Without one the coming-soon hero shows no car panel.`)) return;
+    if (
+      !(await ask({
+        title: `Remove ${season.name}'s car image?`,
+        body: "Without one the coming-soon hero shows no car panel.",
+        danger: true,
+        confirmLabel: "Remove image",
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await api.clearSeasonCar(season.id);
@@ -3029,6 +3100,7 @@ function SeasonScoring({ season, onSaved, onError }) {
 }
 
 function Seasons({ gotoRaces }) {
+  const ask = useAsk();
   const { data: seasons, reload } = useApi(useCallback(() => api.adminSeasons(), []));
   const { season: editingSeason } = useSeason();
   const [form, setForm] = useState({ number: "", name: "", game: "", dropWorst: "3", points: "" });
@@ -3140,21 +3212,21 @@ function Seasons({ gotoRaces }) {
     const hasContent = teams > 0 || drivers > 0 || races > 0;
 
     if (!hasContent) {
-      if (!window.confirm(`Delete ${s.name}?`)) return;
+      if (!(await ask({ title: `Delete ${s.name}?`, danger: true, confirmLabel: "Delete season" }))) return;
     } else {
       // Deleting a filled season wipes its teams, drivers and races. Make the
       // admin type the season's name so this can't happen on a stray click.
       // (A DB backup is created automatically right before the delete.)
-      const typed = window.prompt(
-        `${s.name} still holds ${teams} team(s), ${drivers} driver(s) and ${races} race(s).\n` +
-        `Deleting removes ALL of it (a database backup is made first).\n\n` +
-        `Type the season's name (${s.name}) to confirm:`
-      );
-      if (typed === null) return;
-      if (typed.trim() !== s.name) {
-        setError(`Not deleted. The typed name didn't match "${s.name}".`);
-        return;
-      }
+      const ok = await ask({
+        title: `Delete ${s.name}?`,
+        body:
+          `${s.name} still holds ${teams} team(s), ${drivers} driver(s) and ${races} race(s).\n` +
+          `Deleting removes ALL of it (a database backup is made first).`,
+        danger: true,
+        confirmLabel: "Delete season",
+        confirmWith: s.name,
+      });
+      if (!ok) return;
     }
 
     setBusy(true); setError(null); setMsg(null);
@@ -3322,6 +3394,7 @@ function Seasons({ gotoRaces }) {
 // Recommended: a transparent PNG, square, at least 512x512 — matches the
 // shared default's own 1080x1080.
 function SeriesLogo({ series, onSaved, onError }) {
+  const ask = useAsk();
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
 
@@ -3337,7 +3410,15 @@ function SeriesLogo({ series, onSaved, onError }) {
   }
 
   async function clear() {
-    if (!window.confirm(`Remove ${series.name}'s custom logo? It falls back to the default NABS mark.`)) return;
+    if (
+      !(await ask({
+        title: `Remove ${series.name}'s custom logo?`,
+        body: "It falls back to the default NABS mark.",
+        danger: true,
+        confirmLabel: "Remove logo",
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await api.clearSeriesLogo(series.id);
@@ -3369,6 +3450,7 @@ function SeriesLogo({ series, onSaved, onError }) {
 // series switcher in the NavBar appears automatically once a second series
 // exists (private ones only for admins).
 function SeriesPanel() {
+  const ask = useAsk();
   const { data: series, reload } = useApi(useCallback(() => api.adminSeries(), []));
   const { setSlug } = useSeries();
   const [form, setForm] = useState({ name: "", game: "", accentColor: "" });
@@ -3407,6 +3489,8 @@ function SeriesPanel() {
   }
 
   async function rename(s) {
+    // Still a native prompt: this collects free text rather than a yes/no, and
+    // the overlay layer has no input dialog for it yet.
     const name = window.prompt(`New name for "${s.name}" (the URL /s/${s.slug} stays the same):`, s.name);
     if (name === null || !name.trim() || name.trim() === s.name) return;
     setBusy(true); setError(null); setMsg(null);
@@ -3447,15 +3531,18 @@ function SeriesPanel() {
 
   async function remove(s) {
     if (s.seasonCount === 0) {
-      if (!window.confirm(`Delete the series "${s.name}"?`)) return;
+      if (!(await ask({ title: `Delete the series "${s.name}"?`, danger: true, confirmLabel: "Delete series" }))) return;
     } else {
-      const typed = window.prompt(
-        `${s.name} still holds ${s.seasonCount} season(s) with all their teams, drivers and races.\n` +
-        `Deleting removes ALL of it (a database backup is made first).\n\n` +
-        `Type the series' name (${s.name}) to confirm:`
-      );
-      if (typed === null) return;
-      if (typed.trim() !== s.name) { setError(`Not deleted. The typed name didn't match "${s.name}".`); return; }
+      const ok = await ask({
+        title: `Delete the series "${s.name}"?`,
+        body:
+          `${s.name} still holds ${s.seasonCount} season(s) with all their teams, drivers and races.\n` +
+          `Deleting removes ALL of it (a database backup is made first).`,
+        danger: true,
+        confirmLabel: "Delete series",
+        confirmWith: s.name,
+      });
+      if (!ok) return;
     }
     setBusy(true); setError(null); setMsg(null);
     try {
@@ -3780,6 +3867,7 @@ function TeamImport({ seasonId, onImported, onError }) {
 }
 
 function Teams() {
+  const ask = useAsk();
   const { current } = useSeason();
   const { data: teams, reload } = useApi(useCallback(() => api.teams(), []));
   // The all-time driver database + current roster names feed the seat boxes'
@@ -3834,14 +3922,25 @@ function Teams() {
   // Same two-step as removing a driver: the server answers with what would go
   // along with the team (its driver-market offers) and we ask before doing it.
   async function remove(t) {
-    if (!window.confirm(`Delete team "${t.name}"? This only works if it has no drivers or results.`)) return;
+    if (
+      !(await ask({
+        title: `Delete team "${t.name}"?`,
+        body: "This only works if it has no drivers or results.",
+        danger: true,
+        confirmLabel: "Delete team",
+      }))
+    )
+      return;
     setBusy(true); setError(null); setMsg(null);
     try {
       await api.deleteTeam(t.id);
       setMsg(`${t.name} deleted.`);
       reload();
     } catch (err) {
-      if (err.data?.needsConfirm && window.confirm(err.message)) {
+      if (
+        err.data?.needsConfirm &&
+        (await ask({ title: "Delete this team anyway?", body: err.message, danger: true, confirmLabel: "Delete team" }))
+      ) {
         try {
           const out = await api.deleteTeam(t.id, true);
           setMsg(
@@ -3872,7 +3971,7 @@ function Teams() {
       reload(); driverDb.reload();
     } catch (err) {
       if (err.data?.needsConfirm) {
-        if (window.confirm(err.message)) {
+        if (await ask({ title: "Remove this driver?", body: err.message, danger: true, confirmLabel: "Remove driver" })) {
           try {
             const out = await api.deleteDriver(d.id, true);
             setMsg(

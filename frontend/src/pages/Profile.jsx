@@ -7,7 +7,7 @@ import Tools from "./Tools.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth, getUserToken, saveUser } from "../hooks/useAuth.js";
-import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar } from "../components/ui.jsx";
+import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar, Field } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { COUNTRIES } from "../data/countries.js";
@@ -358,18 +358,6 @@ function DiscordLogin() {
   );
 }
 
-// A labelled field wrapper for the editor form.
-function Field({ label, hint, children }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
-        {label}
-      </span>
-      {children}
-      {hint && <span className="mt-1 block text-xs text-light">{hint}</span>}
-    </label>
-  );
-}
 
 function ProfileEditor({ me, onDraftChange }) {
   const fileRef = useRef(null);
