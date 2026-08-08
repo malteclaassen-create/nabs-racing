@@ -1118,13 +1118,13 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
     </span>
   );
   // Each shelf row: the label ABOVE its seals; wide enough for seven wreaths
-  // (7 × 32px + 6 gaps ≈ 16.5rem) before a row wraps.
+  // (7 × 40px + 6 gaps = 316px ≈ 20rem) before a row wraps.
   const sealRows = (alignRight) => (
     <>
       {(badges || []).length > 0 && (
         <div className={`flex flex-col gap-1 ${alignRight ? "items-end" : "items-center"}`}>
           {sealLabel("WDC", "Drivers' championship podiums")}
-          <div className={`flex max-w-[16.5rem] flex-wrap gap-1.5 ${alignRight ? "justify-end" : "justify-center"}`}>
+          <div className={`flex max-w-[20rem] flex-wrap gap-1.5 ${alignRight ? "justify-end" : "justify-center"}`}>
             {badges.map((b) => (
               <ChampionBadge
                 key={`${b.type}-${b.seasonNumber}`}
@@ -1142,7 +1142,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
       {(teamBadges || []).length > 0 && (
         <div className={`flex flex-col gap-1 ${alignRight ? "items-end" : "items-center"}`}>
           {sealLabel("WCC", "Constructors' championship podiums (the driver's team)")}
-          <div className={`flex max-w-[16.5rem] flex-wrap gap-1.5 ${alignRight ? "justify-end" : "justify-center"}`}>
+          <div className={`flex max-w-[20rem] flex-wrap gap-1.5 ${alignRight ? "justify-end" : "justify-center"}`}>
             {teamBadges.map((b) => (
               <TeamPodiumBadge
                 key={`team-${b.seasonNumber}`}

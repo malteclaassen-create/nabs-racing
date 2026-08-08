@@ -65,7 +65,11 @@ const POP_POS = {
   right: "right-0",
 };
 
-export default function ChampionBadge({ type = "champion", seasonNumber, seasonName, game, points, size = 32, align = "center" }) {
+// 40px, not the 32 it started at: at the old size the wreath's leaves and the
+// season tag inside it were fighting for the same few pixels, and the shelf
+// read as a row of dots rather than as trophies. The shelf's max-width in
+// DriverProfile is tuned to this number (seven seals per row).
+export default function ChampionBadge({ type = "champion", seasonNumber, seasonName, game, points, size = 40, align = "center" }) {
   const m = METALS[METAL_BY_TYPE[type]] || METALS.gold;
   // Unique per component INSTANCE, not just per (type, season): the trophy
   // shelf renders twice (a display:none desktop column + the mobile block), so
@@ -135,7 +139,7 @@ export default function ChampionBadge({ type = "champion", seasonNumber, seasonN
 const TEAM_TITLE_BY_POS = { 1: "Team Champions", 2: "Teams 2nd Place", 3: "Teams 3rd Place" };
 const METAL_BY_POS = { 1: "gold", 2: "silver", 3: "bronze" };
 
-export function TeamPodiumBadge({ position = 1, seasonNumber, seasonName, game, points, team, size = 32, align = "center" }) {
+export function TeamPodiumBadge({ position = 1, seasonNumber, seasonName, game, points, team, size = 40, align = "center" }) {
   const m = METALS[METAL_BY_POS[position]] || METALS.gold;
   // Unique per instance (see ChampionBadge): the shelf renders on both the
   // desktop and mobile layouts, so a deterministic id would collide across the
@@ -170,8 +174,13 @@ export function TeamPodiumBadge({ position = 1, seasonNumber, seasonName, game, 
       </span>
       {/* season ribbon over the wreath's closing leaves — the driver seal
           carries its season INSIDE the wreath, the team seal carries the logo
-          there, so the season tag moves onto a little banner at the bottom */}
-      <span className="pointer-events-none absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-[3px] bg-card px-[3px] py-px font-mono text-[7px] font-black leading-none tracking-tight">
+          there, so the season tag moves onto a little banner at the bottom.
+          Scales with the seal: a fixed size would shrink to a speck the
+          bigger the wreath gets. */}
+      <span
+        className="pointer-events-none absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-[3px] bg-card px-[3px] py-px font-mono font-black leading-none tracking-tight"
+        style={{ fontSize: Math.max(7, Math.round(size * 0.22)) }}
+      >
         S{seasonNumber}
       </span>
 
