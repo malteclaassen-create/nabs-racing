@@ -697,7 +697,7 @@ function HeadToHead({ me, meRow, standings }) {
       <CardBar
         title="Head to Head"
         right={
-          <select value={opp.driverId} onChange={(e) => setOppId(e.target.value)}
+          <select value={opp.driverId} aria-label="Compare against" onChange={(e) => setOppId(e.target.value)}
             className="max-w-[11rem] rounded-lg border border-border bg-surface2 px-2.5 py-1.5 text-sm font-bold text-dark focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20">
             {others.map((o) => <option key={o.driverId} value={o.driverId}>P{o.position} · {o.name}</option>)}
           </select>

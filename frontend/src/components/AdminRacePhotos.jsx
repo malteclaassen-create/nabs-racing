@@ -152,7 +152,7 @@ export default function AdminRacePhotos() {
       setMsg(
         done
           ? `${done} photo${done === 1 ? "" : "s"} optimised, ${fmtSize(saved)} freed.`
-          : "Nothing to gain — these are already as small as they get."
+          : "Nothing to gain. These are already as small as they get."
       );
       reloadRaces();
     } catch (err) {
@@ -252,7 +252,7 @@ export default function AdminRacePhotos() {
               disabled={busy}
               onChange={(e) => setNotify(e.target.checked)}
             />
-            <span title="A round's gallery rings the bell once, the first time photos go up. Untick this when filling in old races — nobody needs a notification for a season that finished months ago.">
+            <span title="A round's gallery rings the bell once, the first time photos go up. Untick this when filling in old races, because nobody needs a notification for a season that finished months ago.">
               Tell members
             </span>
           </label>
@@ -347,7 +347,7 @@ export default function AdminRacePhotos() {
                     }`}
                     title={
                       (p.bytes || 0) > REENCODE_OVER_BYTES
-                        ? "Larger than a shrunk photo ever is — use Shrink large photos above"
+                        ? "Larger than a shrunk photo ever is. Use Shrink large photos above"
                         : undefined
                     }
                   >

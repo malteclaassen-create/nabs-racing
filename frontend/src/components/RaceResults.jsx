@@ -330,7 +330,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                       {tier != null && <TierBadge tier={tier} />}
                       {r.driverId === dotdId && (
                         <span className="pill bg-brand/20 text-brand" title="Driver of the Day">
-                          ★ DOTD
+                          DOTD
                         </span>
                       )}
                       {isFastest && (

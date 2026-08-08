@@ -93,7 +93,7 @@ function PasteBox({ platform, onAdd }) {
         <button className="btn-secondary py-1.5 text-sm" disabled={busy || !text.trim()} onClick={submit}>
           {busy ? "Fetching…" : `Add to the wall`}
         </button>
-        {busy && <span className="text-sm text-light">Asking {PLATFORM_LABEL[platform]} — this can take a moment.</span>}
+        {busy && <span className="text-sm text-light">Asking {PLATFORM_LABEL[platform]}. This can take a moment.</span>}
       </div>
 
       {results && (
@@ -113,7 +113,7 @@ function PasteBox({ platform, onAdd }) {
               {r.status === "added" && r.platform !== platform && (
                 <span className="text-xs text-light">went in as {PLATFORM_LABEL[r.platform] || r.platform}</span>
               )}
-              {r.status === "added" && !r.picture && <span className="text-xs text-light">no picture — upload a cover below</span>}
+              {r.status === "added" && !r.picture && <span className="text-xs text-light">no picture, upload a cover below</span>}
               {r.error && <span className="text-xs text-light">{r.error}</span>}
             </li>
           ))}
@@ -212,7 +212,7 @@ export default function AdminSocialFeed() {
       {/* ---------- YouTube: set once, then automatic ---------- */}
       <PlatformRow
         platform="youtube"
-        hint="Open your channel on YouTube and copy the address from the browser bar — an @handle link works as well as a /channel/ one. The newest videos then appear on their own, no key and no login needed."
+        hint="Open your channel on YouTube and copy the address from the browser bar. An @handle link works as well as a /channel/ one. The newest videos then appear on their own, no key and no login needed."
       >
         <div className="flex flex-wrap gap-2">
           <input
@@ -268,7 +268,7 @@ export default function AdminSocialFeed() {
       {/* ---------- Instagram and TikTok: a box each ---------- */}
       <PlatformRow
         platform="instagram"
-        hint={`Paste post or reel links, one per line — or just paste the message you collected them in. ${
+        hint={`Paste post or reel links, one per line, or just paste the message you collected them in. ${
           countOf("instagram") ? `${countOf("instagram")} on the wall right now.` : "None on the wall yet."
         }`}
       >
@@ -291,7 +291,7 @@ export default function AdminSocialFeed() {
         </div>
         {posts.length === 0 ? (
           <p className="text-sm text-light">
-            Nothing yet. Videos pulled from the YouTube channel aren't listed here — they look after themselves.
+            Nothing yet. Videos pulled from the YouTube channel aren't listed here, they look after themselves.
           </p>
         ) : (
           <ul className="space-y-3">
@@ -395,7 +395,7 @@ export default function AdminSocialFeed() {
           checked={config.mixPlatforms}
           onChange={(e) => setConfig((c) => ({ ...c, mixPlatforms: e.target.checked }))}
           label="One from each channel, taking turns"
-          hint="YouTube, Instagram, TikTok, then round again — so a busy week on one channel doesn't fill the whole wall. Off means purely newest first. Pinned posts stay in front either way."
+          hint="YouTube, Instagram, TikTok, then round again, so a busy week on one channel doesn't fill the whole wall. Off means purely newest first. Pinned posts stay in front either way."
         />
         <button className="btn-primary mt-3" disabled={busy} onClick={() => saveConfig(config)}>
           Save settings

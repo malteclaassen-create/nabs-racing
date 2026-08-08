@@ -398,7 +398,7 @@ export default function AdminAttendance() {
             </button>
           </div>
           {fallbackUrl.trim() && !ytId(fallbackUrl) && (
-            <p className="text-xs text-bad">That isn&rsquo;t a YouTube link — the old one stays until this one works.</p>
+            <p className="text-xs text-bad">That isn&rsquo;t a YouTube link. The old one stays until this one works.</p>
           )}
         </div>
       )}
@@ -413,7 +413,7 @@ export default function AdminAttendance() {
       <div className="card space-y-4 p-5">
         <CardHead eyebrow="Attendance page" title="Who can sign up" />
         <p className="text-sm text-light">
-          <strong className="font-semibold text-medium">Auto</strong> follows the general rule in Notifications —{" "}
+          <strong className="font-semibold text-medium">Auto</strong> follows the general rule in Notifications:{" "}
           {rule?.attendanceOpenDays
             ? `sign-up opens ${rule.attendanceOpenDays} day${rule.attendanceOpenDays === 1 ? "" : "s"} before the race at ${String(rule.attendanceOpenHour).padStart(2, "0")}:00 German time.`
             : "no rule set, so every race is open as soon as it exists."}{" "}
@@ -422,7 +422,7 @@ export default function AdminAttendance() {
           page until you save its result, so a round that has already run keeps taking late answers.
         </p>
         <p className="text-sm text-light">
-          The eye takes a race off the attendance page altogether, sign-up reminders included — for a session
+          The eye takes a race off the attendance page altogether, sign-up reminders included, for a session
           that is in the calendar early, or one that isn&rsquo;t happening after all. It keeps its date, its
           calendar card and its results, and a crossed-out eye here is the way back.
         </p>

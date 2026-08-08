@@ -489,7 +489,7 @@ function ProfileEditor({ me, onDraftChange }) {
                     Use Discord picture
                   </button>
                 )}
-                <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={onPickFile} />
+                <input ref={fileRef} type="file" aria-label="Choose a profile picture" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={onPickFile} />
               </div>
 
               <div className="grid min-w-0 flex-1 gap-4 sm:grid-cols-2">
@@ -513,10 +513,15 @@ function ProfileEditor({ me, onDraftChange }) {
                     placeholder={NO_VALUE}
                   />
                 </Field>
+                {/* The function form, because the child here is a ROW (flag +
+                    select) rather than the control itself: Field puts the
+                    generated id on whatever it is handed, and on a wrapper that
+                    leaves the label pointing at a div. */}
                 <Field label="Country">
+                  {(fieldProps) => (
                   <div className="flex items-center gap-2.5">
                     <Flag code={country} w={22} h={16} />
-                    <select className="input" value={country} onChange={(e) => setCountry(e.target.value)}>
+                    <select {...fieldProps} className="input" value={country} onChange={(e) => setCountry(e.target.value)}>
                       <option value="">Not set</option>
                       {COUNTRIES.map((c) => (
                         <option key={c.code} value={c.code}>
@@ -525,6 +530,7 @@ function ProfileEditor({ me, onDraftChange }) {
                       ))}
                     </select>
                   </div>
+                  )}
                 </Field>
                 <Field label="About me" hint={`${bio.length}/300`}>
                   <textarea

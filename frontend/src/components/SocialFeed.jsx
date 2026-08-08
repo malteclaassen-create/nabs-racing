@@ -106,7 +106,7 @@ function PostCard({ post, channel }) {
             target="_blank"
             rel="noopener noreferrer"
             className="group relative block h-full w-full overflow-hidden bg-surface2"
-            aria-label={post.title ? `${post.title} — open on ${meta.label}` : `Open on ${meta.label}`}
+            aria-label={post.title ? `${post.title}, open on ${meta.label}` : `Open on ${meta.label}`}
           >
             {post.thumbUrl ? (
               <img

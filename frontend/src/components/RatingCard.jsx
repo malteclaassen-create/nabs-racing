@@ -72,7 +72,7 @@ export const RATING_INFO = {
     code: "EXP",
     label: "Experience",
     text:
-      "Career experience over your last seven finished seasons: race starts (45%), championship results for you and your teams (45%), plus small bonuses for finishing nearly every race and for seasons raced. An absolute scale — not compared to the rest of the field.",
+      "Career experience over your last seven finished seasons: race starts (45%), championship results for you and your teams (45%), plus small bonuses for finishing nearly every race and for seasons raced. An absolute scale, not compared to the rest of the field.",
   },
   rac: {
     code: "RAC",
@@ -92,7 +92,7 @@ export const RATING_INFO = {
     code: "PAC",
     label: "Pace",
     text:
-      "Raw speed over the career window: your average grid slot, your gap to the best race laps, and how consistent your lap times are — ranked against the season's regulars.",
+      "Raw speed over the career window: your average grid slot, your gap to the best race laps, and how consistent your lap times are, all ranked against the season's regulars.",
   },
 };
 

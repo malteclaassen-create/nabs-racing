@@ -4,7 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar } from "../components/ui.jsx";
+import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field } from "../components/ui.jsx";
 import { useAsk } from "../components/overlay.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
@@ -511,6 +511,7 @@ function OfferAdminRow({ offer, reserves, busy, onAssign, onDelete }) {
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <select
+          aria-label={`Reserve to assign to the ${offer.team.name} seat`}
           className="input max-w-[14rem] py-1.5 text-sm"
           value={sel}
           onChange={(e) => setSel(e.target.value)}
@@ -682,15 +683,14 @@ function SocialAdmin() {
       {saved && <Notice kind="success">Saved.</Notice>}
       <div className="grid gap-4 sm:grid-cols-2">
         {SOCIAL_META.map((m) => (
-          <div key={m.key}>
-            <label className="mb-1 block text-sm font-semibold text-medium">{m.label}</label>
+          <Field key={m.key} label={m.label} tone="plain">
             <input
               className="input"
               placeholder="https://…"
               value={form[m.key] || ""}
               onChange={(e) => setForm((f) => ({ ...f, [m.key]: e.target.value }))}
             />
-          </div>
+          </Field>
         ))}
       </div>
 
@@ -699,8 +699,12 @@ function SocialAdmin() {
           It cannot be worked out from the data — the archived seasons carry no
           dates at all, so the earliest race the site knows about is months old
           while the league is years old. */}
-      <div className="border-t border-border pt-4">
-        <label className="mb-1 block text-sm font-semibold text-medium">Racing since (year)</label>
+      <Field
+        className="border-t border-border pt-4"
+        label="Racing since (year)"
+        tone="plain"
+        hint={<>Shown on the front page as “N years of racing”. Leave empty to hide that tile.</>}
+      >
         <input
           className="input sm:max-w-[12rem]"
           inputMode="numeric"
@@ -708,10 +712,7 @@ function SocialAdmin() {
           value={form.since ?? ""}
           onChange={(e) => setForm((f) => ({ ...f, since: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
         />
-        <p className="mt-1 text-xs text-light">
-          Shown on the front page as “N years of racing”. Leave empty to hide that tile.
-        </p>
-      </div>
+      </Field>
 
       <button className="btn-primary" onClick={save} disabled={busy}>
         {busy ? "Saving…" : "Save links"}
@@ -774,47 +775,59 @@ function LiveLinksAdmin() {
       {err && <Notice kind="error">{err}</Notice>}
       {saved && <Notice kind="success">Saved.</Notice>}
       <div className="space-y-4">
-        <div>
-          <label className="mb-1 block text-sm font-semibold text-medium">Full live timing URL</label>
+        <Field
+          label="Full live timing URL"
+          tone="plain"
+          hint={
+            <>
+              The server manager&rsquo;s own live-timing page. Default:{" "}
+              <span className="font-mono">{data.defaults?.liveTimingUrl}</span>
+            </>
+          }
+        >
           <input
             className="input"
             placeholder={data.defaults?.liveTimingUrl || "https://…/live-timing"}
             value={form.liveTimingUrl}
             onChange={(e) => setForm((f) => ({ ...f, liveTimingUrl: e.target.value }))}
           />
-          <p className="mt-1 text-xs text-light">
-            The server manager&rsquo;s own live-timing page. Default:{" "}
-            <span className="font-mono">{data.defaults?.liveTimingUrl}</span>
-          </p>
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-semibold text-medium">Join in Content Manager (deep link)</label>
+        </Field>
+        <Field
+          label="Join in Content Manager (deep link)"
+          tone="plain"
+          hint={
+            <>
+              The one-click Content Manager join link for the running server (from CM: right-click the server &rarr;
+              &ldquo;Copy direct join link&rdquo;). Hidden while empty.
+            </>
+          }
+        >
           <input
             className="input"
             placeholder="acstuff.ru/s/q:race/online/join?ip=…&httpPort=…"
             value={form.cmJoinUrl}
             onChange={(e) => setForm((f) => ({ ...f, cmJoinUrl: e.target.value }))}
           />
-          <p className="mt-1 text-xs text-light">
-            The one-click Content Manager join link for the running server (from CM: right-click the server &rarr;
-            &ldquo;Copy direct join link&rdquo;). Hidden while empty.
-          </p>
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-semibold text-medium">Stream (YouTube or Twitch)</label>
+        </Field>
+        <Field
+          label="Stream (YouTube or Twitch)"
+          tone="plain"
+          hint={
+            <>
+              Paste the ordinary share link. A Twitch channel address keeps working every race night; a YouTube
+              link points at one broadcast, so it needs re-pasting each time (unless you use the{" "}
+              <span className="font-mono">youtube.com/channel/&hellip;/live</span> form). The player appears above
+              the track map and only loads once a viewer presses play. Blank = no player.
+            </>
+          }
+        >
           <input
             className="input"
             placeholder="twitch.tv/yourchannel  ·  youtube.com/watch?v=…"
             value={form.streamUrl}
             onChange={(e) => setForm((f) => ({ ...f, streamUrl: e.target.value }))}
           />
-          <p className="mt-1 text-xs text-light">
-            Paste the ordinary share link. A Twitch channel address keeps working every race night; a YouTube
-            link points at one broadcast, so it needs re-pasting each time (unless you use the{" "}
-            <span className="font-mono">youtube.com/channel/&hellip;/live</span> form). The player appears above
-            the track map and only loads once a viewer presses play. Blank = no player.
-          </p>
-        </div>
+        </Field>
       </div>
       <button className="btn-primary" onClick={save} disabled={busy}>
         {busy ? "Saving…" : "Save links"}
@@ -870,6 +883,7 @@ function LiveServersAdmin() {
           <div key={s.slug} className="flex flex-wrap items-center gap-3">
             <span className="w-48 truncate text-sm font-semibold text-dark">{s.name}</span>
             <select
+              aria-label={`Race server for ${s.name}`}
               className="input max-w-xs"
               value={map[s.slug] || data.defaultKey}
               onChange={(e) => {
@@ -924,8 +938,7 @@ function Login({ onSuccess, expired }) {
       <PageHeader eyebrow="League Office" title="Admin Login" />
       <form onSubmit={submit} className="card space-y-4 p-6">
         {expired && <Notice kind="info">Your session expired. Please log in again.</Notice>}
-        <div>
-          <label className="mb-1 block text-sm font-semibold text-medium">Admin PIN</label>
+        <Field label="Admin PIN" tone="plain">
           <input
             type="password"
             className="input"
@@ -934,7 +947,7 @@ function Login({ onSuccess, expired }) {
             placeholder="••••••••"
             autoFocus
           />
-        </div>
+        </Field>
         {error && <Notice kind="error">{error}</Notice>}
         <button className="btn-primary w-full" disabled={busy}>
           {busy ? "Checking…" : "Sign in"}
@@ -1450,8 +1463,8 @@ function EditResults() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <label className="text-sm font-semibold text-medium">Race</label>
-        <select className="input max-w-xs" value={raceId} onChange={(e) => setRaceId(e.target.value)}>
+        <label className="text-sm font-semibold text-medium" htmlFor="admin-edit-race">Race</label>
+        <select id="admin-edit-race" className="input max-w-xs" value={raceId} onChange={(e) => setRaceId(e.target.value)}>
           <option value="">Select a round…</option>
           {/* Championship rounds always; trainings/events join once they have
               stored results (that's what there is to edit or delete). */}
@@ -1478,32 +1491,27 @@ function EditResults() {
 
       {raceId && (
         <div className="card flex flex-wrap items-end gap-3 p-4">
-          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-            Track name
+          <Field label="Track name" tone="plain">
             <input className="input min-w-56" value={meta.track}
               onChange={(e) => setMeta({ ...meta, track: e.target.value })}
               placeholder="e.g. COTA" />
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-            Date &amp; time
+          </Field>
+          <Field label="Date & time" tone="plain">
             <input className="input" type="datetime-local" value={meta.date}
               onChange={(e) => setMeta({ ...meta, date: e.target.value })} />
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-            Qualifying (min)
+          </Field>
+          <Field label="Qualifying (min)" tone="plain">
             <input className="input w-32" type="number" min="1" value={meta.qualiMinutes}
               onChange={(e) => setMeta({ ...meta, qualiMinutes: e.target.value })} />
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-            Race laps
+          </Field>
+          <Field label="Race laps" tone="plain">
             <input className="input w-32" type="number" min="1" value={meta.raceLaps}
               onChange={(e) => setMeta({ ...meta, raceLaps: e.target.value })} />
-          </label>
-          <label className="flex w-full flex-col gap-1 text-xs font-semibold text-light">
-            Details (rules, mods, links… shown in the Discord post and on the site)
+          </Field>
+          <Field className="w-full" label="Details (rules, mods, links… shown in the Discord post and on the site)" tone="plain">
             <textarea className="input min-h-20" value={meta.info}
               onChange={(e) => setMeta({ ...meta, info: e.target.value })} />
-          </label>
+          </Field>
           <button className="btn-secondary" disabled={busy || !meta.track.trim()} onClick={saveDetails}>
             Save details
           </button>
@@ -1515,17 +1523,15 @@ function EditResults() {
 
       {rows.length > 0 && (
         <div className="card flex flex-wrap items-end gap-3 p-4">
-          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-            Driver of the Day
+          <Field label="Driver of the Day" tone="plain">
             <select className="input min-w-56" value={dotd} onChange={(e) => setDotd(e.target.value)}>
               <option value="">None</option>
               {rows.map((r) => (
                 <option key={r.driverId} value={r.driverId}>{r.name}</option>
               ))}
             </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-            Picked by
+          </Field>
+          <Field label="Picked by" tone="plain">
             <input
               className="input min-w-48"
               type="text"
@@ -1534,7 +1540,7 @@ function EditResults() {
               onChange={(e) => setDotdBy(e.target.value)}
               disabled={!dotd}
             />
-          </label>
+          </Field>
           <button className="btn-secondary" disabled={busy} onClick={saveDotd}>
             Save pick
           </button>
@@ -1544,8 +1550,7 @@ function EditResults() {
 
       {rows.length > 0 && (
         <div className="card flex flex-wrap items-end gap-3 p-4">
-          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-            Pole position
+          <Field label="Pole position" tone="plain">
             <select
               className="input min-w-48"
               value={honours.pole}
@@ -1556,9 +1561,8 @@ function EditResults() {
                 <option key={r.driverId} value={r.driverId}>{r.name}</option>
               ))}
             </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-            Pole lap time (optional)
+          </Field>
+          <Field label="Pole lap time (optional)" tone="plain">
             <input
               className="input w-36"
               type="text"
@@ -1567,9 +1571,8 @@ function EditResults() {
               onChange={(e) => setHonours({ ...honours, poleTime: e.target.value })}
               disabled={!honours.pole}
             />
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-            Fastest lap
+          </Field>
+          <Field label="Fastest lap" tone="plain">
             <select
               className="input min-w-48"
               value={honours.fl}
@@ -1580,9 +1583,8 @@ function EditResults() {
                 <option key={r.driverId} value={r.driverId}>{r.name}</option>
               ))}
             </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-            Fastest lap time (optional)
+          </Field>
+          <Field label="Fastest lap time (optional)" tone="plain">
             <input
               className="input w-36"
               type="text"
@@ -1591,7 +1593,7 @@ function EditResults() {
               onChange={(e) => setHonours({ ...honours, flTime: e.target.value })}
               disabled={!honours.fl}
             />
-          </label>
+          </Field>
           <button className="btn-secondary" disabled={busy} onClick={saveHonours}>
             Save honours
           </button>
@@ -1634,6 +1636,7 @@ function EditResults() {
                   <tr key={r.origDriverId} className="border-b border-border last:border-0">
                     <td className="px-3 py-2">
                       <select
+                        aria-label={`Driver on the result currently credited to ${r.name}`}
                         className="input min-w-40 py-1 font-semibold"
                         title="Wrong person on this result? Pick who actually drove. Finish, penalty and race data stay with the row."
                         value={r.driverId}
@@ -1649,6 +1652,7 @@ function EditResults() {
                     </td>
                     <td className="px-3 py-2">
                       <input
+                        aria-label={`Finish position for ${r.name}`}
                         className="input w-16 py-1 text-center"
                         value={r.position}
                         onChange={(e) => setRow(i, { position: e.target.value })}
@@ -1658,6 +1662,7 @@ function EditResults() {
                       {/* text + numeric keypad instead of type="number": the
                           browser's spin arrows covered two-digit values */}
                       <input
+                        aria-label={`Grid position for ${r.name}`}
                         className="input w-14 py-1 text-center"
                         type="text"
                         inputMode="numeric"
@@ -1667,6 +1672,7 @@ function EditResults() {
                     </td>
                     <td className="px-3 py-2 text-center">
                       <input
+                        aria-label={`Time or gap for ${r.name}`}
                         className="input w-32 py-1 text-center font-mono text-xs"
                         placeholder={String(r.position).trim() === "1" ? "45:12.345" : "+12.345"}
                         value={r.time}
@@ -1674,7 +1680,7 @@ function EditResults() {
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <select className="input py-1" value={r.status} onChange={(e) => setRow(i, { status: e.target.value })}>
+                      <select aria-label={`Status for ${r.name}`} className="input py-1" value={r.status} onChange={(e) => setRow(i, { status: e.target.value })}>
                         {STATUSES.map((s) => (
                           <option key={s}>{s}</option>
                         ))}
@@ -1682,6 +1688,7 @@ function EditResults() {
                     </td>
                     <td className="px-3 py-2">
                       <select
+                        aria-label={`Team this race for ${r.name}`}
                         className="input py-1"
                         value={r.subForTeamId}
                         onChange={(e) => setRow(i, { subForTeamId: e.target.value })}
@@ -1707,6 +1714,7 @@ function EditResults() {
                     </td>
                     <td className="px-3 py-2 text-center">
                       <input
+                        aria-label={`Penalty in seconds for ${r.name}`}
                         className="input w-16 py-1 text-center"
                         type="number"
                         min="0"
@@ -1717,6 +1725,7 @@ function EditResults() {
                     </td>
                     <td className="px-3 py-2 text-center">
                       <input
+                        aria-label={`Contacts for ${r.name}`}
                         className="input w-14 py-1 text-center"
                         type="text"
                         inputMode="numeric"
@@ -1726,6 +1735,7 @@ function EditResults() {
                     </td>
                     <td className="px-3 py-2 text-center">
                       <input
+                        aria-label={`Laps led for ${r.name}`}
                         className="input w-14 py-1 text-center"
                         type="text"
                         inputMode="numeric"
@@ -1920,6 +1930,7 @@ function DiscordResultsPost({ raceId }) {
       ) : (
         <>
           <textarea
+            aria-label="Results message"
             className="input min-h-72 w-full font-mono text-xs leading-relaxed"
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -1954,6 +1965,7 @@ function DiscordResultsPost({ raceId }) {
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
           <input
+            aria-label="Results channel webhook URL"
             className="input max-w-md flex-1"
             placeholder="https://discord.com/api/webhooks/… (the #results channel)"
             value={url}
@@ -2009,6 +2021,7 @@ function DbSeatSearch({ team, db, rosterNames, onAdded, onError, autoFocus = fal
   return (
     <div className="relative mt-1.5">
       <input
+        aria-label={placeholder || `Add to ${team.name} from the driver database…`}
         className="input w-full py-1.5 text-xs"
         placeholder={placeholder || `Add to ${team.name} from the driver database…`}
         value={q}
@@ -2231,8 +2244,8 @@ function Drivers() {
       <form onSubmit={create} className="card space-y-4 p-5">
         <CardHead eyebrow="Drivers" title="Add driver" />
         <div className="grid grid-cols-2 gap-3">
-          <input className="input" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          <input className="input" placeholder="Discord name" value={form.discordName} onChange={(e) => setForm({ ...form, discordName: e.target.value })} />
+          <input aria-label="Name" className="input" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          <input aria-label="Discord name" className="input" placeholder="Discord name" value={form.discordName} onChange={(e) => setForm({ ...form, discordName: e.target.value })} />
         </div>
         <p className="text-xs leading-relaxed text-light">
           For race imports to auto-recognise a driver, make their <span className="font-semibold text-medium">Name</span>{" "}
@@ -2240,7 +2253,7 @@ function Drivers() {
           appears in the results file) as closely as possible. (You can always pick the right driver by hand during import if the auto-match misses.)
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <select className="input" value={form.teamId} onChange={(e) => setForm({ ...form, teamId: e.target.value })} required>
+          <select aria-label="Team" className="input" value={form.teamId} onChange={(e) => setForm({ ...form, teamId: e.target.value })} required>
             <option value="">Team…</option>
             {(teams || []).map((t) => (
               <option key={t.id} value={t.id}>
@@ -2248,7 +2261,7 @@ function Drivers() {
               </option>
             ))}
           </select>
-          <select className="input" value={form.tier} onChange={(e) => setForm({ ...form, tier: e.target.value })}>
+          <select aria-label="Tier" className="input" value={form.tier} onChange={(e) => setForm({ ...form, tier: e.target.value })}>
             <option value={1}>Tier 1</option>
             <option value={2}>Tier 2</option>
             <option value={0}>Reserve</option>
@@ -2327,6 +2340,7 @@ function Drivers() {
                   <li key={d.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
                     <input
                       type="checkbox"
+                      aria-label={`Select ${d.name} for bulk removal`}
                       className="h-4 w-4 shrink-0 accent-primary"
                       title="Select for bulk removal"
                       checked={selected.has(d.id)}
@@ -2336,19 +2350,19 @@ function Drivers() {
                     <span className={`min-w-0 flex-1 truncate font-semibold ${d.isActive ? "text-dark" : "text-light line-through"}`}>
                       {d.name}
                     </span>
-                    <select className="input py-1 text-xs" value={d.teamId} disabled={busy}
+                    <select aria-label={`Team of ${d.name}`} className="input py-1 text-xs" value={d.teamId} disabled={busy}
                       onChange={(e) => patchDriver(d, { teamId: e.target.value })}>
                       {teamGroups.map((o) => (
                         <option key={o.id} value={o.id}>{o.name}</option>
                       ))}
                     </select>
-                    <select className="input py-1 text-xs" value={d.tier} disabled={busy}
+                    <select aria-label={`Tier of ${d.name}`} className="input py-1 text-xs" value={d.tier} disabled={busy}
                       onChange={(e) => patchDriver(d, { tier: Number(e.target.value) })}>
                       <option value={1}>T1</option>
                       <option value={2}>T2</option>
                       <option value={0}>Res</option>
                     </select>
-                    <select className="input py-1 text-xs" value={d.role || ""} disabled={busy}
+                    <select aria-label={`League role of ${d.name}`} className="input py-1 text-xs" value={d.role || ""} disabled={busy}
                       title="Special league role: shown on the profile and turns the rating card into the Safety Car edition"
                       onChange={(e) => patchDriver(d, { role: e.target.value })}>
                       <option value="">Driver</option>
@@ -2439,6 +2453,7 @@ function DriverDiscordId({ d, busy, accounts, onSave }) {
         Discord
       </span>
       <input
+        aria-label={`Discord user ID for ${d.name}`}
         className="input w-52 py-1 font-mono text-xs"
         placeholder={inherited ? `${d.inheritedDiscordUserId} (inherited)` : "Discord user ID (not set)"}
         title="The 17-20 digit Discord user ID. In Discord: Settings → Advanced → Developer Mode on, then right-click the user → Copy User ID. Used to link their login and to @mention them in results posts."
@@ -2507,6 +2522,7 @@ function DriverSteamId({ d, busy, onSave }) {
         Steam
       </span>
       <input
+        aria-label={`Steam ID for ${d.name}`}
         className="input w-52 py-1 font-mono text-xs"
         placeholder="Steam ID (not set)"
         title="The 17-digit SteamID64 the race import matches on (steamcommunity.com/profiles/7656...). Usually captured automatically from the first race, or brought along when the member links their Steam account on their profile. Only fill this in to correct a wrong one."
@@ -2706,6 +2722,7 @@ function DiscordEvents() {
           )}
         </div>
         <input
+          aria-label="Discord webhook URL"
           className="input"
           placeholder="https://discord.com/api/webhooks/…"
           value={url}
@@ -2730,34 +2747,33 @@ function DiscordEvents() {
       <div className="space-y-6 order-1">
         <form onSubmit={createEvent} className="card space-y-3 p-5">
           <CardHead eyebrow="Schedule" title="Create race / event" />
-          <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-            Type
+          <Field label="Type" tone="plain">
             <select className="input" value={event.type}
               onChange={(e) => setEvent({ ...event, type: e.target.value })}>
               <option value="CHAMPIONSHIP">Championship round (scored, has a round number)</option>
               <option value="TRAINING">Training / session (not scored, RSVP works)</option>
               <option value="SPECIAL">Special event (not scored, announcement only)</option>
             </select>
-          </label>
+          </Field>
           <div className="grid grid-cols-2 gap-3">
             {event.type === "CHAMPIONSHIP" && (
-              <input className="input" type="number" placeholder="Round #" value={event.number}
+              <input aria-label="Round number" className="input" type="number" placeholder="Round #" value={event.number}
                 onChange={(e) => setEvent({ ...event, number: e.target.value })} required />
             )}
-            <input className={`input ${event.type !== "CHAMPIONSHIP" ? "col-span-2" : ""}`} placeholder="Track" value={event.track}
+            <input aria-label="Track" className={`input ${event.type !== "CHAMPIONSHIP" ? "col-span-2" : ""}`} placeholder="Track" value={event.track}
               onChange={(e) => setEvent({ ...event, track: e.target.value })} required />
           </div>
-          <input className="input" type="datetime-local" value={event.date}
+          <input aria-label="Date & time" className="input" type="datetime-local" value={event.date}
             onChange={(e) => setEvent({ ...event, date: e.target.value })} />
           {/* session format + free text: all optional, shown in the Discord
               announcement and on the site's upcoming-race panels */}
           <div className="grid grid-cols-2 gap-3">
-            <input className="input" type="number" min="1" placeholder="Qualifying (min)" value={event.qualiMinutes}
+            <input aria-label="Qualifying (min)" className="input" type="number" min="1" placeholder="Qualifying (min)" value={event.qualiMinutes}
               onChange={(e) => setEvent({ ...event, qualiMinutes: e.target.value })} />
-            <input className="input" type="number" min="1" placeholder="Race laps" value={event.raceLaps}
+            <input aria-label="Race laps" className="input" type="number" min="1" placeholder="Race laps" value={event.raceLaps}
               onChange={(e) => setEvent({ ...event, raceLaps: e.target.value })} />
           </div>
-          <textarea className="input min-h-20" placeholder="Details for the announcement & website: rules, mods, links… (optional)"
+          <textarea aria-label="Details for the announcement & website: rules, mods, links… (optional)" className="input min-h-20" placeholder="Details for the announcement & website: rules, mods, links… (optional)"
             value={event.info} onChange={(e) => setEvent({ ...event, info: e.target.value })} />
           <button className="btn-primary w-full" disabled={busy}>Create</button>
         </form>
@@ -2801,51 +2817,44 @@ function DiscordEvents() {
                 {editingId === r.id && edit && (
                   <div className="mt-3 space-y-3 rounded-lg bg-surface2 p-3">
                     <div className="grid grid-cols-2 gap-3">
-                      <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-                        Type
-                        {/* A round with stored results must stay a championship
-                            round — retyping it would pull its points out of the
-                            standings (the backend refuses it too). */}
+                      {/* A round with stored results must stay a championship
+                          round — retyping it would pull its points out of the
+                          standings (the backend refuses it too). */}
+                      <Field label="Type" tone="plain">
                         <select className="input" value={edit.type} disabled={edit.hasResults}
                           onChange={(e) => setEdit({ ...edit, type: e.target.value })}>
                           <option value="CHAMPIONSHIP">Championship round</option>
                           <option value="TRAINING">Training / session</option>
                           <option value="SPECIAL">Special event</option>
                         </select>
-                      </label>
+                      </Field>
                       {edit.type === "CHAMPIONSHIP" && (
-                        <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-                          Round #
+                        <Field label="Round #" tone="plain">
                           <input className="input" type="number" min="1" value={edit.number}
                             onChange={(e) => setEdit({ ...edit, number: e.target.value })} />
-                        </label>
+                        </Field>
                       )}
-                      <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-                        Track
+                      <Field label="Track" tone="plain">
                         <input className="input" value={edit.track}
                           onChange={(e) => setEdit({ ...edit, track: e.target.value })} />
-                      </label>
-                      <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-                        Date &amp; time
+                      </Field>
+                      <Field label="Date & time" tone="plain">
                         <input className="input" type="datetime-local" value={edit.date}
                           onChange={(e) => setEdit({ ...edit, date: e.target.value })} />
-                      </label>
-                      <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-                        Qualifying (min)
+                      </Field>
+                      <Field label="Qualifying (min)" tone="plain">
                         <input className="input" type="number" min="1" value={edit.qualiMinutes}
                           onChange={(e) => setEdit({ ...edit, qualiMinutes: e.target.value })} />
-                      </label>
-                      <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-                        Race laps
+                      </Field>
+                      <Field label="Race laps" tone="plain">
                         <input className="input" type="number" min="1" value={edit.raceLaps}
                           onChange={(e) => setEdit({ ...edit, raceLaps: e.target.value })} />
-                      </label>
+                      </Field>
                     </div>
-                    <label className="flex flex-col gap-1 text-xs font-semibold text-light">
-                      Details (rules, mods, links… shown in the Discord post and on the site)
+                    <Field label="Details (rules, mods, links… shown in the Discord post and on the site)" tone="plain">
                       <textarea className="input min-h-24" value={edit.info}
                         onChange={(e) => setEdit({ ...edit, info: e.target.value })} />
-                    </label>
+                    </Field>
                     <div className="flex gap-2">
                       <button className="btn-primary py-1.5 text-sm" disabled={busy || !edit.track.trim()} onClick={saveEdit}>
                         Save
@@ -2926,6 +2935,7 @@ function SeasonHero({ season, onSaved, onError }) {
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <span className="font-semibold text-light">Main-card photo</span>
       <input
+        aria-label={`Main-card photo for ${season.name}`}
         ref={fileRef}
         type="file"
         accept="image/png,image/jpeg,image/webp"
@@ -2989,6 +2999,7 @@ function SeasonCar({ season, onSaved, onError }) {
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <span className="font-semibold text-light">Car image</span>
       <input
+        aria-label={`Car image for ${season.name}`}
         ref={fileRef}
         type="file"
         accept="image/png,image/jpeg,image/webp"
@@ -3080,7 +3091,7 @@ function SeasonScoring({ season, onSaved, onError }) {
             <option value="rounds">whole team rounds (sheet style)</option>
           </select>
         </label>
-        <input className="input min-w-40 flex-1 py-1 font-mono text-xs" placeholder={`Points P1, P2, … (default: ${DEFAULT_POINTS_HINT})`}
+        <input aria-label="Points per finishing position" className="input min-w-40 flex-1 py-1 font-mono text-xs" placeholder={`Points P1, P2, … (default: ${DEFAULT_POINTS_HINT})`}
           value={points} onChange={(e) => setPoints(e.target.value)} title="Points per finishing position, starting at P1. Leave empty for the league default." />
         <button className="btn-secondary px-3 py-1 text-xs" disabled={saving || !dirty} onClick={save}>
           {saving ? "Saving…" : "Save scoring"}
@@ -3250,12 +3261,12 @@ function Seasons({ gotoRaces }) {
           seasons stay available in the switcher.
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <input className="input" type="number" placeholder="Number (e.g. 8)" value={form.number}
+          <input aria-label="Number" className="input" type="number" placeholder="Number (e.g. 8)" value={form.number}
             onChange={(e) => setForm({ ...form, number: e.target.value })} required />
-          <input className="input" placeholder="Name (e.g. Season 8)" value={form.name}
+          <input aria-label="Name" className="input" placeholder="Name (e.g. Season 8)" value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })} required />
         </div>
-        <input className="input" placeholder="Game / subtitle (e.g. F1 2010 · Assetto Corsa)" value={form.game}
+        <input aria-label="Game / subtitle" className="input" placeholder="Game / subtitle (e.g. F1 2010 · Assetto Corsa)" value={form.game}
           onChange={(e) => setForm({ ...form, game: e.target.value })} />
         {/* scoring rules — editable again later on each season in the list */}
         <div className="flex flex-wrap items-center gap-2">
@@ -3265,7 +3276,7 @@ function Seasons({ gotoRaces }) {
               onChange={(e) => setForm({ ...form, dropWorst: e.target.value })}
               title="How many of each driver's/team's lowest-scoring rounds don't count (0 = every round counts)" />
           </label>
-          <input className="input min-w-40 flex-1 py-1.5 font-mono text-xs" value={form.points}
+          <input aria-label="Points per finishing position" className="input min-w-40 flex-1 py-1.5 font-mono text-xs" value={form.points}
             onChange={(e) => setForm({ ...form, points: e.target.value })}
             placeholder="Points P1, P2, … (empty = league default)"
             title={`Points per finishing position, starting at P1. Default: ${DEFAULT_POINTS_HINT}`} />
@@ -3326,7 +3337,7 @@ function Seasons({ gotoRaces }) {
                       onClick={() => toggleCards(s)}
                       title={s.cardsEnabled === false
                         ? "Show driver rating cards for this season again (Cards view in the standings, card on the driver page)"
-                        : "Hide the driver rating cards for this season — for seasons raced without the data the ratings are built from"}>
+                        : "Hide the driver rating cards for this season, for seasons raced without the data the ratings are built from"}>
                       {s.cardsEnabled === false ? "Enable driver cards" : "Disable driver cards"}
                     </button>
                     {!s.isActive && (
@@ -3362,7 +3373,7 @@ function Seasons({ gotoRaces }) {
                   {/* clone teams (or the full roster) from another season */}
                   {(seasons || []).length > 1 && (
                     <div className="flex flex-wrap items-center gap-2">
-                      <select className="input py-1 text-xs" value={cloneFrom[s.id] || ""}
+                      <select aria-label={`Season to copy teams and drivers into ${s.name} from`} className="input py-1 text-xs" value={cloneFrom[s.id] || ""}
                         onChange={(e) => setCloneFrom({ ...cloneFrom, [s.id]: e.target.value })}>
                         <option value="">Copy from…</option>
                         {(seasons || []).filter((o) => o.id !== s.id && o._count.teams > 0).map((o) => (
@@ -3428,7 +3439,7 @@ function SeriesLogo({ series, onSaved, onError }) {
 
   return (
     <>
-      <input ref={fileRef} type="file" accept="image/png,image/webp,image/svg+xml" className="hidden" onChange={pick} />
+      <input aria-label={`Logo for ${series.name}`} ref={fileRef} type="file" accept="image/png,image/webp,image/svg+xml" className="hidden" onChange={pick} />
       <button type="button" className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
         onClick={() => fileRef.current?.click()} title="Dark-mode nav logo, recommended: transparent PNG, square, 512px+">
         {series.logoDarkUrl ? "Replace logo" : "Upload logo"}
@@ -3595,6 +3606,7 @@ function SeriesPanel() {
                   pattern as a team's colour swatch. */}
               <input
                 key={`${s.id}-${s.accentColor || "default"}`}
+                aria-label={`Accent colour for ${s.name}`}
                 type="color"
                 defaultValue={s.accentColor || "#f4afc6"}
                 disabled={busy}
@@ -3635,18 +3647,19 @@ function SeriesPanel() {
         ))}
       </ul>
       <form onSubmit={create} className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
-        <input className="input min-w-44 flex-1" placeholder="New series name (e.g. Sunday GT)" value={form.name}
+        <input aria-label="New series name" className="input min-w-44 flex-1" placeholder="New series name (e.g. Sunday GT)" value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-        <input className="input min-w-44 flex-1" placeholder="Game / subtitle (optional)" value={form.game}
+        <input aria-label="Game / subtitle (optional)" className="input min-w-44 flex-1" placeholder="Game / subtitle (optional)" value={form.game}
           onChange={(e) => setForm({ ...form, game: e.target.value })} />
         <input
+          aria-label="Accent colour"
           type="color"
           value={form.accentColor || "#f4afc6"}
           onChange={(e) => setForm({ ...form, accentColor: e.target.value })}
           title="Accent colour (optional, defaults to NABS pink)"
           className="h-10 w-12 shrink-0 cursor-pointer rounded border border-border bg-transparent"
         />
-        <input className="input w-28 font-mono" placeholder="#6de0fc" value={form.accentColor}
+        <input aria-label="Accent colour hex code" className="input w-28 font-mono" placeholder="#6de0fc" value={form.accentColor}
           onChange={(e) => setForm({ ...form, accentColor: e.target.value })} />
         <button className="btn-primary" disabled={busy || !form.name.trim()}>Create series</button>
       </form>
@@ -4003,34 +4016,35 @@ function Teams() {
         {/* Add team */}
         <form onSubmit={create} className="card space-y-4 p-5">
           <CardHead eyebrow="Teams" title="Add team" />
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wide text-light">Name</label>
+          <Field label="Name" required>
             <input className="input" placeholder="e.g. Mercedes" value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wide text-light">ID (slug)</label>
+          </Field>
+          <Field
+            label="ID (slug)"
+            required
+            hint={<>Unique across all seasons. A suffix like <code>_s8</code> helps.</>}
+          >
             <input className="input" placeholder="e.g. mercedes_s8" value={form.id}
               onChange={(e) => setForm({ ...form, id: e.target.value })} required />
-            <p className="text-xs text-light">Unique across all seasons. A suffix like <code>_s8</code> helps.</p>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wide text-light">Tier</label>
+          </Field>
+          <Field label="Tier">
             <select className="input" value={form.tier} onChange={(e) => setForm({ ...form, tier: e.target.value })}>
               <option value={1}>Tier 1</option>
               <option value={2}>Tier 2</option>
               <option value={0}>Reserve</option>
             </select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wide text-light">Colour</label>
-            <div className="flex items-center gap-2">
-              <input className="h-10 w-12 shrink-0 cursor-pointer rounded border border-border bg-transparent" type="color"
-                value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} />
-              <input className="input font-mono" value={form.color}
-                onChange={(e) => setForm({ ...form, color: e.target.value })} />
-            </div>
-          </div>
+          </Field>
+          <Field label="Colour">
+            {({ id }) => (
+              <div className="flex items-center gap-2">
+                <input aria-label="Colour picker" className="h-10 w-12 shrink-0 cursor-pointer rounded border border-border bg-transparent" type="color"
+                  value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} />
+                <input id={id} className="input font-mono" value={form.color}
+                  onChange={(e) => setForm({ ...form, color: e.target.value })} />
+              </div>
+            )}
+          </Field>
           <button className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Create team"}</button>
           <p className="text-xs text-light">Upload each team's logo from the list after creating it.</p>
         </form>
@@ -4057,6 +4071,7 @@ function Teams() {
                     <div className="flex min-w-0 flex-1 items-center gap-2">
                       <input
                         autoFocus
+                        aria-label={`New name for ${t.name}`}
                         className="input py-1.5 text-sm"
                         value={renaming.name}
                         onChange={(e) => setRenaming({ id: t.id, name: e.target.value })}
@@ -4112,6 +4127,7 @@ function Teams() {
                   {/* team colour — saved when the picker closes (blur) */}
                   <input
                     key={`${t.id}-${t.color}`}
+                    aria-label={`Team colour for ${t.name}`}
                     type="color"
                     defaultValue={t.color}
                     disabled={busy}
@@ -4122,7 +4138,7 @@ function Teams() {
                     }}
                     className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border border-border bg-transparent"
                   />
-                  <select className="input w-28 py-1.5 text-sm" value={t.tier} disabled={busy}
+                  <select aria-label={`Tier of ${t.name}`} className="input w-28 py-1.5 text-sm" value={t.tier} disabled={busy}
                     onChange={(e) => saveTeam(t, { tier: Number(e.target.value) })}>
                     <option value={1}>Tier 1</option>
                     <option value={2}>Tier 2</option>
@@ -4180,8 +4196,8 @@ function ChangePin() {
   return (
     <form onSubmit={submit} className="card max-w-sm space-y-4 p-6">
       <CardHead eyebrow="Security" title="Change admin PIN" />
-      <input type="password" className="input" placeholder="New PIN" value={pin} onChange={(e) => setPin(e.target.value)} />
-      <input type="password" className="input" placeholder="Confirm new PIN" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+      <input type="password" aria-label="New PIN" className="input" placeholder="New PIN" value={pin} onChange={(e) => setPin(e.target.value)} />
+      <input type="password" aria-label="Confirm new PIN" className="input" placeholder="Confirm new PIN" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
       {error && <Notice kind="error">{error}</Notice>}
       {msg && <Notice kind="success">{msg}</Notice>}
       <button className="btn-primary w-full" disabled={busy}>

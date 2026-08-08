@@ -707,7 +707,7 @@ export default function AdminImport({ onCommitted }) {
                           {!r.isSafetyCar && r.maybeSafetyCar && (
                             <span
                               className="ml-2 pill bg-surface2 text-light"
-                              title="Usually drives the safety car, but this car isn't one — so this looks like a real drive. Nothing was guessed for it; pick them from the list. Their lap and incident data is kept either way."
+                              title="Usually drives the safety car, but this car isn't one, so this looks like a real drive. Nothing was guessed for it; pick them from the list. Their lap and incident data is kept either way."
                             >
                               safety car?
                             </span>

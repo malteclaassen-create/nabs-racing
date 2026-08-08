@@ -613,7 +613,7 @@ function PracticeStrategy({ store, update }) {
     >
       {/* ---- 1. get laps in ------------------------------------------------ */}
       <div className="flex flex-wrap items-center gap-3">
-        <input ref={fileRef} type="file" accept=".json,.csv,application/json,text/csv" multiple hidden onChange={onPickFiles} />
+        <input ref={fileRef} type="file" aria-label="Choose session files" accept=".json,.csv,application/json,text/csv" multiple hidden onChange={onPickFiles} />
         <button type="button" className="btn-primary" onClick={() => fileRef.current?.click()}>
           Load session file
         </button>
