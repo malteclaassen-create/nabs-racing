@@ -27,7 +27,7 @@ const isLap = isLapTime;
 // milliseconds -> "1:20.027"
 
 // Qualifying classification table — deliberately the same visual language as
-// the race table (same row rhythm, colours, type sizes, same unrolling card):
+// the race table (same row rhythm, colours, type sizes, cascade entrance):
 // Pos | Driver | Team | Time | Gap (to pole). Entrants without a roster match
 // (qualified but never raced/registered) render under their AC name, unlinked.
 // Sectors as m:ss.mmm would be noise — quali sectors read best as ss.mmm.
@@ -46,7 +46,7 @@ function QualiTable({ rows }) {
     return vals.length ? Math.min(...vals) : null;
   });
   return (
-    <div className="wipe-down card overflow-hidden">
+    <div className="card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -61,17 +61,14 @@ function QualiTable({ rows }) {
               <th className="hidden px-3 py-3 text-right md:table-cell">Gap</th>
             </tr>
           </thead>
-          {/* No per-row stagger here, deliberately: the CARD unrolls over these
-              rows instead (AutoHeight on the round panel in pages/Races.jsx).
-              Staggering as well meant the card's edge and the rows' arrival were
-              two different curves that could not be made to agree — see the
-              note on the race table below. */}
-          <tbody>
+          {/* cascade: rows rise in one after another, like the race table */}
+          <tbody className="cascade">
             {rows.map((r, i) => {
               const pole = r.position === 1 && isLap(r.bestLapMs);
               return (
                 <tr
                   key={`${r.position}-${r.name}`}
+                  style={{ "--i": Math.min(i, 16) }}
                   className="border-b border-border transition odd:bg-surface2/30 last:border-0 hover:bg-surface2"
                 >
                   <td className="px-3 py-3.5 text-center">
@@ -225,7 +222,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
   if (hasQuali && session === "quali") return <QualiTable rows={quali} />;
 
   return (
-    <div className="wipe-down card overflow-hidden">
+    <div className="card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -253,15 +250,8 @@ export default function RaceResults({ race, results, quali = null, session = "ra
               <th className="px-4 py-3 text-right">{scores ? "Pts" : ""}</th>
             </tr>
           </thead>
-          {/* The rows do NOT fade in one by one any more, and this is the fix
-              for what that looked like on a full grid. The stagger capped at 16
-              rows, so on a 37-car result rows 18 to 37 stayed at zero opacity
-              until 720ms and then arrived together — three quarters of a second
-              of empty dark card where two thirds of the field should be. The
-              card now unrolls down over rows that are already solid, so its
-              bottom edge IS the point the table has built to, by construction
-              rather than by tuning one curve to match another. */}
-          <tbody>
+          {/* cascade: rows rise in one after another, like the standings tables */}
+          <tbody className="cascade">
             {results.map((r, i) => {
               const tier = r.tier ?? r.team?.tier;
               const isFastest = r.driverId === fastestDriverId;
@@ -280,6 +270,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
               return (
                 <Fragment key={r.driverId}>
                 <tr
+                  style={{ "--i": Math.min(i, 16) }}
                   onClick={hasStints ? () => toggleStints(r.driverId) : undefined}
                   title={hasStints ? "Show tyre strategy" : undefined}
                   className={`border-b border-border transition odd:bg-surface2/30 last:border-0 hover:bg-surface2 ${
