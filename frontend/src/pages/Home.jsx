@@ -1059,7 +1059,16 @@ export default function Home() {
               <span className="text-ink/40 dark:text-white/50">Round {roundNo}</span>
             </div>
 
-            <h1 className="hero-anim mt-4 max-w-3xl break-words font-display text-5xl font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
+            {/* The size follows the width on phones instead of sitting at a
+                fixed 48px. At 48px a ten-letter circuit needs 359px and the
+                column is 324px wide on a 412px phone, so `break-words` did what
+                it is there to do and split the word: HOCKENHEI / M. The longest
+                single word in the calendar is "Silverstone"; 9.5vw keeps that
+                whole down to a 360px screen, with room to spare, and the clamp
+                stops it shrinking on a narrow one or growing past the old size
+                on a wide one. break-words stays as the last resort for a name
+                nobody has raced yet. */}
+            <h1 className="hero-anim mt-4 max-w-3xl break-words font-display text-[clamp(1.75rem,9.5vw,3rem)] font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
               {lastRace?.track || "Season opener"}
             </h1>
             <p className="hero-anim mt-3 font-mono text-[13px] uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
