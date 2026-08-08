@@ -187,7 +187,7 @@ function DiscordButton({ children = "Join the Discord", className = "", magnetic
 function FeatureCard({ icon, title, children, index }) {
   const ref = useTilt({ max: 5, lift: 5 });
   return (
-    <div ref={ref} className="card shine tilt relative overflow-hidden p-6 hover:shadow-xl" style={{ "--i": index }}>
+    <div ref={ref} className="transition card shine tilt relative overflow-hidden p-6 hover:shadow-xl" style={{ "--i": index }}>
       {/* one shared accent, not a rainbow: the colour carries no meaning here,
           so all four cards wear the brand tone */}
       <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-brand/15 text-brand">
@@ -266,7 +266,7 @@ function FaqItem({ q, children }) {
         className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-display text-base font-bold uppercase tracking-tight text-dark transition hover:bg-surface2"
       >
         {q}
-        <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-brand transition-transform duration-300 group-open:rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+        <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-brand transition-transform duration-base group-open:rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
           <path d="M12 5v14M5 12h14" />
         </svg>
       </summary>

@@ -82,8 +82,8 @@ function Folders({ folders, reload, onMsg }) {
                     onChange={(e) => setRenaming({ id: f.id, name: e.target.value })}
                     onKeyDown={(e) => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setRenaming(null); }}
                   />
-                  <button onClick={saveRename} disabled={busy} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary/90">Save</button>
-                  <button onClick={() => setRenaming(null)} className="text-xs font-semibold text-light hover:text-dark">Cancel</button>
+                  <button onClick={saveRename} disabled={busy} className="transition rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary/90">Save</button>
+                  <button onClick={() => setRenaming(null)} className="transition text-xs font-semibold text-light hover:text-dark">Cancel</button>
                 </span>
               ) : (
                 <>
@@ -298,7 +298,7 @@ export default function AdminDownloads() {
               <span className="shrink-0 pl-2">{upload.pct}%</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-surface2">
-              <div className="h-full rounded-full bg-primary transition-[width] duration-200" style={{ width: `${upload.pct}%` }} />
+              <div className="h-full rounded-full bg-primary transition-[width] duration-quick" style={{ width: `${upload.pct}%` }} />
             </div>
           </div>
         )}
@@ -336,7 +336,7 @@ export default function AdminDownloads() {
       <form
         ref={formRef}
         onSubmit={save}
-        className={`card scroll-mt-24 space-y-4 p-5 transition-shadow duration-500 ${
+        className={`card scroll-mt-24 space-y-4 p-5 transition-shadow duration-slow ${
           flash ? "ring-2 ring-primary shadow-lg" : ""
         }`}
       >
@@ -345,7 +345,7 @@ export default function AdminDownloads() {
             {editingId ? "Edit entry" : form.fileName ? "Register file" : "New entry"}
           </h3>
           {editingId && (
-            <button type="button" onClick={startNew} className="text-xs font-semibold text-light hover:text-dark">
+            <button type="button" onClick={startNew} className="transition text-xs font-semibold text-light hover:text-dark">
               Cancel edit
             </button>
           )}

@@ -100,7 +100,7 @@ export default function CardGallery() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="content-in space-y-8">
       <PageHeader
         eyebrow="Design preview"
         title="Card Editions"
@@ -185,9 +185,11 @@ export default function CardGallery() {
             <h2 className="font-display text-xl font-extrabold uppercase tracking-tight text-dark">{group.title}</h2>
             <span className="text-sm text-light">{group.note}</span>
           </div>
-          <div className="grid grid-cols-1 justify-items-center gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {group.editions.map((e) => (
-              <div key={e.key} className="w-full max-w-[332px] space-y-2.5">
+          {/* Sixteen cards used to land at once. Dealt out instead, in the same
+              45ms rhythm the standings cards use. */}
+          <div className="cascade grid grid-cols-1 justify-items-center gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {group.editions.map((e, i) => (
+              <div key={e.key} style={{ "--i": i }} className="w-full max-w-[332px] space-y-2.5">
                 <RatingCard
                   driver={{
                     ...SAMPLE_DRIVER,

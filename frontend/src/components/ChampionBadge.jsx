@@ -119,7 +119,7 @@ export default function ChampionBadge({ type = "champion", seasonNumber, seasonN
           rounded overflow never clips it */}
       <span
         role="tooltip"
-        className={`pointer-events-none invisible absolute top-full z-30 mt-2 translate-y-1 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-2 text-left opacity-0 shadow-xl shadow-ink/20 transition duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 ${POP_POS[align] || POP_POS.center}`}
+        className={`pointer-events-none invisible absolute top-full z-30 mt-2 translate-y-1 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-2 text-left opacity-0 shadow-xl shadow-ink/20 transition duration-quick group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 ${POP_POS[align] || POP_POS.center}`}
       >
         <span className="block font-display text-xs font-extrabold uppercase tracking-tight text-dark">{label}</span>
         {detail && (
@@ -186,7 +186,7 @@ export function TeamPodiumBadge({ position = 1, seasonNumber, seasonName, game, 
 
       <span
         role="tooltip"
-        className={`pointer-events-none invisible absolute top-full z-30 mt-2 translate-y-1 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-2 text-left opacity-0 shadow-xl shadow-ink/20 transition duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 ${POP_POS[align] || POP_POS.center}`}
+        className={`pointer-events-none invisible absolute top-full z-30 mt-2 translate-y-1 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-2 text-left opacity-0 shadow-xl shadow-ink/20 transition duration-quick group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 ${POP_POS[align] || POP_POS.center}`}
       >
         <span className="block font-display text-xs font-extrabold uppercase tracking-tight text-dark">{label}</span>
         {detail && (

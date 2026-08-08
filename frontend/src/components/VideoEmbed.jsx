@@ -86,7 +86,7 @@ export default function VideoEmbed({
               alt=""
               loading="lazy"
               onError={() => setThumbStep((s) => Math.min(s + 1, posters.length - 1))}
-              className="h-full w-full object-cover transition duration-500 group-hover/player:scale-[1.03]"
+              className="h-full w-full object-cover transition duration-slow group-hover/player:scale-[1.03]"
             />
           )}
           {/* Darkened towards the bottom so the play button and any caption

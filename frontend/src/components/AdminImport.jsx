@@ -143,6 +143,9 @@ export default function AdminImport({ onCommitted }) {
     const matching = takeovers.filter((t) => t.track && t.track === trackName);
     const pool = matching.length ? matching : takeovers;
     const takeoverByDriver = new Map(pool.map((t) => [t.reserveDriverId, t]));
+    // A fresh file is a fresh table: an acknowledgement earned on the previous
+    // one must not carry over and let this one save on a single press.
+    setSkipsAcknowledged(false);
     setRows(
       res.entries.map((en) => {
         const driverId = en.suggestedDriverId || "";
@@ -220,6 +223,9 @@ export default function AdminImport({ onCommitted }) {
 
   function setRow(i, patch) {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+    // The warning names people. Touch the table and it has to be re-earned,
+    // otherwise a second Save could ship a list nobody has actually read.
+    setSkipsAcknowledged(false);
   }
 
   // An entrant who isn't on this season's roster yet but clearly raced: create
@@ -229,6 +235,10 @@ export default function AdminImport({ onCommitted }) {
   // career carry over — only a genuinely new name gets a blank row. This is
   // the "only add people who actually raced" workflow.
   const [creatingRow, setCreatingRow] = useState(null);
+  // Flips true on the first Save press while entrants are still unmapped, which
+  // turns the button into an explicit "yes, without them". Any change to the
+  // mapping clears it, so the warning always describes the CURRENT table.
+  const [skipsAcknowledged, setSkipsAcknowledged] = useState(false);
   async function createFromRow(i) {
     const r = rows[i];
     if (!r?.acDriverName) return;
@@ -265,9 +275,24 @@ export default function AdminImport({ onCommitted }) {
     }
   }
 
+  // Entrants that will NOT reach the results. "Skip this row" is a real choice
+  // and the dropdown says so — but it is also the DEFAULT for anyone the
+  // matcher could not identify (rows start at `suggestedDriverId || ""`). So a
+  // driver the import failed to recognise looks exactly like a driver the admin
+  // deliberately left out, and on a twenty-car grid one missed picker means a
+  // silent hole in the championship behind a green "Round saved". The safety
+  // car is excluded on purpose and is never part of this.
+  const willBeSkipped = rows.filter((r) => !r.driverId && !r.isSafetyCar);
+
   async function commit() {
     setError(null);
     if (target === "round" && !meta.number) return setError("Enter a round number.");
+    // Name them and make the admin press again. Not a block: leaving someone
+    // out is legitimate. The point is that it has to be a decision.
+    if (willBeSkipped.length && !skipsAcknowledged) {
+      setSkipsAcknowledged(true);
+      return;
+    }
     const mapped = rows.filter((r) => r.driverId);
     const dupes = mapped.map((r) => r.driverId).filter((id, i, a) => a.indexOf(id) !== i);
     if (dupes.length) return setError("A driver is mapped to more than one entry.");
@@ -361,6 +386,7 @@ export default function AdminImport({ onCommitted }) {
       setParsed(null);
       setRows([]);
       setRemoteId("");
+      setSkipsAcknowledged(false);
       onCommitted?.();
     } catch (err) {
       setError(err.message);
@@ -486,7 +512,7 @@ export default function AdminImport({ onCommitted }) {
             type="file"
             accept="application/json,.json"
             onChange={handleFile}
-            className="mt-3 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark"
+            className="transition mt-3 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark"
           />
         </div>
       </div>
@@ -534,7 +560,7 @@ export default function AdminImport({ onCommitted }) {
                 setQualiBusy(false);
               }
             }}
-            className="block text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark file:disabled:opacity-50"
+            className="transition block text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark file:disabled:opacity-50"
           />
         </div>
         {/* …or straight from the race server: the matching QUALIFY session is
@@ -629,7 +655,7 @@ export default function AdminImport({ onCommitted }) {
                 type="file"
                 accept="application/json,.json"
                 onChange={(e) => setQualiFile(e.target.files?.[0] || null)}
-                className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-surface2 file:px-4 file:py-2 file:font-semibold file:text-dark hover:file:bg-border"
+                className="transition block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-surface2 file:px-4 file:py-2 file:font-semibold file:text-dark hover:file:bg-border"
               />
               <p className="mt-1 text-xs text-light">
                 The AC QUALIFY result JSON of the same event. Saved together with the race: entrants are matched
@@ -697,7 +723,7 @@ export default function AdminImport({ onCommitted }) {
                           {!r.driverId && !r.isSafetyCar && (
                             <button
                               type="button"
-                              className="mt-1 text-xs font-semibold text-link hover:underline disabled:opacity-50"
+                              className="transition mt-1 text-xs font-semibold text-link hover:underline disabled:opacity-50"
                               disabled={busy || creatingRow != null}
                               title="Creates this entrant as a new driver in the reserve pool and maps the row to them. Move them into a team later in the Drivers tab."
                               onClick={() => createFromRow(i)}
@@ -778,9 +804,33 @@ export default function AdminImport({ onCommitted }) {
 
           <RacePreview request={{ number: meta.number, results: rows }} />
 
+          {willBeSkipped.length > 0 && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                skipsAcknowledged ? "border-warn/40 bg-warn/10 text-warn" : "border-border bg-surface2 text-medium"
+              }`}
+            >
+              <p className="font-semibold">
+                {willBeSkipped.length === 1
+                  ? "1 entrant is set to Skip this row and will not appear in the results:"
+                  : `${willBeSkipped.length} entrants are set to Skip this row and will not appear in the results:`}
+              </p>
+              <p className="mt-1">{willBeSkipped.map((r) => r.acDriverName).join(", ")}</p>
+              <p className="mt-2 text-xs">
+                {skipsAcknowledged
+                  ? "Press save again to import the round without them, or pick a driver for each name above."
+                  : "Anyone the file could not match to a driver starts out skipped, so check this list before saving."}
+              </p>
+            </div>
+          )}
+
           <div className="flex items-center gap-3">
             <button className="btn-primary" onClick={commit} disabled={busy}>
-              {busy ? "Saving…" : "Confirm & save round"}
+              {busy
+                ? "Saving…"
+                : skipsAcknowledged && willBeSkipped.length
+                  ? `Save without ${willBeSkipped.length} ${willBeSkipped.length === 1 ? "entrant" : "entrants"}`
+                  : "Confirm & save round"}
             </button>
             <button className="btn-secondary" onClick={() => setParsed(null)} disabled={busy}>
               Cancel

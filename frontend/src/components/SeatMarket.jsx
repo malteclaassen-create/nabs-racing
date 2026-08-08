@@ -145,7 +145,7 @@ export default function SeatMarket({ race, me, reload }) {
                         </div>
                       )}
                       <button
-                        className="text-sm font-semibold text-link hover:underline disabled:opacity-50"
+                        className="transition text-sm font-semibold text-link hover:underline disabled:opacity-50"
                         disabled={busy === `withdraw:${offer.id}`}
                         onClick={() => act(`withdraw:${offer.id}`, () => api.withdrawOffer(offer.id))}
                       >

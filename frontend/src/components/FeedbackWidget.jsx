@@ -190,13 +190,13 @@ export default function FeedbackWidget() {
         onClick={toggle}
         aria-expanded={open}
         title="Report a bug or suggest a feature"
-        className={`fab-morph group fixed bottom-6 right-6 z-[60] hidden h-12 items-center justify-center overflow-hidden rounded-full border border-border bg-card text-sm font-bold text-medium shadow-lg shadow-ink/10 transition-[width,padding,color,border-color] duration-300 ease-out hover:border-brand/50 hover:text-dark lg:flex ${
+        className={`fab-morph group fixed bottom-6 right-6 z-[60] hidden h-12 items-center justify-center overflow-hidden rounded-full border border-border bg-card text-sm font-bold text-medium shadow-lg shadow-ink/10 transition-[width,padding,color,border-color] duration-base ease-out-soft hover:border-brand/50 hover:text-dark lg:flex ${
           collapsed ? "w-12 px-0 hover:w-[9.25rem] hover:pl-4 hover:pr-5" : "w-[9.25rem] pl-4 pr-5"
         } ${open ? "border-brand/50 text-dark" : ""}`}
       >
         <span className="shrink-0 text-brand">{open ? <CloseIcon /> : <ChatIcon />}</span>
         <span
-          className={`fab-morph overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin] duration-300 ease-out ${
+          className={`fab-morph overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin] duration-base ease-out-soft ${
             collapsed
               ? "ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[6rem] group-hover:opacity-100"
               : "ml-2 max-w-[6rem] opacity-100"
@@ -251,7 +251,7 @@ export default function FeedbackWidget() {
                 {isLoggedIn && (
                   <p className="text-sm leading-relaxed text-medium">
                     If they answer, you get a notification and can write back on{" "}
-                    <Link to="/feedback" onClick={close} className="font-semibold text-link hover:underline">
+                    <Link to="/feedback" onClick={close} className="transition font-semibold text-link hover:underline">
                       your messages page
                     </Link>
                     .
@@ -301,7 +301,7 @@ export default function FeedbackWidget() {
                     <>
                       Sent as {user?.driverName || user?.discordName || "your account"}, along with the page
                       you&rsquo;re on. Answers land in your bell and on{" "}
-                      <Link to="/feedback" onClick={close} className="font-semibold text-link hover:underline">
+                      <Link to="/feedback" onClick={close} className="transition font-semibold text-link hover:underline">
                         your messages page
                       </Link>
                       .

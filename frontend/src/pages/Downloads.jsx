@@ -156,7 +156,7 @@ function FolderSection({ name, description, items, index = 0, defaultOpen = fals
         <span className="font-mono text-[11px] font-semibold text-faint">
           {items.length} {items.length === 1 ? "file" : "files"}
         </span>
-        <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-eyebrow transition-transform duration-300 group-open:rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+        <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-eyebrow transition-transform duration-base group-open:rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
           <path d="M12 5v14M5 12h14" />
         </svg>
       </summary>
@@ -255,7 +255,7 @@ function RuleGroup({ icon, subject, rules, defaultOpen = false, index = 0 }) {
         <span className="font-mono text-[11px] font-semibold text-faint">
           {rules.length} {rules.length === 1 ? "rule" : "rules"}
         </span>
-        <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-eyebrow transition-transform duration-300 group-open:rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+        <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-eyebrow transition-transform duration-base group-open:rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
           <path d="M12 5v14M5 12h14" />
         </svg>
       </summary>

@@ -56,7 +56,7 @@ export default function SlidingTabs({
       {pill && (
         <span
           aria-hidden
-          className={`absolute left-0 top-0 will-change-transform ${pillClassName} transition-[transform,width,height] duration-300 ease-out`}
+          className={`absolute left-0 top-0 will-change-transform ${pillClassName} transition-[transform,width,height] duration-base ease-out-soft`}
           style={{ transform: `translate(${pill.left}px, ${pill.top}px)`, width: pill.width, height: pill.height }}
         />
       )}

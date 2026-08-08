@@ -143,7 +143,7 @@ body {
   color: var(--c-text);
   font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background-color var(--t-base) var(--e-soft), color var(--t-base) var(--e-soft);
 }
 
 /* Living "aurora" backdrop — three soft brand-coloured blooms that drift slowly
@@ -187,7 +187,7 @@ body::before {
   }
   /* Interactive widgets lift on hover. */
   .lift {
-    @apply transition duration-200;
+    @apply transition duration-base;
   }
   .lift:hover {
     transform: translateY(-3px);
@@ -285,7 +285,7 @@ body::before {
    ticks instead of teleporting. Purely decorative, so Performance-Lite drops the
    transition (dots then step each tick, which stays perfectly readable). */
 .live-dot-move {
-  transition: transform 700ms linear;
+  transition: transform var(--t-tell) linear;
 }
 
 /* The real overhead map is a pale track band on transparency: legible on dark,
@@ -506,7 +506,7 @@ body::before {
   inset: 0;
   background: linear-gradient(115deg, transparent 32%, rgba(255, 255, 255, 0.38) 50%, transparent 68%);
   transform: translateX(-130%);
-  transition: transform 0.75s var(--e-soft);
+  transition: transform var(--t-tell) var(--e-soft);
   pointer-events: none;
 }
 .dark .shine::after {
@@ -522,7 +522,7 @@ body::before {
    pops up a touch. Smooth easing in keeps it from feeling twitchy. */
 .tilt {
   transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(0);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  transition: transform var(--t-base) var(--e-soft), box-shadow var(--t-base) var(--e-soft), border-color var(--t-base) var(--e-soft);
   transform-style: preserve-3d;
 }
 
@@ -655,7 +655,7 @@ body::before {
   pointer-events: none;
   border-radius: 12px;
   box-shadow: 0 0 0 3px rgb(66 81 168 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55);
-  transition: left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease, opacity 0.18s ease;
+  transition: left var(--t-base) var(--e-soft), top var(--t-base) var(--e-soft), width var(--t-base) var(--e-soft), height var(--t-base) var(--e-soft), opacity var(--t-base) var(--e-soft);
   animation: tour-pulse 1.6s ease-in-out infinite;
 }
 .tour-spot-idle { animation: none; }
@@ -687,7 +687,7 @@ body::before {
 .roll-col {
   display: flex;
   flex-direction: column;
-  transition: transform 0.55s var(--e-out);
+  transition: transform var(--t-slow) var(--e-out);
   will-change: transform;
 }
 .roll-cell {
@@ -719,7 +719,7 @@ body::before {
   height: 2px;
   border-radius: 2px;
   background: linear-gradient(90deg, rgb(var(--c-brand)), #4251a8);
-  transition: width 0.28s var(--e-soft);
+  transition: width var(--t-base) var(--e-soft);
 }
 .nav-link:hover::after {
   width: calc(100% - 24px);
@@ -782,7 +782,7 @@ body::before {
    its content was 149px). A definite height sizes the row instead. */
 .collapse-row {
   overflow: hidden;
-  transition: height 0.3s var(--e-out);
+  transition: height var(--t-base) var(--e-out);
 }
 @media (min-width: 640px) {
   .collapse-row,
@@ -845,7 +845,7 @@ body::before {
   opacity: 1;
   transform: none;
   animation: nav-season-in var(--t-base) ease;
-  transition: opacity 0.26s ease, transform 0.26s ease;
+  transition: opacity var(--t-base) var(--e-soft), transform var(--t-base) var(--e-soft);
 }
 .nav-season-dock.is-hidden { opacity: 0; transform: translateY(-6px) scale(0.96); }
 

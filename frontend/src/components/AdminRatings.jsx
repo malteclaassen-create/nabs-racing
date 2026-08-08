@@ -477,7 +477,7 @@ export default function AdminRatings() {
           </Section>
 
           <button
-            className="text-sm font-semibold text-link hover:underline"
+            className="transition text-sm font-semibold text-link hover:underline"
             onClick={() => setAdvanced((a) => !a)}
           >
             {advanced ? "Hide racecraft & awareness weights" : "Show racecraft & awareness weights (RAC / AWA)"}
@@ -516,7 +516,7 @@ export default function AdminRatings() {
               Load defaults
             </button>
             {hasSaved && (
-              <button className="text-sm font-semibold text-bad hover:underline" onClick={clearWeights} disabled={saving}>
+              <button className="transition text-sm font-semibold text-bad hover:underline" onClick={clearWeights} disabled={saving}>
                 Clear saved
               </button>
             )}

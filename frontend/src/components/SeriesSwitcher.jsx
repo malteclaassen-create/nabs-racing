@@ -90,7 +90,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
             </span>
             <svg
               viewBox="0 0 24 24"
-              className={`h-3 w-3 shrink-0 text-eyebrow transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+              className={`h-3 w-3 shrink-0 text-eyebrow transition-transform duration-quick ${open ? "rotate-180" : ""}`}
               fill="none"
               stroke="currentColor"
               strokeWidth="3"
@@ -107,7 +107,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
       {/* Menu — rendered from the /series list, so it scales to any number. */}
       <div
         role="menu"
-        className={`absolute left-0 top-full z-40 mt-2 w-64 origin-top-left rounded-2xl border border-border bg-card p-1.5 shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-150 ${
+        className={`absolute left-0 top-full z-40 mt-2 w-64 origin-top-left rounded-2xl border border-border bg-card p-1.5 shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-quick ${
           open ? "visible scale-100 opacity-100" : "invisible scale-[0.97] opacity-0"
         }`}
       >

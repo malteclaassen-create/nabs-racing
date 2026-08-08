@@ -78,7 +78,7 @@ function RowControls({ onUp, onDown, onRemove, upDisabled, downDisabled }) {
       <button type="button" onClick={onDown} disabled={downDisabled} className={smallBtn} title="Move down">
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
       </button>
-      <button type="button" onClick={onRemove} className={`${smallBtn} text-bad hover:bg-red-500/10`} title="Remove">
+      <button type="button" onClick={onRemove} className={`transition ${smallBtn} text-bad hover:bg-red-500/10`} title="Remove">
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
       </button>
     </div>

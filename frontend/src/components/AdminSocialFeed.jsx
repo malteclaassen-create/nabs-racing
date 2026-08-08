@@ -323,12 +323,12 @@ export default function AdminSocialFeed() {
                     onChange={(e) => setPosts((ps) => ps.map((x) => (x.id === p.id ? { ...x, title: e.target.value } : x)))}
                     onBlur={() => mutate(() => api.updateSocialPost(p.id, { title: p.title })).catch(() => {})}
                   />
-                  <a href={p.url} target="_blank" rel="noopener noreferrer" className="block truncate text-xs text-link hover:underline">
+                  <a href={p.url} target="_blank" rel="noopener noreferrer" className="transition block truncate text-xs text-link hover:underline">
                     {p.url}
                   </a>
                   <div className="flex flex-wrap items-center gap-3">
                     <button
-                      className="text-sm font-semibold text-link hover:underline"
+                      className="transition text-sm font-semibold text-link hover:underline"
                       disabled={busy}
                       onClick={() => mutate(() => api.updateSocialPost(p.id, { pinned: !p.pinned }), p.pinned ? "Unpinned." : "Pinned.").catch(() => {})}
                     >
@@ -337,7 +337,7 @@ export default function AdminSocialFeed() {
                     {/* The repair button: asks the platform again and takes a
                         fresh copy of the picture. Leaves your title alone. */}
                     <button
-                      className="text-sm font-semibold text-link hover:underline"
+                      className="transition text-sm font-semibold text-link hover:underline"
                       disabled={busy}
                       onClick={() => mutate(() => api.refreshSocialPost(p.id), "Fetched again from the platform.").catch(() => {})}
                     >
@@ -345,14 +345,14 @@ export default function AdminSocialFeed() {
                     </button>
                     {p.coverUrl ? (
                       <button
-                        className="text-sm font-semibold text-link hover:underline"
+                        className="transition text-sm font-semibold text-link hover:underline"
                         disabled={busy}
                         onClick={() => mutate(() => api.clearSocialCover(p.id), "Cover removed.").catch(() => {})}
                       >
                         Remove cover
                       </button>
                     ) : (
-                      <label className="cursor-pointer text-sm font-semibold text-link hover:underline">
+                      <label className="transition cursor-pointer text-sm font-semibold text-link hover:underline">
                         Upload cover
                         <input
                           type="file"
@@ -367,7 +367,7 @@ export default function AdminSocialFeed() {
                       </label>
                     )}
                     <button
-                      className="text-sm font-semibold text-light hover:text-bad"
+                      className="transition text-sm font-semibold text-light hover:text-bad"
                       disabled={busy}
                       onClick={() => mutate(() => api.deleteSocialPost(p.id), "Post removed.").catch(() => {})}
                     >

@@ -284,7 +284,7 @@ function CarReveal({ season }) {
           onError={(e) => {
             e.currentTarget.style.display = "none";
           }}
-          className={`absolute inset-0 h-full w-full object-cover mix-blend-screen transition-opacity duration-500 ${ok ? "opacity-100" : "opacity-0"}`}
+          className={`absolute inset-0 h-full w-full object-cover mix-blend-screen transition-opacity duration-slow ${ok ? "opacity-100" : "opacity-0"}`}
         />
       )}
       {showCar && (
@@ -1666,7 +1666,7 @@ function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = f
           same corner slot at low opacity. */}
       {mark ? (
         <div
-          className="pointer-events-none absolute bottom-0 right-0 flex h-[5.5rem] w-3/5 items-end justify-end p-2 opacity-[0.14] transition-transform duration-300 group-hover:scale-105"
+          className="pointer-events-none absolute bottom-0 right-0 flex h-[5.5rem] w-3/5 items-end justify-end p-2 opacity-[0.14] transition-transform duration-base group-hover:scale-105"
           style={{ color: accent }}
           aria-hidden="true"
         >
@@ -1676,7 +1676,7 @@ function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = f
         <svg
           viewBox="0 0 24 24"
           aria-hidden="true"
-          className="pointer-events-none absolute -bottom-4 -right-4 h-24 w-24 opacity-[0.07] transition-transform duration-300 group-hover:scale-110 dark:opacity-[0.06]"
+          className="pointer-events-none absolute -bottom-4 -right-4 h-24 w-24 opacity-[0.07] transition-transform duration-base group-hover:scale-110 dark:opacity-[0.06]"
           fill="none"
           stroke="currentColor"
           strokeWidth="1.5"

@@ -144,7 +144,7 @@ function Menu({ icon, label, hint, highlight, title, children, footer }) {
       <div className={`absolute right-0 top-full z-40 pt-2 ${open ? "" : "pointer-events-none"}`}>
         <div
           role="menu"
-          className={`w-64 max-w-[calc(100vw-2rem)] origin-top-right overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-150 ${
+          className={`w-64 max-w-[calc(100vw-2rem)] origin-top-right overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-quick ${
             open ? "visible scale-100 opacity-100" : "invisible scale-[0.97] opacity-0"
           }`}
         >
@@ -219,7 +219,7 @@ export function LiveSortMenu({ columns, prefs }) {
           <button
             type="button"
             onClick={() => prefs.setSort(null)}
-            className="font-mono text-[11px] font-bold uppercase tracking-wider text-link hover:underline"
+            className="transition font-mono text-[11px] font-bold uppercase tracking-wider text-link hover:underline"
           >
             Back to session order
           </button>
@@ -264,7 +264,7 @@ export function LiveColumnsMenu({ columns, prefs }) {
             <button
               type="button"
               onClick={prefs.resetColumns}
-              className="font-mono text-[11px] font-bold uppercase tracking-wider text-link hover:underline"
+              className="transition font-mono text-[11px] font-bold uppercase tracking-wider text-link hover:underline"
             >
               Back to automatic
             </button>

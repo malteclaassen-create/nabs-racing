@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 // the two places a lost visitor most likely wants to go.
 export default function NotFound() {
   return (
-    <section className="card relative overflow-hidden p-8 text-center sm:p-16">
+    <section className="card content-in relative overflow-hidden p-8 text-center sm:p-16">
       {/* faint oversized chequers-style backdrop, same corner-flourish idea as the number tiles */}
       <svg
         viewBox="0 0 24 24"
@@ -18,17 +18,26 @@ export default function NotFound() {
         <path d="M5 21V4M5 4c3-1.5 6 1.5 9 0s4-1 4-1v9s-1 .5-4 1-6-1.5-9 0" />
       </svg>
 
-      <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
-        Off track
-      </div>
-      <div className="mt-3 font-display text-7xl font-black leading-none tracking-tight text-dark sm:text-8xl">
-        4<span className="text-brand">0</span>4
-      </div>
-      <p className="mx-auto mt-4 max-w-md text-medium">
-        You&rsquo;ve run wide. This page doesn&rsquo;t exist, so rejoin the track below.
-      </p>
+      {/* The four lines build themselves top-down rather than arriving as one
+          block. Same cascade the public pages use, so a wrong turn lands on
+          something that behaves like the rest of the site. */}
+      <div className="cascade relative">
+        <div style={{ "--i": 0 }} className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+          Off track
+        </div>
+        {/* The page's heading. Was a plain div, which left the 404 with no h1 at
+            all — the one thing a screen reader announces first on arrival. */}
+        <h1
+          style={{ "--i": 1 }}
+          className="mt-3 font-display text-7xl font-black leading-none tracking-tight text-dark sm:text-8xl"
+        >
+          4<span className="text-brand">0</span>4
+        </h1>
+        <p style={{ "--i": 2 }} className="mx-auto mt-4 max-w-md text-medium">
+          You&rsquo;ve run wide. This page doesn&rsquo;t exist, so rejoin the track below.
+        </p>
 
-      <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <div style={{ "--i": 3 }} className="mt-8 flex flex-wrap items-center justify-center gap-3">
         <Link
           to="/"
           className="shine group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
@@ -42,6 +51,7 @@ export default function NotFound() {
         >
           Race Calendar
         </Link>
+        </div>
       </div>
     </section>
   );

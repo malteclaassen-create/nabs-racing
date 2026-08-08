@@ -806,7 +806,13 @@ function useFlipList(containerRef, dep) {
         it.style.transform = `translateY(${delta}px)`;
         it.classList.remove("proj-flash-up", "proj-flash-down");
         void it.offsetHeight; // commit the start position before releasing
-        it.style.transition = "transform 0.7s cubic-bezier(0.22, 0.9, 0.35, 1)";
+        // A position change is exactly the kind of thing the scale calls
+        // --t-tell: long enough to be watched. The curve used to be a sixth,
+        // hand-written one that differed from --e-out only in its second
+        // control point, which is the sort of near-twin the scale exists to
+        // stop. Both come from index.css now, so a row overtaking another moves
+        // on the same beat as everything else on the site.
+        it.style.transition = "transform var(--t-tell) var(--e-out)";
         it.style.transform = "";
         it.classList.add(delta > 0 ? "proj-flash-up" : "proj-flash-down");
         it.addEventListener(
@@ -1097,7 +1103,7 @@ function ExternalButtons({ links, patreonUrl }) {
           href={join}
           target="_blank"
           rel="noreferrer noopener"
-          className={`${base} bg-brand text-ink shadow-lg shadow-brand/25 hover:brightness-105`}
+          className={`transition ${base} bg-brand text-ink shadow-lg shadow-brand/25 hover:brightness-105`}
         >
           <ExternalIcon />
           <span className="sm:hidden">Join</span>
@@ -1109,7 +1115,7 @@ function ExternalButtons({ links, patreonUrl }) {
           href={timing}
           target="_blank"
           rel="noreferrer noopener"
-          className={`${base} border border-border bg-card text-dark hover:bg-surface2`}
+          className={`transition ${base} border border-border bg-card text-dark hover:bg-surface2`}
         >
           <ExternalIcon />
           <span className="sm:hidden">Timing</span>
@@ -1121,7 +1127,7 @@ function ExternalButtons({ links, patreonUrl }) {
           href={patreonUrl}
           target="_blank"
           rel="noreferrer noopener"
-          className={`${base} border border-[#FF424D]/40 bg-[#FF424D]/10 text-[#FF424D] hover:bg-[#FF424D]/20`}
+          className={`transition ${base} border border-[#FF424D]/40 bg-[#FF424D]/10 text-[#FF424D] hover:bg-[#FF424D]/20`}
         >
           <SocialIcon name="patreon" className="h-4 w-4" />
           <span className="sm:hidden">Patreon</span>

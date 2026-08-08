@@ -169,7 +169,7 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
                 opacity={dim ? 0.12 : on ? 1 : isLeader ? 1 : 0.85}
                 pathLength={1}
                 className="chart-line"
-                style={{ animationDelay: `${i * 0.07}s`, transition: "opacity .2s, stroke-width .2s" }}
+                style={{ animationDelay: `${i * 0.07}s`, transition: "opacity var(--t-base), stroke-width var(--t-base)" }}
               >
                 <title>{`${s.name} · ${s.total} pts`}</title>
               </path>
@@ -187,7 +187,7 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
                 r={active === s.teamId ? 4 : 2.8}
                 fill={s.color}
                 opacity={dim ? 0.12 : 1}
-                style={{ transition: "opacity .2s, r .2s" }}
+                style={{ transition: "opacity var(--t-base), r var(--t-base)" }}
               />
             );
           })}

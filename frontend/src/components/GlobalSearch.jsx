@@ -194,7 +194,7 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
           ordering surprises. */}
       <div
         className="relative"
-        style={mobile ? undefined : { position: "absolute", top: 0, right: 0, height: "2.25rem", width: expanded ? (expandedW ? `${expandedW}px` : "15rem") : collapsedW, transition: "width 0.2s ease-out" }}
+        style={mobile ? undefined : { position: "absolute", top: 0, right: 0, height: "2.25rem", width: expanded ? (expandedW ? `${expandedW}px` : "15rem") : collapsedW, transition: "width var(--t-base) var(--e-out)" }}
       >
         <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-light">
           <SearchIcon />

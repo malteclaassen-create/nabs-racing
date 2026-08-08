@@ -246,7 +246,7 @@ function OtherSeriesLines({ otherSeries }) {
           <span className="text-sm text-medium">
             Also races in{" "}
             {o.seriesSlug ? (
-              <Link to={`/s/${o.seriesSlug}`} className="font-semibold text-dark hover:text-brand">
+              <Link to={`/s/${o.seriesSlug}`} className="transition font-semibold text-dark hover:text-brand">
                 {o.seriesName}
               </Link>
             ) : (
@@ -302,7 +302,7 @@ function CareerBlock({ career, otherSeries }) {
                 <td className="px-5 py-3">
                   <Link
                     to={`/drivers/${s.driverId}${s.seasonNumber != null ? `?season=${s.seasonNumber}` : ""}`}
-                    className="font-display font-bold uppercase tracking-tight text-dark hover:text-brand"
+                    className="transition font-display font-bold uppercase tracking-tight text-dark hover:text-brand"
                   >
                     {s.seasonName || `Season ${s.seasonNumber}`}
                   </Link>
@@ -718,7 +718,7 @@ function HeadToHead({ me, meRow, standings }) {
           <span className="shrink-0 font-display text-xl font-black text-faint">VS</span>
           <Link to={`/drivers/${opp.driverId}`} className="group flex min-w-0 flex-1 flex-col items-center gap-2 text-center">
             <DriverAvatar name={opp.name} photoUrl={opp.photoUrl} color={oppColor} size={60} />
-            <div className="truncate font-display text-base font-extrabold uppercase tracking-tight text-dark group-hover:text-link">{opp.name}</div>
+            <div className="transition truncate font-display text-base font-extrabold uppercase tracking-tight text-dark group-hover:text-link">{opp.name}</div>
             <TeamLogo id={opp.team.id} name={opp.team.name} color={opp.team.color} logoUrl={opp.team.logoUrl} size={16} showName className="justify-center" nameClassName="truncate text-[11px] text-light" />
           </Link>
         </div>
@@ -1089,7 +1089,7 @@ function AchievementBadge({ name, tagline, cat }) {
       {name}
       <span
         role="tooltip"
-        className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 w-max max-w-[14rem] -translate-x-1/2 translate-y-1 whitespace-normal rounded-lg border border-border bg-card px-3 py-2 text-left opacity-0 shadow-xl shadow-ink/20 transition duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"
+        className="pointer-events-none invisible absolute left-1/2 top-full z-30 mt-2 w-max max-w-[14rem] -translate-x-1/2 translate-y-1 whitespace-normal rounded-lg border border-border bg-card px-3 py-2 text-left opacity-0 shadow-xl shadow-ink/20 transition duration-quick group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"
       >
         <span className="block whitespace-nowrap font-display text-xs font-extrabold uppercase tracking-tight text-dark">{name}</span>
         <span className="mt-0.5 block text-[11px] font-normal leading-snug text-light">{tagline}</span>
@@ -1513,7 +1513,7 @@ export default function DriverProfile({ previewId, preview }) {
                 </Link>
               ))}
           </div>
-          <Link to="/drivers" className="text-sm font-semibold text-link hover:underline">
+          <Link to="/drivers" className="transition text-sm font-semibold text-link hover:underline">
             All drivers of {seasonLabel} →
           </Link>
         </div>
@@ -1709,7 +1709,7 @@ export default function DriverProfile({ previewId, preview }) {
       <CareerBlock career={p.career} otherSeries={p.otherSeries} />
 
       <div>
-        <Link to="/drivers" className="text-sm font-semibold text-link hover:underline">← All drivers</Link>
+        <Link to="/drivers" className="transition text-sm font-semibold text-link hover:underline">← All drivers</Link>
       </div>
     </div>
   );

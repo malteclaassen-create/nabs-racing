@@ -225,7 +225,7 @@ export default function RaceGallery({ photos, title = "This round" }) {
               alt={p.caption || `${title} photo ${i + 1}`}
               loading="lazy"
               decoding="async"
-              className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.04]"
+              className="h-full w-full object-cover transition duration-base group-hover:scale-[1.04]"
             />
             {p.caption && (
               <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/75 to-transparent px-2 pb-1.5 pt-5 text-left text-[11px] font-semibold text-white">

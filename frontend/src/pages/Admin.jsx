@@ -253,7 +253,7 @@ export default function Admin() {
     );
 
   return (
-    <div>
+    <div className="content-in">
       <div className="mb-6 flex items-center justify-between">
         <PageHeader eyebrow="League Office" title="Admin" />
         <button
@@ -299,7 +299,10 @@ export default function Admin() {
         ))}
       </div>
 
-      <div className="min-h-[70vh]">
+      {/* Keyed on the tab: all 22 panels fade in on switch instead of snapping.
+          One wrapper rather than 22 edits, and it means any tab added later is
+          animated by default. */}
+      <div key={tab} className="content-in min-h-[70vh]">
         {tab === "seasons" && (
           <Seasons
             // One click from a season row to its race calendar: select that
@@ -532,7 +535,7 @@ function OfferAdminRow({ offer, reserves, busy, onAssign, onDelete }) {
           </button>
         )}
         <button
-          className="text-sm font-semibold text-link hover:underline disabled:opacity-50"
+          className="transition text-sm font-semibold text-link hover:underline disabled:opacity-50"
           disabled={busy === `del:${offer.id}`}
           onClick={onDelete}
         >
@@ -1011,13 +1014,34 @@ function EditResults() {
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
 
+  // True while a round's results are on the wire. Blocks the save button, so a
+  // press cannot land on rows that belong to a different race.
+  const [loadingRace, setLoadingRace] = useState(false);
+
   useEffect(() => {
-    if (!raceId) return;
     setError(null);
     setMsg(null);
+    // Drop the previous round's data the moment the pick changes. Without this
+    // the table kept showing the round the admin had just left: press save
+    // during the fetch, or after a fetch that FAILED (the catch below sets an
+    // error but used to leave the old rows sitting there, save button and all),
+    // and one race's classification was written onto another. Everything reset
+    // here is per-race and reloaded below.
+    setRows([]);
+    setMeta({ track: "", date: "", qualiMinutes: "", raceLaps: "", info: "" });
+    setDotd("");
+    setDotdBy("");
+    setHonours({ pole: "", poleTime: "", fl: "", flTime: "" });
+    if (!raceId) return;
+    // Two quick changes of the picker race each other; without this guard the
+    // slower FIRST response can land last and leave race B selected with race
+    // A's rows on screen. Same `alive` pattern the public pages use.
+    let alive = true;
+    setLoadingRace(true);
     api
       .raceResults(raceId)
       .then((d) => {
+        if (!alive) return;
         setMeta({
           track: d.race?.track || "",
           date: toLocalInput(d.race?.date),
@@ -1102,7 +1126,15 @@ function EditResults() {
           })
         );
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => {
+        if (alive) setError(e.message);
+      })
+      .finally(() => {
+        if (alive) setLoadingRace(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [raceId]);
 
   function setRow(i, patch) {
@@ -1718,8 +1750,11 @@ function EditResults() {
 
           <RacePreview request={{ raceId, results: toResults(rows) }} />
 
-          <button className="btn-primary" onClick={save} disabled={busy}>
-            {busy ? "Saving…" : "Save results"}
+          {/* Locked while the picked round is still loading: the table is empty
+              or half-swapped at that moment, and saving it would write that
+              state onto the race. */}
+          <button className="btn-primary" onClick={save} disabled={busy || loadingRace}>
+            {busy ? "Saving…" : loadingRace ? "Loading round…" : "Save results"}
           </button>
 
           <DiscordResultsPost raceId={raceId} />
@@ -1738,7 +1773,7 @@ function EditResults() {
             </div>
             <button
               type="button"
-              className="btn-secondary shrink-0 border-red-500/50 text-bad hover:bg-red-500/10"
+              className="transition btn-secondary shrink-0 border-red-500/50 text-bad hover:bg-red-500/10"
               disabled={busy}
               onClick={clearResults}
             >
@@ -1755,7 +1790,7 @@ function EditResults() {
             </div>
             <button
               type="button"
-              className="btn-secondary shrink-0 border-red-500/50 text-bad hover:bg-red-500/10"
+              className="transition btn-secondary shrink-0 border-red-500/50 text-bad hover:bg-red-500/10"
               disabled={busy}
               onClick={deleteRace}
             >
@@ -2281,14 +2316,14 @@ function Drivers() {
                       <option value="">Driver</option>
                       <option value="safety">Safety Car</option>
                     </select>
-                    <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                    <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                       onClick={() => patchDriver(d, { isActive: !d.isActive })}>
                       {d.isActive ? "Deactivate" : "Reactivate"}
                     </button>
                     {/* Only a deactivated driver can be removed from the public
                         standings; reactivating brings them back automatically. */}
                     {!d.isActive && (
-                      <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                      <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                         title="Hidden drivers disappear from the public driver standings (everyone below moves up). Their race results and their team's points stay untouched."
                         onClick={() => patchDriver(d, { hideFromStandings: !d.hideFromStandings })}>
                         {d.hideFromStandings ? "Show in standings" : "Hide from standings"}
@@ -2297,7 +2332,7 @@ function Drivers() {
                     {!d.isActive && d.hideFromStandings && (
                       <span className="pill bg-surface2 text-light" title="Not shown in the public driver standings">hidden</span>
                     )}
-                    <button className="text-xs font-semibold text-rose-500 hover:underline" disabled={busy}
+                    <button className="transition text-xs font-semibold text-rose-500 hover:underline" disabled={busy}
                       title="Removes this driver from THIS season only (their entries in other seasons stay). Blocked while they have race results; attendance answers and driver-market entries are listed for confirmation first."
                       onClick={() => removeDriver(d)}>
                       Remove
@@ -2327,7 +2362,7 @@ function Drivers() {
               Remove selected
             </button>
             <button
-              className="text-sm font-semibold text-light hover:text-medium"
+              className="transition text-sm font-semibold text-light hover:text-medium"
               disabled={busy}
               onClick={() => setSelected(new Set())}
             >
@@ -2398,11 +2433,11 @@ function DriverDiscordId({ d, busy, accounts, onSave }) {
       )}
       {dirty && (
         <>
-          <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+          <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
             onClick={() => onSave(val.trim())}>
             Save
           </button>
-          <button className="text-xs font-semibold text-light hover:underline" disabled={busy}
+          <button className="transition text-xs font-semibold text-light hover:underline" disabled={busy}
             onClick={() => setVal(d.discordUserId || "")}>
             Cancel
           </button>
@@ -2447,7 +2482,7 @@ function DriverSteamId({ d, busy, onSave }) {
       )}
       {val.trim() && shaped && !dirty && (
         <a
-          className="font-mono text-[10px] text-light hover:text-link hover:underline"
+          className="transition font-mono text-[10px] text-light hover:text-link hover:underline"
           href={`https://steamcommunity.com/profiles/${val.trim()}`}
           target="_blank"
           rel="noreferrer noopener"
@@ -2458,11 +2493,11 @@ function DriverSteamId({ d, busy, onSave }) {
       )}
       {dirty && (
         <>
-          <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+          <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
             onClick={() => onSave(val.trim())}>
             Save
           </button>
-          <button className="text-xs font-semibold text-light hover:underline" disabled={busy}
+          <button className="transition text-xs font-semibold text-light hover:underline" disabled={busy}
             onClick={() => setVal(d.steamId || "")}>
             Cancel
           </button>
@@ -2689,19 +2724,19 @@ function DiscordEvents() {
                     )}
                   </span>
                   <span className="flex shrink-0 items-center gap-3">
-                    <button className="text-xs font-semibold text-link hover:underline"
+                    <button className="transition text-xs font-semibold text-link hover:underline"
                       disabled={busy} onClick={() => (editingId === r.id ? setEditingId(null) : startEdit(r))}>
                       {editingId === r.id ? "Close" : "Edit"}
                     </button>
                     {/* Rounds AND training sessions get the RSVP post; specials stay site-only. */}
                     {r.type !== "SPECIAL" && !r.isCompleted && (
-                      <button className="text-xs font-semibold text-link hover:underline"
+                      <button className="transition text-xs font-semibold text-link hover:underline"
                         disabled={busy} onClick={() => announce(r.id)}>
                         Post to Discord
                       </button>
                     )}
                     {r.resultCount === 0 && (
-                      <button className="text-xs font-semibold text-rose-500 hover:underline"
+                      <button className="transition text-xs font-semibold text-rose-500 hover:underline"
                         disabled={busy} onClick={() => deleteRace(r.id)}>
                         Delete
                       </button>
@@ -3206,14 +3241,14 @@ function Seasons({ gotoRaces }) {
               {open && (
                 <div className="space-y-2 pb-3">
                   <div className="flex flex-wrap items-center gap-3">
-                    <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                    <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                       onClick={() => gotoRaces?.(s)}
                       title="Switch to this season and open the race calendar">
                       Schedule races →
                     </button>
                     {/* Deliberately outside the !isActive block: the running
                         season may want its cards switched off just as much. */}
-                    <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                    <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                       onClick={() => toggleCards(s)}
                       title={s.cardsEnabled === false
                         ? "Show driver rating cards for this season again (Cards view in the standings, card on the driver page)"
@@ -3222,14 +3257,14 @@ function Seasons({ gotoRaces }) {
                     </button>
                     {!s.isActive && (
                       <>
-                        <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                        <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                           onClick={() => togglePublic(s)}
                           title={s.isPublic ? "Hide this season from the public" : "Publish this season to the public"}>
                           {s.isPublic ? "Make private" : "Make public"}
                         </button>
                         {/* only an UPCOMING season can advertise itself */}
                         {s.number > ((seasons || []).find((o) => o.isActive)?.number ?? -Infinity) && (
-                          <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                          <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                             onClick={() => toggleAnnounce(s)}
                             title={s.isAnnounced
                               ? "Remove the 'Coming up' strip from the home page"
@@ -3237,7 +3272,7 @@ function Seasons({ gotoRaces }) {
                             {s.isAnnounced ? "Stop announcing" : "Announce on Home"}
                           </button>
                         )}
-                        <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                        <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                           onClick={() => activate(s.id)}>Make active</button>
                         {/* any non-active season is deletable; a filled one requires
                             typing its name and is backed up first (server-enforced) */}
@@ -3311,7 +3346,7 @@ function SeriesLogo({ series, onSaved, onError }) {
   return (
     <>
       <input ref={fileRef} type="file" accept="image/png,image/webp,image/svg+xml" className="hidden" onChange={pick} />
-      <button type="button" className="text-xs font-semibold text-link hover:underline" disabled={busy}
+      <button type="button" className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
         onClick={() => fileRef.current?.click()} title="Dark-mode nav logo, recommended: transparent PNG, square, 512px+">
         {series.logoDarkUrl ? "Replace logo" : "Upload logo"}
       </button>
@@ -3488,19 +3523,19 @@ function SeriesPanel() {
                 </button>
               )}
               <SeriesLogo series={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-              <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+              <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                 onClick={() => setSlug(s.slug)} title="Point the admin at this series (the bar above follows)">
                 Edit this series →
               </button>
-              <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+              <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                 onClick={() => rename(s)}>Rename</button>
               {!s.isActive && (
                 <>
-                  <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                  <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                     onClick={() => togglePublic(s)}>
                     {s.isPublic ? "Make private" : "Make public"}
                   </button>
-                  <button className="text-xs font-semibold text-link hover:underline" disabled={busy}
+                  <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                     onClick={() => activate(s)}>Make primary</button>
                   <button className="text-xs font-semibold text-light transition hover:text-link" disabled={busy}
                     onClick={() => remove(s)}>Delete</button>
@@ -3605,7 +3640,7 @@ function SeatBoxes({ team, db, rosterNames, onAdded, onError, onRemove, busy }) 
         <button
           type="button"
           onClick={() => setExpanded(false)}
-          className="text-xs font-semibold text-light hover:text-medium"
+          className="transition text-xs font-semibold text-light hover:text-medium"
         >
           Collapse
         </button>

@@ -360,7 +360,7 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
                               position, or a series switch would slide every
                               dot vertically to its new value */}
                           <span
-                            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card transition-[width,height] duration-150"
+                            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card transition-[width,height] duration-quick"
                             style={{
                               left: "50%",
                               top: `${yPct(r)}%`,

@@ -116,7 +116,7 @@ export default function RaceSignupCard({
     });
 
   return (
-    <div className={`card flex flex-col overflow-hidden ${className}`}>
+    <div className={`card reveal flex flex-col overflow-hidden ${className}`}>
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-border px-5 py-4">
         <div>
           <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Sign-Up</h3>
@@ -186,7 +186,7 @@ export default function RaceSignupCard({
             </div>
           )
         ) : (
-          <Link to="/profile" className="text-sm font-semibold text-link hover:underline">
+          <Link to="/profile" className="transition text-sm font-semibold text-link hover:underline">
             Sign in to respond
           </Link>
         )}
@@ -227,9 +227,11 @@ export default function RaceSignupCard({
               <span className="hidden sm:inline">{STATUS_UI[status].title}</span>
               <span className="text-light">({ev.rsvps[status].length})</span>
             </div>
-            <ul className="space-y-1.5">
-              {ev.rsvps[status].map((r) => (
-                <li key={r.driverId} className="flex min-w-0 items-center gap-1.5 text-sm sm:gap-2">
+            {/* The grid filling up is the thing members come back to this page
+                for, so the names arrive one after another instead of as a block. */}
+            <ul className="cascade space-y-1.5">
+              {ev.rsvps[status].map((r, i) => (
+                <li key={r.driverId} style={{ "--i": i }} className="flex min-w-0 items-center gap-1.5 text-sm sm:gap-2">
                   <TeamDot color={r.team.color} />
                   <span className={`truncate ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}>
                     {r.name}

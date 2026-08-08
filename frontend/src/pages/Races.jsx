@@ -610,7 +610,10 @@ export default function Races() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-12">
+    // The one public page that arrived with no entrance at all: header, round
+    // rail and detail panel simply appeared. Only the lower half (calendar grid)
+    // was ever animated.
+    <div className="content-in space-y-4 sm:space-y-12">
       {/* Session-type switcher sits in the header's top-right corner: it drives
           BOTH the explorer below (rail + detail) and the calendar grid further
           down, so picking a type shows every view of it. */}

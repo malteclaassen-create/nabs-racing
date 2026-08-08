@@ -113,7 +113,7 @@ function PostCard({ post, channel }) {
                 src={post.thumbUrl}
                 alt=""
                 loading="lazy"
-                className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                className="h-full w-full object-cover transition duration-slow group-hover:scale-[1.04]"
               />
             ) : (
               // No picture from the platform and none uploaded: the brand mark

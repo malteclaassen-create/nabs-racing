@@ -322,7 +322,7 @@ export default function TeamProfile() {
       <TeamHistory teamId={team.id} currentSeasonId={team.seasonId} />
 
       <div>
-        <Link to="/constructors" className="text-sm font-semibold text-link hover:underline">← All constructors</Link>
+        <Link to="/constructors" className="transition text-sm font-semibold text-link hover:underline">← All constructors</Link>
       </div>
     </div>
   );

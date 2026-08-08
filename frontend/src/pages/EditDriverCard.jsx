@@ -336,7 +336,7 @@ function EditDriverCardInner() {
       <div className="mx-auto max-w-md">
         <div className="card p-6 text-center text-sm text-medium">
           You don&rsquo;t have a driver entry yet, so there&rsquo;s no card to edit.{" "}
-          <Link to="/profile" className="font-semibold text-link hover:underline">
+          <Link to="/profile" className="transition font-semibold text-link hover:underline">
             Start on your profile
           </Link>{" "}
           to connect your Steam account and ask for a seat.
@@ -351,7 +351,7 @@ export default function EditDriverCard() {
   const { isLoggedIn } = useAuth();
   if (!isLoggedIn) return <Navigate to="/profile" replace />;
   return (
-    <div className="space-y-6">
+    <div className="content-in space-y-6">
       <PageHeader
         eyebrow="Your profile"
         title="Edit Driver Card"

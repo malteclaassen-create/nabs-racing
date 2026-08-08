@@ -233,7 +233,7 @@ export default function AdminPersons() {
                 {picks.map((id) => (
                   <span key={id} className="pill bg-surface2 text-dark">
                     {driverById.get(id)?.name} · S{driverById.get(id)?.seasonNumber ?? "?"}
-                    <button className="ml-1.5 text-light hover:text-dark" onClick={() => togglePick(id)}>×</button>
+                    <button className="transition ml-1.5 text-light hover:text-dark" onClick={() => togglePick(id)}>×</button>
                   </span>
                 ))}
                 {picks.length >= 2 ? (
@@ -307,7 +307,7 @@ export default function AdminPersons() {
                           <span className="font-semibold text-dark">{d.name}</span>
                           {d.teamName && <span className="text-xs text-light">{d.teamName}</span>}
                           <button
-                            className="ml-auto text-xs font-semibold text-bad hover:underline disabled:opacity-50"
+                            className="transition ml-auto text-xs font-semibold text-bad hover:underline disabled:opacity-50"
                             disabled={busy}
                             onClick={() => unlink(d.id)}
                             title="Remove this entry from the person"

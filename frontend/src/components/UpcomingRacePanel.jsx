@@ -49,7 +49,7 @@ function RecordRow({ icon, label, name, driverId, value }) {
       <div className="min-w-0 flex-1">
         <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">{label}</div>
         {driverId ? (
-          <Link to={`/drivers/${driverId}`} className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark hover:text-brand">
+          <Link to={`/drivers/${driverId}`} className="transition truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark hover:text-brand">
             {name}
           </Link>
         ) : (
@@ -75,7 +75,7 @@ function SignupOutcome({ ev }) {
   const capacity = ev.capacity ?? 40;
   const total = visible.reduce((n, s) => n + (ev.rsvps?.[s]?.length || 0), 0);
   return (
-    <div className="card overflow-hidden">
+    <div className="card reveal overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-border px-5 py-4">
         <div>
           <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Sign-Up</h3>
@@ -190,7 +190,7 @@ export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }
     <div className="space-y-5">
       {/* Hero: race identity left, the live countdown clock + sign-up right —
           the same layout language as the Attendance hero. */}
-      <div className="card relative overflow-hidden p-5 sm:p-6">
+      <div className="card reveal relative overflow-hidden p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
@@ -248,7 +248,7 @@ export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }
 
       {/* Circuit map (left) + track record (right) */}
       <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
-        <div className="card flex flex-col overflow-hidden">
+        <div className="card reveal flex flex-col overflow-hidden">
           <CardHeader title="Circuit">
             {circuit && !loading && !history?.mapImageUrl && (
               <button className="btn-secondary px-3 py-1 text-xs" onClick={downloadPng} title="Export the outline as a PNG, e.g. to label the corners and upload the finished map in the admin Tracks tab.">
@@ -282,7 +282,7 @@ export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }
           </div>
         </div>
 
-        <div className="card overflow-hidden">
+        <div className="card reveal overflow-hidden">
           <CardHeader title="Track record" />
           <div className="px-5 pb-4 pt-1">
             {loading ? (
@@ -310,7 +310,7 @@ export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }
                             S{e.seasonNumber ?? "?"}
                           </span>
                           {e.winner ? (
-                            <Link to={`/drivers/${e.winner.driverId}`} className="truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark hover:text-brand">
+                            <Link to={`/drivers/${e.winner.driverId}`} className="transition truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark hover:text-brand">
                               {e.winner.name}
                             </Link>
                           ) : (

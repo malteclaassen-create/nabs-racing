@@ -38,7 +38,7 @@ function TrackVideos({ track, videos }) {
   if (!videos?.length) return null;
   const current = videos[Math.min(i, videos.length - 1)];
   return (
-    <div className="card overflow-hidden p-5">
+    <div className="card reveal overflow-hidden p-5">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Hotlap</h3>
         <span className="font-mono text-[11px] uppercase tracking-wider text-light">Learn {track} before Friday</span>
@@ -87,7 +87,7 @@ function MyTrackHistory({ track, me }) {
     );
   }
   return (
-    <div className="card p-5">
+    <div className="card reveal p-5">
       <h3 className="mb-3 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Your history at {track}</h3>
       <div className="mb-3 grid grid-cols-3 gap-2 text-center">
         <div>
@@ -258,7 +258,7 @@ export default function Attendance() {
 
       {!events.loading && !events.error && list.length === 0 && (
         <EmptyState title="Nothing on the calendar" hint="The next race will show up here as soon as it is scheduled.">
-          <Link to="/races" className="mt-3 inline-block text-sm font-semibold text-link hover:underline">See the calendar →</Link>
+          <Link to="/races" className="transition mt-3 inline-block text-sm font-semibold text-link hover:underline">See the calendar →</Link>
         </EmptyState>
       )}
 
@@ -275,7 +275,7 @@ export default function Attendance() {
           /* hero strip: race identity on the left, the live broadcast-style
              countdown (same clock as the home page) on the right. No circuit
              watermark here on purpose — it collided with the countdown tiles. */
-          <div className="card relative overflow-hidden p-5 sm:p-6">
+          <div className="card reveal relative overflow-hidden p-5 sm:p-6">
             <div className="relative flex flex-wrap items-center justify-between gap-x-8 gap-y-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2.5">
@@ -346,6 +346,25 @@ export default function Attendance() {
           const videoPanel = <TrackVideos track={ev.track} videos={hist.data?.videos} />;
           const history = canSignUp ? <MyTrackHistory track={ev.track} me={hist.data?.me} /> : null;
           const errorBox = error ? <ErrorBox message={error} /> : null;
+
+          // Until the track-history answer is in, the page does not know which
+          // of its two arrangements it is (video split or driver-card column) —
+          // so it commits to NEITHER and shows only the parts common to both.
+          // Deciding early painted the no-video layout whenever the member's
+          // own rating fetch won the race against the track-history one: the
+          // driver card flashed for a few frames and was torn out again the
+          // moment the hotlap arrived. The cards this holds back carry reveal
+          // animations, so arriving a beat later reads as the page building
+          // itself, not as a jump.
+          if (hist.loading) {
+            return (
+              <div className="space-y-6">
+                {heroCard}
+                {errorBox}
+                {signUpCard}
+              </div>
+            );
+          }
 
           // With a lap on file the page splits: the race and the sign-up down
           // the left, the video on the right, and NOTHING else. The driver card

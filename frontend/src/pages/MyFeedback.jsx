@@ -101,7 +101,7 @@ function Message({ r }) {
   );
 }
 
-function Thread({ item, highlight, onChanged }) {
+function Thread({ item, highlight, onChanged, index = 0 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -139,6 +139,7 @@ function Thread({ item, highlight, onChanged }) {
   return (
     <li
       ref={ref}
+      style={{ "--i": index }}
       className={`card scroll-mt-28 space-y-4 p-5 ${highlight ? "ring-2 ring-brand" : ""} ${
         busy ? "opacity-50" : ""
       }`}
@@ -218,9 +219,11 @@ function MyThreads() {
   }
 
   return (
-    <ul className="space-y-4">
-      {ordered.map((item) => (
-        <Thread key={item.id} item={item} highlight={item.id === focusId} onChanged={reload} />
+    <ul className="cascade space-y-4">
+      {ordered.map((item, i) => (
+        // Thread renders the <li> itself, so the stagger index goes THROUGH it
+        // rather than into a wrapper — nesting one <li> in another is invalid.
+        <Thread key={item.id} index={i} item={item} highlight={item.id === focusId} onChanged={reload} />
       ))}
     </ul>
   );
@@ -229,7 +232,7 @@ function MyThreads() {
 export default function MyFeedback() {
   const { isLoggedIn } = useAuth();
   return (
-    <div className="space-y-6">
+    <div className="content-in space-y-6">
       <PageHeader
         eyebrow="You and the admins"
         title="Your Messages"

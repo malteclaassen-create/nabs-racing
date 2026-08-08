@@ -254,7 +254,7 @@ function StandingsNav({ seriesPath }) {
       <div className={`absolute left-0 top-full z-40 pt-2 ${open ? "" : "pointer-events-none"}`}>
         <div
           role="menu"
-          className={`w-64 origin-top-left rounded-2xl border border-border bg-card p-1.5 shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-150 ${
+          className={`w-64 origin-top-left rounded-2xl border border-border bg-card p-1.5 shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-quick ${
             open ? "visible scale-100 opacity-100" : "invisible scale-[0.97] opacity-0"
           }`}
         >
@@ -494,7 +494,7 @@ export default function NavBar() {
           {navPill && (
             <span
               aria-hidden
-              className="absolute left-0 top-0 will-change-transform rounded-lg bg-brand/20 ring-1 ring-inset ring-brand/50 transition-[transform,width,height] duration-300 ease-out"
+              className="absolute left-0 top-0 will-change-transform rounded-lg bg-brand/20 ring-1 ring-inset ring-brand/50 transition-[transform,width,height] duration-base ease-out-soft"
               style={{ transform: `translate(${navPill.left}px, ${navPill.top}px)`, width: navPill.width, height: navPill.height }}
             />
           )}

@@ -318,7 +318,7 @@ export default function AdminAttendance() {
                   type="button"
                   aria-label="Remove this video"
                   title="Remove this video"
-                  className="mt-2 text-light hover:text-bad"
+                  className="transition mt-2 text-light hover:text-bad"
                   onClick={() => setVideos((vs) => vs.filter((_, idx) => idx !== i))}
                 >
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -342,7 +342,7 @@ export default function AdminAttendance() {
           <div className="flex flex-wrap items-center gap-3">
             {videos.length < MAX_VIDEOS && (
               <button
-                className="text-sm font-semibold text-link hover:underline"
+                className="transition text-sm font-semibold text-link hover:underline"
                 onClick={() => setVideos((vs) => [...vs, { url: "", title: "" }])}
               >
                 + Add a lap
@@ -497,7 +497,7 @@ export default function AdminAttendance() {
                   </div>
                   <button
                     type="button"
-                    className="text-sm font-semibold text-link hover:underline disabled:opacity-50"
+                    className="transition text-sm font-semibold text-link hover:underline disabled:opacity-50"
                     disabled={busy || e.hidden}
                     onClick={() => ping(e)}
                   >

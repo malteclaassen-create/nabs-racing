@@ -47,8 +47,45 @@ export default {
         mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       boxShadow: {
-        card: "0 1px 3px 0 rgba(15,23,42,0.08), 0 1px 2px -1px rgba(15,23,42,0.06)",
+        // Was a fixed light-mode shadow, which is why ~60 places reached past it
+        // for Tailwind's shadow-lg/xl/2xl instead — all of them equally invisible
+        // on the dark card. These point at the same per-theme tokens the .card
+        // class uses (--c-shadow in index.css), so one elevation works in both.
+        card: "var(--c-shadow)",
+        lift: "var(--c-shadow-lift)",
         nav: "0 1px 3px 0 rgba(15,23,42,0.06)",
+      },
+      // The motion scale from index.css, made reachable from JSX. It was five
+      // documented durations and five curves that no component could actually
+      // use: Tailwind's theme never exposed them, so ~290 `transition` classes
+      // silently ran at its own 150ms/ease, plus scattered duration-200/300/500.
+      // Six speeds where the design system defines five. Now `duration-base` and
+      // `ease-out-soft` resolve to the same values the CSS animations use.
+      transitionDuration: {
+        // The ~290 bare `transition` classes are almost all hover states, which
+        // the scale calls --t-quick (140ms). Tailwind's own default is 150ms, so
+        // pointing DEFAULT at the token moves every one of them onto the system
+        // and changes what you see by ten milliseconds, i.e. nothing. Same idea
+        // for the curve below: --e-soft and Tailwind's default differ by 0.1 in
+        // one control point.
+        DEFAULT: "var(--t-quick)",
+        quick: "var(--t-quick)",
+        base: "var(--t-base)",
+        slow: "var(--t-slow)",
+        tell: "var(--t-tell)",
+        draw: "var(--t-draw)",
+      },
+      transitionTimingFunction: {
+        DEFAULT: "var(--e-soft)",
+        "out-soft": "var(--e-out)",
+        draw: "var(--e-draw)",
+        soft: "var(--e-soft)",
+        pop: "var(--e-pop)",
+        "in-fast": "var(--e-in)",
+      },
+      animation: {
+        // Same for keyframe animations declared inline.
+        "spin-slow": "spin var(--t-draw) linear infinite",
       },
     },
   },

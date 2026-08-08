@@ -133,7 +133,7 @@ function SteamLinkCard({ steam, onChanged, demo = false }) {
               </span>
               {steam.id && (
                 <a
-                  className="font-mono text-[11px] text-light hover:text-link hover:underline"
+                  className="transition font-mono text-[11px] text-light hover:text-link hover:underline"
                   href={`https://steamcommunity.com/profiles/${steam.id}`}
                   target="_blank"
                   rel="noreferrer noopener"
@@ -141,7 +141,7 @@ function SteamLinkCard({ steam, onChanged, demo = false }) {
                   {steam.id}
                 </a>
               )}
-              <button className="text-xs font-semibold text-light hover:text-medium hover:underline" disabled={busy} onClick={disconnect}>
+              <button className="transition text-xs font-semibold text-light hover:text-medium hover:underline" disabled={busy} onClick={disconnect}>
                 Disconnect
               </button>
             </div>
@@ -218,7 +218,7 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
   const pending = !!request.data?.pending;
 
   return (
-    <div>
+    <div className="content-in">
       <PageHeader
         eyebrow="Welcome"
         title={me.discordName || "Welcome"}
@@ -295,7 +295,7 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
           <span className="font-mono text-[11px] uppercase tracking-wider text-faint">
             Signed in as {me.discordName}
           </span>
-          <button className="text-xs font-semibold text-light hover:text-medium hover:underline" onClick={logout}>
+          <button className="transition text-xs font-semibold text-light hover:text-medium hover:underline" onClick={logout}>
             Sign out
           </button>
         </div>
@@ -313,7 +313,7 @@ function DiscordLogin() {
   }
 
   return (
-    <div>
+    <div className="content-in">
       <PageHeader
         eyebrow="Members"
         title="Sign in"
@@ -794,7 +794,7 @@ function MyProfile() {
   const d = me.data;
 
   return (
-    <div className="space-y-6">
+    <div className="content-in space-y-6">
       {/* The old dark hero card is gone on purpose: everything it showed
           (name, flag, team, bio, socials) is editable right below and visible
           in the page preview — it only made the page longer. Its quick links
@@ -824,6 +824,11 @@ function MyProfile() {
       />
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
+      {/* Keyed on the tab so the panel behind the bar fades in on every switch.
+          Until now only the SlidingTabs pill moved and the content underneath
+          hard-swapped, which read as two different components rather than one
+          control moving between views. */}
+      <div key={tab} className="content-in">
       {tab === "tools" ? (
         <Tools embedded />
       ) : tab === "rating" ? (
@@ -851,7 +856,7 @@ function MyProfile() {
           </div>
           <span className="text-xs text-light">
             Updates as you edit above; unsaved changes included.{" "}
-            <Link to={`/drivers/${d.driverId}`} className="font-semibold text-link hover:underline">
+            <Link to={`/drivers/${d.driverId}`} className="transition font-semibold text-link hover:underline">
               Open the real page →
             </Link>
           </span>
@@ -886,6 +891,7 @@ function MyProfile() {
       </section>
         </>
       )}
+      </div>
     </div>
   );
 }

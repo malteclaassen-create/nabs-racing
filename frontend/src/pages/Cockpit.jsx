@@ -759,10 +759,10 @@ const ACH_CATS = [
   { key: "special", name: "Special", color: "#f59e0b" },
 ];
 
-function AchievementCard({ a, color, pinned, onPin, pinFull }) {
+function AchievementCard({ a, color, pinned, onPin, pinFull, index = 0 }) {
   if (a.masked) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-dashed border-border bg-surface2/50 px-4 py-3.5">
+      <div style={{ "--i": index }} className="flex items-center gap-3 rounded-xl border border-dashed border-border bg-surface2/50 px-4 py-3.5">
         <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-border/60 font-display text-lg font-black text-faint">?</span>
         <div>
           <div className="text-sm font-semibold text-faint">???</div>
@@ -775,7 +775,11 @@ function AchievementCard({ a, color, pinned, onPin, pinFull }) {
   return (
     <div
       className={`relative overflow-hidden rounded-xl border px-4 py-3.5 ${a.unlocked ? "" : "border-border bg-card"}`}
-      style={a.unlocked ? { borderColor: `${color}55`, background: `linear-gradient(135deg, ${color}14, transparent 60%)` } : undefined}
+      style={
+        a.unlocked
+          ? { "--i": index, borderColor: `${color}55`, background: `linear-gradient(135deg, ${color}14, transparent 60%)` }
+          : { "--i": index }
+      }
     >
       <div className="flex items-start gap-3">
         <span
@@ -793,7 +797,10 @@ function AchievementCard({ a, color, pinned, onPin, pinFull }) {
           {!a.unlocked && a.target > 1 && (
             <div className="mt-2 flex items-center gap-2">
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
-                <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color, opacity: 0.7 }} />
+                {/* bar-fill grows the bar from zero once the card is revealed.
+                    The utility already existed; this was the one progress bar
+                    on the site that snapped straight to its width. */}
+                <div className="bar-fill h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color, opacity: 0.7 }} />
               </div>
               <span className="font-mono text-[10px] font-bold tabular-nums text-faint">{a.value}/{a.target}</span>
             </div>
@@ -838,7 +845,7 @@ function AchievementsTab() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="content-in space-y-8">
       <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-border pb-5">
         <div className="flex items-baseline gap-2">
           <span className="font-display text-5xl font-black tabular-nums text-dark"><CountUp end={d.unlockedCount} /></span>
@@ -858,9 +865,12 @@ function AchievementsTab() {
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">{cat.name}</span>
               <span className="font-mono text-[11px] tabular-nums text-faint">{done}/{list.length}</span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {list.map((a) => (
-                <AchievementCard key={a.key} a={a} color={cat.color} pinned={pinned.includes(a.key)} pinFull={pinned.length >= 3} onPin={togglePin} />
+            {/* The grid this utility was written for ("dealing the deck"), and
+                the one place on the site it was missing. Unlocking something is
+                the payoff of the whole feature; it should not render flat. */}
+            <div className="cascade grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {list.map((a, i) => (
+                <AchievementCard key={a.key} index={i} a={a} color={cat.color} pinned={pinned.includes(a.key)} pinFull={pinned.length >= 3} onPin={togglePin} />
               ))}
             </div>
           </div>
