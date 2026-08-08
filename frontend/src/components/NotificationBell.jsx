@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDismiss } from "./overlay.jsx";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -152,13 +153,14 @@ export default function NotificationBell({ className = "" }) {
 
   const close = useCallback(() => setOpen(false), []);
 
-  // Escape closes the panel (the drawer has its own handler and sits on top).
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => e.key === "Escape" && close();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, close]);
+  // Escape and click-outside come from the shared overlay layer. That also
+  // retires the invisible full-screen catcher this used to paint over the page
+  // just to notice an outside click: a real element that had to be stacked
+  // between the panel and everything else, and got it wrong (it sat at the
+  // header's own level, BELOW its own panel and below the mobile nav panel).
+  // The bell lives inside wrapRef, so a click on it counts as inside and the
+  // button's own toggle decides — no close-then-instantly-reopen.
+  useDismiss(open, close, { ref: wrapRef });
 
   function openPanel() {
     if (open) return close();
@@ -208,8 +210,6 @@ export default function NotificationBell({ className = "" }) {
 
       {open && (
         <>
-          {/* Invisible click-catcher: tapping anywhere else closes the panel. */}
-          <button type="button" aria-label="Close notifications" onClick={close} className="fixed inset-0 z-30 cursor-default" />
           {/* The panel hangs off the bell's right edge, and on a phone the bell
               itself sits ~60px in from the screen edge (the burger is to its
               right). The old clamp only subtracted the page gutter, so on

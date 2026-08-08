@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useDismiss } from "./overlay.jsx";
 import { useSeason } from "../context/SeasonContext.jsx";
 
 // The season switcher, built straight into the Home ticker line ("SEASON 7 · LIVE
@@ -46,17 +47,11 @@ export default function SeasonPicker({ compact = false, onPick, finished = false
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e) => wrapRef.current && !wrapRef.current.contains(e.target) && setOpen(false);
-    const onKey = (e) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  // Escape and click-outside come from the shared overlay layer, so this menu
+  // dismisses exactly the way the drawers, the dialogs and the other four
+  // dropdowns do. It also gains touchstart, which this hand-rolled version
+  // lacked: on a phone a tap outside left the menu up until the tap finished.
+  useDismiss(open, useCallback(() => setOpen(false), []), { ref: wrapRef });
 
   const isPast = (current && active && current.number < active.number) || finished;
   const isPrivate = current && current.isPublic === false;

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useDismiss } from "./overlay.jsx";
 
 // ---------------------------------------------------------------------------
 // The two small buttons above the Session Best Times board: **Sort** and
@@ -86,21 +87,9 @@ function Menu({ icon, label, hint, highlight, title, children, footer }) {
   };
 
   useEffect(() => () => cancelClose(), []);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    const onKey = (e) => e.key === "Escape" && setOpen(false);
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("touchstart", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("touchstart", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  // Escape and click-outside now come from the shared overlay layer; the hover
+  // open/close timing above is this menu's own and stays.
+  useDismiss(open, useCallback(() => setOpen(false), []), { ref });
 
   return (
     <div
