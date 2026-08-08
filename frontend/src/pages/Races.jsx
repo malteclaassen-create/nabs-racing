@@ -17,7 +17,7 @@ import { circuitFor, flagFor } from "../data/circuits.js";
 import { useSpecificTitle, prettyTrack } from "../utils/pageTitle.js";
 import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { signupRaceIds } from "../utils/signupQueue.js";
-import { fmtRaceDateFull } from "../utils/format.js";
+import { fmtRaceDate, fmtRaceDateFull } from "../utils/format.js";
 
 // The calendar is built entirely from the season's races (DB), so it stays in
 // sync with whatever the admin schedules. Championship rounds (number set) are
@@ -215,9 +215,13 @@ function RoundRail({ races, selectedId, onSelect }) {
       // overflow-y:auto), so without a little headroom the ring's top edge got
       // shaved off. Not needed at lg, where the rail is the unclipped sidebar
       // and the padding would push the first chip out of line with the table.
-      className="scrollbar-slim flex gap-2 overflow-x-auto pb-2 pt-1 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:pt-0"
+      // `cascade`: the rounds deal themselves out one after another like every
+      // other list on the site (standings rows, line-up cards). The container
+      // picks up .is-visible from the global scroll-reveal pass and each child
+      // fans out on its own --i.
+      className="cascade scrollbar-slim flex gap-2 overflow-x-auto pb-2 pt-1 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:pt-0"
     >
-      {races.map((r) => {
+      {races.map((r, i) => {
         const flag = flagFor(r.track, r.country);
         const active = r.id === selectedId;
         const done = r.isCompleted;
@@ -233,6 +237,7 @@ function RoundRail({ races, selectedId, onSelect }) {
             type="button"
             onClick={() => onSelect(r.id)}
             aria-pressed={active}
+            style={{ "--i": i }}
             className={`group flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition lg:w-full lg:shrink ${border}`}
           >
             <span className={`font-display text-lg font-black leading-none tabular-nums ${active ? "text-dark" : done ? "text-ok" : "text-faint group-hover:text-light"}`}>
@@ -241,13 +246,21 @@ function RoundRail({ races, selectedId, onSelect }) {
             {flag && <Flag code={flag.country} title={flag.countryName} />}
             <span className="flex min-w-0 flex-col leading-tight">
               <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{r.track}</span>
+              {/* The date, not the word. "Upcoming" told you what the greyed-out
+                  styling already told you; the question someone scanning this
+                  rail actually has is WHEN. Done rounds get their date too
+                  rather than the word "Done" — the tick and the green carry
+                  that, and a rail where half the rows answer a different
+                  question than the other half is the sort of thing that reads
+                  as unfinished. A round with no date on file still falls back
+                  to the words, since a blank line answers nothing. */}
               <span className={`flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider ${done ? "text-ok" : "text-light"}`}>
                 {done && (
-                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="currentColor" aria-hidden="true">
                     <path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z" />
                   </svg>
                 )}
-                {done ? "Done" : "Upcoming"}
+                {fmtRaceDate(r.date) || (done ? "Done" : "Upcoming")}
               </span>
             </span>
           </button>
