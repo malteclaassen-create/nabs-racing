@@ -192,6 +192,7 @@ export default function AdminPersons() {
               Search the old name, click it, search the current name, click it, hit Link.
             </p>
             <input
+              aria-label="Different names? Link by hand"
               className="input mt-2 w-full max-w-md py-1.5 text-sm"
               type="search"
               placeholder="Type a driver name (old or new)…"
@@ -261,6 +262,7 @@ export default function AdminPersons() {
         <div className="card overflow-hidden">
           <CardHeader title={`Linked people · ${persons.length}`}>
             <input
+              aria-label="Filter by any name"
               className="input w-56 py-1 text-sm"
               type="search"
               placeholder="Filter by any name…"

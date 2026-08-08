@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { ErrorBox, DriverAvatar } from "./ui.jsx";
+import { ErrorBox, DriverAvatar, Field } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import IdChip from "./IdChip.jsx";
 import AdminPersons from "./AdminPersons.jsx";
@@ -261,6 +261,7 @@ export default function AdminMembers() {
                   <StatusPills m={m} />
                   <span className="flex items-center gap-2">
                     <select
+                      aria-label={`Link ${m.displayName || m.username} to driver`}
                       className="input py-1.5 text-sm"
                       value={sel}
                       onChange={(e) => setLinkChoice((c) => ({ ...c, [m.discordId]: e.target.value }))}
@@ -304,29 +305,31 @@ export default function AdminMembers() {
                 {/* one-step "create + link" for people not on the roster at all */}
                 {creating === m.discordId && (
                   <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg bg-surface2/60 p-3">
-                    <label className="min-w-[12rem] flex-1">
-                      <span className="mb-1 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Driver name</span>
-                      <input
-                        className="input w-full py-1.5 text-sm"
-                        value={createForm.name}
-                        onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
-                      />
-                    </label>
-                    <label className="min-w-[12rem] flex-1">
-                      <span className="mb-1 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Team ({active?.name || "active season"})</span>
-                      <select
-                        className="input w-full py-1.5 text-sm"
-                        value={createForm.teamId}
-                        onChange={(e) => setCreateForm((f) => ({ ...f, teamId: e.target.value }))}
-                      >
-                        {teams.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
-                            {t.tier === 0 ? " (Reserve)" : ` (Tier ${t.tier})`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <div className="min-w-[12rem] flex-1">
+                      <Field label="Driver name">
+                        <input
+                          className="input w-full py-1.5 text-sm"
+                          value={createForm.name}
+                          onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
+                        />
+                      </Field>
+                    </div>
+                    <div className="min-w-[12rem] flex-1">
+                      <Field label={`Team (${active?.name || "active season"})`}>
+                        <select
+                          className="input w-full py-1.5 text-sm"
+                          value={createForm.teamId}
+                          onChange={(e) => setCreateForm((f) => ({ ...f, teamId: e.target.value }))}
+                        >
+                          {teams.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                              {t.tier === 0 ? " (Reserve)" : ` (Tier ${t.tier})`}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    </div>
                     <span className="flex items-center gap-2">
                       <button
                         className="btn-primary py-1.5 text-sm disabled:opacity-50"

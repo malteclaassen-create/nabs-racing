@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
-import { CardHead, Notice } from "./ui.jsx";
+import { CardHead, Notice, Field } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 
 // Admin Ratings tab: every knob of the rating formulas, editable live.
@@ -131,6 +131,7 @@ function WeightSliders({ parts, values, onChange }) {
               type="range" min="0" max="100" value={values[k]}
               onChange={(e) => onChange(k, Number(e.target.value))}
               className="h-2 flex-1 cursor-pointer accent-primary"
+              aria-label={label}
             />
             <span className="w-10 shrink-0 text-right font-mono text-sm font-bold tabular-nums text-dark">{pct}%</span>
           </div>
@@ -159,16 +160,18 @@ function NumField({ label, value, onChange, min, max, step = 1, w = "w-20", suff
 function ListField({ label, value, onChange, hint }) {
   const parsed = parseList(value);
   return (
-    <div>
-      <div className="mb-1 flex items-baseline justify-between gap-3">
-        <span className="text-sm font-semibold text-medium">{label}</span>
+    <Field
+      label={label}
+      tone="plain"
+      hint={hint}
+      accessory={
         <span className={`font-mono text-[11px] ${parsed.hasInvalid ? "text-warn" : "text-light"}`}>
           {parsed.nums.length} values{parsed.hasInvalid ? " · some entries ignored" : ""}
         </span>
-      </div>
+      }
+    >
       <input value={value} onChange={(e) => onChange(e.target.value)} className="input w-full py-1.5 font-mono text-xs" />
-      {hint && <p className="mt-1 text-[11px] leading-relaxed text-light">{hint}</p>}
-    </div>
+    </Field>
   );
 }
 

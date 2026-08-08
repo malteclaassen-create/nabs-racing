@@ -1,15 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, CardBar, CardHead } from "./ui.jsx";
+import { ErrorBox, CardBar, CardHead, Field, CheckField } from "./ui.jsx";
 import Icon from "./InfoIcon.jsx";
 import { useAsk } from "./overlay.jsx";
 import { NO_VALUE } from "../utils/format.js";
 
 const EMPTY = { title: "", folderId: "", raceId: "", version: "", description: "", installNote: "", fileName: "", externalUrl: "", sortOrder: 0, published: true };
 
-const inputCls = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark placeholder:text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
-const labelCls = "mb-1 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium";
 const smallBtn = "flex h-7 w-7 items-center justify-center rounded-lg bg-surface2 text-medium transition hover:bg-border disabled:opacity-30";
 
 // Folder manager: the folders group the public Downloads page (Tracks, Cars,
@@ -86,7 +84,8 @@ function Folders({ folders, reload, onMsg }) {
                 <span className="flex min-w-0 flex-1 items-center gap-2">
                   <input
                     autoFocus
-                    className={inputCls}
+                    aria-label={`Folder name for ${f.name}`}
+                    className="input"
                     value={renaming.name}
                     onChange={(e) => setRenaming({ id: f.id, name: e.target.value })}
                     onKeyDown={(e) => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setRenaming(null); }}
@@ -114,7 +113,8 @@ function Folders({ folders, reload, onMsg }) {
 
       <div className="mt-4 flex items-center gap-2">
         <input
-          className={inputCls}
+          aria-label="New folder name"
+          className="input"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); create(); } }}
@@ -377,74 +377,77 @@ export default function AdminDownloads() {
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className={labelCls}>Title *</label>
-            <input className={inputCls} value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Real Penalty" required />
-          </div>
-          <div>
-            <label className={labelCls}>Folder</label>
-            <select className={inputCls} value={form.folderId} onChange={(e) => set("folderId", e.target.value)}>
+          <Field label="Title" required>
+            <input className="input" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Real Penalty" required />
+          </Field>
+          <Field label="Folder">
+            <select className="input" value={form.folderId} onChange={(e) => set("folderId", e.target.value)}>
               <option value="">No folder (shows under "More files")</option>
               {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
-          </div>
-          <div>
-            <label className={labelCls}>Race (for replays)</label>
-            <select className={inputCls} value={form.raceId} onChange={(e) => pickRace(e.target.value)}>
+          </Field>
+          <Field
+            label="Race (for replays)"
+            hint={
+              <>
+                Marks this entry as that round&rsquo;s replay: it lands in the Replays folder automatically and the
+                race gets a Replay button on the Races page.
+              </>
+            }
+          >
+            <select className="input" value={form.raceId} onChange={(e) => pickRace(e.target.value)}>
               <option value="">Not tied to a race</option>
               {races.map((r) => <option key={r.id} value={r.id}>{raceLabel(r)}</option>)}
             </select>
-            <p className="mt-1 text-xs text-light">
-              Marks this entry as that round&rsquo;s replay: it lands in the Replays folder automatically and the
-              race gets a Replay button on the Races page.
-            </p>
-          </div>
+          </Field>
           <div>
-            <label className={labelCls}>File on server</label>
-            <input list="dl-files" className={inputCls} value={form.fileName} onChange={(e) => set("fileName", e.target.value)} placeholder="filename in backend/downloads/" />
+            <Field label="File on server">
+              <input list="dl-files" className="input" value={form.fileName} onChange={(e) => set("fileName", e.target.value)} placeholder="filename in backend/downloads/" />
+            </Field>
             <datalist id="dl-files">{diskFiles.map((f) => <option key={f.fileName} value={f.fileName}>{f.sizeText}</option>)}</datalist>
           </div>
-          <div>
-            <label className={labelCls}>… or external link</label>
+          <Field
+            label="… or external link"
+            hint={
+              <>
+                For files hosted elsewhere (Google Drive, Mega, the mod site…). Members get an &ldquo;Open link&rdquo; button
+                instead of a download. Fill in either a file or a link, not both.
+              </>
+            }
+          >
             {/* type=text on purpose: native url validation would block submit
                 for "drive.google.com/…" before our https:// autofix can run */}
             <input
               type="text"
               inputMode="url"
-              className={inputCls}
+              className="input"
               value={form.externalUrl}
               onChange={(e) => set("externalUrl", e.target.value)}
               placeholder="https://drive.google.com/…"
             />
-            <p className="mt-1 text-xs text-light">
-              For files hosted elsewhere (Google Drive, Mega, the mod site…). Members get an &ldquo;Open link&rdquo; button
-              instead of a download. Fill in either a file or a link, not both.
-            </p>
-          </div>
-          <div>
-            <label className={labelCls}>Version</label>
-            <input className={inputCls} value={form.version} onChange={(e) => set("version", e.target.value)} placeholder="e.g. 1.2" />
-          </div>
+          </Field>
+          <Field label="Version">
+            <input className="input" value={form.version} onChange={(e) => set("version", e.target.value)} placeholder="e.g. 1.2" />
+          </Field>
         </div>
 
-        <div>
-          <label className={labelCls}>Description</label>
-          <textarea className={inputCls} rows={2} value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Short description shown on the card." />
-        </div>
-        <div>
-          <label className={labelCls}>Install note</label>
-          <input className={inputCls} value={form.installNote} onChange={(e) => set("installNote", e.target.value)} placeholder='e.g. "Uninstall old CSP first"' />
-        </div>
+        <Field label="Description">
+          <textarea className="input" rows={2} value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Short description shown on the card." />
+        </Field>
+        <Field label="Install note">
+          <input className="input" value={form.installNote} onChange={(e) => set("installNote", e.target.value)} placeholder='e.g. "Uninstall old CSP first"' />
+        </Field>
 
         <div className="flex flex-wrap items-center gap-6">
-          <div className="w-28">
-            <label className={labelCls}>Sort order</label>
-            <input type="number" className={inputCls} value={form.sortOrder} onChange={(e) => set("sortOrder", e.target.value)} />
-          </div>
-          <label className="mt-5 flex items-center gap-2 text-sm font-semibold text-dark">
-            <input type="checkbox" checked={form.published} onChange={(e) => set("published", e.target.checked)} className="h-4 w-4 rounded border-border" />
-            Published (visible to members)
-          </label>
+          <Field label="Sort order" className="w-28">
+            <input type="number" className="input" value={form.sortOrder} onChange={(e) => set("sortOrder", e.target.value)} />
+          </Field>
+          <CheckField
+            className="mt-5"
+            checked={form.published}
+            onChange={(e) => set("published", e.target.checked)}
+            label="Published (visible to members)"
+          />
         </div>
 
         <div className="flex items-center gap-3">

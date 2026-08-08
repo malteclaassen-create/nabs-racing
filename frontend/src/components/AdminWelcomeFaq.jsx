@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox } from "./ui.jsx";
+import { ErrorBox, Field } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 import { WELCOME_FAQ_DEFAULTS } from "../data/welcomeFaqDefaults.js";
 
@@ -9,9 +9,6 @@ import { WELCOME_FAQ_DEFAULTS } from "../data/welcomeFaqDefaults.js";
 // to logged-out visitors). Stored as one blob in the backend; while nothing is
 // saved the page shows its built-in, season-aware default questions.
 
-const inputCls =
-  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark placeholder:text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
-const labelCls = "mb-1 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium";
 const smallBtn =
   "flex h-7 w-7 items-center justify-center rounded-lg bg-surface2 text-medium transition hover:bg-border disabled:opacity-30";
 
@@ -121,10 +118,9 @@ export default function AdminWelcomeFaq() {
         {form.map((it, i) => (
           <div key={i} className="space-y-3 rounded-xl border border-border p-4">
             <div className="flex items-start justify-between gap-3">
-              <div className="flex-1">
-                <label className={labelCls}>Question</label>
-                <input className={inputCls} value={it.q} onChange={(e) => setItem(i, "q", e.target.value)} />
-              </div>
+              <Field label="Question" className="flex-1">
+                <input className="input" value={it.q} onChange={(e) => setItem(i, "q", e.target.value)} />
+              </Field>
               <div className="pt-6">
                 <RowControls
                   onUp={() => setForm(moveItem(form, i, -1))}
@@ -135,10 +131,9 @@ export default function AdminWelcomeFaq() {
                 />
               </div>
             </div>
-            <div>
-              <label className={labelCls}>Answer</label>
-              <textarea className={inputCls} rows={3} value={it.a} onChange={(e) => setItem(i, "a", e.target.value)} />
-            </div>
+            <Field label="Answer">
+              <textarea className="input" rows={3} value={it.a} onChange={(e) => setItem(i, "a", e.target.value)} />
+            </Field>
           </div>
         ))}
         {form.length === 0 && <p className="text-sm text-light">No questions. Add one, or reset to the standard FAQ.</p>}

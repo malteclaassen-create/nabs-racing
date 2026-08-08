@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, Notice, CardHead } from "./ui.jsx";
+import { ErrorBox, Notice, CardHead, Field, CheckField } from "./ui.jsx";
 import { trackKey } from "../data/circuits.js";
 import VideoEmbed from "./VideoEmbed.jsx";
 import { youtubeId as ytId } from "../utils/videoLinks.js";
@@ -267,7 +267,7 @@ export default function AdminAttendance() {
 
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm font-semibold text-medium">Any other track</label>
-          <select className="input max-w-xs" value={selected} onChange={(e) => setSelected(e.target.value)}>
+          <select aria-label="Any other track" className="input max-w-xs" value={selected} onChange={(e) => setSelected(e.target.value)}>
             <option value="">Select a track…</option>
             {allTracks.map((t) => (
               <option key={t.key} value={t.name}>
@@ -293,12 +293,14 @@ export default function AdminAttendance() {
               <div key={i} className="flex flex-wrap items-start gap-3">
                 <div className="flex min-w-60 flex-[2] flex-col gap-2">
                   <input
+                    aria-label={`Lap ${i + 1} video link`}
                     className="input py-1.5 text-sm"
                     placeholder="https://www.youtube.com/watch?v=…"
                     value={v.url}
                     onChange={(e) => setVideo(i, { url: e.target.value })}
                   />
                   <input
+                    aria-label={`Lap ${i + 1} label`}
                     className="input py-1.5 text-sm"
                     placeholder="Label (e.g. S8 hotlap, onboard 2024)"
                     value={v.title}
@@ -368,35 +370,29 @@ export default function AdminAttendance() {
             circuit stops using this.
           </p>
 
-          <label className="flex items-center gap-2 text-sm font-semibold text-medium">
-            <input
-              type="checkbox"
-              className="h-4 w-4"
-              checked={fallback.enabled}
-              onChange={(e) => setFallback((f) => ({ ...f, enabled: e.target.checked }))}
-            />
-            Play a stand-in lap where none is uploaded
-          </label>
+          <CheckField
+            checked={fallback.enabled}
+            onChange={(e) => setFallback((f) => ({ ...f, enabled: e.target.checked }))}
+            label="Play a stand-in lap where none is uploaded"
+          />
 
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-start">
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-medium">Video</label>
+            <Field label="Video" tone="plain">
               <input
                 className="input py-1.5 text-sm"
                 placeholder="https://youtu.be/…"
                 value={fallbackUrl}
                 onChange={(e) => setFallbackUrl(e.target.value)}
               />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-medium">Called</label>
+            </Field>
+            <Field label="Called" tone="plain">
               <input
                 className="input py-1.5 text-sm"
                 placeholder={`${selected || "<Track>"} hotlap`}
                 value={fallback.label}
                 onChange={(e) => setFallback((f) => ({ ...f, label: e.target.value }))}
               />
-            </div>
+            </Field>
             <button className="btn-secondary py-1.5 text-sm sm:mt-6" onClick={saveFallback} disabled={busy}>
               Save
             </button>

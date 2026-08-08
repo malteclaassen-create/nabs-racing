@@ -123,7 +123,7 @@ export default function AdminTracks() {
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="text-sm font-semibold text-medium">Track</label>
-          <select className="input max-w-xs" value={selected} onChange={(e) => setSelected(e.target.value)}>
+          <select aria-label="Track" className="input max-w-xs" value={selected} onChange={(e) => setSelected(e.target.value)}>
             <option value="">Select a track…</option>
             {tracks.map((t) => (
               <option key={t.key} value={t.name}>{t.name}</option>
@@ -144,7 +144,7 @@ export default function AdminTracks() {
             </p>
             <div className="flex items-center gap-3">
               {country ? <Flag code={country} w={26} h={19} /> : <span className="font-mono text-xs text-faint">no flag</span>}
-              <select className="input max-w-xs" value={country} onChange={(e) => setCountry(e.target.value)}>
+              <select aria-label="Country flag" className="input max-w-xs" value={country} onChange={(e) => setCountry(e.target.value)}>
                 <option value="">No flag</option>
                 {COUNTRIES.map((c) => (
                   <option key={c.code} value={c.code}>{c.name}</option>
@@ -158,9 +158,9 @@ export default function AdminTracks() {
             <div className="space-y-2">
               {facts.map((f, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
-                  <input className="input min-w-40 flex-1 py-1.5 text-sm" placeholder="Label (e.g. Longest straight)"
+                  <input aria-label={`Fact ${i + 1} label`} className="input min-w-40 flex-1 py-1.5 text-sm" placeholder="Label (e.g. Longest straight)"
                     value={f.label} onChange={(e) => setFact(i, { label: e.target.value })} />
-                  <input className="input min-w-40 flex-[2] py-1.5 text-sm" placeholder="Value (e.g. 1.2 km, DRS heaven)"
+                  <input aria-label={`Fact ${i + 1} value`} className="input min-w-40 flex-[2] py-1.5 text-sm" placeholder="Value (e.g. 1.2 km, DRS heaven)"
                     value={f.value} onChange={(e) => setFact(i, { value: e.target.value })} />
                   <button
                     type="button"
@@ -226,7 +226,7 @@ export default function AdminTracks() {
                 <button className="btn-secondary py-1.5 text-sm" onClick={clearMap} disabled={busy}>Remove image</button>
               </div>
             ) : (
-              <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={uploadMap} disabled={busy}
+              <input aria-label="Custom map image" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={uploadMap} disabled={busy}
                 className="transition block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark" />
             )}
           </div>

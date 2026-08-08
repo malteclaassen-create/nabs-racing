@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox } from "./ui.jsx";
+import { ErrorBox, Field } from "./ui.jsx";
 import Icon, { PICKABLE_ICONS } from "./InfoIcon.jsx";
 import { useAsk } from "./overlay.jsx";
 import { RACE_INFO_DEFAULTS } from "../data/raceInfoDefaults.js";
@@ -11,8 +11,6 @@ import { RACE_INFO_DEFAULTS } from "../data/raceInfoDefaults.js";
 // Everything is stored as one blob in the backend; while nothing has been
 // saved the page shows the built-in defaults (which also pre-fill this form).
 
-const inputCls = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark placeholder:text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
-const labelCls = "mb-1 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium";
 const smallBtn = "flex h-7 w-7 items-center justify-center rounded-lg bg-surface2 text-medium transition hover:bg-border disabled:opacity-30";
 
 // content object -> editable form state (rules become one-per-line text).
@@ -63,7 +61,7 @@ function IconSelect({ value, onChange }) {
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-eyebrow">
         <Icon name={value} className="h-[18px] w-[18px]" />
       </span>
-      <select className={inputCls} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select aria-label="Icon" className="input" value={value} onChange={(e) => onChange(e.target.value)}>
         {PICKABLE_ICONS.map((n) => <option key={n} value={n}>{n}</option>)}
       </select>
     </div>
@@ -148,10 +146,9 @@ export default function AdminRaceInfo() {
       {/* intro line */}
       <div className="card space-y-3 p-5">
         <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Page intro</h3>
-        <div>
-          <label className={labelCls}>Subtitle under the page title</label>
-          <textarea className={inputCls} rows={2} value={form.subtitle} onChange={(e) => set("subtitle", e.target.value)} />
-        </div>
+        <Field label="Subtitle under the page title">
+          <textarea className="input" rows={2} value={form.subtitle} onChange={(e) => set("subtitle", e.target.value)} />
+        </Field>
       </div>
 
       {/* rule cards */}
@@ -180,14 +177,12 @@ export default function AdminRaceInfo() {
                 downDisabled={i === form.cards.length - 1}
               />
             </div>
-            <div>
-              <label className={labelCls}>Card title</label>
-              <input className={inputCls} value={c.title} onChange={(e) => setCard(i, "title", e.target.value)} />
-            </div>
-            <div>
-              <label className={labelCls}>Card text</label>
-              <textarea className={inputCls} rows={3} value={c.text} onChange={(e) => setCard(i, "text", e.target.value)} />
-            </div>
+            <Field label="Card title">
+              <input className="input" value={c.title} onChange={(e) => setCard(i, "title", e.target.value)} />
+            </Field>
+            <Field label="Card text">
+              <textarea className="input" rows={3} value={c.text} onChange={(e) => setCard(i, "text", e.target.value)} />
+            </Field>
           </div>
         ))}
       </div>
@@ -195,7 +190,7 @@ export default function AdminRaceInfo() {
       {/* points footnote */}
       <div className="card space-y-3 p-5">
         <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Points table footnote</h3>
-        <textarea className={inputCls} rows={2} value={form.pointsFootnote} onChange={(e) => set("pointsFootnote", e.target.value)} />
+        <textarea aria-label="Points table footnote" className="input" rows={2} value={form.pointsFootnote} onChange={(e) => set("pointsFootnote", e.target.value)} />
       </div>
 
       {/* sporting regulations */}
@@ -222,19 +217,17 @@ export default function AdminRaceInfo() {
                 downDisabled={i === form.rulebook.length - 1}
               />
             </div>
-            <div>
-              <label className={labelCls}>Section name (e.g. Tyres, Safety car)</label>
-              <input className={inputCls} value={g.subject} onChange={(e) => setGroup(i, "subject", e.target.value)} />
-            </div>
-            <div>
-              <label className={labelCls}>Rules (one per line)</label>
+            <Field label="Section name (e.g. Tyres, Safety car)">
+              <input className="input" value={g.subject} onChange={(e) => setGroup(i, "subject", e.target.value)} />
+            </Field>
+            <Field label="Rules (one per line)">
               <textarea
-                className={`${inputCls} font-mono text-[13px]`}
+                className="input font-mono text-[13px]"
                 rows={Math.max(3, Math.min(14, g.rulesText.split("\n").length + 1))}
                 value={g.rulesText}
                 onChange={(e) => setGroup(i, "rulesText", e.target.value)}
               />
-            </div>
+            </Field>
           </div>
         ))}
       </div>
@@ -242,7 +235,7 @@ export default function AdminRaceInfo() {
       {/* rulebook footnote */}
       <div className="card space-y-3 p-5">
         <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Regulations footnote</h3>
-        <textarea className={inputCls} rows={2} value={form.rulebookFootnote} onChange={(e) => set("rulebookFootnote", e.target.value)} />
+        <textarea aria-label="Regulations footnote" className="input" rows={2} value={form.rulebookFootnote} onChange={(e) => set("rulebookFootnote", e.target.value)} />
       </div>
 
       {/* actions */}

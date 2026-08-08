@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { CardHead, ErrorBox, Notice } from "./ui.jsx";
+import { CardHead, ErrorBox, Notice, CheckField } from "./ui.jsx";
 import { SocialIcon } from "./SocialLinks.jsx";
 import { fmtStamp } from "../utils/format.js";
 
@@ -83,6 +83,7 @@ function PasteBox({ platform, onAdd }) {
   return (
     <>
       <textarea
+        aria-label={`${PLATFORM_LABEL[platform] || platform} links`}
         className="input min-h-24 font-mono text-xs"
         placeholder={placeholder}
         value={text}
@@ -202,15 +203,11 @@ export default function AdminSocialFeed() {
       {error && <ErrorBox message={error} />}
       {msg && <Notice kind="success">{msg}</Notice>}
 
-      <label className="flex items-center gap-2 text-sm font-semibold text-medium">
-        <input
-          type="checkbox"
-          className="h-4 w-4"
-          checked={config.enabled}
-          onChange={(e) => saveConfig({ ...config, enabled: e.target.checked })}
-        />
-        Show the section on the home page
-      </label>
+      <CheckField
+        checked={config.enabled}
+        onChange={(e) => saveConfig({ ...config, enabled: e.target.checked })}
+        label="Show the section on the home page"
+      />
 
       {/* ---------- YouTube: set once, then automatic ---------- */}
       <PlatformRow
@@ -219,6 +216,7 @@ export default function AdminSocialFeed() {
       >
         <div className="flex flex-wrap gap-2">
           <input
+            aria-label="YouTube channel address"
             className="input min-w-64 flex-1"
             placeholder="https://www.youtube.com/@yourchannel"
             value={config.youtubeChannelUrl}
@@ -230,15 +228,11 @@ export default function AdminSocialFeed() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-2 text-sm font-semibold text-medium">
-            <input
-              type="checkbox"
-              className="h-4 w-4"
-              checked={config.youtubeAuto}
-              onChange={(e) => setConfig((c) => ({ ...c, youtubeAuto: e.target.checked }))}
-            />
-            Pull videos automatically
-          </label>
+          <CheckField
+            checked={config.youtubeAuto}
+            onChange={(e) => setConfig((c) => ({ ...c, youtubeAuto: e.target.checked }))}
+            label="Pull videos automatically"
+          />
           <label className="flex items-center gap-2 text-sm text-medium">
             How many at once
             <select
@@ -315,6 +309,7 @@ export default function AdminSocialFeed() {
                     {p.pinned && <span className="text-link">· pinned</span>}
                   </div>
                   <input
+                    aria-label="Post title"
                     className="input py-1.5 text-sm"
                     value={p.title}
                     onChange={(e) => setPosts((ps) => ps.map((x) => (x.id === p.id ? { ...x, title: e.target.value } : x)))}
@@ -395,21 +390,13 @@ export default function AdminSocialFeed() {
             </select>
           </label>
         </div>
-        <label className="mt-3 flex items-start gap-2 text-sm font-semibold text-medium">
-          <input
-            type="checkbox"
-            className="mt-0.5 h-4 w-4"
-            checked={config.mixPlatforms}
-            onChange={(e) => setConfig((c) => ({ ...c, mixPlatforms: e.target.checked }))}
-          />
-          <span>
-            One from each channel, taking turns
-            <span className="mt-0.5 block font-normal text-light">
-              YouTube, Instagram, TikTok, then round again — so a busy week on one channel doesn't fill the whole wall.
-              Off means purely newest first. Pinned posts stay in front either way.
-            </span>
-          </span>
-        </label>
+        <CheckField
+          className="mt-3"
+          checked={config.mixPlatforms}
+          onChange={(e) => setConfig((c) => ({ ...c, mixPlatforms: e.target.checked }))}
+          label="One from each channel, taking turns"
+          hint="YouTube, Instagram, TikTok, then round again — so a busy week on one channel doesn't fill the whole wall. Off means purely newest first. Pinned posts stay in front either way."
+        />
         <button className="btn-primary mt-3" disabled={busy} onClick={() => saveConfig(config)}>
           Save settings
         </button>

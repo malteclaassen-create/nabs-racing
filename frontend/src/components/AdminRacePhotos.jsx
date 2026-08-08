@@ -209,6 +209,7 @@ export default function AdminRacePhotos() {
 
         <div className="flex flex-wrap items-center gap-3">
           <select
+            aria-label="Round"
             className="input max-w-[22rem] py-1.5 text-sm"
             value={raceId}
             onChange={(e) => setRaceId(e.target.value)}
@@ -356,6 +357,7 @@ export default function AdminRacePhotos() {
               </div>
               <div className="space-y-2 p-3">
                 <input
+                  aria-label={`Caption for photo ${i + 1}`}
                   className="input w-full py-1.5 text-sm"
                   placeholder="Caption (optional)"
                   value={p.caption || ""}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { Notice, CardHead } from "./ui.jsx";
+import { Notice, CardHead, Field } from "./ui.jsx";
 import RacePreview from "./RacePreview.jsx";
 import { useAsk } from "./overlay.jsx";
 import { canonicalTrack } from "../data/circuits.js";
@@ -436,6 +436,7 @@ export default function AdminImport({ onCommitted }) {
             <div className="mt-3 space-y-2">
               {remoteList.length > 8 && (
                 <input
+                  aria-label="Filter by track or date"
                   className="input max-w-sm"
                   placeholder="Filter by track or date… (e.g. Monza, Spa)"
                   value={remoteQuery}
@@ -444,6 +445,7 @@ export default function AdminImport({ onCommitted }) {
               )}
               <div className="flex flex-wrap gap-2">
                 <select
+                  aria-label="Race on the server"
                   className="input max-w-sm"
                   value={remoteId}
                   onChange={(e) => setRemoteId(e.target.value)}
@@ -472,6 +474,7 @@ export default function AdminImport({ onCommitted }) {
               {remoteId && (
                 <div className="flex flex-wrap items-center gap-2">
                   <select
+                    aria-label="Qualifying session"
                     className="input max-w-sm"
                     value={qualiRemoteId}
                     onChange={(e) => { setQualiRemoteId(e.target.value); setQualiAuto(false); }}
@@ -512,6 +515,7 @@ export default function AdminImport({ onCommitted }) {
             fuzzy-matched; review and confirm the mapping before saving.
           </p>
           <input
+            aria-label="Upload a result file"
             type="file"
             accept="application/json,.json"
             onChange={handleFile}
@@ -531,6 +535,7 @@ export default function AdminImport({ onCommitted }) {
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <select
+            aria-label="Race to add qualifying to"
             className="input max-w-md"
             value={qualiRaceId}
             onChange={(e) => { setQualiRaceId(e.target.value); setQualiNote(null); }}
@@ -546,6 +551,7 @@ export default function AdminImport({ onCommitted }) {
             ))}
           </select>
           <input
+            aria-label="Qualifying result file"
             type="file"
             accept="application/json,.json"
             disabled={!qualiRaceId || qualiBusy}
@@ -572,6 +578,7 @@ export default function AdminImport({ onCommitted }) {
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">or from the server:</span>
             <select
+              aria-label="Qualifying session on the server"
               className="input max-w-sm"
               value={qualiAttachRemoteId}
               onChange={(e) => { setQualiAttachRemoteId(e.target.value); setQualiAttachAuto(false); }}
@@ -606,8 +613,12 @@ export default function AdminImport({ onCommitted }) {
         <div className="space-y-4">
           <div className="card grid gap-4 p-5 sm:grid-cols-3">
             {nonChampRaces.length > 0 && (
-              <div className="sm:col-span-3">
-                <label className="mb-1 block text-sm font-semibold text-medium">Save as</label>
+              <Field
+                label="Save as"
+                tone="plain"
+                className="sm:col-span-3"
+                hint="Training/event results are stored and viewable on the Races page, but never count towards any standings."
+              >
                 <select className="input max-w-md" value={target} onChange={(e) => setTarget(e.target.value)}>
                   <option value="round">Championship round (scored, by round number)</option>
                   {nonChampRaces.map((r) => (
@@ -616,14 +627,10 @@ export default function AdminImport({ onCommitted }) {
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-light">
-                  Training/event results are stored and viewable on the Races page, but never count towards any standings.
-                </p>
-              </div>
+              </Field>
             )}
             {target === "round" && (
-              <div>
-                <label className="mb-1 block text-sm font-semibold text-medium">Round #</label>
+              <Field label="Round #" tone="plain">
                 <input
                   className="input"
                   type="number"
@@ -631,40 +638,36 @@ export default function AdminImport({ onCommitted }) {
                   onChange={(e) => setMeta((m) => ({ ...m, number: e.target.value }))}
                   placeholder="10"
                 />
-              </div>
+              </Field>
             )}
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-medium">Track</label>
+            <Field label="Track" tone="plain">
               <input
                 className="input"
                 value={meta.track}
                 onChange={(e) => setMeta((m) => ({ ...m, track: e.target.value }))}
               />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-medium">Date</label>
+            </Field>
+            <Field label="Date" tone="plain">
               <input
                 className="input"
                 type="date"
                 value={meta.date}
                 onChange={(e) => setMeta((m) => ({ ...m, date: e.target.value }))}
               />
-            </div>
-            <div className="sm:col-span-3">
-              <label className="mb-1 block text-sm font-semibold text-medium">
-                Qualifying JSON <span className="font-normal text-light">(optional)</span>
-              </label>
+            </Field>
+            <Field
+              label={<>Qualifying JSON <span className="font-normal text-light">(optional)</span></>}
+              tone="plain"
+              className="sm:col-span-3"
+              hint="The AC QUALIFY result JSON of the same event. Saved together with the race: entrants are matched automatically (Steam ID first, then name) and the race gets a Qualifying tab on the Races page."
+            >
               <input
                 type="file"
                 accept="application/json,.json"
                 onChange={(e) => setQualiFile(e.target.files?.[0] || null)}
                 className="transition block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-surface2 file:px-4 file:py-2 file:font-semibold file:text-dark hover:file:bg-border"
               />
-              <p className="mt-1 text-xs text-light">
-                The AC QUALIFY result JSON of the same event. Saved together with the race: entrants are matched
-                automatically (Steam ID first, then name) and the race gets a Qualifying tab on the Races page.
-              </p>
-            </div>
+            </Field>
           </div>
 
           <div className="card overflow-hidden">
@@ -712,6 +715,7 @@ export default function AdminImport({ onCommitted }) {
                         </td>
                         <td className="px-3 py-2">
                           <select
+                            aria-label={`Driver for ${r.acDriverName}`}
                             className="input py-1"
                             value={r.driverId}
                             onChange={(e) => setRow(i, { driverId: e.target.value, subForTeamId: "", marketFor: null })}
@@ -745,6 +749,7 @@ export default function AdminImport({ onCommitted }) {
                         </td>
                         <td className="px-3 py-2">
                           <select
+                            aria-label={`Status for ${r.acDriverName}`}
                             className="input py-1"
                             value={r.status}
                             onChange={(e) => setRow(i, { status: e.target.value })}
@@ -758,6 +763,7 @@ export default function AdminImport({ onCommitted }) {
                         </td>
                         <td className="px-3 py-2">
                           <select
+                            aria-label={`Team this race for ${r.acDriverName}`}
                             className="input py-1 disabled:opacity-40"
                             disabled={!r.driverId}
                             value={r.subForTeamId}
@@ -789,6 +795,7 @@ export default function AdminImport({ onCommitted }) {
                         </td>
                         <td className="px-3 py-2 text-center">
                           <input
+                            aria-label={`Penalty in seconds for ${r.acDriverName}`}
                             className="input w-16 py-1 text-center"
                             type="number"
                             min="0"

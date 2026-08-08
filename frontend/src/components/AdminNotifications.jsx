@@ -65,6 +65,7 @@ function AttendanceNudge() {
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <select
+          aria-label="Race to nudge"
           value={selected}
           onChange={(e) => { setRaceId(e.target.value); setState(null); }}
           className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark"
@@ -241,6 +242,7 @@ export default function AdminNotifications() {
         <div className="flex flex-wrap items-center gap-2 text-sm text-dark">
           <span className="font-semibold">Sign-up opens</span>
           <select
+            aria-label="Sign-up opens"
             value={form.attendanceOpenDays ?? ""}
             onChange={(e) => set("attendanceOpenDays", e.target.value === "" ? null : Number(e.target.value))}
             className="rounded-lg border border-border bg-card px-3 py-2"
@@ -254,6 +256,7 @@ export default function AdminNotifications() {
             <>
               <span className="font-semibold">at</span>
               <select
+                aria-label="Sign-up opens at"
                 value={form.attendanceOpenHour ?? 8}
                 onChange={(e) => set("attendanceOpenHour", Number(e.target.value))}
                 className="rounded-lg border border-border bg-card px-3 py-2"
