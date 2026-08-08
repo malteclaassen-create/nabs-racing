@@ -22,6 +22,7 @@ import SlidingTabs from "../components/SlidingTabs.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
 import SocialFeed from "../components/SocialFeed.jsx";
+import { fmtRaceDate, fmtDateLong, fmtWeekday, NO_VALUE} from "../utils/format.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
@@ -149,8 +150,7 @@ function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, total
 }
 
 function fmtFull(d) {
-  if (!d) return "Date TBA";
-  return new Date(d).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return d ? fmtDateLong(d) : "Date TBA";
 }
 
 function pad2(n) {
@@ -311,7 +311,7 @@ function openerDayLabel(date) {
   // Only up to 6 days out: at exactly 7, "Friday" would name two possible days.
   // A kickoff already in the past (the season not activated the morning after
   // its opener) falls through to the date as well, rather than claiming "Today".
-  if (days > 1 && days < 7) return target.toLocaleDateString("en-GB", { weekday: "long" });
+  if (days > 1 && days < 7) return fmtWeekday(target);
   return `${pad2(target.getDate())} ${MONTHS[target.getMonth()]}`;
 }
 
@@ -846,7 +846,7 @@ export default function Home() {
     ? ["ACCEPTED", "TENTATIVE", "DECLINED"].find((s) => nextEv.rsvps[s].some((r) => r.driverId === myDriverId))
     : null;
   const STATUS_WORD = { ACCEPTED: "Signed up", TENTATIVE: "Tentative", DECLINED: "Declined" };
-  const nextStatusWord = events.loading ? "…" : myStatus ? STATUS_WORD[myStatus] : nextEv ? "Not responded" : "—";
+  const nextStatusWord = events.loading ? "…" : myStatus ? STATUS_WORD[myStatus] : nextEv ? "Not responded" : NO_VALUE;
 
   // The logged-in driver's best finish of the season — takes the middle tile
   // once the season is over (there is no race left to sign up for).
@@ -879,7 +879,7 @@ export default function Home() {
             <span className="text-medium">{totalRounds ? `${totalRounds} rounds` : "Final standings"}</span>
           ) : (
             <span className="text-medium">
-              Round {pad2(roundNo)} <span className="text-faint">/ {totalRounds || "—"}</span>
+              Round {pad2(roundNo)} <span className="text-faint">/ {totalRounds || NO_VALUE}</span>
             </span>
           )}
         </div>
@@ -1015,7 +1015,7 @@ export default function Home() {
                     <RaceCountdown date={nextRace.date} className="mt-3" />
                     <div className="mt-3 flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-wider text-ink/60 dark:text-white/60">
                       <span className="font-bold text-ink/85 dark:text-white/85">
-                        {new Date(nextRace.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                        {fmtRaceDate(nextRace.date)}
                       </span>
                       <span className="h-3 w-px bg-ink/25 dark:bg-white/25" />
                       <span>{fmtRaceTime(nextRace.date)}</span>
@@ -1350,7 +1350,7 @@ export default function Home() {
             value={nextRace?.track || "TBA"}
             sub={
               nextRace?.date
-                ? new Date(nextRace.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
+                ? fmtRaceDate(nextRace.date)
                 : "date TBA"
             }
             icon="calendar"
@@ -1365,7 +1365,7 @@ export default function Home() {
             index={1}
             to="/races"
             label="Rounds Planned"
-            value={totalRounds || "—"}
+            value={totalRounds || NO_VALUE}
             sub="on the calendar"
             icon="flag"
             accent="#7c3aed"
@@ -1387,7 +1387,7 @@ export default function Home() {
             index={4}
             to="/attendance"
             label="Sign-Ups"
-            value={nextEv ? nextEv.rsvps.ACCEPTED.length : "—"}
+            value={nextEv ? nextEv.rsvps.ACCEPTED.length : NO_VALUE}
             sub="for the opener"
             icon="trend"
             accent="#e11d48"
@@ -1408,7 +1408,7 @@ export default function Home() {
                 to="/races"
                 label="Rounds Done"
                 value={completedRaces.length}
-                sub={`of ${totalRounds || "—"}`}
+                sub={`of ${totalRounds || NO_VALUE}`}
                 icon="calendar"
                 accent="#0ea5e9"
               />
@@ -1428,7 +1428,7 @@ export default function Home() {
                 index={3}
                 to={leader ? `/drivers/${leader.driverId}` : undefined}
                 label={isPast || seasonOver ? "Champion" : "Leader"}
-                value={leader?.total ?? "—"}
+                value={leader?.total ?? NO_VALUE}
                 sub={leader?.name || "TBA"}
                 icon="trophy"
                 accent={leader?.team?.color || "#d97706"}
@@ -1475,7 +1475,7 @@ export default function Home() {
               index={0}
               to={`/drivers/${myDriverId}`}
               label={useTier ? `Tier ${myTier}` : "Championship"}
-              value={useTier ? (myTierPos ? `P${myTierPos}` : "—") : myRow.position ? `P${myRow.position}` : "—"}
+              value={useTier ? (myTierPos ? `P${myTierPos}` : NO_VALUE) : myRow.position ? `P${myRow.position}` : NO_VALUE}
               sub={useTier ? `of ${tierRows.length} in tier` : `${myRow.total} pts`}
               icon="podium"
               accent={myRow.team.color}
@@ -1484,7 +1484,7 @@ export default function Home() {
               index={1}
               to={`/teams/${myRow.team.id}`}
               label="Team"
-              value={myTeam ? myTeam.total : "—"}
+              value={myTeam ? myTeam.total : NO_VALUE}
               sub={myTeam ? `${myRow.team.name} · P${myTeam.position}` : myRow.team.name}
               icon="shield"
               accent={myRow.team.color}
@@ -1500,7 +1500,7 @@ export default function Home() {
                 compact
                 to={`/drivers/${myDriverId}`}
                 label="Best Finish"
-                value={myBestFinish ? `P${myBestFinish.position}` : "—"}
+                value={myBestFinish ? `P${myBestFinish.position}` : NO_VALUE}
                 sub={myBestFinish?.track ? `at ${myBestFinish.track}` : "this season"}
                 icon="flag"
                 accent="#0ea5e9"
@@ -1543,7 +1543,7 @@ export default function Home() {
               index={4}
               to={`/drivers/${myDriverId}`}
               label="Avg Finish"
-              value={(useTier ? myTierAvg : myAvg) != null ? `P${useTier ? myTierAvg : myAvg}` : "—"}
+              value={(useTier ? myTierAvg : myAvg) != null ? `P${useTier ? myTierAvg : myAvg}` : NO_VALUE}
               sub={useTier ? `${myStarts} starts · in tier` : `${myStarts} starts`}
               icon="trend"
               accent="#7c3aed"
@@ -1794,7 +1794,7 @@ function DriversTable({ rows, leaderTotal, decided = false }) {
                   </div>
                 </td>
                 <td className="hidden py-4 pr-5 text-right font-mono text-[15px] tabular-nums text-light md:table-cell">
-                  {isLeader ? "—" : `−${leaderTotal - d.total}`}
+                  {isLeader ? NO_VALUE : `−${leaderTotal - d.total}`}
                 </td>
               </tr>
             );

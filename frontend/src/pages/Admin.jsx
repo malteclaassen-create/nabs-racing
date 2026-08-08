@@ -24,6 +24,7 @@ import RacePreview from "../components/RacePreview.jsx";
 import { SOCIAL_META, SocialIcon } from "../components/SocialLinks.jsx";
 import { isSteamId64 } from "../utils/steamId.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
+import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
 
 // The admin's tabs, clustered by what they're for — same ids (and therefore
 // the same components and hand-offs) as the old flat strip, just grouped so
@@ -103,7 +104,7 @@ function AdminSeasonBar({ tab }) {
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-display text-lg font-extrabold uppercase leading-none tracking-tight text-dark">
               {seriesList.length > 1 && series ? `${series.name} · ` : ""}
-              {current?.name || "—"}
+              {current?.name || NO_VALUE}
             </span>
             {isActive ? (
               <span className="pill bg-emerald-500/15 text-ok">active · public</span>
@@ -454,7 +455,7 @@ function MarketAdmin() {
               {race.offers.map((o) => (
                 <li key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
                   <span className="min-w-0 font-semibold text-dark">
-                    {o.filledBy ? o.filledBy.name : "—"}
+                    {o.filledBy ? o.filledBy.name : NO_VALUE}
                   </span>
                   <span className="text-light">
                     {o.filledBy ? "took over" : "no taker for"} the {o.team.name} seat of {o.offeredBy.name}
@@ -561,8 +562,9 @@ function TrafficAdmin() {
   );
 
   const maxDay = Math.max(1, ...(data?.days || []).map((d) => d.views));
-  const fmtDay = (iso) =>
-    new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
+  // Noon rather than midnight: these are date-only day buckets, and midnight
+  // lands on the previous day for viewers west of UTC.
+  const fmtDay = (iso) => fmtRaceDate(`${iso}T12:00:00Z`);
 
   return (
     <div className="space-y-5">
@@ -2996,7 +2998,7 @@ function SeasonScoring({ season, onSaved, onError }) {
         </label>
         <label className="flex items-center gap-1.5 text-xs text-light">
           Team drop
-          <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="24" placeholder="—"
+          <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="24" placeholder={NO_VALUE}
             value={teamDrop} onChange={(e) => setTeamDrop(e.target.value)} title="How many the constructor standings drop per team. What gets counted depends on the style next to this. Leave blank to keep the old rule (teams inherit driver drops)." />
         </label>
         <label className="flex items-center gap-1.5 text-xs text-light">
@@ -3230,7 +3232,7 @@ function Seasons({ gotoRaces }) {
                     <span className="ml-2 pill bg-amber-500/15 text-amber-600">no driver cards</span>
                   )}
                   <div className="text-xs text-light">
-                    {s.game || "—"} · {s._count.teams} teams · {s._count.drivers} drivers · {s._count.races} races
+                    {s.game || NO_VALUE} · {s._count.teams} teams · {s._count.drivers} drivers · {s._count.races} races
                   </div>
                 </div>
                 <svg viewBox="0 0 24 24" className={`h-4 w-4 shrink-0 text-light transition ${open ? "rotate-180" : ""}`}

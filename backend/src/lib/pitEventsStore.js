@@ -20,6 +20,7 @@
 //   {v:1, t:"session", uid, at, sessionKey, track, trackConfig, trackName, server}
 //   {v:1, t:"entry",  uid, guid, name, at, lap, numPits}   pit lane entered
 //   {v:1, t:"exit",   uid, guid, at, numPits, pitLaneMs}   pit lane left
+//   {v:2, t:"tyre",   uid, guid, at, lap, tyre}          compound change seen
 //   {v:1, t:"count",  uid, guid, name, at, lap, numPits}   counter rose with no
 //                     observed edge (backend restart, feed gap) — the absolute
 //                     counter makes these safe to reconcile after the fact.
@@ -129,11 +130,14 @@ export function loadPitStops(filePath, { aroundIso } = {}) {
     // first real stop of the restarted race along with the aborted running.
     if (ev.t !== "regress" && g.pendingRegress.length) resolveRegressBurst(g);
     if (!g.byGuid.has(ev.guid)) {
-      g.byGuid.set(ev.guid, { stops: [], seedPits: null, maxPits: 0, epoch: 0, name: ev.name || null });
+      g.byGuid.set(ev.guid, { stops: [], tyres: [], seedPits: null, maxPits: 0, epoch: 0, name: ev.name || null });
     }
     const d = g.byGuid.get(ev.guid);
     const pits = Number(ev.numPits) || 0;
-    if (ev.t === "seed") {
+    if (ev.t === "tyre") {
+      if (!ev.postFlag && ev.tyre) d.tyres.push({ lap: Number(ev.lap) || 1, tyre: ev.tyre });
+    } else if (ev.t === "seed") {
+      if (ev.tyre && !d.tyres.length) d.tyres.push({ lap: Number(ev.lap) || 1, tyre: ev.tyre });
       if (d.seedPits == null) {
         d.seedPits = pits;
       } else if (pits < d.maxPits) {
@@ -205,6 +209,9 @@ export function loadPitStops(filePath, { aroundIso } = {}) {
           if (!prev.stops.some((x) => x.effective === p)) prev.stops.push({ lap: null, effective: p, postFlag: false });
         }
       }
+      for (const t of d.tyres) {
+        if (!prev.tyres.some((x) => x.lap === t.lap && x.tyre === t.tyre)) prev.tyres.push(t);
+      }
       prev.maxPits = Math.max(prev.maxPits, base + d.maxPits);
       if (d.name && !prev.name) prev.name = d.name;
     }
@@ -237,6 +244,11 @@ export function loadPitStops(filePath, { aroundIso } = {}) {
     out.set(guid, {
       stops: raceStops.filter((x) => x.lap != null).map((x) => x.lap).sort((a, b) => a - b),
       totalPits: raceStops.length,
+      // Compound timeline: [{lap, tyre}] in observation order, so the importer
+      // can name each stint from what the car was actually seen on rather than
+      // from the result file's per-lap Tyre field, which a driver's own account
+      // has shown to be wrong for a whole eighteen-lap stint.
+      tyres: [...d.tyres].sort((a, b) => a.lap - b.lap),
       name: d.name,
     });
   }
@@ -254,6 +266,7 @@ function resolveRegressBurst(g) {
   if (burst.length >= RESTART_REGRESS_MIN) {
     for (const d of g.byGuid.values()) {
       d.stops = [];
+      d.tyres = [];
       d.maxPits = 0;
       d.epoch = 0;
       d.seedPits = 0;

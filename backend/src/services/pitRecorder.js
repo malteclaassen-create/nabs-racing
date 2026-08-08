@@ -36,6 +36,7 @@
 // ---------------------------------------------------------------------------
 import { randomUUID } from "node:crypto";
 import { appendPitEvent, pitFileFor, pitTrackKey } from "../lib/pitEventsStore.js";
+import { tyreKey } from "./liveTiming.js";
 
 const state = new Map(); // serverKey -> recorder state
 
@@ -46,7 +47,7 @@ function fresh() {
     sessionKey: null,
     raceLaps: null,
     flagged: false,
-    drivers: new Map(), // guid -> { pits, lap, name, entry: {lap, at} | null, entryAt }
+    drivers: new Map(), // guid -> { pits, lap, name, tyre, entry: {lap} | null, entryAt }
   };
 }
 
@@ -101,13 +102,18 @@ export function onSnapshot(serverKey, status, sessionKey) {
     const lap = Math.max(1, car?.NumLaps ?? d.TotalNumLaps ?? 1);
     if (lap > leaderLaps) leaderLaps = lap;
     const pits = Number(d.NumPits ?? car?.NumPits ?? 0) || 0;
+    // The compound the car is on right now. The stored result file carries a
+    // Tyre per lap, but it is demonstrably unreliable — a driver's own account
+    // of running mediums for eighteen laps came out as hards in the file for
+    // every one of them. The live feed names it directly, so record it.
+    const tyreNow = tyreKey(ci.Tyres || car?.TyreBestLap || "") || null;
     let rec = st.drivers.get(guid);
     if (!rec) {
       // First sight seeds from current values — a mid-race (re)start must not
       // read the existing count as fresh stops. The seed line also proves this
       // driver WAS observed, so "no stop events" later reads as "made no
       // stops" rather than "recorder wasn't looking".
-      rec = { pits, lap, name: ci.DriverName || null, entry: null, entryAt: null };
+      rec = { pits, lap, name: ci.DriverName || null, tyre: tyreNow, entry: null, entryAt: null };
       st.drivers.set(guid, rec);
       appendPitEvent(st.file, {
         v: 2,
@@ -118,6 +124,7 @@ export function onSnapshot(serverKey, status, sessionKey) {
         at: new Date().toISOString(),
         lap,
         numPits: pits,
+        tyre: tyreNow || undefined,
       });
       continue;
     }
@@ -156,6 +163,22 @@ export function onSnapshot(serverKey, status, sessionKey) {
         to: pits,
         lap,
       });
+    }
+    // A compound change is worth its own line: it can happen without a stop
+    // showing yet (the counter lags the snapshot), and the importer wants a
+    // timeline it can lay over the stints rather than a single value per stop.
+    if (tyreNow && tyreNow !== rec.tyre) {
+      appendPitEvent(st.file, {
+        v: 2,
+        t: "tyre",
+        uid: st.uid,
+        guid,
+        at: new Date().toISOString(),
+        lap,
+        tyre: tyreNow,
+        postFlag: st.flagged || undefined,
+      });
+      rec.tyre = tyreNow;
     }
     rec.pits = pits;
     rec.lap = lap;

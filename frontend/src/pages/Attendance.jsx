@@ -11,21 +11,12 @@ import Flag from "../components/Flag.jsx";
 import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 import { currentSignupRace } from "../utils/signupQueue.js";
+import { fmtRaceDate } from "../utils/format.js";
 
 // Which answer a ?rsvp= link stands for. Deliberately a fixed map, so an
 // arbitrary value in the URL can never be forwarded to the API as a status.
 const RSVP_FROM_LINK = { yes: "ACCEPTED", maybe: "TENTATIVE", no: "DECLINED" };
 
-const MAX_LAP_MS = 1_800_000;
-function fmtLap(ms) {
-  if (!ms || ms <= 0 || ms > MAX_LAP_MS) return null;
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  return `${m}:${String(s).padStart(2, "0")}.${String(ms % 1000).padStart(3, "0")}`;
-}
-function fmtDate(d) {
-  return new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
-}
 
 // Hotlap videos for the circuit, from the admin's Attendance tab. One player
 // with a picker above it when there's more than one lap on file (a season's car
@@ -240,7 +231,7 @@ export default function Attendance() {
                 <div className="mt-1 font-mono text-[13px] font-bold uppercase tracking-wider text-medium">
                   {ev.date ? (
                     <>
-                      {fmtDate(ev.date)} <span className="text-light">· {fmtRaceTime(ev.date)}</span>
+                      {fmtRaceDate(ev.date)} <span className="text-light">· {fmtRaceTime(ev.date)}</span>
                     </>
                   ) : (
                     "Date to be confirmed"

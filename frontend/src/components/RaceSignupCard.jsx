@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { TeamDot } from "./ui.jsx";
+import { TeamDot, NoData} from "./ui.jsx";
 import SeatMarket from "./SeatMarket.jsx";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
@@ -239,7 +239,7 @@ export default function RaceSignupCard({
                   <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
                 </li>
               ))}
-              {ev.rsvps[status].length === 0 && <li className="text-sm text-faint">—</li>}
+              {ev.rsvps[status].length === 0 && <li className="text-sm text-faint"><NoData className="text-sm" /></li>}
             </ul>
           </div>
         ))}

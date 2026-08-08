@@ -1,12 +1,13 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
-import { StatusPill, Rank, TierBadge } from "./ui.jsx";
+import { StatusPill, Rank, TierBadge, NoData } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { TyreBadge } from "./TyreStrategy.jsx";
 import { tyreCompound } from "../data/liveTiming.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
+import { fmtLap, isLapTime } from "../utils/format.js";
 
 // Small "?" help marker with a hover tooltip (native title).
 function Help({ text }) {
@@ -21,17 +22,9 @@ function Help({ text }) {
 }
 
 // A plausible lap time (AC stores a huge sentinel for "no lap set").
-const MAX_LAP_MS = 1_800_000; // 30 min
-const isLap = (ms) => ms > 0 && ms <= MAX_LAP_MS;
+const isLap = isLapTime;
 
 // milliseconds -> "1:20.027"
-function fmtLap(ms) {
-  if (!isLap(ms)) return null;
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  const millis = ms % 1000;
-  return `${m}:${String(s).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
-}
 
 // Qualifying classification table — deliberately the same visual language as
 // the race table (same row rhythm, colours, type sizes, cascade entrance):
@@ -130,7 +123,7 @@ function QualiTable({ rows }) {
                         />
                       </Link>
                     ) : (
-                      <span className="font-mono text-faint">—</span>
+                      <NoData className="font-mono" />
                     )}
                   </td>
                   {hasSectors &&
@@ -145,7 +138,7 @@ function QualiTable({ rows }) {
                           }`}
                           title={isBest ? "Fastest sector of the session" : undefined}
                         >
-                          {fmtSector(v) || <span className="text-faint">—</span>}
+                          {fmtSector(v) || <NoData />}
                         </td>
                       );
                     })}
@@ -154,10 +147,10 @@ function QualiTable({ rows }) {
                       pole ? "font-bold text-fl" : "text-medium"
                     }`}
                   >
-                    {fmtLap(r.bestLapMs) || <span className="text-faint">—</span>}
+                    {fmtLap(r.bestLapMs) || <NoData label="no lap set" />}
                   </td>
                   <td className="hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums text-medium md:table-cell">
-                    {r.gapMs != null ? fmtGap(r.gapMs) : <span className="text-faint">—</span>}
+                    {r.gapMs != null ? fmtGap(r.gapMs) : <NoData />}
                   </td>
                 </tr>
               );
@@ -289,7 +282,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                       {r.position != null ? (
                         <Rank position={r.position} />
                       ) : (
-                        <span className="font-mono text-faint">—</span>
+                        <NoData className="font-mono" />
                       )}
                     </td>
                   )}
@@ -310,7 +303,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                           )}
                         </span>
                       ) : (
-                        <span className="font-mono text-faint">—</span>
+                        <NoData className="font-mono" />
                       )}
                     </td>
                   )}
@@ -402,7 +395,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                         r.position === 1 ? "font-bold text-dark" : "text-medium"
                       }`}
                     >
-                      {timeCell(r) || <span className="text-faint">—</span>}
+                      {timeCell(r) || <NoData />}
                     </td>
                   )}
 
@@ -412,7 +405,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                         isFastest ? "font-bold text-fl" : "text-medium"
                       }`}
                     >
-                      {fmtLap(r.bestLapMs) || <span className="text-faint">—</span>}
+                      {fmtLap(r.bestLapMs) || <NoData label="no lap set" />}
                     </td>
                   )}
 
@@ -435,7 +428,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                           )}
                         </span>
                       ) : (
-                        <span className="font-mono text-faint">—</span>
+                        <NoData className="font-mono" />
                       )}
                     </td>
                   )}

@@ -17,6 +17,7 @@ import { circuitFor, flagFor } from "../data/circuits.js";
 import { useSpecificTitle, prettyTrack } from "../utils/pageTitle.js";
 import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { signupRaceIds } from "../utils/signupQueue.js";
+import { fmtRaceDateFull } from "../utils/format.js";
 
 // The calendar is built entirely from the season's races (DB), so it stays in
 // sync with whatever the admin schedules. Championship rounds (number set) are
@@ -87,8 +88,7 @@ function pickDefaultRound(rounds, seen) {
 // A round whose date isn't fixed yet renders "Date TBA" rather than the literal
 // string "Invalid Date" (same guard as fmtFull on the home page).
 function fmtDate(d) {
-  if (!d) return "Date TBA";
-  return new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+  return d ? fmtRaceDateFull(d) : "Date TBA";
 }
 
 // Live ticking countdown to a future kickoff. Renders nothing once it passes.

@@ -6,13 +6,14 @@ import { Notice, CardHead } from "./ui.jsx";
 import RacePreview from "./RacePreview.jsx";
 import { canonicalTrack } from "../data/circuits.js";
 import { fmtTimeCell } from "../utils/raceDuration.js";
+import { fmtStamp } from "../utils/format.js";
 
 const STATUSES = ["FINISHED", "DNS", "DNF", "DSQ"];
 
 function fmtRemote(r) {
   const d = r.date ? new Date(r.date) : null;
   const when = d
-    ? d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+    ? fmtStamp(d)
     : r.id;
   return `${when} · ${r.trackShort || r.track || r.type}`;
 }
@@ -538,7 +539,7 @@ export default function AdminImport({ onCommitted }) {
               <option key={r.id} value={r.id}>
                 {(r.number != null ? `Round ${r.number}` : r.type === "TRAINING" ? "Training" : "Event") +
                   ` · ${r.track}` +
-                  (r.date ? ` · ${new Date(r.date).toLocaleDateString("en-GB")}` : "")}
+                  (r.date ? ` · ${fmtStamp(r.date)}` : "")}
               </option>
             ))}
           </select>
@@ -609,7 +610,7 @@ export default function AdminImport({ onCommitted }) {
                   <option value="round">Championship round (scored, by round number)</option>
                   {nonChampRaces.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {(r.type === "TRAINING" ? "Training" : "Event") + ` · ${r.track}` + (r.date ? ` · ${new Date(r.date).toLocaleDateString("en-GB")}` : "") + (r.resultCount > 0 ? " (has results)" : "")}
+                      {(r.type === "TRAINING" ? "Training" : "Event") + ` · ${r.track}` + (r.date ? ` · ${fmtStamp(r.date)}` : "") + (r.resultCount > 0 ? " (has results)" : "")}
                     </option>
                   ))}
                 </select>

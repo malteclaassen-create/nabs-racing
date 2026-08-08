@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { ErrorBox, DriverAvatar, CardHead } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
+import { fmtStamp } from "../utils/format.js";
 
 // Admin "All time" tab: one search box across EVERY season of the series the
 // admin is editing. Unlike the public NavBar search (which collapses a person
@@ -161,7 +162,7 @@ export default function AdminAllTime({ gotoTab }) {
                 <div className="text-xs text-light">
                   {[
                     r.isSpecialEvent ? "Training/Event" : r.number != null ? `Round ${r.number}` : "Race",
-                    r.date ? new Date(r.date).toLocaleDateString() : null,
+                    r.date ? fmtStamp(r.date) : null,
                     r.isCompleted ? "Finished" : "Not run yet",
                   ]
                     .filter(Boolean)

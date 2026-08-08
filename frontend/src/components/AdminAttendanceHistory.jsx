@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { CardHead, ErrorBox } from "./ui.jsx";
+import { CardHead, ErrorBox, NoData} from "./ui.jsx";
+import { fmtStamp } from "../utils/format.js";
 
 // Admin → Attendance → History: who answered what for the races that have
 // already run. Nothing is written here; the sign-ups simply survive the result
@@ -15,9 +16,7 @@ import { CardHead, ErrorBox } from "./ui.jsx";
 const STATUS_LABEL = { ACCEPTED: "In", DECLINED: "Out", TENTATIVE: "Maybe" };
 const STATUS_TONE = { ACCEPTED: "text-ok", DECLINED: "text-bad", TENTATIVE: "text-warn" };
 
-function fmtDate(d) {
-  return d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "no date";
-}
+const fmtDate = (d) => (d ? fmtStamp(d) : "no date");
 
 function RaceRow({ race }) {
   const [open, setOpen] = useState(false);
@@ -75,7 +74,7 @@ function RaceRow({ race }) {
                   {STATUS_LABEL[s]} ({race.counts[s]})
                 </div>
                 {race.rsvps[s].length === 0 ? (
-                  <p className="text-sm text-faint">—</p>
+                  <NoData className="text-sm" />
                 ) : (
                   <ul className="space-y-0.5 text-sm text-medium">
                     {race.rsvps[s].map((d) => (

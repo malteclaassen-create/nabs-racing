@@ -11,6 +11,7 @@ import TeamLogo from "../components/TeamLogo.jsx";
 import PointsChart from "../components/PointsChart.jsx";
 import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
+import { NO_VALUE } from "../utils/format.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
@@ -213,7 +214,7 @@ export default function TeamProfile() {
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-white/70">
               <span className="font-mono text-[11px] font-semibold uppercase tracking-wider">
-                {TIER_LABEL[team.tier] ?? "—"} Constructor
+                {TIER_LABEL[team.tier] ?? NO_VALUE} Constructor
               </span>
               <span className="text-white/30">·</span>
               <span className="text-sm">{drivers.length} {drivers.length === 1 ? "driver" : "drivers"}</span>
@@ -388,10 +389,10 @@ function TeamHistory({ teamId, currentSeasonId }) {
                 className="w-16 shrink-0 text-right font-display text-base font-extrabold tabular-nums"
                 style={r.concluded && r.position >= 1 && r.position <= 3 ? { color: `var(--medal-${r.position})` } : undefined}
               >
-                {r.position != null ? `P${r.position}` : "—"}
+                {r.position != null ? `P${r.position}` : NO_VALUE}
               </span>
               <span className="w-16 shrink-0 text-right font-mono text-sm tabular-nums text-medium">
-                {r.points != null ? r.points : "—"}
+                {r.points != null ? r.points : NO_VALUE}
               </span>
             </Link>
           );

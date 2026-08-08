@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, CardBar, CardHead } from "./ui.jsx";
 import Icon from "./InfoIcon.jsx";
+import { NO_VALUE } from "../utils/format.js";
 
 const EMPTY = { title: "", folderId: "", raceId: "", version: "", description: "", installNote: "", fileName: "", externalUrl: "", sortOrder: 0, published: true };
 
@@ -465,7 +466,7 @@ export default function AdminDownloads() {
                     {!d.fileExists && !d.externalUrl && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-bad">file missing</span>}
                   </div>
                   <div className="mt-0.5 font-mono text-[11px] text-light">
-                    {d.fileName || d.externalUrl || "—"}{d.sizeText ? ` · ${d.sizeText}` : ""}{d.version ? ` · v${d.version}` : ""}
+                    {d.fileName || d.externalUrl || NO_VALUE}{d.sizeText ? ` · ${d.sizeText}` : ""}{d.version ? ` · v${d.version}` : ""}
                   </div>
                 </div>
                 <button onClick={() => startEdit(d)} className="rounded-lg bg-surface2 px-3 py-1.5 text-xs font-semibold text-medium transition hover:bg-border">Edit</button>

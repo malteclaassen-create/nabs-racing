@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtGap } from "../utils/raceDuration.js";
+import { fmtLap, isLapTime, NO_VALUE} from "../utils/format.js";
 
 // Post-race stats panel for a completed round, shown below the classification:
 // the Driver of the Day (named after whoever made the pick, usually the round's
@@ -11,15 +12,8 @@ import { fmtGap } from "../utils/raceDuration.js";
 // Every row only shows when the data it needs exists, so historical rounds that
 // only kept points and positions still render whatever they can.
 
-const MAX_LAP_MS = 1_800_000; // AC stores a huge sentinel for "no lap set"
-const isLap = (ms) => ms > 0 && ms <= MAX_LAP_MS;
+const isLap = isLapTime;
 
-function fmtLap(ms) {
-  if (!isLap(ms)) return null;
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  return `${m}:${String(s).padStart(2, "0")}.${String(ms % 1000).padStart(3, "0")}`;
-}
 
 // Race time with any steward penalty included, matching the classification.
 const adjTime = (r) => (r.totalTimeMs > 0 ? r.totalTimeMs + (r.penaltySeconds || 0) * 1000 : null);
@@ -258,7 +252,7 @@ export default function RaceFacts({ race, results, quali = null }) {
       <div className="border-b border-border bg-surface2/50 px-5 py-3">
         <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Race Facts</h3>
       </div>
-      {hasDotd && <DriverOfTheDay row={dotdRow} name={dotd.name || dotdRow?.name || "—"} pickedBy={dotd.pickedBy} />}
+      {hasDotd && <DriverOfTheDay row={dotdRow} name={dotd.name || dotdRow?.name || NO_VALUE} pickedBy={dotd.pickedBy} />}
       {facts.length > 0 && (
         <div className="grid gap-x-10 px-5 py-1 sm:grid-cols-2">
           {cols.map((col, ci) => (

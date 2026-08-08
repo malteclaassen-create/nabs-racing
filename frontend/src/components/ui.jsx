@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useInView } from "../hooks/motion.js";
+import { NO_VALUE } from "../utils/format.js";
 
 export const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"]; // gold / silver / bronze (filled chips)
 // Medal tones for text/borders on the card background — theme-aware (deeper in
@@ -247,6 +248,20 @@ export function Rank({ position, className = "" }) {
 // read it on. It costs a narrow column: on phones the arrow carries a compact
 // digit, and the "no change" dash sits out entirely rather than spending
 // width on nothing.
+// "No value here" in a table cell or a stat slot. The dash is decorative and
+// hidden from assistive tech, which would otherwise announce it as stray
+// punctuation or skip the cell entirely and leave the row a column short; the
+// reason for the blank is spoken instead. `label` names it where the generic
+// wording would be unhelpful ("not set", "did not finish").
+export function NoData({ label = "no value", className = "" }) {
+  return (
+    <span className={`text-faint ${className}`}>
+      <span aria-hidden="true">{NO_VALUE}</span>
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
 export function PosDelta({ delta }) {
   if (delta == null) return null;
   if (delta === 0)

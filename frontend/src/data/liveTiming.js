@@ -1,6 +1,7 @@
 // Helpers for the Live page: format lap times, map in-sim driver names to NABS
 // drivers (for flag + team colour), and resolve the session country flag.
 import { countryFor } from "./driverCountries.js";
+import { NO_VALUE } from "../utils/format.js";
 
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -28,9 +29,9 @@ export function makeDriverMatcher(teams) {
   return (acName) => index.get(norm(acName)) || null;
 }
 
-// nanosecond-derived ms -> "1:27.622" / "27.6s". null -> "—".
+// nanosecond-derived ms -> "1:27.622" / "27.6s". null -> NO_VALUE.
 export function formatLap(ms) {
-  if (!ms || ms <= 0) return "—";
+  if (!ms || ms <= 0) return NO_VALUE;
   const totalSec = ms / 1000;
   const m = Math.floor(totalSec / 60);
   const s = totalSec - m * 60;
@@ -38,46 +39,46 @@ export function formatLap(ms) {
   return m > 0 ? `${m}:${sStr}` : `${s.toFixed(3)}`;
 }
 
-// Gap to session best: "+0.315" / "—".
+// Gap to session best: "+0.315" / NO_VALUE.
 export function formatGap(ms) {
-  if (ms == null) return "—";
+  if (ms == null) return NO_VALUE;
   if (ms === 0) return "0.000";
   return `+${(ms / 1000).toFixed(3)}`;
 }
 
 // Top speed -> "312.47" (km/h, two decimals). The server sends the value with
 // its decimals intact; a bare integer hid how close two cars actually were down
-// the straight. Anything missing (or a car with no lap yet) -> "—".
+// the straight. Anything missing (or a car with no lap yet) -> NO_VALUE.
 export function formatSpeed(kmh) {
-  if (kmh == null || !Number.isFinite(Number(kmh)) || Number(kmh) <= 0) return "—";
+  if (kmh == null || !Number.isFinite(Number(kmh)) || Number(kmh) <= 0) return NO_VALUE;
   return Number(kmh).toFixed(2);
 }
 
-// Sector time -> "31.116". null -> "—".
+// Sector time -> "31.116". null -> NO_VALUE.
 export function formatSector(ms) {
-  if (!ms || ms <= 0) return "—";
+  if (!ms || ms <= 0) return NO_VALUE;
   return (ms / 1000).toFixed(3);
 }
 
-// Running current-lap clock -> "1:54.3" (tenths). null -> "—".
+// Running current-lap clock -> "1:54.3" (tenths). null -> NO_VALUE.
 export function formatRunning(ms) {
-  if (ms == null || ms < 0) return "—";
+  if (ms == null || ms < 0) return NO_VALUE;
   const total = ms / 1000;
   const m = Math.floor(total / 60);
   const s = total - m * 60;
   return m > 0 ? `${m}:${s.toFixed(1).padStart(4, "0")}` : s.toFixed(1);
 }
 
-// Delta to personal best -> "-0.215" (faster) / "+0.318" (slower). null -> "—".
+// Delta to personal best -> "-0.215" (faster) / "+0.318" (slower). null -> NO_VALUE.
 export function formatDelta(ms) {
-  if (ms == null) return "—";
+  if (ms == null) return NO_VALUE;
   const sign = ms > 0 ? "+" : ms < 0 ? "-" : "";
   return `${sign}${(Math.abs(ms) / 1000).toFixed(3)}`;
 }
 
-// Remaining time -> "6d 01:48:51" or "48:51". null -> "—".
+// Remaining time -> "6d 01:48:51" or "48:51". null -> NO_VALUE.
 export function formatCountdown(ms) {
-  if (ms == null || ms < 0) return "—";
+  if (ms == null || ms < 0) return NO_VALUE;
   const totalSec = Math.floor(ms / 1000);
   const d = Math.floor(totalSec / 86400);
   const h = Math.floor((totalSec % 86400) / 3600);

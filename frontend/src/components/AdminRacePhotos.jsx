@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Notice, EmptyState } from "./ui.jsx";
 import { shrinkImage, shrinkImages, REENCODE_OVER_BYTES } from "../utils/imageResize.js";
+import { fmtStamp } from "../utils/format.js";
 
 // Admin: the photo gallery of a round. Pick a race, drop the night's
 // screenshots in, caption and order them, and they appear as a carousel under
@@ -33,7 +34,7 @@ function Icon({ d, className = "h-4 w-4" }) {
   );
 }
 
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "");
+const fmtDate = (d) => (d ? fmtStamp(d) : "");
 
 function fmtSize(bytes) {
   if (bytes == null) return null;

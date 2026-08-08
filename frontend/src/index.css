@@ -291,10 +291,31 @@ body::before {
 /* The real overhead map is a pale track band on transparency: legible on dark,
    near-invisible on white. So it always sits on a fixed dark surface, in both
    themes (like the always-dark hero card). */
-.live-map-dark {
+/* The live track map's surface.
+   AC's map.png is a circuit drawn on transparency: dark asphalt (rgb ~40) with
+   white edges (rgb 255). On a dark card the white edges carry it, which is why
+   this used to be pinned dark in BOTH themes — leaving a black slab in the
+   middle of an otherwise light page (the same objection that had the hero card
+   follow the theme again in July).
+   Light mode inverts the image instead: the asphalt comes out pale and the
+   edges black, which is what a circuit looks like printed on paper. Only the
+   <image> is filtered — the cars are SVG on top, in team colours, and must not
+   flip. */
+.live-map {
+  background-color: var(--c-surface2);
+  background-image: radial-gradient(120% 90% at 50% 0%, rgba(15, 23, 42, 0.06), transparent 70%);
+  border: 1px solid var(--c-border);
+}
+.live-map image {
+  filter: invert(1);
+}
+.dark .live-map {
   background-color: #0b1220;
   background-image: radial-gradient(120% 90% at 50% 0%, rgba(148, 163, 184, 0.1), transparent 70%);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+.dark .live-map image {
+  filter: none;
 }
 
 /* Oversized ghost numeral behind hero content. */

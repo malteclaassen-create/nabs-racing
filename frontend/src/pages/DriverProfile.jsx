@@ -6,7 +6,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import {
-  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar,
+  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar, NoData,
 } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -17,6 +17,7 @@ import SlidingTabs from "../components/SlidingTabs.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { flagFor } from "../data/circuits.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
+import { fmtLap, NO_VALUE} from "../utils/format.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
@@ -61,12 +62,7 @@ const I = {
 };
 
 // Lap-time formatter for the fastest-lap tile (1:43.250).
-function fmtLapMs(ms) {
-  if (!ms || ms <= 0) return null;
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  return `${m}:${String(s).padStart(2, "0")}.${String(ms % 1000).padStart(3, "0")}`;
-}
+const fmtLapMs = fmtLap;
 function Icon({ name, className = "" }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -311,7 +307,7 @@ function CareerBlock({ career, otherSeries }) {
                 <td className="px-2 py-3">
                   <span className="flex items-center gap-2">
                     <span className="h-4 w-1.5 rounded-full" style={{ backgroundColor: s.teamColor || "#64748b" }} />
-                    <span className="text-medium">{s.teamName || "—"}</span>
+                    <span className="text-medium">{s.teamName || NO_VALUE}</span>
                   </span>
                 </td>
                 {/* No championship position before the season has actually
@@ -353,7 +349,7 @@ function RatingBreakdown({ rating, stats, color }) {
     { k: "exp", code: "EXP", label: "Experience", note: plural(rating.starts ?? 0, "start") },
     { k: "rac", code: "RAC", label: "Racecraft", note: `${plural(rating.wins ?? 0, "win")} · ${plural(rating.podiums ?? 0, "podium")}` },
     { k: "aha", code: "AWA", label: "Awareness", note: `${plural(rating.contacts ?? 0, "contact")} · ${plural(dnf, "DNF")}` },
-    { k: "pac", code: "PAC", label: "Pace", note: stats?.bestGrid ? `best grid P${stats.bestGrid}` : stats?.avgGrid != null ? `avg grid P${stats.avgGrid}` : "—" },
+    { k: "pac", code: "PAC", label: "Pace", note: stats?.bestGrid ? `best grid P${stats.bestGrid}` : stats?.avgGrid != null ? `avg grid P${stats.avgGrid}` : NO_VALUE },
   ];
   return (
     <div className="card p-5 sm:p-6">
@@ -864,7 +860,7 @@ function TeamPanel({ driver, standings, career, teammateHistory = [] }) {
             </Link>
             <div className="mt-0.5 flex items-center gap-2">
               <TierBadge tier={driver.tier} />
-              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">{TIER_LABEL[driver.team.tier] ?? "—"}</span>
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">{TIER_LABEL[driver.team.tier] ?? NO_VALUE}</span>
             </div>
           </div>
         </div>
@@ -1234,7 +1230,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                 ) : championship.position ? (
                   <CountUp end={championship.position} prefix="P" />
                 ) : (
-                  "—"
+                  <NoData label="no championship position" />
                 )}
               </div>
               <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
@@ -1265,7 +1261,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                   ) : championship.position ? (
                     <CountUp end={championship.position} prefix="P" />
                   ) : (
-                    "—"
+                    <NoData label="no championship position" />
                   )}
                 </div>
                 <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">

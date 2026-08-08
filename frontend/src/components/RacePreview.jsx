@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
 import { TierBadge } from "./ui.jsx";
+import { NO_VALUE } from "../utils/format.js";
 
 // Position-change badge: ▲ up / ▼ down / – unchanged.
 function Delta({ value }) {
@@ -162,7 +163,7 @@ export default function RacePreview({ request }) {
                     return (
                       <tr key={r.driverId} className="border-b border-border last:border-0">
                         <td className="w-10 py-1.5 pl-3 align-top text-center font-mono font-bold tabular-nums text-dark">
-                          {dnf ? "—" : r.finalPosition}
+                          {dnf ? NO_VALUE : r.finalPosition}
                         </td>
                         <td className="py-1.5 pl-1">
                           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">

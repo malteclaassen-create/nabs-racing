@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { CardHead, ErrorBox, Notice } from "./ui.jsx";
 import { SocialIcon } from "./SocialLinks.jsx";
+import { fmtStamp } from "../utils/format.js";
 
 // Admin: the wall of posts on the home page. One panel, one row per platform,
 // because that's how you actually think about it — "what's on our channels?"
@@ -17,11 +18,7 @@ import { SocialIcon } from "./SocialLinks.jsx";
 const PLATFORM_LABEL = { youtube: "YouTube", instagram: "Instagram", tiktok: "TikTok", twitch: "Twitch", x: "X" };
 const PLATFORM_ACCENT = { youtube: "#FF0000", instagram: "#E4405F", tiktok: "#25F4EE", twitch: "#9146FF", x: "#71767b" };
 
-function fmtDate(iso) {
-  if (!iso) return "no date";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "no date" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-}
+const fmtDate = (iso) => fmtStamp(iso) || "no date";
 
 // A card preview, the way the home page will show it.
 function Thumb({ post, className = "w-32" }) {

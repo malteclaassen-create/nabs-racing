@@ -15,6 +15,7 @@ import { SocialIcon, SOCIAL_META, useSocial } from "../components/SocialLinks.js
 import RatingCard from "../components/RatingCard.jsx";
 import DriverProfile from "./DriverProfile.jsx";
 import MyRating from "./MyRating.jsx";
+import { NO_VALUE } from "../utils/format.js";
 
 // The public profile shows at most this many stat tiles.
 const MAX_TILES = 9;
@@ -521,7 +522,7 @@ function ProfileEditor({ me, onDraftChange }) {
                     max={999}
                     value={number}
                     onChange={(e) => setNumber(e.target.value)}
-                    placeholder="—"
+                    placeholder={NO_VALUE}
                   />
                 </Field>
                 <Field label="Country">

@@ -4,7 +4,7 @@ import { api } from "../api/client.js";
 import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { useApi } from "../hooks/useApi.js";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
-import { PageHeader, SectionHeading } from "../components/ui.jsx";
+import { PageHeader, SectionHeading, NoData} from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
@@ -17,6 +17,7 @@ import { streamEmbed } from "../utils/streamEmbed.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { LiveSortMenu, LiveColumnsMenu } from "../components/LiveTableMenu.jsx";
 import { useLiveTablePrefs } from "../hooks/useLiveTablePrefs.js";
+import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
 import {
   makeDriverMatcher,
   formatLap,
@@ -68,7 +69,7 @@ function Countdown({ baseMs, receivedAt, resetKey }) {
   }, []);
   if (baseMs == null) {
     endRef.current = null;
-    return <span className="font-mono tabular-nums text-dark">—</span>;
+    return <NoData className="font-mono tabular-nums text-dark" />;
   }
   const candidate = receivedAt + baseMs; // this snapshot's projected end time
   if (keyRef.current !== resetKey || endRef.current == null) {
@@ -226,7 +227,7 @@ function SessionHeader({ session, receivedAt }) {
 // 2.9:1 on the dark board — the same tone the FL badge uses elsewhere, so the
 // convention reads the same across the site and stays legible in both themes.
 function Sector({ s }) {
-  if (!s) return <span className="inline-block w-[52px] text-center font-mono text-xs text-faint">—</span>;
+  if (!s) return <NoData className="inline-block w-[52px] text-center font-mono text-xs" />;
   const cls = s.best
     ? "bg-fl/20 text-fl"
     : s.driversBest
@@ -247,9 +248,9 @@ function CurrentLap({ lastLapAt, inPits }) {
     return () => clearInterval(t);
   }, []);
   if (inPits) return <span className="font-mono text-[11px] font-bold uppercase text-warn">In pit</span>;
-  if (!lastLapAt) return <span className="font-mono tabular-nums text-light">—</span>;
+  if (!lastLapAt) return <NoData className="font-mono tabular-nums" />;
   const ms = now - lastLapAt;
-  if (ms < 0 || ms > 15 * 60 * 1000) return <span className="font-mono tabular-nums text-light">—</span>;
+  if (ms < 0 || ms > 15 * 60 * 1000) return <NoData className="font-mono tabular-nums" />;
   return <span className="font-mono font-bold tabular-nums text-dark">{formatRunning(ms)}</span>;
 }
 
@@ -309,7 +310,7 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
           )}
         </span>
         <span className="block truncate text-xs text-light">
-          {match?.teamName || carLabel(e.carName) || "—"}
+          {match?.teamName || carLabel(e.carName) || NO_VALUE}
         </span>
       </span>
       {e.raceNumber != null && (
@@ -370,7 +371,7 @@ function OnTrackRow({ e, match, index = 0 }) {
         <span className="font-mono text-sm text-light">{e.numPits}</span>
       </td>
       <td className="hidden py-3 pr-4 text-right tabular-nums lg:table-cell">
-        <span className="font-mono text-sm text-light">{e.ping ?? "—"}</span>
+        <span className="font-mono text-sm text-light">{e.ping ?? NO_VALUE}</span>
       </td>
       <td className="py-3 pr-5 text-right">
         <div className="flex justify-end gap-1.5">
@@ -463,7 +464,7 @@ const TIMING_COLUMNS = [
     sortValue: (e) => e.raceNumber ?? null,
     cell: (e) => (
       <span className="font-mono text-sm font-bold tabular-nums text-light">
-        {e.raceNumber != null ? `#${e.raceNumber}` : "—"}
+        {e.raceNumber != null ? `#${e.raceNumber}` : NO_VALUE}
       </span>
     ),
   },
@@ -475,7 +476,7 @@ const TIMING_COLUMNS = [
     hint: "Which car they're driving",
     cell: (e) => (
       <span className="block max-w-[12rem] truncate text-xs text-light" title={e.carName || ""}>
-        {carLabel(e.carName) || "—"}
+        {carLabel(e.carName) || NO_VALUE}
       </span>
     ),
   },
@@ -554,7 +555,7 @@ const TIMING_COLUMNS = [
           className="font-mono text-sm tabular-nums text-light"
           title="How much quicker their potential lap is than their best one"
         >
-          {left == null ? "—" : (left / 1000).toFixed(3)}
+          {left == null ? NO_VALUE : (left / 1000).toFixed(3)}
         </span>
       );
     },
@@ -673,7 +674,7 @@ const TIMING_COLUMNS = [
     sortDir: "asc",
     cell: (e) => (
       <span className="font-mono text-sm tabular-nums text-light">
-        {e.onTrack && e.ping != null ? e.ping : "—"}
+        {e.onTrack && e.ping != null ? e.ping : NO_VALUE}
       </span>
     ),
   },
@@ -1012,7 +1013,7 @@ function ChampionshipProjection({ data }) {
                     ) : d.dnf ? (
                       <span className="pill bg-red-500/10 font-mono text-bad">DNF</span>
                     ) : (
-                      <span className="font-mono text-xs text-faint">—</span>
+                      <NoData className="font-mono text-xs" />
                     )}
                   </td>
                   <td className="py-3 pr-4 text-right">
@@ -1368,7 +1369,7 @@ function PitLaneSection({ entries, match, className = "" }) {
                   <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
                     {m?.nabsName || e.name}
                   </span>
-                  <span className="block truncate text-[11px] text-light">{m?.teamName || "—"}</span>
+                  <span className="block truncate text-[11px] text-light">{m?.teamName || NO_VALUE}</span>
                 </span>
                 {t && (
                   <span
@@ -1471,7 +1472,7 @@ function OffAir({ nextRace }) {
               a fortnight out, "19:00 CEST" on its own answers nothing. */}
           {kick && (
             <div className="mt-0.5 font-mono text-sm text-medium">
-              {kick.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" })}
+              {fmtRaceDate(nextRace.date)}
               {" · "}
               {fmtRaceTime(nextRace.date)}
             </div>

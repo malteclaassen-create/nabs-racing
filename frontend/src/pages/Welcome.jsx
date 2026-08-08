@@ -16,6 +16,7 @@ import { fmtRaceTime } from "../utils/raceTime.js";
 import { heroFor, heroOnError } from "../utils/heroImage.js";
 import { seasonGameParts, seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
+import { fmtDateShort } from "../utils/format.js";
 
 // League default points per finishing position — only the fallback: seasons
 // can override the table (Season.pointsTable), which /api/seasons delivers and
@@ -124,7 +125,7 @@ function LastRaceCard({ race }) {
         </span>
         {race.date && (
           <span className="shrink-0 font-mono text-[11px] uppercase tracking-wider text-light">
-            {new Date(race.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+            {fmtDateShort(race.date)}
           </span>
         )}
       </div>

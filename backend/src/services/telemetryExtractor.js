@@ -33,6 +33,14 @@ const PIT_LAP_EXTRA_MS = 25000; // a lap this much over the driver's median = a 
 // the out-lap. Calibrated at Hockenheim S8R1: weakest accepted clean stop lost
 // 2.6s, strongest rejected crash 1.7s, so 2.5s sits in the measured gap.
 const PIT_IN_SECTOR_MIN_MS = 2500;
+
+// The recorder normalises compounds to full names (services/liveTiming.js
+// tyreKey); stored stints speak the result file's short codes, which is what
+// the strategy graphic renders. One map, both directions of the same rubber.
+const TYRE_CODE = {
+  hypersoft: "HS", ultrasoft: "US", supersoft: "SS", soft: "S",
+  medium: "M", hard: "H", superhard: "SH", intermediate: "I", wet: "W",
+};
 const SC_LAP_FACTOR = 1.3; // a lap whose field median is 1.3x the race median = SC lap
 
 // AC stamps event/lap times in Unix SECONDS; normalise to ms (values already in
@@ -487,13 +495,23 @@ export function extractTelemetry(json, opts = {}) {
     if (recorded) {
       // Truth mode: the recorder watched this driver, so the visit count is
       // fact — including the fact of ZERO visits, which must silence the
-      // heuristic entirely rather than fall through to it. Each recorded entry
-      // happened on a known lap (give or take one: the feed's lap counter can
-      // lag a snapshot behind); place the split on the better-evidenced
-      // candidate around it, and skip stops already expressed by a compound
-      // change nearby.
+      // heuristic entirely rather than fall through to it.
+      //
+      // What a recorded lap NUMBER means: the feed counts laps COMPLETED, so a
+      // driver confirmed stopped while the counter reads N did their in-lap as
+      // lap N and their out-lap as lap N+1 — which is array index N, the index
+      // that starts the new stint. The ET53 pit-entry hint can sit one lower
+      // (on most layouts the lane branches off before the timing line, so the
+      // counter ticks while the car is already stopped), so the split is
+      // allowed on index N or N+1 and the paired sector evidence picks; with no
+      // evidence either way N wins, the snapshot case being the common one.
+      //
+      // The window for "this stop is already expressed by a compound change"
+      // must be the SAME two indices. It used to reach a third lap further,
+      // which quietly deleted the earlier of two stops made close together —
+      // exactly Flo's opening pair at Hockenheim, two laps apart.
       for (const entryLap of recorded.stops || []) {
-        const covered = [entryLap, entryLap + 1, entryLap + 2].some((n) => n >= 1 && n < arr.length + 1 && compoundChangeAt(n));
+        const covered = [entryLap, entryLap + 1].some((n) => n >= 1 && n < arr.length && compoundChangeAt(n));
         if (covered) continue;
         let bestIdx = null;
         let bestScore = -Infinity;
@@ -583,14 +601,39 @@ export function extractTelemetry(json, opts = {}) {
       const last = stints[stints.length - 1];
       const changed = !!(last && t && last.tyre !== "?" && t !== last.tyre);
       if (!last) {
-        stints.push({ tyre: t || "?", laps: 1 });
+        stints.push({ tyre: t || "?", laps: 1, from: 1 });
       } else if (changed || splitAt.has(i)) {
-        stints.push({ tyre: t || last.tyre, laps: 1 });
+        stints.push({ tyre: t || last.tyre, laps: 1, from: i + 1 });
       } else {
         last.laps += 1;
         if (last.tyre === "?" && t) last.tyre = t;
       }
     });
+
+    // Rename the stints from what the car was SEEN on, when a recording exists.
+    // The file's per-lap Tyre field is not trustworthy: a driver's own account
+    // of eighteen laps on mediums came back as hards on every one of those laps
+    // in the stored result, while his stint boundaries were exactly right. The
+    // live feed names the compound directly, so where it was watched, it wins.
+    //
+    // Read at each stint's MIDDLE rather than its first lap: the feed's lap
+    // counter trails a snapshot, so a change observed right at a boundary can
+    // be attributed a lap either side of it — the middle of a stint is never
+    // ambiguous.
+    if (recorded?.tyres?.length) {
+      const timeline = recorded.tyres;
+      for (const st of stints) {
+        const mid = st.from + Math.floor((st.laps - 1) / 2);
+        let seen = null;
+        for (const t of timeline) {
+          if (t.lap <= mid) seen = t.tyre;
+          else break;
+        }
+        const code = seen ? TYRE_CODE[seen] || st.tyre : null;
+        if (code) st.tyre = code;
+      }
+    }
+    for (const st of stints) delete st.from;
 
     metrics.set(guid, {
       laps: arr.length,

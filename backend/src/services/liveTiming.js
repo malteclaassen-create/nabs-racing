@@ -176,7 +176,7 @@ const TYRE_SHORT = {
   s: "soft", m: "medium", h: "hard", i: "intermediate", in: "intermediate",
   int: "intermediate", inter: "intermediate", w: "wet", wet: "wet",
 };
-function tyreKey(name) {
+export function tyreKey(name) {
   const n = String(name || "").toLowerCase().replace(/[^a-z]/g, "");
   if (!n) return "";
   if (TYRE_SHORT[n]) return TYRE_SHORT[n];

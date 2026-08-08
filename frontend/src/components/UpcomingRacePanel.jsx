@@ -5,29 +5,19 @@ import { useApi } from "../hooks/useApi.js";
 import CircuitMap from "./CircuitMap.jsx";
 import Flag from "./Flag.jsx";
 import RaceCountdown from "./RaceCountdown.jsx";
-import { TeamDot } from "./ui.jsx";
+import { TeamDot, NoData} from "./ui.jsx";
 import { STATUS_UI, StatusIcon } from "./RaceSignupCard.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { exportSvgToPng } from "../utils/svgExport.js";
 import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
+import { fmtLap, fmtRaceDate } from "../utils/format.js";
 
 // The sign-up button's own curfew, matching the backend gate
 // (SIGNUP_CLOSE_AFTER_START_MS in lib/attendanceGate.js): an hour past
 // lights-out the grid is on track and the button leads nowhere useful.
 const SIGNUP_CLOSE_AFTER_START_MS = 60 * 60 * 1000;
 
-const MAX_LAP_MS = 1_800_000;
-function fmtLap(ms) {
-  if (!ms || ms <= 0 || ms > MAX_LAP_MS) return null;
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  return `${m}:${String(s).padStart(2, "0")}.${String(ms % 1000).padStart(3, "0")}`;
-}
-
-function fmtDate(d) {
-  return new Date(d).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
-}
 
 const RECORD_ICONS = {
   trophy: "M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 6H4v1a3 3 0 003 3M17 6h3v1a3 3 0 01-3 3",
@@ -128,7 +118,7 @@ function SignupOutcome({ ev }) {
                     <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
                   </li>
                 ))}
-                {ev.rsvps[status].length === 0 && <li className="text-sm text-faint">—</li>}
+                {ev.rsvps[status].length === 0 && <li className="text-sm text-faint"><NoData className="text-sm" /></li>}
               </ul>
             </div>
           ))}
@@ -205,7 +195,7 @@ export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }
             <div className="mt-1 font-mono text-[13px] font-bold uppercase tracking-wider text-medium">
               {race.date ? (
                 <>
-                  {fmtDate(race.date)} <span className="text-light">· {fmtRaceTime(race.date)}</span>
+                  {fmtRaceDate(race.date)} <span className="text-light">· {fmtRaceTime(race.date)}</span>
                 </>
               ) : (
                 "Date to be confirmed"

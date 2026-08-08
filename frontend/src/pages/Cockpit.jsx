@@ -8,6 +8,7 @@ import TeamLogo from "../components/TeamLogo.jsx";
 import {
   DriverAvatar, EmptyState, ErrorBox, TableSkeleton, CountUp, MEDAL,
 } from "../components/ui.jsx";
+import { fmtLap as fmtLapTime, NO_VALUE } from "../utils/format.js";
 
 // ---------------------------------------------------------------------------
 // The member's private area inside /profile. Three sections beside the profile
@@ -16,13 +17,9 @@ import {
 // Achievements. Editorial layout: big numbers and hairlines, not card grids.
 // ---------------------------------------------------------------------------
 
-function fmtLap(ms) {
-  if (ms == null || !isFinite(ms) || ms <= 0) return "–";
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  const t = Math.floor(ms % 1000);
-  return `${m}:${String(s).padStart(2, "0")}.${String(t).padStart(3, "0")}`;
-}
+// Cockpit shows a dash inline rather than hiding the row, so it fills the
+// module's null with the shared glyph.
+const fmtLap = (ms) => fmtLapTime(ms) ?? NO_VALUE;
 function fmtDelta(ms) {
   if (ms == null || !isFinite(ms)) return "–";
   return `${ms >= 0 ? "+" : "-"}${(Math.abs(ms) / 1000).toFixed(3)}s`;

@@ -6,6 +6,7 @@ import { ErrorBox, DriverAvatar } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import IdChip from "./IdChip.jsx";
 import AdminPersons from "./AdminPersons.jsx";
+import { fmtStamp, NO_VALUE } from "../utils/format.js";
 
 // Admin "Members" tab: every Discord account that has ever logged in on the
 // site. Logins connect to a driver ONLY via a stored Discord user ID (the old
@@ -14,11 +15,7 @@ import AdminPersons from "./AdminPersons.jsx";
 //   * see who logged in but is NOT linked to any driver (and link them by hand),
 //   * see which roster drivers never logged in at all,
 //   * ban an account (no more logins, running sessions stop working).
-function fmtDate(v) {
-  if (!v) return "—";
-  const d = new Date(v);
-  return isNaN(d) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-}
+const fmtDate = (v) => fmtStamp(v) || NO_VALUE;
 
 function StatusPills({ m }) {
   return (
@@ -251,7 +248,7 @@ export default function AdminMembers() {
                       <option value="">Link to driver…</option>
                       {unclaimed.map((d) => (
                         <option key={d.id} value={d.id}>
-                          {d.name} ({d.team?.name || "—"}){d.preEnteredId ? " · replaces typed ID" : ""}
+                          {d.name} ({d.team?.name || NO_VALUE}){d.preEnteredId ? " · replaces typed ID" : ""}
                         </option>
                       ))}
                     </select>

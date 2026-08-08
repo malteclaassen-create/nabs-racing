@@ -41,6 +41,12 @@ export default function VideoEmbed({
   // play button, which is what a video whose preview hasn't loaded looks like.
   // Passing nothing still falls back to YouTube's own thumbnails.
   const posters = poster === false ? [] : poster ? [poster] : videoId ? YT_THUMBS(videoId) : [];
+  // No still at all (the stand-in lap passes poster={false}). The window then
+  // shows nothing but its own background, and a raw black slab in the middle of
+  // a light page reads as a broken embed rather than a video waiting to play.
+  // It follows the theme instead — which gives nothing away, since the point is
+  // only that there is no thumbnail.
+  const blank = posters.length === 0;
 
   // Switching to another video in a picker must not leave the previous one
   // playing behind the new still.
@@ -67,7 +73,9 @@ export default function VideoEmbed({
     <div
       ref={boxRef}
       style={fill ? undefined : { aspectRatio: aspect }}
-      className={`group/player relative w-full overflow-hidden bg-black ${fill ? "h-full" : ""} ${className}`}
+      className={`group/player relative w-full overflow-hidden ${
+        blank ? "bg-surface2 dark:bg-black" : "bg-black"
+      } ${fill ? "h-full" : ""} ${className}`}
     >
       {playing ? (
         <iframe
@@ -90,8 +98,9 @@ export default function VideoEmbed({
             />
           )}
           {/* Darkened towards the bottom so the play button and any caption
-              underneath keep their contrast on a bright still. */}
-          <span className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+              underneath keep their contrast on a bright still. Pointless over an
+              empty window, where it only greys the surface. */}
+          {!blank && <span className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />}
           <span className="absolute inset-0 flex items-center justify-center">
             <span
               className="flex h-14 w-20 items-center justify-center rounded-xl bg-black/60 backdrop-blur-sm transition group-hover/player:[background-color:var(--play-accent)] sm:h-16 sm:w-24"

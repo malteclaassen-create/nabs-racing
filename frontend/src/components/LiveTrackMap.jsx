@@ -21,9 +21,9 @@ import { circuitFor } from "../data/circuits.js";
 // +/- controls change how close (to read two cars side by side, zoom in).
 // Clicking anywhere else zooms back out.
 //
-// AC map.pngs are a pale track band on a transparent background: near-invisible on
-// a light card, clean on a dark one. So the real map always renders on a fixed
-// dark surface, in both themes, like the always-dark hero card.
+// AC map.pngs draw the circuit on transparency: dark asphalt with white edges.
+// That reads on a dark card as-is; the light theme inverts the image so the
+// asphalt comes out pale and the edges black (see .live-map in index.css).
 
 const ZOOM_DEFAULT = 3;
 const ZOOM_MIN = 1.6;
@@ -288,7 +288,7 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, className 
   const r = Math.max(W, H) * 0.014;
   const fs = r * 1.05;
   return (
-    <div className={`live-map-dark rounded-xl p-2 sm:p-3 ${className}`}>
+    <div className={`live-map rounded-xl p-2 sm:p-3 ${className}`}>
       {/* Width-driven: the SVG takes its height from the (rotated) aspect ratio,
           so the card hugs the map instead of stretching to a tall empty box.
           The max-height only caps a very wide column. */}

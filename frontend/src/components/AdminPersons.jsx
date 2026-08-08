@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox } from "./ui.jsx";
+import { NO_VALUE } from "../utils/format.js";
 
 // Admin: link a person's per-season driver rows together so career stats
 // aggregate and archive tables show their current name with a "raced as <old>"
@@ -10,7 +11,7 @@ import { ErrorBox } from "./ui.jsx";
 // is one collapsed row that expands to its season entries.
 
 function seasonLabel(d) {
-  return d.seasonName || (d.seasonNumber != null ? `Season ${d.seasonNumber}` : "—");
+  return d.seasonName || (d.seasonNumber != null ? `Season ${d.seasonNumber}` : NO_VALUE);
 }
 
 function Chevron({ open }) {

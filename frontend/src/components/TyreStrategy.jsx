@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { tyreCompound } from "../data/liveTiming.js";
+import { NO_VALUE } from "../utils/format.js";
 
 // Tyre strategy in the style of the league's own race-standings graphic: per
 // driver one THIN line along the lap axis, coloured by compound, with a filled
@@ -241,7 +242,7 @@ export default function TyreStrategy({ entries, matchFn, raceLaps }) {
                 <span className="block truncate font-display text-base font-bold uppercase tracking-tight text-dark" title={e.name}>
                   {name}
                 </span>
-                <span className="hidden truncate text-xs text-light sm:block">{m?.teamName || "—"}</span>
+                <span className="hidden truncate text-xs text-light sm:block">{m?.teamName || NO_VALUE}</span>
               </div>
               <div className="min-w-0 flex-1">
                 <StintTrack

@@ -9,6 +9,7 @@ import Flag from "./Flag.jsx";
 import { flagFor } from "../data/circuits.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import AdminAttendanceHistory from "./AdminAttendanceHistory.jsx";
+import { fmtDateShort } from "../utils/format.js";
 
 // Admin "Attendance" tab, in three views: the hotlap videos a circuit shows,
 // who may answer which race, and what people answered for the races already run.
@@ -21,7 +22,7 @@ import AdminAttendanceHistory from "./AdminAttendanceHistory.jsx";
 // underneath is for preparing a track before its round comes round.
 
 const MAX_VIDEOS = 6;
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "date TBA");
+const fmtDate = (d) => (d ? fmtDateShort(d) : "date TBA");
 
 export default function AdminAttendance() {
   // includeHidden: this tab is the only place a race that was taken off the

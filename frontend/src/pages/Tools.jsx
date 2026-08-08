@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/ui.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import { fmtLap, NO_VALUE } from "../utils/format.js";
 
 // ---------------------------------------------------------------------------
 // /tools — race-prep calculators for members. Deliberately NOT in the main
@@ -36,12 +37,9 @@ export function parseLapMs(raw) {
   return null;
 }
 
-export function fmtLapMs(ms) {
-  if (ms == null || !Number.isFinite(ms) || ms <= 0) return "-";
-  const min = Math.floor(ms / 60000);
-  const sec = (ms % 60000) / 1000;
-  return `${min}:${sec.toFixed(3).padStart(6, "0")}`;
-}
+// The calculators print into fixed-width fields, so a missing value shows the
+// shared dash instead of collapsing the row.
+export const fmtLapMs = (ms) => fmtLap(ms) ?? NO_VALUE;
 
 function fmtRaceMs(ms) {
   if (ms == null || !Number.isFinite(ms) || ms <= 0) return "-";
