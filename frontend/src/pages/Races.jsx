@@ -4,7 +4,7 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent } from "../components/ui.jsx";
+import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent, SmoothHeight } from "../components/ui.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import RaceResults from "../components/RaceResults.jsx";
@@ -555,7 +555,12 @@ export default function Races() {
 
   function selectRace(id) {
     setSelectedId(id);
-    panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Deliberately no scrolling. The rail sits BESIDE the panel on a desktop
+    // and directly above it on a phone, so the thing you just asked for is
+    // already on screen either way; scrolling to it only took the rail you were
+    // reading out from under you. The ?race= deep link still scrolls, because
+    // arriving from another page is the one case where the panel really can be
+    // somewhere you cannot see.
   }
 
   if (loading)
@@ -695,14 +700,11 @@ export default function Races() {
             </aside>
 
             {/* selected race: results for completed rounds, sign-up + driver
-                market for rounds that haven't been run yet.
-                AutoHeight so this column GROWS into its content instead of
-                being born at full height: the table's background then arrives
-                together with its rows rather than standing there empty while
-                they fill in, and switching between a 37-row result and a
-                sign-up panel slides the calendar below instead of teleporting
-                it (measured: 1939px, in one frame). */}
-            <div className="min-w-0">
+                market for rounds that haven't been run yet. SmoothHeight so the
+                calendar underneath is carried between the two rather than cut:
+                a 37-row result and a sign-up panel are 1939px apart, and that
+                was happening in one frame. */}
+            <SmoothHeight className="min-w-0">
               {selectedRace && !selectedRace.isCompleted ? (
                 /* Keyed on the race so switching rounds REMOUNTS the panel. Its
                    track history (and with it the outline's admin-set rotation)
@@ -710,12 +712,24 @@ export default function Races() {
                    rendered for a frame against the previous round's answer —
                    which is how a circuit the admin had turned appeared upright
                    first and then span into place. */
+                <>
+                {/* The rail's label row is h-8 + mb-4 and the results view has
+                    a round title of exactly that height, which is what makes
+                    the first round button and the results card start on one
+                    line. This branch had no such row, so its card sat 48px
+                    above the first button — measured, both before and after the
+                    entrance animation settles. Reserved here so the two columns
+                    line up whichever round is picked. lg only: below that the
+                    rail is a horizontal strip and there is nothing to line up
+                    with. */}
+                <div aria-hidden="true" className="mb-4 hidden h-8 lg:block" />
                 <UpcomingRacePanel
                   key={selectedRace.id}
                   race={selectedRace}
                   ev={eventById.get(selectedRace.id) || null}
                   canSignUp={signupIds.has(selectedRace.id)}
                 />
+                </>
               ) : (
                 <>
                   {/* The previous round's table stays up while the next one
@@ -809,7 +823,7 @@ export default function Races() {
                   )}
                 </>
               )}
-            </div>
+            </SmoothHeight>
           </div>
         ) : (
           <div className="card p-8 text-center text-medium">

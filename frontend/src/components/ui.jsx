@@ -1,6 +1,6 @@
 // Small shared presentational helpers — the site-wide design kit.
 
-import { cloneElement, isValidElement, useEffect, useId, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useInView } from "../hooks/motion.js";
 import { NO_VALUE } from "../utils/format.js";
 
@@ -280,6 +280,87 @@ export function NoData({ label = "no value", className = "" }) {
 // `tone` keeps the two label typographies that were worth keeping out of the
 // twenty-odd that had drifted: the mono eyebrow (public pages) and the compact
 // plain one (dense admin forms). Everything else was noise.
+// ---------------------------------------------------------------------------
+// <SmoothHeight> — carries a box between two heights instead of cutting.
+//
+// Swapping a 37-row result for a sign-up panel moved everything below it by
+// 1939px in a single frame. Measured on the page, not guessed.
+//
+// It reads the height in a LAYOUT effect, which runs inside React's commit,
+// after the DOM has the new content and before the browser paints. So it knows
+// both numbers without watching anything: `prev` is where the box was, the
+// measurement is where it now wants to be. An earlier attempt used a
+// ResizeObserver and took its start value from the box's own measurement AFTER
+// unpinning — which is the natural height, which is the target, so every move
+// ran from its destination to its destination and nothing ever budged. Hence
+// the two heights here come from two different places on purpose.
+//
+// No entrance: on first render there is nothing to come from, so the box simply
+// is its height. This only smooths CHANGES.
+export function SmoothHeight({ children, duration = "var(--t-base)", className = "" }) {
+  const box = useRef(null);
+  const prev = useRef(null);
+  const undo = useRef(null);
+
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    // By the time a layout effect runs, the DOM already holds the new content,
+    // so MEASURING the box gives the destination, never the origin. The origin
+    // has to be remembered: `prev` from the last commit, or — if a move is
+    // still running — the pinned value it has reached, which is the only case
+    // where measuring means anything.
+    //
+    // This is the same trap that made the previous attempt do nothing at all,
+    // and it caught me twice: measure for the target, remember for the start.
+    const mid = undo.current ? el.getBoundingClientRect().height : null;
+    undo.current?.(); // let go of any pin so the next read is the real height
+    const to = el.getBoundingClientRect().height;
+    const from = prev.current;
+    prev.current = to;
+    if (from == null) return; // first render: nothing to come from
+    const visual = mid != null ? mid : from;
+    if (Math.abs(to - visual) < 2) return;
+    if (
+      document.hidden ||
+      (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
+      document.documentElement.classList.contains("fx-lite")
+    )
+      return;
+
+    el.style.overflow = "hidden";
+    el.style.height = `${visual}px`;
+    void el.offsetHeight; // commit the start before transitioning away from it
+    el.style.transition = `height ${duration} var(--e-out)`;
+    el.style.height = `${to}px`;
+
+    const done = () => {
+      el.style.transition = "";
+      el.style.height = "";
+      el.style.overflow = "";
+      el.removeEventListener("transitionend", onEnd);
+      clearTimeout(timer);
+      undo.current = null;
+    };
+    const onEnd = (e) => {
+      if (e.target === el && e.propertyName === "height") done();
+    };
+    // Belt and braces: a transition that never runs (hidden tab, a browser that
+    // skips it) must not leave the box pinned and the page below it stuck.
+    const timer = setTimeout(done, 1200);
+    el.addEventListener("transitionend", onEnd);
+    undo.current = done;
+  });
+
+  useEffect(() => () => undo.current?.(), []);
+
+  return (
+    <div ref={box} className={className}>
+      {children}
+    </div>
+  );
+}
+
 export function Field({
   label,
   hint,
