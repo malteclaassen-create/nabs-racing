@@ -5,7 +5,6 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { ErrorBox, PageHeader, TableSkeleton, EmptyState, Notice } from "../components/ui.jsx";
 import RaceSignupCard from "../components/RaceSignupCard.jsx";
-import RatingCard from "../components/RatingCard.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
 import Flag from "../components/Flag.jsx";
@@ -72,48 +71,6 @@ function TrackVideos({ track, videos }) {
       {current.title && videos.length === 1 && (
         <p className="mt-2.5 text-sm font-semibold text-medium">{current.title}</p>
       )}
-    </div>
-  );
-}
-
-// Personal history at the selected track (from trackHistory.me).
-function MyTrackHistory({ track, me }) {
-  if (!me || !me.editions?.length) {
-    return (
-      <div className="card p-5">
-        <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Your history here</h3>
-        <p className="mt-2 text-sm text-light">You have not raced at {track} yet. Time to make some history.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="card reveal p-5">
-      <h3 className="mb-3 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Your history at {track}</h3>
-      <div className="mb-3 grid grid-cols-3 gap-2 text-center">
-        <div>
-          <div className="font-display text-2xl font-black tabular-nums text-dark">{me.starts}</div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-light">starts</div>
-        </div>
-        <div>
-          <div className="font-display text-2xl font-black tabular-nums text-dark">{me.wins}</div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-light">wins</div>
-        </div>
-        <div>
-          <div className="font-display text-2xl font-black tabular-nums text-dark">{me.bestFinish ? `P${me.bestFinish}` : "–"}</div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-light">best</div>
-        </div>
-      </div>
-      <ul className="space-y-1.5">
-        {me.editions.map((e, i) => (
-          <li key={i} className="flex items-center justify-between gap-2 border-b border-border py-1.5 text-sm last:border-0">
-            <span className="font-mono text-xs text-light">Season {e.seasonNumber}</span>
-            <span className="font-display font-bold text-dark">
-              {e.status === "FINISHED" && e.position != null ? `P${e.position}` : e.status}
-            </span>
-            <span className="font-mono text-xs tabular-nums text-medium">{fmtLap(e.bestLapMs) || "—"}</span>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
@@ -222,14 +179,9 @@ export default function Attendance() {
     }
   }
 
-  // Member's rating card (profile for the driver object + rating).
-  const mine = useApi(
-    useCallback(
-      () => (driverId ? Promise.all([api.driverProfile(driverId), api.driverRating(driverId)]) : Promise.resolve(null)),
-      [driverId]
-    )
-  );
-  // Personal history at the selected track.
+  // The hotlap for the selected track (public) — the only per-track fetch this
+  // page still makes. The member's own rating card used to be fetched here too;
+  // the page shows one arrangement now and that card is not part of it.
   const hist = useApi(useCallback(() => (ev ? api.trackHistory(ev.track) : Promise.resolve(null)), [ev?.track]));
 
   const circuit = ev ? flagFor(ev.track, ev.country) : null;
@@ -316,11 +268,6 @@ export default function Attendance() {
           </div>
           );
 
-          const ratingCard =
-            canSignUp && mine.data && mine.data[1] ? (
-              <RatingCard driver={mine.data[0].driver} rating={mine.data[1]} />
-            ) : null;
-
           const signUpCard = (
             <RaceSignupCard
               ev={ev}
@@ -342,82 +289,39 @@ export default function Attendance() {
           );
 
           // Shown to everyone, signed in or not: the lap is public.
-          const hasVideo = (hist.data?.videos || []).length > 0;
           const videoPanel = <TrackVideos track={ev.track} videos={hist.data?.videos} />;
-          const history = canSignUp ? <MyTrackHistory track={ev.track} me={hist.data?.me} /> : null;
           const errorBox = error ? <ErrorBox message={error} /> : null;
 
-          // Until the track-history answer is in, the page does not know which
-          // of its two arrangements it is (video split or driver-card column) —
-          // so it commits to NEITHER and shows only the parts common to both.
-          // Deciding early painted the no-video layout whenever the member's
-          // own rating fetch won the race against the track-history one: the
-          // driver card flashed for a few frames and was torn out again the
-          // moment the hotlap arrived. The cards this holds back carry reveal
-          // animations, so arriving a beat later reads as the page building
-          // itself, not as a jump.
-          if (hist.loading) {
-            return (
-              <div className="space-y-6">
-                {heroCard}
-                {errorBox}
-                {signUpCard}
-              </div>
-            );
-          }
-
-          // With a lap on file the page splits: the race and the sign-up down
-          // the left, the video on the right, and NOTHING else. The driver card
-          // and the track history are deliberately left off this version —
-          // both were tried alongside the video and made the page a wall, and
-          // the driver card in particular ran the right column some 300px past
-          // anything the left had to fill it with, which landed inside the
-          // sign-up card as blank panel. They come back on their own when a
-          // circuit has no lap on file (below).
+          // ONE arrangement, always: the race and the sign-up down the left,
+          // the hotlap on the right. The page used to pick between this and a
+          // driver-card-plus-history version depending on whether the circuit
+          // had a lap on file, which was both busier than it needed to be and
+          // the source of a flicker — React remounts a card the moment it moves
+          // to a different parent, and a remounted card replays its reveal, so
+          // every layout switch made the page fade itself in twice.
+          //
+          // With a single arrangement the hero and the sign-up mount once and
+          // stay put; the hotlap simply fills its column when the answer
+          // arrives (TrackVideos renders nothing without one, leaving the left
+          // column full width on circuits with no lap).
           //
           // Half and half, so the video is a window you can actually watch
           // rather than a thumbnail parked in a margin. Shares rather than a
           // fixed sidebar width: the split then holds on a wider screen
           // instead of leaving the video behind.
-          if (hasVideo) {
-            return (
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                <div className="flex min-w-0 flex-col gap-6">
-                  {heroCard}
-                  {errorBox}
-                  {signUpCard}
-                </div>
-                {/* The sticky wrapper sits INSIDE the stretched column: a
-                    sticky element that is itself as tall as the row has nothing
-                    left to scroll within. */}
-                <div className="min-w-0">
-                  <div className="lg:sticky lg:top-28">{videoPanel}</div>
-                </div>
-              </div>
-            );
-          }
-
-          // No lap: the page it has always been — driver card top-left, sign-up
-          // next to it, personal history underneath. Members without a linked
-          // driver (and logged-out visitors) get the sign-up list full width.
           return (
-            <div className="space-y-6">
-              {heroCard}
-              {errorBox}
-              {ratingCard ? (
-                <div className="grid gap-6 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
-                  <div className="flex justify-center lg:sticky lg:top-28">{ratingCard}</div>
-                  <div className="min-w-0 space-y-6">
-                    {signUpCard}
-                    {history}
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {signUpCard}
-                  {history}
-                </>
-              )}
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="flex min-w-0 flex-col gap-6">
+                {heroCard}
+                {errorBox}
+                {signUpCard}
+              </div>
+              {/* The sticky wrapper sits INSIDE the stretched column: a sticky
+                  element that is itself as tall as the row has nothing left to
+                  scroll within. */}
+              <div className="min-w-0">
+                <div className="lg:sticky lg:top-28">{videoPanel}</div>
+              </div>
             </div>
           );
           })()}
