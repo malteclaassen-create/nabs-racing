@@ -34,6 +34,7 @@ import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
 import { buildPageMeta, applyPageMeta, buildOrganizationJsonLd, applyJsonLd } from "./lib/pageMeta.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
+import { buildCrawlLinks, applyCrawlLinks } from "./lib/crawlLinks.js";
 import { legacyRedirects, canonicalUrl, applyCanonical, isKnownRoute, applyNoindex } from "./lib/seo.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
@@ -339,6 +340,15 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
         html = applyCanonical(html, await canonicalUrl(req, prisma));
       } catch {
         /* same rule: never lose the page over a tag */
+      }
+      // The links this page renders, written into the root element so they are
+      // in the delivered HTML rather than only in the browser's memory once
+      // React has run (see lib/crawlLinks.js for why that mattered). Only for
+      // addresses that ARE a page: the 404 branch above has nothing to link to.
+      try {
+        html = applyCrawlLinks(html, await buildCrawlLinks(prisma, req.path, req.query));
+      } catch {
+        /* same rule again */
       }
     }
     res.setHeader("Cache-Control", "no-cache"); // matches the static index.html

@@ -7,19 +7,35 @@
 // the handover. A file would carry a hard-coded address that is wrong on three
 // of those, and a sitemap with the wrong host is worse than none at all.
 //
-// What is listed: the public pages, one entry per driver and per team of every
-// PUBLIC season, every season's tables, and every race that has been run.
+// WHAT IS LISTED, and why it is far less than it was.
 //
-// Those last two are the reason this file grew. The listing pages show one season
-// at a time and default to the active one, and the races page opens on one round
-// at a time; both select what they show through a query parameter. So without an
-// entry each, six of seven seasons of tables and about a hundred race results
-// existed on the site but not as addresses, and could not be found. They are
-// spelled exactly as the canonical tag spells them (see lib/seo.js) down to the
-// parameter order, because a sitemap that disagrees with the canonical lists
-// pages that get dropped again.
+// This file used to offer every driver and every team of every public season,
+// plus every round ever run: 770 addresses from a domain three weeks old. Search
+// Console's verdict on that was unambiguous — 646 of them sat at "Gefunden –
+// zurzeit nicht indexiert" for two weeks without moving. Found, never fetched.
+// Not a crawl error, a crawl DECISION: a site with no reputation that hands over
+// hundreds of addresses gets a few sampled, and the rest wait.
 //
-// Private (unpublished) seasons are left out entirely, the same rule the link
+// So the sitemap now argues for the pages that can win, and lets the rest be
+// found the ordinary way (lib/crawlLinks.js puts the site's own links into the
+// delivered HTML, which is what was really missing):
+//
+//   the home page, and each series' four listing pages
+//   the ACTIVE season's drivers, teams and completed rounds
+//   every archived season's three tables, as the way into the archive
+//
+// Left out on purpose: the archive's individual driver, team and race pages
+// (they stay reachable through the season tables and the link block, they are
+// simply not what this file should be spending its credibility on), /live (a
+// page with nothing on it between race nights), and anything `strong` in
+// lib/siteIndex.js rejects — a reserve who never started, the tier-0 reserve
+// pool, a round that has not run.
+//
+// Addresses are spelled exactly as the canonical tag spells them (see
+// lib/seo.js), down to the parameter order: a sitemap that disagrees with the
+// canonical lists pages that get dropped again.
+//
+// Private (unpublished) seasons are absent entirely, the same rule the link
 // previews follow, so an announced-but-hidden season cannot be discovered
 // through here. Member-only areas (profile, downloads, admin) are excluded and
 // additionally turned away in robots.txt.
@@ -28,9 +44,7 @@
 // timestamp, and a made-up one is worse than none (search engines learn to
 // distrust the whole file).
 // ---------------------------------------------------------------------------
-import { getPrivateSeasonIds } from "../services/seasonService.js";
-import { primarySlug } from "./seo.js";
-import { readRaceTypes } from "./raceTypes.js";
+import { getSiteIndex } from "./siteIndex.js";
 
 // Areas that have no business in a search index. Written as a denylist because
 // the interesting pages are all public by default.
@@ -45,6 +59,14 @@ const DISALLOW = [
   "/tools",
   "/auth/", // login callbacks
 ];
+
+// Is this address one a crawler is allowed to have? Same list as above, so the
+// pre-rendered link block (lib/crawlLinks.js) never bothers building an index
+// for a page robots.txt turns away.
+export function isCrawlable(path) {
+  const p = String(path || "/");
+  return !DISALLOW.some((d) => p === d || p.startsWith(d) || p === d.replace(/\/$/, ""));
+}
 
 export function buildRobotsTxt(origin) {
   return [
@@ -68,88 +90,36 @@ const esc = (s) =>
     .replace(/'/g, "&apos;");
 
 export async function buildSitemapXml(prisma, origin) {
+  const index = await getSiteIndex(prisma);
   const urls = ["/"];
 
-  // Series and their seasons. A series with no public season contributes
-  // nothing: its pages would render empty for a visitor.
-  const [series, seasons, priv] = await Promise.all([
-    prisma.series
-      .findMany({ where: { isPublic: true }, select: { id: true, slug: true } })
-      .catch(() => []),
-    prisma.season.findMany({ select: { id: true, seriesId: true } }).catch(() => []),
-    getPrivateSeasonIds(prisma).catch(() => new Set()),
-  ]);
-
-  const publicSeasonIds = new Set(seasons.filter((s) => !priv.has(s.id)).map((s) => s.id));
-  const seasonsOfSeries = new Map(); // seriesId -> [seasonId]
-  for (const s of seasons) {
-    if (!publicSeasonIds.has(s.id)) continue;
-    if (!seasonsOfSeries.has(s.seriesId)) seasonsOfSeries.set(s.seriesId, []);
-    seasonsOfSeries.get(s.seriesId).push(s.id);
+  // A database from before the series model has no Series rows at all; the site
+  // then lives under its flat paths, so list those rather than nothing.
+  if (!index.series.length) {
+    urls.push("/drivers", "/constructors", "/races", "/records");
   }
 
-  // Pre-series databases have no Series rows at all; the site then lives under
-  // its flat paths, so list those instead of nothing.
-  const seriesList = series.length ? series : [];
-  if (!seriesList.length) {
-    urls.push("/drivers", "/constructors", "/races", "/records", "/live");
-  }
+  for (const s of index.series) {
+    // The primary series' home IS the root, so listing /s/<slug> as well would
+    // offer one page under two addresses (and the canonical tag says the short
+    // one wins, which a sitemap should agree with).
+    if (!s.isPrimary) urls.push(s.base);
+    urls.push(`${s.base}/drivers`, `${s.base}/constructors`, `${s.base}/races`, `${s.base}/records`);
 
-  // The primary series' home IS the root, so listing /s/<slug> as well would
-  // offer the same page under two addresses (the canonical tag says the short
-  // one wins, and a sitemap should agree with it).
-  const primary = await primarySlug(prisma).catch(() => null);
-
-  for (const s of seriesList) {
-    const ids = seasonsOfSeries.get(s.id) || [];
-    if (!ids.length) continue;
-    const base = `/s/${s.slug}`;
-    if (s.slug !== primary) urls.push(base);
-    urls.push(`${base}/drivers`, `${base}/constructors`, `${base}/races`, `${base}/records`, `${base}/live`);
-
-    const [drivers, teams] = await Promise.all([
-      prisma.driver
-        .findMany({ where: { seasonId: { in: ids } }, select: { id: true } })
-        .catch(() => []),
-      prisma.team.findMany({ where: { seasonId: { in: ids } }, select: { id: true } }).catch(() => []),
-    ]);
-    for (const d of drivers) urls.push(`${base}/drivers/${encodeURIComponent(d.id)}`);
-    for (const t of teams) urls.push(`${base}/constructors/${encodeURIComponent(t.id)}`);
-
-    // The ARCHIVE. The listing pages above show one season at a time and default
-    // to the active one, so without these the six finished seasons of tables have
-    // no address of their own and cannot be found at all. ?season=<n> is the
-    // address the canonical tag hands them (see lib/seo.js), which is why it is
-    // spelled the same way here: a sitemap that disagrees with the canonical is
-    // a sitemap of pages Google will drop again.
-    const seasons = await prisma.season
-      .findMany({ where: { id: { in: ids } }, select: { id: true, number: true, isActive: true } })
-      .catch(() => []);
-    for (const season of seasons) {
-      // /records is deliberately absent: it is all-time, not per season.
-      if (!season.isActive) {
-        for (const page of ["drivers", "constructors", "races"]) {
-          urls.push(`${base}/${page}?season=${season.number}`);
-        }
-      }
-      // Every round, of every season. The one thing on this site with a date, a
-      // circuit and a winner attached, and until now all of it lived on a single
-      // address. Training sessions are left out on purpose: they score nothing
-      // and there is no result to look up.
-      const races = await prisma.race
-        .findMany({
-          where: { seasonId: season.id },
-          select: { id: true, number: true, isCompleted: true },
-          orderBy: { number: "asc" },
-        })
-        .catch(() => []);
-      const types = await readRaceTypes(prisma, races.map((r) => r.id)).catch(() => new Map());
-      for (const r of races) {
-        if ((types.get(r.id) || "CHAMPIONSHIP") === "TRAINING") continue;
-        if (!r.isCompleted && !season.isActive) continue; // a race that never ran
-        // Same parameter order as the canonical tag builds, to the character.
-        const q = season.isActive ? "" : `season=${season.number}&`;
-        urls.push(`${base}/races?${q}race=${encodeURIComponent(r.id)}`);
+    for (const season of s.seasons) {
+      if (season.isActive) {
+        // THE SEASON BEING RACED. Its people and its rounds are what anyone is
+        // searching for right now, and the pages carry the most content.
+        for (const d of season.drivers) if (d.strong) urls.push(d.href);
+        for (const t of season.teams) if (t.strong) urls.push(t.href);
+        for (const r of season.races) if (r.strong) urls.push(r.href);
+      } else {
+        // THE ARCHIVE, as three tables per season rather than a few hundred
+        // pages. The listing pages show one season at a time and default to the
+        // active one, so without these the finished seasons have no address of
+        // their own at all; with them the archive is one click deep and can be
+        // crawled from the season tables when it earns it.
+        urls.push(season.listing.drivers, season.listing.constructors, season.listing.races);
       }
     }
   }
