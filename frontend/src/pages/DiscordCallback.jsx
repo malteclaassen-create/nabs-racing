@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { api } from "../api/client.js";
+import { api, takeDiscordLoginState } from "../api/client.js";
 import { saveUser } from "../hooks/useAuth.js";
 import { Spinner, ErrorBox } from "../components/ui.jsx";
 
@@ -10,8 +10,26 @@ import { Spinner, ErrorBox } from "../components/ui.jsx";
 // module level per code — every mount awaits the SAME request instead of firing a
 // second one (which Discord would reject with invalid_grant).
 const exchanges = new Map();
-function exchangeOnce(code) {
-  if (!exchanges.has(code)) exchanges.set(code, api.discordCallback(code));
+// The `state` check rides INSIDE this cache rather than sitting in the effect,
+// because reading the stashed nonce also consumes it: a second mount would find
+// an empty sessionStorage and reject a login that was perfectly fine. Cached per
+// code, both mounts share one verdict — the same reason the exchange is cached.
+function exchangeOnce(code, returnedState) {
+  if (!exchanges.has(code)) {
+    const expected = takeDiscordLoginState();
+    if (!expected || expected !== returnedState) {
+      exchanges.set(
+        code,
+        Promise.reject(
+          new Error(
+            "this sign-in did not start in this tab. Open the site and press Sign in with Discord again."
+          )
+        )
+      );
+    } else {
+      exchanges.set(code, api.discordCallback(code));
+    }
+  }
   return exchanges.get(code);
 }
 
@@ -47,7 +65,7 @@ export default function DiscordCallback() {
       return;
     }
     let gone = false;
-    exchangeOnce(code)
+    exchangeOnce(code, params.get("state"))
       .then((res) => {
         saveUser(res.token, res.user);
         if (!gone) navigate("/profile", { replace: true, state: { linked: res.linked } });

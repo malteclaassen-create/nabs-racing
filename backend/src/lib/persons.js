@@ -139,7 +139,12 @@ export async function seasonRowForDriver(prisma, driver, seasonId, discordId) {
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     getLinkedDriverIds(prisma, driver.id),
   ]);
-  const keys = [driver.discordName, driver.name].map(norm).filter(Boolean);
+  // Admin-set handle only. `driver.name` is the member's own display name,
+  // editable through PUT /api/me/profile with no uniqueness check, so including
+  // it let anyone rename themselves onto an unclaimed roster row and then RSVP,
+  // offer that seat and pick its replacement as that driver. Same reasoning as
+  // the season handover in routes/discordAuth.js; the two must stay in step.
+  const keys = [driver.discordName].map(norm).filter(Boolean);
   const ownable = (d) => !d.discordUserId || (discordId && d.discordUserId === discordId);
   return (
     roster.find((d) => linkedIds.includes(d.id) && ownable(d)) ||

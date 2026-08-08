@@ -41,6 +41,41 @@ function discordRedirectUri() {
   return `${window.location.origin}/auth/discord/callback`;
 }
 
+// OAuth `state`: the thing that ties the login Discord sends back to the login
+// this browser actually started. Without it, anyone can hand a victim a link
+// that finishes an authorization the ATTACKER began, and the victim's browser
+// silently ends up holding a session for the attacker's Discord account — every
+// RSVP and profile edit after that lands on the wrong person. The Steam link
+// already does this (backend/src/routes/steamAuth.js); Discord never did.
+//
+// Kept in sessionStorage rather than signed by the server on purpose: the check
+// that matters is "did THIS browser start this flow", and a server-signed token
+// answers a different question, since an attacker can ask the server for one
+// just as easily. sessionStorage is per-tab and same-origin, which is exactly
+// the boundary an attacker cannot reach across. Discord returns the value
+// verbatim, so the callback page can compare and refuse.
+const DISCORD_STATE_KEY = "nabs_discord_state";
+export function newDiscordLoginState() {
+  const nonce =
+    (window.crypto?.randomUUID?.() || String(Math.random()).slice(2) + Date.now().toString(36)).replace(/-/g, "");
+  try {
+    sessionStorage.setItem(DISCORD_STATE_KEY, nonce);
+  } catch {
+    /* private mode with no storage — the backend still gets a state, the
+       callback just cannot verify it and will say so rather than guess */
+  }
+  return nonce;
+}
+export function takeDiscordLoginState() {
+  try {
+    const v = sessionStorage.getItem(DISCORD_STATE_KEY);
+    sessionStorage.removeItem(DISCORD_STATE_KEY);
+    return v;
+  } catch {
+    return null;
+  }
+}
+
 // The series the site is currently viewing (a URL slug), or null for the
 // active (primary) series. Set by the SeriesProvider; appended to every
 // season-scoped read so all data is transitively series-scoped. Mirrors
@@ -436,7 +471,10 @@ export const api = {
   // discord login. The redirect URI is derived from the current origin so login
   // works on localhost and over a tunnel without changing the backend .env.
   discordConfig: () =>
-    request(`/auth/discord/config?redirect=${encodeURIComponent(discordRedirectUri())}`),
+    request(
+      `/auth/discord/config?redirect=${encodeURIComponent(discordRedirectUri())}` +
+        `&state=${encodeURIComponent(newDiscordLoginState())}`
+    ),
   // The viewed series rides along so the login's season handover lands the
   // member on THAT series' roster (fallback: the primary series).
   discordCallback: (code) =>

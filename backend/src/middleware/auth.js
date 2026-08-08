@@ -4,20 +4,31 @@ import { isBanned } from "../lib/members.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
 import { getActiveSeason } from "../services/seasonService.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
+import { IS_DEPLOYED } from "../lib/deployment.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 
 // Every token on the site is signed with JWT_SECRET, so anyone who knows it
 // can forge an admin session. The dev fallback above and the placeholder
 // values from .env.example / DEPLOYMENT.md are public knowledge (the source
-// has been shared). On a real deployment that is fatal — so if the server is
-// evidently NOT running as a local dev setup (production mode, or CORS opened
-// for an https domain as DEPLOYMENT.md step 2 does), refuse to start until a
-// real secret is configured. Local development is unaffected.
-const secretIsPlaceholder = !process.env.JWT_SECRET || /change-me|<hier|<put/i.test(process.env.JWT_SECRET);
-const looksDeployed =
-  process.env.NODE_ENV === "production" || /https:\/\//i.test(process.env.CORS_ORIGIN || "");
-if (secretIsPlaceholder && looksDeployed) {
+// has been shared). On a real deployment that is fatal, so refuse to start
+// until a real secret is configured. Local development is unaffected.
+//
+// What counts as "a real deployment" now comes from lib/deployment.js. It used
+// to be decided here, and it missed Railway: `start:prod` never sets NODE_ENV,
+// so unless the operator had also put an https CORS origin in place, the live
+// server looked like a laptop and the guard stayed quiet on the one host it
+// was written for.
+//
+// Every placeholder the project's own documentation hands out has to be in
+// here, or the guard waves through the exact value it was written to catch.
+// DEPLOYMENT.md:55 says "<put a long, random string here>" and HANDOVER.md:85
+// says "REPLACE-ME" — the second one used to pass, and HANDOVER.md is the
+// document the incoming league admin actually follows. It also promises, at
+// line 97, that the server refuses to start on it. Now it does.
+const secretIsPlaceholder =
+  !process.env.JWT_SECRET || /change-me|replace-me|<hier|<put/i.test(process.env.JWT_SECRET);
+if (secretIsPlaceholder && IS_DEPLOYED) {
   throw new Error(
     "JWT_SECRET in backend/.env is still the placeholder. Without your own random " +
       "key, anyone could forge admin access. Generate one with: " +

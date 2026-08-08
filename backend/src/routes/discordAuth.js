@@ -48,14 +48,28 @@ function norm(s) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-// GET /api/auth/discord/config?redirect=<origin>/auth/discord/callback -> { enabled, url? }
+// The OAuth `state` the caller wants carried through the flow. Discord echoes
+// this back untouched, and the callback PAGE compares it against the value it
+// stashed for this tab (frontend/src/api/client.js) — that pairing is what
+// stops an attacker finishing their own authorization inside a victim's
+// browser. Only the shape is our business here: a plain token, long enough to
+// be unguessable, with nothing in it that could escape the query string.
+function pickState(raw) {
+  const val = String(raw || "").trim();
+  return /^[A-Za-z0-9_-]{16,128}$/.test(val) ? val : null;
+}
+
+// GET /api/auth/discord/config?redirect=<origin>/auth/discord/callback&state=<nonce>
+//   -> { enabled, url? }
 router.get("/config", (req, res) => {
   if (!enabled()) return res.json({ enabled: false });
   const redirectUri = pickRedirect(req.query.redirect);
+  const state = pickState(req.query.state);
   const url =
     `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(CLIENT_ID)}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&response_type=code&scope=${encodeURIComponent(SCOPE)}`;
+    `&response_type=code&scope=${encodeURIComponent(SCOPE)}` +
+    (state ? `&state=${encodeURIComponent(state)}` : "");
   res.json({ enabled: true, url });
 });
 
@@ -142,7 +156,21 @@ router.post("/callback", async (req, res, next) => {
       // Prefer an explicit cross-season person link (admin-curated identity):
       // the linked, unclaimed active-season row wins over the name matcher.
       const linkedIds = await getLinkedDriverIds(prisma, driver.id);
-      const keys = [norm(me.username), norm(me.global_name), norm(driver.discordName), norm(driver.name)].filter(Boolean);
+      // The key this match is allowed to travel on is the ADMIN-set handle, and
+      // nothing else. It used to include the live Discord username, the Discord
+      // global name and the driver's own display name — all three of which the
+      // member changes at will (the first two on Discord, the third through
+      // PUT /api/me/profile, which takes any 40 characters and checks nothing).
+      // So: rename yourself to a driver who has never logged in, sign in, and
+      // this branch handed you their roster row permanently, discordUserId and
+      // all. The same impersonation hole the fresh-match matcher was deleted for
+      // (see the note above), still open one branch further down.
+      //
+      // discordName is written only by an admin (routes/admin.js), so it cannot
+      // be steered from outside. The cross-season person link above is tried
+      // first and covers the whole current roster anyway; this is the fallback
+      // for a row the admin has not linked yet.
+      const keys = [norm(driver.discordName)].filter(Boolean);
       const successor =
         roster.find((d) => !d.discordUserId && linkedIds.includes(d.id)) ||
         roster.find((d) => !d.discordUserId && [norm(d.discordName), norm(d.name)].some((k) => keys.includes(k)));

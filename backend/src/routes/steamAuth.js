@@ -32,6 +32,7 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma.js";
 import { requireUser, resolveDriverId } from "../middleware/auth.js";
+import { IS_DEPLOYED } from "../lib/deployment.js";
 import {
   applyMemberSteamId,
   dbClearSteamId,
@@ -88,17 +89,9 @@ function allowedOrigins() {
 // Anything that looks like a real deployment must NOT get the loopback escape
 // hatch below. NODE_ENV alone is not enough: start:prod never sets it, so the
 // live server would look like a dev box and accept a return address that never
-// touches the league's domain. Same probe the rest of the codebase uses
-// (middleware/auth.js for the JWT guard, services/liveTiming.js for the demo).
-const ON_RAILWAY = !!(
-  process.env.RAILWAY_ENVIRONMENT ||
-  process.env.RAILWAY_PROJECT_ID ||
-  process.env.RAILWAY_SERVICE_ID
-);
-const isDev =
-  process.env.NODE_ENV !== "production" &&
-  !ON_RAILWAY &&
-  !/https:\/\//i.test(process.env.CORS_ORIGIN || "");
+// touches the league's domain. The probe itself lives in lib/deployment.js —
+// it was copied into three files and had already drifted apart there.
+const isDev = !IS_DEPLOYED;
 
 // The page in OUR frontend that Steam returns to. Same trick as the Discord
 // login: the browser lands on a route of the site, that page hands the result
