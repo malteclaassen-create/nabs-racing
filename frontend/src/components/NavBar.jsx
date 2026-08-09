@@ -81,7 +81,7 @@ function navLinks(p) {
 // the items (see the sliding span in the desktop nav), so the item itself only
 // switches its text colour and carries the `is-active` marker the pill follows.
 const desktopLinkClass = ({ isActive }) =>
-  `nav-link relative flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
+  `relative flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
     isActive ? "is-active text-dark" : "text-medium hover:bg-surface2"
   }`;
 
@@ -237,7 +237,7 @@ function StandingsNav({ seriesPath }) {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`nav-link flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
+        className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
           active ? "is-active text-dark" : "text-medium hover:bg-surface2"
         }`}
       >
@@ -267,43 +267,226 @@ function StandingsNav({ seriesPath }) {
   );
 }
 
-// The rainbow accent line doubles as the page's scroll indicator (the native
-// scrollbar is hidden, see index.css): a full-width gradient strip slides in
-// from the left as you scroll, so the colours reveal instead of stretching.
-// Updated via transform in a rAF-throttled passive scroll handler — no React
+// The accent line under the nav doubles as the page's scroll indicator (the
+// native scrollbar is hidden, see index.css): a full-width strip slides in from
+// the left as you scroll, so the colour reveals instead of stretching. Written
+// via transform from a rAF-throttled passive scroll handler — no React
 // re-renders, no layout work, compositor-only motion.
+//
+// TWO KINDS OF CHANGE, and the line has to tell them apart.
+//
+// Scrolling is the line's whole job: it follows the wheel exactly, frame for
+// frame, with nothing in between. A tween there would just feel like lag.
+//
+// But the reading also moves when the PAGE moves under it, and that is not
+// scrolling: a click on a nav item jumps to the top (see AppRoutes), and a
+// shorter page suddenly makes the same scrollTop a much larger fraction of it —
+// pick a finished race, scroll into the results, then open an upcoming round,
+// which has a fraction of the content. The line used to snap to the new reading
+// between two frames, which read as it being yanked away rather than as the
+// page having changed. Those are eased instead, over about a third of a second
+// — long enough to be read as the line travelling rather than as a cut, short
+// enough that it has finished before the eye reaches the new page's first line.
+//
+// HOW IT TELLS THEM APART, given that a scroll event looks identical either
+// way — the browser reports the same thing whether a wheel turned or the page
+// scrolled itself. It asks about the READER, not about the page: was there a
+// wheel, a finger, one of the scroll keys, or is a pointer being held down
+// (which is what dragging the custom scrollbar in ScrollBar.jsx looks like)?
+// If yes, this is the reader and the line follows exactly. If nothing at all
+// came from the reader, nobody asked for this and the line travels.
+//
+// A held pointer counts, a click does not: the button is still down while a
+// scrollbar is being dragged, and already up by the time a click on a nav link
+// turns into a scroll to the top. Same event, opposite answers, told apart by
+// when the scroll actually happens.
+//
+// Momentum is why the quarter-second window RENEWS on every scroll event that
+// is already the reader's: a trackpad flick or a finger on a phone keeps the
+// page moving long after the input stopped, and that is still their scroll.
+// One unbroken chain from the wheel to the last pixel of coasting; a pause of
+// a quarter second ends it.
+//
+// TWO EARLIER ATTEMPTS AT THIS QUESTION, both wrong, both worth not repeating:
+//
+//   "Was there a route change?" — misses the Races page entirely. Picking
+//   another round there is not a navigation: the panel is local state (see
+//   Races.jsx), the address never changes, and the page then puts the scroll
+//   position right itself.
+//
+//   "Did the page change length?" — right idea, and it disarmed itself. The
+//   body's ResizeObserver below fires BEFORE the scroll event does, and it
+//   noted the new height as it went; the scroll event that followed compared
+//   against that and found nothing changed, called itself the reader, snapped,
+//   and cancelled the very hold the observer had just started. The line ended
+//   up exactly where it should be, instantly, which is what it was doing
+//   before any of this was written.
+//
+// AND IT WAITS FOR THE PAGE TO STOP MOVING FIRST. A page swap is not one event
+// but a burst of them: the outgoing panel unmounts, the browser clamps the
+// scroll position to a page that is briefly the wrong length, the new panel
+// mounts, images and data land. Every one of those is a different reading, and
+// easing to each in turn is visible — pick a finished race, scroll into the
+// results, then open an upcoming round, and the line ran PAST where it belonged
+// and crept back. So a page-driven change starts a hold instead: the line keeps
+// showing what it showed, and only once nothing has moved for a beat does it
+// travel, once, to the reading that is actually true. Capped, in case something
+// on the page never stops resizing.
+const PROGRESS_EASE_MS = 320;
+const PROGRESS_HOLD_MS = 110; // quiet needed before committing to a new reading
+const PROGRESS_HOLD_MAX_MS = 400; // …but never hold longer than this
+const PROGRESS_INPUT_MS = 250; // how long a wheel/finger/key keeps the line instant
+
 function ScrollProgressLine() {
   const innerRef = useRef(null);
+  // No route awareness in here on purpose. A navigation is just one of the many
+  // ways the page can move without the reader touching anything, and the rule
+  // above covers all of them at once.
   useEffect(() => {
-    let raf = 0;
-    const update = () => {
-      raf = 0;
+    const el = innerRef.current;
+    if (!el) return;
+    let raf = 0; // the scroll-event throttle
+    let tween = 0; // the running ease, if any
+    let shown = null; // what the line currently reads, 0..1
+    let lastInput = 0; // when the reader last did something that scrolls
+    let pointerDown = false; // a button held down — a scrollbar drag, or a text selection
+
+    const target = () => {
       const doc = document.documentElement;
       const max = doc.scrollHeight - doc.clientHeight;
       // Unscrollable pages show the full line, like the old static accent.
-      const p = max > 4 ? Math.min(1, doc.scrollTop / max) : 1;
-      if (innerRef.current) innerRef.current.style.transform = `translateX(${(p - 1) * 100}%)`;
+      return max > 4 ? Math.min(1, Math.max(0, doc.scrollTop / max)) : 1;
     };
-    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
-    update();
+    const paint = (p) => {
+      shown = p;
+      el.style.transform = `translateX(${(p - 1) * 100}%)`;
+    };
+    const stopTween = () => {
+      if (tween) cancelAnimationFrame(tween);
+      tween = 0;
+    };
+    // Ease-out cubic: leaves at speed, arrives without a bump. Re-aimed rather
+    // than restarted if something moves again mid-ease (data landing right
+    // after a navigation does exactly that), so it never stacks.
+    const easeTo = (to) => {
+      const from = shown ?? to;
+      if (Math.abs(to - from) < 0.004) { stopTween(); paint(to); return; }
+      stopTween();
+      const start = performance.now();
+      const step = (now) => {
+        const t = Math.min(1, (now - start) / PROGRESS_EASE_MS);
+        paint(from + (to - from) * (1 - (1 - t) ** 3));
+        tween = t < 1 ? requestAnimationFrame(step) : 0;
+      };
+      tween = requestAnimationFrame(step);
+    };
+    // Lite graphics and reduced motion get the old instant behaviour.
+    const still = () =>
+      document.documentElement.classList.contains("fx-lite") ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+    // The hold: what turns a burst of page motion into one movement.
+    let hold = 0;
+    let holdSince = 0;
+    const commit = () => {
+      clearTimeout(hold);
+      hold = 0;
+      holdSince = 0;
+      easeTo(target());
+    };
+    const dropHold = () => {
+      clearTimeout(hold);
+      hold = 0;
+      holdSince = 0;
+    };
+    const aimSoon = () => {
+      const now = performance.now();
+      if (!holdSince) holdSince = now;
+      // Something is still moving after the cap — commit to what we have rather
+      // than leave the line frozen on a reading that stopped being true.
+      if (now - holdSince >= PROGRESS_HOLD_MAX_MS) { commit(); return; }
+      clearTimeout(hold);
+      hold = setTimeout(commit, PROGRESS_HOLD_MS);
+    };
+
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const now = performance.now();
+        const byReader = pointerDown || now - lastInput < PROGRESS_INPUT_MS;
+        if (!still() && !byReader) { aimSoon(); return; }
+        // Their scroll, and still going: keep the chain alive through the
+        // coasting, and follow it exactly. This also beats anything the page
+        // was in the middle of doing — someone scrolling a panel that is still
+        // growing under them is scrolling.
+        lastInput = now;
+        dropHold();
+        stopTween();
+        paint(target());
+      });
+    };
+    const onReflow = () => {
+      if (still()) { dropHold(); stopTween(); paint(target()); return; }
+      aimSoon();
+    };
+
+    // The scroll keys, and only those: any other key press is somebody typing,
+    // which moves nothing. (Space scrolls a page, but not while it is being
+    // typed into a message — hence the check for what has focus.)
+    const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " ", "Spacebar"]);
+    const noteInput = () => { lastInput = performance.now(); };
+    const onKey = (e) => {
+      const t = e.target;
+      const typing = t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName || "");
+      if (!typing && SCROLL_KEYS.has(e.key)) noteInput();
+    };
+    const onPointerDown = () => { pointerDown = true; };
+    const onPointerUp = () => { pointerDown = false; };
+
+    paint(target());
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    // Content growing/shrinking (data loading in, route changes) moves the
-    // scroll range without a scroll event — watch the body's size too.
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(onScroll) : null;
+    window.addEventListener("resize", onReflow);
+    window.addEventListener("wheel", noteInput, { passive: true });
+    // touchMOVE, not touchstart: a tap starts a touch too, and tapping a round
+    // on the Races page is exactly the case this has to keep its hands off. A
+    // finger that has actually travelled is a scroll; one that has only landed
+    // is a click waiting to happen.
+    window.addEventListener("touchmove", noteInput, { passive: true });
+    window.addEventListener("keydown", onKey);
+    // Capture, so a handler that stops the event on its way down the tree
+    // cannot leave the flag stuck on.
+    window.addEventListener("pointerdown", onPointerDown, { capture: true, passive: true });
+    window.addEventListener("pointerup", onPointerUp, { capture: true, passive: true });
+    window.addEventListener("pointercancel", onPointerUp, { capture: true, passive: true });
+    // Content growing/shrinking (data loading in, a route swapping pages) moves
+    // the scroll range without a scroll event — watch the body's size too.
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(onReflow) : null;
     ro?.observe(document.body);
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onReflow);
+      window.removeEventListener("wheel", noteInput);
+      window.removeEventListener("touchmove", noteInput);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointerDown, { capture: true });
+      window.removeEventListener("pointerup", onPointerUp, { capture: true });
+      window.removeEventListener("pointercancel", onPointerUp, { capture: true });
       ro?.disconnect();
       if (raf) cancelAnimationFrame(raf);
+      dropHold();
+      stopTween();
     };
   }, []);
   return (
     <div className="h-1 w-full overflow-hidden">
+      {/* The house accent, and only it. The gradient it replaces ran through
+          amber into sky blue, which is three colours the site uses nowhere else
+          and which made the busiest 4px on the page look like a loading bar
+          from somewhere else. Follows a series' own accent via --c-brand. */}
       <div
         ref={innerRef}
-        className="h-full w-full bg-gradient-to-r from-primary via-amber-500 to-sky-600 will-change-transform"
+        className="h-full w-full bg-brand will-change-transform"
         style={{ transform: "translateX(-100%)" }}
       />
     </div>

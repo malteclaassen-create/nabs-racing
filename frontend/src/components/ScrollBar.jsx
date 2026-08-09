@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 
 // The scrollbar, given back.
 //
-// The native one is hidden site-wide (see index.css — the rainbow line under
+// The native one is hidden site-wide (see index.css — the accent line under
 // the nav took over as the position indicator), which left nothing to grab.
 // This is a plain track down the right edge, full height of the window, with a
 // thumb on it: it travels as you scroll, and you can drag it yourself.
@@ -15,7 +15,7 @@ import { useEffect, useRef } from "react";
 // NOTE ON SMOOTHNESS — the reason there is not a single piece of React state in
 // here. A scroll handler that calls setState runs a render of everything below
 // it sixty times a second, which stutters this bar AND anything else animating
-// off the same scroll (the rainbow progress line above the nav, in particular).
+// off the same scroll (the progress line above the nav, in particular).
 // So the component renders once and from then on writes to the DOM directly,
 // inside requestAnimationFrame, which is what scroll-linked movement wants.
 

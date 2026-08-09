@@ -138,8 +138,8 @@
   --z-tour: 70; /* the guided tour points AT overlays, so it sits over them */
 }
 
-/* The native scrollbar is hidden site-wide: the rainbow accent line under the
-   nav doubles as the scroll indicator (see ScrollProgressLine in NavBar.jsx).
+/* The native scrollbar is hidden site-wide: the accent line under the nav
+   doubles as the scroll indicator (see ScrollProgressLine in NavBar.jsx).
    No scrollbar also means no gutter, so the old scrollbar-gutter reservation
    against layout shift is no longer needed. Scrolling itself is untouched. */
 html {
@@ -736,39 +736,13 @@ body::before {
   text-align: center;
 }
 
-/* --- Animated nav underline ---------------------------------------- */
-/* A brand underline that wipes in from the left on hover and stays lit for the
-   active route. Layered under the existing pill styles in NavBar.
-   The wipe animates `width`, NOT `transform: scaleX`, on purpose: a transform
-   promotes the pseudo to its own GPU layer on hover, and creating that layer
-   makes the browser re-snap the parent's text to the device-pixel grid at
-   fractional browser zoom (110/120/140%) — the label and chevron visibly
-   nudged sideways for a frame. A width wipe stays on the main thread with no
-   layer promotion, so the text never moves. The pseudo is absolutely
-   positioned, so animating its width can't reflow the label either. */
-.nav-link {
-  position: relative;
-}
-.nav-link::after {
-  content: "";
-  position: absolute;
-  left: 12px;
-  right: auto;
-  bottom: 5px;
-  width: 0;
-  height: 2px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, rgb(var(--c-brand)), #4251a8);
-  transition: width var(--t-base) var(--e-soft);
-}
-.nav-link:hover::after {
-  width: calc(100% - 24px);
-}
-/* Active route already wears the brand pill, so suppress the hover underline
-   there to avoid doubling up the indicator. */
-.nav-link[aria-current="page"]::after {
-  display: none;
-}
+/* The nav items used to grow a second indicator on hover: a 2px underline that
+   wiped in from the left, in a gradient from the brand pink to indigo. Removed
+   on 2026-08-09. Hovering a nav item already lifts its background (surface2),
+   and the active page already wears the gliding brand pill — the underline was
+   a third mark for the same two states, in the only two-colour gradient left in
+   the chrome, drawing the eye to whatever the pointer happened to cross. The
+   lighter background is enough. */
 
 /* --- Mobile menu drop-down ----------------------------------------- */
 /* The burger panel slides + fades down over the page; its scrim just fades in.
