@@ -372,9 +372,15 @@ function Footer() {
 function SeriesScopedApp() {
   const { slug } = useSeries();
   return (
-    <SeasonProvider key={slug || "default"}>
-      <TitleSync />
-      <TourProvider>
+    // The tour sits ABOVE the season key, and has to. A tour walks from page to
+    // page, and the first hop off an unprefixed page (say "/" to the standings)
+    // puts a /s/<slug> in the address for the first time — which changes this
+    // key, remounts everything under it, and took the running tour with it. The
+    // tour would simply vanish one step in, on the very step that navigates.
+    // Nothing in here reads the season, so it loses nothing by sitting outside.
+    <TourProvider>
+      <SeasonProvider key={slug || "default"}>
+        <TitleSync />
         {/* Confirmations render as the site's own dialog rather than the
             browser's. High in the tree so any page can ask. */}
         <ConfirmProvider>
@@ -400,8 +406,8 @@ function SeriesScopedApp() {
             from the "Feedback" row in the burger menu. */}
         <FeedbackWidget />
         </ConfirmProvider>
-      </TourProvider>
-    </SeasonProvider>
+      </SeasonProvider>
+    </TourProvider>
   );
 }
 

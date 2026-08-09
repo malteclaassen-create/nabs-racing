@@ -405,7 +405,7 @@ export default function DriverStandings() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div data-tour="standings-views" className="mb-4 flex flex-wrap items-center justify-between gap-3">
         {multiTier ? (
           <SlidingTabs
             items={tierFilters.map((t) => ({ key: t.id, label: t.label }))}

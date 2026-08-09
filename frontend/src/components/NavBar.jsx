@@ -9,6 +9,7 @@ import SeriesSwitcher from "./SeriesSwitcher.jsx";
 import NotificationBell from "./NotificationBell.jsx";
 import GlobalSearch from "./GlobalSearch.jsx";
 import { openFeedback } from "./FeedbackWidget.jsx";
+import { useTour } from "./Tour.jsx";
 import { DriverAvatar } from "./ui.jsx";
 import { useSlidingHighlight } from "./SlidingTabs.jsx";
 
@@ -70,9 +71,10 @@ function navLinks(p) {
     // Drivers + Constructors are folded into one "Standings" item with a
     // hover flyout (see StandingsNav); on mobile they show as two links.
     { standings: true, label: "Standings" },
-    { to: p("/races"), label: "Races" },
-    { to: p("/attendance"), label: "Attendance" },
-    { to: p("/live"), label: "Live" },
+    // `tour` marks the ones the newcomer tour walks you along (see Tour.jsx).
+    { to: p("/races"), label: "Races", tour: "nav-races" },
+    { to: p("/attendance"), label: "Attendance", tour: "nav-attendance" },
+    { to: p("/live"), label: "Live", tour: "nav-live" },
     { to: "/downloads", label: "Race Info" },
   ];
 }
@@ -183,6 +185,15 @@ function StandingsNav({ seriesPath }) {
   const location = useLocation();
   const ref = useRef(null);
   const closeTimer = useRef(null);
+  // A running tour holds this open. Everything that normally shuts it — the
+  // pointer leaving on its way somewhere else, a press anywhere outside — is
+  // exactly what a reader does during the step that talks about these three
+  // links: they move to the coach-mark and press its button. The flyout shut
+  // itself before they got there, the tour lost its target, and the step that
+  // was supposed to show the standings quietly became a step about nothing.
+  // Only a navigation closes it while a tour is on, which is the one case that
+  // means the reader is done with it.
+  const { active: tourActive } = useTour();
   const pathNoSeries = location.pathname.replace(/^\/s\/[^/]+/, "") || "/";
   const active = STANDINGS_PAGES.some((p) => pathNoSeries.startsWith(p));
 
@@ -191,18 +202,22 @@ function StandingsNav({ seriesPath }) {
   // keeps the pointer inside the hover region across the gap).
   const cancelClose = () => { if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; } };
   const openNow = () => { cancelClose(); setOpen(true); };
-  const closeSoon = () => { cancelClose(); closeTimer.current = setTimeout(() => setOpen(false), 140); };
+  const closeSoon = () => {
+    if (tourActive) return;
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), 140);
+  };
 
   useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => () => cancelClose(), []);
   useEffect(() => {
     if (!open) return;
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onDown = (e) => { if (!tourActive && ref.current && !ref.current.contains(e.target)) setOpen(false); };
     const onKey = (e) => e.key === "Escape" && setOpen(false);
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey); };
-  }, [open]);
+  }, [open, tourActive]);
 
   // One flyout row, styled to match the series/season switcher menus exactly:
   // an icon badge (brand-filled while active), a display title, and a mono
@@ -211,8 +226,8 @@ function StandingsNav({ seriesPath }) {
     `flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition ${
       isActive ? "bg-accent/10 ring-1 ring-inset ring-accent/40" : "hover:bg-surface2"
     }`;
-  const row = (to, icon, title, sub) => (
-    <NavLink to={to} role="menuitem" className={itemCls}>
+  const row = (to, icon, title, sub, tour) => (
+    <NavLink to={to} role="menuitem" data-tour={tour} className={itemCls}>
       {({ isActive }) => (
         <>
           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isActive ? "bg-brand text-ink" : "bg-surface2 text-medium"}`}>
@@ -237,6 +252,7 @@ function StandingsNav({ seriesPath }) {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
+        data-tour="nav-standings"
         className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
           active ? "is-active text-dark" : "text-medium hover:bg-surface2"
         }`}
@@ -254,11 +270,12 @@ function StandingsNav({ seriesPath }) {
       <div className={`absolute left-0 top-full z-dropdown pt-2 ${open ? "" : "pointer-events-none"}`}>
         <div
           role="menu"
+          data-tour="nav-standings-menu"
           className={`w-64 origin-top-left rounded-2xl border border-border bg-card p-1.5 shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-quick ${
             open ? "visible scale-100 opacity-100" : "invisible scale-[0.97] opacity-0"
           }`}
         >
-          {row(seriesPath("/drivers"), <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>, "Drivers", "Driver standings")}
+          {row(seriesPath("/drivers"), <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>, "Drivers", "Driver standings", "nav-drivers")}
           {row(seriesPath("/constructors"), <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>, "Constructors", "Constructor standings")}
           {row(seriesPath("/records"), <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>, "Hall of Fame", "All-time records")}
         </div>
@@ -498,6 +515,10 @@ export default function NavBar() {
   // Members get the extra menu row to their own feedback threads; a visitor has
   // no threads to read (there is no account for an answer to land in).
   const { isLoggedIn } = useAuth();
+  // …and neither has a member who has never written one. "Your messages" only
+  // earns its row once there is a message in it, otherwise it is a row that
+  // leads to an empty page.
+  const [hasThreads, setHasThreads] = useState(false);
   // One state machine, so open/closing can never contradict each other:
   // "closed" -> "open" (panel mounts, drop-in plays) -> "closing" (stays
   // mounted while the drop-out plays) -> "closed" (unmount). Tapping the
@@ -524,6 +545,21 @@ export default function NavBar() {
     const id = setInterval(load, 45_000);
     return () => { alive = false; clearInterval(id); };
   }, []);
+
+  // Asked the moment the menu opens, and only for a member — a menu row is not
+  // a reason to hit the API on every page load for every visitor. Re-asked on
+  // each open while the answer is still "none", so the row turns up right after
+  // somebody writes their first one; once it is there it stays for the session.
+  useEffect(() => {
+    if (!open || !isLoggedIn || hasThreads) return;
+    let alive = true;
+    api
+      .myFeedback()
+      .then((d) => alive && setHasThreads((d?.items || []).length > 0))
+      // A missing row is the quiet failure here, which is the right one.
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [open, isLoggedIn, hasThreads]);
 
   const openMenu = () => setMenu("open");
   // Functional update: only an OPEN menu starts closing, so a stray second
@@ -693,6 +729,7 @@ export default function NavBar() {
                   desktopLinkClass({ isActive: isActive || l.alsoActiveOn === location.pathname })
                 }
                 ref={l.label === "Live" ? liveRef : undefined}
+                data-tour={l.tour}
                 title={l.label === "Live" && liveNow ? `${liveNow} on track right now` : undefined}
               >
                 {l.label}
@@ -819,7 +856,7 @@ export default function NavBar() {
                   openFeedback();
                 }}
               />
-              {isLoggedIn && (
+              {isLoggedIn && hasThreads && (
                 <MobileRow to="/feedback" icon={NAV_ICONS.feedback} label="Your messages" sub="What the admins replied" />
               )}
             </div>

@@ -779,7 +779,10 @@ export default function Races() {
           // column (and the whole page) past the viewport on phones
           <div className="grid grid-cols-1 gap-3 sm:gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]">
             {/* race list — horizontal on phones, vertical sidebar from lg up */}
-            <aside className="lg:sticky lg:top-28 lg:self-start">
+            {/* The tour points at the rounds list, not at the whole explorer:
+                a spotlight the size of the viewport dims nothing and singles
+                out nothing, and this is the part you actually operate. */}
+            <aside data-tour="race-rounds" className="lg:sticky lg:top-28 lg:self-start">
               {/* The label row shares the exact height of the round header on
                   the right (h-8 title line + mb-4), so the first round button
                   and the results table start flush on one line. */}

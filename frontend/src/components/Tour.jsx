@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.js";
+import { useSeriesPath } from "../context/SeriesContext.jsx";
 
 // ---------------------------------------------------------------------------
 // Guided tours. Instead of a notification dropping you straight onto a page,
@@ -13,7 +14,10 @@ import { useAuth } from "../hooks/useAuth.js";
 // click the engine just waits for the next step's target to appear.
 //
 // A tour is kicked off from anywhere via `useTour().startTour("<name>")`
-// (the notification bell turns a `tour:<name>` link into exactly that call).
+// (the notification bell turns a `tour:<name>` link into exactly that call),
+// or by a `?tour=<name>` in the address, which is also how a tour is previewed
+// without waiting for the notification that normally offers it. The parameter
+// is stripped once read, so a refresh doesn't restart it.
 // ---------------------------------------------------------------------------
 
 const TourCtx = createContext({ startTour: () => {}, active: false });
@@ -27,9 +31,153 @@ const FIND_TIMEOUT_MS = 5000;
 // The tour catalogue. Each step: a `target` selector to spotlight, the text to
 // show, and `to` — where clicking the target leads, which doubles as the
 // "skip ahead" destination if we never find the target. `final` ends the tour.
-function buildTour(name, { user }) {
+//
+// `go` is the other kind of step: instead of waiting for the reader to click a
+// link, the tour drives there itself and then points at something on the page
+// it arrived at. Which kind to use is not a style choice. A tour that teaches
+// somebody HOW to reach a page has to make them walk it (that is the whole
+// lesson — see "my-rating"). A tour that shows somebody AROUND should not make
+// them hunt for the next nav item, and on a phone it could not anyway: the nav
+// lives inside the burger menu, so every hop would need the menu opened first.
+//
+// The step list is built per device rather than marking desktop-only steps
+// optional, so "step 3 of 7" counts the steps this reader will actually see.
+function buildTour(name, { user, p, desktop }) {
   const driverId = user?.driverId;
   switch (name) {
+    // The "show me around" tour, offered on the landing page. Written for
+    // somebody who has never seen the site and may not have an account: every
+    // stop is public, and it ends where a newcomer actually has to go next.
+    // The two shapes are not a compromise, they are what each device can do.
+    //
+    // On a DESKTOP the nav bar is on screen the whole time, so the tour points
+    // at the item you would press and lets you press it. That is the part worth
+    // teaching — where things live — and it also sets the pace: nothing moves
+    // until the reader moves it, so the page changes when they expect it to.
+    //
+    // On a PHONE all six of those items are inside the burger menu, and the
+    // menu closes itself on every navigation. Walking the nav there would mean
+    // open menu, press, arrive, open menu again, six times over. So it points
+    // at the menu once, says that everything is in there, and then drives
+    // itself, showing the thing on each page rather than the way to it.
+    //
+    // The order is a season, in the order it happens: where everyone stands,
+    // the rounds behind us, saying you're in for the next one, and then the
+    // night it is run. It used to put race night before signing up for it.
+    case "newcomer":
+      return desktop
+        ? [
+            {
+              target: '[data-tour="nav-search"]',
+              title: "Search everything",
+              body: "Any driver, team, race or season. It reaches across all seasons, so a result from years ago is one word away.",
+            },
+            {
+              target: '[data-tour="nav-standings"]',
+              title: "Standings live under here",
+              body: "Two tables: the drivers' championship and the constructors'. Open it.",
+            },
+            {
+              // The flyout the step above just opened, spotlighted whole so all
+              // three choices are lit rather than one of them. Nothing to press
+              // on the box itself, hence nextGoes.
+              target: '[data-tour="nav-standings-menu"]',
+              title: "Three tables",
+              body: "The drivers' championship, the constructors', and the all-time records across every season. Pick one, or press Next for the drivers'.",
+              to: p("/drivers"),
+              nextGoes: true,
+            },
+            {
+              target: '[data-tour="nav-races"]',
+              title: "Every round",
+              body: "The season's calendar, and every round that has been run: full result, fastest lap, who stood in for whom.",
+              to: p("/races"),
+            },
+            {
+              // Sign-up runs one round at a time, so between rounds this item
+              // is not in the nav at all and the step takes itself out.
+              target: '[data-tour="nav-attendance"]',
+              title: "Saying you're in",
+              body: "Before each round everyone answers here, and a driver who can't make it can hand their seat to a reserve.",
+              to: p("/attendance"),
+              optional: true,
+              skipMs: 1200,
+            },
+            {
+              target: '[data-tour="nav-live"]',
+              title: "Race night",
+              body: "While a race is on this page is live timing: positions, gaps, tyres and the pit lane, straight off the server.",
+              to: p("/live"),
+            },
+            {
+              target: '[data-tour="feedback-fab"]',
+              title: "Something broken?",
+              body: "This corner button goes straight to the league admins. Anyone can write, account or not.",
+            },
+            {
+              go: "/",
+              to: "/",
+              target: '[data-tour="welcome-cta"]',
+              title: "That's the tour",
+              body: user
+                ? "Have a look around. The rest of the site is yours to poke at."
+                : "The league runs on Discord: that's where the sign-ups, the results and the arguing happen. Come and say hello.",
+              final: true,
+              // Finish at the top of the page, not halfway down it.
+              top: true,
+            },
+          ]
+        : [
+            {
+              target: '[data-tour="nav-burger"]',
+              title: "Everything is in here",
+              body: "Standings, the calendar, live timing, sign-ups. Have a look, then come back with Next and I'll show you the important ones.",
+            },
+            {
+              go: p("/drivers"),
+              to: p("/drivers"),
+              target: '[data-tour="standings-views"]',
+              title: "The championship",
+              body: "Points as they stand. This switch turns the table into a round-by-round grid, or into the drivers' rating cards.",
+            },
+            {
+              go: p("/races"),
+              to: p("/races"),
+              target: '[data-tour="race-rounds"]',
+              title: "Every round",
+              body: "Pick a round here and it opens below: full result, fastest lap, who stood in for whom.",
+            },
+            {
+              go: p("/attendance"),
+              to: p("/attendance"),
+              target: '[data-tour="signup-card"]',
+              title: "Saying you're in",
+              body: "Before each round everyone answers here, and a driver who can't make it can hand their seat to a reserve.",
+              // Often simply shut between rounds. Long enough that the page has
+              // had a chance to load before the step decides it isn't there.
+              optional: true,
+              skipMs: 3000,
+            },
+            {
+              go: p("/live"),
+              to: p("/live"),
+              target: '[data-tour="live-header"]',
+              title: "Race night",
+              body: "While a race is on this page is live timing: positions, gaps, tyres and the pit lane, straight off the server.",
+            },
+            {
+              go: "/",
+              to: "/",
+              target: '[data-tour="welcome-cta"]',
+              title: "That's the tour",
+              body: user
+                ? "Have a look around. The rest of the site is yours to poke at."
+                : "The league runs on Discord: that's where the sign-ups, the results and the arguing happen. Come and say hello.",
+              final: true,
+              // Finish at the top of the page, not halfway down it.
+              top: true,
+            },
+          ];
     case "my-rating":
       return [
         {
@@ -88,17 +236,32 @@ function findVisible(selector) {
 export function TourProvider({ children }) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { seriesPath } = useSeriesPath();
   // { name, steps, index } | null
   const [tour, setTour] = useState(null);
 
   const startTour = useCallback(
     (name) => {
-      const steps = buildTour(name, { user });
+      // Read once, at the start: a tour that swapped its own steps halfway
+      // through a rotation would renumber itself under the reader.
+      const desktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+      const steps = buildTour(name, { user, p: seriesPath, desktop });
       if (!steps || !steps.length) return; // unknown tour name: do nothing
       setTour({ name, steps, index: 0 });
     },
-    [user]
+    [user, seriesPath]
   );
+
+  // A `go` step takes itself there. Keyed on the step INDEX, so it fires once
+  // per step and a reader who wanders off mid-tour isn't dragged back.
+  const goneFor = useRef(null);
+  useEffect(() => {
+    const step = tour?.steps[tour.index];
+    const key = tour && `${tour.name}:${tour.index}`;
+    if (!step?.go || goneFor.current === key) return;
+    goneFor.current = key;
+    if (window.location.pathname !== step.go) navigate(step.go);
+  }, [tour, navigate]);
 
   // Deep-link / self-test hook: a `?tour=<name>` in the URL starts that tour on
   // load, then the param is stripped so a refresh doesn't restart it. Lets a
@@ -209,9 +372,18 @@ function TourOverlay({ step, index, total, onNext, onSkipAhead, onEnd }) {
           const below = rect.bottom + margin;
           top = below + ch <= window.innerHeight - 8 ? below : Math.max(8, rect.top - ch - margin);
           left = Math.min(Math.max(rect.left, 12), window.innerWidth - cw - 12);
-        } else {
+        } else if (modeNow === "notfound" || !card.style.top) {
           top = Math.max(12, window.innerHeight / 2 - ch / 2);
           left = Math.max(12, window.innerWidth / 2 - cw / 2);
+        } else {
+          // Between two steps the next target does not exist yet — a page is
+          // still arriving, a menu still opening. Leaving the card where it was
+          // is what stops the flicker: it used to jump to the middle of the
+          // screen for those few frames and then jump again to the new target,
+          // so every step change read as two moves and a stutter. It only
+          // centres itself once the search has actually given up, which is the
+          // one case where the card has nothing to sit beside.
+          return;
         }
         card.style.top = `${top}px`;
         card.style.left = `${left}px`;
@@ -228,7 +400,13 @@ function TourOverlay({ step, index, total, onNext, onSkipAhead, onEnd }) {
           targetRef.current = el;
           if (!isFinal) boundEl.addEventListener("click", onTargetClick, true);
           if (!scrolled) {
-            el.scrollIntoView({ block: "center", behavior: "smooth" });
+            // `top` is for a step whose target sits at the top of its page
+            // anyway: centring it would push the page DOWN a few hundred pixels
+            // and leave the reader stranded there when the tour ends. The last
+            // step of the newcomer tour lands back on the front page, and
+            // landing on a page means seeing the top of it.
+            if (step.top) window.scrollTo({ top: 0, behavior: "auto" });
+            else el.scrollIntoView({ block: "center", behavior: "smooth" });
             scrolled = true;
           }
         }
@@ -338,8 +516,15 @@ function TourOverlay({ step, index, total, onNext, onSkipAhead, onEnd }) {
                 // With a spotlighted control, Next presses it for you (the
                 // click listener on it advances the tour); without one it
                 // falls back to jumping straight to the step's destination.
-                if (mode === "found" && targetRef.current) targetRef.current.click();
-                else onSkipAhead(step);
+                //
+                // `nextGoes` is for a step that spotlights something you are
+                // meant to READ rather than press — a menu holding three links,
+                // say. Pressing the box itself would do nothing at all, so Next
+                // takes the step's own destination instead. Clicking one of the
+                // links inside still works: the click reaches the box on its
+                // way up and moves the tour along.
+                if (step.nextGoes || mode !== "found" || !targetRef.current) onSkipAhead(step);
+                else targetRef.current.click();
               }}
               className="btn-secondary inline-flex items-center gap-1 px-3.5 py-1.5 text-sm"
             >

@@ -176,6 +176,11 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
   return (
     <div
       ref={wrapRef}
+      // The newcomer tour spotlights this. On the marker itself rather than a
+      // wrapper: the field is positioned (the dropdown hangs off it) and sized
+      // by inline styles, so anything wrapped around it would either take the
+      // box away or take the positioning.
+      data-tour={mobile ? undefined : "nav-search"}
       className={`relative ${mobile ? "w-full" : "shrink-0"} ${className}`}
       style={mobile ? undefined : { width: collapsedW, height: "2.25rem" }}
       onMouseEnter={() => !mobile && setHovered(true)}

@@ -131,7 +131,7 @@ export default function RaceSignupCard({
     });
 
   return (
-    <div className={`card reveal flex flex-col overflow-hidden ${className}`}>
+    <div data-tour="signup-card" className={`card reveal flex flex-col overflow-hidden ${className}`}>
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-border px-5 py-4">
         <div>
           <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Sign-Up</h3>

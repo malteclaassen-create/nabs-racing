@@ -16,6 +16,7 @@ import { fmtRaceTime } from "../utils/raceTime.js";
 import { heroFor, heroOnError } from "../utils/heroImage.js";
 import { seasonGameParts, seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
+import { useTour } from "../components/Tour.jsx";
 import { fmtDateShort } from "../utils/format.js";
 
 // League default points per finishing position — only the fallback: seasons
@@ -289,6 +290,7 @@ export default function Welcome() {
   // season explicitly instead of following the selected season.
   const { seasons, active: season } = useSeason();
   const { seriesPath } = useSeriesPath();
+  const { startTour } = useTour();
   const activeNum = season?.number;
   const drivers = useApi(useCallback(() => api.driverStandings(activeNum), [activeNum]));
   const t1 = useApi(useCallback(() => api.t1Standings(activeNum), [activeNum]));
@@ -401,20 +403,59 @@ export default function Welcome() {
           src={heroFor(season)}
           alt=""
           onError={heroOnError}
-          className="absolute inset-0 h-full w-full scale-[1.12] object-cover object-center opacity-[0.55] will-change-transform dark:opacity-90"
+          // Exactly the size of the card: no scale, no transform, nothing
+          // sticking out past the corners. The drift is object-position now
+          // (see useParallax), which moves the crop inside this box instead of
+          // moving the box. object-center is where it rests when motion is off.
+          className="absolute inset-0 h-full w-full object-cover object-center opacity-[0.55] dark:opacity-90"
         />
+        {/* EVERYTHING BELOW THIS LINE HAS A z-INDEX FOR ONE REASON: the photo
+            above is on its own compositing layer, and without one it wins.
+            useParallax writes translate3d to it and the class asks for
+            will-change: transform, which is two separate instructions to give
+            it a layer of its own. Its siblings here had no z-index at all, so
+            they were merely "later in the document" — and later in the document
+            does not beat a promoted layer. The scrims painted underneath the
+            photo instead of over it, which left the hero as the bare
+            photograph: dark on the left where the trees are, and a bright strip
+            of grass along the bottom. It looked like the background image was
+            leaking out from under the card. It was the card.
+
+            The content keeps a higher one again, or the scrims would cover the
+            words they exist to make readable. */}
         {/* Light mode: white wash from the left so the copy sits on a clean card
             and the photo reads as a soft accent on the right. Dark mode keeps the
-            original cinematic dark gradients. */}
-        <div className="absolute inset-0 bg-gradient-to-t from-card/70 via-card/20 to-transparent dark:from-ink dark:via-ink/85 dark:to-ink/40" />
-        <div className="absolute inset-0 bg-gradient-to-r from-card from-[8%] via-card/55 via-[52%] to-transparent to-[88%] dark:from-ink/90 dark:from-0% dark:via-ink/40 dark:via-50% dark:to-transparent dark:to-100%" />
+            original cinematic dark gradients.
+
+            BOTH RAMPS ARE FLAT ON A PHONE, and that is the whole fix for a card
+            that looked broken there. The card is portrait (343x588) and the
+            season photo is landscape (1221x687), so object-cover keeps a narrow
+            vertical strip of it — and a strip of a photograph is not a
+            photograph. Measured on season 8's: brightness top to bottom runs
+            41, 8, 9, 42, 26, 44, which is patches of light and near-black.
+            A ramp that then goes from barely-there at the top to solid at the
+            bottom lands unevenly on that, and what you see is some of the photo
+            in some places and none of it in others.
+
+            Flat and fairly strong, the same strip reads as texture behind the
+            words, which is all a background can honestly be at this width. From
+            sm up the card is wide, the crop is close to the photo's own shape,
+            and the cinematic ramps come back untouched. */}
+        {/* Phones get the flat wash; sm and up get the two original ramps,
+            untouched. Three elements rather than one with responsive prefixes,
+            because a background COLOUR and a background IMAGE are different
+            properties: the flat wash written as a base class went on applying
+            at every width, underneath the desktop ramps, and quietly darkened
+            the hero on a big screen until the photo was barely there. */}
+        <div className="absolute inset-0 z-10 bg-card/55 dark:bg-ink/75 sm:hidden" />
+        <div className="absolute inset-0 z-10 hidden bg-gradient-to-t from-card/70 via-card/20 to-transparent dark:from-ink dark:via-ink/85 dark:to-ink/40 sm:block" />
+        <div className="absolute inset-0 z-10 hidden bg-gradient-to-r from-card from-[8%] via-card/55 via-[52%] to-transparent to-[88%] dark:from-ink/90 dark:from-0% dark:via-ink/40 dark:via-50% dark:to-transparent dark:to-100% sm:block" />
         <div
-          className="speed-hatch absolute inset-y-0 right-0 hidden w-[22%] dark:block"
+          className="speed-hatch absolute inset-y-0 right-0 z-10 hidden w-[22%] dark:block"
           style={{ WebkitMaskImage: "linear-gradient(to left,#000 35%,transparent)", maskImage: "linear-gradient(to left,#000 35%,transparent)" }}
         />
-        <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-brand via-brand/40 to-transparent" />
 
-        <div className="relative flex min-h-[520px] flex-col justify-center gap-6 p-7 sm:p-12 lg:max-w-3xl">
+        <div className="relative z-20 flex min-h-[520px] flex-col justify-center gap-6 p-7 sm:p-12 lg:max-w-3xl">
           <div className="hero-anim flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
             <span>{season ? season.name : "NABS Racing League"}{season?.game ? ` · ${season.game}` : ""}</span>
           </div>
@@ -444,7 +485,7 @@ export default function Welcome() {
             </span>
           </p>
 
-          <div className="hero-anim flex flex-wrap items-center gap-3" style={{ animationDelay: "0.3s" }}>
+          <div data-tour="welcome-cta" className="hero-anim flex flex-wrap items-center gap-3" style={{ animationDelay: "0.3s" }}>
             <DiscordButton magnetic>Join the Discord</DiscordButton>
             <a
               href="#how-it-works"
@@ -452,6 +493,17 @@ export default function Welcome() {
             >
               How it works
             </a>
+            {/* "How it works" explains the league in words on this page; this
+                walks the actual site. Offered rather than sprung on arrival: a
+                tour that takes the screen over before you have asked for
+                anything is the thing everybody clicks away. */}
+            <button
+              type="button"
+              onClick={() => startTour("newcomer")}
+              className="inline-flex items-center gap-2 rounded-xl px-2 py-3.5 text-sm font-bold uppercase tracking-wide text-ink/70 underline decoration-ink/25 decoration-2 underline-offset-4 transition hover:text-ink hover:decoration-brand dark:text-white/70 dark:decoration-white/25 dark:hover:text-white"
+            >
+              Show me around
+            </button>
           </div>
 
           {nextRace && (

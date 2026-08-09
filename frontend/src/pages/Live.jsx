@@ -2003,6 +2003,11 @@ export default function Live() {
     <div className="content-in">
       {/* No live/offline badge up here — the session card below already tells
           the story; only the admin-facing Demo pill remains. */}
+      {/* The tour's stop for this page hangs on the header, not on the board:
+          the board is only there while a session is running, which is one
+          evening a week, and the tour has to have something to point at on the
+          six days it isn't. */}
+      <div data-tour="live-header">
       <PageHeader
         eyebrow="Real-time"
         title="Live Timing"
@@ -2015,6 +2020,7 @@ export default function Live() {
           </div>
         }
       />
+      </div>
 
       {!heardFromRelay && !board ? (
         // Still asking. This is the only case that gets a spinner, and it lasts

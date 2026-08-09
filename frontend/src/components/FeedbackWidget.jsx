@@ -187,6 +187,7 @@ export default function FeedbackWidget() {
         ref={fabRef}
         onClick={toggle}
         aria-expanded={open}
+        data-tour="feedback-fab"
         title="Report a bug or suggest a feature"
         className={`fab-morph group fixed bottom-6 right-6 z-chrome hidden h-12 items-center justify-start overflow-hidden rounded-full border border-border bg-card pl-[13px] text-sm font-bold text-medium shadow-lg shadow-ink/10 transition-[width,padding,color,border-color] duration-base ease-out-soft hover:border-brand/50 hover:text-dark lg:flex ${
           collapsed

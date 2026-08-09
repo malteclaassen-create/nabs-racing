@@ -936,7 +936,10 @@ export default function Home() {
           src={heroFor(season)}
           alt=""
           onError={heroOnError}
-          className="absolute inset-0 h-full w-full scale-[1.12] object-cover object-center will-change-transform"
+          // Same as the landing page's hero: exactly the size of the card, and
+          // the scroll drift moves the crop rather than the picture. Nothing
+          // hangs over the rounded corners, so nothing can be drawn past them.
+          className="absolute inset-0 h-full w-full object-cover object-center"
         />
         {/* Backdrop scrim — white in light mode, dark in dark mode. The archive
             scrim reaches further across so the centred podium sits on solid
