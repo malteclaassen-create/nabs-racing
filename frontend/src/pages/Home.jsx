@@ -22,7 +22,7 @@ import SlidingTabs from "../components/SlidingTabs.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
 import SocialFeed from "../components/SocialFeed.jsx";
-import { fmtRaceDate, fmtDateLong, fmtWeekday, NO_VALUE} from "../utils/format.js";
+import { fmtRaceDate, fmtDateLong, fmtWeekday, isLapTime, NO_VALUE} from "../utils/format.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
@@ -704,6 +704,44 @@ export default function Home() {
     .filter((r) => r.position != null)
     .sort((a, b) => a.position - b.position)
     .slice(0, 3);
+  // What the round actually paid the top three, for the hero strip: the points
+  // and the honours that go with them. Same rules the results table applies, so
+  // the hero and the round page can never disagree — the admin-recorded fastest
+  // lap wins over the one derived from the stored lap times, and a session that
+  // scores nothing (training, special event) shows no points column at all.
+  const latestRace = latest?.race || null;
+  const latestScores = (latestRace?.type || "CHAMPIONSHIP") === "CHAMPIONSHIP";
+  const latestLapRows = (latest?.results || []).filter((r) => isLapTime(r.bestLapMs));
+  const latestFastestMs = latestLapRows.length
+    ? Math.min(...latestLapRows.map((r) => r.bestLapMs))
+    : null;
+  const flDriverId =
+    latestRace?.fastestLapDriverId ||
+    (latestFastestMs != null
+      ? latestLapRows.find((r) => r.bestLapMs === latestFastestMs)?.driverId
+      : null) ||
+    null;
+  const dotdDriverId = latestRace?.driverOfTheDay?.driverId || null;
+  // The round's honours, in the wording and colours the results table already
+  // uses. Only these two: a third marker (pole) pushed the driver's name into
+  // an ellipsis on a narrow phone, and these are the ones actually won in the
+  // race.
+  const podiumHonours = (p) =>
+    [
+      p.driverId === flDriverId && {
+        key: "fl",
+        label: "FL",
+        title: "Fastest lap of the race",
+        cls: "bg-fl/15 text-fl",
+      },
+      p.driverId === dotdDriverId && {
+        key: "dotd",
+        label: "DOTD",
+        title: "Driver of the Day",
+        cls: "bg-brand/20 text-brand",
+      },
+    ].filter(Boolean);
+  const anyPodiumHonours = podium.some((p) => podiumHonours(p).length > 0);
   const nextDate = nextRace?.date ? new Date(nextRace.date) : null;
   const roundNo = lastRace?.number ?? completedRaces.length;
   const lastCircuit = flagFor(lastRace?.track, lastRace?.country);
@@ -1103,7 +1141,7 @@ export default function Home() {
                     >
                       P{p.position}
                     </span>
-                    <span className="min-w-0">
+                    <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5 text-base font-bold leading-tight text-ink transition group-hover:text-brand dark:text-white">
                         <span className="truncate">{p.name}</span>
                         <Flag code={countryFor(p.driverId, p.country)} w={16} h={12} />
@@ -1130,6 +1168,42 @@ export default function Home() {
                           className="mt-0.5"
                           nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
                         />
+                      )}
+                    </span>
+                    {/* What the round paid the driver: the points, with the
+                        honours won that day above them. PHONES ONLY. There the
+                        card runs the full width of the page and the right half
+                        sits empty; from sm up the same three cards share one
+                        row, which leaves each about 220px, and anything added
+                        on the right cut the driver's name down to an ellipsis.
+                        The round page carries all of it in full either way. */}
+                    <span className="ml-auto flex shrink-0 flex-col items-end gap-1 pl-1 text-right sm:hidden">
+                      {/* The row is reserved for all three as soon as ONE of
+                          them earned something, so the cards keep a common
+                          height and the points sit on one line down the strip
+                          instead of stepping up and down. */}
+                      {anyPodiumHonours && (
+                        <span className="flex min-h-[1rem] items-center gap-1">
+                          {podiumHonours(p).map((h) => (
+                            <span
+                              key={h.key}
+                              title={h.title}
+                              className={`rounded-full px-1 py-px font-mono text-[10px] font-bold uppercase leading-[1.4] ${h.cls}`}
+                            >
+                              {h.label}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                      {latestScores && p.points != null && (
+                        <span className="flex items-baseline gap-1">
+                          <span className="font-display text-xl font-black tabular-nums text-ink dark:text-white">
+                            {p.points}
+                          </span>
+                          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-ink/45 dark:text-white/50">
+                            pts
+                          </span>
+                        </span>
                       )}
                     </span>
                   </Link>
