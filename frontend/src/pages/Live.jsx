@@ -924,6 +924,7 @@ function ChampionshipProjection({ data }) {
   // Rows glide to their new slot when the running order changes mid-race.
   const bodyRef = useRef(null);
   useFlipList(bodyRef, data.updatedAt);
+  const rowsIn = useOneShotCascade(rows.length > 0);
   // Keep the table to competitors who matter for the title picture: everyone
   // in the running race plus anyone who already has points on the board.
   const rows = data.drivers.filter((d) => d.livePosition != null || d.dnf || d.total > 0 || d.currentTotal > 0);
@@ -966,11 +967,11 @@ function ChampionshipProjection({ data }) {
                 <th className="py-3 pr-5 text-right">{standalone ? "Pts" : "After"}</th>
               </tr>
             </thead>
-            {/* No cascade here on purpose: reordering rows (React moves the DOM
-                nodes) would REPLAY the entrance animation on every overtake,
-                which reads as the whole table rebuilding. The FLIP glide in
-                useFlipList is the only movement. */}
-            <tbody ref={bodyRef}>
+            {/* One-shot only (see useOneShotCascade): a cascade left attached
+                would REPLAY on every overtake, because reordering moves the DOM
+                nodes, and the table would look like it was rebuilding itself.
+                After the first fill the FLIP glide is the only movement. */}
+            <tbody ref={bodyRef} className={rowsIn}>
               {shown.map((d, i) => (
                 <tr
                   key={d.driverId}
@@ -1289,6 +1290,7 @@ function DrivingNowSection({ onTrack, match, flip = false, className = "" }) {
   const bodyRef = useRef(null);
   const offRef = useRef(null);
   useFlipList(flip ? bodyRef : offRef, onTrack.map((e) => e.guid).join("|"));
+  const rowsIn = useOneShotCascade(onTrack.length > 0);
   return (
     <section className={`reveal card flex flex-col overflow-hidden ${className}`}>
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
@@ -1318,11 +1320,10 @@ function DrivingNowSection({ onTrack, match, flip = false, className = "" }) {
                 ))}
               </tr>
             </thead>
-            {/* No cascade here (matching the projection table): a websocket
-                hiccup or reorder remounts rows, which REPLAYED the entrance
-                fade over the whole field mid-session. The FLIP glide is the
-                only movement. */}
-            <tbody ref={bodyRef}>
+            {/* One-shot only (see useOneShotCascade): a websocket hiccup or a
+                reorder remounts rows, and a cascade still attached REPLAYED the
+                entrance fade over the whole field mid-session. */}
+            <tbody ref={bodyRef} className={rowsIn}>
               {onTrack.map((e, i) => (
                 <OnTrackRow key={e.guid} e={e} match={match(e.name)} index={i} />
               ))}
@@ -1438,6 +1439,37 @@ function CompoundLegend({ entries }) {
     </div>
   );
 }
+
+// An entrance for a live table's rows that plays once and then gets out of the
+// way.
+//
+// The plain .cascade cannot stay on these tables and the comments at each of
+// them say why: the rows are reordered constantly, every overtake and every
+// faster lap moves the DOM nodes, and a cascade still attached REPLAYS over the
+// whole field each time — the table appears to rebuild itself several times a
+// minute. That is why it was taken out.
+//
+// But "never animates" and "animates on every overtake" are not the only two
+// options. The class goes on for the first fill and comes off once that has
+// played, so the rows arrive one after another exactly once and no reorder
+// afterwards has anything left to trigger. Taking the class away is safe on its
+// own: without it the rows are simply at their natural full opacity.
+function useOneShotCascade(ready) {
+  const [spent, setSpent] = useState(false);
+  useEffect(() => {
+    if (!ready || spent) return;
+    // The stagger caps at 16 rows x 45ms and each row rises for 450ms, so the
+    // last of them is done inside 1.2s; 1.6s leaves room for the reveal delay.
+    const t = setTimeout(() => setSpent(true), 1600);
+    return () => clearTimeout(t);
+  }, [ready, spent]);
+  return ready && !spent ? "cascade" : "";
+}
+// One thing this costs, and it is the right trade: while the entrance is
+// playing, its keyframes animate transform, and a CSS animation outranks the
+// inline transform useFlipList uses for its glide. So a reorder inside that
+// first second and a half does not glide. Rows are still arriving then, and the
+// alternative was no entrance at all.
 
 // Nothing is running. The league races roughly once a week, so this is what
 // the page looks like most of the time, and it used to be an endless spinner
@@ -1707,6 +1739,7 @@ export default function Live() {
     timesBodyRef,
     `${view}|${collapseTimes}|${shownEntries.map((e) => e.guid).join("|")}`
   );
+  const rowsIn = useOneShotCascade(shownEntries.length > 0);
 
   // The best-times section renders in two spots — as the Timing view of the
   // full layout, and alone right under the header when the server is quiet —
@@ -1770,11 +1803,10 @@ export default function Live() {
                     })}
                   </tr>
                 </thead>
-                {/* No cascade here anymore (matching the Driving Now and
-                    projection tables): reordering rows moves the DOM nodes,
-                    which REPLAYED the entrance fade over the whole field on
-                    every faster lap. The FLIP glide above is the movement. */}
-                <tbody ref={timesBodyRef}>
+                {/* One-shot only (see useOneShotCascade): reordering moves the
+                    DOM nodes, and a cascade still attached REPLAYED the
+                    entrance fade over the whole field on every faster lap. */}
+                <tbody ref={timesBodyRef} className={rowsIn}>
                   {shownEntries.map((e, i) => (
                     <TimingRow key={e.guid} e={e} cols={cols} ctx={tableCtx} index={i} />
                   ))}
@@ -1826,7 +1858,10 @@ export default function Live() {
   );
 
   return (
-    <div>
+    // content-in on the root, which is what every other page does. This one had
+    // it on the inner board only, so the title and the buttons above simply
+    // appeared while everything under them arrived.
+    <div className="content-in">
       {/* No live/offline badge up here — the session card below already tells
           the story; only the admin-facing Demo pill remains. */}
       <PageHeader
@@ -1858,7 +1893,7 @@ export default function Live() {
       ) : offAir ? (
         <OffAir nextRace={nextRace} />
       ) : (
-        <div className="content-in space-y-8">
+        <div className="space-y-8">
           {/* ===== Session bar across the top ===== */}
           <SessionHeader session={session} receivedAt={receivedAt} />
 
