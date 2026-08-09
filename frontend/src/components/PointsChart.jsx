@@ -94,7 +94,12 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
       cum: s.pts[idx],
     }));
     if (active) rows = rows.filter((s) => s.teamId === active);
-    else rows = rows.sort((a, b) => b.cum - a.cum).slice(0, 8);
+    // The whole field, in order at that point of the season. It used to stop
+    // after the top eight, which quietly cut the bottom half of a fourteen-team
+    // tier: those lines are drawn, their dots light up on the guide line, and
+    // then the reading for them was missing. A long list gets tighter line
+    // spacing instead, so it still fits beside the graph.
+    else rows = rows.sort((a, b) => b.cum - a.cum);
     tip = { idx, label, rows, left: Math.min(Math.max(hover.x, 96), hover.w - 96) };
   }
 
@@ -217,16 +222,22 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
           />
         </svg>
 
-        {/* hover tooltip */}
+        {/* Hover tooltip. Two elements on purpose: the outer one places the box
+            (centred on the round's guide line, kept clear of both edges), the
+            inner one plays the entrance. They used to be one, and the entrance
+            won — it ends on `transform: none`, which threw away the centring
+            for good, so the box hung its full width to the RIGHT of the guide
+            line and out over the edge of the card. */}
         {tip && (
           <div
-            className="pop-in pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded-lg border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur"
+            className="pointer-events-none absolute top-1 z-10 -translate-x-1/2"
             style={{ left: tip.left }}
           >
+          <div className="pop-in rounded-lg border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur">
             <div className="mb-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
               {tip.label}
             </div>
-            <div className="space-y-1">
+            <div className={tip.rows.length > 9 ? "space-y-0.5" : "space-y-1"}>
               {tip.rows.map((r) => (
                 <div key={r.teamId} className="flex items-center gap-2 whitespace-nowrap">
                   <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: r.color }} />
@@ -240,6 +251,7 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
                 </div>
               ))}
             </div>
+          </div>
           </div>
         )}
       </div>
