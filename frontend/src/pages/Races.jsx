@@ -558,44 +558,84 @@ export default function Races() {
   //
   // The panel is as tall as what is in it: 2744px for a 37-car result, 768px
   // for a sign-up card. Read down to the race facts of a finished round, pick
-  // an upcoming one, and the panel shrinks by two thousand pixels underneath a
-  // scroll position that stays exactly where it was. You have not moved, but
-  // what you are looking at is now the calendar, well past the round you just
-  // asked for.
+  // an upcoming one, and two thousand pixels vanish from under a scroll
+  // position that stays exactly where it was. You have not moved, and yet you
+  // are looking at the calendar, well past the round you just asked for.
   //
-  // So: check whether any of the panel is still in front of you afterwards. If
-  // it is, do nothing, which is the ordinary case and the whole point of taking
-  // the scrolling out. If it is not, go to it.
-  const catchUpAfterSwitch = useRef(false);
+  // The correction happens in the SAME commit as the change, before the browser
+  // paints, which is the whole point. Doing it on a timer afterwards — the
+  // first version waited for the height to settle — meant the page really did
+  // drop you at the calendar for a moment and then hauled you back up. Now
+  // there is no frame in which the wrong thing is on screen: SmoothHeight
+  // reports the height it is about to move to, and the scroll is put right
+  // before any of it is drawn.
+  // What the page looked like at the moment of the click. It has to be taken
+  // HERE and not in the effect afterwards: React swaps the content during the
+  // commit's mutation phase, before any effect runs, and a page that suddenly
+  // has 2000 fewer pixels in it gets its scroll position CLAMPED by the browser
+  // on the spot. Measure after that and you are measuring a page that has
+  // already jumped — which is how the correction came to compute "stay exactly
+  // where you are". Nothing has been painted yet at that point, so these two
+  // numbers are still what the reader can actually see.
+  const catchUp = useRef(null);
   function selectRace(id) {
+    const aside = panelRef.current?.querySelector("aside");
+    const railTop = aside ? aside.getBoundingClientRect().top : null;
+    catchUp.current = {
+      scroll: window.scrollY,
+      // Only useful while the rail is on screen — on a phone it is a strip that
+      // scrolls away with everything else, and pinning the page to where it had
+      // got to would be nonsense.
+      railTop: railTop != null && railTop >= 0 && railTop < window.innerHeight ? railTop : null,
+    };
     setSelectedId(id);
-    catchUpAfterSwitch.current = true;
   }
 
-  useEffect(() => {
-    if (!catchUpAfterSwitch.current) return;
+  // A round switch does not move the page — with one exception, and the
+  // exception is why "never scroll" was not quite right either.
+  //
+  // The panel is as tall as what is in it: 2744px for a 37-car result, 768px
+  // for a sign-up card. Read down to the race facts of a finished round, pick
+  // an upcoming one, and two thousand pixels vanish from under you. You have
+  // not moved, and yet you are looking at the calendar, well past the round you
+  // just asked for.
+  //
+  // The correction runs in the SAME commit as the change, before the browser
+  // paints. Doing it on a timer afterwards — the first version waited for the
+  // height to settle — meant the page really did drop you at the calendar for a
+  // moment and then hauled you back up. Now there is no frame in which the
+  // wrong thing is on screen: SmoothHeight reports the height it is about to
+  // move to, and the scroll is put right before any of it is drawn.
+  const onPanelResize = useCallback(({ to }) => {
+    const was = catchUp.current;
     const el = panelRef.current;
-    if (!el) return;
-    // After the height has settled (SmoothHeight takes --t-base) and after the
-    // fetched round has landed — this effect re-runs on `detail` for exactly
-    // that reason, so the measurement is of the final layout, not a passing one.
-    const t = setTimeout(() => {
-      catchUpAfterSwitch.current = false;
-      const r = el.getBoundingClientRect();
-      const HEADER = 112; // matches the rail's sticky top-28 and the panel's scroll-mt-28
-      const visible = Math.min(r.bottom, window.innerHeight) - Math.max(r.top, HEADER);
-      // A sliver counts as gone: seeing 30px of a panel over a screenful of the
-      // next section is not "still on screen" in any useful sense.
-      if (visible >= 120) return;
-      // Gliding there is the point — it shows you that the page moved and how
-      // far. Unless motion is turned down, in which case it just goes.
-      const still =
-        (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
-        document.documentElement.classList.contains("fx-lite");
-      el.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
-    }, 320);
-    return () => clearTimeout(t);
-  }, [selectedId, detail]);
+    if (!was || !el) return;
+    const HEADER = 112; // the rail's sticky top-28
+    const aside = el.querySelector("aside");
+    const panelTop = el.getBoundingClientRect().top + window.scrollY;
+    // What the panel will stand at once the new content has settled: the taller
+    // of the two columns. The rail can outlast a short sign-up card, and it is
+    // just as much "the panel" for the purpose of having something to look at.
+    const asideH = aside ? aside.getBoundingClientRect().height : 0;
+    const settledBottom = panelTop + Math.max(asideH, to);
+    // Would any of it still be in front of you? Judged against where you WERE,
+    // which is what you can still see. A sliver does not count.
+    const visible = Math.min(settledBottom, was.scroll + window.innerHeight) - Math.max(panelTop, was.scroll + HEADER);
+    if (visible >= 120) return;
+    catchUp.current = null;
+    // Land so the rounds list does not move. It is stuck somewhere in your view
+    // right now and its natural home is the top of the panel, so scrolling to
+    // (panel top − where the rail sits) puts it back down exactly where it was:
+    // everything else travels, the list does not. scrollIntoView instead aims at
+    // the panel's scroll-margin, which sits 24px from where the rail actually
+    // sticks, and the list stepped by that much every time.
+    //
+    // Instant, deliberately. This is a correction, not a journey: it happens
+    // before the frame is drawn, so from where you sit the page simply was
+    // already there. Gliding would mean showing the wrong place first in order
+    // to travel away from it.
+    window.scrollTo({ top: Math.max(0, panelTop - (was.railTop ?? HEADER)), behavior: "auto" });
+  }, []);
 
   if (loading)
     return (
@@ -753,7 +793,7 @@ export default function Races() {
                 calendar underneath is carried between the two rather than cut:
                 a 37-row result and a sign-up panel are 1939px apart, and that
                 was happening in one frame. */}
-            <SmoothHeight className="min-w-0">
+            <SmoothHeight className="min-w-0" onChange={onPanelResize}>
               {selectedRace && !selectedRace.isCompleted ? (
                 /* Keyed on the race so switching rounds REMOUNTS the panel. Its
                    track history (and with it the outline's admin-set rotation)

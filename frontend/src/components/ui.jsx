@@ -297,7 +297,7 @@ export function NoData({ label = "no value", className = "" }) {
 //
 // No entrance: on first render there is nothing to come from, so the box simply
 // is its height. This only smooths CHANGES.
-export function SmoothHeight({ children, duration = "var(--t-base)", className = "" }) {
+export function SmoothHeight({ children, duration = "var(--t-base)", onChange, className = "" }) {
   const box = useRef(null);
   const prev = useRef(null);
   const undo = useRef(null);
@@ -314,6 +314,13 @@ export function SmoothHeight({ children, duration = "var(--t-base)", className =
     // This is the same trap that made the previous attempt do nothing at all,
     // and it caught me twice: measure for the target, remember for the start.
     const mid = undo.current ? el.getBoundingClientRect().height : null;
+    // Reading the new height means letting the box collapse to it for an
+    // instant, and a shorter page makes the browser CLAMP the scroll position
+    // to the new maximum. That clamp is not undone when the box is pinned back,
+    // so without remembering the position here, everything downstream — this
+    // component's own start value, and anything the owner works out in
+    // onChange — is measured from a page that has silently jumped.
+    const scrollBefore = window.scrollY;
     undo.current?.(); // let go of any pin so the next read is the real height
     const to = el.getBoundingClientRect().height;
     const from = prev.current;
@@ -321,15 +328,27 @@ export function SmoothHeight({ children, duration = "var(--t-base)", className =
     if (from == null) return; // first render: nothing to come from
     const visual = mid != null ? mid : from;
     if (Math.abs(to - visual) < 2) return;
-    if (
+    const still =
       document.hidden ||
       (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
-      document.documentElement.classList.contains("fx-lite")
-    )
-      return;
+      document.documentElement.classList.contains("fx-lite");
 
-    el.style.overflow = "hidden";
-    el.style.height = `${visual}px`;
+    // Pin the start height first, which puts the page back to its old length,
+    // and only then restore the scroll — the other way round it would just be
+    // clamped again.
+    if (!still) {
+      el.style.overflow = "hidden";
+      el.style.height = `${visual}px`;
+    }
+    if (window.scrollY !== scrollBefore) window.scrollTo(0, scrollBefore);
+
+    // Tell the owner BEFORE anything is painted, because what it does with this
+    // is not decoration: the page uses it to correct the scroll in the same
+    // commit. Announcing it afterwards (or on a timer) is how you get a beat of
+    // looking at the wrong part of the page followed by a lurch back.
+    onChange?.({ from: visual, to });
+    if (still) return;
+
     void el.offsetHeight; // commit the start before transitioning away from it
     el.style.transition = `height ${duration} var(--e-out)`;
     el.style.height = `${to}px`;
