@@ -37,20 +37,27 @@ const PROMPTS = {
   OTHER: "Anything else you want the admins to know?",
 };
 
-// The standard speech bubble: a rounded rectangle with a tail dropping from its
-// bottom left corner. One closed path, drawn on the same 24px grid as every
-// other icon on the site — the hand-drawn bubble it replaces had a lopsided
-// tail and two text lines of different lengths inside it.
+// A message on its way: the paper dart, with the fold line that turns it from a
+// flat arrowhead into a thing being sent. Same 24px grid and 2px round-capped
+// stroke as every other icon on the site.
 //
-// The 1.5px nudge is optical, not a fix for a wrong box: the icon's box IS
-// centred on the label already, but the bubble's body only fills the top 14 of
-// its 24 units and the tail below it is a thin line, so the weight of the shape
-// sits high and it read as floating above the word. Pushed down, the body sits
-// on the same band as the capital F.
-function ChatIcon() {
+// It replaces a speech bubble, which said the wrong thing. A bubble in the
+// bottom right corner of a website is the universal mark of a support chat —
+// and, since every assistant on the internet took that same corner and that
+// same shape, of a bot waiting to talk. Nobody is waiting here: what you write
+// is sent to the league's admins and answered when one of them reads it.
+//
+// NO optical nudge, and it took a measurement to see why not. The dart is drawn
+// as an outline, not a solid, so it has no lopsided mass to correct for: its ink
+// spans 2.45→21.5 across and 2.5→21.55 down, which is the middle of the 24 grid
+// to within a twentieth of a unit. A 1px lift "for the weight of the shape" was
+// tried, and 1px is precisely how far off-centre it then sat in the button.
+function SendIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5 translate-y-[1.5px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {/* The dart, then the crease from its nose down to the notch. */}
+      <path d="M21.5 2.5 2.8 10.1a.6.6 0 0 0 .05 1.11l7.3 2.64 2.64 7.3a.6.6 0 0 0 1.11.05z" />
+      <path d="M21.5 2.5 10.15 13.85" />
     </svg>
   );
 }
@@ -63,41 +70,9 @@ function CloseIcon() {
   );
 }
 
-// Scrolling DOWN pulls the button in to a bare circle, scrolling back up lets
-// it grow into the full pill again — out of the way while you're reading, named
-// again the moment you look up. A plain passive listener rather than the
-// rAF-throttled kind the nav's progress line uses: that one writes a transform
-// every frame, this one only compares two numbers and flips a boolean React
-// bails out of when it hasn't changed.
-function useShrinkOnScrollDown() {
-  const [compact, setCompact] = useState(false);
-  useEffect(() => {
-    let last = window.scrollY;
-    const onScroll = () => {
-      const y = window.scrollY;
-      // Back at the top it is always the full pill, whichever way you got there.
-      if (y <= 80) {
-        setCompact(false);
-        last = y;
-        return;
-      }
-      const delta = y - last;
-      // A few pixels of slack, so trackpad jitter and the bounce at the end of
-      // a page don't make it flicker between the two shapes.
-      if (Math.abs(delta) <= 6) return;
-      setCompact(delta > 0);
-      last = y;
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-  return compact;
-}
-
 export default function FeedbackWidget() {
   const location = useLocation();
   const { user, isLoggedIn } = useAuth();
-  const shrunk = useShrinkOnScrollDown();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState("BUG");
   const [message, setMessage] = useState("");
@@ -168,9 +143,15 @@ export default function FeedbackWidget() {
     }
   }
 
-  // While the panel is open the button stays a full pill — it is the panel's
-  // header row, and a circle sitting under it would read as a different control.
-  const collapsed = shrunk && !open;
+  // A circle by default, at rest, whatever the page is doing. It used to widen
+  // into the labelled pill on its own whenever you scrolled back up, which put
+  // the button through a shape change nobody had asked for — and it happened
+  // exactly when you were heading back up the page to read something. The word
+  // is one hover away, which is when you are actually looking at it.
+  //
+  // The open panel is the exception: the button is that panel's header row, and
+  // a circle sitting under it would read as a different control.
+  const collapsed = !open;
 
   function toggle() {
     setSent(false);
@@ -182,24 +163,42 @@ export default function FeedbackWidget() {
     <>
       {/* The floating button. Desktop only, on purpose: on a phone a permanent
           corner button covers content and sits where the thumb scrolls.
-          It carries its label as a pill and pulls it back in while you scroll
-          down the page (see useShrinkOnScrollDown) — an open panel or a hover
-          always shows the word again. */}
+          A circle that unrolls into the labelled pill when you point at it (or
+          tab to it — the word is the only thing that names this control, so it
+          has to appear for the keyboard too), and stays a pill while the panel
+          below it is open.
+
+          The icon does not move while it unrolls, and that takes two things.
+          The content is packed to the LEFT rather than centred: a centred row
+          inside a fixed-width pill is positioned by how wide the word happens
+          to render, and the icon slid 10.6px to the right as the pill opened —
+          the one part of this that was supposed to stand still. And the pill is
+          only as wide as it needs to be (13 + 20 icon + 8 + 67 for the word +
+          16 + 2 border = 126, so 128), instead of the 148 it had, which is
+          where those spare pixels came from.
+
+          13px, not the 14 the scale would offer, because the 1px border counts:
+          the circle is 48 across with 46 inside it, and a 20px icon sits in the
+          middle of THAT with 13 either side. So packing left and centring are
+          the same thing in the circle, and the icon does not have to move when
+          the pill grows out to the right of it. */}
       <button
         type="button"
         ref={fabRef}
         onClick={toggle}
         aria-expanded={open}
         title="Report a bug or suggest a feature"
-        className={`fab-morph group fixed bottom-6 right-6 z-chrome hidden h-12 items-center justify-center overflow-hidden rounded-full border border-border bg-card text-sm font-bold text-medium shadow-lg shadow-ink/10 transition-[width,padding,color,border-color] duration-base ease-out-soft hover:border-brand/50 hover:text-dark lg:flex ${
-          collapsed ? "w-12 px-0 hover:w-[9.25rem] hover:pl-4 hover:pr-5" : "w-[9.25rem] pl-4 pr-5"
+        className={`fab-morph group fixed bottom-6 right-6 z-chrome hidden h-12 items-center justify-start overflow-hidden rounded-full border border-border bg-card pl-[13px] text-sm font-bold text-medium shadow-lg shadow-ink/10 transition-[width,padding,color,border-color] duration-base ease-out-soft hover:border-brand/50 hover:text-dark lg:flex ${
+          collapsed
+            ? "w-12 pr-0 hover:w-32 hover:pr-4 focus-visible:w-32 focus-visible:pr-4"
+            : "w-32 pr-4"
         } ${open ? "border-brand/50 text-dark" : ""}`}
       >
-        <span className="shrink-0 text-brand">{open ? <CloseIcon /> : <ChatIcon />}</span>
+        <span className="shrink-0 text-brand">{open ? <CloseIcon /> : <SendIcon />}</span>
         <span
           className={`fab-morph overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin] duration-base ease-out-soft ${
             collapsed
-              ? "ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[6rem] group-hover:opacity-100"
+              ? "ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[6rem] group-hover:opacity-100 group-focus-visible:ml-2 group-focus-visible:max-w-[6rem] group-focus-visible:opacity-100"
               : "ml-2 max-w-[6rem] opacity-100"
           }`}
         >
