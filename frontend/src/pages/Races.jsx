@@ -553,15 +553,49 @@ export default function Races() {
     };
   }, [selectedId]);
 
+  // A round switch does not move the page — with one exception, and the
+  // exception is why "never scroll" was not quite right either.
+  //
+  // The panel is as tall as what is in it: 2744px for a 37-car result, 768px
+  // for a sign-up card. Read down to the race facts of a finished round, pick
+  // an upcoming one, and the panel shrinks by two thousand pixels underneath a
+  // scroll position that stays exactly where it was. You have not moved, but
+  // what you are looking at is now the calendar, well past the round you just
+  // asked for.
+  //
+  // So: check whether any of the panel is still in front of you afterwards. If
+  // it is, do nothing, which is the ordinary case and the whole point of taking
+  // the scrolling out. If it is not, go to it.
+  const catchUpAfterSwitch = useRef(false);
   function selectRace(id) {
     setSelectedId(id);
-    // Deliberately no scrolling. The rail sits BESIDE the panel on a desktop
-    // and directly above it on a phone, so the thing you just asked for is
-    // already on screen either way; scrolling to it only took the rail you were
-    // reading out from under you. The ?race= deep link still scrolls, because
-    // arriving from another page is the one case where the panel really can be
-    // somewhere you cannot see.
+    catchUpAfterSwitch.current = true;
   }
+
+  useEffect(() => {
+    if (!catchUpAfterSwitch.current) return;
+    const el = panelRef.current;
+    if (!el) return;
+    // After the height has settled (SmoothHeight takes --t-base) and after the
+    // fetched round has landed — this effect re-runs on `detail` for exactly
+    // that reason, so the measurement is of the final layout, not a passing one.
+    const t = setTimeout(() => {
+      catchUpAfterSwitch.current = false;
+      const r = el.getBoundingClientRect();
+      const HEADER = 96; // the sticky nav, same 6rem as the panel's scroll-mt-24
+      const visible = Math.min(r.bottom, window.innerHeight) - Math.max(r.top, HEADER);
+      // A sliver counts as gone: seeing 30px of a panel over a screenful of the
+      // next section is not "still on screen" in any useful sense.
+      if (visible >= 120) return;
+      // Gliding there is the point — it shows you that the page moved and how
+      // far. Unless motion is turned down, in which case it just goes.
+      const still =
+        (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
+        document.documentElement.classList.contains("fx-lite");
+      el.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+    }, 320);
+    return () => clearTimeout(t);
+  }, [selectedId, detail]);
 
   if (loading)
     return (
