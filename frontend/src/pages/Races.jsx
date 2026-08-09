@@ -582,7 +582,7 @@ export default function Races() {
     const t = setTimeout(() => {
       catchUpAfterSwitch.current = false;
       const r = el.getBoundingClientRect();
-      const HEADER = 96; // the sticky nav, same 6rem as the panel's scroll-mt-24
+      const HEADER = 112; // matches the rail's sticky top-28 and the panel's scroll-mt-28
       const visible = Math.min(r.bottom, window.innerHeight) - Math.max(r.top, HEADER);
       // A sliver counts as gone: seeing 30px of a panel over a screenful of the
       // next section is not "still on screen" in any useful sense.
@@ -726,7 +726,13 @@ export default function Races() {
       {/* Results explorer: race list (left), and on the right the selected
           race's results (completed) or sign-up + info (upcoming) — for
           whichever session type is picked above. */}
-      <div ref={panelRef} className="reveal scroll-mt-24">
+      {/* scroll-mt-28, not 24, and the number is not free: the rail beside it
+          is sticky at top-28 (112px). Landing the panel at 96px put its top —
+          and the rail's, they share a document position — 16px above where the
+          rail was stuck, so the rounds list nudged sideways out of place every
+          time the page caught up. Matching the two means the rail is already
+          exactly where it ends up, and does not move at all. */}
+      <div ref={panelRef} className="reveal scroll-mt-28">
         {shown.length > 0 ? (
           // minmax(0,…) keeps the wide results table from stretching the
           // column (and the whole page) past the viewport on phones
