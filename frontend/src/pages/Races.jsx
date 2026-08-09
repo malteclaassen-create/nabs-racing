@@ -613,6 +613,15 @@ export default function Races() {
   // The race currently open in the explorer. Completed -> results table;
   // upcoming -> the UpcomingRacePanel (countdown, circuit map, track record).
   const selectedRace = (races || []).find((r) => r.id === selectedId);
+  // The loaded round is deliberately kept on screen while the next one is
+  // fetched (a skeleton in its place made everything below jump for a beat).
+  // But that is a decision about the TABLE, and the title row above it was
+  // caught up in it too: for the moment between the click and the answer, the
+  // heading named the round you had just left — click Hockenheim while looking
+  // at Watkins Glen and Watkins Glen is what it said. The selection is known
+  // the instant you click, so the heading uses that and only the table waits.
+  const detailIsStale = !!detail && detail.race.id !== selectedId;
+  const head = (detailIsStale && selectedRace) || detail?.race || null;
 
   // A round opened from the address bar (?race=<id>) is its own page as far as a
   // Switching tabs re-points the explorer at a sensible race of the NEW type —
@@ -751,23 +760,23 @@ export default function Races() {
                             their own line so the round title gets the full
                             width instead of being cut to "R12 I…". */}
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:h-8 sm:flex-nowrap">
-                          {flagFor(detail.race.track, detail.race.country) && (
+                          {flagFor(head.track, head.country) && (
                             <Flag
-                              code={flagFor(detail.race.track, detail.race.country).country}
-                              title={flagFor(detail.race.track, detail.race.country).countryName}
+                              code={flagFor(head.track, head.country).country}
+                              title={flagFor(head.track, head.country).countryName}
                               w={26}
                               h={19}
                             />
                           )}
                           <h2 className="min-w-0 flex-1 truncate font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">
-                            {detail.race.number != null && <span className="text-light">R{detail.race.number}</span>} {detail.race.track}
+                            {head.number != null && <span className="text-light">R{head.number}</span>} {head.track}
                           </h2>
                           {/* Race | Qualifying switch — it belongs to THIS round,
                               so it stays glued to the round title on every screen
                               size (the tab bar at the top of the page filters
                               which list you're browsing, a different job). Only
                               for rounds with an imported qualifying. */}
-                          {detail.quali?.length > 0 && (
+                          {!detailIsStale && detail.quali?.length > 0 && (
                             <SlidingTabs
                               className="shrink-0"
                               wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
@@ -786,7 +795,7 @@ export default function Races() {
                               title row to the name and the switch. */}
                           <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
                             {/* replay of this round, registered in the admin Downloads tab */}
-                            {detail.race.replayDownloadId && (
+                            {!detailIsStale && detail.race.replayDownloadId && (
                               <Link
                                 to={`/downloads?dl=${detail.race.replayDownloadId}`}
                                 className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark"
@@ -798,17 +807,17 @@ export default function Races() {
                                 Replay
                               </Link>
                             )}
-                            {detail.race.date && (
+                            {head.date && (
                               <span
                                 className="text-right font-mono text-xs font-semibold tabular-nums text-light sm:text-sm"
-                                title={fmtRaceTime(detail.race.date)}
+                                title={fmtRaceTime(head.date)}
                               >
-                                {fmtDate(detail.race.date)}
+                                {fmtDate(head.date)}
                               </span>
                             )}
                           </span>
                         </div>
-                        {!detail.race.hasPositions && (
+                        {!detailIsStale && !detail.race.hasPositions && (
                           <p className="mt-1 text-sm text-light">
                             Historical round: points only, the finishing positions were not recorded.
                           </p>
