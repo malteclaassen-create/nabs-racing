@@ -147,7 +147,13 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
     if (board.session.type !== "Race") return off("not-a-race");
     if (board.stale || !board.connected) return off("stale");
 
-    const entries = (board.entries || []).filter((e) => (e.lapCount || 0) > 0);
+    // The safety car is on the board because it is on the server, but it is not
+    // in the race and must not take a scoring position off anybody. Until the
+    // board started flagging it, a pace-car driver who is also a league member
+    // was resolved by name like everyone else and projected into the standings.
+    // It also counts towards the roster check below, so leaving it in moved the
+    // threshold as well.
+    const entries = (board.entries || []).filter((e) => (e.lapCount || 0) > 0 && !e.isSafetyCar);
     if (entries.length === 0) return off("not-started");
 
     // Live race order: telemetry RacePosition for cars still on the server.

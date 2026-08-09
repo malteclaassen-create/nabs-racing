@@ -46,6 +46,15 @@ export function formatGap(ms) {
   return `+${(ms / 1000).toFixed(3)}`;
 }
 
+// A RACE gap: how far up the road somebody is, which past a certain point stops
+// being a number of seconds and becomes a number of laps. The board decides
+// which of the two applies and ships them separately (gapToLeaderMs, lapsDown),
+// so nothing has to be guessed from the size of a number here.
+export function formatRaceGap(ms, lapsDown) {
+  if (lapsDown > 0) return `+${lapsDown} LAP${lapsDown > 1 ? "S" : ""}`;
+  return formatGap(ms);
+}
+
 // Top speed -> "312.47" (km/h, two decimals). The server sends the value with
 // its decimals intact; a bare integer hid how close two cars actually were down
 // the straight. Anything missing (or a car with no lap yet) -> NO_VALUE.

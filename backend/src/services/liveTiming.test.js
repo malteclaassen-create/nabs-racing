@@ -54,6 +54,28 @@ describe("liveTiming stint accumulation", () => {
     expect(stints[1].tyre).toBe("M");
   });
 
+  it("Race: a stop onto the SAME compound still counts as a stop", () => {
+    // The repair pass that removes ghost splits (the upstream flipping between
+    // "M" and "Medium") used to swallow these, so a hard-to-hard stop showed as
+    // one long stint on the live board and three stops after the import.
+    accumulateStints(snap({ type: 3, laps: 1, tyre: "H" }));
+    accumulateStints(snap({ type: 3, laps: 10, tyre: "H" }));
+    accumulateStints(snap({ type: 3, laps: 10, tyre: "H", pits: 1, inPits: true }));
+    accumulateStints(snap({ type: 3, laps: 20, tyre: "H", pits: 1 }));
+    const stints = stintsFor("g1");
+    expect(stints.length).toBe(2);
+    expect(stints.every((s) => s.tyre === "H")).toBe(true);
+  });
+
+  it("a same-compound split with no pit stop behind it is still merged away", () => {
+    // The flip artefact this repair exists for: the compound name changes
+    // shape, the pit counter never moves.
+    accumulateStints(snap({ type: 3, laps: 1, tyre: "M" }));
+    accumulateStints(snap({ type: 3, laps: 5, tyre: "Medium" }));
+    accumulateStints(snap({ type: 3, laps: 9, tyre: "M" }));
+    expect(stintsFor("g1")).toEqual([{ tyre: "M", laps: 9 }]);
+  });
+
   it("Sitting in the pits at session start opens no stint until the driver heads out", () => {
     accumulateStints(snap({ type: 1, laps: 0, inPits: true }));
     expect(stintsFor("g1")).toEqual([]); // no spurious reset, no phantom stint
@@ -73,25 +95,245 @@ describe("liveTiming stint accumulation", () => {
 
 // A full ET200 snapshot with several drivers, for the board-level tests
 // (leavers held during a race, result frozen past the session change).
-function fullSnap({ type = 3, name = "Race", drivers }) {
+function fullSnap({ type = 3, name = "Race", laps: raceLaps = 0, drivers }) {
   const Drivers = {};
   for (const [guid, d] of Object.entries(drivers)) {
     Drivers[guid] = {
-      CarInfo: { DriverName: d.name, CarModel: "f", Tyres: "S", CarID: d.carId ?? 1, IsSpectator: false },
-      Cars: { f: { NumLaps: d.laps ?? 1 } },
+      CarInfo: {
+        DriverName: d.name,
+        CarModel: d.model ?? "f",
+        CarSkin: d.skin ?? "",
+        Tyres: "S",
+        CarID: d.carId ?? 1,
+        IsSpectator: false,
+      },
+      Cars: {
+        [d.model ?? "f"]: {
+          NumLaps: d.laps ?? 1,
+          // The upstream's own stamp for the moment this driver last crossed
+          // the line — what a race gap is measured from.
+          LastLapCompletedTime: d.crossedAt ? new Date(d.crossedAt).toISOString() : undefined,
+        },
+      },
       TotalNumLaps: d.laps ?? 1,
       RacePosition: d.pos ?? null,
+      NormalisedSplinePos: d.spline ?? 0,
       NumPits: 0,
       IsInPits: false,
     };
   }
   return {
-    SessionInfo: { Type: type, Track: "monza", CurrentSessionIndex: 0, Name: name },
+    SessionInfo: { Type: type, Track: "monza", CurrentSessionIndex: 0, Name: name, Laps: raceLaps },
     TrackInfo: { name: "NABS Monza" },
     ConnectedDrivers: { Drivers },
     DisconnectedDrivers: { Drivers: {} },
   };
 }
+
+const T0 = Date.UTC(2026, 7, 9, 18, 0, 0);
+
+describe("liveTiming race gap", () => {
+  beforeEach(() => reset());
+
+  it("measures the gap from the two cars' crossings of the same lap", () => {
+    ingest(fullSnap({ laps: 30, drivers: {
+      g1: { name: "Alice", laps: 10, pos: 1, carId: 1, crossedAt: T0 },
+      g2: { name: "Bob", laps: 10, pos: 2, carId: 2, crossedAt: T0 + 4250 },
+    } }));
+    const board = getBoard();
+    const [alice, bob] = board.entries;
+    expect(alice.gapToLeaderMs).toBe(0);
+    expect(alice.lapsDown).toBe(0);
+    expect(bob.gapToLeaderMs).toBe(4250);
+    expect(bob.intervalMs).toBe(4250); // the car ahead IS the leader here
+    expect(board.session.leaderName).toBe("Alice");
+    expect(board.session.lapsLeft).toBe(20);
+  });
+
+  it("a car a lap down reports laps, not seconds", () => {
+    ingest(fullSnap({ laps: 30, drivers: {
+      g1: { name: "Alice", laps: 12, pos: 1, carId: 1, crossedAt: T0 + 120_000, spline: 0.4 },
+      g2: { name: "Bob", laps: 10, pos: 2, carId: 2, crossedAt: T0, spline: 0.5 },
+    } }));
+    const bob = getBoard().entries[1];
+    expect(bob.lapsDown).toBe(2);
+    expect(bob.gapToLeaderMs).toBe(null);
+  });
+
+  it("the seconds before the car behind reaches the line are not a lap down", () => {
+    // Both complete lap 11, three seconds apart…
+    ingest(fullSnap({ laps: 30, drivers: {
+      g1: { name: "Alice", laps: 11, pos: 1, carId: 1, crossedAt: T0 - 90_000, spline: 0.5 },
+      g2: { name: "Bob", laps: 11, pos: 2, carId: 2, crossedAt: T0 - 87_000, spline: 0.45 },
+    } }));
+    // …then the leader starts lap 13 while the chaser is still finishing 12,
+    // further round it than the leader is round his. One lap apart on the
+    // counter, not a lap down.
+    ingest(fullSnap({ laps: 30, drivers: {
+      g1: { name: "Alice", laps: 12, pos: 1, carId: 1, crossedAt: T0, spline: 0.02 },
+      g2: { name: "Bob", laps: 11, pos: 2, carId: 2, crossedAt: T0 - 87_000, spline: 0.97 },
+    } }));
+    const bob = getBoard().entries[1];
+    expect(bob.lapsDown).toBe(0);
+    expect(bob.gapToLeaderMs).toBe(3000); // their lap-11 crossings, 3s apart
+  });
+
+  it("says nothing rather than guessing before it has seen both cars cross", () => {
+    // A viewer arriving mid-race, or the relay restarting: no crossing history
+    // yet. A blank gap fills itself in within a lap; a made-up one would not.
+    ingest(fullSnap({ laps: 30, drivers: {
+      g1: { name: "Alice", laps: 12, pos: 1, carId: 1, crossedAt: T0, spline: 0.5 },
+      g2: { name: "Bob", laps: 11, pos: 2, carId: 2, crossedAt: T0 - 3000, spline: 0.6 },
+    } }));
+    expect(getBoard().entries[1].gapToLeaderMs).toBe(null);
+  });
+
+  it("a race restarted in place does not inherit the previous running's gaps", () => {
+    // An admin restarting the session keeps Track|Index|Name identical, so
+    // nothing else clears the crossing history — and the lap numbers repeat.
+    for (let n = 1; n <= 6; n++) {
+      ingest(fullSnap({ laps: 30, drivers: {
+        g1: { name: "Alice", laps: n, pos: 1, carId: 1, crossedAt: T0 + n * 90_000 },
+        g2: { name: "Bob", laps: n, pos: 2, carId: 2, crossedAt: T0 + n * 90_000 + 4250 },
+      } }));
+    }
+    expect(getBoard().entries[1].gapToLeaderMs).toBe(4250);
+
+    // Same session key, counters back to zero, and this time they are close.
+    const later = T0 + 3_600_000;
+    for (let n = 1; n <= 3; n++) {
+      ingest(fullSnap({ laps: 30, drivers: {
+        g1: { name: "Alice", laps: n, pos: 1, carId: 1, crossedAt: later + n * 90_000 },
+        g2: { name: "Bob", laps: n, pos: 2, carId: 2, crossedAt: later + n * 90_000 + 400 },
+      } }));
+    }
+    expect(getBoard().entries[1].gapToLeaderMs).toBe(400);
+  });
+
+  it("a car credited with more laps than the leader reports nothing, not zero", () => {
+    // The leader has left and holds P1 on a frozen position while the race went
+    // on without them. "0.000" would read as certain; it is the opposite.
+    ingest(fullSnap({ laps: 30, drivers: {
+      g1: { name: "Alice", laps: 28, pos: 1, carId: 1, crossedAt: T0 },
+      g2: { name: "Bob", laps: 28, pos: 2, carId: 2, crossedAt: T0 + 1000 },
+    } }));
+    ingest(fullSnap({ laps: 30, drivers: {
+      g1: { name: "Alice", laps: 28, pos: 1, carId: 1, crossedAt: T0 },
+      g2: { name: "Bob", laps: 30, pos: 2, carId: 2, crossedAt: T0 + 180_000 },
+    } }));
+    const bob = getBoard().entries[1];
+    expect(bob.lapsDown).toBe(0);
+    expect(bob.gapToLeaderMs).toBe(null);
+  });
+
+  it("practice and qualifying keep the best-lap gap and no race gap", () => {
+    ingest(fullSnap({ type: 2, name: "Qualifying", drivers: {
+      g1: { name: "Alice", laps: 3, crossedAt: T0 },
+      g2: { name: "Bob", laps: 3, crossedAt: T0 + 9000 },
+    } }));
+    const board = getBoard();
+    expect(board.entries.every((e) => e.gapToLeaderMs === null)).toBe(true);
+    expect(board.session.leaderName).toBe(null);
+    expect(board.session.lapsLeft).toBe(null);
+  });
+});
+
+describe("liveTiming safety car", () => {
+  beforeEach(() => reset());
+
+  it("is recognised by its skin, kept out of the order and reported as out", () => {
+    ingest(fullSnap({ laps: 30, drivers: {
+      sc: { name: "Adam Galaxi", laps: 11, pos: 1, carId: 9, skin: "!NABS_Safety_Car", model: "lotus_exige_240" },
+      g1: { name: "Alice", laps: 10, pos: 2, carId: 1, crossedAt: T0 },
+      g2: { name: "Bob", laps: 10, pos: 3, carId: 2, crossedAt: T0 + 2000 },
+    } }));
+    const board = getBoard();
+    expect(board.session.safetyCar).toBe(true);
+    // Leading the field on the road, last in the classification.
+    expect(board.entries.map((e) => e.name)).toEqual(["Alice", "Bob", "Adam Galaxi"]);
+    expect(board.session.leaderName).toBe("Alice");
+    // …and the gap is to the real leader, not to the pace car.
+    expect(board.entries[1].gapToLeaderMs).toBe(2000);
+    expect(board.entries[2].isSafetyCar).toBe(true);
+  });
+
+  it("recognises the pace car of every season the league has archived", () => {
+    // Checked against all 47 events in results-archive: these four models cover
+    // every pace-car and broadcast-car entry and no racing entry. The skins
+    // changed almost every season, which is why the model matters.
+    const cases = [
+      { skin: "!NABS_Safety_Car", model: "lotus_exige_240" }, // s5/s6
+      { skin: "NABS_Racing_Safety_Car", model: "mercedes_sls" }, // s5
+      { skin: "kunos_zp_121", model: "mercedes_sls_gt3" }, // s7 — skin says nothing
+      { skin: "NABS Broadcast", model: "mercedes_sls_gt3" }, // s7 — not racing either
+      { skin: "sc", model: "drf_audi_rs5_dtm_2019" }, // s8
+    ];
+    for (const c of cases) {
+      reset();
+      ingest(fullSnap({ drivers: {
+        sc: { name: "Pace", laps: 5, pos: 1, carId: 9, skin: c.skin, model: c.model },
+        g1: { name: "Alice", laps: 5, pos: 2, carId: 1 },
+        g2: { name: "Bob", laps: 5, pos: 3, carId: 2 },
+      } }));
+      const board = getBoard();
+      expect(board.entries.find((e) => e.name === "Pace").isSafetyCar, `${c.model}/${c.skin}`).toBe(true);
+      expect(board.session.leaderName).toBe("Alice");
+      expect(board.session.driverCount).toBe(2); // the pace car is not a competitor
+    }
+  });
+
+  it("leaves a multi-make grid alone (season 7 ran twelve different cars)", () => {
+    // The tempting general rule — "the model nobody else is on isn't racing" —
+    // would flag most of a 2007-spec grid, where every team is a distinct model
+    // with two drivers. Only the skin and the known pace cars may decide.
+    const drivers = {};
+    const makes = ["cim_2007_mclaren", "cim_2007_ferrari", "cim_2007_williams", "cim_2007_toyota"];
+    makes.forEach((m, i) => {
+      drivers[`a${i}`] = { name: `A${i}`, laps: 5, pos: i * 2 + 1, carId: i * 2, model: m, skin: `${i}-car` };
+      drivers[`b${i}`] = { name: `B${i}`, laps: 5, pos: i * 2 + 2, carId: i * 2 + 1, model: m, skin: `${i}-car2` };
+    });
+    ingest(fullSnap({ drivers }));
+    const board = getBoard();
+    expect(board.entries.every((e) => e.isSafetyCar === false)).toBe(true);
+    expect(board.session.driverCount).toBe(8);
+  });
+
+  it("is recognised by its car model when the skin says nothing", () => {
+    ingest(fullSnap({ drivers: {
+      sc: { name: "Someone", laps: 5, pos: 1, carId: 9, skin: "", model: "mercedes_sls" },
+      g1: { name: "Alice", laps: 5, pos: 2, carId: 1 },
+      g2: { name: "Bob", laps: 5, pos: 3, carId: 2 },
+    } }));
+    expect(getBoard().entries.map((e) => e.name)).toEqual(["Alice", "Bob", "Someone"]);
+  });
+
+  it("stays out of it when half the field looks like a pace car", () => {
+    // Not a league round — a mixed session, or a skin naming accident. Being
+    // wrong here would cost real drivers their places, so nothing is reclassified.
+    ingest(fullSnap({ drivers: {
+      g1: { name: "Alice", laps: 5, pos: 1, carId: 1, skin: "safety_thing" },
+      g2: { name: "Bob", laps: 5, pos: 2, carId: 2, skin: "safety_thing" },
+      g3: { name: "Cara", laps: 5, pos: 3, carId: 3 },
+    } }));
+    const board = getBoard();
+    expect(board.entries.map((e) => e.name)).toEqual(["Alice", "Bob", "Cara"]);
+    expect(board.entries.every((e) => e.isSafetyCar === false)).toBe(true);
+    expect(board.session.safetyCar).toBe(false);
+  });
+
+  it("a safety car sitting in its garage is not 'out'", () => {
+    const snap = fullSnap({ drivers: {
+      sc: { name: "Adam Galaxi", laps: 0, pos: 3, carId: 9, skin: "NABS_Racing_Safety_Car" },
+      g1: { name: "Alice", laps: 5, pos: 1, carId: 1 },
+      g2: { name: "Bob", laps: 5, pos: 2, carId: 2 },
+    } });
+    snap.ConnectedDrivers.Drivers.sc.IsInPits = true;
+    ingest(snap);
+    const board = getBoard();
+    expect(board.session.safetyCar).toBe(false);
+    expect(board.entries.find((e) => e.name === "Adam Galaxi").isSafetyCar).toBe(true);
+  });
+});
 
 describe("liveTiming race board", () => {
   beforeEach(() => reset());

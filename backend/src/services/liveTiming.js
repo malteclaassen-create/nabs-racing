@@ -196,6 +196,56 @@ function sessionTypeName(t) {
   return { 0: "Booking", 1: "Practice", 2: "Qualifying", 3: "Race" }[t] || "Session";
 }
 
+// ---------------------------------------------------------------------------
+// The safety car.
+//
+// The league runs it as an ordinary entry on the server, which is why it has
+// always shown up on this board as just another driver — and, while it is out,
+// as the car at the front of the field. Anything that names a race leader has
+// to know the difference.
+//
+// Two questions are asked, because neither is enough on its own.
+//
+// The SKIN is what the result importer has always gone by (see
+// services/telemetryExtractor.js), and the league has renamed it every season
+// or so: "!NABS_Safety_Car", "NABS_Racing_Safety_Car", "NABS Safetycar", and in
+// season 8 simply "sc". Hence a pattern rather than a list — and hence not the
+// skin alone, because season 7 rounds 1-7 ran the pace car under ordinary Kunos
+// skin names ("0_AMG", "kunos_zp_121") that say nothing at all.
+//
+// The MODEL closes that gap. These four cars were checked against every one of
+// the 47 events in results-archive: they account for all 112 pace-car and
+// broadcast-car entries and not one of the 1673 racing entries, across grids
+// that ran formula_2010, rss_formula_2013, rss_formula_hybrid_v12-r and the
+// twelve cim_2007_* cars. No overlap in either direction.
+//
+// NOT by "which model is the odd one out", which is the tempting general rule
+// and is wrong here: season 7 is a multi-make grid of twelve 2007 cars with two
+// to four drivers in each, and a minority rule flags sixteen real drivers as
+// pace cars. Measured, not assumed.
+//
+// NOT by driver name either, though the importer keeps such a list. It is
+// explicitly only a suspicion there, for a good reason: the people who drive
+// the pace car also race, and treating a name as proof once threw away a real
+// driver's telemetry.
+//
+// MAINTENANCE: a new pace car needs its model added here (or a skin the pattern
+// catches), or the live page will show it leading the race. See README.
+const SAFETY_CAR_MODELS = new Set([
+  "lotus_exige_240", // seasons 5-6
+  "mercedes_sls", // season 5
+  "mercedes_sls_gt3", // season 7 — also the broadcast car, equally not racing
+  "drf_audi_rs5_dtm_2019", // season 8
+]);
+function looksLikeSafetyCar(carSkin, carModel) {
+  const skin = String(carSkin || "").trim();
+  return (
+    /safety/i.test(skin) ||
+    /^sc$/i.test(skin) ||
+    SAFETY_CAR_MODELS.has(String(carModel || "").trim().toLowerCase())
+  );
+}
+
 // Pull the three best-lap sector boxes (with colour flags) off a car record.
 function sectorsOf(splitObj) {
   if (!splitObj) return [null, null, null];
@@ -347,9 +397,59 @@ function createRelay(server) {
   // runs while somebody is watching. Cleared with the stints above.
   const raceRosterByGuid = new Map();
 
+  // Each driver's recent line crossings: which lap, and the upstream's own
+  // timestamp for it.
+  //
+  // This is what a race gap is measured with. Two cars' crossings of the SAME
+  // lap differ by exactly the gap between them, both stamped by the same clock
+  // on the race server — nothing here has to be extrapolated. The obvious
+  // alternative, comparing distance covered, needs the lap counter and the
+  // spline to agree, and they arrive at very different rates: the spline wraps
+  // to zero on the line while the lap counter waits for the next snapshot, so
+  // every car would read almost a full lap behind for that window.
+  //
+  // Six crossings each is plenty: further back than that and the board says
+  // how many laps down, not how many seconds. Cleared with the stints.
+  const crossingsByGuid = new Map(); // guid -> [{ lap, at }], oldest first
+  const CROSSINGS_KEPT = 6;
+
+  // When the session on air started, in our own clock. Worked out once per
+  // session from the snapshot's ElapsedMilliseconds and then left alone, so it
+  // does not jitter by a snapshot's worth every tick.
+  //
+  // It exists for the first lap. Every lap after it can be timed from the
+  // driver's last crossing, but on the opening lap nobody has crossed anything
+  // — which is why the whole "current lap" column sat empty through the most
+  // watched two minutes of the race. In a RACE that lap started at the green
+  // light, and this is the green light.
+  let sessionStartedAt = null;
+  let startedAtKey = null;
+
   // A finished race's final board, held past the session change (see the ET200
   // handler and RESULT_HOLD_MS).
   let finishedRace = null; // { board, until } | null
+
+  // Note down that this driver has completed another lap, and when. Called for
+  // every driver on every snapshot; a lap already on file is ignored, so the
+  // list only ever grows by one at a time.
+  function recordCrossing(guid, car) {
+    const lap = car?.NumLaps ?? 0;
+    const at = car?.LastLapCompletedTime ? Date.parse(car.LastLapCompletedTime) || null : null;
+    if (!(lap > 0) || at == null) return;
+    let list = crossingsByGuid.get(guid);
+    if (!list) crossingsByGuid.set(guid, (list = []));
+    const last = list[list.length - 1];
+    // A counter going BACKWARDS is a different running of the same session —
+    // an admin restarting the race in place keeps the session key identical, so
+    // nothing else clears this — or a driver who rejoined. Either way the old
+    // crossings belong to a race that no longer exists, and pairing them with
+    // the new ones hands out the previous race's gaps as if they were today's.
+    // (pitRecorder.js documents the same two causes for the same signal.)
+    if (last && lap < last.lap) list.length = 0;
+    else if (last && last.lap === lap) return;
+    list.push({ lap, at });
+    if (list.length > CROSSINGS_KEPT) list.shift();
+  }
 
   function accumulateStints(msg) {
     if (!msg) return;
@@ -359,6 +459,7 @@ function createRelay(server) {
       stintsByGuid.clear();
       lastRacePosByGuid.clear();
       raceRosterByGuid.clear();
+      crossingsByGuid.clear();
       stintSessionKey = key;
     }
     // In Practice/Qualifying a driver teleports back to the pits to end a run and
@@ -370,6 +471,7 @@ function createRelay(server) {
       const ci = d.CarInfo || {};
       if (ci.IsSpectator) continue;
       const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
+      recordCrossing(guid, car);
       const lap = Math.max(1, car?.NumLaps ?? d.TotalNumLaps ?? 1);
       const tyre = ci.Tyres || car?.TyreBestLap || "";
       const pits = d.NumPits ?? car?.NumPits ?? 0;
@@ -402,7 +504,11 @@ function createRelay(server) {
         st.stints.push({ tyre: tyre || "?", fromLap: lap, toLap: lap });
       } else if (pitted || tyreChanged) {
         cur.toLap = lap;
-        st.stints.push({ tyre: tyre || cur.tyre, fromLap: lap, toLap: lap });
+        // Remember WHY the stint broke. The server's own pit counter rising is
+        // a fact; a compound that merely looks different is a guess, and the
+        // repair pass in stintsFor is allowed to undo the guess but not the
+        // fact (see the note there).
+        st.stints.push({ tyre: tyre || cur.tyre, fromLap: lap, toLap: lap, pitted });
       } else {
         if (lap > cur.toLap) cur.toLap = lap;
         if ((!cur.tyre || cur.tyre === "?") && tyre) cur.tyre = tyre;
@@ -432,7 +538,13 @@ function createRelay(server) {
       // Repair pass for histories accumulated before the tyreKey fix (and any
       // remaining flip artefact): a same-compound stint that opens on the very
       // lap the previous one ended is a ghost split, not a real stop — merge.
-      if (prev && tyreKey(prev._tyre) === tyreKey(s.tyre) && s.fromLap <= prev._toLap) {
+      //
+      // Unless the pit counter is what opened it. A driver can and does stop
+      // for the same compound again — 13bot went hard-to-hard on lap ten at
+      // Hockenheim — and this pass used to swallow exactly those, so the live
+      // chart showed a one-stop race the result import then contradicted with
+      // three. A stop the SERVER counted is not an artefact of anything.
+      if (prev && !s.pitted && tyreKey(prev._tyre) === tyreKey(s.tyre) && s.fromLap <= prev._toLap) {
         prev._toLap = Math.max(prev._toLap, s.toLap);
         continue;
       }
@@ -481,6 +593,21 @@ function createRelay(server) {
       for (const id of [...liveByCar.keys()]) {
         if (!alive.has(id)) liveByCar.delete(id);
       }
+    }
+    {
+      const si = status?.SessionInfo || {};
+      const key = sessionKeyOf(si, status?.TrackInfo || {});
+      const elapsed = Number(si.ElapsedMilliseconds) || 0;
+      if (key !== startedAtKey) {
+        startedAtKey = key;
+        sessionStartedAt = null;
+      }
+      // Only with a real elapsed reading: without one the anchor would be "now"
+      // and the opening lap would appear to start whenever we happened to look.
+      // Kept trying until one arrives, because the FIRST snapshot of a session
+      // reports zero elapsed — anchoring only on the session change would have
+      // meant never anchoring at all.
+      if (sessionStartedAt == null && elapsed > 0) sessionStartedAt = Date.now() - elapsed;
     }
     accumulateStints(status); // grow the per-driver tyre-stint history
     // Write pit-lane facts to disk while they exist — the stored result JSON
@@ -650,6 +777,8 @@ function createRelay(server) {
       carModel: ci.CarModel || "",
       carName: ci.CarName || car?.CarName || "",
       carSkin: ci.CarSkin || "",
+      // Not a competitor: the pace car. See looksLikeSafetyCar.
+      isSafetyCar: looksLikeSafetyCar(ci.CarSkin, ci.CarModel),
       tyre: car?.TyreBestLap || ci.Tyres || "",
       // The tyre fitted RIGHT NOW (for the strategy view), as opposed to `tyre`
       // above which is the best-lap compound. Prefer a live telemetry field if the
@@ -755,6 +884,17 @@ function createRelay(server) {
     // board's leader flip on every quick lap. Other sessions keep the hot-lap
     // ranking: fastest best lap first; drivers without a lap go last.
     const isRace = si.Type === 3;
+
+    // Getting this wrong would cost a real driver their place, so the safety-car
+    // flag only takes effect while safety cars are the small minority of the
+    // field they always are in a league round. A session where a quarter of the
+    // grid looks like a pace car is something else entirely — a mixed-class
+    // event, a bad skin name — and is left exactly as it was.
+    const scSeen = entries.filter((e) => e.isSafetyCar).length;
+    if (!isRace || scSeen === 0 || scSeen > Math.max(1, Math.floor(entries.length / 4))) {
+      for (const e of entries) e.isSafetyCar = false;
+    }
+
     if (isRace) {
       // A resurrected leaver's held position goes stale as the race moves on:
       // a lap-3 quitter would sit mid-field for the rest of the evening. So a
@@ -766,6 +906,9 @@ function createRelay(server) {
       const maxLaps = entries.reduce((m, e) => Math.max(m, e.lapCount || 0), 0);
       const dropped = (e) => resurrected.has(e.guid) && (e.lapCount || 0) < maxLaps - 1;
       entries.sort((a, b) => {
+        // The safety car is not in the race, so it is not in the order either:
+        // it sits below the classified runners however far up the road it is.
+        if (a.isSafetyCar !== b.isSafetyCar) return a.isSafetyCar ? 1 : -1;
         const da = dropped(a);
         const db = dropped(b);
         if (da !== db) return da ? 1 : -1;
@@ -806,10 +949,84 @@ function createRelay(server) {
 
     // Gap is measured against the current leader's best lap (P1 = 0.000).
     const leaderBestMs = entries.find((e) => e.bestLapMs)?.bestLapMs || null;
+    // The session's actual fastest lap, which is a different question. In
+    // practice and qualifying the board is sorted by lap time, so the first
+    // entry holds it and the two agree — but a race is sorted by running order,
+    // and there the leader is very often not the quickest. The header card says
+    // "session best" and now means it.
+    const competitors = entries.filter((e) => !e.isSafetyCar);
+    const fastestLapMs = competitors.reduce(
+      (best, e) => (e.bestLapMs && (best == null || e.bestLapMs < best) ? e.bestLapMs : best),
+      null
+    );
     entries.forEach((e, i) => {
       e.position = i + 1;
       e.gapToBestMs = e.bestLapMs && leaderBestMs ? e.bestLapMs - leaderBestMs : null;
     });
+
+    // --- Race gap ------------------------------------------------------------
+    // gapToBestMs above compares two fastest laps, set at two unrelated moments.
+    // That is the right question in practice and qualifying and the wrong one in
+    // a race, where what matters is how far up the road the leader is NOW. So a
+    // race also gets gapToLeaderMs / intervalMs (to the car ahead) and lapsDown,
+    // measured off the line crossings; practice and qualifying leave them null
+    // and keep using the lap gap.
+    if (isRace) {
+      // crossingsByGuid is keyed by the real Steam id, which never leaves this
+      // module — the entries carry the pseudonym. Walk back through the map the
+      // entries were built from to pair them up again.
+      const realGuid = new Map([...byGuid].map(([guid, entry]) => [entry, guid]));
+      const crossedAt = (entry, lap) => {
+        const list = crossingsByGuid.get(realGuid.get(entry));
+        return list?.find((c) => c.lap === lap)?.at ?? null;
+      };
+      // How far this car was behind that one when they last crossed the same
+      // line. Null when either of them hasn't been seen crossing it (too far
+      // back, or joined after).
+      const gapBetween = (behind, ahead) => {
+        const lap = Math.min(behind.lapCount || 0, ahead.lapCount || 0);
+        if (lap < 1) return null;
+        const mine = crossedAt(behind, lap);
+        const theirs = crossedAt(ahead, lap);
+        if (mine == null || theirs == null) return null;
+        // Crossed that lap FIRST, yet ranked behind: the two facts disagree,
+        // which happens when a car that has left the server holds a position
+        // the race has since moved past. Clamping that to zero would print
+        // "0.000" — the one number a reader would take as certain. Unknown.
+        return mine >= theirs ? mine - theirs : null;
+      };
+
+      const running = entries.filter((e) => !e.isSafetyCar);
+      running.forEach((e, i) => {
+        const leader = running[0]; // there is one, or this loop doesn't run
+        const ahead = i > 0 ? running[i - 1] : null;
+        // Laps down, with the correction every timing tower needs: for the few
+        // seconds between the leader crossing the line and the car behind doing
+        // the same, the counters differ by one without anybody having been
+        // lapped. That car is simply further round the lap — which is the two
+        // splines COMPARED, not either of them trusted as a measurement.
+        let down = (leader.lapCount || 0) - (e.lapCount || 0);
+        if (down === 1 && e.onTrack && leader.onTrack && (e.spline || 0) > (leader.spline || 0)) down = 0;
+        // Negative means more laps than the leader has — the same disagreement
+        // gapBetween guards against. Not "level with the leader": unknown.
+        e.lapsDown = Math.max(0, down);
+        e.gapToLeaderMs = down === 0 ? gapBetween(e, leader) : null;
+        e.intervalMs = ahead && (e.lapCount || 0) === (ahead.lapCount || 0) ? gapBetween(e, ahead) : null;
+      });
+      // The pace car is not racing anybody.
+      for (const e of entries) {
+        if (!e.isSafetyCar) continue;
+        e.lapsDown = 0;
+        e.gapToLeaderMs = null;
+        e.intervalMs = null;
+      }
+    } else {
+      for (const e of entries) {
+        e.lapsDown = 0;
+        e.gapToLeaderMs = null;
+        e.intervalMs = null;
+      }
+    }
 
     // Session remaining time (Time is in minutes; ElapsedMilliseconds from the
     // last full snapshot). Frontend ticks it down locally between snapshots.
@@ -831,9 +1048,23 @@ function createRelay(server) {
         ambientTemp: si.AmbientTemp ?? null,
         roadTemp: si.RoadTemp ?? null,
         weather: si.WeatherGraphics || "",
-        bestLapMs: leaderBestMs ?? sessionBestMs,
-        driverCount: entries.length,
-        onTrackCount: entries.filter((e) => e.onTrack).length,
+        bestLapMs: fastestLapMs ?? sessionBestMs,
+        // Counted over the competitors: a pace car in the field would otherwise
+        // make a 39-car race read as 40, and the "fastest lap" line under the
+        // leader would be open to a car that is not in the race.
+        driverCount: competitors.length,
+        onTrackCount: competitors.filter((e) => e.onTrack).length,
+        // Is the pace car out there right now? Sitting in its garage all evening
+        // (which is where it usually is) does not count, and neither does the
+        // lap it spends coming back in.
+        safetyCar: entries.some((e) => e.isSafetyCar && e.onTrack && !e.inPits),
+        // The green light, so the opening lap can be timed (see sessionStartedAt).
+        startedAt: sessionStartedAt,
+        // The car actually leading the race — never the safety car, and never a
+        // driver who happens to hold the fastest lap. Null outside a race.
+        leaderName: isRace ? competitors[0]?.name ?? null : null,
+        // How many laps the leader still has to do, for a lap-limited race.
+        lapsLeft: isRace && si.Laps > 0 ? Math.max(0, si.Laps - (competitors[0]?.lapCount ?? 0)) : null,
         sessionIndex: si.CurrentSessionIndex ?? 0,
         sessionCount: si.SessionCount ?? 1,
         remainingMs,
@@ -862,6 +1093,8 @@ function createRelay(server) {
       cars: liveByCar.size,
       stintDrivers: stintsByGuid.size,
       heldPositions: lastRacePosByGuid.size,
+      crossingDrivers: crossingsByGuid.size, // capped at CROSSINGS_KEPT each
+
       raceRoster: raceRosterByGuid.size,
       resultHold: !!finishedRace,
       trackMapKb: trackMap?.png ? Math.round(trackMap.png.length / 1024) : 0,
@@ -875,6 +1108,7 @@ function createRelay(server) {
       stintsByGuid.clear();
       raceRosterByGuid.clear();
       lastRacePosByGuid.clear();
+      crossingsByGuid.clear();
       liveByCar.clear();
       finishedRace = null;
       stintSessionKey = null;
@@ -1104,11 +1338,26 @@ function getDemoBoard() {
   // Order by distance covered — the cars run at slightly different speeds, so
   // the running order genuinely changes over time, like a real race.
   entries.sort((a, b) => b._prog - a._prog);
+  const leadProg = entries[0]?._prog ?? 0;
   entries.forEach((e, i) => {
     e.position = i + 1;
     e.racePosition = i + 1;
-    delete e._prog;
+    // Same shape the real board ships, so the race columns are exercised here
+    // too — a field missing from the demo is a column that reads blank in every
+    // dev session, which is exactly where it gets looked at first. Including
+    // the real board's rule that a car laps down has no interval either.
+    e.isSafetyCar = false;
+    e.lapsDown = Math.floor(leadProg - e._prog);
+    e.gapToLeaderMs = e.lapsDown === 0 ? Math.round((leadProg - e._prog) * 82000) : null;
+    const ahead = i > 0 ? entries[i - 1] : null;
+    e.intervalMs =
+      ahead && Math.floor(ahead._prog) === Math.floor(e._prog)
+        ? Math.round((ahead._prog - e._prog) * 82000)
+        : null;
   });
+  // _prog is read across rows above (each car against the one ahead), so it can
+  // only be dropped once every row is done with it.
+  for (const e of entries) delete e._prog;
   return {
     ok: true,
     connected: true,
@@ -1124,9 +1373,14 @@ function getDemoBoard() {
       ambientTemp: 26,
       roadTemp: 34,
       weather: "3_clear",
-      bestLapMs: entries[0]?.bestLapMs ?? null,
+      // The FASTEST lap, not the leader's — the demo is ordered by distance
+      // covered, so those are different cars, exactly as in a real race.
+      bestLapMs: entries.reduce((b, e) => (e.bestLapMs && (b == null || e.bestLapMs < b) ? e.bestLapMs : b), null),
       driverCount: entries.length,
       onTrackCount: entries.filter((e) => e.onTrack).length,
+      safetyCar: false,
+      leaderName: entries[0]?.name ?? null,
+      lapsLeft: Math.max(0, DEMO_RACE_LAPS - (entries[0]?.lapCount ?? 0)),
       sessionIndex: 0,
       sessionCount: 1,
       remainingMs: 32 * 60000,

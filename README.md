@@ -195,3 +195,49 @@ drivers can only RSVP as themselves.
    (DSQ is auto-detected), assign reserves a "sub for" team, add penalty
    positions if needed.
 4. Confirm → results are saved and **all standings are recalculated**.
+
+---
+
+## The live page during a race
+
+While the session on the server is a **Race**, the live page asks different
+questions than it does in practice:
+
+| Practice / Qualifying | Race |
+| --------------------- | ---- |
+| Session best lap      | Who is leading (with the fastest lap underneath) |
+| Time left             | Laps left, e.g. "31 of 39" |
+| Δ to personal best    | Gap to the leader ("+4.271", "+1 LAP") |
+| —                     | A yellow **SAFETY CAR ON TRACK** bar while one is out |
+
+The gap is measured from the two cars' crossings of the *same* lap, both stamped
+by the race server's own clock, so it doesn't jump around between snapshots. It
+appears a lap or so after the page starts watching — before that there is nothing
+to compare, and a blank is better than a guess.
+
+**How the safety car is recognised** (`backend/src/services/liveTiming.js`,
+`looksLikeSafetyCar`): by the **car skin** — "safety" anywhere in it, or exactly
+"sc" — or by the **car model** being one of the four the league has used as a
+pace or broadcast car:
+
+| Model | Used in |
+| ----- | ------- |
+| `lotus_exige_240` | seasons 5-6 |
+| `mercedes_sls` | season 5 |
+| `mercedes_sls_gt3` | season 7 (pace car *and* broadcast car) |
+| `drf_audi_rs5_dtm_2019` | season 8 |
+
+Both halves are needed. The skin has been renamed almost every season
+("!NABS_Safety_Car", "NABS_Racing_Safety_Car", "NABS Safetycar", now "sc"), and
+in season 7 rounds 1-7 the pace car ran under plain Kunos skin names that say
+nothing at all. Checked against all 47 events in `results-archive`: these rules
+catch all 112 pace/broadcast entries and none of the 1673 racing entries.
+
+It is deliberately **not** "whichever model the fewest people are on" — season 7
+is a twelve-make 2007 grid with two drivers per car, and that rule flags sixteen
+real drivers. And never by driver name: the people who drive it also race.
+
+So: **a new pace car needs its model added to that list** (or a skin the pattern
+catches), or the live page will show it leading the race. A safety car it does
+recognise is kept out of the running order, out of the driver count, out of the
+gap calculation and out of the live championship projection.

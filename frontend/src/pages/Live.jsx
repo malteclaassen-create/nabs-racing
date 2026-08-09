@@ -22,6 +22,7 @@ import {
   makeDriverMatcher,
   formatLap,
   formatGap,
+  formatRaceGap,
   formatSector,
   formatCountdown,
   formatRunning,
@@ -82,9 +83,13 @@ function Countdown({ baseMs, receivedAt, resetKey }) {
   return <span className="font-mono tabular-nums text-dark">{formatCountdown(remaining)}</span>;
 }
 
+// min-w-0: this div is a grid item, and a grid item's automatic minimum size is
+// its min-content width — so a `truncate` child (nowrap) would push the item
+// wider than its track instead of ellipsing, and a long leader's name would run
+// into the tile beside it.
 function Stat({ label, children }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">
         {label}
       </div>
@@ -96,6 +101,7 @@ function Stat({ label, children }) {
 function SessionHeader({ session, receivedAt }) {
   const code = countryCodeFromName(session.country);
   const weather = prettyWeather(session.weather);
+  const isRace = session.type === "Race";
   // On phones the card is just the session type, the track and the server —
   // every number (best lap, time left, drivers, conditions) waits behind the
   // toggle, so the timing itself starts near the top of the screen. The
@@ -134,6 +140,24 @@ function SessionHeader({ session, receivedAt }) {
   return (
     <div className="reveal card relative overflow-hidden">
       <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-amber-500 to-sky-600" />
+      {/* The one thing that changes how everything below it should be read. It
+          sits above the numbers rather than among them, and stays put on phones
+          instead of hiding behind the details toggle — a caution is not a
+          detail. Yellow, because that is what it is. */}
+      {session.safetyCar && (
+        <div
+          role="status"
+          className="flex items-center gap-2.5 border-b border-amber-500/40 bg-amber-500/15 px-4 py-2 sm:px-6"
+        >
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+          </span>
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-warn sm:text-xs">
+            Safety car on track
+          </span>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 px-4 py-3.5 sm:grid-cols-2 sm:gap-5 sm:p-6 lg:grid-cols-6">
         <div className="sm:col-span-2">
           <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow sm:text-[11px]">
@@ -162,21 +186,52 @@ function SessionHeader({ session, receivedAt }) {
                 stats become grid items of the card itself and spread across
                 its columns exactly as before the collapse existed. */}
             <div className="grid grid-cols-2 gap-4 pt-4 sm:contents">
-              <Stat label="Session Best">
-                <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
-                  {formatLap(session.bestLapMs)}
-                </span>
-              </Stat>
+              {/* A race asks different questions of the same two tiles. Who is
+                  winning beats what the fastest lap was — the fastest lap stays,
+                  as the small line underneath — and a lap-limited race has no
+                  clock to count down, so the dash that used to sit there becomes
+                  the number everybody actually wants. A TIMED race keeps the
+                  clock; practice and qualifying are untouched. */}
+              {isRace ? (
+                <Stat label="Leader">
+                  <span
+                    className="block truncate font-display text-xl font-bold uppercase text-dark sm:text-2xl"
+                    title={session.leaderName || undefined}
+                  >
+                    {session.leaderName || NO_VALUE}
+                  </span>
+                  {session.bestLapMs > 0 && (
+                    <span className="font-mono text-xs text-light">
+                      fastest {formatLap(session.bestLapMs)}
+                    </span>
+                  )}
+                </Stat>
+              ) : (
+                <Stat label="Session Best">
+                  <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
+                    {formatLap(session.bestLapMs)}
+                  </span>
+                </Stat>
+              )}
 
-              <Stat label="Time Left">
-                <span className="text-xl font-bold sm:text-2xl">
-                  <Countdown
-                    baseMs={session.remainingMs}
-                    receivedAt={receivedAt}
-                    resetKey={`${session.type}|${session.sessionIndex}|${session.trackName}`}
-                  />
-                </span>
-              </Stat>
+              {isRace && session.lapsLeft != null ? (
+                <Stat label="Laps Left">
+                  <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
+                    {session.lapsLeft}
+                  </span>
+                  <span className="ml-2 font-mono text-xs text-light">of {session.raceLaps}</span>
+                </Stat>
+              ) : (
+                <Stat label="Time Left">
+                  <span className="text-xl font-bold sm:text-2xl">
+                    <Countdown
+                      baseMs={session.remainingMs}
+                      receivedAt={receivedAt}
+                      resetKey={`${session.type}|${session.sessionIndex}|${session.trackName}`}
+                    />
+                  </span>
+                </Stat>
+              )}
 
               <Stat label="Drivers">
                 <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
@@ -241,15 +296,21 @@ function Sector({ s }) {
 }
 
 // Live-ticking current-lap clock for an on-track driver (now - lastLapAt).
-function CurrentLap({ lastLapAt, inPits }) {
+// `startedAt` is the fallback for the opening lap of a race: nobody has crossed
+// the line yet, so there is no last crossing to count from — but that lap began
+// at the green light, and the board now says when that was. Only passed for a
+// driver with no completed lap in a race; in practice a first lap starts
+// whenever the driver left the pits, which nothing knows, so it stays blank.
+function CurrentLap({ lastLapAt, inPits, startedAt = null }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(t);
   }, []);
   if (inPits) return <span className="font-mono text-[11px] font-bold uppercase text-warn">In pit</span>;
-  if (!lastLapAt) return <NoData className="font-mono tabular-nums" />;
-  const ms = now - lastLapAt;
+  const from = lastLapAt || startedAt;
+  if (!from) return <NoData className="font-mono tabular-nums" />;
+  const ms = now - from;
   if (ms < 0 || ms > 15 * 60 * 1000) return <NoData className="font-mono tabular-nums" />;
   return <span className="font-mono font-bold tabular-nums text-dark">{formatRunning(ms)}</span>;
 }
@@ -320,8 +381,9 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
   );
 }
 
-// A row in the "On Track Now" table — live current lap + delta to personal best.
-function OnTrackRow({ e, match, index = 0 }) {
+// A row in the "On Track Now" table — live current lap, and either the delta to
+// the driver's own best (practice, qualifying) or the gap to the leader (race).
+function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null }) {
   const deltaCls = e.deltaSelfMs == null ? "text-light" : e.deltaSelfMs < 0 ? "text-ok" : "text-warn";
   return (
     <tr
@@ -332,8 +394,15 @@ function OnTrackRow({ e, match, index = 0 }) {
       className={`border-b border-border last:border-0 transition hover:bg-surface2 ${e.onTrack ? "" : "opacity-55"}`}
     >
       <td className="py-3 pl-3.5 pr-2 text-center sm:pl-5">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums text-medium">
-          {e.position}
+        {/* The safety car is on the road but not in the race, so it carries no
+            position — the board ranks it last precisely so it doesn't take a
+            number off a driver. */}
+        <span
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-display font-black tabular-nums ${
+            e.isSafetyCar ? "bg-amber-500/15 text-[11px] text-warn" : "text-base text-medium"
+          }`}
+        >
+          {e.isSafetyCar ? "SC" : e.position}
         </span>
       </td>
       <td className="py-3 pl-1 pr-3">
@@ -350,13 +419,26 @@ function OnTrackRow({ e, match, index = 0 }) {
       </td>
       <td className="py-3 pr-4 text-right text-base">
         {e.onTrack ? (
-          <CurrentLap lastLapAt={e.lastLapAt} inPits={e.inPits} />
+          <CurrentLap
+            lastLapAt={e.lastLapAt}
+            inPits={e.inPits}
+            startedAt={isRace && !e.lapCount ? raceStartedAt : null}
+          />
         ) : (
           <span className="pill bg-surface2 font-mono text-light">Left</span>
         )}
       </td>
       <td className="hidden py-3 pr-4 text-right sm:table-cell">
-        <span className={`font-mono text-sm tabular-nums ${deltaCls}`}>{formatDelta(e.deltaSelfMs)}</span>
+        {isRace ? (
+          <span
+            className={`font-mono text-sm tabular-nums ${e.lapsDown > 0 ? "text-light" : "text-medium"}`}
+            title="Behind the leader"
+          >
+            {e.isSafetyCar ? NO_VALUE : formatRaceGap(e.gapToLeaderMs, e.lapsDown)}
+          </span>
+        ) : (
+          <span className={`font-mono text-sm tabular-nums ${deltaCls}`}>{formatDelta(e.deltaSelfMs)}</span>
+        )}
       </td>
       <td className="hidden py-3 pr-4 text-right md:table-cell">
         <span className="font-mono text-sm tabular-nums text-medium">{formatLap(e.lastLapMs)}</span>
@@ -383,7 +465,10 @@ function OnTrackRow({ e, match, index = 0 }) {
   );
 }
 
-const ONTRACK_COLS = [
+// The fifth column answers a different question in a race. How your lap is
+// going against your own best is a practice question; in a race what everyone
+// looks for is how far up the road the leader is.
+const ontrackCols = (isRace) => [
   // pl-3.5: with the card's 1px border and the 2px the fixed-width cell leaves
   // when it centres the 32px chip, that lands the chip ~17px from the card's
   // left edge — matching the ~16.5px it sits below the row's top edge.
@@ -391,7 +476,7 @@ const ONTRACK_COLS = [
   { label: "Driver", cls: "py-3 pl-1" },
   { label: "Tyre", cls: "hidden py-3 pr-4 text-center sm:table-cell" },
   { label: "Current", cls: "py-3 pr-4 text-right" },
-  { label: "Δ PB", cls: "hidden py-3 pr-4 text-right sm:table-cell" },
+  { label: isRace ? "Gap" : "Δ PB", cls: "hidden py-3 pr-4 text-right sm:table-cell" },
   { label: "Last", cls: "hidden py-3 pr-4 text-right md:table-cell" },
   { label: "Best", cls: "py-3 pr-4 text-right" },
   { label: "Laps", cls: "hidden py-3 pr-4 text-center md:table-cell" },
@@ -427,13 +512,19 @@ const TIMING_COLUMNS = [
     align: "center",
     extraCls: "w-14",
     padCls: "pl-3.5 pr-2 sm:pl-5",
+    // Same treatment as the Driving-now table: the pace car holds no position,
+    // and the two tables sit one above the other, so they had better agree.
     cell: (e) => (
       <span
-        className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-display text-base font-black tabular-nums ${
-          e.position === 1 ? "bg-brand text-ink" : "text-medium"
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-display font-black tabular-nums ${
+          e.isSafetyCar
+            ? "bg-amber-500/15 text-[11px] text-warn"
+            : e.position === 1
+              ? "bg-brand text-base text-ink"
+              : "text-base text-medium"
         }`}
       >
-        {e.position}
+        {e.isSafetyCar ? "SC" : e.position}
       </span>
     ),
   },
@@ -563,13 +654,26 @@ const TIMING_COLUMNS = [
   {
     key: "gap",
     label: "Gap",
-    sortLabel: "Gap to the fastest",
+    // Left deliberately plain: this column means two different things depending
+    // on the session, and the menu row that shows this string has no way of
+    // knowing which. The hint below spells both out.
+    sortLabel: "Gap",
     bp: "sm",
     align: "right",
-    hint: "To the fastest lap of the session",
-    sortValue: (e) => e.gapToBestMs ?? null,
+    // In a race this is distance up the road; anywhere else it is lap time. The
+    // board only fills in the race numbers during a race, so the column can
+    // simply prefer them wherever they exist — no session type to thread in.
+    hint: "In a race: behind the leader. Otherwise: off the fastest lap.",
+    sortValue: (e) => (e.gapToLeaderMs != null || e.lapsDown > 0 ? (e.lapsDown || 0) * 1e7 + (e.gapToLeaderMs ?? 0) : e.gapToBestMs ?? null),
     sortDir: "asc",
-    cell: (e) => <span className="font-mono text-sm tabular-nums text-light">{formatGap(e.gapToBestMs)}</span>,
+    cell: (e) =>
+      e.gapToLeaderMs != null || e.lapsDown > 0 ? (
+        <span className="font-mono text-sm tabular-nums text-light" title="Behind the leader">
+          {formatRaceGap(e.gapToLeaderMs, e.lapsDown)}
+        </span>
+      ) : (
+        <span className="font-mono text-sm tabular-nums text-light">{formatGap(e.gapToBestMs)}</span>
+      ),
   },
   {
     key: "interval",
@@ -577,12 +681,17 @@ const TIMING_COLUMNS = [
     sortLabel: "Interval",
     optIn: true,
     align: "right",
-    hint: "To the car ahead on best lap",
-    cell: (e, ctx) => (
-      <span className="font-mono text-sm tabular-nums text-light" title="Gap to the car ahead on best lap">
-        {formatGap(ctx.intervals.get(e.guid) ?? null)}
-      </span>
-    ),
+    hint: "To the car ahead — on the road in a race, on best lap otherwise",
+    cell: (e, ctx) =>
+      ctx.isRace ? (
+        <span className="font-mono text-sm tabular-nums text-light" title="Gap to the car ahead on the road">
+          {e.lapsDown > 0 && e.intervalMs == null ? NO_VALUE : formatGap(e.intervalMs)}
+        </span>
+      ) : (
+        <span className="font-mono text-sm tabular-nums text-light" title="Gap to the car ahead on best lap">
+          {formatGap(ctx.intervals.get(e.guid) ?? null)}
+        </span>
+      ),
   },
   {
     key: "last",
@@ -786,23 +895,50 @@ function TimingRow({ e, cols, ctx, index = 0 }) {
 // direction. Pure transform/transition, no rAF: set the old offset with
 // transitions off, force a reflow, then release — the browser animates to 0.
 // Lite graphics mode and reduced motion skip it entirely (rows just jump).
+//
+// Two things the first version got wrong, both of which lit the whole field up
+// at once on race night and were only visible on a full 38-car grid:
+//
+//   * It measured each row against the VIEWPORT, and only re-measured when the
+//     order changed. Anything else that moved the table on the page in between
+//     — the pit-lane card next door growing a row, the page scrolling — left
+//     every stored position stale, and the next single overtake then looked
+//     like all thirty-eight rows had moved. Offsets are taken inside the
+//     container now, so only movement within the list counts.
+//   * It flashed on any movement. A row that shifts because somebody above it
+//     was inserted or removed has not gained or lost anything, so the flash is
+//     a lie. The direction is decided by rank among the rows present BOTH times
+//     now; rows still glide either way, they just don't claim an overtake.
 function useFlipList(containerRef, dep) {
-  const prevTops = useRef(new Map());
+  const prev = useRef({ offsets: new Map(), order: [] });
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const items = [...el.querySelectorAll("[data-flip-id]")];
-    const next = new Map(items.map((it) => [it.dataset.flipId, it.getBoundingClientRect().top]));
+    const base = el.getBoundingClientRect().top;
+    const next = new Map(items.map((it) => [it.dataset.flipId, it.getBoundingClientRect().top - base]));
+    const order = items.map((it) => it.dataset.flipId);
     const skip =
       document.documentElement.classList.contains("fx-lite") ||
       (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
     if (!skip) {
+      // Ranks among the rows that were here last time and are still here, so an
+      // arrival or a departure elsewhere in the list doesn't read as a place
+      // gained or lost.
+      const wasHere = new Set(prev.current.order);
+      const isHere = new Set(order);
+      const rankNow = new Map(order.filter((id) => wasHere.has(id)).map((id, i) => [id, i]));
+      const rankBefore = new Map(prev.current.order.filter((id) => isHere.has(id)).map((id, i) => [id, i]));
+
       for (const it of items) {
         const id = it.dataset.flipId;
-        const before = prevTops.current.get(id);
+        const before = prev.current.offsets.get(id);
         if (before == null) continue;
         const delta = before - next.get(id);
         if (Math.abs(delta) < 2) continue;
+        const from = rankBefore.get(id);
+        const to = rankNow.get(id);
+        const overtook = from != null && to != null && from !== to;
         it.style.transition = "none";
         it.style.transform = `translateY(${delta}px)`;
         it.classList.remove("proj-flash-up", "proj-flash-down");
@@ -815,12 +951,14 @@ function useFlipList(containerRef, dep) {
         // on the same beat as everything else on the site.
         it.style.transition = "transform var(--t-tell) var(--e-out)";
         it.style.transform = "";
-        it.classList.add(delta > 0 ? "proj-flash-up" : "proj-flash-down");
-        it.addEventListener(
-          "animationend",
-          () => it.classList.remove("proj-flash-up", "proj-flash-down"),
-          { once: true }
-        );
+        if (overtook) {
+          it.classList.add(to < from ? "proj-flash-up" : "proj-flash-down");
+          it.addEventListener(
+            "animationend",
+            () => it.classList.remove("proj-flash-up", "proj-flash-down"),
+            { once: true }
+          );
+        }
         // Hand the row's transitions back once it has arrived. The inline
         // property above is transform-only, so leaving it in place would
         // permanently cancel the row's own hover fade — which used to be a
@@ -829,7 +967,7 @@ function useFlipList(containerRef, dep) {
         it.addEventListener("transitionend", () => { it.style.transition = ""; }, { once: true });
       }
     }
-    prevTops.current = next;
+    prev.current = { offsets: next, order };
   }, [containerRef, dep]);
 }
 
@@ -1281,7 +1419,8 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
 // packed server never turns the page into one endless table; the map column
 // next door stays in proportion. Empty state (nobody out) keeps the panel
 // instead of vanishing.
-function DrivingNowSection({ onTrack, match, flip = false, className = "" }) {
+function DrivingNowSection({ onTrack, match, flip = false, isRace = false, raceStartedAt = null, className = "" }) {
+  const cols = ontrackCols(isRace);
   // During a RACE an overtake FLIP-glides the two rows into their new slots
   // (green flash = gained, red = lost) instead of the order snapping — the
   // same useFlipList the championship projection uses, with the same lite-
@@ -1310,7 +1449,7 @@ function DrivingNowSection({ onTrack, match, flip = false, className = "" }) {
             <table className="w-full min-w-[520px]">
             <thead>
               <tr className="text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
-                {ONTRACK_COLS.map((c, i) => (
+                {cols.map((c, i) => (
                   // sticky per-cell (sticky thead still doesn't scroll along in
                   // every browser); shadow stands in for the border, which
                   // wouldn't travel with the sticky cells either
@@ -1325,7 +1464,7 @@ function DrivingNowSection({ onTrack, match, flip = false, className = "" }) {
                 entrance fade over the whole field mid-session. */}
             <tbody ref={bodyRef} className={rowsIn}>
               {onTrack.map((e, i) => (
-                <OnTrackRow key={e.guid} e={e} match={match(e.name)} index={i} />
+                <OnTrackRow key={e.guid} e={e} match={match(e.name)} index={i} isRace={isRace} raceStartedAt={raceStartedAt} />
               ))}
             </tbody>
             </table>
@@ -1372,17 +1511,13 @@ function PitLaneSection({ entries, match, className = "" }) {
                   </span>
                   <span className="block truncate text-[11px] text-light">{m?.teamName || NO_VALUE}</span>
                 </span>
+                {/* The same badge as everywhere else a compound is named — the
+                    two timing tables, the strategy bars and their key. This one
+                    used to draw its own square chip, so the one panel that says
+                    what a car is sitting on had the odd shape out. */}
                 {t && (
-                  <span
-                    className="inline-flex h-5 min-w-5 items-center justify-center rounded px-1 font-mono text-[10px] font-black leading-none"
-                    style={{
-                      backgroundColor: t.color,
-                      color: t.light ? "#111827" : "#fff",
-                      boxShadow: t.light ? "inset 0 0 0 1px rgba(17,24,39,0.28)" : "none",
-                    }}
-                    title="Current compound"
-                  >
-                    {t.label}
+                  <span className="inline-grid shrink-0 place-items-center" title="Current compound">
+                    <TyreBadge t={t} size={22} />
                   </span>
                 )}
               </div>
@@ -1711,11 +1846,12 @@ export default function Live() {
     () => ({
       match,
       auto,
+      isRace: session?.type === "Race",
       intervals: intervalMap(entries),
       badges: auto ? "mobile" : tablePrefs.enabled.has("flags") ? "none" : "always",
       inlineGap: auto ? "mobile" : tablePrefs.enabled.has("gap") ? "never" : "always",
     }),
-    [match, auto, entries, tablePrefs.enabled]
+    [match, auto, session?.type, entries, tablePrefs.enabled]
   );
   const ordered = useMemo(() => sortEntries(entries, tablePrefs.sort), [entries, tablePrefs.sort]);
 
@@ -1750,7 +1886,10 @@ export default function Live() {
       <section className="reveal space-y-4">
         <SectionHeading
           eyebrow="Classification"
-          title="Session Best Times"
+          // Same table, different question. In a race it arrives in running
+          // order and the gap column reads as distance up the road, so calling
+          // it a list of best times would be describing the wrong column.
+          title={session?.type === "Race" ? "Race Order" : "Session Best Times"}
           // Sorting and the column picker sit on the heading's own row, right
           // above the table they change: two buttons, one question each.
           right={
@@ -1937,6 +2076,8 @@ export default function Live() {
               }
               match={match}
               flip={session.type === "Race"}
+              isRace={session.type === "Race"}
+              raceStartedAt={session.startedAt ?? null}
               className="lg:col-span-3 lg:col-start-1 lg:row-start-1"
             />
           </div>
