@@ -58,10 +58,16 @@ function PostCard({ post, channel }) {
       className="w-full sm:w-auto sm:[flex-basis:calc(var(--ar)*var(--row-h))] sm:[flex-grow:var(--ar)] sm:[max-width:calc(var(--ar)*var(--cap-h))]"
     >
       {/* Which channel, then what the post says. Both above the window as plain
-          text, and both given fixed room whether they fill it or not — a caption
-          one line longer than its neighbour would otherwise push its window down
-          and leave the row's top edge crooked. */}
-      <div className="mb-1.5 flex h-4 items-center">
+          text, and from sm up both given fixed room whether they fill it or not
+          — a caption one line longer than its neighbour would otherwise push its
+          window down and leave the row's top edge crooked.
+          On a phone there is no row to keep straight (one card per line), and
+          the reserved room worked against the page: a one-line caption left the
+          rest of its 36px box empty, so the heading floated in the middle
+          between the clip above and the clip it actually belongs to. There the
+          two lines take the height they need and sit tight above their own
+          window, with the gap between posts doing the separating. */}
+      <div className="mb-1.5 flex items-center sm:h-4">
         {channel ? (
           <a
             href={channel}
@@ -84,7 +90,7 @@ function PostCard({ post, channel }) {
           </span>
         )}
       </div>
-      <p className="mb-2 line-clamp-2 h-9 text-[13px] font-semibold leading-snug text-medium">{caption(post.title)}</p>
+      <p className="mb-2 line-clamp-2 text-[13px] font-semibold leading-snug text-medium sm:h-9">{caption(post.title)}</p>
 
       {/* The shape lives on the bordered box, not on what's inside it: a card's
           1px border would otherwise be added on top of a height worked out from
@@ -156,7 +162,12 @@ export default function SocialFeed({ header }) {
           fill the width exactly. --cap-h stops a lone wide clip from growing
           into a billboard on a big screen — the only case where the row can't
           fill, which is why it stays centred. */}
-      <div className="cascade flex flex-col gap-4 [--cap-h:32rem] [--row-h:15rem] sm:flex-row sm:flex-wrap sm:justify-center lg:[--row-h:17rem]">
+      {/* On a phone the posts sit one under the other, so the gap between them
+          is what tells the reader where one post ends and the next begins: it
+          is wider than the few pixels between a heading and its own clip, and
+          the heading reads as belonging downwards. From sm up the same gap also
+          runs BETWEEN cards in a row, where 16px is the right column spacing. */}
+      <div className="cascade flex flex-col gap-8 [--cap-h:32rem] [--row-h:15rem] sm:flex-row sm:flex-wrap sm:justify-center sm:gap-4 lg:[--row-h:17rem]">
         {posts.map((p) => (
           <PostCard key={p.id} post={p} channel={social.data?.[p.platform] || null} />
         ))}
