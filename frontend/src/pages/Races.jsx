@@ -639,11 +639,12 @@ export default function Races() {
 
   if (loading)
     return (
-      // defer-in: on a fast load the skeletons never become visible, so nothing
-      // flashes behind the real page for a few milliseconds.
-      <div className="defer-in">
+      // The shared placeholders wait on their own now; this wrapper is only
+      // here for the loose row of round chips between them, which is this
+      // page's own shape and has nothing to wait for it.
+      <div>
         <PageHeaderSkeleton />
-        <div className="mb-7 flex gap-2 overflow-hidden">
+        <div className="defer-in mb-7 flex gap-2 overflow-hidden">
           {Array.from({ length: 8 }).map((_, i) => (
             <Skeleton key={i} className="h-[52px] w-44 shrink-0 rounded-xl" />
           ))}
@@ -825,9 +826,7 @@ export default function Races() {
                       loads (slightly dimmed) — swapping in a shorter skeleton
                       made everything below jump up for a beat on each switch. */}
                   {detailLoading && !detail && (
-                    <div className="defer-in">
-                      <TableSkeleton rows={10} />
-                    </div>
+                    <TableSkeleton rows={10} />
                   )}
                   {detailError && !detailLoading && <ErrorBox message={detailError} />}
                   {detail && (

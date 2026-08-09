@@ -513,9 +513,19 @@ export function Skeleton({ className = "" }) {
 }
 
 // Placeholder for the PageHeader (eyebrow + title + subtitle + hairline).
+// --- loading placeholders --------------------------------------------------
+// All three wait a quarter of a second before showing themselves (defer-in), so
+// on any normal load the real content arrives first and the placeholder is
+// never seen at all. It exists for a slow connection, not to flash on a fast
+// one — a shape that appears and vanishes inside 150ms tells nobody anything
+// and reads as the page glitching.
+//
+// The wait belongs HERE, on the composites, rather than on the Skeleton bars
+// they are made of: these draw the card and its borders too, and deferring only
+// the bars would still flash an empty outline.
 export function PageHeaderSkeleton() {
   return (
-    <div className="mb-8 border-b border-border pb-5">
+    <div className="defer-in mb-8 border-b border-border pb-5">
       <Skeleton className="h-3 w-24" />
       <Skeleton className="mt-3 h-9 w-72 max-w-[70%]" />
       <Skeleton className="mt-4 h-4 w-96 max-w-full" />
@@ -526,7 +536,7 @@ export function PageHeaderSkeleton() {
 // A standings/list card with `rows` placeholder rows.
 export function TableSkeleton({ rows = 8 }) {
   return (
-    <div className="card divide-y divide-border overflow-hidden">
+    <div className="defer-in card divide-y divide-border overflow-hidden">
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex items-center gap-4 px-5 py-4">
           <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
@@ -546,7 +556,7 @@ export function TableSkeleton({ rows = 8 }) {
 // A responsive grid of card placeholders (Teams etc.).
 export function CardsSkeleton({ count = 8, cols = "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" }) {
   return (
-    <div className={`grid gap-4 ${cols}`}>
+    <div className={`defer-in grid gap-4 ${cols}`}>
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="card overflow-hidden">
           <Skeleton className="h-1.5 w-full rounded-none" />
