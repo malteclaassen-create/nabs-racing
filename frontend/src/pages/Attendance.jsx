@@ -97,6 +97,10 @@ export default function Attendance() {
     }
   }
   const marketByRace = useMemo(() => new Map((market.data?.races || []).map((r) => [r.id, r])), [market.data]);
+  const reloadMarketAndEvents = useCallback(
+    () => Promise.all([market.reload(), events.reload()]),
+    [market.reload, events.reload]
+  );
 
   const list = useMemo(
     () => [...(events.data || [])].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)),
@@ -264,7 +268,11 @@ export default function Attendance() {
               ev={ev}
               marketRace={marketByRace.get(ev.id)}
               me={market.data?.me}
-              reloadMarket={market.reload}
+              // A market action changes the sign-up list too now — offering a
+              // seat files a DECLINED with it — so the answer columns and the
+              // buttons above them have to be refetched with the market, or the
+              // page would sit there showing the answer the member just left.
+              reloadMarket={reloadMarketAndEvents}
               driverId={driverId}
               canSignUp={canSignUp}
               isLoggedIn={isLoggedIn}

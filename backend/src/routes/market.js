@@ -13,6 +13,7 @@ import { resolveSeasonId } from "../services/seasonService.js";
 import { seasonRowForDriver } from "../lib/persons.js";
 import { eventSeasonIds } from "./events.js";
 import { notifySeatOffered, notifySeatFilled } from "../lib/notifications.js";
+import { syncRaceToDiscord } from "../services/discordService.js";
 
 const router = Router();
 router.use(optionalUser);
@@ -180,9 +181,34 @@ router.post("/offer", async (req, res, next) => {
       create: { raceId: race.id, driverId: driver.id, teamId: driver.teamId, status: "OPEN" },
       include: offerInclude,
     });
+
+    // Offering your seat IS the answer to "are you on the grid". It said
+    // nothing before, so a driver could give their seat away and stand in the
+    // accepted column at the same time — and did, because the sign-up answer
+    // usually comes first and nothing went back to change it. The entry list
+    // that the admin builds the grid from was then wrong in the one case it
+    // most needed to be right.
+    //
+    // Written here rather than left to the page, so it holds however the offer
+    // was made, and deliberately not undone when the offer is withdrawn: by
+    // then it is a real answer that happens to be correct, and quietly putting
+    // somebody back on the grid is worse than leaving them to say so.
+    await prisma.raceRsvp.upsert({
+      where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
+      update: { status: "DECLINED" },
+      create: { raceId: race.id, driverId: driver.id, status: "DECLINED" },
+    });
+
     // Bell notification for this season's reserves (plus members who opted in
     // to all offers). Deduped per offer+recipient, so a re-offer stays silent.
     notifySeatOffered(prisma, { race, teamName: offer.team?.name, driver });
+    // The Discord post lists the three columns, so it has to hear about the
+    // line above. Never fails the offer.
+    try {
+      await syncRaceToDiscord(prisma, race.id);
+    } catch {
+      /* Discord is a mirror of this, not the record of it */
+    }
     res.json({ ok: true, offer: shapeOffer(offer) });
   } catch (e) {
     next(e);

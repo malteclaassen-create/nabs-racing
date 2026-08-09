@@ -224,6 +224,16 @@ router.get("/open", async (req, res, next) => {
   }
 });
 
+// Does this driver have a seat offer standing for this race? CANCELLED ones
+// don't count — that is an offer taken back by an admin. A FILLED one counts
+// most of all: somebody else is in the car.
+async function standingSeatOffer(raceId, driverId) {
+  return prisma.seatOffer.findFirst({
+    where: { raceId, driverId, status: { not: "CANCELLED" } },
+    select: { id: true },
+  });
+}
+
 // POST /api/events/:id/rsvp  { driverId, status }
 // Upserts the driver's status for the race and syncs the Discord message.
 router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
@@ -281,6 +291,17 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     }
     if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
 
+    // A seat given away in the Driver Market has already answered this question
+    // (routes/market.js files the DECLINED as part of the offer). Saying yes on
+    // top of it is a contradiction the admin would have to untangle when
+    // building the grid, so the answer is refused rather than recorded. The
+    // page greys the buttons out too; this is what makes that stick.
+    if (status !== "DECLINED" && (await standingSeatOffer(race.id, driver.id))) {
+      return res.status(409).json({
+        error: "You've offered your seat for this race. Withdraw the offer in the Driver Market to answer again",
+      });
+    }
+
     await prisma.raceRsvp.upsert({
       where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
       update: { status },
@@ -315,6 +336,14 @@ router.delete("/:id/rsvp/:driverId", optionalUser, async (req, res, next) => {
     }
     const base = await prisma.driver.findUnique({ where: { id: driverId } });
     const driver = race && base ? await seasonRowForDriver(prisma, base, race.seasonId, req.user?.discordId) : base;
+    // The declined that comes with a seat offer is not theirs to take back —
+    // removing it would drop them off the list entirely while a reserve is
+    // being lined up for their car.
+    if (race && (await standingSeatOffer(race.id, driver?.id || driverId))) {
+      return res.status(409).json({
+        error: "You've offered your seat for this race. Withdraw the offer in the Driver Market to answer again",
+      });
+    }
     await prisma.raceRsvp.deleteMany({
       where: { raceId: req.params.id, driverId: driver?.id || driverId },
     });

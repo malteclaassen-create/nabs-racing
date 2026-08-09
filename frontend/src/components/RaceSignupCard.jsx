@@ -70,9 +70,24 @@ export default function RaceSignupCard({
   // it fills whatever height the video beside it leaves over.
   className = "",
 }) {
+  // The market context of the RACE's season — see the note further down at
+  // SeatMarket for why it is read this way even when null.
+  const meHere = marketRace && "me" in marketRace ? marketRace.me : me;
+  // Both rows count as "me". A login points at ONE driver row and a race can
+  // belong to another season, where the same person has a different row — which
+  // is the row the server files the answer and the offer under. Matching only
+  // the login's row left a member looking at their own answer with no way to
+  // take it back, because the card did not recognise it as theirs.
+  const myIds = new Set([driverId, meHere?.driverId].filter(Boolean));
   const myStatus = ["ACCEPTED", "DECLINED", "TENTATIVE"].find((s) =>
-    ev.rsvps[s].some((r) => r.driverId === driverId)
+    ev.rsvps[s].some((r) => myIds.has(r.driverId))
   );
+  // A seat handed to the Driver Market has answered the question already: the
+  // offer files a DECLINED with it (routes/market.js) and the server refuses
+  // anything else while it stands. So the buttons go quiet rather than pretend.
+  // CANCELLED offers never reach the page, and a FILLED one counts doubly —
+  // somebody else is in that car.
+  const myOffer = (marketRace?.offers || []).find((o) => myIds.has(o.offeredBy.driverId));
   const capacity = ev.capacity ?? 40;
   const accepted = ev.rsvps.ACCEPTED.length;
 
@@ -134,32 +149,47 @@ export default function RaceSignupCard({
             {closedByAdmin ? "Sign-up closed" : `Sign-up opens ${opensLabel}`}
           </div>
         ) : canSignUp ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {Object.entries(STATUS_UI).map(([status, ui]) => {
               const active = myStatus === status;
               return (
                 <button
                   key={status}
                   onClick={() => onSetStatus(ev.id, status)}
-                  disabled={busy === `${ev.id}:${status}`}
+                  disabled={!!myOffer || busy === `${ev.id}:${status}`}
                   aria-pressed={active}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-50 ${
+                  // The one it is stuck on keeps its colour, so the card still
+                  // says what the answer IS. The other two go flat: greying the
+                  // lot would leave the question looking unanswered.
+                  title={myOffer ? "Your seat is offered in the Driver Market" : undefined}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
                     active ? ui.active : ui.idle
-                  }`}
+                  } ${myOffer ? (active ? "cursor-not-allowed" : "cursor-not-allowed opacity-40") : "disabled:opacity-50"}`}
                 >
                   <StatusIcon d={ui.icon} className={active ? "" : ui.idleIcon} />
                   {ui.label}
                 </button>
               );
             })}
-            {myStatus && (
+            {/* Taking the answer back, which is a real option and used to hide
+                behind the word "Remove" — next to three answer buttons that is
+                as easily read as "remove me from the league". Gone while a seat
+                offer stands: that DECLINED is not the member's to withdraw, and
+                the server says the same. */}
+            {myStatus && !myOffer && (
               <button
                 onClick={() => onClear(ev.id)}
                 disabled={busy === `${ev.id}:clear`}
                 className="btn-secondary"
               >
-                Remove
+                Clear my answer
               </button>
+            )}
+            {myOffer && (
+              <p className="w-full text-sm leading-relaxed text-light sm:w-auto sm:max-w-[22rem]">
+                You offered your seat, so you&rsquo;re down as declined. Withdraw the offer below to
+                answer for yourself again.
+              </p>
             )}
           </div>
         ) : isLoggedIn ? (
@@ -246,12 +276,10 @@ export default function RaceSignupCard({
       </div>
       )}
 
-      {/* the market context of the RACE's season (a member can be full-time in
-          one season and a reserve in the next). When the payload carries a
-          per-race context, use it EVEN IF null — null means "not on that
-          season's roster", and falling back to the viewed season's context
-          would show actions the server then refuses. */}
-      <SeatMarket race={marketRace} me={marketRace && "me" in marketRace ? marketRace.me : me} reload={reloadMarket} />
+      {/* meHere is the market context of the RACE's season (a member can be
+          full-time in one season and a reserve in the next), worked out at the
+          top because the sign-up buttons need it too. */}
+      <SeatMarket race={marketRace} me={meHere} reload={reloadMarket} />
     </div>
   );
 }
