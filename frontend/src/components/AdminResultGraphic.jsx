@@ -5,7 +5,8 @@ import { CardBar, ErrorBox } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtDateShort } from "../utils/format.js";
-import { LAYOUT, drawResultGraphic, loadGraphicAssets } from "../utils/resultGraphic.js";
+import SlidingTabs from "./SlidingTabs.jsx";
+import { LAYOUT, THEMES, THEME_KEYS, drawResultGraphic, loadGraphicAssets } from "../utils/resultGraphic.js";
 
 // Admin → Graphics: the result poster for a finished round, drawn from the
 // round's own data and handed over as a PNG.
@@ -23,6 +24,10 @@ import { LAYOUT, drawResultGraphic, loadGraphicAssets } from "../utils/resultGra
 // Exported at twice the design size: it is a poster people open full screen,
 // and 2x is the difference between crisp type and Discord's resampling.
 const EXPORT_SCALE = 2;
+// Which design was last used. Remembered because a league picks one and stays
+// with it: having to re-choose every visit would be the tax for a choice made
+// once.
+const THEME_KEY = "nabs_graphic_theme";
 
 const fmtDate = (d) => (d ? fmtDateShort(d) : "no date");
 
@@ -108,6 +113,10 @@ export default function AdminResultGraphic() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem(THEME_KEY);
+    return THEME_KEYS.includes(saved) ? saved : THEME_KEYS[0];
+  });
   const canvasRef = useRef(null);
 
   // Only rounds that HAVE a classification: a poster of an unraced round would
@@ -160,7 +169,7 @@ export default function AdminResultGraphic() {
         const canvas = canvasRef.current;
         canvas.width = LAYOUT.width * EXPORT_SCALE;
         canvas.height = LAYOUT.height * EXPORT_SCALE;
-        drawResultGraphic(canvas.getContext("2d"), data, EXPORT_SCALE);
+        drawResultGraphic(canvas.getContext("2d"), data, EXPORT_SCALE, theme);
       } catch (e) {
         if (alive) setError(e.message);
       }
@@ -168,7 +177,7 @@ export default function AdminResultGraphic() {
     return () => {
       alive = false;
     };
-  }, [result, art]);
+  }, [result, art, theme]);
 
   async function upload(teamId, kind, file) {
     setBusy(true);
@@ -201,7 +210,10 @@ export default function AdminResultGraphic() {
       if (!blob) return;
       const race = result.race;
       const round = race.number != null ? `r${race.number}` : "session";
-      const name = `${round}-${String(race.track || "race").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-result.png`;
+      const track = String(race.track || "race").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      // The design is in the file name: two versions of the same round in a
+      // downloads folder are otherwise the same name twice.
+      const name = `${round}-${track}-result-${theme}.png`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -262,7 +274,16 @@ export default function AdminResultGraphic() {
         ) : (
           /* The preview IS the export: the same canvas, shown smaller. Nothing
              here is a mock-up of the file you get. */
-          <div className="flex justify-center p-5">
+          <div className="flex flex-col items-center gap-4 p-5">
+            <SlidingTabs
+              items={THEME_KEYS.map((k) => ({ key: k, label: THEMES[k].label }))}
+              value={theme}
+              onChange={(k) => {
+                setTheme(k);
+                localStorage.setItem(THEME_KEY, k);
+              }}
+              btnClassName="px-4 py-1.5 text-xs"
+            />
             <canvas
               ref={canvasRef}
               className="h-auto w-full max-w-[400px] rounded-lg shadow-lg"
