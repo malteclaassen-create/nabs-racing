@@ -83,9 +83,9 @@ export const LAYOUT = {
 // from drifting into two half-maintained copies of the same drawing, and it is
 // what makes a third one an entry in this object rather than a project.
 //
-// `medalOn` is the one real structural difference. The pink poster spends the
-// gold on a filled name bar under the car; the black one has no coloured
-// surfaces at all, so it spends it on the position number instead.
+// "medal" is allowed wherever a colour is: it means gold, silver or bronze
+// depending on the place, which is how the same three colours land on a name
+// bar in one design and on a name bar AND the position number in the other.
 // ---------------------------------------------------------------------------
 export const THEMES = {
   pink: {
@@ -99,11 +99,10 @@ export const THEMES = {
     watermark: 0, // no big mark behind the rows
     tile: { fill: "#000000", frame: "medal", frameWidth: 3, badge: false },
     pos: { colour: "#ffffff" },
-    medalOn: "bar",
     nameBar: { fill: "medal", ink: "#0a0a0a", frame: null },
     row: {
       numFill: "#0a0a0a", numInk: "#ffffff",
-      barFill: "#f2f2f2", barFrame: null,
+      barFill: "#f2f2f2", barFrame: null, frameWidth: 0,
       nameInk: "#0a0a0a", ptsInk: "#0a0a0a",
     },
   },
@@ -115,13 +114,18 @@ export const THEMES = {
     // barely there, which is what fills the space a black page opens up.
     cornerMark: false,
     watermark: 0.05,
-    tile: { fill: "#000000", frame: "#f7c2ce", frameWidth: 2, badge: true },
+    // The pink lines are the whole idea of this one, so they are drawn at a
+    // weight you can see rather than a hairline that reads as a rendering
+    // artefact at the size Discord shows the poster.
+    tile: { fill: "#000000", frame: "#f7c2ce", frameWidth: 4, badge: true },
+    // Gold, silver and bronze land TWICE here: on the position number and on
+    // the name bar under the car. The black page has room for both, and the
+    // number alone was too small a place to spend a medal.
     pos: { colour: "medal" },
-    medalOn: "pos",
-    nameBar: { fill: "#000000", ink: "#ffffff", frame: "#f7c2ce" },
+    nameBar: { fill: "medal", ink: "#0a0a0a", frame: "#f7c2ce" },
     row: {
       numFill: "#f7c2ce", numInk: "#0a0a0a",
-      barFill: "#000000", barFrame: "#f7c2ce",
+      barFill: "#000000", barFrame: "#f7c2ce", frameWidth: 4,
       nameInk: "#ffffff", ptsInk: "#ffffff",
     },
   },
@@ -302,9 +306,10 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     ctx.fillStyle = T.row.numFill;
     ctx.fillRect(L.pad, y, R.numW, R.height);
     if (T.row.barFrame) {
+      const w = T.row.frameWidth;
       ctx.strokeStyle = T.row.barFrame;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(L.pad + 1, y + 1, L.width - L.pad * 2 - 2, R.height - 2);
+      ctx.lineWidth = w;
+      ctx.strokeRect(L.pad + w / 2, y + w / 2, L.width - L.pad * 2 - w, R.height - w);
     }
     ctx.font = FONT(900, R.numSize);
     ctx.fillStyle = T.row.numInk;
