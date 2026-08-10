@@ -18,61 +18,66 @@
 // numbers in one place, and the export just draws the same thing at 2x.
 // ---------------------------------------------------------------------------
 
+// Every measurement below is read off Steve's Photoshop file rather than
+// guessed from a screenshot: the pink outlines were found by scanning the
+// composite for their colour, which gives the tile edges, the row pitch and the
+// line weight to the pixel. 1080x1350 is the file's own size, and it is the 4:5
+// that Discord and Instagram show without shrinking.
 export const LAYOUT = {
-  width: 1150,
-  height: 1500,
+  width: 1080,
+  height: 1350,
 
-  pad: 10, // page margin left and right
+  pad: 25, // page margin left and right
 
   title: { y: 118, size: 66, gapToLogo: 24 },
   logo: { size: 82, right: 26, top: 18 },
 
-  // The podium. `lift` is how much higher a tile sits than the lowest one, so
-  // the three of them read as a podium rather than as three equal boxes.
+  // The podium. `lift` is how much higher a tile sits than the lowest one. In
+  // the file that is 13px for the winner: enough to notice, far too little to
+  // call a staircase, which is what keeps three tall tiles looking like a row
+  // of cards rather than a bar chart.
   podium: {
-    top: 175,
-    gap: 8,
-    barHeight: 74,
-    bottom: 712,
-    lift: { 1: 40, 2: 12, 3: 0 },
-    // Gold, silver, bronze. Which of the three surfaces they land on is the
-    // theme's business (see THEMES): the pink poster fills the name bar with
-    // them, the black one puts them on the position number instead.
-    medal: { 1: "#e3b23c", 2: "#c9c9c9", 3: "#c98f5c" },
-    posSize: 76, // "1." "2." "3."
-    nameSize: 38,
-    flagW: 46,
+    top: 190,
+    gap: 27,
+    barHeight: 77,
+    bottom: 589,
+    lift: { 1: 13, 2: 0, 3: 0 },
+    posSize: 62, // "1." "2." "3."
+    posX: 24,
+    posY: 68, // baseline, from the top of the tile
+    nameSize: 40,
+    flagW: 54,
     // The car is shown WHOLE, sitting low in the tile with the position number
     // in the empty black above it — not cropped to fill the tile. A cut-out is
     // a wide picture and the tile is a tall one, so filling it would zoom into
     // the middle of the car and cut off both ends.
-    carCy: 0.65, // centre of the car, as a fraction of the tile's height
-    carInset: 12,
-    carMaxH: 0.5, // and of its height
+    carCy: 0.62, // centre of the car, as a fraction of the tile's height
+    carInset: 10,
+    carMaxH: 0.52, // and of its height
+    // The points, in a chip tucked into the tile's bottom right corner.
+    chip: { h: 40, padX: 14, size: 26, inset: 0 },
   },
 
   // Places 4 down to whatever `rows` the caller asks for.
   rows: {
-    top: 735,
-    height: 95,
-    gap: 12,
-    numW: 128,
-    numSize: 54,
-    nameSize: 50,
-    nameX: 190, // from the page's left margin, i.e. just inside the light bar
-    markCx: 700, // centre of the team mark
-    // Room enough for a wide wordmark AND for a square badge to come out at a
-    // useful size: a logo boxed to the wordmark's height is a stamp in the
-    // middle of a 95px row.
-    markMaxW: 300,
-    markMaxH: 66,
-    ptsRight: 46, // from the right edge of the bar
-    ptsSize: 34,
+    top: 615,
+    height: 80,
+    gap: 25,
+    numW: 85,
+    numSize: 44,
+    flagX: 118, // where the flag starts, from the page's left edge
+    flagW: 50,
+    nameX: 189,
+    nameSize: 42,
+    markCx: 652, // centre of the team mark
+    markMaxW: 280,
+    markMaxH: 56,
+    ptsRight: 58, // from the right edge of the page
+    ptsSize: 38,
   },
 
-  // Team badge in the top corner of a podium tile. Only the black poster draws
-  // one; the pink one leaves the tile to the car.
-  tileBadge: { size: 74, inset: 20 },
+  // Team badge in the corner of a podium tile, opposite the position number.
+  tileBadge: { size: 78, inset: 18 },
 };
 
 // ---------------------------------------------------------------------------
@@ -88,6 +93,36 @@ export const LAYOUT = {
 // bar in one design and on a name bar AND the position number in the other.
 // ---------------------------------------------------------------------------
 export const THEMES = {
+  black: {
+    label: "Black",
+    // Sampled from the file, not chosen: the pink is #ffaec8, brighter than the
+    // site's own, and the medals are Steve's rather than the browser's idea of
+    // gold and silver.
+    bg: "#030303",
+    title: "#ffffff",
+    medal: { 1: "#fecb2f", 2: "#b3b3b3", 3: "#a47936" },
+    radius: 10,
+    // The mark moves out of the corner and behind the classification, big and
+    // barely there, which is what fills the space a black page opens up.
+    cornerMark: false,
+    watermark: 0.05,
+    tile: { fill: "#000000", frame: "#ffaec8", frameWidth: 5, badge: true },
+    // Gold, silver and bronze land TWICE: on the position number and on the
+    // name bar under the car.
+    pos: { colour: "medal" },
+    nameBar: { fill: "medal", ink: "#000000", frame: "#ffaec8" },
+    // The winner's points in a chip in the corner of the tile.
+    tilePoints: { fill: "#ffffff", ink: "#000000" },
+    row: {
+      numFill: "#ffaec8", numInk: "#000000",
+      barFill: "#000000", barFrame: "#ffaec8", frameWidth: 5,
+      nameInk: "#ffffff", ptsInk: "#ffffff",
+      flags: true, // a flag before each name, like the podium has
+    },
+    // "+20" rather than "20 / PTS": it is what the file says, and on one line
+    // it leaves the name the width it needs.
+    points: "plus",
+  },
   pink: {
     label: "Pink",
     // Not the site's --c-brand: that one is a per-series accent an admin can
@@ -95,39 +130,21 @@ export const THEMES = {
     // the GT series.
     bg: "#f7c2ce",
     title: "#0a0a0a",
+    medal: { 1: "#e3b23c", 2: "#c9c9c9", 3: "#c98f5c" },
+    radius: 0,
     cornerMark: true, // the league mark, top right
     watermark: 0, // no big mark behind the rows
     tile: { fill: "#000000", frame: "medal", frameWidth: 3, badge: false },
     pos: { colour: "#ffffff" },
     nameBar: { fill: "medal", ink: "#0a0a0a", frame: null },
+    tilePoints: null,
     row: {
       numFill: "#0a0a0a", numInk: "#ffffff",
       barFill: "#f2f2f2", barFrame: null, frameWidth: 0,
       nameInk: "#0a0a0a", ptsInk: "#0a0a0a",
+      flags: false,
     },
-  },
-  black: {
-    label: "Black",
-    bg: "#050505",
-    title: "#ffffff",
-    // The mark moves out of the corner and behind the classification, big and
-    // barely there, which is what fills the space a black page opens up.
-    cornerMark: false,
-    watermark: 0.05,
-    // The pink lines are the whole idea of this one, so they are drawn at a
-    // weight you can see rather than a hairline that reads as a rendering
-    // artefact at the size Discord shows the poster.
-    tile: { fill: "#000000", frame: "#f7c2ce", frameWidth: 4, badge: true },
-    // Gold, silver and bronze land TWICE here: on the position number and on
-    // the name bar under the car. The black page has room for both, and the
-    // number alone was too small a place to spend a medal.
-    pos: { colour: "medal" },
-    nameBar: { fill: "medal", ink: "#0a0a0a", frame: "#f7c2ce" },
-    row: {
-      numFill: "#f7c2ce", numInk: "#0a0a0a",
-      barFill: "#000000", barFrame: "#f7c2ce", frameWidth: 4,
-      nameInk: "#ffffff", ptsInk: "#ffffff",
-    },
+    points: "pts",
   },
 };
 
@@ -161,6 +178,14 @@ function drawContain(ctx, img, cx, cy, maxW, maxH) {
   const w = img.width * scale;
   const h = img.height * scale;
   ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+}
+
+// A rectangle with corners, or without when the radius is 0. Only ever starts
+// the path — the caller decides whether it is filled, stroked or clipped.
+function box(ctx, x, y, w, h, r = 0) {
+  ctx.beginPath();
+  if (r > 0) ctx.roundRect(x, y, w, h, r);
+  else ctx.rect(x, y, w, h);
 }
 
 // Shrink the font until the text fits, rather than letting a long name run into
@@ -233,24 +258,43 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     const top = P.top - lift;
     const bottom = P.bottom - lift;
     const barTop = bottom - P.barHeight;
-    const medal = P.medal[place];
+    const medal = T.medal[place];
     const tileH = barTop - top;
+    const r = T.radius;
 
-    // The tile the car sits in.
+    // The card is ONE rounded box holding the car above and the name bar below,
+    // clipped so both halves take the corner with it. Filling them as two
+    // rectangles left square corners poking out of a rounded outline.
+    ctx.save();
+    box(ctx, x, top, colW, bottom - top, r);
+    ctx.clip();
     ctx.fillStyle = T.tile.fill;
     ctx.fillRect(x, top, colW, tileH);
     if (entry.car) {
       drawContain(ctx, entry.car, x + colW / 2, top + tileH * P.carCy, colW - P.carInset * 2, tileH * P.carMaxH);
     }
-    // Team badge in the top corner, opposite the position number.
     if (T.tile.badge && entry.badge) {
       const b = L.tileBadge;
       drawContain(ctx, entry.badge, x + colW - b.inset - b.size / 2, top + b.inset + b.size / 2, b.size, b.size);
     }
-
-    // Name bar.
+    // Points, in a chip tucked into the bottom corner of the car half.
+    if (T.tilePoints && entry.points != null) {
+      const c = P.chip;
+      ctx.font = FONT(900, c.size);
+      const label = `+${entry.points}`;
+      const w = ctx.measureText(label).width + c.padX * 2;
+      const cx = x + colW - w;
+      const cy = barTop - c.h;
+      ctx.fillStyle = T.tilePoints.fill;
+      box(ctx, cx, cy, w + r, c.h + r, r); // the far corners fall outside the clip
+      ctx.fill();
+      ctx.fillStyle = T.tilePoints.ink;
+      ctx.textAlign = "center";
+      ctx.fillText(label, cx + w / 2, cy + c.h / 2 + c.size * 0.36);
+    }
     ctx.fillStyle = T.nameBar.fill === "medal" ? medal : T.nameBar.fill;
     ctx.fillRect(x, barTop, colW, P.barHeight);
+    ctx.restore();
 
     // Frames, drawn last so nothing paints over them. The medal-framed design
     // outlines the tile alone; the outlined one wraps card and bar together
@@ -261,13 +305,15 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
       ctx.strokeStyle = frame;
       ctx.lineWidth = w;
       if (T.nameBar.frame) {
-        ctx.strokeRect(x + w / 2, top + w / 2, colW - w, bottom - top - w);
+        box(ctx, x + w / 2, top + w / 2, colW - w, bottom - top - w, r);
+        ctx.stroke();
         ctx.beginPath();
         ctx.moveTo(x, barTop);
         ctx.lineTo(x + colW, barTop);
         ctx.stroke();
       } else {
-        ctx.strokeRect(x + w / 2, top + w / 2, colW - w, tileH - w);
+        box(ctx, x + w / 2, top + w / 2, colW - w, tileH - w, r);
+        ctx.stroke();
       }
     }
 
@@ -275,14 +321,14 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     ctx.font = FONT(900, P.posSize);
     ctx.fillStyle = T.pos.colour === "medal" ? medal : T.pos.colour;
     ctx.textAlign = "left";
-    ctx.fillText(`${place}.`, x + 24, top + P.posSize + 12);
+    ctx.fillText(`${place}.`, x + P.posX, top + P.posY);
 
     // Flag, then the name.
     const flagH = Math.round((P.flagW * 3) / 4);
     let nameX = x + 22;
     if (entry.flag) {
       ctx.drawImage(entry.flag, nameX, barTop + (P.barHeight - flagH) / 2, P.flagW, flagH);
-      nameX += P.flagW + 14;
+      nameX += P.flagW + 12;
     }
     const nameSize = fitText(ctx, entry.name, x + colW - 18 - nameX, 900, P.nameSize, 20);
     ctx.font = FONT(900, nameSize);
@@ -298,46 +344,62 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     const barX = L.pad + R.numW;
     const barW = L.width - L.pad - barX;
 
-    // The bar the rest of the row sits on, then the number block over its left
-    // end, then the outline over both — so the row reads as one object rather
-    // than a block next to a bar.
+    // One rounded row, clipped like the podium card so the number block takes
+    // the left corners with it instead of sitting square inside them.
+    const rowW = L.width - L.pad * 2;
+    ctx.save();
+    box(ctx, L.pad, y, rowW, R.height, T.radius);
+    ctx.clip();
     ctx.fillStyle = T.row.barFill;
     ctx.fillRect(barX, y, barW, R.height);
     ctx.fillStyle = T.row.numFill;
     ctx.fillRect(L.pad, y, R.numW, R.height);
+    ctx.restore();
     if (T.row.barFrame) {
       const w = T.row.frameWidth;
       ctx.strokeStyle = T.row.barFrame;
       ctx.lineWidth = w;
-      ctx.strokeRect(L.pad + w / 2, y + w / 2, L.width - L.pad * 2 - w, R.height - w);
+      box(ctx, L.pad + w / 2, y + w / 2, rowW - w, R.height - w, T.radius);
+      ctx.stroke();
     }
+    const midY = y + R.height / 2;
     ctx.font = FONT(900, R.numSize);
     ctx.fillStyle = T.row.numInk;
     ctx.textAlign = "center";
-    ctx.fillText(String(row.position), L.pad + R.numW / 2, y + R.height / 2 + R.numSize * 0.36);
+    ctx.fillText(`${row.position}.`, L.pad + R.numW / 2, midY + R.numSize * 0.36);
 
-    // Points, right-aligned, number over the word.
+    // Points. "+20" on one line, or the number over the word PTS.
     const ptsX = L.width - L.pad - R.ptsRight;
     ctx.fillStyle = T.row.ptsInk;
     ctx.textAlign = "right";
-    ctx.font = FONT(900, R.ptsSize);
-    ctx.fillText(String(row.points), ptsX, y + R.height / 2 - 2);
-    ctx.font = FONT(800, R.ptsSize * 0.8);
-    ctx.fillText("PTS", ptsX, y + R.height / 2 + R.ptsSize * 0.9);
+    if (T.points === "plus") {
+      ctx.font = FONT(900, R.ptsSize);
+      ctx.fillText(`+${row.points}`, ptsX, midY + R.ptsSize * 0.36);
+    } else {
+      ctx.font = FONT(900, R.ptsSize);
+      ctx.fillText(String(row.points), ptsX, midY - 2);
+      ctx.font = FONT(800, R.ptsSize * 0.8);
+      ctx.fillText("PTS", ptsX, midY + R.ptsSize * 0.9);
+    }
 
-    // Name. Its room stops 24px short of where the team mark begins, so a long
-    // name shrinks instead of running under the logo.
-    const nameX = L.pad + R.nameX;
-    const markLeft = L.pad + R.markCx - R.markMaxW / 2;
+    // Flag, then the name. The flag only appears where the design has one; the
+    // name starts at the same x either way, so the column of names lines up
+    // whether or not a driver has a country on file.
+    if (T.row.flags && row.flag) {
+      const fh = Math.round((R.flagW * 3) / 4);
+      ctx.drawImage(row.flag, R.flagX, y + (R.height - fh) / 2, R.flagW, fh);
+    }
+    const nameX = R.nameX;
+    const markLeft = R.markCx - R.markMaxW / 2;
     const nameSize = fitText(ctx, row.name, Math.max(120, markLeft - 24 - nameX), 900, R.nameSize, 22);
     ctx.font = FONT(900, nameSize);
     ctx.fillStyle = T.row.nameInk;
     ctx.textAlign = "left";
-    ctx.fillText(row.name, nameX, y + R.height / 2 + nameSize * 0.36);
+    ctx.fillText(row.name, nameX, midY + nameSize * 0.36);
 
     // Team mark, centred in its own column so the marks line up down the page
     // however wide each one is.
-    if (row.mark) drawContain(ctx, row.mark, L.pad + R.markCx, y + R.height / 2, R.markMaxW, R.markMaxH);
+    if (row.mark) drawContain(ctx, row.mark, R.markCx, y + R.height / 2, R.markMaxW, R.markMaxH);
   });
 
   ctx.restore();
@@ -418,12 +480,15 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
   // between them must not have to go back to the network.
   const badgeSrc = (r) => r.effectiveTeam?.logoUrl || r.team?.logoUrl || null;
 
-  const [logo, cars, flags, badges, marks] = await Promise.all([
+  const [logo, cars, flags, badges, marks, rowFlags] = await Promise.all([
     loadImage(logoSrc),
     Promise.all(top3.map((r) => loadImage(artOf(r, "car")))),
     Promise.all(top3.map((r) => loadImage(flagSrc(countryOf(r))))),
     Promise.all(top3.map((r) => loadImage(badgeSrc(r)))),
     Promise.all(rest.map((r) => loadImage(markSrc(r)))),
+    // Loaded whichever design is showing, so switching between them never has
+    // to go back to the network.
+    Promise.all(rest.map((r) => loadImage(flagSrc(countryOf(r))))),
   ]);
 
   const roundLabel =
@@ -433,8 +498,12 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
     title: `${roundLabel} / ${race.track}`,
     logo,
     podium: top3.map((r, i) => ({
-      position: r.position, name: r.name, car: cars[i], flag: flags[i], badge: badges[i],
+      position: r.position, name: r.name, points: r.points ?? 0,
+      car: cars[i], flag: flags[i], badge: badges[i],
     })),
-    rows: rest.map((r, i) => ({ position: r.position, name: r.name, mark: marks[i], points: r.points ?? 0 })),
+    rows: rest.map((r, i) => ({
+      position: r.position, name: r.name, points: r.points ?? 0,
+      mark: marks[i], flag: rowFlags[i],
+    })),
   };
 }
