@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { api, takeDiscordLoginState } from "../api/client.js";
+import { api, takeDiscordLoginState, takeDiscordReturnTo } from "../api/client.js";
 import { saveUser } from "../hooks/useAuth.js";
 import { Spinner, ErrorBox } from "../components/ui.jsx";
 
@@ -14,21 +14,22 @@ const exchanges = new Map();
 // because reading the stashed nonce also consumes it: a second mount would find
 // an empty sessionStorage and reject a login that was perfectly fine. Cached per
 // code, both mounts share one verdict — the same reason the exchange is cached.
+// The page to land on is read here for the same reason and cached the same
+// way: reading it per mount would let the second mount find an empty slot and
+// send the member somewhere else than the first one did.
 function exchangeOnce(code, returnedState) {
   if (!exchanges.has(code)) {
     const expected = takeDiscordLoginState();
-    if (!expected || expected !== returnedState) {
-      exchanges.set(
-        code,
-        Promise.reject(
-          new Error(
-            "this sign-in did not start in this tab. Open the site and press Sign in with Discord again."
+    const returnTo = takeDiscordReturnTo();
+    const result =
+      !expected || expected !== returnedState
+        ? Promise.reject(
+            new Error(
+              "this sign-in did not start in this tab. Open the site and press Sign in with Discord again."
+            )
           )
-        )
-      );
-    } else {
-      exchanges.set(code, api.discordCallback(code));
-    }
+        : api.discordCallback(code);
+    exchanges.set(code, { result, returnTo });
   }
   return exchanges.get(code);
 }
@@ -65,10 +66,13 @@ export default function DiscordCallback() {
       return;
     }
     let gone = false;
-    exchangeOnce(code, params.get("state"))
+    const { result, returnTo } = exchangeOnce(code, params.get("state"));
+    result
       .then((res) => {
         saveUser(res.token, res.user);
-        if (!gone) navigate("/profile", { replace: true, state: { linked: res.linked } });
+        // Back where the sign-in was started, when it named a page (the
+        // attendance banner does); the profile otherwise, as it always has.
+        if (!gone) navigate(returnTo || "/profile", { replace: true, state: { linked: res.linked } });
       })
       .catch((e) => {
         if (!gone) setError(e.message);

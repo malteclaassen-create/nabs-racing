@@ -19,6 +19,10 @@ export function makeDriverMatcher(teams) {
         teamColor: team.color,
         tier: team.tier,
         country: countryFor(d.id),
+        // Admin-set league role ('safety'), so the board can mark a safety car
+        // driver by NAME. Not the same question as the board's own isSafetyCar,
+        // which asks whether the car on track right now is the pace car.
+        role: d.role || null,
       };
       for (const key of [d.id, d.name, d.discordName]) {
         const k = norm(key);

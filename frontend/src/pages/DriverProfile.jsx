@@ -6,7 +6,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import {
-  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar, NoData,
+  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, SafetyCarBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar, NoData,
 } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -20,18 +20,6 @@ import { useSpecificTitle } from "../utils/pageTitle.js";
 import { fmtLap, NO_VALUE} from "../utils/format.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
-
-// Amber pill marking the league's safety car driver, next to the tier badge.
-function SafetyCarBadge() {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-warn ring-1 ring-amber-500/40">
-      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M3 17h18M5 17l1.5-4.5A3 3 0 019.3 10h5.4a3 3 0 012.8 2l1.5 5M7.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM16.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
-      </svg>
-      Safety Car
-    </span>
-  );
-}
 
 // Public driver page layout switch:
 //   "card"    → the rating-card–led design (no dark hero banner, no rating

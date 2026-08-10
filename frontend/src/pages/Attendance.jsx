@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
+import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { ErrorBox, PageHeader, TableSkeleton, EmptyState, Notice } from "../components/ui.jsx";
 import RaceSignupCard from "../components/RaceSignupCard.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
+import { SocialIcon } from "../components/SocialLinks.jsx";
 import Flag from "../components/Flag.jsx";
 import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
@@ -17,15 +19,65 @@ import { fmtRaceDate } from "../utils/format.js";
 // arbitrary value in the URL can never be forwarded to the API as a status.
 const RSVP_FROM_LINK = { yes: "ACCEPTED", maybe: "TENTATIVE", no: "DECLINED" };
 
+// What a signed-out visitor sees first on the one page whose whole job needs a
+// login. The page did say so — as a small "Sign in to respond" link inside the
+// sign-up card, level with the buttons that weren't there — which reads as part
+// of the furniture rather than as the reason the page looks empty.
+//
+// It comes back to THIS page afterwards, with the query intact, so a Discord
+// link like /attendance?race=…&rsvp=yes still answers itself on arrival for
+// somebody who had to sign in on the way.
+function SignInBanner() {
+  const { pathname, search } = useLocation();
+  const { enabled, loading, start } = useDiscordLogin(`${pathname}${search}`);
+  // Nothing while we don't know yet, and nothing on a deployment without
+  // Discord login configured: a button that cannot work is worse than silence.
+  if (loading || !enabled) return null;
+  return (
+    <div className="card reveal flex flex-wrap items-center gap-x-5 gap-y-3 p-4 sm:p-5">
+      {/* The glyph is a nicety, and on a phone it costs a quarter of the width
+          the sentence needs. The button carries one anyway. */}
+      <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#5865F2]/15 text-[#5865F2] sm:flex">
+        <SocialIcon name="discord" className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-display text-sm font-extrabold uppercase tracking-tight text-dark sm:text-base">
+          Sign in with Discord to sign up to races
+        </p>
+        <p className="mt-0.5 text-xs leading-relaxed text-light sm:text-sm">
+          You can read the entry list without one. Answering for a race needs the login.
+        </p>
+      </div>
+      <button
+        onClick={start}
+        className="inline-flex w-full min-h-[42px] items-center justify-center gap-2 rounded-lg bg-[#5865F2] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#4752c4] sm:w-auto"
+      >
+        <SocialIcon name="discord" className="h-5 w-5" />
+        Sign in
+      </button>
+    </div>
+  );
+}
+
 
 // Hotlap videos for the circuit, from the admin's Attendance tab. One player
 // with a picker above it when there's more than one lap on file (a season's car
-// each, say). Renders nothing at all for a track without videos — an empty
-// player window would just be a hole in the page.
-function TrackVideos({ track, videos }) {
+// each, say).
+//
+// A circuit nobody has filmed yet says so, in the same panel the video would
+// have filled. It used to play a stand-in lap — the rickroll — which was funny
+// exactly once and unhelpful to somebody genuinely trying to learn the track
+// before Friday.
+//
+// `loading` only suppresses the panel before the FIRST answer is in, so the
+// page doesn't announce "coming soon" and then replace itself with a video half
+// a second later. Once there is an answer it stays on screen while the next one
+// is fetched, rather than blinking out.
+function TrackVideos({ track, videos, loading = false }) {
   const [i, setI] = useState(0);
   useEffect(() => setI(0), [track]);
-  if (!videos?.length) return null;
+  if (loading && !videos) return null;
+  if (!videos?.length) return <HotlapComingSoon track={track} />;
   const current = videos[Math.min(i, videos.length - 1)];
   return (
     <div className="card reveal overflow-hidden p-5">
@@ -50,18 +102,44 @@ function TrackVideos({ track, videos }) {
           ))}
         </div>
       )}
-      {/* `poster` is normally absent, and the player uses YouTube's own still.
-          The stand-in lap sends `false`, meaning "no still" — see the backend's
-          lib/trackInfo.js for why. */}
       <VideoEmbed
         videoId={current.id}
-        poster={current.poster}
         title={current.title || `${track} hotlap`}
         className="rounded-xl"
       />
       {current.title && videos.length === 1 && (
         <p className="mt-2.5 text-sm font-semibold text-medium">{current.title}</p>
       )}
+    </div>
+  );
+}
+
+// The circuit has no lap on file. Same card, same eyebrow, same shape as the
+// player it stands in for, so the page doesn't rearrange itself the week a lap
+// finally lands — only the window's contents change.
+function HotlapComingSoon({ track }) {
+  return (
+    <div className="card reveal overflow-hidden p-5">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Hotlap</h3>
+        <span className="font-mono text-[11px] uppercase tracking-wider text-light">Coming soon</span>
+      </div>
+      <div
+        style={{ aspectRatio: 16 / 9 }}
+        className="flex w-full flex-col items-center justify-center gap-3 rounded-xl bg-surface2 px-6 text-center"
+      >
+        <svg viewBox="0 0 24 24" className="h-9 w-9 text-faint" fill="none" stroke="currentColor" strokeWidth="1.6"
+          strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="2.5" y="5" width="19" height="14" rx="3" />
+          <path d="M10 9.5l5 2.5-5 2.5z" />
+        </svg>
+        <p className="font-display text-lg font-extrabold uppercase tracking-tight text-medium">
+          No hotlap yet
+        </p>
+        <p className="max-w-xs text-sm leading-relaxed text-light">
+          Nobody has filmed a lap of {track} for us yet. One turns up here as soon as somebody does.
+        </p>
+      </div>
     </div>
   );
 }
@@ -180,10 +258,17 @@ export default function Attendance() {
   const hist = useApi(useCallback(() => (ev ? api.trackHistory(ev.track) : Promise.resolve(null)), [ev?.track]));
 
   const circuit = ev ? flagFor(ev.track, ev.country) : null;
+  // "Nothing on screen yet", as opposed to "a request is in flight". Every
+  // answer, market action and one-tap link refetches this feed, and a reload
+  // keeps the data it already has — so `loading` on its own is not a reason to
+  // change what the page shows.
+  const firstLoad = events.loading && !events.data;
 
   return (
     <div className="content-in space-y-6">
       <PageHeader eyebrow="Race Attendance" title="Attendance" />
+
+      {!isLoggedIn && <SignInBanner />}
 
       {/* Confirms a one-tap answer that came in through the link, so the click
           visibly did something instead of just landing on the page. */}
@@ -195,15 +280,21 @@ export default function Attendance() {
         </Notice>
       )}
 
-      {events.loading && <TableSkeleton rows={6} />}
+      {/* The skeleton belongs to the FIRST load only. Answering a race reloads
+          this feed, and while that was in flight the skeleton reappeared ABOVE
+          the race — which is still on screen, because a reload keeps the data
+          it has — so every press of Accept shoved the whole page down six rows
+          and pulled it back up a moment later. There is nothing to skeleton
+          once the answer is already there. */}
+      {firstLoad && <TableSkeleton rows={6} />}
 
       {/* A failed read is not an empty calendar. Without this the page answered
           a server problem with "Nothing on the calendar", which reads as "no
           races are scheduled" — the one message that makes a member close the
           page instead of trying again. */}
-      {!events.loading && events.error && <ErrorBox message={events.error} onRetry={events.reload} />}
+      {!firstLoad && events.error && <ErrorBox message={events.error} onRetry={events.reload} />}
 
-      {!events.loading && !events.error && list.length === 0 && (
+      {!firstLoad && !events.error && list.length === 0 && (
         <EmptyState title="Nothing on the calendar" hint="The next race will show up here as soon as it is scheduled.">
           <Link to="/races" className="transition mt-3 inline-block text-sm font-semibold text-link hover:underline">See the calendar →</Link>
         </EmptyState>
@@ -288,7 +379,7 @@ export default function Attendance() {
           );
 
           // Shown to everyone, signed in or not: the lap is public.
-          const videoPanel = <TrackVideos track={ev.track} videos={hist.data?.videos} />;
+          const videoPanel = <TrackVideos track={ev.track} videos={hist.data?.videos} loading={hist.loading} />;
           const errorBox = error ? <ErrorBox message={error} /> : null;
 
           // ONE arrangement, always: the race and the sign-up down the left,
@@ -301,8 +392,8 @@ export default function Attendance() {
           //
           // With a single arrangement the hero and the sign-up mount once and
           // stay put; the hotlap simply fills its column when the answer
-          // arrives (TrackVideos renders nothing without one, leaving the left
-          // column full width on circuits with no lap).
+          // arrives — with the lap itself, or with the "coming soon" panel for
+          // a circuit nobody has filmed yet.
           //
           // Half and half, so the video is a window you can actually watch
           // rather than a thumbnail parked in a margin. Shares rather than a

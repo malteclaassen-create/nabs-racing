@@ -41,11 +41,11 @@ export default function VideoEmbed({
   // play button, which is what a video whose preview hasn't loaded looks like.
   // Passing nothing still falls back to YouTube's own thumbnails.
   const posters = poster === false ? [] : poster ? [poster] : videoId ? YT_THUMBS(videoId) : [];
-  // No still at all (the stand-in lap passes poster={false}). The window then
-  // shows nothing but its own background, and a raw black slab in the middle of
-  // a light page reads as a broken embed rather than a video waiting to play.
-  // It follows the theme instead — which gives nothing away, since the point is
-  // only that there is no thumbnail.
+  // No still at all (a live stream has none until it is running, so the live
+  // page passes poster={false}). The window then shows nothing but its own
+  // background, and a raw black slab in the middle of a light page reads as a
+  // broken embed rather than a video waiting to play. It follows the theme
+  // instead.
   const blank = posters.length === 0;
 
   // Switching to another video in a picker must not leave the previous one

@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
+import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { PageHeader, ErrorBox, EmptyState, Spinner } from "../components/ui.jsx";
 import { SocialIcon } from "../components/SocialLinks.jsx";
 import { openFeedback } from "../components/FeedbackWidget.jsx";
@@ -45,10 +46,7 @@ function fmtWhen(iso) {
 }
 
 function LoginGate() {
-  const discord = useApi(useCallback(() => api.discordConfig(), []));
-  const start = () => {
-    if (discord.data?.url) window.location.href = discord.data.url;
-  };
+  const { enabled, loading, start } = useDiscordLogin();
   return (
     <div className="mx-auto max-w-md">
       <div className="card flex flex-col items-center gap-5 p-8 text-center">
@@ -61,9 +59,9 @@ function LoginGate() {
             Discord and whatever you write from then on keeps its thread here.
           </p>
         </div>
-        {discord.loading ? (
+        {loading ? (
           <span className="text-sm text-light">…</span>
-        ) : discord.data?.enabled ? (
+        ) : enabled ? (
           <button
             onClick={start}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#5865F2] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#4752c4]"

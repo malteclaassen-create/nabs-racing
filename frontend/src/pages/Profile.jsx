@@ -7,6 +7,7 @@ import Tools from "./Tools.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth, getUserToken, saveUser } from "../hooks/useAuth.js";
+import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar, Field } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -306,13 +307,7 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
 }
 
 function DiscordLogin() {
-  const discord = useApi(useCallback(() => api.discordConfig(), []));
-  const enabled = discord.data?.enabled;
-
-  function start() {
-    if (discord.data?.url) window.location.href = discord.data.url;
-  }
-
+  const { enabled, loading, start } = useDiscordLogin();
   return (
     <div className="content-in">
       <PageHeader
@@ -333,7 +328,7 @@ function DiscordLogin() {
               We only read your Discord name and avatar to link you to your driver.
             </p>
           </div>
-          {discord.loading ? (
+          {loading ? (
             <span className="text-sm text-light">…</span>
           ) : enabled ? (
             <button

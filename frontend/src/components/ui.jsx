@@ -95,6 +95,44 @@ export function TierBadge({ tier }) {
   return <span className="pill bg-surface2 text-light" title="Reserve: scores only for the team it subs for">RES</span>;
 }
 
+// The league's safety car drivers (admin-set, Drivers tab). Marked wherever
+// their name shows up — their profile, a race classification, the live board —
+// so it is clear who is in the pace car on a race night without asking.
+//
+// `compact` is the version for a table row: the same amber and the same glyph,
+// but two letters instead of the full words, which is all a driver column has
+// room for next to a name, a flag and a tier badge. Deliberately NOT the same
+// mark as the "SC" in the live board's position column — that one says "this
+// CAR is the safety car right now", which is a different statement about a
+// different thing (see looksLikeSafetyCar in the backend's liveTiming.js).
+function SafetyCarGlyph({ className = "h-3 w-3" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.5"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 17h18M5 17l1.5-4.5A3 3 0 019.3 10h5.4a3 3 0 012.8 2l1.5 5M7.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM16.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
+    </svg>
+  );
+}
+
+export function SafetyCarBadge({ compact = false }) {
+  if (compact)
+    return (
+      <span className="pill shrink-0 gap-1 bg-amber-500/15 text-warn" title="Safety car driver">
+        <SafetyCarGlyph />
+        SC
+      </span>
+    );
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-warn ring-1 ring-amber-500/40"
+      title="Safety car driver"
+    >
+      <SafetyCarGlyph />
+      Safety Car
+    </span>
+  );
+}
+
 // --- colour helpers --------------------------------------------------------
 function parseHex(hex) {
   let c = String(hex || "").replace("#", "").trim();

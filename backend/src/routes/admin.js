@@ -35,7 +35,7 @@ import { stashIncoming, archiveCommitted } from "../lib/resultsArchive.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
-import { readTrackInfo, writeTrackInfo, readHotlapFallback, writeHotlapFallback } from "../lib/trackInfo.js";
+import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
@@ -53,7 +53,10 @@ import {
 } from "../lib/members.js";
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
-import { dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups } from "../lib/persons.js";
+import {
+  dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups,
+  getNameOverrides, discordIdsForDrivers,
+} from "../lib/persons.js";
 import {
   dbListSeries, dbCreateSeries, dbUpdateSeries, dbActivateSeries, dbDeleteSeries,
   getSeriesById, resolveSeries, seasonIdsOfSeries, seasonSeriesMap, setSeasonSeries,
@@ -3935,28 +3938,89 @@ router.get("/attendance-history", async (req, res, next) => {
   }
 });
 
+// GET /api/admin/attendance-missing?raceId=<id> -> who is still silent.
+//
+// The attendance page answers "who is coming". The question an admin actually
+// acts on the night before is the other one: who has said nothing at all, so
+// they can be chased in Discord. That cannot be read off the sign-up lists,
+// because silence leaves no row anywhere — it is the roster MINUS the answers.
+//
+// Split into full-timers and reserves because they mean different things: a
+// Tier-1/2 driver not answering is a hole in the grid, a reserve not answering
+// is just a reserve who isn't needed. Deactivated rows are left out entirely —
+// nobody should be chased for a season they are no longer in.
+//
+// The Discord id per driver is their EFFECTIVE one (own row, or inherited
+// through the person links), the same value the results post @mentions with —
+// so a member whose login still points at last season's row is still reachable.
+router.get("/attendance-missing", async (req, res, next) => {
+  try {
+    const raceId = String(req.query.raceId || "");
+    const race = await prisma.race.findUnique({ where: { id: raceId } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+
+    const [roster, rsvps, nameOverrides] = await Promise.all([
+      prisma.driver.findMany({
+        where: { seasonId: race.seasonId, isActive: true },
+        include: { team: { select: { name: true, tier: true, color: true } } },
+        orderBy: { name: "asc" },
+      }),
+      prisma.raceRsvp.findMany({ where: { raceId: race.id }, select: { driverId: true, status: true } }),
+      getNameOverrides(prisma),
+    ]);
+
+    const answered = new Set(rsvps.map((r) => r.driverId));
+    const silent = roster.filter((d) => !answered.has(d.id));
+    const discordIds = await discordIdsForDrivers(prisma, silent.map((d) => d.id)).catch(() => new Map());
+
+    const shape = (d) => ({
+      driverId: d.id,
+      name: nameOverrides.get(d.id)?.displayName || d.name,
+      discordName: d.discordName,
+      // null = no login of theirs is known, so they cannot be @mentioned. The
+      // admin can still search the handle above by hand.
+      discordUserId: discordIds.get(d.id) || null,
+      team: d.team?.name || null,
+      teamColor: d.team?.color || null,
+      tier: d.team?.tier ?? d.tier,
+    });
+    // The row's TEAM tier decides, not the driver's own: a Tier-2 driver parked
+    // in the Reserve pool is a reserve this season, and that is the roster the
+    // grid is built from.
+    const isReserve = (d) => (d.team?.tier ?? d.tier) === 0;
+    // Tier 1 first, then Tier 2, teammates together, alphabetical inside a team.
+    // Sorted here rather than in the browser so the list arrives in the order it
+    // is read in: chasing is a per-team job ("Renault: both of them"), and an
+    // alphabetical mix of the whole grid hides exactly that.
+    const byTeamThenName = (a, b) =>
+      (a.tier ?? 9) - (b.tier ?? 9) ||
+      (a.team || "").localeCompare(b.team || "") ||
+      a.name.localeCompare(b.name);
+
+    res.json({
+      race: { id: race.id, number: race.number, track: race.track, date: race.date },
+      counts: {
+        answered: answered.size,
+        roster: roster.length,
+        fullTime: roster.filter((d) => !isReserve(d)).length,
+        reserve: roster.filter(isReserve).length,
+      },
+      missing: {
+        fullTime: silent.filter((d) => !isReserve(d)).map(shape).sort(byTeamThenName),
+        // The reserve pool is one "team", so a team sort would say nothing —
+        // they stay alphabetical, which is how you look a name up in a list.
+        reserve: silent.filter(isReserve).map(shape),
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // GET /api/admin/attendance-gates -> the per-race overrides an admin has set.
 router.get("/attendance-gates", async (req, res, next) => {
   try {
     res.json(await readAttendanceOverrides(prisma));
-  } catch (e) {
-    next(e);
-  }
-});
-
-// GET /api/admin/hotlap-fallback -> the stand-in lap's settings.
-router.get("/hotlap-fallback", async (req, res, next) => {
-  try {
-    res.json(await readHotlapFallback(prisma));
-  } catch (e) {
-    next(e);
-  }
-});
-
-// PUT /api/admin/hotlap-fallback { enabled, videoId|url, label }
-router.put("/hotlap-fallback", async (req, res, next) => {
-  try {
-    res.json(await writeHotlapFallback(prisma, req.body || {}));
   } catch (e) {
     next(e);
   }

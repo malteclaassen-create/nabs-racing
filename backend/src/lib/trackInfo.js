@@ -65,60 +65,10 @@ export async function readTrackInfo(prisma, key) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// The stand-in lap: what the attendance page plays for a circuit nobody has put
-// a real hotlap on yet. It is a running joke, not a feature — the default video
-// is the one everybody has been sent at least once — so it carries a plain
-// on/off switch and shows no still image, which would give it away before the
-// click. A circuit WITH a real lap never sees it.
-// ---------------------------------------------------------------------------
-const FALLBACK_KEY = "hotlap_fallback";
-
-export const FALLBACK_DEFAULTS = {
-  enabled: true,
-  videoId: "dQw4w9WgXcQ",
-  // Empty means "<Track> hotlap", which is what a real one would be called.
-  label: "",
-};
-
-export function sanitizeFallback(input) {
-  const out = { ...FALLBACK_DEFAULTS };
-  if (!input || typeof input !== "object") return out;
-  out.enabled = input.enabled !== false;
-  const id = youtubeId(input.videoId ?? input.url);
-  if (id) out.videoId = id;
-  out.label = cap(input.label, MAX_TITLE).trim();
-  return out;
-}
-
-export async function readHotlapFallback(prisma) {
-  try {
-    const row = await prisma.setting.findUnique({ where: { key: FALLBACK_KEY } });
-    return row?.value ? sanitizeFallback(JSON.parse(row.value)) : { ...FALLBACK_DEFAULTS };
-  } catch {
-    return { ...FALLBACK_DEFAULTS };
-  }
-}
-
-export async function writeHotlapFallback(prisma, value) {
-  const clean = sanitizeFallback(value);
-  const json = JSON.stringify(clean);
-  await prisma.setting.upsert({
-    where: { key: FALLBACK_KEY },
-    create: { key: FALLBACK_KEY, value: json },
-    update: { value: json },
-  });
-  return clean;
-}
-
-// The list the attendance page should show for a track: the real laps, or the
-// stand-in when there are none and it's switched on. `poster: false` is what
-// keeps the joke intact — see above.
-export function videosWithFallback(videos, fallback, trackName) {
-  if (videos?.length) return videos;
-  if (!fallback?.enabled || !fallback.videoId) return [];
-  return [{ id: fallback.videoId, title: fallback.label || `${trackName} hotlap`, poster: false }];
-}
+// A circuit with no lap on file used to play a "stand-in lap" — the rickroll,
+// as a running joke. It is gone: the attendance page now says the hotlap is
+// coming soon, which is both true and useful to somebody learning the track.
+// The old admin switch and its `hotlap_fallback` Setting row went with it.
 
 export async function writeTrackInfo(prisma, key, value) {
   const clean = sanitizeTrackInfo(value);

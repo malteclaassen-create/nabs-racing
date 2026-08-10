@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, Notice, CardHead, Field, CheckField } from "./ui.jsx";
+import { ErrorBox, Notice, CardHead } from "./ui.jsx";
 import { trackKey } from "../data/circuits.js";
 import VideoEmbed from "./VideoEmbed.jsx";
 import { youtubeId as ytId } from "../utils/videoLinks.js";
@@ -9,12 +9,13 @@ import Flag from "./Flag.jsx";
 import { flagFor } from "../data/circuits.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import AdminAttendanceHistory from "./AdminAttendanceHistory.jsx";
+import AdminAttendanceMissing from "./AdminAttendanceMissing.jsx";
 import { fmtDateShort } from "../utils/format.js";
 
-// Admin "Attendance" tab, in three views: the hotlap videos a circuit shows,
-// who may answer which race, and what people answered for the races already run.
-// Three panels stacked in one column had grown into a page you scrolled past
-// rather than read.
+// Admin "Attendance" tab, in four views: the hotlap videos a circuit shows,
+// who may answer which race, who has not answered the next one yet, and what
+// people answered for the races already run. Panels stacked in one column had
+// grown into a page you scrolled past rather than read.
 //
 // The videos belong to the CIRCUIT, not to one running of it, so a lap put in
 // here comes back every season the track is raced. The upcoming rounds sit at
@@ -23,14 +24,25 @@ import { fmtDateShort } from "../utils/format.js";
 
 const MAX_VIDEOS = 6;
 const fmtDate = (d) => (d ? fmtDateShort(d) : "date TBA");
+// What each option says about the circuit it names. Undefined/null is a count
+// still on its way; it reads as "no lap yet" rather than flickering through a
+// placeholder, which is also what it turns out to be for most of them.
+const lapLabel = (n) => (n ? `${n} lap${n === 1 ? "" : "s"}` : "no lap yet");
 
-export default function AdminAttendance() {
+// `jumpView` is a view named by the admin search ("Still to answer" rather than
+// just "Attendance"); `jumpKey` counts the jumps so searching the same entry a
+// second time lands again instead of being ignored as an unchanged prop.
+export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
   // includeHidden: this tab is the only place a race that was taken off the
   // attendance page can be put back, so it has to be able to see them.
   const events = useApi(useCallback(() => api.events(true), []));
   const { data: races } = useApi(useCallback(() => api.races(), []));
 
-  const [view, setView] = useState("hotlaps");
+  const [view, setView] = useState(jumpView || "hotlaps");
+  useEffect(() => {
+    if (jumpView) setView(jumpView);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpView, jumpKey]);
   const [selected, setSelected] = useState(""); // track display name
   const [info, setInfo] = useState(null); // the whole stored blob, kept intact
   const [videos, setVideos] = useState([]);
@@ -100,36 +112,8 @@ export default function AdminAttendance() {
     }
   }
 
-  // The stand-in lap (see the panel at the bottom of this tab).
-  const [fallback, setFallback] = useState(null);
-  const [fallbackUrl, setFallbackUrl] = useState("");
-  useEffect(() => {
-    api
-      .hotlapFallback()
-      .then((f) => {
-        setFallback(f);
-        setFallbackUrl(`https://youtu.be/${f.videoId}`);
-      })
-      .catch((e) => setError(e.message));
-  }, []);
-
-  async function saveFallback() {
-    setBusy(true);
-    setError(null);
-    setMsg(null);
-    try {
-      const saved = await api.saveHotlapFallback({ ...fallback, url: fallbackUrl });
-      setFallback(saved);
-      setFallbackUrl(`https://youtu.be/${saved.videoId}`);
-      setMsg(saved.enabled ? "Stand-in lap is on." : "Stand-in lap is off.");
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // Upcoming rounds first — one button each.
+  // Upcoming rounds, in calendar order. Used by this tab's track picker and by
+  // the other two views.
   const upcoming = useMemo(
     () => [...(events.data || [])].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)),
     [events.data]
@@ -146,12 +130,30 @@ export default function AdminAttendance() {
     return [...seen.entries()].map(([key, name]) => ({ key, name }));
   }, [races]);
 
+  // The picker's two groups. A hotlap belongs to the CIRCUIT, so a season that
+  // visits one twice must not offer it twice — the first (earliest) round wins,
+  // and the lower group drops whatever the upper one already lists.
+  const comingUp = useMemo(() => {
+    const seen = new Set();
+    return upcoming.filter((e) => {
+      const k = trackKey(e.track);
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }, [upcoming]);
+  const otherTracks = useMemo(() => {
+    const shown = new Set(comingUp.map((e) => trackKey(e.track)));
+    return allTracks.filter((t) => !shown.has(t.key));
+  }, [allTracks, comingUp]);
+
   // Start on the next race — that's the one the attendance page is showing.
   useEffect(() => {
     if (!selected && upcoming.length) setSelected(upcoming[0].track);
   }, [upcoming, selected]);
 
   const key = selected ? trackKey(selected) : "";
+  const selectedCircuit = selected ? flagFor(selected) : null;
 
   useEffect(() => {
     if (!key) return;
@@ -211,17 +213,13 @@ export default function AdminAttendance() {
     }
   }
 
-  const pickerClass = (active) =>
-    `inline-flex min-h-[38px] items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-bold transition ${
-      active ? "bg-brand text-ink" : "bg-surface2 text-medium hover:text-dark"
-    }`;
-
   return (
     <div className="space-y-5">
       <SlidingTabs
         items={[
           { key: "hotlaps", label: "Hotlap videos" },
           { key: "signups", label: "Who can sign up" },
+          { key: "missing", label: "Still to answer" },
           { key: "history", label: "Past sign-ups" },
         ]}
         value={view}
@@ -229,6 +227,10 @@ export default function AdminAttendance() {
       />
 
       {view === "history" && <AdminAttendanceHistory />}
+
+      {view === "missing" && (
+        <AdminAttendanceMissing races={upcoming} racesError={events.error} onReloadRaces={events.reload} />
+      )}
 
       {view === "hotlaps" && (
       <div className="space-y-5">
@@ -241,40 +243,46 @@ export default function AdminAttendance() {
 
         {events.error && <ErrorBox message={events.error} onRetry={events.reload} />}
 
-        {upcoming.length > 0 && (
-          <div>
-            <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Coming up</div>
-            <div className="flex flex-wrap gap-2">
-              {upcoming.map((e) => {
-                const k = trackKey(e.track);
-                const circuit = flagFor(e.track, e.country);
-                const n = have[k];
-                return (
-                  <button key={e.id} type="button" className={pickerClass(k === key)} onClick={() => setSelected(e.track)}>
-                    {circuit && <Flag code={circuit.country} w={18} h={13} />}
-                    <span>
-                      {e.type === "TRAINING" ? "Training" : `R${e.number}`} {e.track}
-                    </span>
-                    <span className={`font-mono text-[10px] font-normal ${k === key ? "text-ink/70" : "text-faint"}`}>
-                      {fmtDate(e.date)} · {n ? `${n} lap${n === 1 ? "" : "s"}` : "no lap yet"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
+        {/* One picker for both halves of the question. The rounds that are
+            coming up used to sit above this as a button each, which on a full
+            season was three rows of chips over a second picker listing most of
+            the same tracks again. They are the top group of this list now, in
+            calendar order, with the next round selected on arrival; everything
+            else the season visits is underneath. Each option carries whether
+            that circuit already has a lap, which is what the row of chips was
+            really for. */}
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-sm font-semibold text-medium">Any other track</label>
-          <select aria-label="Any other track" className="input max-w-xs" value={selected} onChange={(e) => setSelected(e.target.value)}>
+          <label htmlFor="hotlap-track" className="text-sm font-semibold text-medium">
+            Track
+          </label>
+          {/* Next to the picker rather than in it: an option list is text only. */}
+          {selectedCircuit && <Flag code={selectedCircuit.country} w={20} h={15} />}
+          <select
+            id="hotlap-track"
+            className="input max-w-sm"
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+          >
             <option value="">Select a track…</option>
-            {allTracks.map((t) => (
-              <option key={t.key} value={t.name}>
-                {t.name}
-                {have[t.key] ? ` (${have[t.key]})` : ""}
-              </option>
-            ))}
+            {comingUp.length > 0 && (
+              <optgroup label="Coming up">
+                {comingUp.map((e) => (
+                  <option key={e.id} value={e.track}>
+                    {e.type === "TRAINING" ? "Training" : `R${e.number}`} {e.track} · {fmtDate(e.date)} ·{" "}
+                    {lapLabel(have[trackKey(e.track)])}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {otherTracks.length > 0 && (
+              <optgroup label="Any other track">
+                {otherTracks.map((t) => (
+                  <option key={t.key} value={t.name}>
+                    {t.name} · {lapLabel(have[t.key])}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
       </div>
@@ -335,10 +343,10 @@ export default function AdminAttendance() {
             )}
           </div>
 
-          {videos.length === 0 && fallback?.enabled && (
+          {videos.length === 0 && (
             <Notice kind="info">
-              Nothing here, so this circuit currently plays the stand-in lap (see below). Add a real one and the
-              stand-in steps aside on its own.
+              Nothing here, so the attendance page shows a &ldquo;hotlap coming soon&rdquo; panel for this circuit.
+              Add a lap and it takes that panel&rsquo;s place.
             </Notice>
           )}
 
@@ -358,50 +366,6 @@ export default function AdminAttendance() {
         </div>
       )}
 
-      {/* The joke lives with the hotlaps because that is what it stands in for.
-          Named for what it is, so nobody inherits this site later and spends an
-          afternoon wondering why every circuit already has a lap on it. */}
-      {fallback && (
-        <div className="card space-y-4 p-5">
-          <CardHead eyebrow="Attendance page" title="Stand-in lap" />
-          <p className="text-sm text-light">
-            What a circuit with no real lap on file plays instead. It is announced as &ldquo;&lt;Track&gt; hotlap&rdquo;
-            and shows no preview picture, so nobody sees it coming. The moment you add a real lap for a circuit, that
-            circuit stops using this.
-          </p>
-
-          <CheckField
-            checked={fallback.enabled}
-            onChange={(e) => setFallback((f) => ({ ...f, enabled: e.target.checked }))}
-            label="Play a stand-in lap where none is uploaded"
-          />
-
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-start">
-            <Field label="Video" tone="plain">
-              <input
-                className="input py-1.5 text-sm"
-                placeholder="https://youtu.be/…"
-                value={fallbackUrl}
-                onChange={(e) => setFallbackUrl(e.target.value)}
-              />
-            </Field>
-            <Field label="Called" tone="plain">
-              <input
-                className="input py-1.5 text-sm"
-                placeholder={`${selected || "<Track>"} hotlap`}
-                value={fallback.label}
-                onChange={(e) => setFallback((f) => ({ ...f, label: e.target.value }))}
-              />
-            </Field>
-            <button className="btn-secondary py-1.5 text-sm sm:mt-6" onClick={saveFallback} disabled={busy}>
-              Save
-            </button>
-          </div>
-          {fallbackUrl.trim() && !ytId(fallbackUrl) && (
-            <p className="text-xs text-bad">That isn&rsquo;t a YouTube link. The old one stays until this one works.</p>
-          )}
-        </div>
-      )}
       </div>
       )}
 

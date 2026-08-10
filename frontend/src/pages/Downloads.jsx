@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api, withApiBase } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
+import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { seasonGameParts } from "../utils/seasonGame.js";
 import { PageHeader, SectionHeading, ErrorBox, Skeleton, MEDAL } from "../components/ui.jsx";
@@ -40,9 +41,7 @@ const text = (s, tokens) => rich(fill(s, tokens));
 
 // Members-only gate: same Discord sign-in flow as the profile page.
 function LoginGate() {
-  const discord = useApi(useCallback(() => api.discordConfig(), []));
-  const enabled = discord.data?.enabled;
-  const start = () => { if (discord.data?.url) window.location.href = discord.data.url; };
+  const { enabled, loading, start } = useDiscordLogin();
   return (
     <div className="mx-auto max-w-md">
       <div className="card flex flex-col items-center gap-5 p-8 text-center">
@@ -58,7 +57,7 @@ function LoginGate() {
             safety car, Custom Shaders Patch, Real Penalty and more.
           </p>
         </div>
-        {discord.loading ? (
+        {loading ? (
           <span className="text-sm text-light">…</span>
         ) : enabled ? (
           <button

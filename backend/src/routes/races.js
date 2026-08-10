@@ -4,6 +4,7 @@ import { getDriverResultPoints, getPointsForPosition, applyPenalties, DEFAULT_PO
 import { resolveSeasonId, getSeasonScoring, getPrivateSeasonIds } from "../services/seasonService.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
+import { readDriverRoles } from "../lib/driverRoles.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
 import { readManualFastestLaps } from "../lib/raceHonours.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
@@ -150,6 +151,14 @@ router.get("/:id/results", async (req, res, next) => {
 
     const teamById = new Map(teams.map((t) => [t.id, t]));
 
+    // Special league roles ('safety'), so a classification marks the league's
+    // safety car drivers the same way their profile and the live board do. The
+    // role sits on the SEASON row, so a round shows who held it that season.
+    const roles = await readDriverRoles(prisma, [
+      ...results.map((r) => r.driverId),
+      ...drivers.map((d) => d.id),
+    ]);
+
     // Apply position penalties so the displayed order, points and the Tier-2
     // re-rank all use each car's final (post-penalty) position. `rawById` keeps
     // the original finishing position so the UI can show "P2 → P5".
@@ -203,6 +212,7 @@ router.get("/:id/results", async (req, res, next) => {
           // Linked-person fallback (same rule as the standings): an archive row
           // without its own flag shows the person's current one.
           country: r.driver.country || identity.get(r.driverId)?.country || null,
+          role: roles.get(r.driverId) || null,
           driverTier: r.driver.tier,
           position: r.position,
           rawPosition: rawById.get(r.driverId) ?? null,
@@ -299,6 +309,7 @@ router.get("/:id/results", async (req, res, next) => {
             driverId: d ? e.driverId : null,
             name: ov?.displayName || d?.name || e.name || e.acDriverName,
             country: d ? d.country || identity.get(d.id)?.country || null : null,
+            role: d ? roles.get(d.id) || null : null,
             bestLapMs: e.bestLapMs ?? null,
             // Sector times of the best lap ([s1,s2,s3] ms) — imports before
             // this feature simply have none and the columns hide.

@@ -4,7 +4,7 @@ import { api } from "../api/client.js";
 import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { useApi } from "../hooks/useApi.js";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
-import { PageHeader, SectionHeading, NoData} from "../components/ui.jsx";
+import { PageHeader, SectionHeading, SafetyCarBadge, NoData} from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
@@ -361,6 +361,10 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
           {match?.country && (
             <Flag code={match.country} title={match.teamName} w={15} h={11} className="sm:hidden" />
           )}
+          {/* One of the league's safety car drivers. Stays on whatever they are
+              driving tonight — it says who this person is, not what car is out
+              there, which is the position column's "SC". */}
+          {match?.role === "safety" && <SafetyCarBadge compact />}
           {/* DRS/PIT sit in their own column from sm up; on phones that column
               is 55px of mostly-empty width, so the badges ride with the name. */}
           {(mobileBadges || badgesAlways) && (e.drs || e.inPits) && (

@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
-import { StatusPill, Rank, TierBadge, NoData } from "./ui.jsx";
+import { StatusPill, Rank, TierBadge, SafetyCarBadge, NoData } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { TyreBadge } from "./TyreStrategy.jsx";
@@ -95,6 +95,7 @@ function QualiTable({ rows }) {
                         )}
                         {r.driverId && <Flag code={countryFor(r.driverId, r.country)} />}
                       </span>
+                      {r.role === "safety" && <SafetyCarBadge compact />}
                       {pole && (
                         <span className="pill bg-purple-500/15 text-fl" title="Pole position">
                           Pole
@@ -184,6 +185,9 @@ export default function RaceResults({ race, results, quali = null, session = "ra
       return next;
     });
 
+  // Whether anyone in this classification is one of the league's safety car
+  // drivers — the legend only explains a mark the table actually shows.
+  const hasSafetyCar = results.some((r) => r.role === "safety");
   const lapRows = results.filter((r) => isLap(r.bestLapMs));
   const hasLaps = lapRows.length > 0;
   const hasGrid = results.some((r) => r.grid != null);
@@ -328,6 +332,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                         <Flag code={countryFor(r.driverId, r.country)} />
                       </span>
                       {tier != null && <TierBadge tier={tier} />}
+                      {r.role === "safety" && <SafetyCarBadge compact />}
                       {r.driverId === dotdId && (
                         <span className="pill bg-brand/20 text-brand" title="Driver of the Day">
                           DOTD
@@ -492,6 +497,11 @@ export default function RaceResults({ race, results, quali = null, session = "ra
           {fastestDriverId && (
             <span className="flex items-center gap-1.5">
               <span className="pill bg-purple-500/15 text-fl">FL</span> Fastest lap
+            </span>
+          )}
+          {hasSafetyCar && (
+            <span className="flex items-center gap-1.5">
+              <SafetyCarBadge compact /> Safety car driver
             </span>
           )}
           <span>

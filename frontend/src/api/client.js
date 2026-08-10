@@ -76,6 +76,35 @@ export function takeDiscordLoginState() {
   }
 }
 
+// Where to land after a Discord login, when it was started somewhere with an
+// obvious "and then?" — the attendance page's sign-in banner sets it, so a
+// member who came to answer for Friday's race comes back to that question
+// rather than to their profile. Everything else leaves it unset and keeps the
+// old destination.
+//
+// Only an in-site path is ever stored: anything starting "//" or carrying a
+// scheme is refused, so this can never become a redirect off the site.
+const DISCORD_RETURN_KEY = "nabs_discord_return";
+export function setDiscordReturnTo(path) {
+  const p = String(path || "");
+  if (!p.startsWith("/") || p.startsWith("//")) return;
+  try {
+    sessionStorage.setItem(DISCORD_RETURN_KEY, p);
+  } catch {
+    /* private mode with no storage — the login still works, it just lands on
+       the profile like it always did */
+  }
+}
+export function takeDiscordReturnTo() {
+  try {
+    const v = sessionStorage.getItem(DISCORD_RETURN_KEY);
+    sessionStorage.removeItem(DISCORD_RETURN_KEY);
+    return v && v.startsWith("/") && !v.startsWith("//") ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 // The series the site is currently viewing (a URL slug), or null for the
 // active (primary) series. Set by the SeriesProvider; appended to every
 // season-scoped read so all data is transitively series-scoped. Mirrors
@@ -769,6 +798,9 @@ export const api = {
 
   // Who answered what for the races that have already run (season-scoped).
   attendanceHistory: () => request(`/admin/attendance-history${seasonQ()}`, { auth: true }),
+  // The other side of it, for ONE upcoming race: who is still silent.
+  attendanceMissing: (raceId) =>
+    request(`/admin/attendance-missing?raceId=${encodeURIComponent(raceId)}`, { auth: true }),
 
   // Per-race sign-up switch (auto / forced open / forced closed).
   attendanceGates: () => request("/admin/attendance-gates", { auth: true }),
@@ -778,10 +810,6 @@ export const api = {
   // the gate above, so hiding a race doesn't forget its open/closed setting.
   setAttendanceVisible: (raceId, hidden) =>
     request(`/admin/races/${raceId}/attendance-visibility`, { method: "PUT", body: { hidden }, auth: true }),
-
-  // The stand-in hotlap: what a circuit with no real lap on file plays instead.
-  hotlapFallback: () => request("/admin/hotlap-fallback", { auth: true }),
-  saveHotlapFallback: (body) => request("/admin/hotlap-fallback", { method: "PUT", body, auth: true }),
 
   // Race Info page content (public read + admin edit)
   raceInfo: () => request("/settings/race-info"),

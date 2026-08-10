@@ -14,7 +14,7 @@ import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { resolveSeries, seasonSeriesMap } from "../lib/series.js";
 import { getPersonGroups, getNameOverrides, getLinkedDriverIds } from "../lib/persons.js";
 import { telemetryForRaces } from "../lib/telemetryRead.js";
-import { readTrackInfo, readHotlapFallback, videosWithFallback } from "../lib/trackInfo.js";
+import { readTrackInfo } from "../lib/trackInfo.js";
 import { readTrackCountries, staticCountryFor } from "../lib/raceCountries.js";
 
 const router = Router();
@@ -65,7 +65,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
     const raceWhere = { isCompleted: true, isSpecialEvent: false };
     if (allowedSeasonIds) raceWhere.seasonId = { in: allowedSeasonIds };
 
-    const [races, groups, nameOverrides, info, fallback] = await Promise.all([
+    const [races, groups, nameOverrides, info] = await Promise.all([
       prisma.race.findMany({
         where: raceWhere,
         // Only the fields this endpoint actually reads.
@@ -81,11 +81,11 @@ router.get("/history", optionalUser, async (req, res, next) => {
       getPersonGroups(prisma),
       getNameOverrides(prisma),
       readTrackInfo(prisma, groupKey),
-      readHotlapFallback(prisma),
     ]);
-    // Real laps if there are any, the stand-in if there aren't and it's on.
+    // The circuit's hotlaps, or nothing at all — the attendance page says
+    // "coming soon" for a track that has none yet.
     const displayName = key ? displayNameFor(key) : track;
-    const videos = videosWithFallback(info.videos, fallback, displayName);
+    const videos = info.videos;
 
     // Races at this circuit: this series' seasons only, and only public
     // (non-private) ones unless we're admin.

@@ -4,7 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field } from "../components/ui.jsx";
+import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge } from "../components/ui.jsx";
 import { useAsk } from "../components/overlay.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
@@ -21,64 +21,16 @@ import AdminMembers from "../components/AdminMembers.jsx";
 import AdminNotifications from "../components/AdminNotifications.jsx";
 import AdminAllTime from "../components/AdminAllTime.jsx";
 import AdminFeedback, { FEEDBACK_CHANGED_EVENT } from "../components/AdminFeedback.jsx";
+import AdminSearch from "../components/AdminSearch.jsx";
 import RacePreview from "../components/RacePreview.jsx";
+// The tab strip and the searchable list of what each tab does live together in
+// one place, so a new tab and its search entries are added side by side.
+import { TAB_GROUPS } from "../data/adminIndex.js";
 import { SOCIAL_META, SocialIcon } from "../components/SocialLinks.jsx";
 import { isSteamId64 } from "../utils/steamId.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
 import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
 
-// The admin's tabs, clustered by what they're for — same ids (and therefore
-// the same components and hand-offs) as the old flat strip, just grouped so
-// the 18 entries read as five small menus instead of one long row.
-const TAB_GROUPS = [
-  {
-    label: "Race weekend",
-    tabs: [
-      { id: "discord", label: "Races & Events" },
-      { id: "attendance", label: "Attendance" },
-      { id: "import", label: "Import Race" },
-      { id: "edit", label: "Edit Results" },
-      { id: "photos", label: "Photos" },
-    ],
-  },
-  {
-    label: "League",
-    tabs: [
-      { id: "seasons", label: "Seasons" },
-      { id: "teams", label: "Teams" },
-      { id: "drivers", label: "Drivers" },
-      { id: "market", label: "Driver Market" },
-      { id: "ratings", label: "Ratings" },
-      { id: "alltime", label: "All-time" },
-    ],
-  },
-  {
-    label: "Community",
-    tabs: [
-      { id: "members", label: "Members" },
-      { id: "feedback", label: "Feedback" },
-      { id: "notify", label: "Notifications" },
-      { id: "downloads", label: "Downloads" },
-      { id: "social", label: "Social & Live" },
-    ],
-  },
-  {
-    label: "Site content",
-    tabs: [
-      { id: "tracks", label: "Tracks" },
-      { id: "raceinfo", label: "Race Info" },
-      { id: "faq", label: "Home FAQ" },
-    ],
-  },
-  {
-    label: "System",
-    tabs: [
-      { id: "traffic", label: "Traffic" },
-      { id: "health", label: "Health" },
-      { id: "pin", label: "Change PIN" },
-    ],
-  },
-];
 
 // Prominent bar at the top of the admin: shows WHICH series + season every
 // scoped edit below applies to, and lets the admin switch both right here (no
@@ -230,6 +182,16 @@ export default function Admin() {
   useEffect(() => {
     sessionStorage.removeItem("nabs_admin_tab");
   }, []);
+  // Where a search hit sent us. Some tabs are split into views of their own, so
+  // a hit can name one; `n` counts the jumps, because searching the SAME hit
+  // twice has to land twice — a plain view string would be unchanged the second
+  // time and the tab would sit wherever the admin had left it.
+  const [jump, setJump] = useState(null);
+  function goTo(hit) {
+    setTab(hit.tab);
+    setJump((j) => ({ tab: hit.tab, view: hit.view || null, n: (j?.n || 0) + 1 }));
+  }
+  const viewFor = (tabId) => (jump?.tab === tabId ? jump.view : null);
   const { season, setSeason } = useSeason();
 
   // If any admin request reports an expired/invalid token, bounce to the login.
@@ -274,6 +236,11 @@ export default function Admin() {
       <SecurityBanner />
 
       <AdminSeasonBar tab={tab} />
+
+      {/* Above the tabs on purpose: it is the way in for anyone who does not
+          already know which of the five menus below holds the thing they came
+          for. */}
+      <AdminSearch onGo={goTo} />
 
       <div className="mb-6 flex flex-wrap gap-x-7 gap-y-3 border-b border-border">
         {TAB_GROUPS.map((g) => (
@@ -350,7 +317,7 @@ export default function Admin() {
             <LiveServersAdmin />
           </div>
         )}
-        {tab === "attendance" && <AdminAttendance />}
+        {tab === "attendance" && <AdminAttendance jumpView={viewFor("attendance")} jumpKey={jump?.n} />}
         {tab === "tracks" && <AdminTracks />}
         {tab === "raceinfo" && <AdminRaceInfo />}
         {tab === "faq" && <AdminWelcomeFaq />}
@@ -2424,6 +2391,84 @@ function Drivers() {
         )}
       </div>
     </div>
+
+    <SafetyCarDrivers drivers={allDrivers} busy={busy} onSet={patchDriver} />
+    </div>
+  );
+}
+
+// Who drives the safety car. The switch itself is the role dropdown in the
+// roster above, which is fine once you know it exists and impossible to find if
+// you don't — so the answer to "who is marked?" gets a place of its own, with
+// both directions of the change in it.
+//
+// It writes the same field through the same endpoint; nothing here is a second
+// source of truth. The mark rides on the SEASON row, so it follows whichever
+// season the admin bar is editing, and it shows up on that driver's profile, in
+// a race classification and on the live board.
+function SafetyCarDrivers({ drivers, busy, onSet }) {
+  const [pick, setPick] = useState("");
+  const marked = drivers.filter((d) => d.role === "safety");
+  const rest = drivers
+    .filter((d) => d.role !== "safety")
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  function add() {
+    const d = drivers.find((x) => x.id === pick);
+    if (!d) return;
+    setPick("");
+    onSet(d, { role: "safety" });
+  }
+
+  return (
+    <div className="card mt-6 space-y-4 p-5">
+      <CardHead eyebrow="Drivers" title="Safety car drivers" />
+      <p className="text-xs leading-relaxed text-light">
+        Marked drivers carry a Safety Car badge on their profile, in race results and on the live timing board, and
+        their rating card switches to the Safety Car edition. It changes nothing about points or classifications, and
+        a marked driver can still race normally.
+      </p>
+
+      {marked.length === 0 ? (
+        <p className="text-sm text-light">Nobody is marked as a safety car driver this season.</p>
+      ) : (
+        <ul className="divide-y divide-border border-y border-border">
+          {marked.map((d) => (
+            <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+              <SafetyCarBadge compact />
+              <span className="min-w-0 flex-1 truncate font-semibold text-dark">{d.name}</span>
+              <span className="text-xs text-light">{d.teamName}</span>
+              <button
+                className="transition text-xs font-semibold text-link hover:underline"
+                disabled={busy}
+                onClick={() => onSet(d, { role: "" })}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <select
+          aria-label="Driver to mark as a safety car driver"
+          className="input w-auto min-w-[14rem] py-1.5 text-sm"
+          value={pick}
+          disabled={busy}
+          onChange={(e) => setPick(e.target.value)}
+        >
+          <option value="">Add a driver…</option>
+          {rest.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name} · {d.teamName}
+            </option>
+          ))}
+        </select>
+        <button className="btn-secondary py-1.5 text-sm" disabled={busy || !pick} onClick={add}>
+          Mark as safety car driver
+        </button>
+      </div>
     </div>
   );
 }
