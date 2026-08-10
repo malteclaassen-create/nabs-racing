@@ -26,12 +26,29 @@ const EXPORT_SCALE = 2;
 
 const fmtDate = (d) => (d ? fmtDateShort(d) : "no date");
 
+// What each slot is called on screen, and what the hover says it is for. The
+// long logo is a "wordmark" in design language, which is precise and means
+// nothing to anybody filling this in; the label says what it looks like
+// instead, and the tooltip says how it differs from the logo the site already
+// has. `mark` stays as the stored key (see lib/teamArt.js) — renaming the wire
+// format to improve a caption would only orphan the files already uploaded.
+const SLOT = {
+  car: {
+    label: "Car",
+    hint: "the car, cut out, side on. It fills a podium tile.",
+  },
+  mark: {
+    label: "Wide logo",
+    hint: "the long logo with the team name written out, for the rows under the podium.",
+  },
+};
+
 // One picture for one team. Empty, it is a labelled dashed box, which is both
 // the button and the only place the word "car" needs to appear. Filled, it is
 // the picture, and pressing it replaces.
 function ArtSlot({ team, kind, url, busy, onUpload, onClear }) {
   const fileRef = useRef(null);
-  const label = kind === "car" ? "Car" : "Wordmark";
+  const { label, hint } = SLOT[kind];
   return (
     <span className="relative shrink-0">
       <input
@@ -48,7 +65,9 @@ function ArtSlot({ team, kind, url, busy, onUpload, onClear }) {
       <button
         type="button"
         disabled={busy}
-        title={url ? `Replace the ${label.toLowerCase()} for ${team.name}` : `Upload a ${label.toLowerCase()} for ${team.name}`}
+        // The hover carries the explanation the page deliberately doesn't
+        // print: what this picture is, in words somebody can act on.
+        title={`${team.name}: ${url ? "replace" : "upload"} ${hint}`}
         onClick={() => fileRef.current?.click()}
         className={`flex h-12 w-28 items-center justify-center overflow-hidden rounded-lg border transition disabled:opacity-50 ${
           url

@@ -190,9 +190,12 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "graphic",
-    title: "Team cars and wordmarks",
-    hint: "The cut-out car and the wide logo the result poster draws with. Uploaded once per team.",
-    keywords: "car cars artwork wordmark wide logo graphic poster cutout render team art",
+    title: "Team cars and wide logos",
+    // "wordmark" stays in the keywords: it is what a designer calls the long
+    // logo, so it is what a designer will type, even though the page has
+    // stopped using the word.
+    hint: "The cut-out car and the long logo the result poster draws with. Uploaded once per team.",
+    keywords: "car cars artwork wide logo wordmark long logo graphic poster cutout render team art",
   },
   {
     tab: "photos",
