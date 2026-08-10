@@ -6,7 +6,9 @@ import TeamLogo from "./TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtDateShort } from "../utils/format.js";
 import SlidingTabs from "./SlidingTabs.jsx";
-import { LAYOUT, THEMES, THEME_KEYS, drawResultGraphic, loadGraphicAssets } from "../utils/resultGraphic.js";
+import {
+  LAYOUT, THEMES, THEME_KEYS, EXPORT_SCALE, renderPosterTo, savedTheme, saveTheme,
+} from "../utils/resultGraphic.js";
 
 // Admin → Graphics: the result poster for a finished round, drawn from the
 // round's own data and handed over as a PNG.
@@ -20,14 +22,6 @@ import { LAYOUT, THEMES, THEME_KEYS, drawResultGraphic, loadGraphicAssets } from
 // the empty slot itself, the state of the artwork is the artwork, and the
 // preview is the file you get. A page that explains itself in paragraphs is a
 // page whose controls did not.
-
-// Exported at twice the design size: it is a poster people open full screen,
-// and 2x is the difference between crisp type and Discord's resampling.
-const EXPORT_SCALE = 2;
-// Which design was last used. Remembered because a league picks one and stays
-// with it: having to re-choose every visit would be the tax for a choice made
-// once.
-const THEME_KEY = "nabs_graphic_theme";
 
 const fmtDate = (d) => (d ? fmtDateShort(d) : "no date");
 
@@ -113,10 +107,7 @@ export default function AdminResultGraphic() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem(THEME_KEY);
-    return THEME_KEYS.includes(saved) ? saved : THEME_KEYS[0];
-  });
+  const [theme, setTheme] = useState(savedTheme);
   const canvasRef = useRef(null);
 
   // Only rounds that HAVE a classification: a poster of an unraced round would
@@ -148,32 +139,22 @@ export default function AdminResultGraphic() {
       .finally(() => setLoading(false));
   }, [raceId]);
 
-  // Draw whenever the round or the artwork changes. Waiting on document.fonts
-  // is what stops the first paint coming out in Times New Roman: the canvas
-  // takes whatever the font stack resolves to AT THAT MOMENT, and Archivo is a
-  // web font that may still be on its way.
+  // Redraw whenever the round, the artwork or the design changes. Exactly the
+  // same call the Discord post makes, so the preview cannot drift away from
+  // what gets sent.
   useEffect(() => {
     if (!result || !art || !canvasRef.current) return;
     let alive = true;
-    (async () => {
-      try {
-        await document.fonts.ready;
-        const data = await loadGraphicAssets({
-          race: result.race,
-          results: result.results,
-          teamArt: art,
-          countryOf: (r) => countryFor(r.driverId, r.country),
-          logoSrc: "/logo-light.png",
-        });
-        if (!alive) return;
-        const canvas = canvasRef.current;
-        canvas.width = LAYOUT.width * EXPORT_SCALE;
-        canvas.height = LAYOUT.height * EXPORT_SCALE;
-        drawResultGraphic(canvas.getContext("2d"), data, EXPORT_SCALE, theme);
-      } catch (e) {
-        if (alive) setError(e.message);
-      }
-    })();
+    renderPosterTo(canvasRef.current, {
+      race: result.race,
+      results: result.results,
+      teamArt: art,
+      countryOf: (r) => countryFor(r.driverId, r.country),
+      logoSrc: "/logo-light.png",
+      theme,
+    }).catch((e) => {
+      if (alive) setError(e.message);
+    });
     return () => {
       alive = false;
     };
@@ -280,7 +261,7 @@ export default function AdminResultGraphic() {
               value={theme}
               onChange={(k) => {
                 setTheme(k);
-                localStorage.setItem(THEME_KEY, k);
+                saveTheme(k);
               }}
               btnClassName="px-4 py-1.5 text-xs"
             />

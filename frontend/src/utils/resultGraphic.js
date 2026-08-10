@@ -343,6 +343,55 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
   ctx.restore();
 }
 
+// Which design was chosen last. It lives here rather than in a component
+// because two places need the same answer: the page that previews the poster
+// and the button that posts it to Discord. If they disagreed, the picture in
+// the channel would not be the picture that was approved.
+const THEME_STORE = "nabs_graphic_theme";
+
+export function savedTheme() {
+  try {
+    const k = localStorage.getItem(THEME_STORE);
+    return THEME_KEYS.includes(k) ? k : THEME_KEYS[0];
+  } catch {
+    return THEME_KEYS[0];
+  }
+}
+
+export function saveTheme(key) {
+  try {
+    if (THEME_KEYS.includes(key)) localStorage.setItem(THEME_STORE, key);
+  } catch {
+    /* private mode: the choice just does not survive the tab */
+  }
+}
+
+// Exported at twice the design size: it is a poster people open full screen,
+// and 2x is the difference between crisp type and Discord's resampling.
+export const EXPORT_SCALE = 2;
+
+// Draw a race's poster onto `canvas`, sizing it as it goes. THE one way a
+// poster gets made: the preview calls it, and so does the Discord post, so the
+// file that lands in the channel is by construction the thing that was on
+// screen. Nothing is stored in between, which is what keeps the design free to
+// change — every post draws it again, from the current design and the current
+// artwork, however old the round is.
+export async function renderPosterTo(canvas, opts) {
+  await document.fonts.ready; // a canvas takes whatever the font stack resolves to NOW
+  const data = await loadGraphicAssets(opts);
+  canvas.width = LAYOUT.width * EXPORT_SCALE;
+  canvas.height = LAYOUT.height * EXPORT_SCALE;
+  drawResultGraphic(canvas.getContext("2d"), data, EXPORT_SCALE, opts.theme);
+  return canvas;
+}
+
+// The same poster as a PNG blob, drawn off-screen. For the Discord post, which
+// needs the bytes rather than something to look at.
+export async function renderPosterBlob(opts) {
+  const canvas = await renderPosterTo(document.createElement("canvas"), opts);
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
 // Turn one race (as /api/races/:id/results hands it over) into the shape above,
 // with every picture already loaded. `teamArt` is the admin's uploaded cars and
 // wordmarks, keyed by team id; `countryOf` resolves a driver's flag the same

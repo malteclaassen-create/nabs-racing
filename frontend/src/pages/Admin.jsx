@@ -4,7 +4,9 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge } from "../components/ui.jsx";
+import { PageHeader, ErrorBox, Notice, CardHead, CheckField, DriverAvatar, Field, SafetyCarBadge } from "../components/ui.jsx";
+import { countryFor } from "../data/driverCountries.js";
+import { renderPosterBlob, savedTheme } from "../utils/resultGraphic.js";
 import { useAsk } from "../components/overlay.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
@@ -1808,6 +1810,9 @@ function DiscordResultsPost({ raceId }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
+  // Send the round's poster with the message. On by default: it is the reason
+  // the poster exists, and forgetting it means a second post two minutes later.
+  const [withGraphic, setWithGraphic] = useState(true);
 
   // A different round starts from a clean slate.
   useEffect(() => {
@@ -1815,6 +1820,22 @@ function DiscordResultsPost({ raceId }) {
     setMsg(null);
     setError(null);
   }, [raceId]);
+
+  // The poster, drawn fresh at the moment of posting, from the design chosen in
+  // the Result Graphic tab and whatever artwork is uploaded right now. Nothing
+  // is kept between posts, so changing the design later changes what goes out
+  // next time — including for a round that ran months ago.
+  async function buildGraphic() {
+    const [{ race, results }, teamArt] = await Promise.all([api.raceResults(raceId), api.teamArt()]);
+    return renderPosterBlob({
+      race,
+      results,
+      teamArt,
+      countryOf: (r) => countryFor(r.driverId, r.country),
+      logoSrc: "/logo-light.png",
+      theme: savedTheme(),
+    });
+  }
 
   async function run(fn, doneMsg) {
     setBusy(true);
@@ -1845,14 +1866,18 @@ function DiscordResultsPost({ raceId }) {
     if (
       !(await ask({
         title: "Post this message to the results channel?",
-        body: "Mentioned drivers get pinged.",
+        body: withGraphic
+          ? "Mentioned drivers get pinged, and the round's graphic goes with it."
+          : "Mentioned drivers get pinged.",
         confirmLabel: "Post to Discord",
       }))
     )
       return;
     run(async () => {
-      const r = await api.sendResultsPost(raceId, text);
-      setMsg(r.messages > 1 ? `Posted as ${r.messages} messages (Discord length limit).` : "Posted to Discord.");
+      const image = withGraphic ? await buildGraphic() : null;
+      const r = await api.sendResultsPost(raceId, text, image);
+      const how = r.messages > 1 ? `as ${r.messages} messages (Discord length limit)` : "";
+      setMsg(`Posted to Discord${how ? ` ${how}` : ""}${r.attached ? ", graphic attached." : "."}`);
     });
   };
 
@@ -1909,9 +1934,15 @@ function DiscordResultsPost({ raceId }) {
             The &lt;@…&gt; codes turn into real @mentions once the message lands in Discord. Custom server emojis
             can be added as :emoji_name: if the webhook&rsquo;s server has them.
           </p>
+          <CheckField
+            checked={withGraphic}
+            onChange={(e) => setWithGraphic(e.target.checked)}
+            label="Attach the round's graphic"
+            hint="Drawn when you press post, in the design picked in the Result Graphic tab. Change the design or a car there and the next post follows."
+          />
           <div className="flex flex-wrap gap-2">
             <button className="btn-primary" disabled={busy || !hook?.configured || !text.trim()} onClick={post}>
-              Post to Discord
+              {busy ? "Posting…" : "Post to Discord"}
             </button>
             <button className="btn-secondary" disabled={busy || !text.trim()} onClick={copy}>
               Copy

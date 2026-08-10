@@ -581,8 +581,17 @@ export const api = {
   getResultsWebhook: () => request("/admin/discord/results-webhook", { auth: true }),
   setResultsWebhook: (url) => request("/admin/discord/results-webhook", { method: "PUT", body: { url }, auth: true }),
   getResultsPost: (raceId) => request(`/admin/races/${raceId}/results-post`, { auth: true }),
-  sendResultsPost: (raceId, content) =>
-    request(`/admin/races/${raceId}/results-post`, { method: "POST", body: { content }, auth: true }),
+  // `image` (optional) is the round's poster as a Blob. With one, the whole
+  // thing goes as multipart so Discord gets a real attachment; without one this
+  // is the plain JSON post it always was.
+  sendResultsPost: (raceId, content, image = null) => {
+    const path = `/admin/races/${raceId}/results-post`;
+    if (!image) return request(path, { method: "POST", body: { content }, auth: true });
+    const fd = new FormData();
+    fd.append("content", content);
+    fd.append("image", image, `${raceId}-result.png`);
+    return request(path, { method: "POST", body: fd, auth: true, form: true });
+  },
   createEvent: (body) => request("/admin/events", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   updateEvent: (id, body) => request(`/admin/events/${id}`, { method: "PUT", body, auth: true }),
   announceEvent: (id) => request(`/admin/events/${id}/announce`, { method: "POST", auth: true }),

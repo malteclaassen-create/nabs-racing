@@ -43,7 +43,11 @@ export async function setResultsWebhookUrl(prisma, url) {
 // characters, so long posts (a 25-car field plus stats) are split at line
 // breaks and sent in order. allowed_mentions lets the <@id> codes ping the
 // drivers and any role mention the admin typed into the preview.
-export async function postToResultsChannel(prisma, content) {
+// `image` (optional) is { buffer, filename } and rides on the LAST chunk, so a
+// post that had to be split still ends with the picture rather than burying it
+// mid-message. Discord takes an attachment as multipart with the usual JSON
+// body alongside it under `payload_json`.
+export async function postToResultsChannel(prisma, content, image = null) {
   const url = await getResultsWebhookUrl(prisma);
   if (!url) return { ok: false, skipped: true, reason: "no results webhook configured" };
   const chunks = [];
@@ -59,20 +63,35 @@ export async function postToResultsChannel(prisma, content) {
     }
   }
   if (current.trim()) chunks.push(current);
+  // An image with no text is a legitimate post: the poster already says the
+  // result, and a league that stops listing everyone still wants the picture.
+  if (!chunks.length && image) chunks.push("");
   if (!chunks.length) return { ok: false, reason: "empty message" };
   try {
-    for (const chunk of chunks) {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: chunk, allowed_mentions: { parse: ["users", "roles"] } }),
-      });
+    for (const [i, chunk] of chunks.entries()) {
+      const payload = { content: chunk, allowed_mentions: { parse: ["users", "roles"] } };
+      const last = i === chunks.length - 1;
+      let res;
+      if (last && image) {
+        const form = new FormData();
+        form.append("payload_json", JSON.stringify(payload));
+        form.append("files[0]", new Blob([image.buffer], { type: "image/png" }), image.filename);
+        // No Content-Type header: fetch sets it WITH the multipart boundary,
+        // and setting it by hand leaves the boundary off and Discord 400s.
+        res = await fetch(url, { method: "POST", body: form });
+      } else {
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
       if (!res.ok) {
         const text = await res.text();
         return { ok: false, reason: `discord ${res.status}: ${text.slice(0, 200)}` };
       }
     }
-    return { ok: true, messages: chunks.length };
+    return { ok: true, messages: chunks.length, attached: !!image };
   } catch (e) {
     return { ok: false, reason: e.message };
   }

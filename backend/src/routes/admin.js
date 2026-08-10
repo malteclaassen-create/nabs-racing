@@ -2573,16 +2573,30 @@ router.get("/races/:id/results-post", async (req, res, next) => {
 
 // POST /api/admin/races/:id/results-post { content } -> send the (possibly
 // edited) message to the results-channel webhook.
-router.post("/races/:id/results-post", async (req, res, next) => {
+// Accepts JSON ({ content }) or multipart ({ content, image }). The image is
+// the round's poster, drawn in the BROWSER and sent along with the message.
+//
+// Drawn there rather than here on purpose. Rendering it server-side would mean
+// a headless Chromium living next to the site for one picture a week. And
+// nothing is stored: each post draws the poster again from the current design
+// and the current artwork, so changing either changes what goes out next time,
+// including for a round that ran months ago.
+router.post("/races/:id/results-post", upload.single("image"), async (req, res, next) => {
   try {
     const content = String(req.body?.content || "").trim();
-    if (!content) return res.status(400).json({ error: "Message is empty" });
+    const image = req.file
+      ? { buffer: req.file.buffer, filename: `${req.params.id}-result.png` }
+      : null;
+    if (!content && !image) return res.status(400).json({ error: "Message is empty" });
+    if (req.file && req.file.mimetype !== "image/png") {
+      return res.status(400).json({ error: "The graphic must be a PNG" });
+    }
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
     if (!race) return res.status(404).json({ error: "Race not found" });
-    const result = await postToResultsChannel(prisma, content);
+    const result = await postToResultsChannel(prisma, content, image);
     if (result.skipped) return res.status(400).json({ error: "No results webhook configured" });
     if (!result.ok) return res.status(502).json({ error: result.reason || "Discord rejected the message" });
-    res.json({ ok: true, messages: result.messages });
+    res.json({ ok: true, messages: result.messages, attached: !!result.attached });
   } catch (e) {
     next(e);
   }
