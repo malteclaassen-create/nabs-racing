@@ -51,6 +51,13 @@ export const LAYOUT = {
     posSize: 76, // "1." "2." "3."
     nameSize: 38,
     flagW: 46,
+    // The car is shown WHOLE, sitting low in the tile with the position number
+    // in the empty black above it — not cropped to fill the tile. A cut-out is
+    // a wide picture and the tile is a tall one, so filling it would zoom into
+    // the middle of the car and cut off both ends.
+    carCy: 0.65, // centre of the car, as a fraction of the tile's height
+    carInset: 12,
+    carMaxH: 0.5, // and of its height
   },
 
   // Places 4 down to whatever `rows` the caller asks for.
@@ -92,22 +99,10 @@ export function loadImage(src) {
   });
 }
 
-// Draw `img` inside the box, scaled to COVER it, cropped to the box. Used for
-// the car tiles, where the picture should fill its frame.
-function drawCover(ctx, img, x, y, w, h) {
-  const scale = Math.max(w / img.width, h / img.height);
-  const dw = img.width * scale;
-  const dh = img.height * scale;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-  ctx.restore();
-}
-
-// Draw `img` to FIT inside the box, centred, never cropped or stretched. Used
-// for logos and wordmarks, where cropping would cut the brand in half.
+// Draw `img` to FIT inside the box, centred, never cropped or stretched. Every
+// picture on this poster is a whole thing somebody drew — a car, a logo, a
+// flag — and there is no cropping any of them without cutting a brand or a
+// nose cone in half.
 function drawContain(ctx, img, cx, cy, maxW, maxH) {
   const scale = Math.min(maxW / img.width, maxH / img.height, 1e9);
   const w = img.width * scale;
@@ -175,8 +170,18 @@ export function drawResultGraphic(ctx, data, scale = 1) {
 
     // The tile: a black card the car sits in, framed in the medal colour.
     ctx.fillStyle = "#000000";
-    ctx.fillRect(x, top, colW, barTop - top);
-    if (entry.car) drawCover(ctx, entry.car, x, top, colW, barTop - top);
+    const tileH = barTop - top;
+    ctx.fillRect(x, top, colW, tileH);
+    if (entry.car) {
+      drawContain(
+        ctx,
+        entry.car,
+        x + colW / 2,
+        top + tileH * P.carCy,
+        colW - P.carInset * 2,
+        tileH * P.carMaxH
+      );
+    }
     ctx.strokeStyle = medal.frame;
     ctx.lineWidth = 3;
     ctx.strokeRect(x + 1.5, top + 1.5, colW - 3, barTop - top - 3);
