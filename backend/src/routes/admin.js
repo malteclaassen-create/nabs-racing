@@ -36,6 +36,7 @@ import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
 import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
+import { readTeamArt, writeTeamArt, ART_KINDS } from "../lib/teamArt.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
@@ -129,6 +130,8 @@ const SOCIAL_DIR = join(UPLOADS_DIR, "social");
 // Race-night photo galleries (one folder for all rounds; the file name carries
 // the race it belongs to, and the Setting blob is the actual index).
 const RACES_DIR = join(UPLOADS_DIR, "races");
+// Cars and wide wordmarks for the shareable result graphic (lib/teamArt.js).
+const TEAM_ART_DIR = join(UPLOADS_DIR, "team-art");
 const LOGO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg" };
 // A track key is a slug (letters/digits only) — validate before touching the FS.
 const safeTrackKey = (k) => (normKey(k) === String(k || "").toLowerCase() && k ? k : null);
@@ -3575,6 +3578,59 @@ router.post("/teams/:id/logo", upload.single("file"), async (req, res, next) => 
     const logoUrl = `/api/uploads/teams/${filename}?v=${Date.now()}`;
     await prisma.team.update({ where: { id: team.id }, data: { logoUrl } });
     res.json({ ok: true, logoUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// TEAM ART — the car and the wide wordmark the result graphic draws with.
+// See lib/teamArt.js for why this is a Setting blob and not two more columns.
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/team-art -> { "<teamId>": { car, mark } }
+router.get("/team-art", async (req, res, next) => {
+  try {
+    res.json(await readTeamArt(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/team-art/:id/:kind   (multipart: file=<image>)
+// DELETE /api/admin/team-art/:id/:kind
+router.post("/team-art/:id/:kind", upload.single("file"), async (req, res, next) => {
+  try {
+    const { id, kind } = req.params;
+    if (!ART_KINDS.includes(kind)) return res.status(400).json({ error: "Unknown art kind" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = LOGO_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
+    const team = await prisma.team.findUnique({ where: { id } });
+    if (!team) return res.status(404).json({ error: "Team not found" });
+
+    mkdirSync(TEAM_ART_DIR, { recursive: true });
+    const filename = `${team.id}-${kind}${ext}`;
+    const dest = safeUploadPath(TEAM_ART_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "This team's id can't be used as a file name" });
+    writeFileSync(dest, req.file.buffer);
+    // Cache-bust, so replacing a car shows the new one straight away. The
+    // graphic reads these through a canvas, where a stale cached image would
+    // otherwise survive until the browser felt like letting go of it.
+    const url = `/api/uploads/team-art/${filename}?v=${Date.now()}`;
+    res.json({ ok: true, art: await writeTeamArt(prisma, team.id, kind, url) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/team-art/:id/:kind", async (req, res, next) => {
+  try {
+    const { id, kind } = req.params;
+    if (!ART_KINDS.includes(kind)) return res.status(400).json({ error: "Unknown art kind" });
+    // The file is left on disk: the Health tab's clean-up already lists unused
+    // uploads, and deleting here would race a graphic still being drawn.
+    res.json({ ok: true, art: await writeTeamArt(prisma, id, kind, null) });
   } catch (e) {
     next(e);
   }

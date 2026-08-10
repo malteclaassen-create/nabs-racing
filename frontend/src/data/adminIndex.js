@@ -21,6 +21,7 @@ export const TAB_GROUPS = [
       { id: "attendance", label: "Attendance" },
       { id: "import", label: "Import Race" },
       { id: "edit", label: "Edit Results" },
+      { id: "graphic", label: "Result Graphic" },
       { id: "photos", label: "Photos" },
     ],
   },
@@ -180,6 +181,18 @@ export const ADMIN_INDEX = [
     title: "Delete a race or just its results",
     hint: "Wipe a saved classification, or remove the round entirely.",
     keywords: "delete remove wipe race results undo",
+  },
+  {
+    tab: "graphic",
+    title: "The result poster for a round",
+    hint: "The picture for Discord, built from the round's own result. Pick a round, download the PNG.",
+    keywords: "graphic poster image png share discord post podium top ten social instagram photoshop template",
+  },
+  {
+    tab: "graphic",
+    title: "Team cars and wordmarks",
+    hint: "The cut-out car and the wide logo the result poster draws with. Uploaded once per team.",
+    keywords: "car cars artwork wordmark wide logo graphic poster cutout render team art",
   },
   {
     tab: "photos",

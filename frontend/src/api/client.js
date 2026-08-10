@@ -796,6 +796,16 @@ export const api = {
   },
   clearTrackMap: (key) => request(`/admin/tracks/${key}/map`, { method: "DELETE", auth: true }),
 
+  // Cars and wide wordmarks for the shareable result graphic, per team.
+  teamArt: () => request("/admin/team-art", { auth: true }),
+  uploadTeamArt: (teamId, kind, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/team-art/${teamId}/${kind}`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  clearTeamArt: (teamId, kind) =>
+    request(`/admin/team-art/${teamId}/${kind}`, { method: "DELETE", auth: true }).then((r) => r.art),
+
   // Who answered what for the races that have already run (season-scoped).
   attendanceHistory: () => request(`/admin/attendance-history${seasonQ()}`, { auth: true }),
   // The other side of it, for ONE upcoming race: who is still silent.

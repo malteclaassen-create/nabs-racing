@@ -10,6 +10,7 @@ import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
 import AdminRatings from "../components/AdminRatings.jsx";
 import AdminRacePhotos from "../components/AdminRacePhotos.jsx";
+import AdminResultGraphic from "../components/AdminResultGraphic.jsx";
 import AdminDownloads from "../components/AdminDownloads.jsx";
 import AdminRaceInfo from "../components/AdminRaceInfo.jsx";
 import AdminWelcomeFaq from "../components/AdminWelcomeFaq.jsx";
@@ -301,6 +302,7 @@ export default function Admin() {
         )}
         {tab === "import" && <AdminImport />}
         {tab === "edit" && <EditResults />}
+        {tab === "graphic" && <AdminResultGraphic />}
         {tab === "photos" && <AdminRacePhotos />}
         {tab === "ratings" && <AdminRatings />}
         {tab === "discord" && <DiscordEvents />}
