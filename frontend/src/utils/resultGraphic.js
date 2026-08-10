@@ -146,14 +146,17 @@ export function drawResultGraphic(ctx, data, scale = 1) {
   if (data.logo) drawContain(ctx, data.logo, logoBox + L.logo.size / 2, L.logo.top + L.logo.size / 2, L.logo.size, L.logo.size);
 
   // --- "Round 1 / Hockenheim" ----------------------------------------------
-  // Centred in the space LEFT of the mark, not in the page: centring on the
-  // page pushes a long track name under the logo.
-  const titleRoom = logoBox - L.title.gapToLogo - L.pad;
-  const titleSize = fitText(ctx, data.title, titleRoom - 40, 900, L.title.size, 30);
+  // Centred on the PAGE. The mark in the corner only caps how wide the title
+  // may get: it shrinks before it reaches the mark rather than sliding left out
+  // of the middle to make room, because a heading that is nearly centred reads
+  // as a mistake, and a slightly smaller one does not.
+  const titleCx = L.width / 2;
+  const titleMaxW = Math.max(200, (logoBox - L.title.gapToLogo - titleCx) * 2);
+  const titleSize = fitText(ctx, data.title, titleMaxW, 900, L.title.size, 30);
   ctx.font = FONT(900, titleSize);
   ctx.fillStyle = L.ink;
   ctx.textAlign = "center";
-  ctx.fillText(data.title, L.pad + titleRoom / 2, L.title.y);
+  ctx.fillText(data.title, titleCx, L.title.y);
 
   // --- podium ---------------------------------------------------------------
   const P = L.podium;
