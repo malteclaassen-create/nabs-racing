@@ -288,12 +288,5 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
     logo,
     podium: top3.map((r, i) => ({ position: r.position, name: r.name, car: cars[i], flag: flags[i] })),
     rows: rest.map((r, i) => ({ position: r.position, name: r.name, mark: marks[i], points: r.points ?? 0 })),
-    // What the admin still has to upload for this round to look finished. One
-    // name per team: both Renault drivers on the podium is one missing car.
-    missingCars: [
-      ...new Set(
-        top3.filter((r, i) => !cars[i]).map((r) => r.effectiveTeam?.name || r.team?.name).filter(Boolean)
-      ),
-    ],
   };
 }
