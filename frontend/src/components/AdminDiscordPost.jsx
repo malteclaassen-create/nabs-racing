@@ -90,18 +90,21 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
   // What renderPosterTo / renderPosterBlob need. One object, used by the
   // preview and by the post, so the picture in the preview and the picture in
   // the channel cannot be drawn from different things.
-  const posterFrom = (src) =>
-    graphic === "none" || !src
-      ? null
-      : {
-          race: src.race,
-          results: src.results,
-          teamArt: src.teamArt,
-          countryOf: (r) => countryFor(r.driverId, r.country),
-          logoSrc: "/logo-light.png",
-          theme: graphic,
-        };
-  const poster = useMemo(() => posterFrom(source), [graphic, source]); // eslint-disable-line react-hooks/exhaustive-deps
+  const posterFrom = useCallback(
+    (src) =>
+      graphic === "none" || !src
+        ? null
+        : {
+            race: src.race,
+            results: src.results,
+            teamArt: src.teamArt,
+            countryOf: (r) => countryFor(r.driverId, r.country),
+            logoSrc: "/logo-light.png",
+            theme: graphic,
+          },
+    [graphic]
+  );
+  const poster = useMemo(() => posterFrom(source), [posterFrom, source]);
 
   async function run(fn, doneMsg) {
     setBusy(true);
