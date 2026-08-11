@@ -453,6 +453,24 @@ function box(ctx, x, y, w, h, r = 0) {
   else ctx.rect(x, y, w, h);
 }
 
+// The path to STROKE so that the outline's outer edge lands exactly on the
+// outer edge of a rounded box of radius `r`.
+//
+// A stroke is drawn centred on its path, so the path has to be inset by half
+// the line width. The catch is the corner: inset a rounded rectangle and keep
+// the same radius, and its corner arc is now centred half a line width further
+// in, which puts the outline's outer edge INSIDE the shape's own corner. The
+// fill then shows past the frame at each corner — invisible on a black tile
+// against a black page, and very visible where a gold, silver or bronze name
+// bar reaches the two bottom corners.
+//
+// Take the same amount off the radius and both arcs share a centre again, so
+// the outline ends exactly where the shape does, all the way round.
+function strokeBox(ctx, x, y, w, h, lineWidth, r = 0) {
+  const half = lineWidth / 2;
+  box(ctx, x + half, y + half, w - lineWidth, h - lineWidth, Math.max(0, r - half));
+}
+
 // Shrink the font until the text fits, rather than letting a long name run into
 // the points column. Returns the size actually used.
 function fitText(ctx, text, maxW, weight, startSize, minSize = 18) {
@@ -634,14 +652,14 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
       ctx.strokeStyle = frame;
       ctx.lineWidth = w;
       if (T.nameBar.frame) {
-        box(ctx, x + w / 2, top + w / 2, colW - w, bottom - top - w, r);
+        strokeBox(ctx, x, top, colW, bottom - top, w, r);
         ctx.stroke();
         ctx.beginPath();
         ctx.moveTo(x, barTop);
         ctx.lineTo(x + colW, barTop);
         ctx.stroke();
       } else {
-        box(ctx, x + w / 2, top + w / 2, colW - w, tileH - w, r);
+        strokeBox(ctx, x, top, colW, tileH, w, r);
         ctx.stroke();
       }
     }
@@ -724,7 +742,7 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
       const w = T.row.frameWidth;
       ctx.strokeStyle = T.row.barFrame;
       ctx.lineWidth = w;
-      box(ctx, L.pad + w / 2, y + w / 2, rowW - w, R.height - w, T.radius);
+      strokeBox(ctx, L.pad, y, rowW, R.height, w, T.radius);
       ctx.stroke();
     }
     const midY = y + R.height / 2;
