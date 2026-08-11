@@ -191,6 +191,18 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "content",
+    title: "Short or full results message",
+    hint: "Short is the round, the podium and a link, for when the poster says the rest. Full lists everyone.",
+    keywords: "short long full length message version podium link brief summary results post",
+  },
+  {
+    tab: "content",
+    title: "Which poster goes with the post",
+    hint: "Black, pink, or no image at all, with a preview of the message as the channel will see it.",
+    keywords: "image graphic attach poster black pink white design preview discord post picture none",
+  },
+  {
+    tab: "content",
     title: "Results channel webhook",
     hint: "Where the results message is posted. Separate from the events webhook.",
     keywords: "webhook results channel discord url connect integration",

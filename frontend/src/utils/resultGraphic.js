@@ -30,16 +30,15 @@ export const LAYOUT = {
   pad: 25, // page margin left and right
 
   // Every size below is solved rather than guessed: the string is rendered in
-  // Archivo Black, its INK measured, and the size chosen so that ink comes out
+  // Montserrat 900, its INK measured, and the size chosen so that ink comes out
   // the size the same string is in Steve's file. His text boxes are what is
   // being matched, so "4." is 36px of ink here because it is 36px of ink there.
   //
-  // The title is matched on WIDTH, not height, because it is the one line that
-  // spans the page: 845px of ink between the margins is what you see, and two
-  // pixels of cap height is what you do not. Archivo runs about 4% narrower
-  // per unit of height than the face Steve set it in, so one of the two has to
-  // give until his font arrives.
-  title: { y: 118, size: 83, gapToLogo: 24 },
+  // In his own face both dimensions land at once, which is the check that the
+  // face is right: at 71 the title is 856 wide by 68 tall against his 845 by
+  // 68. Set in Archivo the same line could only match one of the two, and was
+  // 5% out on the other.
+  title: { y: 118, size: 71, gapToLogo: 24 },
   logo: { size: 82, right: 26, top: 18 },
 
   // The podium. `lift` is how much higher a tile sits than the lowest one. In
@@ -52,10 +51,10 @@ export const LAYOUT = {
     barHeight: 77,
     bottom: 589,
     lift: { 1: 13, 2: 0, 3: 0 },
-    posSize: 70, // "1." "2." "3." — 49px of ink in the file
+    posSize: 68, // "1." "2." "3." — 49px of ink in the file
     posX: 24,
     posY: 68, // baseline, from the top of the tile
-    nameSize: 41, // 31px of ink
+    nameSize: 40, // 31px of ink
     flagW: 54,
     // The car is shown WHOLE, sitting low in the tile with the position number
     // in the empty black above it — not cropped to fill the tile. A cut-out is
@@ -71,7 +70,7 @@ export const LAYOUT = {
     // Sized so the VISIBLE pink edges land where the file's do: 59 in from the
     // tile's right edge and 53 above the name bar. The box itself is 2.5 bigger
     // on each of those sides, because a 5px stroke is drawn centred on the path.
-    chip: { h: 55, minW: 59, padX: 8.5, size: 20, radius: 16 },
+    chip: { h: 55, minW: 59, padX: 10.5, size: 18, radius: 16 },
   },
 
   // Places 4 down to whatever `rows` the caller asks for.
@@ -80,16 +79,16 @@ export const LAYOUT = {
     height: 80,
     gap: 25,
     numW: 85,
-    numSize: 51, // 36px of ink in the file
+    numSize: 49, // 36px of ink in the file
     flagX: 118, // where the flag starts, from the page's left edge
     flagW: 50,
     nameX: 189,
-    nameSize: 42, // 31px of ink
+    nameSize: 40, // 31px of ink
     markCx: 652, // centre of the team mark
     markMaxW: 280,
     markMaxH: 56,
     ptsRight: 58, // from the right edge of the page
-    ptsSize: 42, // 30px of ink
+    ptsSize: 40, // 30px of ink
   },
 
   // Team badge in the corner of a podium tile, opposite the position number.
@@ -195,10 +194,34 @@ export const THEMES = {
 
 export const THEME_KEYS = Object.keys(THEMES);
 
-// Archivo is the site's display face and is already self-hosted, so the poster
-// is set in the same type as the site it comes from. The weights actually
-// shipped are 500-900 (see public/fonts).
-const FONT = (weight, size) => `${weight} ${size}px Archivo, Inter, system-ui, sans-serif`;
+// Montserrat, which is what Steve set the poster in. NOT the site's face: the
+// site is Archivo, and the poster is a thing he designed rather than a page of
+// ours, so it keeps his type.
+//
+// It is his, provably. Taking the four text boxes in the PSD and asking which
+// face has those width-to-height ratios: Montserrat is within 3% on all four
+// and within 1% on "4.", where Archivo is out by 22%. A face either has that
+// figure/full-stop rhythm or it does not.
+//
+// Self-hosted in public/fonts like everything else. Two weights, because two
+// are used.
+const FONT = (weight, size) => `${weight} ${size}px Montserrat, Archivo, Inter, system-ui, sans-serif`;
+
+// Canvas text does NOT pull a webfont in: @font-face only fetches when some
+// element on the page is styled with it, and nothing on the site is styled
+// Montserrat. Without this the poster draws in Archivo and looks almost right,
+// which is the worst kind of wrong. Asking for the exact weights makes the
+// browser fetch them, and document.fonts.ready then waits for the fetch.
+const POSTER_FONTS = ["900 100px Montserrat", "800 100px Montserrat"];
+async function ensureFonts() {
+  try {
+    await Promise.all(POSTER_FONTS.map((f) => document.fonts.load(f)));
+  } catch {
+    // A font that will not load is not a reason to draw nothing: the stack
+    // above falls back to Archivo and the poster still comes out.
+  }
+  await document.fonts.ready;
+}
 
 // Load an image for the canvas. Resolves to null instead of throwing: a missing
 // car or a 404 logo must cost that one tile its picture, not the whole poster.
@@ -540,7 +563,7 @@ export const EXPORT_SCALE = 2;
 // change — every post draws it again, from the current design and the current
 // artwork, however old the round is.
 export async function renderPosterTo(canvas, opts) {
-  await document.fonts.ready; // a canvas takes whatever the font stack resolves to NOW
+  await ensureFonts(); // a canvas takes whatever the font stack resolves to NOW
   const data = await loadGraphicAssets(opts);
   canvas.width = LAYOUT.width * EXPORT_SCALE;
   canvas.height = LAYOUT.height * EXPORT_SCALE;

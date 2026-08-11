@@ -1,11 +1,16 @@
 // ---------------------------------------------------------------------------
-// Builds the Discord "#results" post for a completed round: the classification
-// with real @mentions (drivers who logged in via Discord get pinged, everyone
-// else appears in bold), non-finishers grouped at the bottom, and a stats
-// block from the stored results + AC telemetry. The admin previews and edits
-// the text in the results editor before posting, so the generated message is
-// a starting point, not gospel — custom team emojis, role pings and flags can
-// be added by hand there.
+// Builds the Discord "#results" post for a completed round, in two lengths.
+//
+//   full   the classification with real @mentions (drivers who logged in via
+//          Discord get pinged, everyone else appears in bold), non-finishers
+//          grouped at the bottom, and a stats block from the stored results
+//          plus AC telemetry.
+//   short  the round, the podium, and a link. For the weeks the poster carries
+//          the message: the picture already lists the top ten, so printing it
+//          underneath is the same information twice.
+//
+// Both are drafts. The admin reads them in Content and edits before posting, so
+// custom team emojis, role pings and flags can be added by hand there.
 // ---------------------------------------------------------------------------
 import { applyPenalties } from "./pointsCalculator.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
@@ -19,9 +24,24 @@ function fmtLap(ms) {
   return `${m}:${String(s).padStart(2, "0")}.${String(ms % 1000).padStart(3, "0")}`;
 }
 
-// Returns the message text, or null when the race doesn't exist / has no
-// results yet.
-export async function buildResultsPost(prisma, raceId) {
+// Where the short version's link points: the round's own page on this site.
+// `origin` comes from the request rather than a setting, the same way the
+// canonical tags do it, so it is right on the live domain and right in a local
+// preview, without anybody maintaining a second copy of the address.
+async function raceLink(prisma, race, origin) {
+  if (!origin || !race?.seasonId) return null;
+  const season = await prisma.season
+    .findUnique({ where: { id: race.seasonId }, include: { series: true } })
+    .catch(() => null);
+  const slug = season?.series?.slug;
+  return `${origin}${slug ? `/s/${slug}` : ""}/races?race=${race.id}`;
+}
+
+// Returns { full, short, mentions }, or null when the race doesn't exist or has
+// no results yet. `mentions` maps each Discord id used in the text to the
+// driver's name: the message itself can only carry "<@1234...>", and the
+// admin's preview has to show the "@13bot" that Discord will.
+export async function buildResultsPost(prisma, raceId, { origin = null } = {}) {
   const race = await prisma.race.findUnique({ where: { id: raceId } });
   if (!race) return null;
   const [results, telemetry] = await Promise.all([
@@ -49,10 +69,12 @@ export async function buildResultsPost(prisma, raceId) {
   };
   const tel = (r) => telemetry.get(r.driverId) || {};
 
-  const lines = [];
-  lines.push(`**ROUND ${race.number ?? "?"} - ${String(race.track || "").toUpperCase()}**`);
-  lines.push("");
   const MEDALS = ["🥇", "🥈", "🥉"];
+  const heading = `**ROUND ${race.number ?? "?"} - ${String(race.track || "").toUpperCase()}**`;
+
+  const lines = [];
+  lines.push(heading);
+  lines.push("");
   for (const r of finishers) {
     lines.push(`${r.position <= 3 ? MEDALS[r.position - 1] : `P${r.position}.`} ${who(r)}`);
   }
@@ -103,5 +125,34 @@ export async function buildResultsPost(prisma, raceId) {
     lines.push("", "**STATS**", "");
     lines.push(...stats);
   }
-  return lines.join("\n");
+
+  // The short version. The podium on one line and a link to the round, because
+  // everything the long version spells out is already ON the picture that goes
+  // with it. The three medals sit on one line rather than three: as mention
+  // chips they are wide, and stacked they read as the start of a list that then
+  // stops after three.
+  const link = await raceLink(prisma, race, origin);
+  const podium = finishers
+    .filter((r) => r.position <= 3)
+    .map((r) => `${MEDALS[r.position - 1]} ${who(r)}`)
+    .join("  ");
+  const shortLines = [heading, ""];
+  if (podium) shortLines.push(podium, "");
+  // A masked link, which is what turns the address into the one blue sentence
+  // in the message. With no origin there is nothing honest to link to, so the
+  // line is left out rather than pointed somewhere wrong.
+  if (link) shortLines.push(`[Full classification, lap times and stats on the website](${link})`);
+
+  // Only the ids that actually appear, so the preview never has to guess.
+  const mentions = {};
+  for (const r of applied) {
+    const id = discordIds.get(r.driverId);
+    if (id) mentions[id] = r.driver.name;
+  }
+
+  return {
+    full: lines.join("\n"),
+    short: shortLines.join("\n").trimEnd(),
+    mentions,
+  };
 }

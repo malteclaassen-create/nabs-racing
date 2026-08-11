@@ -580,7 +580,14 @@ export const api = {
   // results-channel webhook + the generated Discord results post (admin)
   getResultsWebhook: () => request("/admin/discord/results-webhook", { auth: true }),
   setResultsWebhook: (url) => request("/admin/discord/results-webhook", { method: "PUT", body: { url }, auth: true }),
-  getResultsPost: (raceId) => request(`/admin/races/${raceId}/results-post`, { auth: true }),
+  // The origin rides along so the short version's link points at the site the
+  // admin is on. In production it matches what the server would have worked out
+  // anyway; in development it is the difference between a link to the site and
+  // a link to the API port.
+  getResultsPost: (raceId) =>
+    request(`/admin/races/${raceId}/results-post?origin=${encodeURIComponent(window.location.origin)}`, {
+      auth: true,
+    }),
   // `image` (optional) is the round's poster as a Blob. With one, the whole
   // thing goes as multipart so Discord gets a real attachment; without one this
   // is the plain JSON post it always was.

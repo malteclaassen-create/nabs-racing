@@ -2571,13 +2571,41 @@ router.put("/discord/results-webhook", async (req, res, next) => {
   }
 });
 
-// GET /api/admin/races/:id/results-post -> { text } — a generated draft of the
-// Discord results message for this round (the admin edits it before posting).
+// GET /api/admin/races/:id/results-post -> { text, short, mentions }
+// Generated drafts of the Discord results message for this round, in both
+// lengths, plus the names behind the mention ids so the admin's preview can
+// show what Discord will show. Both are sent at once: the admin flips between
+// them while writing, and a round trip per flip would make an editor that
+// stutters. The admin edits before posting either way.
+//
+// The origin for the short version's link is the address the admin is LOOKING
+// at, falling back to the one this request arrived on. In production they are
+// the same string (one origin serves the site and the API), so the fallback is
+// what normally runs. They differ only in development, where the API answers on
+// its own port and the request-derived link would point at a page nobody visits.
+//
+// Taken as a bare origin and rebuilt from its parts, so what reaches the message
+// is scheme + host + port and nothing else — never a path, query or credentials
+// smuggled in through the parameter.
+const postOrigin = (req) => {
+  const asked = String(req.query.origin || "");
+  if (asked) {
+    try {
+      const u = new URL(asked);
+      if (u.protocol === "http:" || u.protocol === "https:") return u.origin;
+    } catch {
+      /* fall through to the request's own host */
+    }
+  }
+  return `${req.protocol}://${req.get("host")}`;
+};
+
 router.get("/races/:id/results-post", async (req, res, next) => {
   try {
-    const text = await buildResultsPost(prisma, req.params.id);
-    if (text == null) return res.status(404).json({ error: "Race not found or has no results yet" });
-    res.json({ text });
+    const origin = postOrigin(req);
+    const post = await buildResultsPost(prisma, req.params.id, { origin });
+    if (post == null) return res.status(404).json({ error: "Race not found or has no results yet" });
+    res.json({ text: post.full, short: post.short, mentions: post.mentions });
   } catch (e) {
     next(e);
   }
