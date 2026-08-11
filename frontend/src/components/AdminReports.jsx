@@ -336,7 +336,12 @@ export default function AdminReports() {
   // above is only the season currently being edited. Without the series-wide
   // driver database, a report from an older season could not be pointed at the
   // driver it was about, because their name simply was not in the dropdown.
-  const { data: db } = useApi(useCallback(() => api.adminDriverDb().catch(() => []), []));
+  // .entries, not the response. It answers { entries: [...] } — reading it as
+  // an array threw "(db || []) is not iterable" out of the useMemo below and
+  // took the whole tab down with it, which is what an admin actually saw:
+  // "This page hit a snag" on /admin, because the admin restores the last tab
+  // you were on.
+  const { data: db } = useApi(useCallback(() => api.adminDriverDb().catch(() => ({ entries: [] })), []));
   const { data: ingest, reload: reloadIngest } = useApi(useCallback(() => api.reportIngest(), []));
   const [openId, setOpenId] = useState(null);
   const [show, setShow] = useState("open");
@@ -349,7 +354,7 @@ export default function AdminReports() {
     // names rather than to an older row for the same person.
     for (const t of teams || []) for (const d of t.drivers || []) if (!out.has(d.id)) out.set(d.id, d);
     const seen = new Set([...out.values()].map((d) => d.name.trim().toLowerCase()));
-    for (const e of db || []) {
+    for (const e of db?.entries || []) {
       const key = String(e.name || "").trim().toLowerCase();
       if (!key || seen.has(key) || !e.sourceDriverId) continue;
       seen.add(key);
