@@ -54,8 +54,14 @@ export const LAYOUT = {
     carCy: 0.62, // centre of the car, as a fraction of the tile's height
     carInset: 10,
     carMaxH: 0.52, // and of its height
-    // The points, in a chip tucked into the tile's bottom right corner.
-    chip: { h: 40, padX: 14, size: 26, inset: 0 },
+    // The points, in a chip tucked into the tile's bottom right corner. Its
+    // right edge IS the tile's edge and its bottom IS the top of the name bar,
+    // so only the top and left sides are its own — which is why the corner is
+    // rounded on one side only. Measured in the file: 59 x 53 with a 16 radius.
+    // Sized so the VISIBLE pink edges land where the file's do: 59 in from the
+    // tile's right edge and 53 above the name bar. The box itself is 2.5 bigger
+    // on each of those sides, because a 5px stroke is drawn centred on the path.
+    chip: { h: 55, minW: 59, padX: 10.5, size: 18, radius: 16 },
   },
 
   // Places 4 down to whatever `rows` the caller asks for.
@@ -111,17 +117,37 @@ export const THEMES = {
     // WHITE, not pink. The layer's name says so and the flattened file agrees
     // (#212121 on the black, which is white at 13%; pink at 13% would come out
     // #241a1d, a difference nobody can see). One word here if you want pink.
+    //
+    // Pinned to two features of the mark itself, because that is how the
+    // placement was described and it is the only way to be exact: the top of
+    // the centre RING lands on the top edge of place four, and the right edge
+    // of the N lands on the right edge of the rows.
+    //
+    // `src` are those two features measured in public/logo-light.png (1080 sq):
+    // the ring's topmost ink is y=216, and at the ring's centre line the ink
+    // runs are outer arc / ring / N-stem / N-diagonal / N-stem ending at x=707
+    // / ring / outer arc. Change the logo file and these two move with it.
+    //
+    // `scale` comes from the PSD: Steve's layer is the same artwork, and his
+    // box is 1185 wide against our 909 of ink, so 1.3036. That is also why our
+    // version looked small — it was drawn at about three quarters of this.
     cornerMark: false,
-    watermark: { box: [241, 615, 1185, 855], alpha: 0.13, colour: "#ffffff" },
+    watermark: {
+      src: { size: 1080, ringTop: 216, nRight: 707 },
+      anchor: { ringTopY: 615, nRightX: 1055 },
+      scale: 1.3036,
+      alpha: 0.13,
+      colour: "#ffffff",
+    },
     tile: { fill: "#000000", frame: "#ffaec8", frameWidth: 5, badge: true },
     // Gold, silver and bronze land TWICE: on the position number and on the
     // name bar under the car.
     pos: { colour: "medal" },
     nameBar: { fill: "medal", ink: "#000000", frame: "#ffaec8" },
-    // The points in a chip in the corner of the tile. Black on white was the
-    // draft; the same black-and-white as the points down in the table means the
-    // poster says "points" one way rather than two.
-    tilePoints: { fill: "#000000", ink: "#ffffff" },
+    // The points in a chip in the corner of the tile: black like the tile, so
+    // the pink outline is the whole of it, and white numbers like the points
+    // down in the table.
+    tilePoints: { fill: "#000000", ink: "#ffffff", frame: "#ffaec8", frameWidth: 5 },
     row: {
       numFill: "#ffaec8", numInk: "#000000",
       barFill: "#000000", barFrame: "#ffaec8", frameWidth: 5,
@@ -250,20 +276,23 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
   // The mark, huge and barely there, behind the classification. A black page
   // has a lot of empty in it and this is what fills it without competing.
   if (T.watermark && data.logo) {
-    const [bx, by, bw, bh] = T.watermark.box;
+    const w = T.watermark;
+    const size = w.src.size * w.scale;
+    // Solve for the top-left corner from the two anchors. Drawn at its natural
+    // aspect and never squeezed: the mark is a circle, and a circle that has
+    // been stretched is the one thing everybody notices.
+    const wx = w.anchor.nRightX - w.src.nRight * w.scale;
+    const wy = w.anchor.ringTopY - w.src.ringTop * w.scale;
     ctx.save();
-    // Clipped to the box the file gives it, so it can never creep up into the
-    // gap between the podium and place four: above that line the page stays
-    // clean black, and that is what keeps the podium a separate block. The clip
-    // also swallows the part that runs off the page, which the file does too.
+    // Nothing above the top of place four. The ring lands exactly there, so
+    // this only shaves the ring's own antialiasing — and it means the mark can
+    // never creep into the gap between the podium and the table, which is the
+    // strip of clean black that keeps the podium reading as its own block.
     ctx.beginPath();
-    ctx.rect(bx, by, bw, bh);
+    ctx.rect(0, L.rows.top, L.width, L.height - L.rows.top);
     ctx.clip();
-    ctx.globalAlpha = T.watermark.alpha;
-    // Contained rather than stretched into the box: our mark is not cropped the
-    // same way Steve's layer art is, and a texture at 13% is worth placing
-    // correctly but never worth distorting.
-    drawContain(ctx, tinted(data.logo, T.watermark.colour), bx + bw / 2, by + bh / 2, bw, bh);
+    ctx.globalAlpha = w.alpha;
+    ctx.drawImage(tinted(data.logo, w.colour), wx, wy, size, size);
     ctx.restore();
   }
 
@@ -320,17 +349,36 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
       const b = L.tileBadge;
       drawContain(ctx, entry.badge, x + colW - b.inset - b.size / 2, top + b.inset + b.size / 2, b.size, b.size);
     }
-    // Points, in a chip tucked into the bottom corner of the car half.
+    // Points, in a chip tucked into the bottom corner of the car half. Its
+    // right edge is the tile's and its bottom is the name bar's, so it is
+    // rounded and outlined on the TOP-LEFT only: the other two sides are
+    // already drawn by the tile's own frame, and a full box there would put a
+    // second pink line on top of the first.
     if (T.tilePoints && entry.points != null) {
       const c = P.chip;
       ctx.font = FONT(900, c.size);
       const label = `+${entry.points}`;
-      const w = ctx.measureText(label).width + c.padX * 2;
+      const w = Math.max(c.minW, ctx.measureText(label).width + c.padX * 2);
       const cx = x + colW - w;
       const cy = barTop - c.h;
+
       ctx.fillStyle = T.tilePoints.fill;
-      box(ctx, cx, cy, w + r, c.h + r, r); // the far corners fall outside the clip
+      ctx.beginPath();
+      ctx.roundRect(cx, cy, w, c.h, [c.radius, 0, 0, 0]);
       ctx.fill();
+
+      if (T.tilePoints.frame) {
+        ctx.strokeStyle = T.tilePoints.frame;
+        ctx.lineWidth = T.tilePoints.frameWidth;
+        const half = T.tilePoints.frameWidth / 2;
+        ctx.beginPath();
+        ctx.moveTo(cx + w, cy + half);
+        ctx.lineTo(cx + c.radius + half, cy + half);
+        ctx.arcTo(cx + half, cy + half, cx + half, cy + c.radius + half, c.radius);
+        ctx.lineTo(cx + half, cy + c.h);
+        ctx.stroke();
+      }
+
       ctx.fillStyle = T.tilePoints.ink;
       ctx.textAlign = "center";
       ctx.fillText(label, cx + w / 2, cy + c.h / 2 + c.size * 0.36);
