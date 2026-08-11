@@ -102,16 +102,17 @@ export const THEMES = {
     title: "#ffffff",
     medal: { 1: "#fecb2f", 2: "#b3b3b3", 3: "#a47936" },
     radius: 10,
-    // The mark moves out of the corner and behind the classification: nearly
-    // page-wide, in the pink, at 13%. Position and size are measured off the
-    // file, and it sits BEHIND the tiles and rows there too — only the slivers
-    // of background between them show any of it.
+    // The mark moves out of the corner and behind the classification. Not
+    // placed by eye: this is the file's own layer box. Photoshop calls the
+    // layer "nabs white transp" at 13% Normal, and it sits at (241,615) to
+    // (1426,1470) — starting exactly at the top of place four and running off
+    // the right and bottom edges of the page.
     //
-    // `fromRows` keeps it out of the gap between the podium and place four. The
-    // mark crossing that gap turns the one piece of clean black on the page
-    // into texture, and the podium stops sitting apart from the table.
+    // WHITE, not pink. The layer's name says so and the flattened file agrees
+    // (#212121 on the black, which is white at 13%; pink at 13% would come out
+    // #241a1d, a difference nobody can see). One word here if you want pink.
     cornerMark: false,
-    watermark: { cx: 554, cy: 703, size: 1050, alpha: 0.13, colour: "#ffaec8", fromRows: true },
+    watermark: { box: [241, 615, 1185, 855], alpha: 0.13, colour: "#ffffff" },
     tile: { fill: "#000000", frame: "#ffaec8", frameWidth: 5, badge: true },
     // Gold, silver and bronze land TWICE: on the position number and on the
     // name bar under the car.
@@ -249,17 +250,20 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
   // The mark, huge and barely there, behind the classification. A black page
   // has a lot of empty in it and this is what fills it without competing.
   if (T.watermark && data.logo) {
-    const w = T.watermark;
+    const [bx, by, bw, bh] = T.watermark.box;
     ctx.save();
-    if (w.fromRows) {
-      // Clipped to the classification's own band. Above it the page stays clean
-      // black, which is what keeps the podium reading as a separate block.
-      ctx.beginPath();
-      ctx.rect(0, L.rows.top, L.width, L.height - L.rows.top);
-      ctx.clip();
-    }
-    ctx.globalAlpha = w.alpha;
-    drawContain(ctx, tinted(data.logo, w.colour), w.cx, w.cy, w.size, w.size);
+    // Clipped to the box the file gives it, so it can never creep up into the
+    // gap between the podium and place four: above that line the page stays
+    // clean black, and that is what keeps the podium a separate block. The clip
+    // also swallows the part that runs off the page, which the file does too.
+    ctx.beginPath();
+    ctx.rect(bx, by, bw, bh);
+    ctx.clip();
+    ctx.globalAlpha = T.watermark.alpha;
+    // Contained rather than stretched into the box: our mark is not cropped the
+    // same way Steve's layer art is, and a texture at 13% is worth placing
+    // correctly but never worth distorting.
+    drawContain(ctx, tinted(data.logo, T.watermark.colour), bx + bw / 2, by + bh / 2, bw, bh);
     ctx.restore();
   }
 
