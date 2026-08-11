@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { CardBar, ErrorBox } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
+import { COUNTRIES } from "../data/countries.js";
 import { fmtDateShort } from "../utils/format.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import {
@@ -204,6 +205,32 @@ export default function AdminResultGraphic() {
     }, "image/png");
   }
 
+  // Drivers ON the poster with no flag. Nationality is normally the driver's
+  // own to set, on their profile after a Discord login, so anyone who has never
+  // logged in has none — and a blank where every other name has a flag is the
+  // thing you notice. Setting it here writes the same field their profile
+  // would, so the flag turns up across the whole site, not just here.
+  const flagless = useMemo(() => {
+    if (!result) return [];
+    return result.results
+      .slice(0, 10)
+      .filter((r) => r.driverId && !countryFor(r.driverId, r.country))
+      .map((r) => ({ driverId: r.driverId, name: r.name }));
+  }, [result]);
+
+  async function setCountry(driverId, code) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.updateDriver(driverId, { country: code });
+      setResult(await api.raceResults(raceId)); // redraws with the flag in place
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // The teams actually in this round's top ten — the only ones whose artwork
   // this poster can use. A full roster of upload slots would bury them.
   const teamsInGraphic = useMemo(() => {
@@ -273,6 +300,40 @@ export default function AdminResultGraphic() {
           </div>
         )}
       </div>
+
+      {flagless.length > 0 && (
+        <div className="card overflow-hidden">
+          <CardBar
+            title="Missing flags"
+            right={
+              <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                {flagless.length} without
+              </span>
+            }
+          />
+          <ul className="divide-y divide-border">
+            {flagless.map((d) => (
+              <li key={d.driverId} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2.5">
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-dark">{d.name}</span>
+                <select
+                  aria-label={`Country for ${d.name}`}
+                  className="input w-auto max-w-[15rem] py-1.5 text-sm"
+                  defaultValue=""
+                  disabled={busy}
+                  onChange={(e) => e.target.value && setCountry(d.driverId, e.target.value)}
+                >
+                  <option value="">Pick a country…</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {teamsInGraphic.length > 0 && (
         <div className="card overflow-hidden">

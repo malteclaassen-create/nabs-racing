@@ -1746,7 +1746,14 @@ router.post("/drivers/from-db", async (req, res, next) => {
 
 router.put("/drivers/:id", async (req, res, next) => {
   try {
-    const { name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role, hideFromStandings, steamId } = req.body || {};
+    const { name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role, hideFromStandings, steamId, country } = req.body || {};
+    // Nationality is normally the driver's own to set, on their profile after a
+    // Discord login. Drivers who have never logged in cannot, so they have no
+    // flag anywhere on the site and none on the result poster either. This lets
+    // an admin fill it in for them. Lowercase ISO 3166-1 alpha-2, or "" to clear.
+    if (country !== undefined && country !== "" && !/^[a-z]{2}$/i.test(String(country))) {
+      return res.status(400).json({ error: "country must be a two-letter code, or empty" });
+    }
     // Special league role ('safety' = safety car driver, "" clears). Raw-SQL
     // column, so it's written after the prisma update below.
     if (role !== undefined && role !== "" && role !== null && !DRIVER_ROLES.includes(role)) {
@@ -1758,6 +1765,7 @@ router.put("/drivers/:id", async (req, res, next) => {
     if (teamId !== undefined) data.teamId = teamId;
     if (tier !== undefined) data.tier = Number(tier);
     if (isActive !== undefined) data.isActive = isActive;
+    if (country !== undefined) data.country = String(country).toLowerCase() || null;
     if (photoUrl !== undefined) data.photoUrl = photoUrl || null;
     // The driver's Discord user id (the long number). Login links by exact id,
     // and the results post pings <@id> — so pre-filling it here gives drivers

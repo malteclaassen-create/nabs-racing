@@ -102,10 +102,12 @@ export const THEMES = {
     title: "#ffffff",
     medal: { 1: "#fecb2f", 2: "#b3b3b3", 3: "#a47936" },
     radius: 10,
-    // The mark moves out of the corner and behind the classification, big and
-    // barely there, which is what fills the space a black page opens up.
+    // The mark moves out of the corner and behind the classification: nearly
+    // page-wide, in the pink, at 13%. Position and size are measured off the
+    // file, and it sits BEHIND the tiles and rows there too — only the slivers
+    // of background between them show any of it.
     cornerMark: false,
-    watermark: 0.05,
+    watermark: { cx: 554, cy: 703, size: 1050, alpha: 0.13, colour: "#ffaec8" },
     tile: { fill: "#000000", frame: "#ffaec8", frameWidth: 5, badge: true },
     // Gold, silver and bronze land TWICE: on the position number and on the
     // name bar under the car.
@@ -133,7 +135,7 @@ export const THEMES = {
     medal: { 1: "#e3b23c", 2: "#c9c9c9", 3: "#c98f5c" },
     radius: 0,
     cornerMark: true, // the league mark, top right
-    watermark: 0, // no big mark behind the rows
+    watermark: null, // no big mark behind the rows
     tile: { fill: "#000000", frame: "medal", frameWidth: 3, badge: false },
     pos: { colour: "#ffffff" },
     nameBar: { fill: "medal", ink: "#0a0a0a", frame: null },
@@ -180,6 +182,29 @@ function drawContain(ctx, img, cx, cy, maxW, maxH) {
   ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
 }
 
+// A copy of `img` recoloured to one flat colour, keeping its shape. The league
+// mark ships as a white PNG and the watermark wants it in the pink; painting
+// pink THROUGH the artwork (source-in) recolours the marks and leaves the
+// transparent background alone, which drawing a pink rectangle over it would
+// not. Cached per image and colour: the poster redraws on every switch and this
+// would otherwise rebuild the same canvas each time.
+const tintCache = new Map();
+function tinted(img, colour) {
+  const key = `${img.src}|${colour}`;
+  const hit = tintCache.get(key);
+  if (hit) return hit;
+  const c = document.createElement("canvas");
+  c.width = img.width;
+  c.height = img.height;
+  const x = c.getContext("2d");
+  x.drawImage(img, 0, 0);
+  x.globalCompositeOperation = "source-in";
+  x.fillStyle = colour;
+  x.fillRect(0, 0, c.width, c.height);
+  tintCache.set(key, c);
+  return c;
+}
+
 // A rectangle with corners, or without when the radius is 0. Only ever starts
 // the path — the caller decides whether it is filled, stroked or clipped.
 function box(ctx, x, y, w, h, r = 0) {
@@ -218,9 +243,10 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
   // The mark, huge and barely there, behind the classification. A black page
   // has a lot of empty in it and this is what fills it without competing.
   if (T.watermark && data.logo) {
+    const w = T.watermark;
     ctx.save();
-    ctx.globalAlpha = T.watermark;
-    drawContain(ctx, data.logo, L.width / 2, L.rows.top + 380, L.width * 0.95, L.width * 0.95);
+    ctx.globalAlpha = w.alpha;
+    drawContain(ctx, tinted(data.logo, w.colour), w.cx, w.cy, w.size, w.size);
     ctx.restore();
   }
 
