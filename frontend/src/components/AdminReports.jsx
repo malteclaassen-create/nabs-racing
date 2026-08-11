@@ -51,40 +51,62 @@ function Thread({ id, drivers, onChanged }) {
   // corrected version arrived as a repeat and was thrown away.
   const [draft, setDraft] = useState(null);
 
-  const load = useCallback(() => {
-    api
-      .adminReport(id)
-      .then((d) => {
-        setData(d);
-        setDraft({
-          status: d.report.status,
-          penaltySeconds: d.report.penaltySeconds ?? "",
-          verdict: d.report.verdict || "",
-        });
-      })
-      .catch((e) => setError(e.message));
-  }, [id]);
-  useEffect(load, [load]);
+  const fromReport = (rep) => ({
+    status: rep.status,
+    penaltySeconds: rep.penaltySeconds ?? "",
+    verdict: rep.verdict || "",
+  });
 
-  async function run(fn, doneMsg) {
+  // `keepDraft` is every reload that is NOT the steward asking for the stored
+  // version back. Writing a line to the drivers, naming the accused or letting
+  // a witness in all reload the thread, and each one used to wipe a verdict
+  // half typed in the box below — which defeats the whole point of composing
+  // the decision as one act before sending it.
+  const load = useCallback(
+    (keepDraft = false) =>
+      api
+        .adminReport(id)
+        .then((d) => {
+          setData(d);
+          setDraft((cur) => (keepDraft && cur ? cur : fromReport(d.report)));
+        })
+        .catch((e) => setError(e.message)),
+    [id]
+  );
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function run(fn, doneMsg, isDecision = false) {
     setBusy(true);
     setError(null);
     setMsg(null);
     try {
-      await fn();
-      load();
+      const res = await fn();
+      // Keep whatever is in the decision box unless this WAS the decision.
+      await load(!isDecision);
       onChanged?.();
       changed();
-      if (doneMsg) setMsg(doneMsg);
+      const text = typeof doneMsg === "function" ? doneMsg(res) : doneMsg;
+      if (text) setMsg(text);
     } catch (e) {
+      // Inline, not instead of the thread: replacing the whole panel with an
+      // error box left a steward with no way back to what they were writing.
       setError(e.message);
     } finally {
       setBusy(false);
     }
   }
 
-  if (error) return <ErrorBox message={error} />;
-  if (!data || !draft) return <p className="px-5 py-3 text-sm text-light">Loading…</p>;
+  if (!data || !draft) {
+    return error ? (
+      <div className="px-5 py-3">
+        <ErrorBox message={error} onRetry={() => load()} />
+      </div>
+    ) : (
+      <p className="px-5 py-3 text-sm text-light">Loading…</p>
+    );
+  }
   const r = data.report;
   const dirty =
     draft.status !== r.status ||
@@ -94,6 +116,7 @@ function Thread({ id, drivers, onChanged }) {
 
   return (
     <div className="space-y-4 px-5 py-4">
+      {error && <ErrorBox message={error} />}
       {msg && <Notice kind="success">{msg}</Notice>}
 
       {/* what was reported */}
@@ -110,10 +133,15 @@ function Thread({ id, drivers, onChanged }) {
             disabled={busy}
             onChange={(e) => {
               const d = drivers.find((x) => x.id === e.target.value);
-              run(
-                () => api.setReportAccused(id, e.target.value || "", d?.name || ""),
-                e.target.value ? `${d?.name} can now read this and has been told.` : "Nobody is named on this now."
-              );
+              run(() => api.setReportAccused(id, e.target.value || "", d?.name || ""), (res) => {
+                if (!e.target.value) return "Nobody is named on this now.";
+                // The server says whether that driver has a Discord account to
+                // reach. Where they have not, saying "has been told" sends the
+                // steward away believing the other driver is in the loop.
+                return res?.report?.accusedReachable === false
+                  ? `${d?.name} is named on this now, but has never signed in with Discord — there is no account to tell, and they cannot read or answer it. You will have to reach them another way.`
+                  : `${d?.name} can now read this and has been told.`;
+              });
             }}
           >
             <option value="">Nobody named{r.accusedName ? ` (it says "${r.accusedName}")` : ""}</option>
@@ -210,7 +238,16 @@ function Thread({ id, drivers, onChanged }) {
                     penaltySeconds: draft.penaltySeconds === "" ? null : Number(draft.penaltySeconds),
                     verdict: draft.verdict,
                   }),
-                willTell ? "Saved. Both drivers have been told." : "Saved."
+                // How many people it actually reached, from the server. "Both
+                // drivers" is wrong when the accused has no account, and wrong
+                // again when nobody is named at all.
+                (res) => {
+                  const n = res?.report?.told ?? 0;
+                  if (!willTell) return "Saved.";
+                  if (n === 0) return "Saved. Nobody could be told: there is no Discord account on this thread.";
+                  return n === 1 ? "Saved. The one driver on this thread has been told." : `Saved. All ${n} people on this thread have been told.`;
+                },
+                true
               )
             }
           >
@@ -315,6 +352,11 @@ function Thread({ id, drivers, onChanged }) {
 export default function AdminReports() {
   const { data, loading, error, reload } = useApi(useCallback(() => api.adminReports(), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
+  // The report LIST is every report ever filed, across seasons, but the roster
+  // above is only the season currently being edited. Without the series-wide
+  // driver database, a report from an older season could not be pointed at the
+  // driver it was about, because their name simply was not in the dropdown.
+  const { data: db } = useApi(useCallback(() => api.adminDriverDb().catch(() => []), []));
   const { data: ingest, reload: reloadIngest } = useApi(useCallback(() => api.reportIngest(), []));
   const [openId, setOpenId] = useState(null);
   const [show, setShow] = useState("open");
@@ -323,16 +365,29 @@ export default function AdminReports() {
   // Everybody who could be named in a report, once, sorted.
   const drivers = useMemo(() => {
     const out = new Map();
+    // This season first, so the people currently racing sort to their own
+    // names rather than to an older row for the same person.
     for (const t of teams || []) for (const d of t.drivers || []) if (!out.has(d.id)) out.set(d.id, d);
+    const seen = new Set([...out.values()].map((d) => d.name.trim().toLowerCase()));
+    for (const e of db || []) {
+      const key = String(e.name || "").trim().toLowerCase();
+      if (!key || seen.has(key) || !e.sourceDriverId) continue;
+      seen.add(key);
+      out.set(e.sourceDriverId, { id: e.sourceDriverId, name: e.name });
+    }
     return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [teams]);
+  }, [teams, db]);
 
   const visible = useMemo(() => {
     const all = data?.reports || [];
+    // Whatever is open stays on screen even once it no longer matches the
+    // filter. Deciding a report under "Open" would otherwise make the thread
+    // vanish at the moment you press Save, taking the confirmation with it.
+    const keep = (r) => r.id === openId;
     if (show === "all") return all;
-    if (show === "decided") return all.filter((r) => DECIDED.includes(r.status));
-    return all.filter((r) => !DECIDED.includes(r.status));
-  }, [data, show]);
+    if (show === "decided") return all.filter((r) => DECIDED.includes(r.status) || keep(r));
+    return all.filter((r) => !DECIDED.includes(r.status) || keep(r));
+  }, [data, show, openId]);
 
   // By round, newest race first, with anything that names no race at the end.
   const groups = useMemo(() => {

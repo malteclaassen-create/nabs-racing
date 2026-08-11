@@ -227,6 +227,7 @@ export async function dbAddMessage(prisma, report, { author, discordId, name, bo
 // The admin's decision. Writes what was decided; it deliberately does not touch
 // the race result — see the note at the top of this file.
 export async function dbDecideReport(prisma, report, { status, verdict, penaltySeconds }) {
+  const decidedAt = new Date().toISOString();
   const s = sanitizeStatus(status);
   if (!s) throw Object.assign(new Error("Unknown status"), { status: 400 });
   const secs =
@@ -238,14 +239,16 @@ export async function dbDecideReport(prisma, report, { status, verdict, penaltyS
     s,
     clamp(verdict, MAX_BODY) || null,
     secs,
-    new Date().toISOString(),
+    decidedAt,
     report.id
   );
   const fresh = await dbGetReport(prisma, report.id);
   // Only an ENDING is worth a notification. "Reviewing" is the admins saying
   // they have opened it, which is not news to anyone waiting for an answer.
+  let told = 0;
   if (REPORT_DECIDED.includes(s)) {
     const readers = await readersOf(prisma, fresh);
+    told = readers.size;
     const outcome =
       s === "PENALTY"
         ? secs != null
@@ -261,15 +264,21 @@ export async function dbDecideReport(prisma, report, { status, verdict, penaltyS
         body: outcome,
         link: `/reports?id=${fresh.id}`,
         recipientId: rid,
-        // Per recipient, and per DECISION. Keyed on the status alone, the two
-        // drivers shared one slot so only one of them ever heard, and a
-        // correction ("actually 10 seconds, not 5") was swallowed as a repeat
-        // of a message nobody had sent yet.
-        dedupeKey: `report_done:${fresh.id}:${rid}:${s}:${secs ?? "-"}:${(clamp(verdict, 200) || "").length}`,
+        // Per recipient, per SAVE. Keyed on the status alone, the two drivers
+        // shared one slot so only one of them ever heard. Keyed on the content,
+        // a correction that happened to be the same length as the last one was
+        // swallowed as a repeat — so the moment of saving is what makes it
+        // unique. A save only happens when a steward changed something and
+        // pressed the button, which is exactly when the drivers want telling.
+        dedupeKey: `report_done:${fresh.id}:${rid}:${decidedAt}`,
       }).catch(() => {});
     }
   }
-  return fresh;
+  // How many people that actually reached. The desk says "both drivers have
+  // been told" and has to be able to stop saying it: a report whose accused has
+  // never signed in with Discord, or which names nobody at all, has one person
+  // on it or none.
+  return { ...fresh, told };
 }
 
 // Point a report at a different driver, or at one for the first time. Needed

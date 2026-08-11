@@ -133,6 +133,29 @@ describe("telling people", () => {
     expect(notes.filter((n) => n.title.match(/has been decided/i))).toHaveLength(2);
   });
 
+  it("tells them again even when the correction is the same shape as before", async () => {
+    // The key used to carry the verdict's LENGTH, so swapping "5s for the
+    // contact" for "5s for the weaving" — same status, same seconds, same
+    // number of characters — was thrown away as a duplicate.
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...base, accusedDriverId: "d2" });
+    await dbDecideReport(p, r, { status: "PENALTY", penaltySeconds: 5, verdict: "aaaa" });
+    notes.length = 0;
+    await dbDecideReport(p, r, { status: "PENALTY", penaltySeconds: 5, verdict: "bbbb" });
+    expect(notes.filter((n) => n.title.match(/has been decided/i))).toHaveLength(2);
+    expect(new Set(notes.map((n) => n.dedupeKey)).size).toBe(notes.length);
+  });
+
+  it("says how many people the outcome actually reached", async () => {
+    // "Both drivers have been told" is wrong when the accused has no account,
+    // and wrong again when nobody is named at all.
+    const p = makePrisma();
+    const two = await dbDecideReport(p, await dbCreateReport(p, { ...base, accusedDriverId: "d2" }), { status: "NO_PENALTY" });
+    expect(two.told).toBe(2);
+    const one = await dbDecideReport(p, await dbCreateReport(p, { ...base, accusedDriverId: "d3" }), { status: "NO_PENALTY" });
+    expect(one.told).toBe(1);
+  });
+
   it("says nothing for a status that is not an ending", async () => {
     const p = makePrisma();
     const r = await dbCreateReport(p, { ...base, accusedDriverId: "d2" });

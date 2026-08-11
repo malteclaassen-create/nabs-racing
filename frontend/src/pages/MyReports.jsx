@@ -210,7 +210,9 @@ export default function MyReports() {
       {loading && !data && <Spinner />}
 
       {openId ? (
-        <Thread id={openId} races={raceList} onBack={() => openThread(null)} onChanged={reload} />
+        /* keyed by id: switching threads must not show the last one's words
+           while the new one loads */
+        <Thread key={openId} id={openId} races={raceList} onBack={() => openThread(null)} onChanged={reload} />
       ) : list.length === 0 ? (
         <EmptyState
           title="Nothing here"

@@ -20,18 +20,27 @@ import { CardBar } from "./ui.jsx";
 // stops nagging immediately.
 // ---------------------------------------------------------------------------
 
-// Each decided penalty against the row for that driver. `rows` is the editor's
-// live state, whose penalty field is a string while it is being typed.
+// The decided penalties against the rows being edited, grouped BY DRIVER and
+// added up. Two incidents in one race is an ordinary evening, and the editor
+// has one penalty cell per driver: five seconds for turn one and five for turn
+// nine means ten in that cell. Compared one report at a time, typing five would
+// have satisfied both and the second penalty would quietly vanish.
+//
+// `rows` is the editor's live state, whose penalty field is a string while it
+// is being typed.
 function match(decided, rows) {
-  return decided.map((r) => {
-    const row = rows.find((x) => x.driverId && x.driverId === r.accusedDriverId);
+  const byDriver = new Map();
+  for (const r of decided) {
+    const key = r.accusedDriverId || `unnamed:${r.id}`;
+    const hit = byDriver.get(key) || { key, driverId: r.accusedDriverId, name: r.accusedName, seconds: 0, count: 0 };
+    hit.seconds += r.penaltySeconds || 0;
+    hit.count += 1;
+    byDriver.set(key, hit);
+  }
+  return [...byDriver.values()].map((g) => {
+    const row = rows.find((x) => x.driverId && x.driverId === g.driverId);
     const inTable = row ? Number(row.penaltySeconds) || 0 : null;
-    return {
-      ...r,
-      driverInRace: !!row,
-      inTable,
-      done: row != null && r.penaltySeconds != null && inTable >= r.penaltySeconds,
-    };
+    return { ...g, driverInRace: !!row, inTable, done: row != null && inTable >= g.seconds };
   });
 }
 
@@ -66,12 +75,17 @@ export default function StewardPenalties({ raceId, rows }) {
       />
       <ul className="divide-y divide-border">
         {checked.map((c) => (
-          <li key={c.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5">
+          <li key={c.key} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5">
             <span className="min-w-0 flex-1 truncate text-sm font-semibold text-dark">
-              {c.accusedName || "Nobody named"}
+              {c.name || "Nobody named"}
+              {c.count > 1 && (
+                <span className="ml-2 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+                  {c.count} incidents
+                </span>
+              )}
             </span>
             <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-              decided +{c.penaltySeconds}s
+              decided +{c.seconds}s
             </span>
             {!c.driverInRace ? (
               <span className="pill bg-surface2 text-light">not in this result</span>

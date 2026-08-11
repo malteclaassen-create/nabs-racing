@@ -269,7 +269,17 @@ export default function ReportWidget() {
         accusedName: accused?.name || null,
         body: form.body,
       });
-      setSent(true);
+      // Three different outcomes, and only one of them is "the other driver
+      // can see it": named and reachable, named but with no Discord account,
+      // or nobody named at all — which used to fall through to the reassuring
+      // sentence even though there was nobody on the other end.
+      setSent(
+        !form.accusedDriverId
+          ? "nobody"
+          : res?.accusedReachable === false
+            ? "unreachable"
+            : "ok"
+      );
       setUnreachable(res?.accusedReachable === false ? accused?.name || "That driver" : null);
       setForm({ raceId: "", lap: "", accusedDriverId: "", body: "" });
       api.myReports().then((r) => setMine(r.reports || [])).catch(() => {});
@@ -324,6 +334,7 @@ export default function ReportWidget() {
               </p>
             ) : openId ? (
               <Thread
+                key={openId}
                 id={openId}
                 onBack={() => setOpenId(null)}
                 onWithdrawn={() => {
@@ -350,11 +361,17 @@ export default function ReportWidget() {
                   (sent ? (
                     <div className="space-y-3">
                       <p className="text-sm leading-relaxed text-ok">
-                        {unreachable
-                          ? "Sent. The stewards can see it now."
-                          : "Sent. The stewards can see it now, and so can the driver you named."}
+                        {sent === "ok"
+                          ? "Sent. The stewards can see it now, and so can the driver you named."
+                          : "Sent. The stewards can see it now."}
                       </p>
-                      {unreachable && (
+                      {sent === "nobody" && (
+                        <p className="text-sm leading-relaxed text-light">
+                          You did not name a driver, so for now only the stewards can read it. If they work out
+                          who it was about, that driver joins the thread and can answer.
+                        </p>
+                      )}
+                      {sent === "unreachable" && (
                         <p className="text-sm leading-relaxed text-light">
                           {unreachable} has never signed in with Discord, so they cannot be told about this or
                           answer it. The stewards will have to reach them another way.

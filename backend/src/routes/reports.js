@@ -259,14 +259,16 @@ function clockToday(hhmmss) {
 async function currentRaceId(prisma) {
   try {
     const now = Date.now();
+    // Bounded by DATE, not by a row count. Taking the twenty newest and then
+    // filtering to the ones that have started finds nothing at all in a season
+    // whose calendar is published far enough ahead.
     const races = await prisma.race.findMany({
-      where: { date: { not: null } },
-      select: { id: true, date: true },
+      where: { date: { not: null, lte: new Date(now + 60 * 60 * 1000) } },
+      select: { id: true },
       orderBy: { date: "desc" },
-      take: 20,
+      take: 1,
     });
-    const started = races.filter((r) => new Date(r.date).getTime() <= now + 60 * 60 * 1000);
-    return started[0]?.id || null;
+    return races[0]?.id || null;
   } catch {
     return null;
   }
