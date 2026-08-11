@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { openFeedback } from "../components/FeedbackWidget.jsx";
-import { REPORTS_OPEN_TO_MEMBERS } from "../components/ReportWidget.jsx";
+import { REPORTS_OPEN_TO_MEMBERS } from "../reportsAccess.js";
 import { SettingsDrawer } from "../components/SettingsPanel.jsx";
 import { CockpitPanels, COCKPIT_TABS } from "./Cockpit.jsx";
 import Tools from "./Tools.jsx";

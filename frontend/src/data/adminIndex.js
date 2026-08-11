@@ -341,6 +341,12 @@ export const ADMIN_INDEX = [
     keywords: "report reports incident steward stewarding penalty crash contact protest complaint judge replay",
   },
   {
+    tab: "members",
+    title: "Make somebody a steward",
+    hint: "They read and answer every incident report, and get no other admin access.",
+    keywords: "steward stewards judge incident reports access role marshal official permission",
+  },
+  {
     tab: "reports",
     title: "Say who a report is about",
     hint: "Naming the other driver is what lets them read the thread and answer it.",

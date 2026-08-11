@@ -7,7 +7,7 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent, SmoothHeight } from "../components/ui.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
-import { openReport, REPORTS_OPEN_TO_MEMBERS } from "../components/ReportWidget.jsx";
+import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
 import RaceResults from "../components/RaceResults.jsx";
 import RaceFacts from "../components/RaceFacts.jsx";
 import RaceGallery from "../components/RaceGallery.jsx";
@@ -883,9 +883,8 @@ export default function Races() {
                                 chosen — the one thing a driver would otherwise
                                 have to pick out of a list of forty. */}
                             {REPORTS_OPEN_TO_MEMBERS && (
-                            <button
-                              type="button"
-                              onClick={() => openReport({ raceId: head.id })}
+                            <Link
+                              to={reportsPath({ nw: true, raceId: head.id })}
                               title="Report an incident from this round to the stewards"
                               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark"
                             >
@@ -893,7 +892,7 @@ export default function Races() {
                                 <path d="M5 21V4M5 4h11l-1.6 3.5L16 11H5" />
                               </svg>
                               Report
-                            </button>
+                            </Link>
                             )}
                             {/* replay of this round, registered in the admin Downloads tab */}
                             {!detailIsStale && detail.race.replayDownloadId && (

@@ -3,7 +3,7 @@ import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import {
   dbCreateReport, dbGetReport, dbReportsFor, dbMessages, dbAddMessage, canRead, dbDeleteReport,
-  dbAttachments, accusedDiscordId,
+  dbAttachments, roleOn,
 } from "../lib/reports.js";
 import { serveAttachment, saveAttachment, attachmentUpload } from "../lib/reportFiles.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
@@ -163,13 +163,9 @@ router.post("/:id/messages", optionalUser, attachmentUpload.array("files", 4), a
     // exactly the confusion this is fixing — the label follows WHERE you wrote
     // from, not what you are allowed to do. ADMIN comes only from the admin
     // route (routes/admin.js).
-    const accused = await accusedDiscordId(prisma, report);
-    const author =
-      String(report.reporterDiscordId || "") === String(me.discordId)
-        ? "REPORTER"
-        : accused && String(accused) === String(me.discordId)
-          ? "ACCUSED"
-          : "VIEWER";
+    // roleOn answers the same question the member's own list asks, so a name
+    // in a thread and the section it is filed under can never disagree.
+    const author = (await roleOn(prisma, report, me.discordId)) || "VIEWER";
     const { messageId } = await dbAddMessage(prisma, report, {
       author,
       discordId: me.discordId,

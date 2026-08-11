@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
-import { openReport, REPORTS_OPEN_TO_MEMBERS } from "../components/ReportWidget.jsx";
+import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { Skeleton, TableSkeleton, CountUp, Rank, MEDAL_TEXT, DriverAvatar, ErrorBox } from "../components/ui.jsx";
 import { useParallax, useMagnetic } from "../hooks/motion.js";
@@ -1238,16 +1238,15 @@ export default function Home() {
                   it: reporting an incident is not what the league wants people
                   doing, only what it wants possible. */}
               {isLoggedIn && REPORTS_OPEN_TO_MEMBERS && (
-                <button
-                  type="button"
-                  onClick={() => openReport()}
+                <Link
+                  to={reportsPath({ nw: true })}
                   className="inline-flex items-center gap-2 rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink/70 backdrop-blur-sm transition hover:bg-ink/[0.06] hover:text-ink dark:border-white/20 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/15 dark:hover:text-white"
                 >
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M5 21V4M5 4h11l-1.6 3.5L16 11H5" />
                   </svg>
                   Report an incident
-                </button>
+                </Link>
               )}
             </div>
           </div>

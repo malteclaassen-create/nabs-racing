@@ -9,7 +9,7 @@ import SeriesSwitcher from "./SeriesSwitcher.jsx";
 import NotificationBell from "./NotificationBell.jsx";
 import GlobalSearch from "./GlobalSearch.jsx";
 import { openFeedback } from "./FeedbackWidget.jsx";
-import { openReport, REPORTS_OPEN_TO_MEMBERS } from "./ReportWidget.jsx";
+import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
 import { useTour } from "./Tour.jsx";
 import { DriverAvatar } from "./ui.jsx";
 import { useSlidingHighlight } from "./SlidingTabs.jsx";
@@ -864,14 +864,11 @@ export default function NavBar() {
                   a race night is the one evening the whole grid is on phones. */}
               {isLoggedIn && REPORTS_OPEN_TO_MEMBERS && (
                 <>
-                  <MobileActionRow
+                  <MobileRow
+                    to={reportsPath({ nw: true })}
                     icon={NAV_ICONS.feedback}
                     label="Report an incident"
                     sub="To the stewards, privately"
-                    onClick={() => {
-                      closeMenu();
-                      openReport();
-                    }}
                   />
                   <MobileRow to="/reports" icon={NAV_ICONS.feedback} label="My reports" sub="And what was decided" />
                 </>

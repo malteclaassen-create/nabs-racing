@@ -27,6 +27,7 @@ import { randomUUID } from "crypto";
 import { dbCreateNotification } from "./notifications.js";
 import { getAdminDiscordIds } from "./adminUsers.js";
 import { discordIdsForDrivers } from "./persons.js";
+import { isSteward } from "./stewards.js";
 
 // Where a report has got to. NEW is where everything starts; the last three are
 // endings, and only an admin can set them.
@@ -40,7 +41,7 @@ export const REPORT_DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
 //
 // ADMIN therefore means "not one of the people in this argument", and even then
 // the name is shown next to it. VIEWER is somebody an admin let in.
-export const MESSAGE_AUTHORS = ["REPORTER", "ACCUSED", "VIEWER", "ADMIN"];
+export const MESSAGE_AUTHORS = ["REPORTER", "ACCUSED", "VIEWER", "STEWARD", "ADMIN"];
 
 const MAX_BODY = 4000;
 const MIN_BODY = 5;
@@ -105,7 +106,26 @@ export async function readersOf(prisma, report) {
 export async function canRead(prisma, report, discordId, isAdmin) {
   if (isAdmin) return true;
   if (!discordId) return false;
+  if (await isSteward(prisma, discordId)) return true;
   return (await readersOf(prisma, report)).has(String(discordId));
+}
+
+// WHY this account can see a report, which is what lets the member's page split
+// its list into "yours" and "shown to you". Ordered by how close you are to it:
+// being in the argument beats having been let in, which beats being appointed
+// to judge it.
+export async function roleOn(prisma, report, discordId) {
+  if (!discordId) return null;
+  const me = String(discordId);
+  if (String(report.reporterDiscordId || "") === me) return "REPORTER";
+  const accused = await accusedDiscordId(prisma, report);
+  if (accused && String(accused) === me) return "ACCUSED";
+  const extra = await prisma
+    .$queryRawUnsafe(`SELECT 1 FROM "ReportViewer" WHERE "reportId" = ? AND "discordId" = ?`, report.id, me)
+    .catch(() => []);
+  if (extra.length) return "VIEWER";
+  if (await isSteward(prisma, me)) return "STEWARD";
+  return null;
 }
 
 // --- reading ----------------------------------------------------------------
@@ -122,12 +142,16 @@ export async function dbListReports(prisma) {
   return rows.map(shape);
 }
 
-// The reports one member is party to, newest first.
+// The reports one member may see, newest first, each carrying WHY. A steward
+// sees every report; everybody else sees the ones they are in or were let into.
 export async function dbReportsFor(prisma, discordId) {
   if (!discordId) return [];
   const all = await dbListReports(prisma);
   const mine = [];
-  for (const r of all) if (await canRead(prisma, r, discordId, false)) mine.push(r);
+  for (const r of all) {
+    const role = await roleOn(prisma, r, discordId);
+    if (role) mine.push({ ...r, myRole: role });
+  }
   return mine;
 }
 

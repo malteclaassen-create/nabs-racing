@@ -784,6 +784,9 @@ export const api = {
   unlinkMember: (discordId) => request(`/admin/members/${discordId}/unlink`, { method: "POST", auth: true }),
   setMemberAdmin: (discordId, isAdmin) =>
     request(`/admin/members/${discordId}/admin`, { method: "POST", body: { isAdmin }, auth: true }),
+  // Reads every incident report, and nothing else.
+  setMemberSteward: (discordId, isSteward) =>
+    request(`/admin/members/${discordId}/steward`, { method: "POST", body: { isSteward }, auth: true }),
   createDriverFromMember: (discordId, body) =>
     request(`/admin/members/${discordId}/create-driver`, { method: "POST", body, auth: true }),
 

@@ -70,6 +70,7 @@ import {
   writeSeriesLogo,
 } from "../lib/series.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
+import { getStewardDiscordIds, setSteward } from "../lib/stewards.js";
 import {
   notifyResultsSaved, notifyRacePhotosAdded, notifyDownloadAdded, notifySeatFilled, notifyCardUnlocksForSeason,
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
@@ -2091,7 +2092,7 @@ router.post("/drivers/bulk-delete", async (req, res, next) => {
 //   unclaimed = active-season drivers nobody has logged in as yet.
 router.get("/members", async (req, res, next) => {
   try {
-    const [rows, drivers, activeSeasons, primarySeason, adminIds] = await Promise.all([
+    const [rows, drivers, activeSeasons, primarySeason, adminIds, stewardIds] = await Promise.all([
       dbListMembers(prisma),
       prisma.driver.findMany({ include: { team: true, season: true } }),
       // One active season PER SERIES since the series model — a roster row on
@@ -2103,6 +2104,7 @@ router.get("/members", async (req, res, next) => {
         id ? { id } : null
       ),
       getAdminDiscordIds(prisma),
+      getStewardDiscordIds(prisma),
     ]);
     const activeIds = new Set(activeSeasons.map((s) => s.id));
     // Whether the Steam ID has actually reached the roster row (raw column, so
@@ -2130,7 +2132,12 @@ router.get("/members", async (req, res, next) => {
         linked.find((d) => activeIds.has(d.seasonId)) ||
         linked.sort((a, b) => (b.season?.number ?? 0) - (a.season?.number ?? 0))[0] ||
         null;
-      return { ...m, driver: shapeDriver(driver), isAdmin: adminIds.has(String(m.discordId)) };
+      return {
+        ...m,
+        driver: shapeDriver(driver),
+        isAdmin: adminIds.has(String(m.discordId)),
+        isSteward: stewardIds.has(String(m.discordId)),
+      };
     });
     // Drivers an account can be linked to: no stored Discord ID, OR an ID that
     // no known login account carries — i.e. an admin-entered ID that might be
@@ -2160,6 +2167,23 @@ router.post("/members/:discordId/ban", async (req, res, next) => {
     if (!existing) return res.status(404).json({ error: "Account not found" });
     const row = await dbSetBanned(prisma, req.params.discordId, !!banned, reason || null);
     res.json({ ok: true, member: shapeMember(row) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/members/:discordId/steward { isSteward }
+// Appoint somebody to steward: they can read EVERY incident report and answer
+// in any of them, and nothing else changes for them. Judging incidents and
+// running a league are different jobs, and handing over the PIN so somebody can
+// look at a report hands over the results editor with it.
+router.post("/members/:discordId/steward", async (req, res, next) => {
+  try {
+    const existing = await dbGetMember(prisma, req.params.discordId);
+    if (!existing) return res.status(404).json({ error: "Account not found" });
+    const on = !!req.body?.isSteward;
+    await setSteward(prisma, req.params.discordId, on);
+    res.json({ ok: true, isSteward: on });
   } catch (e) {
     next(e);
   }

@@ -9,7 +9,10 @@ vi.mock("./notifications.js", () => ({
     return n;
   },
 }));
-vi.mock("./adminUsers.js", () => ({ getAdminDiscordIds: async () => ["admin1"] }));
+vi.mock("./adminUsers.js", () => ({ getAdminDiscordIds: async () => ["admin1"], isDiscordAdmin: async () => false }));
+// Appointed stewards, switched on per test.
+const stewards = new Set();
+vi.mock("./stewards.js", () => ({ isSteward: async (_p, id) => stewards.has(String(id)) }));
 // d1 -> 111 and d2 -> 222 have signed in with Discord. d3 never has, which is
 // the case that decides whether the accused can read their own report.
 vi.mock("./persons.js", () => ({
@@ -22,6 +25,7 @@ vi.mock("./persons.js", () => ({
 const {
   dbCreateReport, dbAddMessage, dbDecideReport, canRead, readersOf, dbSetAccused,
   dbAddAttachment, dbAttachments, dbDeleteReport, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES,
+  dbReportsFor, roleOn,
 } = await import("./reports.js");
 
 // A report is a PRIVATE conversation, and everything below is about who is let
@@ -63,6 +67,9 @@ function makePrisma() {
     },
     $queryRawUnsafe: async (sql, ...a) => {
       if (sql.includes('FROM "Report" WHERE "id"')) return rows.Report.filter((r) => r.id === a[0]);
+      if (sql.includes('FROM "Report" ORDER BY')) return [...rows.Report];
+      if (sql.includes('FROM "ReportViewer" WHERE "reportId" = ? AND "discordId"'))
+        return rows.ReportViewer.filter((v) => v.reportId === a[0] && v.discordId === a[1]);
       if (sql.includes('FROM "ReportViewer"')) return rows.ReportViewer.filter((v) => v.reportId === a[0]);
       if (sql.includes('FROM "ReportMessage"')) return rows.ReportMessage.filter((m) => m.reportId === a[0]);
       if (sql.includes('FROM "ReportAttachment"')) return rows.ReportAttachment.filter((x) => x.reportId === a[0]);
@@ -75,6 +82,7 @@ const base = { body: "He hit me at the hairpin", reporterDiscordId: "111", repor
 
 beforeEach(() => {
   notes.length = 0;
+  stewards.clear();
 });
 
 describe("who can read a report", () => {
@@ -196,6 +204,40 @@ describe("naming the driver afterwards", () => {
     expect(fresh.accusedReachable).toBe(true);
     expect(await canRead(p, fresh, "222", false)).toBe(true);
     expect(notes.filter((n) => n.recipientId === "222" && n.title.match(/names you/i))).toHaveLength(1);
+  });
+});
+
+describe("stewards", () => {
+  it("sees every report, and the list says that is why", async () => {
+    const p = makePrisma();
+    await dbCreateReport(p, { ...base, accusedDriverId: "d2" });
+    // s1 is neither party nor let in
+    expect(await dbReportsFor(p, "s1")).toHaveLength(0);
+    stewards.add("s1");
+    const seen = await dbReportsFor(p, "s1");
+    expect(seen).toHaveLength(1);
+    expect(seen[0].myRole).toBe("STEWARD");
+    expect(await canRead(p, seen[0], "s1", false)).toBe(true);
+  });
+
+  it("is outranked by actually being in the argument", async () => {
+    // The label decides which section of a driver's page a report lands in, so
+    // a steward who is also the accused must read as the accused.
+    const p = makePrisma();
+    stewards.add("222");
+    const r = await dbCreateReport(p, { ...base, accusedDriverId: "d2" });
+    expect(await roleOn(p, r, "222")).toBe("ACCUSED");
+    expect(await roleOn(p, r, "111")).toBe("REPORTER");
+    stewards.delete("222");
+  });
+
+  it("does not make somebody a reader of a thread they are only judging", async () => {
+    // readersOf is who gets NOTIFIED. Every steward pinged about every message
+    // in the league would be a reason to turn notifications off.
+    const p = makePrisma();
+    stewards.add("s1");
+    const r = await dbCreateReport(p, { ...base, accusedDriverId: "d2" });
+    expect((await readersOf(p, r)).has("s1")).toBe(false);
   });
 });
 

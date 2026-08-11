@@ -26,6 +26,16 @@ function StatusPills({ m }) {
           admin
         </span>
       )}
+      {/* Admins get every report anyway; the badge is for the people who were
+          given the reports and nothing else. */}
+      {m.isSteward && !m.isAdmin && (
+        <span
+          className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold text-brand"
+          title="Can read and answer every incident report. No other admin access."
+        >
+          steward
+        </span>
+      )}
       {m.banned && (
         <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-bad" title={m.banReason || undefined}>
           banned{m.banReason ? ` · ${m.banReason}` : ""}
@@ -153,6 +163,25 @@ export default function AdminMembers() {
     });
     if (!ok) return;
     act(m.discordId, () => api.unlinkMember(m.discordId));
+  }
+
+  async function toggleSteward(m) {
+    const next = !m.isSteward;
+    const name = m.displayName || m.username;
+    const ok = next
+      ? await ask({
+          title: `Make "${name}" a steward?`,
+          body: "They can read and answer EVERY incident report, from their own My reports page. Nothing else changes: no results, no settings, no admin area.",
+          confirmLabel: "Make steward",
+        })
+      : await ask({
+          title: `Take stewarding away from "${name}"?`,
+          body: "They keep the reports they are personally part of, and lose the rest. Takes effect immediately.",
+          danger: true,
+          confirmLabel: "Remove steward",
+        });
+    if (!ok) return;
+    act(m.discordId, () => api.setMemberSteward(m.discordId, next));
   }
 
   async function toggleAdmin(m) {
@@ -426,6 +455,21 @@ export default function AdminMembers() {
                   >
                     {m.isAdmin ? "Remove admin" : "Make admin"}
                   </button>
+                  {/* Pointless on an admin: they already read everything. */}
+                  {!m.isAdmin && (
+                    <button
+                      className={`py-1.5 text-sm font-semibold ${m.isSteward ? "text-light hover:text-link" : "text-link hover:underline"}`}
+                      disabled={busy === m.discordId}
+                      onClick={() => toggleSteward(m)}
+                      title={
+                        m.isSteward
+                          ? "Stop them reading every incident report"
+                          : "Let them read and answer every incident report, and nothing else"
+                      }
+                    >
+                      {m.isSteward ? "Remove steward" : "Make steward"}
+                    </button>
+                  )}
                   {m.driver && (
                     <button className="btn-secondary py-1.5 text-sm" disabled={busy === m.discordId} onClick={() => unlink(m)}>
                       Unlink

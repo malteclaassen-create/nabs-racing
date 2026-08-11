@@ -264,6 +264,18 @@ Railway charges for storage and outgoing traffic, so a season of 20 MB videos
 is the one part of Reports with a running cost. Deleting old threads deletes
 their files with them.
 
+**Stewards without admin access:** in **Admin -> Members** you can press
+**Make steward** on somebody. They can then read and answer EVERY incident
+report from their own **My reports** page, and nothing else changes for them:
+no results editor, no settings, no admin area. Judging incidents and running
+a league are different jobs, and handing over the PIN so somebody can look at
+a report hands over the championship with it. Admins are stewards already and
+do not need adding.
+
+Every driver has a **My reports** page. It shows the reports they filed or
+are named in, anything the stewards let them read, and, for a steward, the
+rest of the league. The report buttons around the site lead there.
+
 If your league uses the in-game **webPenalty** app, the bottom of the Reports
 tab switches on a door for it and gives you a URL to paste into the app's
 settings. Off until you switch it on. Treat the URL like a password.
