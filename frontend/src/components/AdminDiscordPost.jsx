@@ -38,7 +38,11 @@ const LENGTHS = [
 // designs because it is the same decision — which picture goes out.
 const GRAPHICS = [...THEME_KEYS.map((k) => ({ key: k, label: THEMES[k].label })), { key: "none", label: "No image" }];
 
-export default function AdminDiscordPost({ raceId }) {
+// `artVersion` is bumped by the Content area whenever a car, a logo or a
+// driver's flag is changed in the Graphic half. This half draws its OWN copy of
+// the poster, so without that signal it would keep sending the version from
+// before the fix.
+export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
   const ask = useAsk();
   const { data: hook, reload: reloadHook } = useApi(useCallback(() => api.getResultsWebhook(), []));
   // Both drafts, edited separately. `null` until generated.
@@ -67,31 +71,37 @@ export default function AdminDiscordPost({ raceId }) {
     setError(null);
   }, [raceId]);
 
+  const loadSource = useCallback(async () => {
+    const [r, teamArt] = await Promise.all([api.raceResults(raceId), api.teamArt()]);
+    return { race: r.race, results: r.results, teamArt };
+  }, [raceId]);
+
   useEffect(() => {
     if (!raceId) return;
     let alive = true;
-    Promise.all([api.raceResults(raceId), api.teamArt()])
-      .then(([r, teamArt]) => alive && setSource({ race: r.race, results: r.results, teamArt }))
+    loadSource()
+      .then((next) => alive && setSource(next))
       .catch(() => alive && setSource(null));
     return () => {
       alive = false;
     };
-  }, [raceId]);
+  }, [raceId, loadSource, artVersion]);
 
   // What renderPosterTo / renderPosterBlob need. One object, used by the
   // preview and by the post, so the picture in the preview and the picture in
   // the channel cannot be drawn from different things.
-  const poster = useMemo(() => {
-    if (graphic === "none" || !source) return null;
-    return {
-      race: source.race,
-      results: source.results,
-      teamArt: source.teamArt,
-      countryOf: (r) => countryFor(r.driverId, r.country),
-      logoSrc: "/logo-light.png",
-      theme: graphic,
-    };
-  }, [graphic, source]);
+  const posterFrom = (src) =>
+    graphic === "none" || !src
+      ? null
+      : {
+          race: src.race,
+          results: src.results,
+          teamArt: src.teamArt,
+          countryOf: (r) => countryFor(r.driverId, r.country),
+          logoSrc: "/logo-light.png",
+          theme: graphic,
+        };
+  const poster = useMemo(() => posterFrom(source), [graphic, source]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function run(fn, doneMsg) {
     setBusy(true);
@@ -131,7 +141,13 @@ export default function AdminDiscordPost({ raceId }) {
     )
       return;
     run(async () => {
-      const image = poster ? await renderPosterBlob(poster) : null;
+      // Drawn from data fetched RIGHT NOW, not from what was loaded when the
+      // round was picked. The alternative is posting last hour's artwork
+      // because somebody uploaded a car in between, and a Discord message
+      // cannot be edited from here once it is out.
+      const fresh = await loadSource();
+      setSource(fresh);
+      const image = graphic === "none" ? null : await renderPosterBlob(posterFrom(fresh));
       const r = await api.sendResultsPost(raceId, text, image);
       const how = r.messages > 1 ? `as ${r.messages} messages (Discord length limit)` : "";
       setMsg(`Posted to Discord${how ? ` ${how}` : ""}${r.attached ? ", graphic attached." : "."}`);

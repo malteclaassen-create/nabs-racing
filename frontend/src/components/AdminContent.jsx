@@ -31,16 +31,31 @@ export default function AdminContent() {
   const { data: races, error, reload } = useApi(useCallback(() => api.races(), []));
   const [raceId, setRaceId] = useState("");
   const [view, setView] = useState("graphic");
+  // Bumped whenever the poster's ingredients change on the Graphic side (a car
+  // uploaded, a flag filled in). The message half draws its own copy of the
+  // poster, and this is what tells it to go and fetch the new one — otherwise
+  // you fix the artwork, click across, and post the version from before.
+  const [artVersion, setArtVersion] = useState(0);
 
-  // Only rounds that HAVE a classification: there is nothing to draw or announce
-  // about a round that has not run.
+  // Every round that HAS a classification, which is the only thing either half
+  // can work from. Trainings and special events count: they get imported and
+  // their result gets announced like any other, and leaving them out here would
+  // quietly take away the only way to post one.
   const finished = useMemo(
     () =>
       [...(races || [])]
-        .filter((r) => r.isCompleted && !r.isSpecialEvent)
+        .filter((r) => r.isCompleted && (r.resultCount ?? 1) > 0)
         .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)),
     [races]
   );
+
+  // "R7", or what the round is instead of a round.
+  const roundOf = (r) => {
+    const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+    if (kind === "TRAINING") return "Training";
+    if (kind === "SPECIAL") return "Event";
+    return r.number != null ? `R${r.number}` : "Session";
+  };
 
   useEffect(() => {
     if (!raceId && finished.length) setRaceId(finished[0].id);
@@ -65,7 +80,7 @@ export default function AdminContent() {
             >
               {finished.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.number != null ? `R${r.number}` : "Session"} {r.track} · {fmtDate(r.date)}
+                  {roundOf(r)} {r.track} · {fmtDate(r.date)}
                 </option>
               ))}
             </select>
@@ -76,10 +91,10 @@ export default function AdminContent() {
               it, and switching away must not throw away a message you have
               spent five minutes editing. */}
           <div className={view === "graphic" ? "" : "hidden"}>
-            <AdminResultGraphic raceId={raceId} />
+            <AdminResultGraphic raceId={raceId} onArtChange={() => setArtVersion((v) => v + 1)} />
           </div>
           <div className={view === "post" ? "" : "hidden"}>
-            {raceId && <AdminDiscordPost raceId={raceId} />}
+            {raceId && <AdminDiscordPost raceId={raceId} artVersion={artVersion} />}
           </div>
         </>
       )}

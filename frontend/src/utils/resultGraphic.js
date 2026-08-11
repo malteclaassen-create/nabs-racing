@@ -620,8 +620,16 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
     Promise.all(rest.map((r) => loadImage(flagSrc(countryOf(r))))),
   ]);
 
+  // A championship round is "Round 7". Everything else says what it is instead
+  // of borrowing a number it does not have — and a special event is not a
+  // practice session, which is what it used to be called up here.
+  const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
   const roundLabel =
-    (race.type || "CHAMPIONSHIP") === "CHAMPIONSHIP" && race.number != null ? `Round ${race.number}` : "Training";
+    kind === "CHAMPIONSHIP" && race.number != null
+      ? `Round ${race.number}`
+      : kind === "SPECIAL"
+        ? "Special event"
+        : "Training";
 
   return {
     title: `${roundLabel} / ${race.track}`,

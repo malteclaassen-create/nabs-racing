@@ -110,40 +110,22 @@ function ArtSlot({ team, kind, url, busy, onUpload, onClear, fallback = null }) 
   );
 }
 
-// `raceId` makes the round somebody else's decision: inside the Content area a
-// single picker at the top drives both this and the Discord message, so the
-// poster on screen and the poster that gets posted are always the same round.
-// Left out, the component picks its own round and shows its own dropdown, which
-// is how it works anywhere it stands alone.
-export default function AdminResultGraphic({ raceId: fixedRaceId = null }) {
-  const fixed = fixedRaceId != null;
-  const { data: races, error: racesError, reload: reloadRaces } = useApi(
-    useCallback(() => (fixed ? Promise.resolve([]) : api.races()), [fixed])
-  );
+// The round is somebody else's decision: one picker at the top of the Content
+// area drives both this and the Discord message, so the poster on screen and
+// the poster that gets posted are always about the same round.
+//
+// `onArtChange` fires whenever the artwork or a driver's flag is edited here,
+// because the message next door draws its own copy of this poster and would
+// otherwise keep sending the version from before the fix.
+export default function AdminResultGraphic({ raceId, onArtChange = null }) {
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [art, setArt] = useState(null);
-  const [ownRaceId, setOwnRaceId] = useState("");
-  const raceId = fixed ? fixedRaceId : ownRaceId;
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState(savedTheme);
   const canvasRef = useRef(null);
-
-  // Only rounds that HAVE a classification: a poster of an unraced round would
-  // be an empty template.
-  const finished = useMemo(
-    () =>
-      [...(races || [])]
-        .filter((r) => r.isCompleted && !r.isSpecialEvent)
-        .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)),
-    [races]
-  );
-
-  useEffect(() => {
-    if (!fixed && !raceId && finished.length) setOwnRaceId(finished[0].id);
-  }, [fixed, finished, raceId]);
 
   useEffect(() => {
     api.teamArt().then(setArt).catch((e) => setError(e.message));
@@ -186,6 +168,7 @@ export default function AdminResultGraphic({ raceId: fixedRaceId = null }) {
     setError(null);
     try {
       setArt((await api.uploadTeamArt(teamId, kind, file)).art);
+      onArtChange?.();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -198,6 +181,7 @@ export default function AdminResultGraphic({ raceId: fixedRaceId = null }) {
     setError(null);
     try {
       setArt(await api.clearTeamArt(teamId, kind));
+      onArtChange?.();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -244,6 +228,7 @@ export default function AdminResultGraphic({ raceId: fixedRaceId = null }) {
     try {
       await api.updateDriver(driverId, { country: code });
       setResult(await api.raceResults(raceId)); // redraws with the flag in place
+      onArtChange?.();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -269,58 +254,35 @@ export default function AdminResultGraphic({ raceId: fixedRaceId = null }) {
 
   return (
     <div className="space-y-5">
-      {racesError && <ErrorBox message={racesError} onRetry={reloadRaces} />}
       {error && <ErrorBox message={error} />}
 
       <div className="card overflow-hidden">
         <CardBar
           title="Result graphic"
           right={
-            (fixed || finished.length > 0) && (
-              <div className="flex flex-wrap items-center gap-2">
-                {!fixed && (
-                  <select
-                    aria-label="Round"
-                    className="input w-auto max-w-[16rem] py-1.5 text-sm"
-                    value={raceId}
-                    onChange={(e) => setOwnRaceId(e.target.value)}
-                  >
-                    {finished.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.number != null ? `R${r.number}` : "Session"} {r.track} · {fmtDate(r.date)}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <button className="btn-primary py-1.5 text-sm" onClick={download} disabled={!result || loading}>
-                  Download PNG
-                </button>
-              </div>
-            )
+            <button className="btn-primary py-1.5 text-sm" onClick={download} disabled={!result || loading}>
+              Download PNG
+            </button>
           }
         />
-        {!fixed && finished.length === 0 ? (
-          <p className="p-5 text-sm text-light">No finished round in this season yet.</p>
-        ) : (
-          /* The preview IS the export: the same canvas, shown smaller. Nothing
-             here is a mock-up of the file you get. */
-          <div className="flex flex-col items-center gap-4 p-5">
-            <SlidingTabs
-              items={THEME_KEYS.map((k) => ({ key: k, label: THEMES[k].label }))}
-              value={theme}
-              onChange={(k) => {
-                setTheme(k);
-                saveTheme(k);
-              }}
-              btnClassName="px-4 py-1.5 text-xs"
-            />
-            <canvas
-              ref={canvasRef}
-              className="h-auto w-full max-w-[400px] rounded-lg shadow-lg"
-              style={{ aspectRatio: `${LAYOUT.width} / ${LAYOUT.height}` }}
-            />
-          </div>
-        )}
+        {/* The preview IS the export: the same canvas, shown smaller. Nothing
+            here is a mock-up of the file you get. */}
+        <div className="flex flex-col items-center gap-4 p-5">
+          <SlidingTabs
+            items={THEME_KEYS.map((k) => ({ key: k, label: THEMES[k].label }))}
+            value={theme}
+            onChange={(k) => {
+              setTheme(k);
+              saveTheme(k);
+            }}
+            btnClassName="px-4 py-1.5 text-xs"
+          />
+          <canvas
+            ref={canvasRef}
+            className="h-auto w-full max-w-[400px] rounded-lg shadow-lg"
+            style={{ aspectRatio: `${LAYOUT.width} / ${LAYOUT.height}` }}
+          />
+        </div>
       </div>
 
       {flagless.length > 0 && (

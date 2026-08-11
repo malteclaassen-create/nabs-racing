@@ -19,7 +19,7 @@ const RACE = { id: "r1", number: 1, track: "Hockenheim", seasonId: "s8" };
 
 const driver = (id, name) => ({ driverId: id, driver: { name }, status: "FINISHED" });
 
-function makePrisma({ race = RACE, results = null, series = { slug: "friday-f1" } } = {}) {
+function makePrisma({ race = RACE, results = null, series = { slug: "friday-f1" }, active = true } = {}) {
   return {
     race: { findUnique: async () => race },
     raceResult: {
@@ -32,7 +32,7 @@ function makePrisma({ race = RACE, results = null, series = { slug: "friday-f1" 
           { driverId: "d5", driver: { name: "Gone" }, status: "DNF", position: null },
         ],
     },
-    season: { findUnique: async () => ({ id: "s8", series }) },
+    season: { findUnique: async () => ({ id: "s8", number: 8, isActive: active, series }) },
     $queryRawUnsafe: async () => [{ driverOfTheDayId: null, driverOfTheDayBy: null }],
   };
 }
@@ -81,6 +81,15 @@ describe("buildResultsPost", () => {
     expect(short.endsWith("🥉 **Maltegoat**")).toBe(true); // and no trailing blank line
   });
 
+  it("names the season in the link for every season but the active one", async () => {
+    // Without it the round belongs to whichever season the reader is on, and
+    // every link already posted breaks the day the next season goes active.
+    const { short } = await buildResultsPost(makePrisma({ active: false }), "r1", {
+      origin: "https://league.example",
+    });
+    expect(short).toContain("(https://league.example/s/friday-f1/races?season=8&race=r1)");
+  });
+
   it("still links a race whose series has no slug, without inventing one", async () => {
     const { short } = await buildResultsPost(makePrisma({ series: null }), "r1", {
       origin: "https://league.example",
@@ -111,7 +120,19 @@ describe("buildResultsPost", () => {
     expect(short).toContain("🥈 <@222>"); // d2, demoted
   });
 
-  it("copes with a round that has no number", async () => {
+  it("names a training session and a special event for what they are", async () => {
+    // Both can be imported and both get announced; neither has a round number,
+    // and the heading used to read "ROUND ? - SPA".
+    const training = await buildResultsPost(makePrisma({ race: { ...RACE, number: null, type: "TRAINING" } }), "r1");
+    expect(training.short.startsWith("**TRAINING - HOCKENHEIM**")).toBe(true);
+    const special = await buildResultsPost(
+      makePrisma({ race: { ...RACE, number: null, type: "SPECIAL", isSpecialEvent: true } }),
+      "r1"
+    );
+    expect(special.short.startsWith("**SPECIAL EVENT - HOCKENHEIM**")).toBe(true);
+  });
+
+  it("copes with a championship round that somehow has no number", async () => {
     const prisma = makePrisma({ race: { ...RACE, number: null } });
     const { short } = await buildResultsPost(prisma, "r1");
     expect(short.startsWith("**ROUND ? - HOCKENHEIM**")).toBe(true);

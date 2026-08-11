@@ -28,13 +28,21 @@ function fmtLap(ms) {
 // `origin` comes from the request rather than a setting, the same way the
 // canonical tags do it, so it is right on the live domain and right in a local
 // preview, without anybody maintaining a second copy of the address.
+// The season number rides along for every season but the active one, in that
+// order, because that is the address lib/seo.js calls canonical and the one
+// lib/siteIndex.js puts in the sitemap. Without it the round belongs to
+// whichever season the reader happens to be on: the races page looks the id up
+// in the season it has loaded, does not find it, and quietly shows a different
+// round instead. That also happens to every link already posted, the moment the
+// next season goes active — which is exactly why the number has to be in there.
 async function raceLink(prisma, race, origin) {
   if (!origin || !race?.seasonId) return null;
   const season = await prisma.season
     .findUnique({ where: { id: race.seasonId }, include: { series: true } })
     .catch(() => null);
   const slug = season?.series?.slug;
-  return `${origin}${slug ? `/s/${slug}` : ""}/races?race=${race.id}`;
+  const seasonQ = season && !season.isActive && season.number != null ? `season=${season.number}&` : "";
+  return `${origin}${slug ? `/s/${slug}` : ""}/races?${seasonQ}race=${race.id}`;
 }
 
 // Returns { full, short, mentions }, or null when the race doesn't exist or has
@@ -70,7 +78,19 @@ export async function buildResultsPost(prisma, raceId, { origin = null } = {}) {
   const tel = (r) => telemetry.get(r.driverId) || {};
 
   const MEDALS = ["🥇", "🥈", "🥉"];
-  const heading = `**ROUND ${race.number ?? "?"} - ${String(race.track || "").toUpperCase()}**`;
+  // A championship round is "ROUND 7". A training session or a special event has
+  // no round number, and "ROUND ? - SPA" is what it used to say — so they are
+  // named for what they are instead of for the number they do not have.
+  const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+  const what =
+    kind === "CHAMPIONSHIP" && race.number != null
+      ? `ROUND ${race.number}`
+      : kind === "SPECIAL"
+        ? "SPECIAL EVENT"
+        : kind === "TRAINING"
+          ? "TRAINING"
+          : "ROUND ?";
+  const heading = `**${what} - ${String(race.track || "").toUpperCase()}**`;
 
   const lines = [];
   lines.push(heading);
