@@ -80,7 +80,11 @@ export const LAYOUT = {
     gap: 25,
     numW: 85,
     numSize: 49, // 36px of ink in the file
-    flagX: 118, // where the flag starts, from the page's left edge
+    // The flag is CENTRED in the space between the number block and the name
+    // rather than pinned to an x of its own: with a fixed left edge it sat 8px
+    // off the number block and 21px off the name, which reads as the flag
+    // having drifted left. Derived, so it stays even if the number block or the
+    // name column moves.
     flagW: 50,
     nameX: 189,
     nameSize: 40, // 31px of ink
@@ -549,7 +553,8 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     // name starts at the same x either way, so the column of names lines up
     // whether or not a driver has a country on file.
     if (T.row.flags && row.flag) {
-      drawFlag(ctx, row.flag, R.flagX, y + R.height / 2, R.flagW);
+      const flagX = barX + (R.nameX - barX - R.flagW) / 2;
+      drawFlag(ctx, row.flag, flagX, y + R.height / 2, R.flagW);
     }
     const nameX = R.nameX;
     const markLeft = R.markCx - R.markMaxW / 2;
