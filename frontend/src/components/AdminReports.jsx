@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { CardBar, ErrorBox, Field, Notice } from "./ui.jsx";
+import { useAsk } from "./overlay.jsx";
 import { fmtStamp } from "../utils/format.js";
 
 // ---------------------------------------------------------------------------
@@ -14,11 +15,16 @@ import { fmtStamp } from "../utils/format.js";
 //
 // Recording a decision here does NOT put the penalty on the driver. The seconds
 // live in the results editor, which owns the points; this records what was
-// decided and tells the people involved. The results editor shows what was
-// decided here beside its own penalty column, so the gap between "we agreed
-// five seconds" and "five seconds are in the table" is visible instead of being
+// decided and tells the people involved. Edit Results shows what was decided
+// here beside its own penalty column, so the gap between "we agreed five
+// seconds" and "five seconds are in the table" is visible instead of being
 // something you have to remember.
 // ---------------------------------------------------------------------------
+
+// Fired whenever a report is decided, deleted or answered here, so the counter
+// on the tab strip takes itself down instead of waiting for a page reload.
+export const REPORTS_CHANGED_EVENT = "nabs-reports-changed";
+const changed = () => window.dispatchEvent(new Event(REPORTS_CHANGED_EVENT));
 
 const STATUS = [
   { key: "NEW", label: "Waiting", cls: "bg-surface2 text-light" },
@@ -27,28 +33,49 @@ const STATUS = [
   { key: "NO_PENALTY", label: "No penalty", cls: "bg-emerald-500/15 text-ok" },
   { key: "DISMISSED", label: "Closed", cls: "bg-surface2 text-light" },
 ];
+const DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
 const uiOf = (s) => STATUS.find((x) => x.key === s) || STATUS[0];
 const when = (iso) => (iso ? fmtStamp(iso) : "");
 
-function Thread({ id, onChanged }) {
+function Thread({ id, drivers, onChanged }) {
+  const ask = useAsk();
   const [data, setData] = useState(null);
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [msg, setMsg] = useState(null);
   const [viewer, setViewer] = useState("");
+  // The decision is edited as a whole and sent in ONE go. It used to post on
+  // every keystroke's blur and on the dropdown's change, which meant the
+  // drivers were told the outcome before the reasoning had been typed, and the
+  // corrected version arrived as a repeat and was thrown away.
+  const [draft, setDraft] = useState(null);
 
   const load = useCallback(() => {
-    api.adminReport(id).then(setData).catch((e) => setError(e.message));
+    api
+      .adminReport(id)
+      .then((d) => {
+        setData(d);
+        setDraft({
+          status: d.report.status,
+          penaltySeconds: d.report.penaltySeconds ?? "",
+          verdict: d.report.verdict || "",
+        });
+      })
+      .catch((e) => setError(e.message));
   }, [id]);
   useEffect(load, [load]);
 
-  async function run(fn) {
+  async function run(fn, doneMsg) {
     setBusy(true);
     setError(null);
+    setMsg(null);
     try {
       await fn();
       load();
       onChanged?.();
+      changed();
+      if (doneMsg) setMsg(doneMsg);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -57,13 +84,50 @@ function Thread({ id, onChanged }) {
   }
 
   if (error) return <ErrorBox message={error} />;
-  if (!data) return <p className="px-5 py-3 text-sm text-light">Loading…</p>;
+  if (!data || !draft) return <p className="px-5 py-3 text-sm text-light">Loading…</p>;
   const r = data.report;
+  const dirty =
+    draft.status !== r.status ||
+    String(draft.penaltySeconds) !== String(r.penaltySeconds ?? "") ||
+    draft.verdict !== (r.verdict || "");
+  const willTell = DECIDED.includes(draft.status);
 
   return (
     <div className="space-y-4 px-5 py-4">
+      {msg && <Notice kind="success">{msg}</Notice>}
+
       {/* what was reported */}
       <p className="whitespace-pre-line text-sm leading-relaxed text-dark">{r.body}</p>
+
+      {/* who it is about. Often nobody, on an in-game report or when the
+          reporter wrote "the blue car" — and until this is set, the other
+          driver cannot see the thread they are the subject of. */}
+      <div className="flex flex-wrap items-end gap-2 rounded-lg bg-surface2/60 p-3">
+        <Field label="The report is about" tone="plain">
+          <select
+            className="input w-auto min-w-52 py-1.5 text-sm"
+            value={r.accusedDriverId || ""}
+            disabled={busy}
+            onChange={(e) => {
+              const d = drivers.find((x) => x.id === e.target.value);
+              run(
+                () => api.setReportAccused(id, e.target.value || "", d?.name || ""),
+                e.target.value ? `${d?.name} can now read this and has been told.` : "Nobody is named on this now."
+              );
+            }}
+          >
+            <option value="">Nobody named{r.accusedName ? ` (it says "${r.accusedName}")` : ""}</option>
+            {drivers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <p className="min-w-52 flex-1 text-xs leading-relaxed text-light">
+          Naming a driver is what lets them into this thread, and they get told. Nobody else can see it.
+        </p>
+      </div>
 
       {/* the conversation */}
       <ul className="space-y-2">
@@ -93,7 +157,7 @@ function Thread({ id, onChanged }) {
         <button
           className="btn-secondary"
           disabled={busy || !reply.trim()}
-          onClick={() => run(async () => { await api.replyToReport(id, reply.trim()); setReply(""); })}
+          onClick={() => run(async () => { await api.adminReplyToReport(id, reply.trim()); setReply(""); })}
         >
           Send
         </button>
@@ -106,9 +170,9 @@ function Thread({ id, onChanged }) {
           <Field label="Outcome" tone="plain">
             <select
               className="input py-1.5 text-sm"
-              value={r.status}
+              value={draft.status}
               disabled={busy}
-              onChange={(e) => run(() => api.decideReport(id, { ...r, status: e.target.value }))}
+              onChange={(e) => setDraft({ ...draft, status: e.target.value })}
             >
               {STATUS.map((s) => (
                 <option key={s.key} value={s.key}>{s.label}</option>
@@ -120,12 +184,9 @@ function Thread({ id, onChanged }) {
               type="number"
               min="0"
               className="input w-24 py-1.5 text-sm"
-              defaultValue={r.penaltySeconds ?? ""}
+              value={draft.penaltySeconds}
               disabled={busy}
-              onBlur={(e) => {
-                const v = e.target.value === "" ? null : Number(e.target.value);
-                if (v !== r.penaltySeconds) run(() => api.decideReport(id, { ...r, penaltySeconds: v }));
-              }}
+              onChange={(e) => setDraft({ ...draft, penaltySeconds: e.target.value })}
             />
           </Field>
         </div>
@@ -133,15 +194,39 @@ function Thread({ id, onChanged }) {
           aria-label="What the stewards decided"
           className="input mt-2 h-16 resize-none"
           placeholder="What you decided, in the drivers' words rather than yours…"
-          defaultValue={r.verdict || ""}
+          value={draft.verdict}
           disabled={busy}
-          onBlur={(e) => {
-            if (e.target.value !== (r.verdict || "")) run(() => api.decideReport(id, { ...r, verdict: e.target.value }));
-          }}
+          onChange={(e) => setDraft({ ...draft, verdict: e.target.value })}
         />
-        <p className="mt-1.5 text-xs text-light">
-          Recording seconds here does not put them on the driver. Enter the penalty in Edit Results as well.
-        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <button
+            className="btn-primary"
+            disabled={busy || !dirty}
+            onClick={() =>
+              run(
+                () =>
+                  api.decideReport(id, {
+                    status: draft.status,
+                    penaltySeconds: draft.penaltySeconds === "" ? null : Number(draft.penaltySeconds),
+                    verdict: draft.verdict,
+                  }),
+                willTell ? "Saved. Both drivers have been told." : "Saved."
+              )
+            }
+          >
+            {busy ? "Saving…" : "Save decision"}
+          </button>
+          {dirty && (
+            <button className="btn-secondary" disabled={busy} onClick={load}>
+              Undo
+            </button>
+          )}
+          <p className="min-w-52 flex-1 text-xs leading-relaxed text-light">
+            {willTell
+              ? "Saving tells the drivers, once, with the outcome and this text. Recording seconds here does not put them on the driver: enter the penalty in Edit Results as well, where it is listed for you to check."
+              : "Nothing is sent until the outcome is one of the three endings."}
+          </p>
+        </div>
       </div>
 
       {/* who else may read it */}
@@ -150,13 +235,13 @@ function Thread({ id, onChanged }) {
           Who can read this
         </div>
         <p className="text-xs leading-relaxed text-light">
-          The driver who filed it, the driver it names and every admin, always. Add a Discord user ID to let one more
-          person in, for this report only.
+          The driver who filed it, the driver it names and every admin, always. Add one more person for this
+          report only. They get told they were added.
         </p>
         <ul className="mt-2 flex flex-wrap gap-2">
           {data.viewers.map((v) => (
             <li key={v.discordId} className="flex items-center gap-1.5 rounded-full bg-surface2 px-2.5 py-1 text-xs">
-              <span className="font-mono text-medium">{v.name || v.discordId}</span>
+              <span className="font-semibold text-medium">{v.name || v.discordId}</span>
               <button
                 className="transition text-light hover:text-bad"
                 aria-label={`Remove ${v.name || v.discordId}`}
@@ -169,21 +254,59 @@ function Thread({ id, onChanged }) {
           ))}
         </ul>
         <div className="mt-2 flex flex-wrap gap-2">
-          <input
-            aria-label="Discord user ID"
-            className="input w-56 py-1.5 font-mono text-xs"
-            placeholder="Discord user ID"
+          {/* By NAME. It used to want an 18-digit Discord user ID typed by
+              hand, which meant leaving the site, turning on developer mode and
+              copying a number — for what is meant to be "let the team mate who
+              saw it read this". */}
+          <select
+            aria-label="Let a driver read this report"
+            className="input w-auto max-w-64 py-1.5 text-sm"
             value={viewer}
-            onChange={(e) => setViewer(e.target.value.trim())}
-          />
+            disabled={busy}
+            onChange={(e) => setViewer(e.target.value)}
+          >
+            <option value="">Pick a driver…</option>
+            {drivers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
           <button
             className="btn-secondary py-1.5 text-sm"
             disabled={busy || !viewer}
-            onClick={() => run(async () => { await api.addReportViewer(id, viewer); setViewer(""); })}
+            onClick={() =>
+              run(async () => {
+                await api.addReportViewer(id, { driverId: viewer });
+                setViewer("");
+              }, "Let in, and told.")
+            }
           >
             Let in
           </button>
         </div>
+      </div>
+
+      {/* removing it entirely */}
+      <div className="border-t border-border pt-4">
+        <button
+          className="transition text-xs font-semibold text-light hover:text-bad"
+          disabled={busy}
+          onClick={async () => {
+            if (
+              !(await ask({
+                title: "Delete this report?",
+                body: "The thread and everything written in it go with it. For a duplicate or something filed by mistake — a real report that came to nothing should be closed with 'No penalty' instead, so the drivers can still see what was decided.",
+                danger: true,
+                confirmLabel: "Delete report",
+              }))
+            )
+              return;
+            run(() => api.deleteReport(id), null);
+          }}
+        >
+          Delete this report
+        </button>
       </div>
     </div>
   );
@@ -191,14 +314,31 @@ function Thread({ id, onChanged }) {
 
 export default function AdminReports() {
   const { data, loading, error, reload } = useApi(useCallback(() => api.adminReports(), []));
+  const { data: teams } = useApi(useCallback(() => api.teams(), []));
+  const { data: ingest, reload: reloadIngest } = useApi(useCallback(() => api.reportIngest(), []));
   const [openId, setOpenId] = useState(null);
+  const [show, setShow] = useState("open");
+  const [busy, setBusy] = useState(false);
+
+  // Everybody who could be named in a report, once, sorted.
+  const drivers = useMemo(() => {
+    const out = new Map();
+    for (const t of teams || []) for (const d of t.drivers || []) if (!out.has(d.id)) out.set(d.id, d);
+    return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [teams]);
+
+  const visible = useMemo(() => {
+    const all = data?.reports || [];
+    if (show === "all") return all;
+    if (show === "decided") return all.filter((r) => DECIDED.includes(r.status));
+    return all.filter((r) => !DECIDED.includes(r.status));
+  }, [data, show]);
 
   // By round, newest race first, with anything that names no race at the end.
   const groups = useMemo(() => {
-    if (!data) return [];
-    const byRace = new Map((data.races || []).map((r) => [r.id, r]));
+    const byRace = new Map((data?.races || []).map((r) => [r.id, r]));
     const out = new Map();
-    for (const rep of data.reports) {
+    for (const rep of visible) {
       const key = rep.raceId || "";
       if (!out.has(key)) out.set(key, { race: byRace.get(rep.raceId) || null, reports: [] });
       out.get(key).reports.push(rep);
@@ -208,6 +348,15 @@ export default function AdminReports() {
       if (!b.race) return -1;
       return new Date(b.race.date || 0) - new Date(a.race.date || 0);
     });
+  }, [visible, data]);
+
+  const counts = useMemo(() => {
+    const all = data?.reports || [];
+    return {
+      open: all.filter((r) => !DECIDED.includes(r.status)).length,
+      decided: all.filter((r) => DECIDED.includes(r.status)).length,
+      all: all.length,
+    };
   }, [data]);
 
   return (
@@ -215,10 +364,35 @@ export default function AdminReports() {
       {error && <ErrorBox message={error} onRetry={reload} />}
       {loading && !data && <p className="text-sm text-light">Loading…</p>}
 
-      {data && data.reports.length === 0 && (
+      {data && (
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { key: "open", label: `Open (${counts.open})` },
+            { key: "decided", label: `Decided (${counts.decided})` },
+            { key: "all", label: `All (${counts.all})` },
+          ].map((t) => (
+            <button
+              key={t.key}
+              className={`rounded-lg border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
+                show === t.key
+                  ? "border-brand bg-brand/10 text-dark"
+                  : "border-border text-light hover:border-link hover:text-dark"
+              }`}
+              onClick={() => setShow(t.key)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {data && visible.length === 0 && (
         <Notice kind="info">
-          No incident reports yet. Drivers file them from the flag button in the corner of the site, or from the
-          Report button on a round.
+          {counts.all === 0
+            ? "No incident reports yet. Drivers file them from the report button, or from a round on the Races page."
+            : show === "open"
+              ? "Nothing waiting. Everything filed has been decided."
+              : "Nothing decided yet."}
         </Notice>
       )}
 
@@ -248,6 +422,9 @@ export default function AdminReports() {
                         in-game
                       </span>
                     )}
+                    {r.status === "PENALTY" && r.penaltySeconds > 0 && (
+                      <span className="pill bg-red-500/15 text-bad">+{r.penaltySeconds}s</span>
+                    )}
                     <span className="text-sm font-semibold text-dark">
                       {r.reporterName || "Someone"}
                       {r.accusedName ? ` → ${r.accusedName}` : ""}
@@ -260,13 +437,79 @@ export default function AdminReports() {
                       {when(r.createdAt)}
                     </span>
                   </button>
-                  {open && <Thread id={r.id} onChanged={reload} />}
+                  {open && <Thread id={r.id} drivers={drivers} onChanged={reload} />}
                 </li>
               );
             })}
           </ul>
         </div>
       ))}
+
+      {/* the in-game app */}
+      <div className="card overflow-hidden">
+        <CardBar title="Reports from inside the race" />
+        <div className="space-y-3 p-5">
+          <p className="text-sm leading-relaxed text-light">
+            The webPenalty app can post a report the moment a driver presses its button mid-race, so nobody has
+            to remember the lap afterwards. Switching this on generates a key and gives you a URL to paste into
+            the app&rsquo;s settings. Until then that door answers nothing at all.
+          </p>
+          {ingest?.configured ? (
+            <>
+              <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                Paste this into webPenalty
+              </label>
+              <input
+                readOnly
+                aria-label="webPenalty URL"
+                className="input w-full font-mono text-xs"
+                value={`${window.location.origin}/api/reports/ingest?key=${ingest.key}`}
+                onFocus={(e) => e.target.select()}
+              />
+              <p className="text-xs leading-relaxed text-light">
+                Treat it like a password: anyone with this URL can file reports. Switching off and on again gives
+                a new one and stops the old.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-light">In-game reporting is off.</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="btn-secondary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await api.setReportIngest(!ingest?.configured);
+                  reloadIngest();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {ingest?.configured ? "Switch off" : "Switch on and make a key"}
+            </button>
+            {ingest?.configured && (
+              <button
+                className="btn-secondary"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await api.setReportIngest(true);
+                    reloadIngest();
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                New key
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

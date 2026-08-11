@@ -51,6 +51,9 @@ const Tools = lazy(() => import("./pages/Tools.jsx"));
 // Your own feedback threads. Only ever opened from a notification or the
 // feedback panel, so it has no business in the initial bundle.
 const MyFeedback = lazy(() => import("./pages/MyFeedback.jsx"));
+// Your own incident-report threads. Every report notification links here
+// (/reports?id=…), and on a phone it is the way in.
+const MyReports = lazy(() => import("./pages/MyReports.jsx"));
 
 // Keeps the browser-tab title in sync with the page and the season being viewed.
 //
@@ -223,6 +226,7 @@ function AppRoutes() {
         {/* Your own feedback threads. Reached from the notification the admins'
             answer sends (/feedback?id=…) and from the feedback panel itself. */}
         <Route path="/feedback" element={<MyFeedback />} />
+        <Route path="/reports" element={<MyReports />} />
         {/* The member's private driver area (login required). */}
         <Route path="/cockpit" element={<Cockpit />} />
         {/* Focused editor for just the driver's rating card (linked from /profile). */}

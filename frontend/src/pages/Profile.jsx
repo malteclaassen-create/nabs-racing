@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { openFeedback } from "../components/FeedbackWidget.jsx";
+import { REPORTS_OPEN_TO_MEMBERS } from "../components/ReportWidget.jsx";
 import { SettingsDrawer } from "../components/SettingsPanel.jsx";
 import { CockpitPanels, COCKPIT_TABS } from "./Cockpit.jsx";
 import Tools from "./Tools.jsx";
@@ -742,6 +743,9 @@ function memberTabs(isAdmin) {
     // ABOUT the site rather than in it belong anyway. It opens the same panel
     // the burger menu opens, hence an action rather than a section.
     { key: "feedback", label: "Feedback" },
+    // Stewarding threads. A page rather than a panel, because it is where a
+    // notification lands and a notification has to have somewhere to land.
+    ...(REPORTS_OPEN_TO_MEMBERS ? [{ key: "reports", label: "My reports" }] : []),
     { key: "settings", label: "Settings" },
     ...(isAdmin ? [{ key: "admin", label: "Admin" }] : []),
   ];
@@ -759,6 +763,7 @@ function MyProfile() {
   const setTab = (key) => {
     if (key === "settings") return setSettingsOpen(true); // drawer, not a page section
     if (key === "feedback") return openFeedback(); // the panel, not a section
+    if (key === "reports") return navigate("/reports"); // its own page, see above
     if (key === "admin") return navigate("/admin");
     setParams(key === "profile" ? {} : { tab: key }, { replace: true });
   };

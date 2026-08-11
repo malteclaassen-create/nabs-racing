@@ -2,11 +2,35 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import {
-  dbCreateReport, dbGetReport, dbReportsFor, dbMessages, dbAddMessage, canRead,
+  dbCreateReport, dbGetReport, dbReportsFor, dbMessages, dbAddMessage, canRead, dbDeleteReport,
 } from "../lib/reports.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
 
 const router = Router();
+
+// In-memory rate limit, the same shape and reasoning as the feedback one: it
+// only has to make flooding the table impractical, not survive a restart.
+// Reports are rarer than feedback and each one pings every admin, so the
+// allowance is smaller.
+const WINDOW_MS = 60 * 60 * 1000;
+const MAX_PER_WINDOW = 5;
+const filedBy = new Map(); // discord id -> { count, first }
+
+function tooMany(who) {
+  const rec = filedBy.get(who);
+  if (!rec) return false;
+  if (Date.now() - rec.first > WINDOW_MS) {
+    filedBy.delete(who);
+    return false;
+  }
+  return rec.count >= MAX_PER_WINDOW;
+}
+
+function record(who) {
+  const rec = filedBy.get(who);
+  if (!rec || Date.now() - rec.first > WINDOW_MS) filedBy.set(who, { count: 1, first: Date.now() });
+  else rec.count += 1;
+}
 
 // ---------------------------------------------------------------------------
 // The member's side of incident reports. Everything here is scoped to the
@@ -31,6 +55,12 @@ router.post("/", optionalUser, async (req, res, next) => {
   try {
     const me = caller(req);
     if (!me.discordId) return res.status(401).json({ error: "Sign in with Discord to file a report" });
+    // Counted per ACCOUNT rather than per IP: a report needs a Discord login,
+    // so there is a real identity to count, and two drivers behind one router
+    // must not use up each other's allowance.
+    if (tooMany(me.discordId)) {
+      return res.status(429).json({ error: "That is a lot of reports at once. Try again in a while." });
+    }
     const b = req.body || {};
     const report = await dbCreateReport(prisma, {
       raceId: b.raceId || null,
@@ -42,9 +72,44 @@ router.post("/", optionalUser, async (req, res, next) => {
       reporterName: me.name,
       source: "SITE",
     });
-    res.json({ ok: true, report });
+    record(me.discordId);
+    // `accusedReachable` is false when the driver named has never signed in
+    // with Discord: the thread exists, the stewards can see it, but the other
+    // driver cannot be told and cannot answer. The person filing is told that
+    // rather than left to assume it landed.
+    res.json({ ok: true, report, accusedReachable: report.accusedReachable !== false });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// DELETE /api/reports/:id — withdrawing one you filed by mistake.
+//
+// Only the reporter, and only while nothing has happened to it: once the
+// stewards have opened it or answered, it is part of a conversation with other
+// people in it and taking it away silently is not the reporter's to do. They
+// can say so in the thread instead.
+router.delete("/:id", optionalUser, async (req, res, next) => {
+  try {
+    const me = caller(req);
+    const report = await dbGetReport(prisma, req.params.id);
+    if (!report || !(await canRead(prisma, report, me.discordId, me.isAdmin))) {
+      return res.status(404).json({ error: "Report not found" });
+    }
+    if (String(report.reporterDiscordId || "") !== String(me.discordId || "")) {
+      return res.status(403).json({ error: "Only the driver who filed a report can withdraw it" });
+    }
+    if (report.status !== "NEW") {
+      return res.status(409).json({ error: "The stewards have already picked this up. Say so in the thread instead." });
+    }
+    const messages = await dbMessages(prisma, report.id);
+    if (messages.length) {
+      return res.status(409).json({ error: "Somebody has answered this already. Say so in the thread instead." });
+    }
+    await dbDeleteReport(prisma, report.id);
+    res.json({ ok: true });
+  } catch (e) {
     next(e);
   }
 });
@@ -119,6 +184,10 @@ router.post("/:id/messages", optionalUser, async (req, res, next) => {
 // value that only creates a report, never fine for anything that reads one,
 // which is why this endpoint only writes.
 //
+// The round is filled in from whatever is live (or last ran), and the clock
+// time the app sends is turned into a real timestamp against today's date on
+// this machine — the one that just received the post.
+//
 // A report arriving this way names its SENDER, not an accused: mid-race,
 // nobody types who hit them. It lands as "someone reported an incident at
 // 21:04:11" for the admins to look up in the replay, and the driver can add
@@ -145,14 +214,27 @@ router.post("/ingest", async (req, res, next) => {
     const hit = drivers.find((d) => norm(d.name) === norm(rawName) || norm(d.discordName) === norm(rawName));
     const discordIds = hit ? await discordIdsForDrivers(prisma, [hit.id]).catch(() => new Map()) : new Map();
 
+    // The round it belongs to: whatever race is currently live, or the most
+    // recent one. Without this an in-game report lands under "no round given"
+    // and an admin has to work out which evening it was from the timestamp.
+    const raceId = await currentRaceId(prisma);
+
+    // The app sends a wall clock ("21:04:11"), not a date. Combined with
+    // today's date on the SERVER, which is the machine that just received it,
+    // so an admin gets a real timestamp to scrub the replay to instead of three
+    // numbers in a sentence. Kept in the body too, in case the date is wrong
+    // for a session that ran past midnight.
+    const incidentAt = clockToday(rawTime);
+
     const report = await dbCreateReport(prisma, {
       body:
         String(req.body?.content || "").trim() ||
         `Reported from inside the race at ${rawTime || "an unknown time"}. The driver can add what happened below.`,
       reporterDiscordId: hit ? discordIds.get(hit.id) || null : null,
       reporterName: rawName,
+      raceId,
       source: "INGAME",
-      incidentAt: null, // the app sends a clock time, not a date; rawTime is in the body
+      incidentAt,
     });
     res.json({ ok: true, id: report.id });
   } catch (e) {
@@ -160,5 +242,34 @@ router.post("/ingest", async (req, res, next) => {
     next(e);
   }
 });
+
+// "21:04:11" against today's date here. Anything unparseable is simply no
+// timestamp, which is better than a wrong one.
+function clockToday(hhmmss) {
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(hhmmss || "").trim());
+  if (!m) return null;
+  const d = new Date();
+  d.setHours(Number(m[1]), Number(m[2]), Number(m[3] || 0), 0);
+  return d.toISOString();
+}
+
+// The race an in-game report belongs to: one running right now, else the most
+// recent one that has started. Best-effort — a report with no round is still a
+// report, and an admin can move it.
+async function currentRaceId(prisma) {
+  try {
+    const now = Date.now();
+    const races = await prisma.race.findMany({
+      where: { date: { not: null } },
+      select: { id: true, date: true },
+      orderBy: { date: "desc" },
+      take: 20,
+    });
+    const started = races.filter((r) => new Date(r.date).getTime() <= now + 60 * 60 * 1000);
+    return started[0]?.id || null;
+  } catch {
+    return null;
+  }
+}
 
 export default router;

@@ -76,7 +76,7 @@ const when = (iso) => {
 };
 
 // One thread, opened from the list.
-function Thread({ id, onBack }) {
+function Thread({ id, onBack, onWithdrawn }) {
   const [data, setData] = useState(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -102,9 +102,22 @@ function Thread({ id, onBack }) {
     }
   }
 
+  async function withdraw() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.withdrawReport(id);
+      onWithdrawn?.();
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
   if (error) return <p className="text-sm text-bad">{error}</p>;
   if (!data) return <p className="text-sm text-light">Loading…</p>;
   const s = STATUS_UI[data.report.status] || STATUS_UI.NEW;
+  const canWithdraw = data.report.status === "NEW" && data.messages.length === 0;
 
   return (
     <div className="space-y-3">
@@ -159,6 +172,19 @@ function Thread({ id, onBack }) {
         <button className="btn-primary w-full" disabled={busy || !text.trim()} onClick={send}>
           {busy ? "Sending…" : "Send"}
         </button>
+        {/* Filed by mistake. Only while nothing has happened to it: once the
+            stewards have picked it up or somebody has answered, it is a
+            conversation with other people in it and taking it away is not one
+            person's to do. The server enforces the same rule. */}
+        {canWithdraw && (
+          <button
+            className="w-full text-xs font-semibold text-light transition hover:text-bad"
+            disabled={busy}
+            onClick={withdraw}
+          >
+            Withdraw this report
+          </button>
+        )}
       </div>
     </div>
   );
@@ -177,6 +203,10 @@ export default function ReportWidget() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [sent, setSent] = useState(false);
+  // Set when the driver just named has never signed in with Discord: the thread
+  // exists and the stewards can see it, but there is no account to tell and
+  // nobody on the other side to answer. Better said out loud than assumed.
+  const [unreachable, setUnreachable] = useState(null);
   const panelRef = useRef(null);
   const fabRef = useRef(null);
   const textRef = useRef(null);
@@ -207,7 +237,22 @@ export default function ReportWidget() {
   // button and the roster is not small.
   useEffect(() => {
     if (!open || !isLoggedIn) return;
-    api.races().then((r) => setRaces((r || []).filter((x) => x.isCompleted).slice(0, 40))).catch(() => {});
+    // Every round that has HAPPENED, not only the ones with a result imported.
+    // The race you want to report is the one you finished twenty minutes ago,
+    // and the result does not usually go in until the next day — so filtering
+    // on isCompleted hid exactly the round anybody would be filing about.
+    api
+      .races()
+      .then((r) => {
+        const now = Date.now();
+        setRaces(
+          (r || [])
+            .filter((x) => x.isCompleted || (x.date && new Date(x.date).getTime() <= now))
+            .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+            .slice(0, 40)
+        );
+      })
+      .catch(() => {});
     api.teams().then((t) => setDrivers((t || []).flatMap((x) => x.drivers.map((d) => ({ ...d, team: x.name }))))).catch(() => {});
     api.myReports().then((r) => setMine(r.reports || [])).catch(() => {});
   }, [open, isLoggedIn]);
@@ -217,7 +262,7 @@ export default function ReportWidget() {
     setError(null);
     try {
       const accused = drivers.find((d) => d.id === form.accusedDriverId);
-      await api.createReport({
+      const res = await api.createReport({
         raceId: form.raceId || null,
         lap: form.lap === "" ? null : Number(form.lap),
         accusedDriverId: form.accusedDriverId || null,
@@ -225,6 +270,7 @@ export default function ReportWidget() {
         body: form.body,
       });
       setSent(true);
+      setUnreachable(res?.accusedReachable === false ? accused?.name || "That driver" : null);
       setForm({ raceId: "", lap: "", accusedDriverId: "", body: "" });
       api.myReports().then((r) => setMine(r.reports || [])).catch(() => {});
     } catch (e) {
@@ -277,7 +323,14 @@ export default function ReportWidget() {
                 told how it went.
               </p>
             ) : openId ? (
-              <Thread id={openId} onBack={() => setOpenId(null)} />
+              <Thread
+                id={openId}
+                onBack={() => setOpenId(null)}
+                onWithdrawn={() => {
+                  setOpenId(null);
+                  api.myReports().then((r) => setMine(r.reports || [])).catch(() => {});
+                }}
+              />
             ) : (
               <div className="space-y-4">
                 <SlidingTabs
@@ -297,8 +350,16 @@ export default function ReportWidget() {
                   (sent ? (
                     <div className="space-y-3">
                       <p className="text-sm leading-relaxed text-ok">
-                        Sent. The stewards can see it now, and so can the driver you named.
+                        {unreachable
+                          ? "Sent. The stewards can see it now."
+                          : "Sent. The stewards can see it now, and so can the driver you named."}
                       </p>
+                      {unreachable && (
+                        <p className="text-sm leading-relaxed text-light">
+                          {unreachable} has never signed in with Discord, so they cannot be told about this or
+                          answer it. The stewards will have to reach them another way.
+                        </p>
+                      )}
                       <button className="btn-secondary w-full" onClick={() => setView("mine")}>
                         See my reports
                       </button>

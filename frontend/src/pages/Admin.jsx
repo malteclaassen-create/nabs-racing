@@ -22,9 +22,10 @@ import AdminMembers from "../components/AdminMembers.jsx";
 import AdminNotifications from "../components/AdminNotifications.jsx";
 import AdminAllTime from "../components/AdminAllTime.jsx";
 import AdminFeedback, { FEEDBACK_CHANGED_EVENT } from "../components/AdminFeedback.jsx";
-import AdminReports from "../components/AdminReports.jsx";
+import AdminReports, { REPORTS_CHANGED_EVENT } from "../components/AdminReports.jsx";
 import AdminSearch from "../components/AdminSearch.jsx";
 import RacePreview from "../components/RacePreview.jsx";
+import StewardPenalties from "../components/StewardPenalties.jsx";
 // The tab strip and the searchable list of what each tab does live together in
 // one place, so a new tab and its search entries are added side by side.
 import { TAB_GROUPS } from "../data/adminIndex.js";
@@ -127,6 +128,25 @@ function FeedbackCount() {
     return () => window.removeEventListener(FEEDBACK_CHANGED_EVENT, reload);
   }, [reload]);
   const n = data?.newCount || 0;
+  if (!n) return null;
+  return (
+    <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 font-mono text-[10px] font-bold leading-none text-ink">
+      {n > 9 ? "9+" : n}
+    </span>
+  );
+}
+
+// The same, for incident reports: how many are still waiting on a decision.
+// A report sitting unnoticed is worse than a bug report sitting unnoticed —
+// two drivers are waiting on the other end of it, and one of them was accused
+// of something.
+function ReportCount() {
+  const { data, reload } = useApi(useCallback(() => api.adminReports(), []));
+  useEffect(() => {
+    window.addEventListener(REPORTS_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(REPORTS_CHANGED_EVENT, reload);
+  }, [reload]);
+  const n = data?.open || 0;
   if (!n) return null;
   return (
     <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 font-mono text-[10px] font-bold leading-none text-ink">
@@ -263,6 +283,7 @@ export default function Admin() {
                 >
                   {t.label}
                   {t.id === "feedback" && <FeedbackCount />}
+                  {t.id === "reports" && <ReportCount />}
                 </button>
               ))}
             </div>
@@ -1741,6 +1762,12 @@ function EditResults() {
             most-incidents and most-laps-led facts. Entering times never changes the saved finishing order; only
             a time penalty re-sorts.
           </p>
+
+          {/* What the stewards decided, against what is actually in the table
+              above. The decision deliberately does not write itself into the
+              classification, so this is the only thing between "we agreed five
+              seconds" and a championship that never heard about them. */}
+          <StewardPenalties raceId={raceId} rows={rows} />
 
           <RacePreview request={{ raceId, results: toResults(rows) }} />
 

@@ -232,6 +232,30 @@ sent by someone who was signed in; a logged-out visitor has no account for an
 answer to arrive in, so their entry shows whatever contact line they left and
 you reach them there.
 
+**Incident reports (stewarding):** drivers can send you an incident privately,
+from the report button (bottom right on a computer, in the menu on a phone) or
+from a round on the Races page. Each one is a private thread: only the driver
+who filed it, the driver it names and the admins can read it, and you can let
+one more person in per thread (a witness, a team mate) by picking their name.
+Everything lands in **Admin -> Reports**, grouped by race, and the number next
+to the tab is how many are still waiting on you.
+
+Working through one: open it, use **The report is about** to say which driver
+it concerns if it does not already (this is what lets them see it and answer),
+write in the thread if you need to ask something, then set the outcome, the
+seconds and a sentence of reasoning and press **Save decision**. Both drivers
+get told once, with what you wrote. Nothing is sent until you press save.
+
+**Deciding a penalty does not put it on the driver.** That is deliberate: the
+points come from the results editor and only from there, so two screens can
+never disagree about a championship. Under the table in **Edit Results** there
+is a list of every penalty the stewards decided for that round and whether the
+seconds are actually in the table, so nothing gets agreed and then forgotten.
+
+If your league uses the in-game **webPenalty** app, the bottom of the Reports
+tab switches on a door for it and gives you a URL to paste into the app's
+settings. Off until you switch it on. Treat the URL like a password.
+
 **Cost:** the Hobby plan is $5/month. On top, Railway charges for storage
 and **outgoing traffic**. Database and images are tiny; the danger is
 members downloading multi-GB car packs from the site, which can make a month

@@ -341,6 +341,30 @@ export const ADMIN_INDEX = [
     keywords: "report reports incident steward stewarding penalty crash contact protest complaint judge replay",
   },
   {
+    tab: "reports",
+    title: "Say who a report is about",
+    hint: "Naming the other driver is what lets them read the thread and answer it.",
+    keywords: "accused who about driver name link report steward blame involved",
+  },
+  {
+    tab: "reports",
+    title: "Let somebody else read one report",
+    hint: "A witness or a team mate, picked by name, for that thread only. They get told.",
+    keywords: "viewer witness access permission let in share report private team mate",
+  },
+  {
+    tab: "reports",
+    title: "Reports from inside the race (webPenalty)",
+    hint: "Switch on the in-game button and get the URL to paste into the app.",
+    keywords: "webpenalty ingame in-game app key url ingest live report button assetto plugin",
+  },
+  {
+    tab: "edit",
+    title: "Check the stewards' penalties are entered",
+    hint: "Under the results table: every penalty decided in Reports, and whether the seconds are actually in the classification.",
+    keywords: "penalty penalties steward decided check entered missing seconds report classification verify",
+  },
+  {
     tab: "feedback",
     title: "Bug reports and ideas",
     hint: "What members sent through the feedback button, and replying to them.",

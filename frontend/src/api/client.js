@@ -817,19 +817,42 @@ export const api = {
 
   // Incident reports. The member's own side: file one, read the threads you are
   // party to, write in them. Everything is scoped to the login server-side.
-  createReport: (body) => request("/reports", { method: "POST", body, auth: true }),
-  myReports: () => request("/reports", { auth: true }),
-  report: (id) => request(`/reports/${id}`, { auth: true }),
-  replyToReport: (id, body) => request(`/reports/${id}/messages`, { method: "POST", body: { body }, auth: true }),
+  //
+  // userAuth, NOT auth. `auth` sends the PIN admin token when there is one, and
+  // that token carries no Discord id — so an admin who happened to be signed in
+  // to the admin area in the same browser could not file a report, and their
+  // own thread list came back empty. These four are the MEMBER's endpoints and
+  // must always travel as the member.
+  createReport: (body) => request("/reports", { method: "POST", body, userAuth: true }),
+  myReports: () => request("/reports", { userAuth: true }),
+  report: (id) => request(`/reports/${id}`, { userAuth: true }),
+  replyToReport: (id, body) =>
+    request(`/reports/${id}/messages`, { method: "POST", body: { body }, userAuth: true }),
+  withdrawReport: (id) => request(`/reports/${id}`, { method: "DELETE", userAuth: true }),
   // The office's side.
   adminReports: () => request("/admin/reports", { auth: true }),
   adminReport: (id) => request(`/admin/reports/${id}`, { auth: true }),
   decideReport: (id, body) => request(`/admin/reports/${id}`, { method: "PUT", body, auth: true }),
-  addReportViewer: (id, discordId, name) =>
-    request(`/admin/reports/${id}/viewers`, { method: "POST", body: { discordId, name }, auth: true }),
+  // The stewards' own reply. NOT the member endpoint: a PIN admin has no
+  // Discord login behind them, and that route works out who you are from your
+  // account.
+  adminReplyToReport: (id, body) =>
+    request(`/admin/reports/${id}/messages`, { method: "POST", body: { body }, auth: true }),
+  setReportAccused: (id, accusedDriverId, accusedName) =>
+    request(`/admin/reports/${id}/accused`, { method: "PUT", body: { accusedDriverId, accusedName }, auth: true }),
+  // By roster driver where possible; the raw Discord id stays for somebody who
+  // is not on any roster.
+  addReportViewer: (id, body) => request(`/admin/reports/${id}/viewers`, { method: "POST", body, auth: true }),
   removeReportViewer: (id, discordId) =>
     request(`/admin/reports/${id}/viewers/${discordId}`, { method: "DELETE", auth: true }),
   deleteReport: (id) => request(`/admin/reports/${id}`, { method: "DELETE", auth: true }),
+  // What the stewards decided for one round, for the results editor to check
+  // itself against.
+  raceReportPenalties: (raceId) => request(`/admin/races/${raceId}/report-penalties`, { auth: true }),
+  // The in-game app's key. Saving one switches in-game reporting on.
+  reportIngest: () => request("/admin/reports-ingest", { auth: true }),
+  setReportIngest: (enabled) =>
+    request("/admin/reports-ingest", { method: "PUT", body: { enabled }, auth: true }),
 
   // Cars and wide wordmarks for the shareable result graphic, per team.
   teamArt: () => request("/admin/team-art", { auth: true }),

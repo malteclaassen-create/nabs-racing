@@ -72,7 +72,7 @@ function shape(r) {
 // The Discord id of the driver a report names. Resolved through the person
 // links, like the results post's mentions: the id lives on ONE row per person
 // and moves on login, so the accused's current-season row may not carry it.
-async function accusedDiscordId(prisma, report) {
+export async function accusedDiscordId(prisma, report) {
   if (!report?.accusedDriverId) return null;
   const map = await discordIdsForDrivers(prisma, [report.accusedDriverId]).catch(() => new Map());
   return map.get(report.accusedDriverId) || null;
@@ -168,7 +168,26 @@ export async function dbCreateReport(prisma, input) {
   );
   const report = await dbGetReport(prisma, id);
   await notifyAdmins(prisma, report, "A new incident report is waiting");
-  return report;
+
+  // And the driver it names. They can read the thread from the moment it
+  // exists, so being told about it is the difference between a conversation and
+  // an ambush — and between answering the same evening and finding out weeks
+  // later that a penalty was decided without them.
+  const accused = await accusedDiscordId(prisma, report);
+  if (accused && accused !== String(report.reporterDiscordId || "")) {
+    await dbCreateNotification(prisma, {
+      type: "REPORT",
+      title: "An incident report names you",
+      body: `${report.reporterName || "A driver"} filed a report about an incident. You can read it and reply.`,
+      link: `/reports?id=${report.id}`,
+      recipientId: accused,
+      dedupeKey: `report_new:${report.id}:${accused}`,
+    }).catch(() => {});
+  }
+  // Whether that worked is the caller's business: a driver who has never logged
+  // in with Discord has no id to reach, cannot open the thread, and the person
+  // filing needs telling rather than being left to assume it landed.
+  return { ...report, accusedReachable: !report.accusedDriverId || !!accused };
 }
 
 export async function dbAddMessage(prisma, report, { author, discordId, name, body }) {
@@ -196,7 +215,9 @@ export async function dbAddMessage(prisma, report, { author, discordId, name, bo
       body: `${clamp(name, 120) || "Someone"} wrote in the report you are part of.`,
       link: `/reports?id=${report.id}`,
       recipientId: rid,
-      dedupeKey: `report_msg:${report.id}:${Date.now()}`,
+      // Per RECIPIENT. Without the id in the key, two people on one thread
+      // share one dedupe slot and only the first is ever told.
+      dedupeKey: `report_msg:${report.id}:${rid}:${Date.now()}`,
     }).catch(() => {});
   }
   if (author !== "ADMIN") await notifyAdmins(prisma, report, "New message on an incident report");
@@ -240,11 +261,63 @@ export async function dbDecideReport(prisma, report, { status, verdict, penaltyS
         body: outcome,
         link: `/reports?id=${fresh.id}`,
         recipientId: rid,
-        dedupeKey: `report_done:${fresh.id}:${s}`,
+        // Per recipient, and per DECISION. Keyed on the status alone, the two
+        // drivers shared one slot so only one of them ever heard, and a
+        // correction ("actually 10 seconds, not 5") was swallowed as a repeat
+        // of a message nobody had sent yet.
+        dedupeKey: `report_done:${fresh.id}:${rid}:${s}:${secs ?? "-"}:${(clamp(verdict, 200) || "").length}`,
       }).catch(() => {});
     }
   }
   return fresh;
+}
+
+// Point a report at a different driver, or at one for the first time. Needed
+// because a report can arrive without one: the in-game app knows who SENT it
+// and not who they are complaining about, and a driver typing at midnight
+// writes "the blue car" as often as a name. Until an admin sets this, the other
+// driver cannot see the thread they are the subject of.
+export async function dbSetAccused(prisma, report, { accusedDriverId, accusedName }) {
+  const id = accusedDriverId || null;
+  await prisma.$executeRawUnsafe(
+    `UPDATE "Report" SET "accusedDriverId" = ?, "accusedName" = ?, "updatedAt" = ? WHERE "id" = ?`,
+    id,
+    clamp(accusedName, 120) || null,
+    new Date().toISOString(),
+    report.id
+  );
+  const fresh = await dbGetReport(prisma, report.id);
+  // Newly named, so tell them, the same way creation does. Keyed on the driver
+  // rather than the report, so correcting a wrong name tells the right person
+  // without a second copy going to the one who was named by mistake.
+  const accused = await accusedDiscordId(prisma, fresh);
+  if (id && accused && accused !== String(fresh.reporterDiscordId || "")) {
+    await dbCreateNotification(prisma, {
+      type: "REPORT",
+      title: "An incident report names you",
+      body: "The stewards have linked an incident report to you. You can read it and reply.",
+      link: `/reports?id=${fresh.id}`,
+      recipientId: accused,
+      dedupeKey: `report_new:${fresh.id}:${accused}`,
+    }).catch(() => {});
+  }
+  return { ...fresh, accusedReachable: !id || !!accused };
+}
+
+// The decided penalties for one round, for the results editor to check itself
+// against. Deciding "5 seconds" here does NOT put 5 seconds on the driver — see
+// the note at the top — so this is what makes the gap between what was agreed
+// and what is in the classification visible instead of remembered.
+export async function dbDecidedForRace(prisma, raceId) {
+  if (!raceId) return [];
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT * FROM "Report" WHERE "raceId" = ? AND "status" IN ('PENALTY','NO_PENALTY','DISMISSED')
+        ORDER BY datetime("updatedAt") DESC, datetime("createdAt") DESC`,
+      raceId
+    )
+    .catch(() => []);
+  return rows.map(shape);
 }
 
 export async function dbAddViewer(prisma, reportId, discordId, name) {
@@ -283,7 +356,7 @@ async function notifyAdmins(prisma, report, title) {
       body: report.accusedName ? `About ${report.accusedName}.` : "Someone filed a report.",
       link: "/admin?tab=reports",
       recipientId: id,
-      dedupeKey: `report_admin:${report.id}:${Date.now()}`,
+      dedupeKey: `report_admin:${report.id}:${id}:${Date.now()}`,
     }).catch(() => {});
   }
 }

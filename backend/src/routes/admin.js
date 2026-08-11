@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import multer from "multer";
 import bcrypt from "bcryptjs";
 import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, readdirSync, statSync } from "fs";
@@ -38,8 +39,8 @@ import { invalidateRecordsCache } from "../services/recordsService.js";
 import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
 import { readTeamArt, writeTeamArt, ART_KINDS } from "../lib/teamArt.js";
 import {
-  dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport,
-  dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED,
+  dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbSetAccused, dbAddMessage,
+  dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED,
 } from "../lib/reports.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
@@ -71,7 +72,7 @@ import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import {
   notifyResultsSaved, notifyRacePhotosAdded, notifyDownloadAdded, notifySeatFilled, notifyCardUnlocksForSeason,
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
-  sendAttendancePing,
+  sendAttendancePing, dbCreateNotification,
 } from "../lib/notifications.js";
 import {
   readFeedConfig, writeFeedConfig, readPosts, writePosts,
@@ -4488,7 +4489,15 @@ router.get("/reports", async (req, res, next) => {
           select: { id: true, number: true, track: true, date: true },
         })
       : [];
-    res.json({ reports, races, open: reports.filter((r) => !REPORT_DECIDED.includes(r.status)).length });
+    res.json({
+      reports,
+      races,
+      open: reports.filter((r) => !REPORT_DECIDED.includes(r.status)).length,
+      // Which of the decided ones still have to be entered in a classification.
+      // Counted here rather than in the browser so the tab badge and the panel
+      // in the results editor cannot disagree about it.
+      pendingPenalties: reports.filter((r) => r.status === "PENALTY" && r.penaltySeconds > 0).length,
+    });
   } catch (e) {
     next(e);
   }
@@ -4509,6 +4518,9 @@ router.get("/reports/:id", async (req, res, next) => {
 });
 
 // PUT /api/admin/reports/:id  { status, verdict?, penaltySeconds? }
+// The whole decision in ONE call, deliberately: the drivers are told the moment
+// this lands, and a decision sent in three pieces means they are told the
+// outcome before the reasoning has been typed.
 router.put("/reports/:id", async (req, res, next) => {
   try {
     const report = await dbGetReport(prisma, req.params.id);
@@ -4521,16 +4533,101 @@ router.put("/reports/:id", async (req, res, next) => {
   }
 });
 
+// POST /api/admin/reports/:id/messages  { body }
+// The stewards writing in a thread. Its own endpoint rather than the member
+// one, because a PIN admin has no Discord login behind them: the member route
+// works out who you are from your account and would turn them away. Here the
+// office is the author by definition.
+router.post("/reports/:id/messages", async (req, res, next) => {
+  try {
+    const report = await dbGetReport(prisma, req.params.id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+    const messages = await dbAddMessage(prisma, report, {
+      author: "ADMIN",
+      discordId: req.user?.discordId || null,
+      name: req.user?.driverName || req.user?.discordName || null,
+      body: req.body?.body,
+    });
+    res.json({ ok: true, messages });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// PUT /api/admin/reports/:id/accused  { accusedDriverId, accusedName }
+// Who the report is ABOUT. Separate from the decision because it is a different
+// act: naming the other driver is what lets them into the thread, and it often
+// happens before anybody has decided anything. "" clears it.
+router.put("/reports/:id/accused", async (req, res, next) => {
+  try {
+    const report = await dbGetReport(prisma, req.params.id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+    const id = String(req.body?.accusedDriverId || "").trim() || null;
+    let name = String(req.body?.accusedName || "").trim() || null;
+    if (id) {
+      const d = await prisma.driver.findUnique({ where: { id }, select: { id: true, name: true } });
+      if (!d) return res.status(400).json({ error: "No such driver" });
+      name = name || d.name;
+    }
+    res.json({ ok: true, report: await dbSetAccused(prisma, report, { accusedDriverId: id, accusedName: name }) });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// GET /api/admin/races/:id/report-penalties -> what the stewards decided for
+// this round. The results editor shows it beside its own penalty column: the
+// decision here never writes into the classification (on purpose), so this is
+// the only thing standing between "we agreed five seconds" and a championship
+// that never heard about them.
+router.get("/races/:id/report-penalties", async (req, res, next) => {
+  try {
+    const decided = await dbDecidedForRace(prisma, req.params.id);
+    res.json({ decided });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Letting somebody else into one thread (a witness, a team mate). Per report,
 // never a blanket permission.
 router.post("/reports/:id/viewers", async (req, res, next) => {
   try {
-    const { discordId, name } = req.body || {};
+    let { discordId, name, driverId } = req.body || {};
+    // Picked from the roster: resolve the driver to the id their login uses,
+    // through the person links like everything else, so an admin never has to
+    // go and copy an 18-digit number out of Discord.
+    if (driverId) {
+      const d = await prisma.driver.findUnique({ where: { id: String(driverId) }, select: { id: true, name: true } });
+      if (!d) return res.status(400).json({ error: "No such driver" });
+      const map = await discordIdsForDrivers(prisma, [d.id]).catch(() => new Map());
+      discordId = map.get(d.id) || null;
+      name = name || d.name;
+      if (!discordId) {
+        return res.status(400).json({
+          error: `${d.name} has never signed in with Discord, so there is no account to let in.`,
+        });
+      }
+    }
     if (!/^\d{5,25}$/.test(String(discordId || ""))) {
       return res.status(400).json({ error: "That is not a Discord user ID" });
     }
-    res.json({ ok: true, viewers: await dbAddViewer(prisma, req.params.id, discordId, name) });
+    const viewers = await dbAddViewer(prisma, req.params.id, discordId, name);
+    // Tell them, otherwise being let in is a thing that happened silently and
+    // they only find out if they happen to look.
+    await dbCreateNotification(prisma, {
+      type: "REPORT",
+      title: "You were added to an incident report",
+      body: "The stewards have let you read an incident report.",
+      link: `/reports?id=${req.params.id}`,
+      recipientId: String(discordId),
+      dedupeKey: `report_viewer:${req.params.id}:${discordId}`,
+    }).catch(() => {});
+    res.json({ ok: true, viewers });
   } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);
   }
 });
@@ -4538,6 +4635,38 @@ router.post("/reports/:id/viewers", async (req, res, next) => {
 router.delete("/reports/:id/viewers/:discordId", async (req, res, next) => {
   try {
     res.json({ ok: true, viewers: await dbRemoveViewer(prisma, req.params.id, req.params.discordId) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET/PUT /api/admin/reports-ingest — the in-game webPenalty app's key.
+//
+// Until a key is saved, POST /api/reports/ingest answers 503 to everything, so
+// this switch IS the feature's on/off. Generated here rather than typed: it is
+// a bearer token that has to travel in a URL (the app cannot set headers), so
+// it should be long and random and never something a human chose.
+router.get("/reports-ingest", async (req, res, next) => {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: "report_ingest_key" } }).catch(() => null);
+    const key = row?.value || "";
+    res.json({ configured: !!key, key: key || null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/reports-ingest", async (req, res, next) => {
+  try {
+    // "" switches in-game reporting off again.
+    const on = req.body?.enabled !== false;
+    const value = on ? randomUUID().replace(/-/g, "") : "";
+    await prisma.setting.upsert({
+      where: { key: "report_ingest_key" },
+      create: { key: "report_ingest_key", value },
+      update: { value },
+    });
+    res.json({ ok: true, configured: !!value, key: value || null });
   } catch (e) {
     next(e);
   }
