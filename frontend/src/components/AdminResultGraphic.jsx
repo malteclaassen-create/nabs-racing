@@ -28,6 +28,25 @@ import {
 
 const fmtDate = (d) => (d ? fmtDateShort(d) : "no date");
 
+// How wide the preview is drawn, in screen pixels. Nothing to do with the
+// exported file, which is always 1080x1350 — this is only how big the thing you
+// are judging is on YOUR screen, so it belongs in this browser rather than in
+// the database next to the framing.
+//
+// The default splits the card roughly down the middle on a normal desktop:
+// picture on the left, controls on the right, both big enough to use.
+const PREVIEW_STORE = "nabs_graphic_preview_w";
+const PREVIEW_W = { min: 260, max: 820, step: 10, def: 460 };
+
+function savedPreviewW() {
+  try {
+    const n = Number(localStorage.getItem(PREVIEW_STORE));
+    return Number.isFinite(n) && n >= PREVIEW_W.min && n <= PREVIEW_W.max ? n : PREVIEW_W.def;
+  } catch {
+    return PREVIEW_W.def;
+  }
+}
+
 // One slider, with what it is currently set to written next to its name. The
 // number matters here: "a bit more zoom" is not something you can tell a
 // colleague over Discord, and "1.6x, 40 left" is.
@@ -158,6 +177,7 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
   // A field that is only there while you are naming something keeps the panel a
   // list of framings rather than a form.
   const [naming, setNaming] = useState(null);
+  const [previewW, setPreviewW] = useState(savedPreviewW);
   const canvasRef = useRef(null);
   const saveTimer = useRef(null);
 
@@ -362,13 +382,19 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
             The preview IS the export: the same canvas, shown smaller. Nothing
             here is a mock-up of the file you get. */}
         <div className="flex flex-col gap-6 p-5 lg:flex-row lg:items-start">
+          {/* Its width is yours to set (the slider at the bottom of the
+              controls), but it SHRINKS rather than wins: `max-w-full` keeps it
+              inside a narrow window, and letting it give way to the controls'
+              minimum below is what stops a wide preview squeezing the sliders
+              into a 130px strip you cannot use. Ask for more than the card can
+              hold and you get as much of it as fits. */}
           <canvas
             ref={canvasRef}
-            className="mx-auto h-auto w-full max-w-[360px] rounded-lg shadow-lg lg:mx-0 lg:w-[330px] lg:shrink-0"
-            style={{ aspectRatio: `${LAYOUT.width} / ${LAYOUT.height}` }}
+            className="mx-auto h-auto min-w-0 max-w-full rounded-lg shadow-lg lg:mx-0"
+            style={{ width: previewW, aspectRatio: `${LAYOUT.width} / ${LAYOUT.height}` }}
           />
 
-          <div className="min-w-0 flex-1 space-y-4 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+          <div className="min-w-0 flex-1 space-y-4 border-t border-border pt-5 lg:min-w-[19rem] lg:shrink-0 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
             <SlidingTabs
               items={THEME_KEYS.map((k) => ({ key: k, label: THEMES[k].label }))}
               value={theme}
@@ -510,6 +536,26 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
                   })}
                 </ul>
               )}
+            </div>
+
+            {/* How big the picture on the left is. Last, and on its own, because
+                it is the only control here that changes nothing about the file:
+                the export is 1080x1350 whatever this says. */}
+            <div className="border-t border-border pt-4">
+              <Slider
+                label="Preview size"
+                value={previewW}
+                limits={PREVIEW_W}
+                format={(v) => `${Math.round(v)} px`}
+                onChange={(w) => {
+                  setPreviewW(w);
+                  try {
+                    localStorage.setItem(PREVIEW_STORE, String(w));
+                  } catch {
+                    /* private mode: the size just does not survive the tab */
+                  }
+                }}
+              />
             </div>
           </div>
         </div>

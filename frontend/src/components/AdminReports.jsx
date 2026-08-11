@@ -311,7 +311,7 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
             if (
               !(await ask({
                 title: "Delete this report?",
-                body: "The thread and everything written in it go with it. For a duplicate or something filed by mistake — a real report that came to nothing should be closed with 'No penalty' instead, so the drivers can still see what was decided.",
+                body: "The thread and everything written in it go with it. Use this for a duplicate or something filed by mistake. A real report that came to nothing is better closed with 'No penalty', so the drivers can still see what was decided.",
                 danger: true,
                 confirmLabel: "Delete report",
               }))

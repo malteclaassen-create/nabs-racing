@@ -264,7 +264,7 @@ A report reads as a conversation: what was reported is the first message, and
 everyone on the thread writes underneath it. Pictures, clips and PDFs can be
 attached to any message, up to **20 MB each and four at a time**, and links
 typed into a message become clickable. Those files are private like the rest
-of the thread — they are not in the public uploads folder and can only be
+of the thread: they are not in the public uploads folder and can only be
 opened by somebody the thread lets in. Deleting a report deletes its files.
 
 Clips are the biggest thing this site stores, and Railway charges for storage
