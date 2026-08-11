@@ -32,6 +32,16 @@ export function withApiBase(path) {
 //
 // `admin` picks the stewards' route: their PIN token carries no Discord id, so
 // the member endpoint would turn them away.
+// The signed-in member's own Discord id, for "is this message mine". Reads the
+// same stored profile the nav chip does; null when signed out or PIN-only.
+export function myDiscordId() {
+  try {
+    return JSON.parse(localStorage.getItem("nabs_user") || "null")?.discordId || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function reportFileUrl(file, admin = false) {
   const path = admin
     ? `/admin/reports/${file.reportId}/files/${file.id}`

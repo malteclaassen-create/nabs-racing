@@ -4510,7 +4510,12 @@ router.get("/reports/:id", async (req, res, next) => {
     if (!report) return res.status(404).json({ error: "Report not found" });
     res.json({
       report,
-      messages: await dbMessages(prisma, report.id),
+      // At the desk, "mine" means the office: a PIN admin has no Discord id
+      // to match on, and every message written from here is the stewards'.
+      messages: (await dbMessages(prisma, report.id, req.user?.discordId || null)).map((m) => ({
+        ...m,
+        mine: m.mine || m.author === "ADMIN",
+      })),
       viewers: await dbViewers(prisma, report.id),
       attachments: await dbAttachments(prisma, report.id),
     });
@@ -4544,7 +4549,7 @@ router.post("/reports/:id/messages", attachmentUpload.array("files", 4), async (
   try {
     const report = await dbGetReport(prisma, req.params.id);
     if (!report) return res.status(404).json({ error: "Report not found" });
-    const { messageId, messages } = await dbAddMessage(prisma, report, {
+    const { messageId } = await dbAddMessage(prisma, report, {
       author: "ADMIN",
       discordId: req.user?.discordId || null,
       name: req.user?.driverName || req.user?.discordName || null,
@@ -4554,7 +4559,14 @@ router.post("/reports/:id/messages", attachmentUpload.array("files", 4), async (
     for (const f of req.files || []) {
       await saveAttachment(prisma, { report, messageId, file: f, uploaderDiscordId: req.user?.discordId || null });
     }
-    res.json({ ok: true, messages, attachments: await dbAttachments(prisma, report.id) });
+    res.json({
+      ok: true,
+      messages: (await dbMessages(prisma, report.id, req.user?.discordId || null)).map((m) => ({
+        ...m,
+        mine: m.mine || m.author === "ADMIN",
+      })),
+      attachments: await dbAttachments(prisma, report.id),
+    });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);

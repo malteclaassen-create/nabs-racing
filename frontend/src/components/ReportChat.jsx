@@ -135,44 +135,59 @@ function Attachment({ file, admin }) {
   );
 }
 
-function Bubble({ voice, name, at, body, files, first, admin }) {
+// What a voice is CALLED, next to the name. Never instead of it: half this
+// league's drivers are also admins, and replacing their name with "Stewards"
+// when they answered a report about themselves was the whole confusion.
+const VOICE = { REPORTER: "reported this", ACCUSED: "named in this", ADMIN: "stewards", VIEWER: "let in" };
+
+function Bubble({ voice, name, at, body, files, first, admin, mine }) {
   const fromAdmin = voice === "ADMIN";
   return (
-    <li
-      className={`rounded-lg border-l-2 px-3.5 py-2.5 ${
-        fromAdmin ? "border-brand/60 bg-brand/5" : first ? "border-border bg-surface2/60" : "ml-4 border-border bg-surface2/60"
-      }`}
-    >
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-eyebrow">
-          {fromAdmin ? "Stewards" : name || "Driver"}
-        </span>
-        {/* The opening message says what it is, so the thread does not need a
-            box above it repeating the same words. */}
-        {first && (
-          <span className="font-mono text-[10px] uppercase tracking-wider text-light">reported this</span>
-        )}
-        <span className="font-mono text-[10px] uppercase tracking-wider text-light">{when(at)}</span>
-      </div>
-      {body && (
-        <p className="mt-1 whitespace-pre-line break-words text-sm leading-relaxed text-dark">
-          <Linkified text={body} />
-        </p>
-      )}
-      {files.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {files.map((f) => (
-            <Attachment key={f.id} file={f} admin={admin} />
-          ))}
+    // Yours down one side, everybody else's down the other. Nothing about a
+    // thread said who was talking except a name in small type, and a name is
+    // the thing you stop reading after the second message.
+    <li className={`flex ${mine ? "justify-start" : "justify-end"}`}>
+      <div
+        className={`max-w-[85%] min-w-0 rounded-xl px-3.5 py-2.5 ${
+          mine
+            ? "rounded-bl-sm border border-border bg-surface2/70"
+            : fromAdmin
+              ? "rounded-br-sm border border-brand/40 bg-brand/10"
+              : "rounded-br-sm border border-link/25 bg-link/5"
+        }`}
+      >
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          {/* The name, always. Then what they are in this thread. */}
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-eyebrow">
+            {name || (fromAdmin ? "Stewards" : "Driver")}
+          </span>
+          {(first || voice !== "REPORTER") && (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-light">
+              {first ? VOICE.REPORTER : VOICE[voice] || ""}
+            </span>
+          )}
+          <span className="font-mono text-[10px] uppercase tracking-wider text-faint">{when(at)}</span>
         </div>
-      )}
+        {body && (
+          <p className="mt-1 whitespace-pre-line break-words text-sm leading-relaxed text-dark">
+            <Linkified text={body} />
+          </p>
+        )}
+        {files.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {files.map((f) => (
+              <Attachment key={f.id} file={f} admin={admin} />
+            ))}
+          </div>
+        )}
+      </div>
     </li>
   );
 }
 
 // `admin` picks which endpoint the bytes come from: the stewards' desk runs on
 // the PIN token, which the member route does not accept.
-export default function ReportChat({ report, messages = [], attachments = [], admin = false }) {
+export default function ReportChat({ report, messages = [], attachments = [], admin = false, mineIsReporter = false }) {
   // Files hung on the report itself rather than on a message (an upload whose
   // message is gone) ride with the opening one, so nothing is ever orphaned out
   // of sight.
@@ -184,7 +199,7 @@ export default function ReportChat({ report, messages = [], attachments = [], ad
   }
 
   return (
-    <ul className="space-y-2">
+    <ul className="space-y-2.5">
       <Bubble
         first
         voice="REPORTER"
@@ -193,6 +208,7 @@ export default function ReportChat({ report, messages = [], attachments = [], ad
         body={report.body}
         files={loose}
         admin={admin}
+        mine={mineIsReporter}
       />
       {messages.map((m) => (
         <Bubble
@@ -203,6 +219,7 @@ export default function ReportChat({ report, messages = [], attachments = [], ad
           body={m.body}
           files={byMessage.get(m.id) || []}
           admin={admin}
+          mine={m.mine}
         />
       ))}
     </ul>

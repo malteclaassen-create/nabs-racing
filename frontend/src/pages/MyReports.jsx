@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "../api/client.js";
+import { api, myDiscordId } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
@@ -116,7 +116,12 @@ function Thread({ id, races, onBack, onChanged }) {
         )}
       </div>
 
-      <ReportChat report={r} messages={data.messages} attachments={data.attachments} />
+      <ReportChat
+        report={r}
+        messages={data.messages}
+        attachments={data.attachments}
+        mineIsReporter={!!myDiscordId() && r.reporterDiscordId === myDiscordId()}
+      />
 
       <ReportComposer onSend={send} busy={busy} full />
     </div>

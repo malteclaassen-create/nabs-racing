@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { api } from "../api/client.js";
+import { api, myDiscordId } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import ReportChat, { ReportComposer } from "./ReportChat.jsx";
@@ -132,7 +132,12 @@ function Thread({ id, onBack, onWithdrawn }) {
         </p>
       )}
 
-      <ReportChat report={data.report} messages={data.messages} attachments={data.attachments} />
+      <ReportChat
+        report={data.report}
+        messages={data.messages}
+        attachments={data.attachments}
+        mineIsReporter={!!myDiscordId() && data.report.reporterDiscordId === myDiscordId()}
+      />
 
       <div className="space-y-2">
         <ReportComposer onSend={send} busy={busy} />
@@ -279,7 +284,11 @@ export default function ReportWidget() {
           role="dialog"
           aria-modal="true"
           aria-label="Report an incident"
-          className="fixed inset-x-3 bottom-3 top-3 z-overlay flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:inset-x-auto sm:right-6 sm:top-auto sm:bottom-24 sm:h-[min(34rem,80vh)] sm:w-[26rem]"
+          // Wider and taller than a notification popover, because a thread
+          // with a picture in it is what goes in here: at 26rem a screenshot
+          // of a race incident came out the size of a postage stamp and every
+          // message wrapped after five words.
+          className="fixed inset-x-3 bottom-3 top-3 z-overlay flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:inset-x-auto sm:right-6 sm:top-auto sm:bottom-24 sm:h-[min(44rem,86vh)] sm:w-[min(38rem,calc(100vw-3rem))]"
         >
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">

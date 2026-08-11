@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "../api/client.js";
+import { api, myDiscordId } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { CardBar, ErrorBox, Field, Notice } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
@@ -156,7 +156,13 @@ function Thread({ id, drivers, onChanged }) {
       </div>
 
       {/* the conversation, opening message and all */}
-      <ReportChat report={r} messages={data.messages} attachments={data.attachments} admin />
+      <ReportChat
+        report={r}
+        messages={data.messages}
+        attachments={data.attachments}
+        admin
+        mineIsReporter={!!myDiscordId() && r.reporterDiscordId === myDiscordId()}
+      />
 
       <ReportComposer
         busy={busy}

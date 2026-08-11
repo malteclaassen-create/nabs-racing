@@ -3,7 +3,7 @@ import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import {
   dbCreateReport, dbGetReport, dbReportsFor, dbMessages, dbAddMessage, canRead, dbDeleteReport,
-  dbAttachments,
+  dbAttachments, accusedDiscordId,
 } from "../lib/reports.js";
 import { serveAttachment, saveAttachment, attachmentUpload } from "../lib/reportFiles.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
@@ -140,7 +140,7 @@ router.get("/:id", optionalUser, async (req, res, next) => {
     }
     res.json({
       report,
-      messages: await dbMessages(prisma, report.id),
+      messages: await dbMessages(prisma, report.id, me.discordId),
       attachments: await dbAttachments(prisma, report.id),
     });
   } catch (e) {
@@ -156,14 +156,20 @@ router.post("/:id/messages", optionalUser, attachmentUpload.array("files", 4), a
     if (!report || !(await canRead(prisma, report, me.discordId, me.isAdmin))) {
       return res.status(404).json({ error: "Report not found" });
     }
-    // Which voice this is written in. An admin writing in a thread is the
-    // league office speaking, even when they are also one of the two drivers.
-    const author = me.isAdmin
-      ? "ADMIN"
-      : report.reporterDiscordId === me.discordId
+    // Which voice this is written in — your part in THIS argument first, and
+    // only "the stewards" if you are not in it. Several drivers here are also
+    // admins; checking admin first made their own replies appear to come from
+    // the office and hid who was actually talking.
+    const accused = await accusedDiscordId(prisma, report);
+    const author =
+      String(report.reporterDiscordId || "") === String(me.discordId)
         ? "REPORTER"
-        : "ACCUSED";
-    const { messageId, messages } = await dbAddMessage(prisma, report, {
+        : accused && String(accused) === String(me.discordId)
+          ? "ACCUSED"
+          : me.isAdmin
+            ? "ADMIN"
+            : "VIEWER";
+    const { messageId } = await dbAddMessage(prisma, report, {
       author,
       discordId: me.discordId,
       name: me.name,
@@ -173,7 +179,11 @@ router.post("/:id/messages", optionalUser, attachmentUpload.array("files", 4), a
     for (const f of req.files || []) {
       await saveAttachment(prisma, { report, messageId, file: f, uploaderDiscordId: me.discordId });
     }
-    res.json({ ok: true, messages, attachments: await dbAttachments(prisma, report.id) });
+    res.json({
+      ok: true,
+      messages: await dbMessages(prisma, report.id, me.discordId),
+      attachments: await dbAttachments(prisma, report.id),
+    });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);

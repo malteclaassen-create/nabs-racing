@@ -32,7 +32,15 @@ import { discordIdsForDrivers } from "./persons.js";
 // endings, and only an admin can set them.
 export const REPORT_STATUSES = ["NEW", "REVIEWING", "PENALTY", "NO_PENALTY", "DISMISSED"];
 export const REPORT_DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
-export const MESSAGE_AUTHORS = ["REPORTER", "ACCUSED", "ADMIN"];
+// The writer's relationship TO THIS THREAD, which is not the same thing as
+// their rights on the site. Several of this league's drivers are also admins,
+// and when one of them answers a report they are party to, they are answering
+// as themselves — labelling that "the stewards" hid who was actually talking
+// and made every message look like it came from the office.
+//
+// ADMIN therefore means "not one of the people in this argument", and even then
+// the name is shown next to it. VIEWER is somebody an admin let in.
+export const MESSAGE_AUTHORS = ["REPORTER", "ACCUSED", "VIEWER", "ADMIN"];
 
 const MAX_BODY = 4000;
 const MIN_BODY = 5;
@@ -123,7 +131,10 @@ export async function dbReportsFor(prisma, discordId) {
   return mine;
 }
 
-export async function dbMessages(prisma, reportId) {
+// `meDiscordId` marks the caller's own messages, so a thread can put them down
+// one side and everybody else down the other. The id itself never leaves the
+// server: what goes out is a boolean about YOU, not who anybody else is.
+export async function dbMessages(prisma, reportId, meDiscordId = null) {
   const rows = await prisma
     .$queryRawUnsafe(
       `SELECT * FROM "ReportMessage" WHERE "reportId" = ? ORDER BY datetime("createdAt") ASC`,
@@ -136,6 +147,7 @@ export async function dbMessages(prisma, reportId) {
     authorName: m.authorName || null,
     body: m.body,
     createdAt: m.createdAt,
+    mine: !!meDiscordId && String(m.authorDiscordId || "") === String(meDiscordId),
   }));
 }
 
