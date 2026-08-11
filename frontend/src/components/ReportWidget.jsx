@@ -23,6 +23,18 @@ import { useDismiss, useFocusTrap, useScrollLock } from "./overlay.jsx";
 // that on every read; this component only ever shows what it was given.
 // ---------------------------------------------------------------------------
 
+// Reports are BUILT but not switched on for members yet. The stewarding side
+// works, the driver side has gaps that matter on a race night (a decision is
+// sent before the reasoning is typed, the accused is never told a report names
+// them, the notification links to a page that does not exist), so until those
+// are closed no door to it is shown.
+//
+// One switch rather than deleted code: the panel, the API and the admin tab all
+// stay live, and turning it on is this line plus nothing. Every entry point
+// asks this — the corner button below and the Report button on a round — so
+// there is no second door somebody forgets about.
+export const REPORTS_OPEN_TO_MEMBERS = false;
+
 export const REPORT_OPEN_EVENT = "nabs-report-open";
 
 // Other parts of the site ask for the panel by firing this (the race page's
@@ -226,6 +238,7 @@ export default function ReportWidget() {
     <>
       {/* The floating button. Desktop only, like the Feedback one it replaced:
           on a phone this corner belongs to the page and to the thumb. */}
+      {REPORTS_OPEN_TO_MEMBERS && (
       <button
         ref={fabRef}
         type="button"
@@ -238,6 +251,7 @@ export default function ReportWidget() {
           Report an incident
         </span>
       </button>
+      )}
 
       {open && (
         <div

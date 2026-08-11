@@ -7,7 +7,7 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent, SmoothHeight } from "../components/ui.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
-import { openReport } from "../components/ReportWidget.jsx";
+import { openReport, REPORTS_OPEN_TO_MEMBERS } from "../components/ReportWidget.jsx";
 import RaceResults from "../components/RaceResults.jsx";
 import RaceFacts from "../components/RaceFacts.jsx";
 import RaceGallery from "../components/RaceGallery.jsx";
@@ -882,6 +882,7 @@ export default function Races() {
                                 button in the corner, with this race already
                                 chosen — the one thing a driver would otherwise
                                 have to pick out of a list of forty. */}
+                            {REPORTS_OPEN_TO_MEMBERS && (
                             <button
                               type="button"
                               onClick={() => openReport({ raceId: head.id })}
@@ -893,6 +894,7 @@ export default function Races() {
                               </svg>
                               Report
                             </button>
+                            )}
                             {/* replay of this round, registered in the admin Downloads tab */}
                             {!detailIsStale && detail.race.replayDownloadId && (
                               <Link
