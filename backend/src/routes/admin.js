@@ -39,7 +39,7 @@ import { invalidateRecordsCache } from "../services/recordsService.js";
 import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
 import { readTeamArt, writeTeamArt, ART_KINDS } from "../lib/teamArt.js";
 import {
-  dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbSetAccused, dbAddMessage,
+  dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
 } from "../lib/reports.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
@@ -4606,28 +4606,6 @@ router.get("/reports/:id/files/:attId", async (req, res, next) => {
     if (!report) return res.status(404).json({ error: "Not found" });
     await serveAttachment(prisma, res, report.id, req.params.attId);
   } catch (e) {
-    next(e);
-  }
-});
-
-// PUT /api/admin/reports/:id/accused  { accusedDriverId, accusedName }
-// Who the report is ABOUT. Separate from the decision because it is a different
-// act: naming the other driver is what lets them into the thread, and it often
-// happens before anybody has decided anything. "" clears it.
-router.put("/reports/:id/accused", async (req, res, next) => {
-  try {
-    const report = await dbGetReport(prisma, req.params.id);
-    if (!report) return res.status(404).json({ error: "Report not found" });
-    const id = String(req.body?.accusedDriverId || "").trim() || null;
-    let name = String(req.body?.accusedName || "").trim() || null;
-    if (id) {
-      const d = await prisma.driver.findUnique({ where: { id }, select: { id: true, name: true } });
-      if (!d) return res.status(400).json({ error: "No such driver" });
-      name = name || d.name;
-    }
-    res.json({ ok: true, report: await dbSetAccused(prisma, report, { accusedDriverId: id, accusedName: name }) });
-  } catch (e) {
-    if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);
   }
 });

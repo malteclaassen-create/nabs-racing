@@ -148,39 +148,24 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
         {/* RIGHT — everything you do about it. Sticks on a tall screen so a
             long thread scrolls past it rather than pushing it away. */}
         <div className="min-w-0 space-y-4 lg:sticky lg:top-4">
-          {/* who it is about. Often nobody, on an in-game report or when the
-              reporter wrote "the blue car" — and until this is set, the other
-              driver cannot see the thread they are the subject of. */}
-          <div className="flex flex-wrap items-end gap-2 rounded-lg bg-surface2/60 p-3">
-            <Field label="The report is about" tone="plain">
-              <select
-                className="input w-auto min-w-52 py-1.5 text-sm"
-                value={r.accusedDriverId || ""}
-                disabled={busy}
-                onChange={(e) => {
-                  const d = drivers.find((x) => x.id === e.target.value);
-                  run(() => api.setReportAccused(id, e.target.value || "", d?.name || ""), (res) => {
-                    if (!e.target.value) return "Nobody is named on this now.";
-                    // The server says whether that driver has a Discord account to
-                    // reach. Where they have not, saying "has been told" sends the
-                    // steward away believing the other driver is in the loop.
-                    return res?.report?.accusedReachable === false
-                      ? `${d?.name} is named on this now, but has never signed in with Discord — there is no account to tell, and they cannot read or answer it. You will have to reach them another way.`
-                      : `${d?.name} can now read this and has been told.`;
-                  });
-                }}
-              >
-                <option value="">Nobody named{r.accusedName ? ` (it says "${r.accusedName}")` : ""}</option>
-                {drivers.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <p className="min-w-52 flex-1 text-xs leading-relaxed text-light">
-              Naming a driver is what lets them into this thread, and they get told. Nobody else can see it.
-            </p>
+          {/* Who it is about, and only that. Naming a driver is the
+              REPORTER's to do, from their own page: a steward who could
+              re-point a report would be able to manufacture a case against
+              somebody nobody complained about, in a thread that then reads as
+              if the first driver wrote it. An in-game report with nobody named
+              stays that way until the driver who sent it says. */}
+          <div className="rounded-lg border border-border p-4">
+            <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
+              The report is about
+            </div>
+            {r.accusedName ? (
+              <p className="text-sm font-semibold text-dark">{r.accusedName}</p>
+            ) : (
+              <p className="text-sm leading-relaxed text-light">
+                Nobody named yet. Only {r.reporterName || "the driver who filed it"} can say who it was, from
+                their own reports page &mdash; until then the other driver cannot see this thread.
+              </p>
+            )}
           </div>
 
 

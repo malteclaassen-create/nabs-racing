@@ -240,11 +240,19 @@ one more person in per thread (a witness, a team mate) by picking their name.
 Everything lands in **Admin -> Reports**, grouped by race, and the number next
 to the tab is how many are still waiting on you.
 
-Working through one: open it, use **The report is about** to say which driver
-it concerns if it does not already (this is what lets them see it and answer),
-write in the thread if you need to ask something, then set the outcome, the
-seconds and a sentence of reasoning and press **Save decision**. Both drivers
-get told once, with what you wrote. Nothing is sent until you press save.
+Working through one: read it, write in the thread if you need to ask
+something, then set the outcome, the seconds and a sentence of reasoning and
+press **Save decision**. Both drivers get told once, with what you wrote.
+Nothing is sent until you press save.
+
+**You cannot change who a report is about.** That is the reporter's to say,
+from their own page, and only while nobody is named yet. An accusation
+belongs to the person making it: a steward who could re-point one would be
+able to make a case against a driver nobody complained about, in a thread
+that then reads as if the first driver wrote it. A report with nobody named
+(one from the in-game app, or somebody who wrote "the blue car") shows
+"Nobody named yet" and stays private to the stewards until the driver who
+filed it says who it was.
 
 **Deciding a penalty does not put it on the driver.** That is deliberate: the
 points come from the results editor and only from there, so two screens can

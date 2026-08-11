@@ -3,7 +3,7 @@ import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import {
   dbCreateReport, dbGetReport, dbReportsFor, dbMessages, dbAddMessage, canRead, dbDeleteReport,
-  dbAttachments, roleOn,
+  dbAttachments, roleOn, dbSetAccused,
 } from "../lib/reports.js";
 import { serveAttachment, saveAttachment, attachmentUpload } from "../lib/reportFiles.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
@@ -181,6 +181,43 @@ router.post("/:id/messages", optionalUser, attachmentUpload.array("files", 4), a
       messages: await dbMessages(prisma, report.id, me.discordId),
       attachments: await dbAttachments(prisma, report.id),
     });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// PUT /api/reports/:id/accused  { accusedDriverId }
+//
+// Saying who it was, after the fact. For the report you filed and nobody has
+// been named on yet: an in-game report knows who sent it and not who they are
+// complaining about, and "the blue car at turn three" is what people type at
+// midnight. Until this is set, the other driver cannot see the thread.
+//
+// The REPORTER and nobody else, not even a steward. An accusation belongs to
+// the person making it; somebody else re-pointing it would be manufacturing a
+// case against a driver nobody complained about, in a thread that reads as if
+// the first driver wrote it.
+router.put("/:id/accused", optionalUser, async (req, res, next) => {
+  try {
+    const me = caller(req);
+    const report = await dbGetReport(prisma, req.params.id);
+    if (!report || !(await canRead(prisma, report, me.discordId, me.isAdmin))) {
+      return res.status(404).json({ error: "Report not found" });
+    }
+    if (!me.discordId || String(report.reporterDiscordId || "") !== String(me.discordId)) {
+      return res.status(403).json({ error: "Only the driver who filed a report can say who it is about" });
+    }
+    const driverId = String(req.body?.accusedDriverId || "").trim();
+    const driver = driverId
+      ? await prisma.driver.findUnique({ where: { id: driverId }, select: { id: true, name: true } })
+      : null;
+    if (!driver) return res.status(400).json({ error: "No such driver" });
+    const fresh = await dbSetAccused(prisma, report, {
+      accusedDriverId: driver.id,
+      accusedName: driver.name,
+    });
+    res.json({ ok: true, report: fresh });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);

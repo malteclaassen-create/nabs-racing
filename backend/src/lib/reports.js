@@ -382,13 +382,32 @@ export async function dbDecideReport(prisma, report, { status, verdict, penaltyS
   return { ...fresh, told };
 }
 
-// Point a report at a different driver, or at one for the first time. Needed
-// because a report can arrive without one: the in-game app knows who SENT it
-// and not who they are complaining about, and a driver typing at midnight
-// writes "the blue car" as often as a name. Until an admin sets this, the other
-// driver cannot see the thread they are the subject of.
+// Name the driver a report is about, for the FIRST time.
+//
+// It is needed because a report can arrive without one: the in-game app knows
+// who sent it and not who they are complaining about, and a driver typing at
+// midnight writes "the blue car" as often as a name. Until this is set, the
+// other driver cannot see the thread they are the subject of.
+//
+// Two rules, and they are the point of this function rather than decoration:
+//
+//   Only the REPORTER may do it. An accusation belongs to the person making it.
+//   A steward who could re-point a report at somebody else would be able to
+//   manufacture a case against a driver nobody complained about, in a thread
+//   that then looks like the first driver wrote it.
+//
+//   Only ONCE, while it is still blank. Naming somebody lets them in and tells
+//   them; changing it afterwards would leave a driver sitting in a thread that
+//   is no longer about them, having already read it.
+//
+// The routes enforce who is asking; this enforces that there is nothing there
+// yet, so no caller can get it wrong.
 export async function dbSetAccused(prisma, report, { accusedDriverId, accusedName }) {
+  if (report.accusedDriverId) {
+    throw Object.assign(new Error("This report already names a driver"), { status: 409 });
+  }
   const id = accusedDriverId || null;
+  if (!id) throw Object.assign(new Error("Pick a driver"), { status: 400 });
   await prisma.$executeRawUnsafe(
     `UPDATE "Report" SET "accusedDriverId" = ?, "accusedName" = ?, "updatedAt" = ? WHERE "id" = ?`,
     id,

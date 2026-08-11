@@ -39,6 +39,8 @@ function Thread({ id, races, onBack, onChanged }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [drivers, setDrivers] = useState([]);
+  const [pick, setPick] = useState("");
 
   const load = useCallback(
     () => api.report(id).then(setData).catch((e) => setError(e.message)),
@@ -58,6 +60,30 @@ function Thread({ id, races, onBack, onChanged }) {
     return () => window.removeEventListener("focus", onFocus);
   }, [load]);
 
+  // Only fetched when the question is actually going to be asked.
+  useEffect(() => {
+    if (!data?.report || data.report.accusedDriverId) return;
+    api
+      .teams()
+      .then((t) => setDrivers((t || []).flatMap((x) => x.drivers || [])))
+      .catch(() => {});
+  }, [data]);
+
+  async function nameAccused() {
+    if (!pick) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.setReportAccused(id, pick);
+      setData((d) => ({ ...d, report: res.report }));
+      onChanged?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function send(body, files) {
     setBusy(true);
     setError(null);
@@ -72,10 +98,16 @@ function Thread({ id, races, onBack, onChanged }) {
     }
   }
 
-  if (error) return <ErrorBox message={error} />;
-  if (!data) return <Spinner />;
+  const r = data?.report;
+  // Asked only of the driver who filed it, only while nobody is named. Naming
+  // somebody lets them into the thread and tells them, which is not a thing to
+  // do twice, so it is a one-way door — and it is the reporter's door, not the
+  // stewards'.
+  const needsAccused =
+    !!r && !r.accusedDriverId && !!myDiscordId() && r.reporterDiscordId === myDiscordId();
 
-  const r = data.report;
+  if (error && !data) return <ErrorBox message={error} />;
+  if (!data) return <Spinner />;
   const s = STATUS_META[r.status] || STATUS_META.NEW;
   const race = races.find((x) => x.id === r.raceId);
 
@@ -115,6 +147,42 @@ function Thread({ id, races, onBack, onChanged }) {
           </p>
         )}
       </div>
+
+      {needsAccused && (
+        <div className="card space-y-3 border-amber-500/40 p-5">
+          <div>
+            <div className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
+              Who was it?
+            </div>
+            <p className="mt-1 text-sm leading-relaxed text-light">
+              Nobody is named on this yet, so only the stewards can read it. Naming the driver lets them see it
+              and answer, and tells them it exists. You can only do this once, so take a moment.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              aria-label="Which driver"
+              className="input w-auto min-w-56"
+              value={pick}
+              disabled={busy}
+              onChange={(e) => setPick(e.target.value)}
+            >
+              <option value="">Pick a driver…</option>
+              {[...drivers]
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+            </select>
+            <button className="btn-primary" disabled={busy || !pick} onClick={nameAccused}>
+              {busy ? "Saving…" : "That was them"}
+            </button>
+          </div>
+          {error && <p className="text-sm text-bad">{error}</p>}
+        </div>
+      )}
 
       <ReportChat
         report={r}

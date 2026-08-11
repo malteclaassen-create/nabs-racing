@@ -348,12 +348,6 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "reports",
-    title: "Say who a report is about",
-    hint: "Naming the other driver is what lets them read the thread and answer it.",
-    keywords: "accused who about driver name link report steward blame involved",
-  },
-  {
-    tab: "reports",
     title: "Let somebody else read one report",
     hint: "A witness or a team mate, picked by name, for that thread only. They get told.",
     keywords: "viewer witness access permission let in share report private team mate",

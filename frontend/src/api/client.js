@@ -882,8 +882,10 @@ export const api = {
     for (const f of files) fd.append("files", f, f.name);
     return request(`/admin/reports/${id}/messages`, { method: "POST", body: fd, auth: true, form: true });
   },
-  setReportAccused: (id, accusedDriverId, accusedName) =>
-    request(`/admin/reports/${id}/accused`, { method: "PUT", body: { accusedDriverId, accusedName }, auth: true }),
+  // Saying who it was, on a report YOU filed that names nobody yet. The member
+  // endpoint on purpose: an accusation belongs to the person making it.
+  setReportAccused: (id, accusedDriverId) =>
+    request(`/reports/${id}/accused`, { method: "PUT", body: { accusedDriverId }, userAuth: true }),
   // By roster driver where possible; the raw Discord id stays for somebody who
   // is not on any roster.
   addReportViewer: (id, body) => request(`/admin/reports/${id}/viewers`, { method: "POST", body, auth: true }),

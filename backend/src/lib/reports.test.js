@@ -193,6 +193,23 @@ describe("telling people", () => {
 });
 
 describe("naming the driver afterwards", () => {
+  it("refuses to change a name that is already there", async () => {
+    // An accusation belongs to the person who made it, and naming somebody
+    // lets them in and tells them. Re-pointing a report would leave a driver
+    // sitting in a thread that is no longer about them, having read it.
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...base, accusedDriverId: "d2" });
+    await expect(dbSetAccused(p, r, { accusedDriverId: "d3", accusedName: "someone else" })).rejects.toThrow(
+      /already names a driver/i
+    );
+  });
+
+  it("refuses to name nobody", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, base);
+    await expect(dbSetAccused(p, r, { accusedDriverId: null })).rejects.toThrow(/pick a driver/i);
+  });
+
   it("lets them in and tells them", async () => {
     // An in-game report knows who SENT it and not who they are complaining
     // about, so this is the only way that driver ever sees the thread.
