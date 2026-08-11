@@ -99,7 +99,7 @@ export const LAYOUT = {
   // a footnote on the name rather than as a second column, which is what it is:
   // the league runs two tiers in one classification, and on the poster there is
   // otherwise nothing to say which table a driver's points land in.
-  tierPill: { h: 26, padX: 8, size: 17, radius: 13, gap: 10 },
+  tierPill: { h: 26, padX: 8, size: 17, radius: 13, gap: 10, frameWidth: 3 },
 
   // Team badge in the corner of a podium tile, opposite the position number.
   tileBadge: { size: 78, inset: 18 },
@@ -158,10 +158,14 @@ export const THEMES = {
       alpha: 0.13,
       colour: "#ffffff",
     },
-    // One pill style for both places it appears. Pink on black in the rows and
-    // pink on gold in a podium bar both read; a pill that changed colour with
-    // its background would be two things to keep true.
-    tierPill: { fill: "#ffaec8", ink: "#000000" },
+    // Outlined rather than filled, and blue rather than the poster's pink: the
+    // pink is the design's own line colour and is already round every tile and
+    // every row, so a pink pill inside a pink-framed row reads as part of the
+    // frame. Blue is the one colour on the page that belongs to nothing else.
+    //
+    // No fill at all, so the same pill works on black in the rows and on gold,
+    // silver or bronze in a podium bar without a second set of colours.
+    tierPill: { fill: null, ink: "#2f8fff", frame: "#2f8fff" },
     tile: { fill: "#000000", frame: "#ffaec8", frameWidth: 5, badge: true },
     // Gold, silver and bronze land TWICE: on the position number and on the
     // name bar under the car.
@@ -195,7 +199,7 @@ export const THEMES = {
     tile: { fill: "#000000", frame: "medal", frameWidth: 3, badge: false },
     pos: { colour: "#ffffff" },
     nameBar: { fill: "medal", ink: "#0a0a0a", frame: null },
-    tierPill: { fill: "#0a0a0a", ink: "#f7c2ce" },
+    tierPill: { fill: null, ink: "#1b6fd6", frame: "#1b6fd6" },
     tilePoints: null,
     row: {
       numFill: "#0a0a0a", numInk: "#ffffff",
@@ -299,9 +303,19 @@ function drawTierPill(ctx, theme, x, cy) {
   if (!style) return 0;
   ctx.font = FONT(900, P.size);
   const w = Math.round(ctx.measureText("T2").width) + P.padX * 2;
-  box(ctx, x, cy - P.h / 2, w, P.h, P.radius);
-  ctx.fillStyle = style.fill;
-  ctx.fill();
+  // Inset by half the stroke, because a stroke is drawn centred on the path and
+  // would otherwise hang half its width outside the size asked for.
+  const half = style.frame ? P.frameWidth / 2 : 0;
+  box(ctx, x + half, cy - P.h / 2 + half, w - half * 2, P.h - half * 2, P.radius);
+  if (style.fill) {
+    ctx.fillStyle = style.fill;
+    ctx.fill();
+  }
+  if (style.frame) {
+    ctx.strokeStyle = style.frame;
+    ctx.lineWidth = P.frameWidth;
+    ctx.stroke();
+  }
   ctx.fillStyle = style.ink;
   ctx.textAlign = "center";
   // Centred on the pill's optical middle, the same way the points chip is.
