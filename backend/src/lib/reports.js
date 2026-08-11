@@ -210,6 +210,8 @@ export async function dbAttachments(prisma, reportId) {
     mime: a.mime,
     size: a.size,
     createdAt: a.createdAt,
+    // The file is gone; the row is the tombstone.
+    removedAt: a.removedAt || null,
   }));
 }
 
@@ -521,6 +523,61 @@ export async function dbDecidedForRace(prisma, raceId) {
     )
     .catch(() => []);
   return rows.map(shape);
+}
+
+// --- housekeeping -----------------------------------------------------------
+
+// How long a finished report keeps its pictures, in days. 0 means forever,
+// which is the shipped default: throwing away evidence is not something to
+// start doing without somebody deciding to.
+const RETENTION_KEY = "report_file_retention_days";
+export const RETENTION_CHOICES = [0, 1, 7, 30, 90, 180, 365];
+
+export async function readFileRetentionDays(prisma) {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: RETENTION_KEY } });
+    const n = Number(row?.value);
+    return RETENTION_CHOICES.includes(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function writeFileRetentionDays(prisma, days) {
+  const n = RETENTION_CHOICES.includes(Number(days)) ? Number(days) : 0;
+  const value = String(n);
+  await prisma.setting.upsert({ where: { key: RETENTION_KEY }, create: { key: RETENTION_KEY, value }, update: { value } });
+  return n;
+}
+
+// Attachments on reports that have been DECIDED and left alone for longer than
+// the retention window. Returns what to unlink; the caller does the unlinking,
+// because this file does not know where the disk is.
+//
+// Only decided ones, and dated from when the decision was last touched rather
+// than from when the report was filed: an argument that is still running keeps
+// its evidence however old the crash is.
+export async function dbExpiredAttachments(prisma, days) {
+  const n = Number(days) || 0;
+  if (!n) return [];
+  const cutoff = new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
+  return prisma
+    .$queryRawUnsafe(
+      `SELECT a."id", a."reportId", a."storedName"
+         FROM "ReportAttachment" a
+         JOIN "Report" r ON r."id" = a."reportId"
+        WHERE a."removedAt" IS NULL
+          AND r."status" IN ('PENALTY','NO_PENALTY','DISMISSED')
+          AND datetime(COALESCE(r."updatedAt", r."createdAt")) < datetime(?)`,
+      cutoff
+    )
+    .catch(() => []);
+}
+
+export async function dbMarkAttachmentRemoved(prisma, id) {
+  await prisma
+    .$executeRawUnsafe(`UPDATE "ReportAttachment" SET "removedAt" = ? WHERE "id" = ?`, new Date().toISOString(), id)
+    .catch(() => {});
 }
 
 export async function dbAddViewer(prisma, reportId, discordId, name) {

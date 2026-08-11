@@ -26,6 +26,7 @@ import notificationsRoutes from "./routes/notifications.js";
 import feedbackRoutes from "./routes/feedback.js";
 import reportsRoutes from "./routes/reports.js";
 import devLoginRoutes from "./routes/devLogin.js";
+import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { IS_DEPLOYED } from "./lib/deployment.js";
 import searchRoutes from "./routes/search.js";
 import adminRoutes from "./routes/admin.js";
@@ -472,6 +473,15 @@ startMemoryLog();
 // dedupes what it posts, so calling it here as well costs nothing and simply
 // removes the dependency on someone being online. unref() so this timer never
 // holds the process open on its own.
+// Housekeeping for report attachments. Hourly is plenty for a window measured
+// in days, and once at boot so a freshly-changed setting takes effect without
+// waiting. unref() so it never holds the process open on its own.
+const REPORT_SWEEP_MS = 60 * 60 * 1000;
+const sweepReports = () =>
+  sweepReportFiles(prisma).catch((e) => console.error("[reports]", e?.message || e));
+setTimeout(sweepReports, 20_000).unref();
+setInterval(sweepReports, REPORT_SWEEP_MS).unref();
+
 const REMINDER_TICK_MS = 5 * 60 * 1000;
 setInterval(() => {
   ensureRaceReminders(prisma).catch((e) => console.error("[reminders]", e?.message || e));

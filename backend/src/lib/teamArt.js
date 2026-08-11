@@ -30,40 +30,70 @@ export const ART_KINDS = ["car", "mark", "badge"];
 // a picture and belongs to no team — it is how the poster crops whichever cars
 // end up on it this week.
 //
+// Plus the framings worth keeping. A season's cars want one crop and next
+// season's want another, and finding a good one takes a minute of dragging;
+// `presets` is what stops that minute being spent again every time somebody
+// tries something and wants the old look back.
+//
 // The bounds are the same ones the sliders offer (FRAMING_LIMITS in the
 // frontend's resultGraphic.js). Repeated here on purpose: this is the edge of
 // the server, and it does not get to trust that a value arrived from a slider.
 const FRAMING_KEY = "poster_car_framing";
 const FRAMING_BOUNDS = { zoom: [1, 3], x: [-320, 320], y: [-260, 260] };
+const MAX_PRESETS = 24;
 export const DEFAULT_CAR_FRAMING = { zoom: 1, x: 0, y: 0 };
 
-function cleanFraming(input) {
-  const out = { ...DEFAULT_CAR_FRAMING };
-  if (!input || typeof input !== "object") return out;
+function cleanNumbers(input, into) {
   for (const [k, [min, max]] of Object.entries(FRAMING_BOUNDS)) {
-    const v = Number(input[k]);
-    if (Number.isFinite(v)) out[k] = Math.min(max, Math.max(min, v));
+    const v = Number(input?.[k]);
+    if (Number.isFinite(v)) into[k] = Math.min(max, Math.max(min, v));
+  }
+  return into;
+}
+
+// Named framings, deduped by name — saving over a name replaces it, which is
+// what "save" means to anyone who has used a preset list before.
+function cleanPresets(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const p of input) {
+    const name = typeof p?.name === "string" ? p.name.trim().slice(0, 40) : "";
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push(cleanNumbers(p, { name, ...DEFAULT_CAR_FRAMING }));
+    if (out.length >= MAX_PRESETS) break;
   }
   return out;
+}
+
+function cleanStored(input) {
+  return { ...cleanNumbers(input, { ...DEFAULT_CAR_FRAMING }), presets: cleanPresets(input?.presets) };
 }
 
 export async function readCarFraming(prisma) {
   try {
     const row = await prisma.setting.findUnique({ where: { key: FRAMING_KEY } });
-    return row?.value ? cleanFraming(JSON.parse(row.value)) : { ...DEFAULT_CAR_FRAMING };
+    return row?.value ? cleanStored(JSON.parse(row.value)) : cleanStored(null);
   } catch {
-    return { ...DEFAULT_CAR_FRAMING };
+    return cleanStored(null);
   }
 }
 
+// A PATCH rather than a replace: the slider saves three numbers and the preset
+// list saves an array, and neither of them knows about the other. A plain
+// overwrite would mean dragging a slider quietly deleted every saved preset.
 export async function writeCarFraming(prisma, input) {
-  const value = JSON.stringify(cleanFraming(input));
+  const next = await readCarFraming(prisma);
+  cleanNumbers(input, next);
+  if (Array.isArray(input?.presets)) next.presets = cleanPresets(input.presets);
+  const value = JSON.stringify(next);
   await prisma.setting.upsert({
     where: { key: FRAMING_KEY },
     create: { key: FRAMING_KEY, value },
     update: { value },
   });
-  return JSON.parse(value);
+  return next;
 }
 
 function clean(input) {

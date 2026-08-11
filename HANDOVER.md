@@ -267,10 +267,15 @@ typed into a message become clickable. Those files are private like the rest
 of the thread — they are not in the public uploads folder and can only be
 opened by somebody the thread lets in. Deleting a report deletes its files.
 
-One thing to keep an eye on: clips are the biggest thing this site stores.
-Railway charges for storage and outgoing traffic, so a season of 20 MB videos
-is the one part of Reports with a running cost. Deleting old threads deletes
-their files with them.
+Clips are the biggest thing this site stores, and Railway charges for storage
+and traffic, so this is the one part of Reports with a running cost. At the
+bottom of the Reports tab, **Pictures on finished reports** lets you set how
+long a DECIDED report keeps them: forever (the default), or 1, 7, 30, 90, 180
+or 365 days. The conversation always stays; only the files go, and the thread
+then says a picture was there. Counted from when the decision was last
+touched, so an argument that is still running keeps its evidence however old
+the crash is. Deleting a report deletes its files immediately, whatever this
+is set to.
 
 **Stewards without admin access:** in **Admin -> Members** you can press
 **Make steward** on somebody. They can then read and answer EVERY incident

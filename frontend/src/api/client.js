@@ -64,6 +64,28 @@ function adminAuthToken() {
   return getToken() || localStorage.getItem(USER_TOKEN_KEY);
 }
 
+// The same rights, but WITH a face on them.
+//
+// adminAuthToken above prefers the PIN token, which carries no identity: it
+// says "an admin" and nothing else. That is right for editing a result, and
+// wrong for writing in a report thread, where the drivers are reading a
+// message and want to know which steward wrote it. When the person at the
+// keyboard is signed in with Discord AND is a designated admin, their own
+// token opens the same doors and comes with their name.
+//
+// Falls back to the PIN token, so a PIN-only admin can still write; they just
+// appear as the office, because that is all anybody knows about them.
+function adminIdentityToken() {
+  try {
+    const user = JSON.parse(localStorage.getItem("nabs_user") || "null");
+    const ut = localStorage.getItem(USER_TOKEN_KEY);
+    if (user?.isAdmin && ut) return ut;
+  } catch {
+    /* fall through to the PIN token */
+  }
+  return adminAuthToken();
+}
+
 // Where Discord should send the user back after login — always the current host
 // (localhost in dev, the tunnel URL when shared). Must be registered in the
 // Discord app's OAuth2 redirects.
@@ -220,11 +242,11 @@ function humanHttpError(status) {
   return "That didn't work. Try again.";
 }
 
-async function request(path, { method = "GET", body, auth = false, userAuth = false, form = false } = {}) {
+async function request(path, { method = "GET", body, auth = false, userAuth = false, identityAuth = false, form = false } = {}) {
   const headers = {};
   if (!form) headers["Content-Type"] = "application/json";
-  if (auth) {
-    const token = adminAuthToken();
+  if (auth || identityAuth) {
+    const token = identityAuth ? adminIdentityToken() : adminAuthToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
   if (userAuth) {
@@ -880,7 +902,8 @@ export const api = {
     const fd = new FormData();
     fd.append("body", body || "");
     for (const f of files) fd.append("files", f, f.name);
-    return request(`/admin/reports/${id}/messages`, { method: "POST", body: fd, auth: true, form: true });
+    // identityToken, so the drivers see WHICH steward wrote to them.
+    return request(`/admin/reports/${id}/messages`, { method: "POST", body: fd, identityAuth: true, form: true });
   },
   // Saying who it was, on a report YOU filed that names nobody yet. The member
   // endpoint on purpose: an accusation belongs to the person making it.
@@ -896,6 +919,10 @@ export const api = {
   // itself against.
   raceReportPenalties: (raceId) => request(`/admin/races/${raceId}/report-penalties`, { auth: true }),
   // The in-game app's key. Saving one switches in-game reporting on.
+  // How long a decided report keeps its pictures.
+  reportRetention: () => request("/admin/reports-retention", { auth: true }),
+  setReportRetention: (days) =>
+    request("/admin/reports-retention", { method: "PUT", body: { days }, auth: true }),
   reportIngest: () => request("/admin/reports-ingest", { auth: true }),
   setReportIngest: (enabled) =>
     request("/admin/reports-ingest", { method: "PUT", body: { enabled }, auth: true }),
@@ -909,10 +936,11 @@ export const api = {
   },
   clearTeamArt: (teamId, kind) =>
     request(`/admin/team-art/${teamId}/${kind}`, { method: "DELETE", auth: true }).then((r) => r.art),
-  // How those cars are cropped in the podium tiles: { zoom, x, y }, one set for
-  // all three tiles.
+  // How those cars are cropped in the podium tiles — { zoom, x, y }, one set for
+  // all three — plus the framings saved under a name. The PUT patches, so
+  // sending only the numbers leaves the presets alone and vice versa.
   posterFraming: () => request("/admin/poster-framing", { auth: true }),
-  setPosterFraming: (framing) => request("/admin/poster-framing", { method: "PUT", body: framing, auth: true }),
+  setPosterFraming: (patch) => request("/admin/poster-framing", { method: "PUT", body: patch, auth: true }),
 
   // Who answered what for the races that have already run (season-scoped).
   attendanceHistory: () => request(`/admin/attendance-history${seasonQ()}`, { auth: true }),

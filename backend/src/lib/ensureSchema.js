@@ -384,11 +384,16 @@ export async function ensureAppSchema(prisma) {
     "mime" TEXT NOT NULL,
     "size" INTEGER NOT NULL DEFAULT 0,
     "uploaderDiscordId" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- Set when the housekeeping sweep has taken the FILE off disk. The row
+    -- stays so the thread can say a picture was here and has gone, rather than
+    -- a message that used to be a clip becoming silently empty.
+    "removedAt" DATETIME
   )`);
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "ReportAttachment_reportId_idx" ON "ReportAttachment"("reportId")`
   );
+  await addColumn(prisma, "ReportAttachment", "removedAt", "DATETIME");
 
   // --- Extra people an admin has let into one report's thread (a witness, a
   // team mate). Membership is per report, never a blanket permission.

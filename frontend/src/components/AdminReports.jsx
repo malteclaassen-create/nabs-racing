@@ -353,6 +353,8 @@ export default function AdminReports() {
   // you were on.
   const { data: db } = useApi(useCallback(() => api.adminDriverDb().catch(() => ({ entries: [] })), []));
   const { data: ingest, reload: reloadIngest } = useApi(useCallback(() => api.reportIngest(), []));
+  const { data: retention, reload: reloadRetention } = useApi(useCallback(() => api.reportRetention(), []));
+  const [swept, setSwept] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [show, setShow] = useState("open");
   const [busy, setBusy] = useState(false);
@@ -543,6 +545,54 @@ export default function AdminReports() {
           </ul>
         </div>
       ))}
+
+      {/* housekeeping */}
+      <div className="card overflow-hidden">
+        <CardBar title="Pictures on finished reports" />
+        <div className="space-y-3 p-5">
+          <p className="text-sm leading-relaxed text-light">
+            Clips are the only thing this site stores that grows without limit, and a 20 MB video of a crash
+            from three seasons ago costs money to keep an argument that ended. Once a report has been decided
+            and left alone this long, its pictures come off the server. The conversation stays, and the thread
+            says a picture was there.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Delete files when reports have been done for"
+              className="input w-auto py-1.5 text-sm"
+              value={retention?.days ?? 0}
+              disabled={busy}
+              onChange={async (e) => {
+                setBusy(true);
+                try {
+                  const r = await api.setReportRetention(Number(e.target.value));
+                  setSwept(r.removed);
+                  reloadRetention();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <option value={0}>Keep them forever</option>
+              <option value={1}>Delete after 1 day</option>
+              <option value={7}>Delete after 7 days</option>
+              <option value={30}>Delete after 30 days</option>
+              <option value={90}>Delete after 90 days</option>
+              <option value={180}>Delete after 180 days</option>
+              <option value={365}>Delete after a year</option>
+            </select>
+            {swept != null && (
+              <span className="text-sm text-ok">
+                {swept === 0 ? "Saved. Nothing was old enough yet." : `Saved. ${swept} file${swept === 1 ? "" : "s"} removed.`}
+              </span>
+            )}
+          </div>
+          <p className="text-xs leading-relaxed text-light">
+            Counted from when the decision was last touched, not from when the report was filed, so an argument
+            that is still running keeps its evidence however old the crash is.
+          </p>
+        </div>
+      </div>
 
       {/* the in-game app */}
       <div className="card overflow-hidden">

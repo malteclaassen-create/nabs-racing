@@ -81,6 +81,23 @@ function useAttachmentUrl(file, admin) {
 }
 
 function Attachment({ file, admin }) {
+  // Housekeeping took the file off disk after the report was decided. The row
+  // stays so the thread still says a picture was here, instead of a message
+  // that used to be a clip quietly becoming empty.
+  if (file.removedAt) {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-light">
+        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+          <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
+        </svg>
+        {file.name} was removed
+      </span>
+    );
+  }
+  return <LiveAttachment file={file} admin={admin} />;
+}
+
+function LiveAttachment({ file, admin }) {
   const { url, failed } = useAttachmentUrl(file, admin);
 
   if (failed) {

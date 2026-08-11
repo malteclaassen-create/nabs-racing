@@ -153,6 +153,11 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState(savedTheme);
   const [framing, setFraming] = useState(DEFAULT_FRAMING);
+  const [presets, setPresets] = useState([]);
+  // The name box for a new preset, or null when the button has not been pressed.
+  // A field that is only there while you are naming something keeps the panel a
+  // list of framings rather than a form.
+  const [naming, setNaming] = useState(null);
   const canvasRef = useRef(null);
   const saveTimer = useRef(null);
 
@@ -161,7 +166,13 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
     // A framing that will not load is not a reason to show no poster: the
     // default draws every car whole, which is what it did before there was a
     // slider at all.
-    api.posterFraming().then((f) => setFraming(cleanFraming(f))).catch(() => {});
+    api
+      .posterFraming()
+      .then((f) => {
+        setFraming(cleanFraming(f));
+        setPresets(Array.isArray(f?.presets) ? f.presets : []);
+      })
+      .catch(() => {});
     return () => clearTimeout(saveTimer.current);
   }, []);
 
@@ -179,6 +190,26 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
         .then(() => onArtChange?.()) // the Discord half draws its own copy
         .catch((e) => setError(e.message));
     }, 400);
+  }
+
+  // Presets save straight away rather than on the debounce: pressing a button
+  // is a decision, and a decision that might still be in flight when you close
+  // the tab is not saved.
+  function savePresets(next) {
+    setPresets(next);
+    api
+      .setPosterFraming({ presets: next })
+      .catch((e) => setError(e.message));
+  }
+
+  function addPreset(name) {
+    const clean = name.trim().slice(0, 40);
+    if (!clean) return;
+    // Same name means replace, so saving twice under one name leaves one entry
+    // rather than a list of near-identical ones.
+    const rest = presets.filter((p) => p.name.toLowerCase() !== clean.toLowerCase());
+    savePresets([...rest, { name: clean, ...framing }]);
+    setNaming(null);
   }
 
   useEffect(() => {
@@ -323,29 +354,32 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
             </button>
           }
         />
-        {/* The preview IS the export: the same canvas, shown smaller. Nothing
+        {/* Picture on the left, everything you can change to it on the right.
+            Stacked they made a card you had to scroll past; side by side the
+            poster and the slider that is moving it are on screen at once, which
+            is the only way to set a crop.
+
+            The preview IS the export: the same canvas, shown smaller. Nothing
             here is a mock-up of the file you get. */}
-        <div className="flex flex-col items-center gap-4 p-5">
-          <SlidingTabs
-            items={THEME_KEYS.map((k) => ({ key: k, label: THEMES[k].label }))}
-            value={theme}
-            onChange={(k) => {
-              setTheme(k);
-              saveTheme(k);
-            }}
-            btnClassName="px-4 py-1.5 text-xs"
-          />
+        <div className="flex flex-col gap-6 p-5 lg:flex-row lg:items-start">
           <canvas
             ref={canvasRef}
-            className="h-auto w-full max-w-[400px] rounded-lg shadow-lg"
+            className="mx-auto h-auto w-full max-w-[360px] rounded-lg shadow-lg lg:mx-0 lg:w-[330px] lg:shrink-0"
             style={{ aspectRatio: `${LAYOUT.width} / ${LAYOUT.height}` }}
           />
 
-          {/* How the cars sit in the podium tiles. Directly under the poster
-              rather than in a card of its own, because you cannot set it by
-              reading a number — you set it by looking at the picture above,
-              which redraws as you drag. */}
-          <div className="w-full max-w-[400px] space-y-3 border-t border-border pt-4">
+          <div className="min-w-0 flex-1 space-y-4 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            <SlidingTabs
+              items={THEME_KEYS.map((k) => ({ key: k, label: THEMES[k].label }))}
+              value={theme}
+              onChange={(k) => {
+                setTheme(k);
+                saveTheme(k);
+              }}
+              btnClassName="px-4 py-1.5 text-xs"
+            />
+
+            {/* How the cars sit in the podium tiles. */}
             <Slider
               label="Car zoom"
               value={framing.zoom}
@@ -381,6 +415,101 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
               >
                 Reset
               </button>
+            </div>
+
+            {/* Saved framings. A crop that works for this season's cars is a
+                minute of dragging, and next season's cars will want a different
+                one — this is what makes going back to it a click. */}
+            <div className="space-y-2 border-t border-border pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Presets</span>
+                {naming === null ? (
+                  <button
+                    type="button"
+                    disabled={!result}
+                    className="shrink-0 text-xs font-semibold text-link transition hover:text-dark disabled:opacity-40"
+                    onClick={() => setNaming("")}
+                  >
+                    Save this framing
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs font-semibold text-light transition hover:text-dark"
+                    onClick={() => setNaming(null)}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+
+              {naming !== null && (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    className="input py-1.5 text-sm"
+                    placeholder="Name it, e.g. S8 cars"
+                    maxLength={40}
+                    value={naming}
+                    onChange={(e) => setNaming(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addPreset(naming);
+                      if (e.key === "Escape") setNaming(null);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary shrink-0 px-3 py-1.5 text-sm disabled:opacity-40"
+                    disabled={!naming.trim()}
+                    onClick={() => addPreset(naming)}
+                  >
+                    Save
+                  </button>
+                </div>
+              )}
+
+              {presets.length === 0 ? (
+                <p className="text-xs text-light">Nothing saved yet.</p>
+              ) : (
+                <ul className="flex flex-wrap gap-2">
+                  {presets.map((p) => {
+                    // The one you are looking at, marked. Without it, a panel of
+                    // saved names cannot tell you which of them is on screen.
+                    const on =
+                      Math.abs(p.zoom - framing.zoom) < 0.005 &&
+                      Math.round(p.x) === Math.round(framing.x) &&
+                      Math.round(p.y) === Math.round(framing.y);
+                    return (
+                      <li key={p.name}>
+                        <span
+                          className={`flex items-center gap-1 rounded-full border py-1 pl-3 pr-1.5 text-xs font-semibold transition ${
+                            on ? "border-link text-dark" : "border-border text-medium hover:border-link"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            title={`${p.zoom.toFixed(2)}× · ${Math.round(p.x)} px · ${Math.round(p.y)} px`}
+                            onClick={() => nudge({ zoom: p.zoom, x: p.x, y: p.y })}
+                          >
+                            {p.name}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Delete the preset ${p.name}`}
+                            title="Delete"
+                            className="flex h-4 w-4 items-center justify-center rounded-full text-faint transition hover:text-bad"
+                            onClick={() => savePresets(presets.filter((q) => q.name !== p.name))}
+                          >
+                            <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" aria-hidden="true">
+                              <path d="M6 6l12 12M18 6L6 18" />
+                            </svg>
+                          </button>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           </div>
         </div>

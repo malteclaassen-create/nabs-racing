@@ -41,8 +41,9 @@ import { readTeamArt, writeTeamArt, ART_KINDS, readCarFraming, writeCarFraming }
 import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
-  dbThreadVoices,
+  dbThreadVoices, readFileRetentionDays, writeFileRetentionDays, RETENTION_CHOICES,
 } from "../lib/reports.js";
+import { sweepReportFiles } from "../services/reportHousekeeping.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
@@ -3752,9 +3753,11 @@ router.delete("/team-art/:id/:kind", async (req, res, next) => {
 });
 
 // How those cars are cropped in the podium tiles. One setting for all three,
-// read by the poster and written by the slider under the preview.
-// GET /api/admin/poster-framing -> { zoom, x, y }
-// PUT /api/admin/poster-framing   { zoom, x, y }
+// read by the poster and written by the sliders beside the preview, plus the
+// framings that were worth keeping. The PUT patches, so the sliders and the
+// preset list can each save their own half without erasing the other.
+// GET /api/admin/poster-framing -> { zoom, x, y, presets: [{ name, zoom, x, y }] }
+// PUT /api/admin/poster-framing   { zoom?, x?, y?, presets? }
 router.get("/poster-framing", async (req, res, next) => {
   try {
     res.json(await readCarFraming(prisma));
@@ -4688,6 +4691,28 @@ router.post("/reports/:id/viewers", async (req, res, next) => {
 router.delete("/reports/:id/viewers/:discordId", async (req, res, next) => {
   try {
     res.json({ ok: true, viewers: await dbRemoveViewer(prisma, req.params.id, req.params.discordId) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET/PUT /api/admin/reports-retention { days }
+// How long a DECIDED report keeps its pictures. 0 = forever, the default.
+// Sweeping on save means "did that work" is answered immediately rather than
+// within the hour.
+router.get("/reports-retention", async (req, res, next) => {
+  try {
+    res.json({ days: await readFileRetentionDays(prisma), choices: RETENTION_CHOICES });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/reports-retention", async (req, res, next) => {
+  try {
+    const days = await writeFileRetentionDays(prisma, req.body?.days);
+    const swept = await sweepReportFiles(prisma).catch(() => ({ removed: 0 }));
+    res.json({ ok: true, days, removed: swept.removed });
   } catch (e) {
     next(e);
   }

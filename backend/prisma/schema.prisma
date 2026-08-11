@@ -621,6 +621,9 @@ model ReportAttachment {
   size              Int      @default(0)
   uploaderDiscordId String?
   createdAt         DateTime @default(now())
+  // Set once housekeeping has taken the file off disk; the row stays so the
+  // thread can say a picture was here.
+  removedAt         DateTime?
 
   @@index([reportId])
 }
