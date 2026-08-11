@@ -198,6 +198,14 @@ function seasonParam(n) {
   if (SELECTED_SERIES) parts.push(`series=${encodeURIComponent(SELECTED_SERIES)}`);
   return `?${parts.join("&")}`;
 }
+// "&upTo=7" or "?upTo=7", depending on whether seasonParam already opened the
+// query string. The standings posters freeze a table after a round, and every
+// one of those reads has to get the number the same way.
+function upToQ(season, upTo) {
+  if (!upTo) return "";
+  return `${seasonParam(season) ? "&" : "?"}upTo=${upTo}`;
+}
+
 // For POST bodies that target the admin's currently-edited season: the series
 // rides along so the backend's active-season fallback stays inside the series.
 function seriesBody() {
@@ -312,11 +320,9 @@ export const api = {
   // these routes never require it), so a signed-in admin can preview a PRIVATE
   // season on the real site. Without the token the backend hides that data.
   // `upTo` is a round number: the table as it stood AFTER that round, for the
-  // standings poster. Omitted = the season as it stands now.
+  // standings posters. Omitted = the season as it stands now.
   driverStandings: (season, upTo = null) =>
-    request(`/standings/drivers${seasonParam(season)}${upTo ? `${seasonParam(season) ? "&" : "?"}upTo=${upTo}` : ""}`, {
-      auth: true,
-    }),
+    request(`/standings/drivers${seasonParam(season)}${upToQ(season, upTo)}`, { auth: true }),
   // End-of-season honours (champion, awards) for the finished-season home hero.
   seasonHonours: (season) => request(`/standings/honours${seasonParam(season)}`, { auth: true }),
   // Every rated driver of the season incl. card look — the standings "Cards" view.
@@ -332,8 +338,11 @@ export const api = {
   myRatingHistory: () => request("/me/rating/history", { userAuth: true }),
   // Per-race career curve — heavier, so it loads only on demand.
   myRatingCareer: () => request("/me/rating/career", { userAuth: true }),
-  t1Standings: (season) => request(`/standings/constructors/t1${seasonParam(season)}`, { auth: true }),
-  t2Standings: (season) => request(`/standings/constructors/t2${seasonParam(season)}`, { auth: true }),
+  // `upTo` freezes the table after that round, for the constructors poster.
+  t1Standings: (season, upTo = null) =>
+    request(`/standings/constructors/t1${seasonParam(season)}${upToQ(season, upTo)}`, { auth: true }),
+  t2Standings: (season, upTo = null) =>
+    request(`/standings/constructors/t2${seasonParam(season)}${upToQ(season, upTo)}`, { auth: true }),
   races: (season) => request(`/races${seasonParam(season)}`, { auth: true }),
   raceResults: (id) => request(`/races/${id}/results`, { auth: true }),
   // Admin-stored track flag countries ({ trackKey: "gb", ... }), loaded once at
@@ -911,6 +920,8 @@ export const api = {
     return request(`/reports/${id}/messages`, { method: "POST", body: fd, userAuth: true, form: true });
   },
   withdrawReport: (id) => request(`/reports/${id}`, { method: "DELETE", userAuth: true }),
+  // The contacts AC recorded for you in one round, to pin a report to.
+  myRaceContacts: (raceId) => request(`/reports/contacts?raceId=${encodeURIComponent(raceId)}`, { userAuth: true }),
   // The office's side.
   adminReports: () => request("/admin/reports", { auth: true }),
   adminReport: (id) => request(`/admin/reports/${id}`, { auth: true }),

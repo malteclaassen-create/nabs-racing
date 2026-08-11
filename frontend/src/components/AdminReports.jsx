@@ -440,6 +440,23 @@ export default function AdminReports() {
                     lap {openReportRow.lap}
                   </span>
                 )}
+                {/* The moment, in the clock the in-game replay app shows, so a
+                    steward can scrub straight to it. */}
+                {openReportRow.incidentAt && (
+                  <span
+                    className="font-mono text-[11px] uppercase tracking-wider text-link"
+                    title="Scrub the replay until webPenalty's clock reads this"
+                  >
+                    {new Date(openReportRow.incidentAt).toLocaleTimeString(undefined, {
+                      hour: "2-digit", minute: "2-digit", second: "2-digit",
+                    })}
+                  </span>
+                )}
+                {openReportRow.contactKph != null && (
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+                    {openReportRow.contactKph} km/h
+                  </span>
+                )}
                 <span className={`pill ${s.cls}`}>{s.label}</span>
               </span>
             }

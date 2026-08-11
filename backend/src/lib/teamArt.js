@@ -38,10 +38,14 @@ export const ART_KINDS = ["car", "mark", "badge"];
 // The bounds are the same ones the sliders offer (FRAMING_LIMITS in the
 // frontend's resultGraphic.js). Repeated here on purpose: this is the edge of
 // the server, and it does not get to trust that a value arrived from a slider.
+// The key still says "car" because that is what it held first, and renaming it
+// would orphan every framing already saved. It is the poster's drawing settings
+// now: the car's crop, and the weight of the pink outline that every poster is
+// framed with.
 const FRAMING_KEY = "poster_car_framing";
-const FRAMING_BOUNDS = { zoom: [1, 3], x: [-320, 320], y: [-260, 260] };
+const FRAMING_BOUNDS = { zoom: [1, 3], x: [-320, 320], y: [-260, 260], frameWidth: [1, 10] };
 const MAX_PRESETS = 24;
-export const DEFAULT_CAR_FRAMING = { zoom: 1, x: 0, y: 0 };
+export const DEFAULT_CAR_FRAMING = { zoom: 1, x: 0, y: 0, frameWidth: 5 };
 
 function cleanNumbers(input, into) {
   for (const [k, [min, max]] of Object.entries(FRAMING_BOUNDS)) {

@@ -68,6 +68,7 @@ function shape(r) {
     body: r.body || "",
     source: r.source || "SITE",
     incidentAt: r.incidentAt || null,
+    contactKph: r.contactKph ?? null,
     status: r.status || "NEW",
     verdict: r.verdict || null,
     penaltySeconds: r.penaltySeconds ?? null,
@@ -339,6 +340,13 @@ export async function dbCreateReport(prisma, input) {
     input.source === "INGAME" ? "INGAME" : "SITE",
     input.incidentAt ? new Date(input.incidentAt).toISOString() : null
   );
+  // Pinned to a recorded contact: the impact speed has no column of its own in
+  // the insert above, and writing it separately keeps that statement readable.
+  if (input.contactKph != null) {
+    await prisma
+      .$executeRawUnsafe(`UPDATE "Report" SET "contactKph" = ? WHERE "id" = ?`, Math.round(input.contactKph), id)
+      .catch(() => {});
+  }
   const report = await dbGetReport(prisma, id);
   await notifyAdmins(prisma, report, "A new incident report is waiting");
 

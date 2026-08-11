@@ -16,9 +16,11 @@ import { applyPenalties } from "./pointsCalculator.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
 
-// The other post this file makes: the championship table. See
-// buildStandingsPost at the bottom.
-import { getDriverStandings } from "./standingsService.js";
+// The other posts this file makes: the two championship tables. See
+// buildStandingsPost and buildConstructorsPost at the bottom.
+import {
+  getDriverStandings, getT1ConstructorStandings, getT2ConstructorStandings,
+} from "./standingsService.js";
 
 // 1:38.853 — same shape the site uses for lap times.
 function fmtLap(ms) {
@@ -280,4 +282,56 @@ export async function buildStandingsPost(
   }
 
   return { full: lines.join("\n"), short: shortLines.join("\n").trimEnd(), mentions };
+}
+
+// ---------------------------------------------------------------------------
+// The constructors' post: both tiers, in the same two lengths.
+//
+// No mentions in this one. A constructor is a team, not an account, and pinging
+// its drivers under a team result would notify people about a line they are not
+// on. The full version is both tables written out; the short one is each tier's
+// leader and a link.
+// ---------------------------------------------------------------------------
+export async function buildConstructorsPost(
+  prisma, seasonId, { upToRound = null, t1Rows = 5, t2Rows = 8, origin = null, roleId = null } = {}
+) {
+  if (!seasonId) return null;
+  const [t1, t2] = await Promise.all([
+    getT1ConstructorStandings(prisma, seasonId, { upToRound }),
+    getT2ConstructorStandings(prisma, seasonId, { upToRound }),
+  ]);
+  const top1 = (t1?.standings || []).slice(0, t1Rows);
+  const top2 = (t2?.standings || []).slice(0, t2Rows);
+  if (!top1.length && !top2.length) return null;
+
+  const season = await prisma.season
+    .findUnique({ where: { id: seasonId }, include: { series: true } })
+    .catch(() => null);
+  const slug = season?.series?.slug;
+  const seasonQ = season && !season.isActive && season.number != null ? `?season=${season.number}` : "";
+  const link = origin ? `${origin}${slug ? `/s/${slug}` : ""}/constructors${seasonQ}` : null;
+
+  const heading = `**CONSTRUCTORS' STANDINGS${upToRound ? ` AFTER ROUND ${upToRound}` : ""}**`;
+  const ping = roleId ? `<@&${roleId}>` : null;
+  const MEDALS = ["🥇", "🥈", "🥉"];
+  const badge = (r) => (r.position <= 3 ? MEDALS[r.position - 1] : `**${r.position}.**`);
+
+  const lines = ping ? [ping, heading, ""] : [heading, ""];
+  const block = (label, rows) => {
+    if (!rows.length) return;
+    lines.push(`**${label}**`);
+    for (const r of rows) lines.push(`${badge(r)} **${r.name}** - ${r.total}`);
+    lines.push("");
+  };
+  block("TIER 1", top1);
+  block("TIER 2", top2);
+  if (link) lines.push(`[The full tables on the website](${link})`);
+
+  const shortLines = ping ? [ping, heading, ""] : [heading, ""];
+  const leader = (label, rows) => (rows.length ? `${label}: **${rows[0].name}** ${rows[0].total}` : null);
+  const leaders = [leader("Tier 1", top1), leader("Tier 2", top2)].filter(Boolean);
+  if (leaders.length) shortLines.push(leaders.join("   "), "");
+  if (link) shortLines.push(`[The full tables on the website](${link})`);
+
+  return { full: lines.join("\n"), short: shortLines.join("\n").trimEnd(), mentions: {} };
 }

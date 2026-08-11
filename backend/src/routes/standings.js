@@ -24,18 +24,19 @@ function seasonOpts(req) {
   return { includePrivate: isAdminRequest(req), series: req.query.series };
 }
 
-// ?upTo=<round> freezes the table as it stood after that round, which is what
-// the standings poster is made of: the table the site showed that week, not
-// today's with the later rounds silently included.
+// ?upTo=<round> freezes a table as it stood after that round, which is what the
+// standings posters are made of: the table the site showed that week, not
+// today's with the later rounds silently included. Absent or nonsense means
+// the season as it stands.
+function upToParam(req) {
+  const n = Number(req.query.upTo);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
 router.get("/drivers", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
-    const upTo = Number(req.query.upTo);
-    res.json(
-      await getDriverStandings(prisma, seasonId, {
-        upToRound: Number.isFinite(upTo) && upTo > 0 ? Math.floor(upTo) : null,
-      })
-    );
+    res.json(await getDriverStandings(prisma, seasonId, { upToRound: upToParam(req) }));
   } catch (e) {
     next(e);
   }
@@ -114,7 +115,7 @@ router.get("/honours", async (req, res, next) => {
 router.get("/constructors/t1", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
-    res.json(await getT1ConstructorStandings(prisma, seasonId));
+    res.json(await getT1ConstructorStandings(prisma, seasonId, { upToRound: upToParam(req) }));
   } catch (e) {
     next(e);
   }
@@ -123,7 +124,7 @@ router.get("/constructors/t1", async (req, res, next) => {
 router.get("/constructors/t2", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
-    res.json(await getT2ConstructorStandings(prisma, seasonId));
+    res.json(await getT2ConstructorStandings(prisma, seasonId, { upToRound: upToParam(req) }));
   } catch (e) {
     next(e);
   }

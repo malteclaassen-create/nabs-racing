@@ -14,7 +14,7 @@ import { saveRaceResults } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
 import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
 import { getWebhookUrl, setWebhookUrl, getResultsRoleId, getResultsWebhookUrl, setResultsRoleId, setResultsWebhookUrl, postToResultsChannel, announce, syncRaceToDiscord } from "../services/discordService.js";
-import { buildResultsPost, buildStandingsPost } from "../services/resultsPostService.js";
+import { buildResultsPost, buildStandingsPost, buildConstructorsPost } from "../services/resultsPostService.js";
 import { resolveSeasonId, invalidatePrivateSeasonCache } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, streamFullBackupZip, deleteBackup, pruneBackupsTo } from "../services/backupService.js";
@@ -2686,15 +2686,32 @@ router.get("/standings-post", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true, series: req.query.series });
     const upTo = Number(req.query.upTo);
-    const post = await buildStandingsPost(prisma, seasonId, {
-      upToRound: Number.isFinite(upTo) && upTo > 0 ? Math.floor(upTo) : null,
-      // Which group the poster is of, and whether the people who have not
-      // driven are on it, so the text under it is the same table.
-      tier: ["all", "0", "1", "2"].includes(String(req.query.tier)) ? String(req.query.tier) : "all",
-      withoutStarts: req.query.withoutStarts === "1",
-      origin: postOrigin(req),
-      roleId: await getResultsRoleId(prisma),
-    });
+    const upToRound = Number.isFinite(upTo) && upTo > 0 ? Math.floor(upTo) : null;
+    const origin = postOrigin(req);
+    const roleId = await getResultsRoleId(prisma);
+    const spots = (v, def) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? Math.min(12, Math.floor(n)) : def;
+    };
+    // Which championship, and for the drivers' one which group and whether the
+    // people who have not driven are on it — so the text is the same table the
+    // sheets above it are.
+    const post =
+      req.query.of === "constructors"
+        ? await buildConstructorsPost(prisma, seasonId, {
+            upToRound,
+            t1Rows: spots(req.query.t1Rows, 5),
+            t2Rows: spots(req.query.t2Rows, 8),
+            origin,
+            roleId,
+          })
+        : await buildStandingsPost(prisma, seasonId, {
+            upToRound,
+            tier: ["all", "0", "1", "2"].includes(String(req.query.tier)) ? String(req.query.tier) : "all",
+            withoutStarts: req.query.withoutStarts === "1",
+            origin,
+            roleId,
+          });
     if (post == null) return res.status(404).json({ error: "No standings for this season yet" });
     res.json({ text: post.full, short: post.short, mentions: post.mentions });
   } catch (e) {

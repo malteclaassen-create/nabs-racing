@@ -355,6 +355,11 @@ export async function ensureAppSchema(prisma) {
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME
   )`);
+  // How hard the contact was, in km/h, when the report was pinned to one of the
+  // round's recorded contacts. The lap and the wall-clock moment go in the
+  // columns that already exist ("lap" and "incidentAt"); this is the only part
+  // with nowhere to live.
+  await addColumn(prisma, "Report", "contactKph", "INTEGER");
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Report_raceId_idx" ON "Report"("raceId")`);
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Report_createdAt_idx" ON "Report"("createdAt")`);
 

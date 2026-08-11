@@ -580,8 +580,11 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
 // drove for in those rounds.
 // `extraResults` works exactly like in getDriverStandings (hypothetical rows
 // for the live projection); omitted = plain stored standings.
-async function getConstructorStandings(prisma, tier, seasonId, { extraResults = [] } = {}) {
-  const [teams, drivers, races, results, scoring] = await Promise.all([
+// `upToRound` freezes the table after that round, exactly as it does for the
+// drivers above: the later rounds leave the race list, and every total, drop
+// and tie-break below is computed from that list.
+async function getConstructorStandings(prisma, tier, seasonId, { extraResults = [], upToRound = null } = {}) {
+  const [teams, drivers, allRaces, results, scoring] = await Promise.all([
     // ALL season teams/drivers (not just this tier): resolving a result's
     // effective team & tier needs the full grid, reserves included.
     prisma.team.findMany({ where: { seasonId } }),
@@ -591,6 +594,9 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
     getSeasonScoring(prisma, seasonId),
   ]);
   const table = scoring.pointsTable || DEFAULT_POINTS_TABLE;
+
+  const partial = upToRound != null && allRaces.some((r) => r.number > upToRound);
+  const races = partial ? allRaces.filter((r) => r.number <= upToRound) : allRaces;
 
   const raceNumberById = new Map(races.map((r) => [r.id, r.number]));
   const raceNumbers = races.map((r) => r.number);
@@ -683,8 +689,9 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
     }
   }
   // Archived seasons: official team totals & order win (finalStandings.teams
-  // holds every team; only this tier's rows exist here, so the rest are ignored).
-  applyFinalStandings(rows, scoring.finalStandings?.teams, "teamId");
+  // holds every team; only this tier's rows exist here, so the rest are
+  // ignored). Not for a mid-season view: that sheet is where the season ended.
+  if (!partial) applyFinalStandings(rows, scoring.finalStandings?.teams, "teamId");
 
   return {
     tier,
@@ -696,7 +703,7 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
     // (legacy inheritance) or "official" (archived verbatim totals).
     dropMode,
     teamDropWorst: dropMode === "team" || dropMode === "teamRounds" ? scoring.teamDropWorst : null,
-    officialTotals: !!scoring.finalStandings?.teams?.length,
+    officialTotals: !partial && !!scoring.finalStandings?.teams?.length,
     standings: rows,
   };
 }

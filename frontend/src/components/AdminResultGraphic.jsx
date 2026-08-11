@@ -340,6 +340,20 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
               format={(v) => `${v > 0 ? "+" : ""}${Math.round(v)} px`}
               onChange={(y) => nudge({ y })}
             />
+            {/* The pink line round every tile and every row. Not part of the
+                car framing above, but it lives with it because it is the same
+                kind of decision: how the poster is drawn rather than what is on
+                it. It applies to the standings posters too, which is why it is
+                saved alongside rather than in this browser. */}
+            <Slider
+              label="Outline width"
+              value={framing.frameWidth}
+              limits={FRAMING_LIMITS.frameWidth}
+              disabled={!result}
+              format={(v) => `${Math.round(v)} px`}
+              onChange={(frameWidth) => nudge({ frameWidth })}
+            />
+
             <div className="flex items-start justify-between gap-3 text-xs">
               <span className="text-light">
                 One framing for all three tiles. Whatever hangs over an edge is cut off there.

@@ -22,7 +22,7 @@
 // ---------------------------------------------------------------------------
 import multer from "multer";
 import { randomUUID } from "crypto";
-import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } from "fs";
+import { createReadStream, existsSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { REPORT_FILES_DIR } from "./dataDirs.js";
 import { dbAddAttachment, dbGetAttachment, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES } from "./reports.js";
@@ -104,5 +104,14 @@ export function removeAttachmentFiles(reportId, storedNames) {
     } catch {
       /* already gone, or never written */
     }
+  }
+  // And the folder, which is named after a report that no longer exists.
+  // rmSync with force+recursive rather than rmdir: a directory left behind by
+  // an older delete may still hold a file nobody has a row for any more, and
+  // leaving it is how a data directory fills up with things nothing can name.
+  try {
+    rmSync(join(REPORT_FILES_DIR, reportId), { recursive: true, force: true });
+  } catch {
+    /* never existed */
   }
 }

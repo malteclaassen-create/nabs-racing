@@ -5,8 +5,9 @@ import {
   dbCreateReport, dbGetReport, dbReportsFor, dbMessages, dbAddMessage, canRead, dbDeleteReport,
   dbAttachments, roleOn, dbSetAccused, dbThreadVoices,
 } from "../lib/reports.js";
-import { serveAttachment, saveAttachment, attachmentUpload } from "../lib/reportFiles.js";
-import { discordIdsForDrivers } from "../lib/persons.js";
+import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
+import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
+import { contactsForDriver } from "../lib/raceContacts.js";
 
 const router = Router();
 
@@ -64,15 +65,44 @@ router.post("/", optionalUser, async (req, res, next) => {
       return res.status(429).json({ error: "That is a lot of reports at once. Try again in a while." });
     }
     const b = req.body || {};
+
+    // A chosen contact is re-resolved from the RESULT FILE rather than trusted
+    // from the browser. The lap, the moment and the impact speed are evidence a
+    // steward will act on; taking them from the request would let anybody type
+    // "lap 4, 80 km/h" into a report about a tap that never happened.
+    let pinned = null;
+    if (b.contactId && b.raceId) {
+      const race = await prisma.race.findUnique({
+        where: { id: String(b.raceId) },
+        select: { number: true, season: { select: { number: true } } },
+      });
+      const guid = race?.season ? await steamIdOf(prisma, me.discordId) : null;
+      if (guid) {
+        const mine = contactsForDriver(race.season.number, race.number, guid);
+        pinned = mine.find((c) => c.id === b.contactId) || null;
+      }
+      if (!pinned) return res.status(400).json({ error: "That contact is not one of yours in this round" });
+    }
+
+    // Picking a contact also names the other car: AC knows exactly who it was,
+    // which is better than a dropdown and better than a memory.
+    const accusedFromContact = pinned
+      ? await prisma.driver
+          .findFirst({ where: { steamId: pinned.other.guid }, select: { id: true, name: true } })
+          .catch(() => null)
+      : null;
+
     const report = await dbCreateReport(prisma, {
       raceId: b.raceId || null,
-      lap: b.lap,
-      accusedDriverId: b.accusedDriverId || null,
-      accusedName: b.accusedName || null,
+      lap: pinned ? pinned.lap : b.lap,
+      accusedDriverId: accusedFromContact?.id || b.accusedDriverId || null,
+      accusedName: accusedFromContact?.name || pinned?.other.name || b.accusedName || null,
       body: b.body,
       reporterDiscordId: me.discordId,
       reporterName: me.name,
       source: "SITE",
+      incidentAt: pinned ? new Date(pinned.at * 1000).toISOString() : null,
+      contactKph: pinned ? pinned.kph : null,
     });
     record(me.discordId);
     // `accusedReachable` is false when the driver named has never signed in
@@ -109,8 +139,62 @@ router.delete("/:id", optionalUser, async (req, res, next) => {
     if (messages.length) {
       return res.status(409).json({ error: "Somebody has answered this already. Say so in the thread instead." });
     }
-    await dbDeleteReport(prisma, report.id);
+    // The files go too. dbDeleteReport hands back what was on disk and this
+    // route used to drop that on the floor, so a withdrawn report left its
+    // pictures behind: rows gone, bytes still there, and nothing left pointing
+    // at them to ever clean them up. The admin delete has always done this.
+    removeAttachmentFiles(report.id, await dbDeleteReport(prisma, report.id));
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// The Steam GUID this account races under, across every season row the person
+// owns. Assetto Corsa knows people by that number and nothing else, and it is
+// captured onto Driver.steamId by the result import.
+async function steamIdOf(prisma, discordId) {
+  if (!discordId) return null;
+  try {
+    const claimed = await prisma.driver.findMany({
+      where: { discordUserId: String(discordId) },
+      select: { id: true },
+    });
+    const ids = new Set();
+    for (const c of claimed) for (const id of await getLinkedDriverIds(prisma, c.id)) ids.add(id);
+    if (!ids.size) return null;
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "steamId" FROM "Driver" WHERE "id" IN (${[...ids].map(() => "?").join(",")}) AND "steamId" IS NOT NULL`,
+      ...ids
+    );
+    return rows[0]?.steamId || null;
+  } catch {
+    return null;
+  }
+}
+
+// GET /api/reports/contacts?raceId=... -> the contacts YOU were in, that round.
+//
+// Assetto Corsa records every one of them, and the raw result file is kept, so
+// the league already knows what happened and when. This is the list a driver
+// picks from instead of writing "he hit me at the hairpin" and sending a
+// steward hunting through forty minutes of replay.
+//
+// Yours only. The file holds everybody's, and who bumped whom two corners away
+// is not this account's business.
+router.get("/contacts", optionalUser, async (req, res, next) => {
+  try {
+    const me = caller(req);
+    if (!me.discordId) return res.json({ contacts: [], reason: "signed-out" });
+    const race = await prisma.race.findUnique({
+      where: { id: String(req.query.raceId || "") },
+      select: { number: true, season: { select: { number: true } } },
+    });
+    if (!race?.season) return res.json({ contacts: [], reason: "no-race" });
+    const guid = await steamIdOf(prisma, me.discordId);
+    if (!guid) return res.json({ contacts: [], reason: "no-steam-id" });
+    const contacts = contactsForDriver(race.season.number, race.number, guid);
+    res.json({ contacts, reason: contacts.length ? null : "none-recorded" });
   } catch (e) {
     next(e);
   }

@@ -6,10 +6,17 @@ import { PosterFlags, PosterTeamArt } from "./AdminPosterAssets.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import {
-  LAYOUT, THEMES, THEME_KEYS, renderStandingsTo, savedTheme, saveTheme,
+  LAYOUT, THEMES, THEME_KEYS, renderStandingsTo, renderConstructorsTo, savedTheme, saveTheme,
   STANDINGS_PER_PAGE, savedStandingsSetup, saveStandingsSetup, standingsPageCount,
-  standingsTitle, standingsSubtitle, upToRoundOf, filterStandings, standingsTiersPresent,
+  standingsTitle, standingsSubtitle, constructorsTitle, upToRoundOf, filterStandings,
+  standingsTiersPresent, CONSTRUCTOR_SPOTS,
 } from "../utils/resultGraphic.js";
+
+// Which championship the poster is of. Same machine, two tables.
+const KINDS = [
+  { key: "drivers", label: "Drivers" },
+  { key: "constructors", label: "Constructors" },
+];
 
 // ---------------------------------------------------------------------------
 // Admin → Content → Standings: the championship table as a poster.
@@ -35,6 +42,7 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [art, setArt] = useState(null);
   const [table, setTable] = useState(null);
+  const [teamTables, setTeamTables] = useState(null); // { t1, t2 }, the constructors
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -42,23 +50,37 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
   const [setup, setSetup] = useState(savedStandingsSetup);
   const [page, setPage] = useState(1);
   const canvasRef = useRef(null);
-  const { perPage, tier, withoutStarts } = setup;
+  const { kind, perPage, tier, withoutStarts, t1Rows, t2Rows } = setup;
+  const isTeams = kind === "constructors";
 
   // "Round 4" for a championship round; a training or a special event has no
   // round number to freeze the table at, so those show the season as it stands.
   const upTo = upToRoundOf(race);
 
+  // The team pictures, and the outline weight that both posters are drawn with
+  // (it lives with the car framing; see the Result tab, where it is set).
+  const [framing, setFraming] = useState(null);
   const loadArt = useCallback(() => {
     api.teamArt().then(setArt).catch((e) => setError(e.message));
+    api.posterFraming().then(setFraming).catch(() => {});
   }, []);
   useEffect(loadArt, [loadArt, artVersion]);
 
+  // Both championships are fetched for the round in view. Two small reads, and
+  // having them both in hand means the Drivers/Constructors switch redraws
+  // instead of showing an empty poster while the network catches up.
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    api
-      .driverStandings(undefined, upTo)
-      .then(setTable)
+    Promise.all([
+      api.driverStandings(undefined, upTo),
+      api.t1Standings(undefined, upTo).catch(() => null),
+      api.t2Standings(undefined, upTo).catch(() => null),
+    ])
+      .then(([drivers, t1, t2]) => {
+        setTable(drivers);
+        setTeamTables({ t1: t1?.standings || [], t2: t2?.standings || [] });
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [upTo]);
@@ -84,25 +106,42 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
   }, [pages]);
 
   useEffect(() => {
-    if (!standings.length || !art || !canvasRef.current) return;
+    if (!art || !canvasRef.current) return;
     let alive = true;
-    renderStandingsTo(canvasRef.current, {
-      standings,
-      teamArt: art,
-      countryOf: (r) => countryFor(r.driverId, r.country),
-      logoSrc: "/logo-light.png",
-      title: standingsTitle(activeTier),
-      subtitle: standingsSubtitle(upTo),
-      rows: perPage,
-      offset: (page - 1) * perPage,
-      theme,
-    }).catch((e) => {
-      if (alive) setError(e.message);
-    });
+    const fail = (e) => alive && setError(e.message);
+    if (isTeams) {
+      if (!teamTables) return;
+      renderConstructorsTo(canvasRef.current, {
+        t1: teamTables.t1,
+        t2: teamTables.t2,
+        teamArt: art,
+        logoSrc: "/logo-light.png",
+        title: constructorsTitle(),
+        subtitle: standingsSubtitle(upTo),
+        t1Rows,
+        t2Rows,
+        framing,
+        theme,
+      }).catch(fail);
+    } else {
+      if (!standings.length) return;
+      renderStandingsTo(canvasRef.current, {
+        standings,
+        teamArt: art,
+        countryOf: (r) => countryFor(r.driverId, r.country),
+        logoSrc: "/logo-light.png",
+        title: standingsTitle(activeTier),
+        subtitle: standingsSubtitle(upTo),
+        rows: perPage,
+        offset: (page - 1) * perPage,
+        framing,
+        theme,
+      }).catch(fail);
+    }
     return () => {
       alive = false;
     };
-  }, [standings, art, theme, perPage, page, upTo, activeTier]);
+  }, [isTeams, teamTables, standings, art, framing, theme, perPage, page, upTo, activeTier, t1Rows, t2Rows]);
 
   const hidden = idle - standings.length;
 
@@ -122,7 +161,9 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
       const group = activeTier === "all" ? "" : `-t${activeTier}`;
       // The sheet is in the name, because two of them in a downloads folder are
       // otherwise the same name twice.
-      const name = `standings-${when}${group}${pages > 1 ? `-p${page}` : ""}-${theme}.png`;
+      const name = isTeams
+        ? `constructors-${when}-${theme}.png`
+        : `standings-${when}${group}${pages > 1 ? `-p${page}` : ""}-${theme}.png`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -150,12 +191,17 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
     if (!teams) return [];
     const byId = new Map(teams.map((t) => [t.id, t]));
     const seen = new Map();
-    for (const r of standings) {
-      const t = r.team;
-      if (t && !seen.has(t.id)) seen.set(t.id, byId.get(t.id) || t);
+    const add = (id) => {
+      if (id && !seen.has(id)) seen.set(id, byId.get(id) || { id, name: id });
+    };
+    if (isTeams) {
+      for (const r of (teamTables?.t1 || []).slice(0, t1Rows)) add(r.teamId);
+      for (const r of (teamTables?.t2 || []).slice(0, t2Rows)) add(r.teamId);
+    } else {
+      for (const r of standings) add(r.team?.id);
     }
     return [...seen.values()];
-  }, [standings, teams]);
+  }, [isTeams, teamTables, t1Rows, t2Rows, standings, teams]);
 
   async function setCountry(driverId, code) {
     setBusy(true);
@@ -171,11 +217,11 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
     }
   }
 
-  async function upload(teamId, kind, file) {
+  async function upload(teamId, slot, file) {
     setBusy(true);
     setError(null);
     try {
-      setArt((await api.uploadTeamArt(teamId, kind, file)).art);
+      setArt((await api.uploadTeamArt(teamId, slot, file)).art);
       onArtChange?.();
     } catch (e) {
       setError(e.message);
@@ -184,11 +230,11 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
     }
   }
 
-  async function clearArt(teamId, kind) {
+  async function clearArt(teamId, slot) {
     setBusy(true);
     setError(null);
     try {
-      setArt(await api.clearTeamArt(teamId, kind));
+      setArt(await api.clearTeamArt(teamId, slot));
       onArtChange?.();
     } catch (e) {
       setError(e.message);
@@ -208,7 +254,11 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
         <CardBar
           title="Standings graphic"
           right={
-            <button className="btn-primary py-1.5 text-sm" onClick={download} disabled={!standings.length || loading}>
+            <button
+              className="btn-primary py-1.5 text-sm"
+              onClick={download}
+              disabled={loading || (isTeams ? !teamTables : !standings.length)}
+            >
               Download PNG
             </button>
           }
@@ -221,6 +271,18 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
           />
 
           <div className="min-w-0 flex-1 space-y-4 border-t border-border pt-5 lg:min-w-[19rem] lg:shrink-0 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            {/* Which championship. First, because it decides what every
+                control under it means. */}
+            <SlidingTabs
+              items={KINDS}
+              value={kind}
+              onChange={(k) => {
+                setPage(1);
+                change({ kind: k });
+              }}
+              btnClassName="px-4 py-1.5 text-xs"
+            />
+
             <SlidingTabs
               items={THEME_KEYS.map((k) => ({ key: k, label: THEMES[k].label }))}
               value={theme}
@@ -231,11 +293,51 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
               btnClassName="px-4 py-1.5 text-xs"
             />
 
+            {/* How many teams of each tier. Steve's split: Tier 1 is a short
+                grid whose top five is the story, Tier 2 has more teams in it.
+                Both on one poster, one table above the other. */}
+            {isTeams && (
+              <>
+                <label className="block">
+                  <span className="mb-1.5 flex items-center justify-between font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+                    Tier 1 teams
+                    <span className="tabular-nums text-light">{t1Rows}</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={CONSTRUCTOR_SPOTS.min}
+                    max={CONSTRUCTOR_SPOTS.max}
+                    step={CONSTRUCTOR_SPOTS.step}
+                    value={t1Rows}
+                    aria-label="Tier 1 teams"
+                    className="w-full"
+                    onChange={(e) => change({ t1Rows: Number(e.target.value) })}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 flex items-center justify-between font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+                    Tier 2 teams
+                    <span className="tabular-nums text-light">{t2Rows}</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={CONSTRUCTOR_SPOTS.min}
+                    max={CONSTRUCTOR_SPOTS.max}
+                    step={CONSTRUCTOR_SPOTS.step}
+                    value={t2Rows}
+                    aria-label="Tier 2 teams"
+                    className="w-full"
+                    onChange={(e) => change({ t2Rows: Number(e.target.value) })}
+                  />
+                </label>
+              </>
+            )}
+
             {/* Which group. Only shown where the season HAS more than one, so a
                 single-class season is not offered three buttons that empty the
                 poster. Picking one re-ranks it 1..n and retitles the poster,
                 the same way the standings page does. */}
-            {tiers.length > 1 && (
+            {!isTeams && tiers.length > 1 && (
               <label className="block">
                 <span className="mb-1.5 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
                   Who is on it
@@ -257,7 +359,7 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
                 so those are off unless this is ticked. The count says how many
                 are being held back, so nobody vanishes without the page saying
                 so. */}
-            {(hidden > 0 || withoutStarts) && (
+            {!isTeams && (hidden > 0 || withoutStarts) && (
               <label className="flex items-start gap-2.5 text-xs text-medium">
                 <input
                   type="checkbox"
@@ -275,6 +377,7 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
               </label>
             )}
 
+            {!isTeams && (
             <label className="block">
               <span className="mb-1.5 flex items-center justify-between font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
                 Drivers per sheet
@@ -291,10 +394,11 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
                 onChange={(e) => change({ perPage: Number(e.target.value) })}
               />
             </label>
+            )}
 
             {/* The sheets. Only shown when there is more than one, because a
                 single button labelled "1" is a control that decides nothing. */}
-            {pages > 1 && (
+            {!isTeams && pages > 1 && (
               <div className="space-y-1.5">
                 <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Sheet</span>
                 <div className="flex flex-wrap gap-2">
@@ -325,16 +429,18 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
               {upTo
                 ? `The table as it stood after round ${upTo}. Change the round at the top to move it.`
                 : "The season as it stands. Pick a championship round at the top to freeze the table after that round."}
-              {standings.length > 0 && ` Showing ${first} to ${last} of ${standings.length}.`}
+              {!isTeams && standings.length > 0 && ` Showing ${first} to ${last} of ${standings.length}.`}
             </p>
             <p className="text-xs text-light">
-              Which sheets actually go out is chosen under Discord post.
+              {isTeams
+                ? "Both tiers on one sheet. The rows use each team's wide logo, uploaded below."
+                : "Which sheets actually go out is chosen under Discord post."}
             </p>
           </div>
         </div>
       </div>
 
-      <PosterFlags drivers={onPoster} busy={busy} onSet={setCountry} />
+      {!isTeams && <PosterFlags drivers={onPoster} busy={busy} onSet={setCountry} />}
 
       <PosterTeamArt
         teams={teamsOnPoster}

@@ -199,9 +199,17 @@ function Thread({ id, races, onBack, onChanged }) {
 // Filing one. It used to be the top half of a corner panel; a report is worth
 // a page, and putting it here means one place to look for the whole thing
 // rather than a window for writing and a page for reading.
+// "Lap 4, 6:40 in, 30 km/h" reads as a moment; a unix second does not.
+const mmss = (s) => (s == null ? "" : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`);
+const clock = (unix) =>
+  new Date(unix * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
 function NewReport({ races, presetRaceId, onFiled }) {
   const [form, setForm] = useState({ raceId: presetRaceId || "", lap: "", accusedDriverId: "", body: "" });
   const [drivers, setDrivers] = useState([]);
+  // The contacts Assetto Corsa recorded for this driver in the chosen round.
+  const [contacts, setContacts] = useState(null);
+  const [contactId, setContactId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [sent, setSent] = useState(null);
@@ -214,6 +222,26 @@ function NewReport({ races, presetRaceId, onFiled }) {
       .catch(() => {});
   }, []);
 
+  // Fetched per round, because that is when the list changes and it is a file
+  // read on the server rather than a query.
+  useEffect(() => {
+    setContacts(null);
+    setContactId("");
+    if (!form.raceId) return;
+    let alive = true;
+    api
+      .myRaceContacts(form.raceId)
+      .then((r) => alive && setContacts(r))
+      .catch(() => alive && setContacts({ contacts: [], reason: "error" }));
+    return () => {
+      alive = false;
+    };
+  }, [form.raceId]);
+
+  // Picking a contact answers "who" and "which lap" from the race data, so both
+  // controls step aside rather than sitting there contradicting it.
+  const picked = (contacts?.contacts || []).find((c) => c.id === contactId) || null;
+
   async function submit() {
     setBusy(true);
     setError(null);
@@ -225,6 +253,9 @@ function NewReport({ races, presetRaceId, onFiled }) {
         accusedDriverId: form.accusedDriverId || null,
         accusedName: accused?.name || null,
         body: form.body,
+        // The server re-reads this from the result file; nothing about the
+        // contact is taken from here.
+        contactId: contactId || null,
       });
       // Three outcomes, and only one of them is "the other driver can see it".
       setSent(!form.accusedDriverId ? "nobody" : res?.accusedReachable === false ? "unreachable" : "ok");
@@ -267,7 +298,7 @@ function NewReport({ races, presetRaceId, onFiled }) {
 
   return (
     <div className="card space-y-3 p-5">
-      <div className="grid gap-3 sm:grid-cols-[2fr,1fr,2fr]">
+      <div className={`grid gap-3 ${picked ? "" : "sm:grid-cols-[2fr,1fr,2fr]"}`}>
         <select
           aria-label="Which race"
           className="input"
@@ -281,29 +312,75 @@ function NewReport({ races, presetRaceId, onFiled }) {
             </option>
           ))}
         </select>
-        <input
-          aria-label="Lap"
-          type="number"
-          min="1"
-          className="input"
-          placeholder="Lap"
-          value={form.lap}
-          onChange={(e) => setForm({ ...form, lap: e.target.value })}
-        />
-        <select
-          aria-label="Which driver"
-          className="input"
-          value={form.accusedDriverId}
-          onChange={(e) => setForm({ ...form, accusedDriverId: e.target.value })}
-        >
-          <option value="">Who?</option>
-          {drivers.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
+        {!picked && (
+          <>
+            <input
+              aria-label="Lap"
+              type="number"
+              min="1"
+              className="input"
+              placeholder="Lap"
+              value={form.lap}
+              onChange={(e) => setForm({ ...form, lap: e.target.value })}
+            />
+            <select
+              aria-label="Which driver"
+              className="input"
+              value={form.accusedDriverId}
+              onChange={(e) => setForm({ ...form, accusedDriverId: e.target.value })}
+            >
+              <option value="">Who?</option>
+              {drivers.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
       </div>
+      {picked && (
+        <p className="text-sm text-medium">
+          <span className="font-semibold text-dark">
+            Lap {picked.lap}, {picked.other.name}, {picked.kph} km/h
+          </span>{" "}
+          at {clock(picked.at)}, {mmss(picked.second)} into the race.
+        </p>
+      )}
+      {/* What the race itself recorded. Picking one saves the reporter
+          describing a moment and saves a steward hunting for it: the lap, the
+          other car and the clock time all come from the result file, and that
+          clock time is the one the in-game replay app displays. */}
+      {contacts?.contacts?.length > 0 && (
+        <div className="rounded-lg border border-border">
+          <div className="border-b border-border px-3 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+            Your contacts in this race
+          </div>
+          <ul className="max-h-52 divide-y divide-border overflow-y-auto">
+            {contacts.contacts.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left text-sm transition ${
+                    contactId === c.id ? "bg-brand/10" : "hover:bg-surface2/60"
+                  }`}
+                  onClick={() => setContactId(contactId === c.id ? "" : c.id)}
+                >
+                  <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+                    Lap {c.lap}
+                  </span>
+                  <span className="font-semibold text-dark">{c.other.name}</span>
+                  <span className="font-mono text-[11px] text-light">{c.kph} km/h</span>
+                  <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-faint">
+                    {mmss(c.second)} · {clock(c.at)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <textarea
         className="input h-28 resize-none"
         placeholder="What happened? Where on the track, and what did it cost you?"

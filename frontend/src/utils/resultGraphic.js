@@ -278,16 +278,31 @@ export const THEME_KEYS = Object.keys(THEMES);
 // `x` and `y` are poster pixels at the design size (the 1080-wide canvas), so
 // the numbers mean the same thing whatever the export scale is.
 // ---------------------------------------------------------------------------
-export const DEFAULT_FRAMING = { zoom: 1, x: 0, y: 0 };
+export const DEFAULT_FRAMING = { zoom: 1, x: 0, y: 0, frameWidth: 5 };
 
 // What the sliders may ask for. 3x is about where a car cut-out runs out of
 // resolution, and the offsets reach a little past the edge of a tile, which is
 // as far as a picture can usefully be pushed before it has left.
+//
+// `frameWidth` is the outline weight, and 5 is the design's own: the pink line
+// round every tile and every row in Steve's file is 5px. It is a SCALE rather
+// than a paint-by-number width — see frameW() — so a design that draws a
+// thinner line somewhere keeps it thinner.
 export const FRAMING_LIMITS = {
   zoom: { min: 1, max: 3, step: 0.01 },
   x: { min: -320, max: 320, step: 1 },
   y: { min: -260, max: 260, step: 1 },
+  frameWidth: { min: 1, max: 10, step: 1 },
 };
+
+// A design's own line weight, at the outline setting in force. At 5 (the
+// default) every frame comes out exactly as designed, which is the only
+// sensible thing for a number nobody has touched yet. Never below 1: a line
+// rounded down to nothing is a missing frame, not a thin one.
+function frameW(themeWidth, framing) {
+  if (!themeWidth) return 0; // this design draws no frame here
+  return Math.max(1, Math.round((themeWidth * framing.frameWidth) / DEFAULT_FRAMING.frameWidth));
+}
 
 const clampTo = (v, { min, max }, fallback) =>
   Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
@@ -299,6 +314,9 @@ export function cleanFraming(f) {
     zoom: clampTo(Number(f?.zoom), FRAMING_LIMITS.zoom, DEFAULT_FRAMING.zoom),
     x: clampTo(Number(f?.x), FRAMING_LIMITS.x, DEFAULT_FRAMING.x),
     y: clampTo(Number(f?.y), FRAMING_LIMITS.y, DEFAULT_FRAMING.y),
+    frameWidth: Math.round(
+      clampTo(Number(f?.frameWidth), FRAMING_LIMITS.frameWidth, DEFAULT_FRAMING.frameWidth)
+    ),
   };
 }
 
@@ -625,8 +643,9 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
 
       if (T.tilePoints.frame) {
         ctx.strokeStyle = T.tilePoints.frame;
-        ctx.lineWidth = T.tilePoints.frameWidth;
-        const half = T.tilePoints.frameWidth / 2;
+        const cw = frameW(T.tilePoints.frameWidth, F);
+        ctx.lineWidth = cw;
+        const half = cw / 2;
         ctx.beginPath();
         ctx.moveTo(cx + w, cy + half);
         ctx.lineTo(cx + c.radius + half, cy + half);
@@ -648,7 +667,7 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     // with a line between, which is what makes them read as one object.
     const frame = T.tile.frame === "medal" ? medal : T.tile.frame;
     if (frame) {
-      const w = T.tile.frameWidth;
+      const w = frameW(T.tile.frameWidth, F);
       ctx.strokeStyle = frame;
       ctx.lineWidth = w;
       if (T.nameBar.frame) {
@@ -724,6 +743,7 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
       y: L.rows.top + i * (L.rows.height + L.rows.gap),
       h: L.rows.height,
       showDelta: timed,
+      frame: frameW(T.row.frameWidth, F),
     });
   });
 
@@ -745,7 +765,7 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
 // is what the driver won that afternoon, and on a standings table the same
 // number is a season total, which nobody gained.
 // ---------------------------------------------------------------------------
-function drawRow(ctx, T, row, { y, h, showDelta = false, pointsPlain = false }) {
+function drawRow(ctx, T, row, { y, h, showDelta = false, pointsPlain = false, frame = null }) {
   const L = LAYOUT;
   const R = L.rows;
   // Never ABOVE 1: a short table is allowed taller bars so it fills the page,
@@ -772,7 +792,7 @@ function drawRow(ctx, T, row, { y, h, showDelta = false, pointsPlain = false }) 
   ctx.fillRect(L.pad, y, R.numW, h);
   ctx.restore();
   if (T.row.barFrame) {
-    const w = T.row.frameWidth;
+    const w = frame;
     ctx.strokeStyle = T.row.barFrame;
     ctx.lineWidth = w;
     strokeBox(ctx, L.pad, y, rowW, h, w, T.radius);
@@ -865,12 +885,18 @@ export const STANDINGS = {
   maxH: 130, // a row never gets taller than this, however few there are
   gap: 25, // at full height; it closes up with the rows as the list grows
   maxGapOfRow: 0.42, // and never opens past this much of a row's height
+  // A heading over a block of rows ("TIER 1"). Only the constructors poster
+  // uses one: it is two tables on one page, and without a word between them the
+  // reader has a fourteen-line list where the numbering restarts halfway down
+  // for no visible reason.
+  section: { size: 27, h: 34, gapAfter: 6, alpha: 0.72 },
 };
 
 export function drawStandingsGraphic(ctx, data, scale = 1, themeKey = "black") {
   const L = LAYOUT;
   const S = STANDINGS;
   const T = THEMES[themeKey] || THEMES.black;
+  const F = cleanFraming(data.framing); // only the outline weight matters here
   ctx.save();
   ctx.scale(scale, scale);
   ctx.textBaseline = "alphabetic";
@@ -878,9 +904,13 @@ export function drawStandingsGraphic(ctx, data, scale = 1, themeKey = "black") {
   ctx.fillStyle = T.bg;
   ctx.fillRect(0, 0, L.width, L.height);
 
-  const rows = data.rows || [];
-  const n = Math.max(1, rows.length);
-  const area = L.height - S.bottomPad - S.top;
+  // One table or several. A drivers poster is one block with no heading over
+  // it; the constructors poster is Tier 1 and Tier 2, each with its own. Same
+  // solver either way, so the two cannot drift apart.
+  const sections = data.sections || [{ heading: null, rows: data.rows || [] }];
+  const n = Math.max(1, sections.reduce((sum, s) => sum + s.rows.length, 0));
+  const headSpace = sections.filter((s) => s.heading).length * (S.section.h + S.section.gapAfter);
+  const area = L.height - S.bottomPad - S.top - headSpace;
   // Solve the pitch, then let the gap follow it: at eleven rows this lands on
   // the result poster's own 80 and 25, and it closes up from there.
   let pitch = area / n;
@@ -936,9 +966,25 @@ export function drawStandingsGraphic(ctx, data, scale = 1, themeKey = "black") {
   }
   ctx.textAlign = "left";
 
-  rows.forEach((row, i) => {
-    drawRow(ctx, T, row, { y: top + i * (h + gap), h, pointsPlain: true });
-  });
+  const frame = frameW(T.row.frameWidth, F);
+  let y = top;
+  for (const section of sections) {
+    if (section.heading) {
+      ctx.font = FONT(800, S.section.size);
+      ctx.fillStyle = T.title;
+      ctx.globalAlpha = S.section.alpha;
+      // Left-aligned over the block rather than centred: it is a column header,
+      // and a centred one floating above a left-aligned table reads as a second
+      // title for the whole page.
+      ctx.fillText(section.heading, L.pad + 6, y + S.section.size);
+      ctx.globalAlpha = 1;
+      y += S.section.h + S.section.gapAfter;
+    }
+    for (const row of section.rows) {
+      drawRow(ctx, T, row, { y, h, pointsPlain: true, frame });
+      y += h + gap;
+    }
+  }
 
   ctx.restore();
 }
@@ -991,16 +1037,27 @@ export function savedStandingsSetup() {
     const raw = JSON.parse(localStorage.getItem(STANDINGS_STORE) || "{}");
     const n = Number(raw.perPage);
     const ok = Number.isFinite(n) && n >= STANDINGS_PER_PAGE.min && n <= STANDINGS_PER_PAGE.max;
+    const spots = (v, def) => {
+      const x = Number(v);
+      return Number.isFinite(x) && x >= CONSTRUCTOR_SPOTS.min && x <= CONSTRUCTOR_SPOTS.max ? Math.round(x) : def;
+    };
     return {
+      // Which championship: the drivers' table or the constructors'.
+      kind: raw.kind === "constructors" ? "constructors" : "drivers",
       perPage: ok ? Math.round(n) : STANDINGS_PER_PAGE.def,
       tier: STANDINGS_TIERS.some((t) => t.key === raw.tier) ? raw.tier : "all",
       // Off unless it was deliberately turned on: the reserve pool is mostly
       // people who have not driven, and they are not what a standings poster is
       // about.
       withoutStarts: raw.withoutStarts === true,
+      t1Rows: spots(raw.t1Rows, CONSTRUCTOR_SPOTS.t1),
+      t2Rows: spots(raw.t2Rows, CONSTRUCTOR_SPOTS.t2),
     };
   } catch {
-    return { perPage: STANDINGS_PER_PAGE.def, tier: "all", withoutStarts: false };
+    return {
+      kind: "drivers", perPage: STANDINGS_PER_PAGE.def, tier: "all", withoutStarts: false,
+      t1Rows: CONSTRUCTOR_SPOTS.t1, t2Rows: CONSTRUCTOR_SPOTS.t2,
+    };
   }
 }
 
@@ -1008,7 +1065,14 @@ export function saveStandingsSetup(setup) {
   try {
     localStorage.setItem(
       STANDINGS_STORE,
-      JSON.stringify({ perPage: setup.perPage, tier: setup.tier, withoutStarts: !!setup.withoutStarts })
+      JSON.stringify({
+        kind: setup.kind,
+        perPage: setup.perPage,
+        tier: setup.tier,
+        withoutStarts: !!setup.withoutStarts,
+        t1Rows: setup.t1Rows,
+        t2Rows: setup.t2Rows,
+      })
     );
   } catch {
     /* private mode: the choice just does not survive the tab */
@@ -1075,6 +1139,10 @@ export function standingsTitle(tier = "all") {
   return "Driver's standings";
 }
 
+export function constructorsTitle() {
+  return "Constructors' standings";
+}
+
 export function standingsSubtitle(upToRound) {
   return upToRound ? `After round ${upToRound}` : null;
 }
@@ -1124,6 +1192,65 @@ export async function renderStandingsTo(canvas, opts) {
   return canvas;
 }
 
+// And the constructors, which is the same poster with two tables on it.
+export async function renderConstructorsTo(canvas, opts) {
+  await ensureFonts();
+  const data = await loadConstructorsAssets(opts);
+  canvas.width = LAYOUT.width * EXPORT_SCALE;
+  canvas.height = LAYOUT.height * EXPORT_SCALE;
+  drawStandingsGraphic(canvas.getContext("2d"), data, EXPORT_SCALE, opts.theme);
+  return canvas;
+}
+
+export async function renderConstructorsBlob(opts) {
+  const canvas = await renderConstructorsTo(document.createElement("canvas"), opts);
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
+// How many teams of each tier the constructors poster shows. Steve's own split:
+// Tier 1 is a short grid and its top five is the story, Tier 2 has more teams in
+// it and wants seven or eight. Both adjustable, because a season can add a team.
+export const CONSTRUCTOR_SPOTS = { min: 3, max: 12, step: 1, t1: 5, t2: 8 };
+
+// Both constructor tables, with every wordmark already loaded. The row is the
+// same row as everywhere else: number, name, mark, points. The team's name is
+// drawn as text AND its wide logo sits in the middle column, because a team
+// with no wordmark uploaded would otherwise be an anonymous numbered bar.
+export async function loadConstructorsAssets({
+  t1 = [], t2 = [], teamArt = {}, logoSrc, title, subtitle = null,
+  t1Rows = CONSTRUCTOR_SPOTS.t1, t2Rows = CONSTRUCTOR_SPOTS.t2, framing = null,
+}) {
+  const markSrc = (r) => teamArt[r.teamId]?.mark || r.logoUrl || null;
+  const shown1 = t1.slice(0, t1Rows);
+  const shown2 = t2.slice(0, t2Rows);
+
+  const [logo, marks1, marks2] = await Promise.all([
+    loadImage(logoSrc),
+    Promise.all(shown1.map((r) => loadImage(markSrc(r)))),
+    Promise.all(shown2.map((r) => loadImage(markSrc(r)))),
+  ]);
+
+  const row = (r, i, marks) => ({
+    position: r.position ?? i + 1,
+    name: r.name,
+    points: r.total ?? 0,
+    tier: null, // the section heading already says which tier this is
+    mark: marks[i],
+    flag: null,
+  });
+
+  return {
+    title,
+    subtitle,
+    logo,
+    framing: cleanFraming(framing),
+    sections: [
+      { heading: "TIER 1", rows: shown1.map((r, i) => row(r, i, marks1)) },
+      { heading: "TIER 2", rows: shown2.map((r, i) => row(r, i, marks2)) },
+    ].filter((s) => s.rows.length),
+  };
+}
+
 // Every sheet of a table, as PNG blobs in reading order. For the Discord post,
 // which attaches them all to one message. Drawn one after another rather than
 // at once: each one is a 2160x2700 canvas, and a dozen of those in flight is a
@@ -1150,7 +1277,7 @@ export async function renderStandingsBlobs(opts, { perPage, pages }) {
 // the way the rest of the site resolves it, and the TEAM's tier deciding which
 // table a driver's points land in.
 export async function loadStandingsAssets({
-  standings, teamArt = {}, countryOf, logoSrc, title, subtitle = null, rows = 10, offset = 0,
+  standings, teamArt = {}, countryOf, logoSrc, title, subtitle = null, rows = 10, offset = 0, framing = null,
 }) {
   const flagSrc = (code) => (code ? `/flags/w80/${String(code).toLowerCase()}.png` : null);
   // `offset` is what makes a second sheet possible: places 11 to 20 are the same
@@ -1169,6 +1296,7 @@ export async function loadStandingsAssets({
     title,
     subtitle,
     logo,
+    framing: cleanFraming(framing),
     rows: shown.map((r, i) => ({
       position: r.position ?? i + 1,
       name: r.name,

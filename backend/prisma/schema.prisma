@@ -576,6 +576,9 @@ model FeedbackReply {
 // records what was decided and never writes itself into the classification —
 // see backend/src/lib/reports.js, which manages these three tables in raw SQL.
 model Report {
+  // Set when the reporter pinned this to one of the round's recorded contacts:
+  // impact speed in km/h. The lap and the moment live in `lap` / `incidentAt`.
+  contactKph        Int?
   id                String    @id
   raceId            String?
   lap               Int?
