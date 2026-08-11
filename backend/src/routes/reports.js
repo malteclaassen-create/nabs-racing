@@ -3,7 +3,9 @@ import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import {
   dbCreateReport, dbGetReport, dbReportsFor, dbMessages, dbAddMessage, canRead, dbDeleteReport,
+  dbAttachments,
 } from "../lib/reports.js";
+import { serveAttachment, saveAttachment, attachmentUpload } from "../lib/reportFiles.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
 
 const router = Router();
@@ -136,14 +138,18 @@ router.get("/:id", optionalUser, async (req, res, next) => {
     if (!report || !(await canRead(prisma, report, me.discordId, me.isAdmin))) {
       return res.status(404).json({ error: "Report not found" });
     }
-    res.json({ report, messages: await dbMessages(prisma, report.id) });
+    res.json({
+      report,
+      messages: await dbMessages(prisma, report.id),
+      attachments: await dbAttachments(prisma, report.id),
+    });
   } catch (e) {
     next(e);
   }
 });
 
 // POST /api/reports/:id/messages  { body }
-router.post("/:id/messages", optionalUser, async (req, res, next) => {
+router.post("/:id/messages", optionalUser, attachmentUpload.array("files", 4), async (req, res, next) => {
   try {
     const me = caller(req);
     const report = await dbGetReport(prisma, req.params.id);
@@ -157,15 +163,48 @@ router.post("/:id/messages", optionalUser, async (req, res, next) => {
       : report.reporterDiscordId === me.discordId
         ? "REPORTER"
         : "ACCUSED";
-    const messages = await dbAddMessage(prisma, report, {
+    const { messageId, messages } = await dbAddMessage(prisma, report, {
       author,
       discordId: me.discordId,
       name: me.name,
       body: req.body?.body,
+      allowEmpty: (req.files || []).length > 0,
     });
-    res.json({ ok: true, messages });
+    for (const f of req.files || []) {
+      await saveAttachment(prisma, { report, messageId, file: f, uploaderDiscordId: me.discordId });
+    }
+    res.json({ ok: true, messages, attachments: await dbAttachments(prisma, report.id) });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// GET /api/reports/:id/files/:attId — a picture or clip from a thread.
+//
+// Through here and never as a static file. uploads/ is mounted for anyone with
+// a URL; a report is a private conversation, so its attachments run the SAME
+// read check the thread does, on every single request. Guessing an id gets a
+// 404, exactly like guessing a report id does.
+router.get("/:id/files/:attId", optionalUser, async (req, res, next) => {
+  try {
+    const me = caller(req);
+    const report = await dbGetReport(prisma, req.params.id);
+    if (!report) return res.status(404).json({ error: "Not found" });
+
+    // The SESSION, every time. No signed URL, no ticket, nothing that keeps
+    // working once it has been copied out of the page: the first version of
+    // this handed out one-hour URLs so an <img> could load them, and a URL that
+    // authenticates by existing is a URL that works for whoever it is forwarded
+    // to. The browser fetches these with its own token and renders the bytes
+    // from memory instead (see ReportChat.jsx), which costs one fetch and takes
+    // the leak away entirely.
+    if (!(await canRead(prisma, report, me.discordId, me.isAdmin))) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    await serveAttachment(prisma, res, report.id, req.params.attId);
+  } catch (e) {
     next(e);
   }
 });

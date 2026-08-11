@@ -24,6 +24,26 @@ export function withApiBase(path) {
   return `${BASE}${path}`;
 }
 
+// An attachment's bytes, fetched with the caller's own session and handed back
+// as a blob: URL. The endpoint is behind the thread's read check and needs an
+// Authorization header, which an <img> cannot send — so the picture is loaded
+// here and rendered from memory. Nothing that is copied out of the page is a
+// working link to somebody else's private thread.
+//
+// `admin` picks the stewards' route: their PIN token carries no Discord id, so
+// the member endpoint would turn them away.
+export async function reportFileUrl(file, admin = false) {
+  const path = admin
+    ? `/admin/reports/${file.reportId}/files/${file.id}`
+    : `/reports/${file.reportId}/files/${file.id}`;
+  const token = admin ? adminAuthToken() : localStorage.getItem(USER_TOKEN_KEY);
+  const res = await fetch(`${BASE}/api${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Could not load that file");
+  return URL.createObjectURL(await res.blob());
+}
+
 const USER_TOKEN_KEY = "nabs_user_token";
 
 // Token for admin routes: the PIN admin token wins; a designated Discord admin
@@ -826,8 +846,15 @@ export const api = {
   createReport: (body) => request("/reports", { method: "POST", body, userAuth: true }),
   myReports: () => request("/reports", { userAuth: true }),
   report: (id) => request(`/reports/${id}`, { userAuth: true }),
-  replyToReport: (id, body) =>
-    request(`/reports/${id}/messages`, { method: "POST", body: { body }, userAuth: true }),
+  // Text, files, or both. Always multipart: one shape for the endpoint means
+  // one code path on the server, and a message with a clip on it is the normal
+  // case here rather than the exception.
+  replyToReport: (id, body, files = []) => {
+    const fd = new FormData();
+    fd.append("body", body || "");
+    for (const f of files) fd.append("files", f, f.name);
+    return request(`/reports/${id}/messages`, { method: "POST", body: fd, userAuth: true, form: true });
+  },
   withdrawReport: (id) => request(`/reports/${id}`, { method: "DELETE", userAuth: true }),
   // The office's side.
   adminReports: () => request("/admin/reports", { auth: true }),
@@ -836,8 +863,12 @@ export const api = {
   // The stewards' own reply. NOT the member endpoint: a PIN admin has no
   // Discord login behind them, and that route works out who you are from your
   // account.
-  adminReplyToReport: (id, body) =>
-    request(`/admin/reports/${id}/messages`, { method: "POST", body: { body }, auth: true }),
+  adminReplyToReport: (id, body, files = []) => {
+    const fd = new FormData();
+    fd.append("body", body || "");
+    for (const f of files) fd.append("files", f, f.name);
+    return request(`/admin/reports/${id}/messages`, { method: "POST", body: fd, auth: true, form: true });
+  },
   setReportAccused: (id, accusedDriverId, accusedName) =>
     request(`/admin/reports/${id}/accused`, { method: "PUT", body: { accusedDriverId, accusedName }, auth: true }),
   // By roster driver where possible; the raw Discord id stays for somebody who

@@ -21,6 +21,7 @@ vi.mock("./persons.js", () => ({
 
 const {
   dbCreateReport, dbAddMessage, dbDecideReport, canRead, readersOf, dbSetAccused,
+  dbAddAttachment, dbAttachments, dbDeleteReport, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES,
 } = await import("./reports.js");
 
 // A report is a PRIVATE conversation, and everything below is about who is let
@@ -31,7 +32,7 @@ const {
 let rows;
 
 function makePrisma() {
-  rows = { Report: [], ReportMessage: [], ReportViewer: [] };
+  rows = { Report: [], ReportMessage: [], ReportViewer: [], ReportAttachment: [] };
   return {
     $executeRawUnsafe: async (sql, ...a) => {
       if (sql.includes('INSERT INTO "Report"')) {
@@ -42,6 +43,13 @@ function makePrisma() {
         });
       } else if (sql.includes('INSERT INTO "ReportMessage"')) {
         rows.ReportMessage.push({ id: a[0], reportId: a[1], author: a[2], authorDiscordId: a[3], authorName: a[4], body: a[5], createdAt: "now" });
+      } else if (sql.includes('INSERT INTO "ReportAttachment"')) {
+        rows.ReportAttachment.push({
+          id: a[0], reportId: a[1], messageId: a[2], storedName: a[3],
+          name: a[4], mime: a[5], size: a[6], uploaderDiscordId: a[7], createdAt: "now",
+        });
+      } else if (sql.startsWith('DELETE FROM "ReportAttachment"')) {
+        rows.ReportAttachment = rows.ReportAttachment.filter((x) => x.reportId !== a[0]);
       } else if (sql.includes('INSERT INTO "ReportViewer"')) {
         rows.ReportViewer.push({ reportId: a[0], discordId: a[1], name: a[2] });
       } else if (sql.startsWith('UPDATE "Report" SET "status"')) {
@@ -57,6 +65,7 @@ function makePrisma() {
       if (sql.includes('FROM "Report" WHERE "id"')) return rows.Report.filter((r) => r.id === a[0]);
       if (sql.includes('FROM "ReportViewer"')) return rows.ReportViewer.filter((v) => v.reportId === a[0]);
       if (sql.includes('FROM "ReportMessage"')) return rows.ReportMessage.filter((m) => m.reportId === a[0]);
+      if (sql.includes('FROM "ReportAttachment"')) return rows.ReportAttachment.filter((x) => x.reportId === a[0]);
       return [];
     },
   };
@@ -187,6 +196,54 @@ describe("naming the driver afterwards", () => {
     expect(fresh.accusedReachable).toBe(true);
     expect(await canRead(p, fresh, "222", false)).toBe(true);
     expect(notes.filter((n) => n.recipientId === "222" && n.title.match(/names you/i))).toHaveLength(1);
+  });
+});
+
+describe("attachments", () => {
+  it("takes pictures, clips and a PDF, and nothing that runs", async () => {
+    // A closed list, not a blocklist: these files are opened by the other
+    // driver and by the stewards, from the league's own domain.
+    expect(Object.keys(ATTACHMENT_TYPES).sort()).toEqual([
+      "application/pdf", "image/gif", "image/jpeg", "image/png", "image/webp",
+      "video/mp4", "video/quicktime", "video/webm",
+    ]);
+    expect(ATTACHMENT_TYPES["application/x-msdownload"]).toBeUndefined();
+    expect(ATTACHMENT_TYPES["image/svg+xml"]).toBeUndefined(); // an SVG can carry a script
+    expect(MAX_ATTACHMENT_BYTES).toBe(20 * 1024 * 1024);
+  });
+
+  it("lets a message be nothing but a picture", async () => {
+    // "Here, look" with a clip attached is a complete thought, and refusing it
+    // would make somebody type a full stop to send a video.
+    const p = makePrisma();
+    const r = await dbCreateReport(p, base);
+    await expect(dbAddMessage(p, r, { author: "REPORTER", body: "" })).rejects.toThrow(/empty/i);
+    const ok = await dbAddMessage(p, r, { author: "REPORTER", body: "", allowEmpty: true });
+    expect(ok.messageId).toBeTruthy();
+  });
+
+  it("hands back the files hanging on a report, and never the name on disk", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, base);
+    const { messageId } = await dbAddMessage(p, r, { author: "REPORTER", body: "look" });
+    await dbAddAttachment(p, {
+      reportId: r.id, messageId, storedName: "secret-on-disk.png",
+      name: "contact.png", mime: "image/png", size: 4242, uploaderDiscordId: "111",
+    });
+    const [a] = await dbAttachments(p, r.id);
+    expect(a).toMatchObject({ reportId: r.id, messageId, name: "contact.png", mime: "image/png", size: 4242 });
+    // The path on disk is the server's business.
+    expect(JSON.stringify(a)).not.toContain("secret-on-disk");
+  });
+
+  it("gives back the files to delete when a report goes, so they can be removed", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, base);
+    await dbAddAttachment(p, {
+      reportId: r.id, messageId: null, storedName: "abc.mp4",
+      name: "clip.mp4", mime: "video/mp4", size: 10,
+    });
+    expect(await dbDeleteReport(p, r.id)).toEqual(["abc.mp4"]);
   });
 });
 

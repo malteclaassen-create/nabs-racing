@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
 import SlidingTabs from "./SlidingTabs.jsx";
+import ReportChat, { ReportComposer } from "./ReportChat.jsx";
 import { useDismiss, useFocusTrap, useScrollLock } from "./overlay.jsx";
 
 // ---------------------------------------------------------------------------
@@ -67,17 +68,9 @@ function CloseIcon() {
   );
 }
 
-const when = (iso) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : d.toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-};
-
 // One thread, opened from the list.
 function Thread({ id, onBack, onWithdrawn }) {
   const [data, setData] = useState(null);
-  const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -86,14 +79,12 @@ function Thread({ id, onBack, onWithdrawn }) {
   }, [id]);
   useEffect(load, [load]);
 
-  async function send() {
-    if (!text.trim()) return;
+  async function send(body, files) {
     setBusy(true);
     setError(null);
     try {
-      const r = await api.replyToReport(id, text.trim());
-      setData((d) => ({ ...d, messages: r.messages }));
-      setText("");
+      const r = await api.replyToReport(id, body, files);
+      setData((d) => ({ ...d, messages: r.messages, attachments: r.attachments }));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -124,53 +115,27 @@ function Thread({ id, onBack, onWithdrawn }) {
         ← All reports
       </button>
 
-      <div className="rounded-lg border border-border bg-surface2/50 p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`pill ${s.cls}`}>{s.label}</span>
-          {data.report.lap != null && (
-            <span className="font-mono text-[11px] uppercase tracking-wider text-light">Lap {data.report.lap}</span>
-          )}
-          {data.report.accusedName && (
-            <span className="text-xs text-light">about {data.report.accusedName}</span>
-          )}
-        </div>
-        <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-dark">{data.report.body}</p>
-        {data.report.verdict && (
-          <p className="mt-2 border-t border-border pt-2 text-sm leading-relaxed text-medium">
-            <span className="font-semibold text-dark">The stewards: </span>
-            {data.report.verdict}
-            {data.report.penaltySeconds != null && ` (${data.report.penaltySeconds}s)`}
-          </p>
+      {/* Status and round only. What was reported is the first message of the
+          conversation below, not a summary above it. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`pill ${s.cls}`}>{s.label}</span>
+        {data.report.lap != null && (
+          <span className="font-mono text-[11px] uppercase tracking-wider text-light">Lap {data.report.lap}</span>
         )}
+        {data.report.accusedName && <span className="text-xs text-light">about {data.report.accusedName}</span>}
       </div>
+      {data.report.verdict && (
+        <p className="rounded-lg border border-border bg-surface2/50 p-3 text-sm leading-relaxed text-medium">
+          <span className="font-semibold text-dark">The stewards: </span>
+          {data.report.verdict}
+          {data.report.penaltySeconds != null && ` (${data.report.penaltySeconds}s)`}
+        </p>
+      )}
 
-      <ul className="space-y-2">
-        {data.messages.map((m) => (
-          <li
-            key={m.id}
-            className={`rounded-lg border-l-2 px-3 py-2 ${
-              m.author === "ADMIN" ? "border-brand/60 bg-brand/5" : "ml-3 border-border bg-surface2/60"
-            }`}
-          >
-            <div className="font-mono text-[10px] uppercase tracking-wider text-light">
-              {m.author === "ADMIN" ? "Stewards" : m.authorName || "Driver"} · {when(m.createdAt)}
-            </div>
-            <p className="mt-0.5 whitespace-pre-line text-sm leading-relaxed text-dark">{m.body}</p>
-          </li>
-        ))}
-        {data.messages.length === 0 && <li className="text-sm text-light">Nothing written yet.</li>}
-      </ul>
+      <ReportChat report={data.report} messages={data.messages} attachments={data.attachments} />
 
       <div className="space-y-2">
-        <textarea
-          className="input h-20 resize-none"
-          placeholder="Add something to this report…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-        <button className="btn-primary w-full" disabled={busy || !text.trim()} onClick={send}>
-          {busy ? "Sending…" : "Send"}
-        </button>
+        <ReportComposer onSend={send} busy={busy} />
         {/* Filed by mistake. Only while nothing has happened to it: once the
             stewards have picked it up or somebody has answered, it is a
             conversation with other people in it and taking it away is not one

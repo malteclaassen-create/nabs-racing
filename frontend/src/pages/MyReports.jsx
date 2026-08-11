@@ -8,6 +8,7 @@ import { SocialIcon } from "../components/SocialLinks.jsx";
 import { PageHeader, ErrorBox, EmptyState, Spinner } from "../components/ui.jsx";
 import { openReport, REPORTS_OPEN_TO_MEMBERS } from "../components/ReportWidget.jsx";
 import { fmtStamp } from "../utils/format.js";
+import ReportChat, { ReportComposer } from "../components/ReportChat.jsx";
 
 // ---------------------------------------------------------------------------
 // A driver's side of the stewarding conversation: the incident reports they
@@ -36,7 +37,6 @@ const when = (iso) => (iso ? fmtStamp(iso) : "");
 
 function Thread({ id, races, onBack, onChanged }) {
   const [data, setData] = useState(null);
-  const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -58,14 +58,12 @@ function Thread({ id, races, onBack, onChanged }) {
     return () => window.removeEventListener("focus", onFocus);
   }, [load]);
 
-  async function send() {
-    if (!text.trim()) return;
+  async function send(body, files) {
     setBusy(true);
     setError(null);
     try {
-      const r = await api.replyToReport(id, text.trim());
-      setData((d) => ({ ...d, messages: r.messages }));
-      setText("");
+      const r = await api.replyToReport(id, body, files);
+      setData((d) => ({ ...d, messages: r.messages, attachments: r.attachments }));
       onChanged?.();
     } catch (e) {
       setError(e.message);
@@ -87,7 +85,10 @@ function Thread({ id, races, onBack, onChanged }) {
         &larr; All my reports
       </button>
 
-      <div className="card p-5">
+      {/* The round, the lap and where it got to. Everything that was SAID is
+          in the thread below, including what was reported — that is the first
+          message, not a box above the conversation. */}
+      <div className="card p-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className={`pill ${s.cls}`}>{s.label}</span>
           {/* Which round, in words. A thread that only says "lap 14" is an
@@ -106,7 +107,6 @@ function Thread({ id, races, onBack, onChanged }) {
             {when(r.createdAt)}
           </span>
         </div>
-        <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-dark">{r.body}</p>
         {r.verdict && (
           <p className="mt-3 border-t border-border pt-3 text-sm leading-relaxed text-medium">
             <span className="font-semibold text-dark">The stewards: </span>
@@ -116,35 +116,9 @@ function Thread({ id, races, onBack, onChanged }) {
         )}
       </div>
 
-      <ul className="space-y-2">
-        {data.messages.map((m) => (
-          <li
-            key={m.id}
-            className={`rounded-lg border-l-2 px-4 py-3 ${
-              m.author === "ADMIN" ? "border-brand/60 bg-brand/5" : "ml-4 border-border bg-surface2/60"
-            }`}
-          >
-            <div className="font-mono text-[10px] uppercase tracking-wider text-light">
-              {m.author === "ADMIN" ? "Stewards" : m.authorName || "Driver"} · {when(m.createdAt)}
-            </div>
-            <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-dark">{m.body}</p>
-          </li>
-        ))}
-        {data.messages.length === 0 && <li className="text-sm text-light">Nothing written yet.</li>}
-      </ul>
+      <ReportChat report={r} messages={data.messages} attachments={data.attachments} />
 
-      <div className="space-y-2">
-        <textarea
-          aria-label="Write in this report"
-          className="input h-24 resize-none"
-          placeholder="Add something to this report…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-        <button className="btn-primary" disabled={busy || !text.trim()} onClick={send}>
-          {busy ? "Sending…" : "Send"}
-        </button>
-      </div>
+      <ReportComposer onSend={send} busy={busy} full />
     </div>
   );
 }

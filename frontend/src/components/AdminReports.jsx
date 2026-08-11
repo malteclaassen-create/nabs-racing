@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { CardBar, ErrorBox, Field, Notice } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 import { fmtStamp } from "../utils/format.js";
+import ReportChat, { ReportComposer } from "./ReportChat.jsx";
 
 // ---------------------------------------------------------------------------
 // Admin → Reports: the stewarding desk.
@@ -40,7 +41,6 @@ const when = (iso) => (iso ? fmtStamp(iso) : "");
 function Thread({ id, drivers, onChanged }) {
   const ask = useAsk();
   const [data, setData] = useState(null);
-  const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -119,8 +119,6 @@ function Thread({ id, drivers, onChanged }) {
       {error && <ErrorBox message={error} />}
       {msg && <Notice kind="success">{msg}</Notice>}
 
-      {/* what was reported */}
-      <p className="whitespace-pre-line text-sm leading-relaxed text-dark">{r.body}</p>
 
       {/* who it is about. Often nobody, on an in-game report or when the
           reporter wrote "the blue car" — and until this is set, the other
@@ -157,39 +155,15 @@ function Thread({ id, drivers, onChanged }) {
         </p>
       </div>
 
-      {/* the conversation */}
-      <ul className="space-y-2">
-        {data.messages.map((m) => (
-          <li
-            key={m.id}
-            className={`rounded-lg border-l-2 px-3 py-2 ${
-              m.author === "ADMIN" ? "border-brand/60 bg-brand/5" : "ml-3 border-border bg-surface2/60"
-            }`}
-          >
-            <div className="font-mono text-[10px] uppercase tracking-wider text-light">
-              {m.author === "ADMIN" ? "Stewards" : m.authorName || m.author} · {when(m.createdAt)}
-            </div>
-            <p className="mt-0.5 whitespace-pre-line text-sm leading-relaxed text-dark">{m.body}</p>
-          </li>
-        ))}
-      </ul>
+      {/* the conversation, opening message and all */}
+      <ReportChat report={r} messages={data.messages} attachments={data.attachments} admin />
 
-      <div className="flex flex-wrap items-end gap-2">
-        <textarea
-          aria-label="Write in this thread"
-          className="input h-16 min-w-60 flex-1 resize-none"
-          placeholder="Write to the drivers…"
-          value={reply}
-          onChange={(e) => setReply(e.target.value)}
-        />
-        <button
-          className="btn-secondary"
-          disabled={busy || !reply.trim()}
-          onClick={() => run(async () => { await api.adminReplyToReport(id, reply.trim()); setReply(""); })}
-        >
-          Send
-        </button>
-      </div>
+      <ReportComposer
+        busy={busy}
+        placeholder="Write to the drivers…"
+        full
+        onSend={(body, files) => run(() => api.adminReplyToReport(id, body, files))}
+      />
 
       {/* the decision */}
       <div className="border-t border-border pt-4">

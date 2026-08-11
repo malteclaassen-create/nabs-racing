@@ -139,6 +139,67 @@ export async function dbMessages(prisma, reportId) {
   }));
 }
 
+// What may be hung on a message. Pictures and clips because that is what an
+// incident IS — a still of the moment or ten seconds of replay says more than a
+// paragraph. Nothing that executes: an attachment is opened by the other driver
+// and by the stewards, from the league's own domain, so the list is closed
+// rather than a blocklist of the extensions somebody thought of.
+export const ATTACHMENT_TYPES = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "video/mp4": ".mp4",
+  "video/webm": ".webm",
+  "video/quicktime": ".mov",
+  "application/pdf": ".pdf",
+};
+export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+export async function dbAttachments(prisma, reportId) {
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT * FROM "ReportAttachment" WHERE "reportId" = ? ORDER BY datetime("createdAt") ASC`,
+      reportId
+    )
+    .catch(() => []);
+  // storedName stays on the server: it is the path on disk, and the browser has
+  // no business knowing it.
+  return rows.map((a) => ({
+    id: a.id,
+    reportId: a.reportId,
+    messageId: a.messageId || null,
+    name: a.name,
+    mime: a.mime,
+    size: a.size,
+    createdAt: a.createdAt,
+  }));
+}
+
+export async function dbGetAttachment(prisma, reportId, id) {
+  const rows = await prisma
+    .$queryRawUnsafe(`SELECT * FROM "ReportAttachment" WHERE "id" = ? AND "reportId" = ?`, id, reportId)
+    .catch(() => []);
+  return rows[0] || null;
+}
+
+export async function dbAddAttachment(prisma, { reportId, messageId, storedName, name, mime, size, uploaderDiscordId }) {
+  const id = randomUUID();
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ReportAttachment" ("id","reportId","messageId","storedName","name","mime","size","uploaderDiscordId")
+     VALUES (?,?,?,?,?,?,?,?)`,
+    id,
+    reportId,
+    messageId || null,
+    storedName,
+    clamp(name, 200) || "file",
+    mime,
+    Math.max(0, Number(size) || 0),
+    uploaderDiscordId ? String(uploaderDiscordId) : null
+  );
+  return id;
+}
+
 export async function dbViewers(prisma, reportId) {
   return prisma
     .$queryRawUnsafe(`SELECT "discordId", "name" FROM "ReportViewer" WHERE "reportId" = ?`, reportId)
@@ -190,13 +251,17 @@ export async function dbCreateReport(prisma, input) {
   return { ...report, accusedReachable: !report.accusedDriverId || !!accused };
 }
 
-export async function dbAddMessage(prisma, report, { author, discordId, name, body }) {
+// `allowEmpty` is for a message that is a PICTURE. "Here, look" with a clip
+// attached is a complete thought, and refusing it would make somebody type a
+// full stop to send a video.
+export async function dbAddMessage(prisma, report, { author, discordId, name, body, allowEmpty = false }) {
   const text = clamp(body, MAX_MSG);
-  if (text.length < MIN_MSG) throw Object.assign(new Error("The message is empty"), { status: 400 });
+  if (!allowEmpty && text.length < MIN_MSG) throw Object.assign(new Error("The message is empty"), { status: 400 });
   if (!MESSAGE_AUTHORS.includes(author)) throw Object.assign(new Error("Unknown author"), { status: 400 });
+  const messageId = randomUUID();
   await prisma.$executeRawUnsafe(
     `INSERT INTO "ReportMessage" ("id","reportId","author","authorDiscordId","authorName","body") VALUES (?,?,?,?,?,?)`,
-    randomUUID(),
+    messageId,
     report.id,
     author,
     discordId ? String(discordId) : null,
@@ -221,7 +286,7 @@ export async function dbAddMessage(prisma, report, { author, discordId, name, bo
     }).catch(() => {});
   }
   if (author !== "ADMIN") await notifyAdmins(prisma, report, "New message on an incident report");
-  return dbMessages(prisma, report.id);
+  return { messageId, messages: await dbMessages(prisma, report.id) };
 }
 
 // The admin's decision. Writes what was decided; it deliberately does not touch
@@ -350,10 +415,18 @@ export async function dbRemoveViewer(prisma, reportId, discordId) {
   return dbViewers(prisma, reportId);
 }
 
+// Returns the files that were hanging on it, so the caller can take them off
+// disk too. A deleted private conversation that leaves its clips lying in a
+// folder has not really been deleted.
 export async function dbDeleteReport(prisma, id) {
+  const files = await prisma
+    .$queryRawUnsafe(`SELECT "storedName" FROM "ReportAttachment" WHERE "reportId" = ?`, id)
+    .catch(() => []);
+  await prisma.$executeRawUnsafe(`DELETE FROM "ReportAttachment" WHERE "reportId" = ?`, id);
   await prisma.$executeRawUnsafe(`DELETE FROM "ReportMessage" WHERE "reportId" = ?`, id);
   await prisma.$executeRawUnsafe(`DELETE FROM "ReportViewer" WHERE "reportId" = ?`, id);
   await prisma.$executeRawUnsafe(`DELETE FROM "Report" WHERE "id" = ?`, id);
+  return files.map((f) => f.storedName);
 }
 
 async function notifyAdmins(prisma, report, title) {

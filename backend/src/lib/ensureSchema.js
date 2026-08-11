@@ -368,6 +368,28 @@ export async function ensureAppSchema(prisma) {
     `CREATE INDEX IF NOT EXISTS "ReportMessage_reportId_idx" ON "ReportMessage"("reportId")`
   );
 
+  // --- Pictures, clips and files hung on one message of a thread.
+  //
+  // The file itself is NOT under uploads/: that folder is served statically to
+  // anybody who knows a URL, and a report is a private conversation. These live
+  // in report-files/ and only ever come back through an endpoint that runs the
+  // same read check as the thread. `storedName` is the name on disk (a random
+  // id plus an extension), `name` is what the uploader called it.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ReportAttachment" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "reportId" TEXT NOT NULL,
+    "messageId" TEXT,
+    "storedName" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "mime" TEXT NOT NULL,
+    "size" INTEGER NOT NULL DEFAULT 0,
+    "uploaderDiscordId" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "ReportAttachment_reportId_idx" ON "ReportAttachment"("reportId")`
+  );
+
   // --- Extra people an admin has let into one report's thread (a witness, a
   // team mate). Membership is per report, never a blanket permission.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ReportViewer" (

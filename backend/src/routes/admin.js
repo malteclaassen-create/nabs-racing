@@ -40,8 +40,9 @@ import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
 import { readTeamArt, writeTeamArt, ART_KINDS } from "../lib/teamArt.js";
 import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbSetAccused, dbAddMessage,
-  dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED,
+  dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
 } from "../lib/reports.js";
+import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
@@ -4511,6 +4512,7 @@ router.get("/reports/:id", async (req, res, next) => {
       report,
       messages: await dbMessages(prisma, report.id),
       viewers: await dbViewers(prisma, report.id),
+      attachments: await dbAttachments(prisma, report.id),
     });
   } catch (e) {
     next(e);
@@ -4538,19 +4540,36 @@ router.put("/reports/:id", async (req, res, next) => {
 // one, because a PIN admin has no Discord login behind them: the member route
 // works out who you are from your account and would turn them away. Here the
 // office is the author by definition.
-router.post("/reports/:id/messages", async (req, res, next) => {
+router.post("/reports/:id/messages", attachmentUpload.array("files", 4), async (req, res, next) => {
   try {
     const report = await dbGetReport(prisma, req.params.id);
     if (!report) return res.status(404).json({ error: "Report not found" });
-    const messages = await dbAddMessage(prisma, report, {
+    const { messageId, messages } = await dbAddMessage(prisma, report, {
       author: "ADMIN",
       discordId: req.user?.discordId || null,
       name: req.user?.driverName || req.user?.discordName || null,
       body: req.body?.body,
+      allowEmpty: (req.files || []).length > 0,
     });
-    res.json({ ok: true, messages });
+    for (const f of req.files || []) {
+      await saveAttachment(prisma, { report, messageId, file: f, uploaderDiscordId: req.user?.discordId || null });
+    }
+    res.json({ ok: true, messages, attachments: await dbAttachments(prisma, report.id) });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// GET /api/admin/reports/:id/files/:attId — the stewards' side of the same
+// gated download. Behind requireAdmin like everything else in this router, so
+// a PIN admin (who has no Discord login) can open what the drivers attached.
+router.get("/reports/:id/files/:attId", async (req, res, next) => {
+  try {
+    const report = await dbGetReport(prisma, req.params.id);
+    if (!report) return res.status(404).json({ error: "Not found" });
+    await serveAttachment(prisma, res, report.id, req.params.attId);
+  } catch (e) {
     next(e);
   }
 });
@@ -4672,9 +4691,11 @@ router.put("/reports-ingest", async (req, res, next) => {
   }
 });
 
+// The pictures go with it. A private conversation that has been deleted but
+// left its clips in a folder has not been deleted.
 router.delete("/reports/:id", async (req, res, next) => {
   try {
-    await dbDeleteReport(prisma, req.params.id);
+    removeAttachmentFiles(req.params.id, await dbDeleteReport(prisma, req.params.id));
     res.json({ ok: true });
   } catch (e) {
     next(e);

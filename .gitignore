@@ -49,3 +49,7 @@ __pycache__/
 # local sqlite snapshots (never commit dev data)
 dev.db.backup-*
 dev.db.local-backup-*
+
+# Pictures and clips attached to an incident report. Private by design (they
+# are NOT under uploads/, which is served statically) and never in the repo.
+backend/report-files/

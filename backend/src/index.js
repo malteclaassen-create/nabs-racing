@@ -397,6 +397,16 @@ app.use((req, res) => res.status(404).json({ error: "Not found" }));
 // the log above, so nothing is lost for debugging.
 app.use((err, req, res, next) => {
   console.error(err);
+  // multer speaks in codes, and the one that matters here is a file over the
+  // limit. Without this it arrives as an unexplained 500, and "something went
+  // wrong on our side" is the wrong thing to tell somebody who attached a
+  // 40 MB clip.
+  if (err?.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ error: "That file is too big. The limit is 20 MB." });
+  }
+  if (err?.code === "LIMIT_FILE_COUNT" || err?.code === "LIMIT_UNEXPECTED_FILE") {
+    return res.status(400).json({ error: "Too many files at once." });
+  }
   const status = err.status || 500;
   // Deliberate 4xx keep their text. An unexpected 500 shows its real message
   // only to a signed-in admin — they are the one who has to fix it, and losing

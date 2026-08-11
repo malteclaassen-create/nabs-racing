@@ -24,6 +24,13 @@ export const LOGS_DIR = join(DATA_ROOT, "logs");
 // Raw AC result JSONs, kept after import so telemetry can be recomputed later
 // (e.g. when the extractor improves) without re-downloading from the server.
 export const RESULTS_ARCHIVE_DIR = join(DATA_ROOT, "results-archive");
+// Pictures and clips attached to an incident report. Deliberately NOT under
+// uploads/: that folder is mounted as static files and anybody with the URL can
+// read it, while a report is a private conversation between two drivers and the
+// stewards. These come back only through an endpoint that checks the thread's
+// own read rules first.
+export const REPORT_FILES_DIR = join(DATA_ROOT, "report-files");
+
 // Pit-lane events observed on the live feed, per race (lib/pitEventsStore.js).
 // The stored result JSON carries no pit data at all, so what is recorded here
 // during a race is the only ground truth the importer will ever have.

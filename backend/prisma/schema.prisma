@@ -606,6 +606,25 @@ model ReportMessage {
   @@index([reportId])
 }
 
+// A picture, clip or file hung on one message of a report thread. The bytes
+// live in report-files/ (lib/dataDirs.js), NOT under uploads/, because uploads/
+// is served statically to anyone with the URL and a report is private. They
+// come back only through an endpoint that runs the thread's own read check.
+// Raw SQL like the rest of the report tables — see lib/reports.js.
+model ReportAttachment {
+  id                String   @id
+  reportId          String
+  messageId         String?
+  storedName        String // the name on disk: a random id plus an extension
+  name              String // what the uploader called it
+  mime              String
+  size              Int      @default(0)
+  uploaderDiscordId String?
+  createdAt         DateTime @default(now())
+
+  @@index([reportId])
+}
+
 // Somebody an admin has let into ONE report's thread. Never a blanket
 // permission: membership is granted per report and removed the same way.
 model ReportViewer {

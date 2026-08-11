@@ -252,6 +252,18 @@ never disagree about a championship. Under the table in **Edit Results** there
 is a list of every penalty the stewards decided for that round and whether the
 seconds are actually in the table, so nothing gets agreed and then forgotten.
 
+A report reads as a conversation: what was reported is the first message, and
+everyone on the thread writes underneath it. Pictures, clips and PDFs can be
+attached to any message, up to **20 MB each and four at a time**, and links
+typed into a message become clickable. Those files are private like the rest
+of the thread — they are not in the public uploads folder and can only be
+opened by somebody the thread lets in. Deleting a report deletes its files.
+
+One thing to keep an eye on: clips are the biggest thing this site stores.
+Railway charges for storage and outgoing traffic, so a season of 20 MB videos
+is the one part of Reports with a running cost. Deleting old threads deletes
+their files with them.
+
 If your league uses the in-game **webPenalty** app, the bottom of the Reports
 tab switches on a door for it and gives you a URL to paste into the app's
 settings. Off until you switch it on. Treat the URL like a password.
