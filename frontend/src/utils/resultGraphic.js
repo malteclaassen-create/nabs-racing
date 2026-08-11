@@ -95,6 +95,12 @@ export const LAYOUT = {
     ptsSize: 40, // 30px of ink
   },
 
+  // The little "T2" after a second-tier driver's name. Small enough to read as
+  // a footnote on the name rather than as a second column, which is what it is:
+  // the league runs two tiers in one classification, and on the poster there is
+  // otherwise nothing to say which table a driver's points land in.
+  tierPill: { h: 26, padX: 8, size: 17, radius: 13, gap: 10 },
+
   // Team badge in the corner of a podium tile, opposite the position number.
   tileBadge: { size: 78, inset: 18 },
 };
@@ -152,6 +158,10 @@ export const THEMES = {
       alpha: 0.13,
       colour: "#ffffff",
     },
+    // One pill style for both places it appears. Pink on black in the rows and
+    // pink on gold in a podium bar both read; a pill that changed colour with
+    // its background would be two things to keep true.
+    tierPill: { fill: "#ffaec8", ink: "#000000" },
     tile: { fill: "#000000", frame: "#ffaec8", frameWidth: 5, badge: true },
     // Gold, silver and bronze land TWICE: on the position number and on the
     // name bar under the car.
@@ -185,6 +195,7 @@ export const THEMES = {
     tile: { fill: "#000000", frame: "medal", frameWidth: 3, badge: false },
     pos: { colour: "#ffffff" },
     nameBar: { fill: "medal", ink: "#0a0a0a", frame: null },
+    tierPill: { fill: "#0a0a0a", ink: "#f7c2ce" },
     tilePoints: null,
     row: {
       numFill: "#0a0a0a", numInk: "#ffffff",
@@ -276,6 +287,36 @@ function drawFlag(ctx, img, x, cy, size) {
   const h = img.height * scale;
   ctx.drawImage(img, x + (size - w) / 2, cy - h / 2, w, h);
   return w;
+}
+
+// The "T2" pill. Drawn from the LEFT edge, returns the width it took, so a
+// caller laying a row out can carry on after it. Nothing is drawn for a
+// first-tier driver: the pill marks the exception, and a "T1" on every other
+// line would turn a footnote into a column.
+function drawTierPill(ctx, theme, x, cy) {
+  const P = LAYOUT.tierPill;
+  const style = theme.tierPill;
+  if (!style) return 0;
+  ctx.font = FONT(900, P.size);
+  const w = Math.round(ctx.measureText("T2").width) + P.padX * 2;
+  box(ctx, x, cy - P.h / 2, w, P.h, P.radius);
+  ctx.fillStyle = style.fill;
+  ctx.fill();
+  ctx.fillStyle = style.ink;
+  ctx.textAlign = "center";
+  // Centred on the pill's optical middle, the same way the points chip is.
+  ctx.fillText("T2", x + w / 2, cy + P.size * 0.35);
+  ctx.textAlign = "left";
+  return w;
+}
+
+// How wide that pill will be, without drawing it. Needed by the podium, which
+// has to know the width of the whole flag-name-pill group before it can place
+// the first of the three.
+function tierPillWidth(ctx, theme, show) {
+  if (!show || !theme.tierPill) return 0;
+  ctx.font = FONT(900, LAYOUT.tierPill.size);
+  return Math.round(ctx.measureText("T2").width) + LAYOUT.tierPill.padX * 2;
 }
 
 // A copy of `img` recoloured to one flat colour, keeping its shape. The league
@@ -489,19 +530,25 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     const flagW = entry.flag
       ? P.flagW * Math.min(1, entry.flag.width / entry.flag.height)
       : 0;
-    // What is left for the text once the flag and the bar's own margins are
-    // taken off. A name too long for that shrinks, exactly as before.
-    const nameSize = fitText(ctx, entry.name, colW - 36 - flagW - gap, 900, P.nameSize, 20);
+    // A second-tier driver carries a "T2" after the name, and it joins the
+    // group being centred rather than hanging off the end of it.
+    const pillW = tierPillWidth(ctx, T, entry.tier === 2);
+    const pillGap = pillW ? L.tierPill.gap : 0;
+    // What is left for the text once the flag, the pill and the bar's own
+    // margins are taken off. A name too long for that shrinks, as before.
+    const nameSize = fitText(ctx, entry.name, colW - 36 - flagW - gap - pillW - pillGap, 900, P.nameSize, 20);
     ctx.font = FONT(900, nameSize);
-    const groupW = flagW + gap + ctx.measureText(entry.name).width;
+    const barCy = barTop + P.barHeight / 2;
+    const groupW = flagW + gap + ctx.measureText(entry.name).width + pillGap + pillW;
     let cursor = x + (colW - groupW) / 2;
     if (entry.flag) {
-      drawFlag(ctx, entry.flag, cursor - (P.flagW - flagW) / 2, barTop + P.barHeight / 2, P.flagW);
+      drawFlag(ctx, entry.flag, cursor - (P.flagW - flagW) / 2, barCy, P.flagW);
       cursor += flagW + gap;
     }
     ctx.fillStyle = T.nameBar.ink;
     ctx.textAlign = "left";
-    ctx.fillText(entry.name, cursor, barTop + P.barHeight / 2 + nameSize * 0.36);
+    ctx.fillText(entry.name, cursor, barCy + nameSize * 0.36);
+    if (pillW) drawTierPill(ctx, T, cursor + ctx.measureText(entry.name).width + pillGap, barCy);
   });
 
   // --- places 4 and down ----------------------------------------------------
@@ -558,11 +605,18 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     }
     const nameX = R.nameX;
     const markLeft = R.markCx - R.markMaxW / 2;
-    const nameSize = fitText(ctx, row.name, Math.max(120, markLeft - 24 - nameX), 900, R.nameSize, 22);
+    // The "T2" after a second-tier driver's name. The name gets the room left
+    // after it, so a long name shrinks rather than running under the pill.
+    const pillW = tierPillWidth(ctx, T, row.tier === 2);
+    const pillGap = pillW ? L.tierPill.gap : 0;
+    const nameSize = fitText(
+      ctx, row.name, Math.max(120, markLeft - 24 - nameX - pillW - pillGap), 900, R.nameSize, 22
+    );
     ctx.font = FONT(900, nameSize);
     ctx.fillStyle = T.row.nameInk;
     ctx.textAlign = "left";
     ctx.fillText(row.name, nameX, midY + nameSize * 0.36);
+    if (pillW) drawTierPill(ctx, T, nameX + ctx.measureText(row.name).width + pillGap, midY);
 
     // Team mark, centred in its own column so the marks line up down the page
     // however wide each one is.
@@ -637,6 +691,11 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
   const top3 = classified.slice(0, 3);
   const rest = classified.slice(3, 3 + rows);
 
+  // Which table this drive counts towards. The TEAM's tier, not the driver's,
+  // the same rule the site's own Tier-2 standings use: a reserve standing in
+  // for a second-tier team scores in the second tier.
+  const tierOf = (r) => r.effectiveTeam?.tier ?? r.team?.tier ?? null;
+
   const artOf = (r, kind) => teamArt[r.effectiveTeam?.id || r.team?.id]?.[kind] || null;
   // No wordmark uploaded? The site's own square logo stands in.
   const markSrc = (r) => artOf(r, "mark") || r.effectiveTeam?.logoUrl || r.team?.logoUrl || null;
@@ -676,11 +735,11 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
     logo,
     podium: top3.map((r, i) => ({
       position: r.position, name: r.name, points: r.points ?? 0,
-      car: cars[i], flag: flags[i], badge: badges[i],
+      car: cars[i], flag: flags[i], badge: badges[i], tier: tierOf(top3[i]),
     })),
     rows: rest.map((r, i) => ({
       position: r.position, name: r.name, points: r.points ?? 0,
-      mark: marks[i], flag: rowFlags[i],
+      mark: marks[i], flag: rowFlags[i], tier: tierOf(rest[i]),
     })),
   };
 }
