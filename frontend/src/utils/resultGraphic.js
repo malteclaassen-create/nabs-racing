@@ -450,18 +450,27 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     ctx.textAlign = "left";
     ctx.fillText(`${place}.`, x + P.posX, top + P.posY);
 
-    // Flag, then the name.
+    // Flag and name, centred in the bar as ONE group. Centring the name alone
+    // would leave the flag stranded at the left edge with a gap after it, and
+    // three tiles side by side make any drift off centre obvious — which is
+    // also why the pair is measured first and placed second, rather than drawn
+    // left to right and hoped about.
     const flagH = Math.round((P.flagW * 3) / 4);
-    let nameX = x + 22;
-    if (entry.flag) {
-      ctx.drawImage(entry.flag, nameX, barTop + (P.barHeight - flagH) / 2, P.flagW, flagH);
-      nameX += P.flagW + 12;
-    }
-    const nameSize = fitText(ctx, entry.name, x + colW - 18 - nameX, 900, P.nameSize, 20);
+    const gap = entry.flag ? 12 : 0;
+    const flagW = entry.flag ? P.flagW : 0;
+    // What is left for the text once the flag and the bar's own margins are
+    // taken off. A name too long for that shrinks, exactly as before.
+    const nameSize = fitText(ctx, entry.name, colW - 36 - flagW - gap, 900, P.nameSize, 20);
     ctx.font = FONT(900, nameSize);
+    const groupW = flagW + gap + ctx.measureText(entry.name).width;
+    let cursor = x + (colW - groupW) / 2;
+    if (entry.flag) {
+      ctx.drawImage(entry.flag, cursor, barTop + (P.barHeight - flagH) / 2, P.flagW, flagH);
+      cursor += flagW + gap;
+    }
     ctx.fillStyle = T.nameBar.ink;
     ctx.textAlign = "left";
-    ctx.fillText(entry.name, nameX, barTop + P.barHeight / 2 + nameSize * 0.36);
+    ctx.fillText(entry.name, cursor, barTop + P.barHeight / 2 + nameSize * 0.36);
   });
 
   // --- places 4 and down ----------------------------------------------------
