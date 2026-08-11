@@ -22,7 +22,7 @@ export const TAB_GROUPS = [
       { id: "import", label: "Import Race" },
       { id: "edit", label: "Edit Results" },
       { id: "content", label: "Content" },
-      { id: "photos", label: "Photos" },
+      { id: "photos", label: "Photos & Videos" },
     ],
   },
   {
@@ -106,13 +106,6 @@ export const ADMIN_INDEX = [
     title: "Discord webhook for announcements",
     hint: "The channel the site posts a new race and its sign-up list to.",
     keywords: "discord webhook url channel announce post integration bot",
-  },
-  {
-    tab: "attendance",
-    view: "hotlaps",
-    title: "Hotlap videos for a circuit",
-    hint: "The YouTube lap shown next to the sign-up. A track without one says the hotlap is coming soon.",
-    keywords: "hotlap video youtube onboard lap circuit track guide learn coming soon rickroll",
   },
   {
     tab: "attendance",
@@ -218,9 +211,24 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "photos",
+    view: "photos",
     title: "Photos for a race",
     hint: "The picture gallery under a round's results.",
     keywords: "photos pictures images gallery upload carousel screenshots",
+  },
+  {
+    tab: "photos",
+    view: "highlights",
+    title: "Highlights video of a round",
+    hint: "The Highlights button on a round's results. A YouTube cut plays on the page itself.",
+    keywords: "highlights video youtube link clip cut recap watch race page button twitch",
+  },
+  {
+    tab: "photos",
+    view: "hotlaps",
+    title: "Hotlap videos for a circuit",
+    hint: "The YouTube lap shown next to the sign-up. A track without one says the hotlap is coming soon.",
+    keywords: "hotlap video youtube onboard lap circuit track guide learn coming soon rickroll attendance",
   },
 
   // --- League ---------------------------------------------------------------

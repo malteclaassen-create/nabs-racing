@@ -9,7 +9,7 @@ import { useAsk } from "../components/overlay.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
 import AdminRatings from "../components/AdminRatings.jsx";
-import AdminRacePhotos from "../components/AdminRacePhotos.jsx";
+import AdminMedia from "../components/AdminMedia.jsx";
 import AdminContent from "../components/AdminContent.jsx";
 import AdminDownloads from "../components/AdminDownloads.jsx";
 import AdminRaceInfo from "../components/AdminRaceInfo.jsx";
@@ -325,7 +325,7 @@ export default function Admin() {
         {tab === "import" && <AdminImport />}
         {tab === "edit" && <EditResults />}
         {tab === "content" && <AdminContent />}
-        {tab === "photos" && <AdminRacePhotos />}
+        {tab === "photos" && <AdminMedia jumpView={viewFor("photos")} jumpKey={jump?.n} />}
         {tab === "ratings" && <AdminRatings />}
         {tab === "discord" && <DiscordEvents />}
         {tab === "market" && <MarketAdmin />}
@@ -1328,6 +1328,9 @@ function EditResults() {
         date: fromLocalInput(meta.date),
         qualiMinutes: meta.qualiMinutes === "" ? null : meta.qualiMinutes,
         raceLaps: meta.raceLaps === "" ? null : meta.raceLaps,
+        // NOT the highlights link: that is edited in Photos & Videos, and an
+        // omitted key leaves it alone. Sending it from here would mean saving a
+        // renamed track quietly wiped the video.
         info: meta.info || null,
       });
       setMsg("Race details saved.");
