@@ -251,6 +251,29 @@ function drawContain(ctx, img, cx, cy, maxW, maxH) {
   ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
 }
 
+// A flag, drawn at its OWN proportions inside a square slot of `size`.
+//
+// Every country's flag has a different shape: Britain is 2:1, Germany 5:3,
+// Switzerland square, Nepal taller than it is wide, Qatar nearly three times
+// as wide as it is tall. Forcing them all into one rectangle — which is what
+// this used to do, at a fixed 4:3 — stretches most of them and makes the
+// familiar ones look subtly wrong, which is worse than looking obviously wrong.
+//
+// A SQUARE slot, because that is what Steve's file has: the one flag drawn in
+// it is the Swiss one, 50 by 50, in its true 1:1. A wide flag then sits 50 wide
+// and short, a square one fills the slot, and the name after it starts at the
+// same x either way, so the column still lines up.
+//
+// Returns the width actually painted, which is what a caller centring a flag
+// and a name together needs to know.
+function drawFlag(ctx, img, x, cy, size) {
+  const scale = Math.min(size / img.width, size / img.height);
+  const w = img.width * scale;
+  const h = img.height * scale;
+  ctx.drawImage(img, x + (size - w) / 2, cy - h / 2, w, h);
+  return w;
+}
+
 // A copy of `img` recoloured to one flat colour, keeping its shape. The league
 // mark ships as a white PNG and the watermark wants it in the pink; painting
 // pink THROUGH the artwork (source-in) recolours the marks and leaves the
@@ -455,9 +478,13 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     // three tiles side by side make any drift off centre obvious — which is
     // also why the pair is measured first and placed second, rather than drawn
     // left to right and hoped about.
-    const flagH = Math.round((P.flagW * 3) / 4);
     const gap = entry.flag ? 12 : 0;
-    const flagW = entry.flag ? P.flagW : 0;
+    // How wide this particular flag comes out in its square slot. Measured
+    // rather than assumed, so the gap to the name is the same 12px whether the
+    // flag is a wide one or a square one.
+    const flagW = entry.flag
+      ? P.flagW * Math.min(1, entry.flag.width / entry.flag.height)
+      : 0;
     // What is left for the text once the flag and the bar's own margins are
     // taken off. A name too long for that shrinks, exactly as before.
     const nameSize = fitText(ctx, entry.name, colW - 36 - flagW - gap, 900, P.nameSize, 20);
@@ -465,7 +492,7 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     const groupW = flagW + gap + ctx.measureText(entry.name).width;
     let cursor = x + (colW - groupW) / 2;
     if (entry.flag) {
-      ctx.drawImage(entry.flag, cursor, barTop + (P.barHeight - flagH) / 2, P.flagW, flagH);
+      drawFlag(ctx, entry.flag, cursor - (P.flagW - flagW) / 2, barTop + P.barHeight / 2, P.flagW);
       cursor += flagW + gap;
     }
     ctx.fillStyle = T.nameBar.ink;
@@ -522,8 +549,7 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     // name starts at the same x either way, so the column of names lines up
     // whether or not a driver has a country on file.
     if (T.row.flags && row.flag) {
-      const fh = Math.round((R.flagW * 3) / 4);
-      ctx.drawImage(row.flag, R.flagX, y + (R.height - fh) / 2, R.flagW, fh);
+      drawFlag(ctx, row.flag, R.flagX, y + R.height / 2, R.flagW);
     }
     const nameX = R.nameX;
     const markLeft = R.markCx - R.markMaxW / 2;
