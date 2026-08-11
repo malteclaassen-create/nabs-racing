@@ -156,19 +156,20 @@ router.post("/:id/messages", optionalUser, attachmentUpload.array("files", 4), a
     if (!report || !(await canRead(prisma, report, me.discordId, me.isAdmin))) {
       return res.status(404).json({ error: "Report not found" });
     }
-    // Which voice this is written in — your part in THIS argument first, and
-    // only "the stewards" if you are not in it. Several drivers here are also
-    // admins; checking admin first made their own replies appear to come from
-    // the office and hid who was actually talking.
+    // Which voice this is written in. Nothing written HERE is ever the
+    // stewards: this is the member's view, and speaking as the league office is
+    // something you do from the office. Several of this league's drivers are
+    // also admins, and having their own replies come out as "Stewards" is
+    // exactly the confusion this is fixing — the label follows WHERE you wrote
+    // from, not what you are allowed to do. ADMIN comes only from the admin
+    // route (routes/admin.js).
     const accused = await accusedDiscordId(prisma, report);
     const author =
       String(report.reporterDiscordId || "") === String(me.discordId)
         ? "REPORTER"
         : accused && String(accused) === String(me.discordId)
           ? "ACCUSED"
-          : me.isAdmin
-            ? "ADMIN"
-            : "VIEWER";
+          : "VIEWER";
     const { messageId } = await dbAddMessage(prisma, report, {
       author,
       discordId: me.discordId,

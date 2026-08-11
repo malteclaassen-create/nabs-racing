@@ -138,7 +138,11 @@ function Attachment({ file, admin }) {
 // What a voice is CALLED, next to the name. Never instead of it: half this
 // league's drivers are also admins, and replacing their name with "Stewards"
 // when they answered a report about themselves was the whole confusion.
-const VOICE = { REPORTER: "reported this", ACCUSED: "named in this", ADMIN: "stewards", VIEWER: "let in" };
+//
+// "Stewards" means written FROM THE ADMIN AREA — the league office speaking,
+// whoever was sitting at it. An admin answering from their normal view is just
+// themselves, and gets no tag at all beyond their part in the thread.
+const VOICE = { REPORTER: "reported this", ACCUSED: "named in this", ADMIN: "stewards", VIEWER: "" };
 
 function Bubble({ voice, name, at, body, files, first, admin, mine }) {
   const fromAdmin = voice === "ADMIN";

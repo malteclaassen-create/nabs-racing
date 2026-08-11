@@ -38,7 +38,7 @@ const DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
 const uiOf = (s) => STATUS.find((x) => x.key === s) || STATUS[0];
 const when = (iso) => (iso ? fmtStamp(iso) : "");
 
-function Thread({ id, drivers, onChanged }) {
+function Thread({ id, drivers, onChanged, onDeleted }) {
   const ask = useAsk();
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -319,7 +319,17 @@ function Thread({ id, drivers, onChanged }) {
               }))
             )
               return;
-            run(() => api.deleteReport(id), null);
+            // Straight back to the list: reloading a thread that no longer
+            // exists would answer 404 and leave an error where the report was.
+            setBusy(true);
+            try {
+              await api.deleteReport(id);
+              changed();
+              onDeleted?.();
+            } catch (e) {
+              setError(e.message);
+              setBusy(false);
+            }
           }}
         >
           Delete this report
@@ -365,14 +375,10 @@ export default function AdminReports() {
 
   const visible = useMemo(() => {
     const all = data?.reports || [];
-    // Whatever is open stays on screen even once it no longer matches the
-    // filter. Deciding a report under "Open" would otherwise make the thread
-    // vanish at the moment you press Save, taking the confirmation with it.
-    const keep = (r) => r.id === openId;
     if (show === "all") return all;
-    if (show === "decided") return all.filter((r) => DECIDED.includes(r.status) || keep(r));
-    return all.filter((r) => !DECIDED.includes(r.status) || keep(r));
-  }, [data, show, openId]);
+    if (show === "decided") return all.filter((r) => DECIDED.includes(r.status));
+    return all.filter((r) => !DECIDED.includes(r.status));
+  }, [data, show]);
 
   // By round, newest race first, with anything that names no race at the end.
   const groups = useMemo(() => {
@@ -398,6 +404,61 @@ export default function AdminReports() {
       all: all.length,
     };
   }, [data]);
+
+  const openReportRow = (data?.reports || []).find((r) => r.id === openId) || null;
+  const openRace = openReportRow
+    ? (data?.races || []).find((x) => x.id === openReportRow.raceId) || null
+    : null;
+
+  // One report at a time, on its own screen. It used to unfold inside its row
+  // in the list, which put a thread, a decision form, a viewer list and a
+  // delete button inside a table cell — everything squeezed into what was left
+  // of the width, and the rest of the list still shouting underneath.
+  if (openReportRow) {
+    const s = uiOf(openReportRow.status);
+    return (
+      <div className="space-y-4">
+        <button
+          className="transition text-sm font-semibold text-link hover:underline"
+          onClick={() => setOpenId(null)}
+        >
+          &larr; All reports
+        </button>
+        {error && <ErrorBox message={error} onRetry={reload} />}
+        <div className="card overflow-hidden">
+          <CardBar
+            title={
+              openRace
+                ? `${openRace.number != null ? `R${openRace.number} ` : ""}${openRace.track}`
+                : "No round given"
+            }
+            right={
+              <span className="flex flex-wrap items-center gap-2">
+                {openReportRow.source === "INGAME" && (
+                  <span className="pill bg-brand/15 text-brand">in-game</span>
+                )}
+                {openReportRow.lap != null && (
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+                    lap {openReportRow.lap}
+                  </span>
+                )}
+                <span className={`pill ${s.cls}`}>{s.label}</span>
+              </span>
+            }
+          />
+          <Thread
+            id={openReportRow.id}
+            drivers={drivers}
+            onChanged={reload}
+            onDeleted={() => {
+              setOpenId(null);
+              reload();
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -449,12 +510,11 @@ export default function AdminReports() {
           <ul className="divide-y divide-border">
             {g.reports.map((r) => {
               const s = uiOf(r.status);
-              const open = openId === r.id;
               return (
                 <li key={r.id}>
                   <button
                     className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 text-left transition hover:bg-surface2/60"
-                    onClick={() => setOpenId(open ? null : r.id)}
+                    onClick={() => setOpenId(r.id)}
                   >
                     <span className={`pill ${s.cls}`}>{s.label}</span>
                     {r.source === "INGAME" && (
@@ -477,7 +537,6 @@ export default function AdminReports() {
                       {when(r.createdAt)}
                     </span>
                   </button>
-                  {open && <Thread id={r.id} drivers={drivers} onChanged={reload} />}
                 </li>
               );
             })}
