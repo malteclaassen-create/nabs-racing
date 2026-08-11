@@ -161,9 +161,8 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
             {r.accusedName ? (
               <p className="text-sm font-semibold text-dark">{r.accusedName}</p>
             ) : (
-              <p className="text-sm leading-relaxed text-light">
-                Nobody named yet. Only {r.reporterName || "the driver who filed it"} can say who it was, from
-                their own reports page &mdash; until then the other driver cannot see this thread.
+              <p className="text-sm text-light">
+                Nobody yet. Only {r.reporterName || "the reporter"} can say, from their own page.
               </p>
             )}
           </div>
@@ -236,10 +235,10 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
               Undo
             </button>
           )}
-          <p className="min-w-52 flex-1 text-xs leading-relaxed text-light">
-            {willTell
-              ? "Saving tells the drivers, once, with the outcome and this text. Recording seconds here does not put them on the driver: enter the penalty in Edit Results as well, where it is listed for you to check."
-              : "Nothing is sent until the outcome is one of the three endings."}
+          {/* The one thing the controls do NOT say: saving sends a message to
+              people, and these seconds never reach the classification. */}
+          <p className="min-w-40 flex-1 text-xs text-light">
+            {willTell ? "Saving tells the drivers. Enter the penalty in Edit Results too." : "Nothing is sent yet."}
           </p>
         </div>
       </div>
@@ -249,10 +248,7 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
           Who can read this
         </div>
-        <p className="text-xs leading-relaxed text-light">
-          The driver who filed it, the driver it names and every admin, always. Add one more person for this
-          report only. They get told they were added.
-        </p>
+        <p className="text-xs text-light">Both drivers and every admin, always. Add one more:</p>
         <ul className="mt-2 flex flex-wrap gap-2">
           {data.viewers.map((v) => (
             <li key={v.discordId} className="flex items-center gap-1.5 rounded-full bg-surface2 px-2.5 py-1 text-xs">
@@ -546,16 +542,14 @@ export default function AdminReports() {
         </div>
       ))}
 
-      {/* housekeeping */}
+      {/* Housekeeping. The dropdown says what it does, so nothing here says it
+          again: WHY it exists (storage cost, and that the conversation always
+          survives) is in HANDOVER.md, where somebody deciding the policy is
+          looking. A page that explains itself in paragraphs is a page whose
+          controls did not. */}
       <div className="card overflow-hidden">
-        <CardBar title="Pictures on finished reports" />
-        <div className="space-y-3 p-5">
-          <p className="text-sm leading-relaxed text-light">
-            Clips are the only thing this site stores that grows without limit, and a 20 MB video of a crash
-            from three seasons ago costs money to keep an argument that ended. Once a report has been decided
-            and left alone this long, its pictures come off the server. The conversation stays, and the thread
-            says a picture was there.
-          </p>
+        <CardBar title="Pictures on decided reports" />
+        <div className="space-y-2 p-5">
           <div className="flex flex-wrap items-center gap-2">
             <select
               aria-label="Delete files when reports have been done for"
@@ -587,10 +581,6 @@ export default function AdminReports() {
               </span>
             )}
           </div>
-          <p className="text-xs leading-relaxed text-light">
-            Counted from when the decision was last touched, not from when the report was filed, so an argument
-            that is still running keeps its evidence however old the crash is.
-          </p>
         </div>
       </div>
 
@@ -598,11 +588,7 @@ export default function AdminReports() {
       <div className="card overflow-hidden">
         <CardBar title="Reports from inside the race" />
         <div className="space-y-3 p-5">
-          <p className="text-sm leading-relaxed text-light">
-            The webPenalty app can post a report the moment a driver presses its button mid-race, so nobody has
-            to remember the lap afterwards. Switching this on generates a key and gives you a URL to paste into
-            the app&rsquo;s settings. Until then that door answers nothing at all.
-          </p>
+          <p className="text-sm text-light">A URL for the webPenalty app, so a driver can report mid-race.</p>
           {ingest?.configured ? (
             <>
               <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
@@ -615,10 +601,7 @@ export default function AdminReports() {
                 value={`${window.location.origin}/api/reports/ingest?key=${ingest.key}`}
                 onFocus={(e) => e.target.select()}
               />
-              <p className="text-xs leading-relaxed text-light">
-                Treat it like a password: anyone with this URL can file reports. Switching off and on again gives
-                a new one and stops the old.
-              </p>
+              <p className="text-xs text-light">Treat it like a password.</p>
             </>
           ) : (
             <p className="text-sm text-light">In-game reporting is off.</p>
