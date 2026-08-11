@@ -580,6 +580,9 @@ export const api = {
   // results-channel webhook + the generated Discord results post (admin)
   getResultsWebhook: () => request("/admin/discord/results-webhook", { auth: true }),
   setResultsWebhook: (url) => request("/admin/discord/results-webhook", { method: "PUT", body: { url }, auth: true }),
+  // The drivers' Discord role, pinged at the top of a results post.
+  getResultsRole: () => request("/admin/discord/results-role", { auth: true }),
+  setResultsRole: (roleId) => request("/admin/discord/results-role", { method: "PUT", body: { roleId }, auth: true }),
   // The origin rides along so the short version's link points at the site the
   // admin is on. In production it matches what the server would have worked out
   // anyway; in development it is the difference between a link to the site and

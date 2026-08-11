@@ -39,6 +39,29 @@ export async function setResultsWebhookUrl(prisma, url) {
   });
 }
 
+// The Discord ROLE every driver has, so one line at the top of the results post
+// notifies the whole grid. Stored as the bare snowflake id rather than the
+// role's name: names get renamed, ids do not, and `<@&id>` is the only spelling
+// Discord turns into a ping.
+//
+// Right-click the role in Server Settings -> Roles -> Copy Role ID (needs
+// Developer Mode on). Nothing pings until an id is saved here.
+const RESULTS_ROLE_KEY = "discord_results_role_id";
+
+export async function getResultsRoleId(prisma) {
+  const s = await prisma.setting.findUnique({ where: { key: RESULTS_ROLE_KEY } }).catch(() => null);
+  return s?.value || null;
+}
+
+export async function setResultsRoleId(prisma, id) {
+  const clean = String(id || "").trim();
+  await prisma.setting.upsert({
+    where: { key: RESULTS_ROLE_KEY },
+    update: { value: clean },
+    create: { key: RESULTS_ROLE_KEY, value: clean },
+  });
+}
+
 // Free-form post to the results channel. Discord caps one message at 2000
 // characters, so long posts (a 25-car field plus stats) are split at line
 // breaks and sent in order. allowed_mentions lets the <@id> codes ping the

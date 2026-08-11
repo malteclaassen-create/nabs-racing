@@ -18,13 +18,13 @@ import { LAYOUT, renderPosterTo } from "../utils/resultGraphic.js";
 // rather than promised. Everything below the header is exact.
 // ---------------------------------------------------------------------------
 
-// `**bold**`, `[text](url)` and `<@id>` — the three pieces of Discord markup the
-// generated message actually uses. Anything else is left as the text it is,
-// which is the honest thing to do: inventing a renderer for markup we never
-// write would only be a second thing to keep true.
-const TOKEN = /(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|<@!?\d+>)/g;
+// `**bold**`, `[text](url)`, `<@id>` and `<@&roleid>` — the pieces of Discord
+// markup the generated message actually uses. Anything else is left as the text
+// it is, which is the honest thing to do: inventing a renderer for markup we
+// never write would only be a second thing to keep true.
+const TOKEN = /(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|<@&\d+>|<@!?\d+>)/g;
 
-function Line({ text, mentions }) {
+function Line({ text, mentions, roleName }) {
   // An empty line is an empty line BOX, one line tall. A <br> here would add a
   // break to a block that already ends in one and open a two-line hole where
   // Discord leaves one.
@@ -38,6 +38,17 @@ function Line({ text, mentions }) {
             <strong key={i} className="font-bold text-white">
               {p.slice(2, -2)}
             </strong>
+          );
+        }
+        // A role ping. Discord tints it in the role's own colour, which is
+        // not something this side can know, so it gets the neutral mention
+        // treatment and the label it was given.
+        const role = /^<@&(\d+)>$/.exec(p);
+        if (role) {
+          return (
+            <span key={i} className="rounded bg-[#3c4270] px-1 py-0.5 font-medium text-[#c9cdfb]">
+              @{roleName || "drivers"}
+            </span>
           );
         }
         const mention = /^<@!?(\d+)>$/.exec(p);
@@ -63,7 +74,7 @@ function Line({ text, mentions }) {
   );
 }
 
-export default function DiscordPreview({ text, mentions, poster = null, when = "" }) {
+export default function DiscordPreview({ text, mentions, poster = null, when = "", roleName = "" }) {
   const canvasRef = useRef(null);
 
   // The attachment is drawn by the same function that draws the real one, so
@@ -96,7 +107,7 @@ export default function DiscordPreview({ text, mentions, poster = null, when = "
             </div>
             <div className="mt-0.5 space-y-0.5 whitespace-pre-wrap break-words text-[15px] leading-[1.375rem] text-[#dbdee1]">
               {lines.map((l, i) => (
-                <Line key={i} text={l} mentions={mentions} />
+                <Line key={i} text={l} mentions={mentions} roleName={roleName} />
               ))}
             </div>
             {poster && (

@@ -49,7 +49,7 @@ async function raceLink(prisma, race, origin) {
 // no results yet. `mentions` maps each Discord id used in the text to the
 // driver's name: the message itself can only carry "<@1234...>", and the
 // admin's preview has to show the "@13bot" that Discord will.
-export async function buildResultsPost(prisma, raceId, { origin = null } = {}) {
+export async function buildResultsPost(prisma, raceId, { origin = null, roleId = null } = {}) {
   const race = await prisma.race.findUnique({ where: { id: raceId } });
   if (!race) return null;
   const [results, telemetry] = await Promise.all([
@@ -91,8 +91,15 @@ export async function buildResultsPost(prisma, raceId, { origin = null } = {}) {
           ? "TRAINING"
           : "ROUND ?";
   const heading = `**${what} - ${String(race.track || "").toUpperCase()}**`;
+  // The drivers' role, on its own line above the heading, so the whole grid gets
+  // a notification instead of only the twenty people named further down. Put in
+  // the draft rather than added at send time: it is a line the admin can see and
+  // delete, and pinging eighty people should never be something that happens
+  // invisibly. Nothing is added until a role id is saved in Content.
+  const ping = roleId ? `<@&${roleId}>` : null;
 
   const lines = [];
+  if (ping) lines.push(ping);
   lines.push(heading);
   lines.push("");
   for (const r of finishers) {
@@ -156,7 +163,7 @@ export async function buildResultsPost(prisma, raceId, { origin = null } = {}) {
     .filter((r) => r.position <= 3)
     .map((r) => `${MEDALS[r.position - 1]} ${who(r)}`)
     .join("  ");
-  const shortLines = [heading, ""];
+  const shortLines = ping ? [ping, heading, ""] : [heading, ""];
   if (podium) shortLines.push(podium, "");
   // A masked link, which is what turns the address into the one blue sentence
   // in the message. With no origin there is nothing honest to link to, so the

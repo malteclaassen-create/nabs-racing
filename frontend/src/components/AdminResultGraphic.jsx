@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { CardBar, ErrorBox } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
+import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { COUNTRIES } from "../data/countries.js";
 import { fmtDateShort } from "../utils/format.js";
@@ -209,18 +210,25 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
     }, "image/png");
   }
 
-  // Drivers ON the poster with no flag. Nationality is normally the driver's
-  // own to set, on their profile after a Discord login, so anyone who has never
-  // logged in has none — and a blank where every other name has a flag is the
-  // thing you notice. Setting it here writes the same field their profile
-  // would, so the flag turns up across the whole site, not just here.
-  const flagless = useMemo(() => {
+  // Every driver ON the poster, with the flag they have now. Nationality is
+  // normally the driver's own to set, on their profile after a Discord login,
+  // so anyone who has never logged in has none — but the ones who HAVE logged in
+  // can also have picked the wrong country, or a country they no longer race
+  // under, and until now the only way to fix that was to be them. The ones
+  // without a flag are listed first, because they are the ones the poster shows
+  // a hole for.
+  //
+  // This writes the same field their profile would, so a correction here turns
+  // up across the whole site rather than only on the poster.
+  const onPoster = useMemo(() => {
     if (!result) return [];
     return result.results
       .slice(0, 10)
-      .filter((r) => r.driverId && !countryFor(r.driverId, r.country))
-      .map((r) => ({ driverId: r.driverId, name: r.name }));
+      .filter((r) => r.driverId)
+      .map((r) => ({ driverId: r.driverId, name: r.name, country: countryFor(r.driverId, r.country) || "" }))
+      .sort((a, b) => (a.country ? 1 : 0) - (b.country ? 1 : 0));
   }, [result]);
+  const flagless = onPoster.filter((d) => !d.country).length;
 
   async function setCountry(driverId, code) {
     setBusy(true);
@@ -285,28 +293,33 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
         </div>
       </div>
 
-      {flagless.length > 0 && (
+      {onPoster.length > 0 && (
         <div className="card overflow-hidden">
           <CardBar
-            title="Missing flags"
+            title="Flags"
             right={
               <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-                {flagless.length} without
+                {flagless > 0 ? `${flagless} without` : "all set"}
               </span>
             }
           />
           <ul className="divide-y divide-border">
-            {flagless.map((d) => (
+            {onPoster.map((d) => (
               <li key={d.driverId} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2.5">
+                {/* The flag they have, so the row shows the answer rather than
+                    asking the question twice. */}
+                <span className="flex h-[15px] w-5 shrink-0 items-center justify-center">
+                  <Flag code={d.country} />
+                </span>
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-dark">{d.name}</span>
                 <select
                   aria-label={`Country for ${d.name}`}
                   className="input w-auto max-w-[15rem] py-1.5 text-sm"
-                  defaultValue=""
+                  value={d.country}
                   disabled={busy}
-                  onChange={(e) => e.target.value && setCountry(d.driverId, e.target.value)}
+                  onChange={(e) => setCountry(d.driverId, e.target.value)}
                 >
-                  <option value="">Pick a country…</option>
+                  <option value="">No country</option>
                   {COUNTRIES.map((c) => (
                     <option key={c.code} value={c.code}>
                       {c.name}

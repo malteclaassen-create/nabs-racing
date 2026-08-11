@@ -12,7 +12,7 @@ import { listRemoteResults, fetchRemoteResult } from "../services/emperorResults
 import { saveRaceResults } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
 import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
-import { getWebhookUrl, setWebhookUrl, getResultsWebhookUrl, setResultsWebhookUrl, postToResultsChannel, announce, syncRaceToDiscord } from "../services/discordService.js";
+import { getWebhookUrl, setWebhookUrl, getResultsRoleId, getResultsWebhookUrl, setResultsRoleId, setResultsWebhookUrl, postToResultsChannel, announce, syncRaceToDiscord } from "../services/discordService.js";
 import { buildResultsPost } from "../services/resultsPostService.js";
 import { resolveSeasonId, invalidatePrivateSeasonCache } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
@@ -2571,6 +2571,37 @@ router.put("/discord/results-webhook", async (req, res, next) => {
   }
 });
 
+// GET /api/admin/discord/results-role -> { roleId }
+// PUT /api/admin/discord/results-role  { roleId }   ("" clears it)
+// The role every driver has, pinged at the top of a results post so the whole
+// grid gets a notification. A snowflake id and nothing else: a role NAME does
+// not ping, and anything that is not digits would go out as literal text.
+router.get("/discord/results-role", async (req, res, next) => {
+  try {
+    res.json({ roleId: await getResultsRoleId(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/discord/results-role", async (req, res, next) => {
+  try {
+    const raw = String(req.body?.roleId || "").trim();
+    // Paste-friendly: accept the id, or the <@&id> Discord copies when you type
+    // the role into a message and copy the text back out.
+    const id = (/^<@&(\d+)>$/.exec(raw)?.[1] ?? raw).trim();
+    if (id && !/^\d{5,25}$/.test(id)) {
+      return res.status(400).json({
+        error: "A role ID is the long number from Server Settings -> Roles -> Copy Role ID, not the role's name.",
+      });
+    }
+    await setResultsRoleId(prisma, id);
+    res.json({ ok: true, roleId: id || null });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // GET /api/admin/races/:id/results-post -> { text, short, mentions }
 // Generated drafts of the Discord results message for this round, in both
 // lengths, plus the names behind the mention ids so the admin's preview can
@@ -2603,7 +2634,10 @@ const postOrigin = (req) => {
 router.get("/races/:id/results-post", async (req, res, next) => {
   try {
     const origin = postOrigin(req);
-    const post = await buildResultsPost(prisma, req.params.id, { origin });
+    const post = await buildResultsPost(prisma, req.params.id, {
+      origin,
+      roleId: await getResultsRoleId(prisma),
+    });
     if (post == null) return res.status(404).json({ error: "Race not found or has no results yet" });
     res.json({ text: post.full, short: post.short, mentions: post.mentions });
   } catch (e) {

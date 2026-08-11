@@ -45,6 +45,8 @@ const GRAPHICS = [...THEME_KEYS.map((k) => ({ key: k, label: THEMES[k].label }))
 export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
   const ask = useAsk();
   const { data: hook, reload: reloadHook } = useApi(useCallback(() => api.getResultsWebhook(), []));
+  const { data: role, reload: reloadRole } = useApi(useCallback(() => api.getResultsRole(), []));
+  const [roleInput, setRoleInput] = useState("");
   // Both drafts, edited separately. `null` until generated.
   const [drafts, setDrafts] = useState(null);
   const [mentions, setMentions] = useState({});
@@ -193,6 +195,9 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
           <p className="text-sm text-light">
             Built from the saved result, so save any open edits in Edit Results first. You get both lengths and a
             preview of the message as the channel will see it.
+            {role?.roleId
+              ? " The drivers' role is pinged on the first line; delete that line if a round should go out quietly."
+              : " Add the drivers' role below and it will be pinged on the first line."}
           </p>
           <button className="btn-secondary" disabled={busy} onClick={generate}>
             {busy ? "Building…" : "Generate message"}
@@ -225,7 +230,7 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
                 can be added as :emoji_name: if the webhook&rsquo;s server has them.
               </p>
             </div>
-            <DiscordPreview text={text} mentions={mentions} poster={poster} when="Today" />
+            <DiscordPreview text={text} mentions={mentions} poster={poster} when="Today" roleName="Drivers" />
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -272,6 +277,59 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
           Separate from the events webhook, so results land in their own channel. Discord channel &rarr; Edit
           Channel &rarr; Integrations &rarr; Webhooks.
         </p>
+
+        {/* The role ping. One line at the top of the message notifies the whole
+            grid, instead of only the twenty people named in it. */}
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="text-sm">
+            Drivers&rsquo; role:{" "}
+            {role?.roleId ? (
+              <span className="font-semibold text-ok">pinged (ID {role.roleId})</span>
+            ) : (
+              <span className="font-semibold text-light">not set (nobody is notified as a group)</span>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <input
+              aria-label="Drivers' Discord role ID"
+              className="input max-w-md flex-1 font-mono text-sm"
+              placeholder="Role ID, e.g. 1109397717320478761"
+              value={roleInput}
+              onChange={(e) => setRoleInput(e.target.value)}
+            />
+            <button
+              className="btn-secondary"
+              disabled={busy || !roleInput.trim()}
+              onClick={() =>
+                run(async () => {
+                  await api.setResultsRole(roleInput.trim());
+                  setRoleInput("");
+                  reloadRole();
+                }, "Role saved. Generate the message again to see the ping.")
+              }
+            >
+              Save role
+            </button>
+            {role?.roleId && (
+              <button
+                className="btn-secondary"
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    await api.setResultsRole("");
+                    reloadRole();
+                  }, "Role removed. Results posts no longer ping the grid.")
+                }
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          <p className="mt-1.5 text-xs text-light">
+            In Discord: Server Settings &rarr; Roles &rarr; right-click the role &rarr; Copy Role ID (needs
+            Developer Mode under Settings &rarr; Advanced). The role&rsquo;s NAME does not ping, only its ID.
+          </p>
+        </div>
       </div>
     </div>
   );

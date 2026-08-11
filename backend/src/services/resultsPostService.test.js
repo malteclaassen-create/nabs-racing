@@ -97,6 +97,19 @@ describe("buildResultsPost", () => {
     expect(short).toContain("(https://league.example/races?race=r1)");
   });
 
+  it("pings the drivers' role on the first line of both lengths, when one is set", async () => {
+    const { full, short } = await buildResultsPost(makePrisma(), "r1", { roleId: "999" });
+    expect(short.split("\n")[0]).toBe("<@&999>");
+    expect(full.split("\n")[0]).toBe("<@&999>");
+    expect(short.split("\n")[1]).toBe("**ROUND 1 - HOCKENHEIM**");
+  });
+
+  it("pings nobody when no role is set", async () => {
+    const { full, short } = await buildResultsPost(makePrisma(), "r1");
+    expect(short).not.toContain("<@&");
+    expect(full).not.toContain("<@&");
+  });
+
   it("hands back the names behind every mention, so a preview can show them", async () => {
     const { mentions } = await buildResultsPost(makePrisma(), "r1");
     expect(mentions).toEqual({ 111: "13bot", 222: "mtimmis" });
