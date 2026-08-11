@@ -21,7 +21,7 @@ export const TAB_GROUPS = [
       { id: "attendance", label: "Attendance" },
       { id: "import", label: "Import Race" },
       { id: "edit", label: "Edit Results" },
-      { id: "graphic", label: "Result Graphic" },
+      { id: "content", label: "Content" },
       { id: "photos", label: "Photos" },
     ],
   },
@@ -173,30 +173,36 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "edit",
-    title: "Post a result to Discord",
-    hint: "Send the finished classification to the results channel, mentioning the drivers.",
-    keywords: "results post discord webhook announce mention ping publish",
-  },
-  {
-    tab: "edit",
     title: "Delete a race or just its results",
     hint: "Wipe a saved classification, or remove the round entirely.",
     keywords: "delete remove wipe race results undo",
   },
   {
-    tab: "graphic",
+    tab: "content",
     title: "The result poster for a round",
     hint: "The picture for Discord, built from the round's own result. Pick a round, download the PNG.",
     keywords: "graphic poster image png share discord post podium top ten social instagram photoshop template",
   },
   {
-    tab: "graphic",
+    tab: "content",
+    title: "Post a result to Discord",
+    hint: "The message for the results channel, with the drivers mentioned and the poster attached.",
+    keywords: "results post discord webhook announce mention ping publish message content channel",
+  },
+  {
+    tab: "content",
+    title: "Results channel webhook",
+    hint: "Where the results message is posted. Separate from the events webhook.",
+    keywords: "webhook results channel discord url connect integration",
+  },
+  {
+    tab: "content",
     title: "Team cars and wide logos",
     // "wordmark" stays in the keywords: it is what a designer calls the long
     // logo, so it is what a designer will type, even though the page has
     // stopped using the word.
-    hint: "The cut-out car and the long logo the result poster draws with. Uploaded once per team.",
-    keywords: "car cars artwork wide logo wordmark long logo graphic poster cutout render team art",
+    hint: "The cut-out car, the long logo and the tile logo the result poster draws with. Uploaded once per team.",
+    keywords: "car cars artwork wide logo wordmark long logo badge tile logo graphic poster cutout render team art",
   },
   {
     tab: "photos",

@@ -41,12 +41,21 @@ const SLOT = {
     label: "Wide logo",
     hint: "the long logo with the team name written out, for the rows under the podium.",
   },
+  badge: {
+    label: "Logo",
+    hint: "the square logo in the corner of a podium tile. Only needed if the site's own logo reads badly on the poster.",
+  },
 };
 
 // One picture for one team. Empty, it is a labelled dashed box, which is both
 // the button and the only place the word "car" needs to appear. Filled, it is
 // the picture, and pressing it replaces.
-function ArtSlot({ team, kind, url, busy, onUpload, onClear }) {
+//
+// `fallback` is for the slot that has something to fall back ON: the tile logo
+// uses the site's own if nothing is uploaded, so the empty box shows THAT,
+// dimmed. An empty dashed box would read as a hole in the poster, when in fact
+// the poster is already fine and this is only an override.
+function ArtSlot({ team, kind, url, busy, onUpload, onClear, fallback = null }) {
   const fileRef = useRef(null);
   const { label, hint } = SLOT[kind];
   return (
@@ -67,7 +76,7 @@ function ArtSlot({ team, kind, url, busy, onUpload, onClear }) {
         disabled={busy}
         // The hover carries the explanation the page deliberately doesn't
         // print: what this picture is, in words somebody can act on.
-        title={`${team.name}: ${url ? "replace" : "upload"} ${hint}`}
+        title={`${team.name}: ${url ? "replace" : fallback ? "override" : "upload"} ${hint}`}
         onClick={() => fileRef.current?.click()}
         className={`flex h-12 w-28 items-center justify-center overflow-hidden rounded-lg border transition disabled:opacity-50 ${
           url
@@ -77,6 +86,8 @@ function ArtSlot({ team, kind, url, busy, onUpload, onClear }) {
       >
         {url ? (
           <img src={url} alt="" className="h-full w-full object-contain" />
+        ) : fallback ? (
+          <img src={fallback} alt="" className="h-full w-full object-contain opacity-40" />
         ) : (
           <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-faint">{label}</span>
         )}
@@ -99,11 +110,20 @@ function ArtSlot({ team, kind, url, busy, onUpload, onClear }) {
   );
 }
 
-export default function AdminResultGraphic() {
-  const { data: races, error: racesError, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
+// `raceId` makes the round somebody else's decision: inside the Content area a
+// single picker at the top drives both this and the Discord message, so the
+// poster on screen and the poster that gets posted are always the same round.
+// Left out, the component picks its own round and shows its own dropdown, which
+// is how it works anywhere it stands alone.
+export default function AdminResultGraphic({ raceId: fixedRaceId = null }) {
+  const fixed = fixedRaceId != null;
+  const { data: races, error: racesError, reload: reloadRaces } = useApi(
+    useCallback(() => (fixed ? Promise.resolve([]) : api.races()), [fixed])
+  );
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [art, setArt] = useState(null);
-  const [raceId, setRaceId] = useState("");
+  const [ownRaceId, setOwnRaceId] = useState("");
+  const raceId = fixed ? fixedRaceId : ownRaceId;
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -122,8 +142,8 @@ export default function AdminResultGraphic() {
   );
 
   useEffect(() => {
-    if (!raceId && finished.length) setRaceId(finished[0].id);
-  }, [finished, raceId]);
+    if (!fixed && !raceId && finished.length) setOwnRaceId(finished[0].id);
+  }, [fixed, finished, raceId]);
 
   useEffect(() => {
     api.teamArt().then(setArt).catch((e) => setError(e.message));
@@ -256,20 +276,22 @@ export default function AdminResultGraphic() {
         <CardBar
           title="Result graphic"
           right={
-            finished.length > 0 && (
+            (fixed || finished.length > 0) && (
               <div className="flex flex-wrap items-center gap-2">
-                <select
-                  aria-label="Round"
-                  className="input w-auto max-w-[16rem] py-1.5 text-sm"
-                  value={raceId}
-                  onChange={(e) => setRaceId(e.target.value)}
-                >
-                  {finished.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.number != null ? `R${r.number}` : "Session"} {r.track} · {fmtDate(r.date)}
-                    </option>
-                  ))}
-                </select>
+                {!fixed && (
+                  <select
+                    aria-label="Round"
+                    className="input w-auto max-w-[16rem] py-1.5 text-sm"
+                    value={raceId}
+                    onChange={(e) => setOwnRaceId(e.target.value)}
+                  >
+                    {finished.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.number != null ? `R${r.number}` : "Session"} {r.track} · {fmtDate(r.date)}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button className="btn-primary py-1.5 text-sm" onClick={download} disabled={!result || loading}>
                   Download PNG
                 </button>
@@ -277,7 +299,7 @@ export default function AdminResultGraphic() {
             )
           }
         />
-        {finished.length === 0 ? (
+        {!fixed && finished.length === 0 ? (
           <p className="p-5 text-sm text-light">No finished round in this season yet.</p>
         ) : (
           /* The preview IS the export: the same canvas, shown smaller. Nothing
@@ -354,6 +376,15 @@ export default function AdminResultGraphic() {
                 </span>
                 <ArtSlot team={t} kind="car" url={art?.[t.id]?.car} busy={busy} onUpload={upload} onClear={clearArt} />
                 <ArtSlot team={t} kind="mark" url={art?.[t.id]?.mark} busy={busy} onUpload={upload} onClear={clearArt} />
+                <ArtSlot
+                  team={t}
+                  kind="badge"
+                  url={art?.[t.id]?.badge}
+                  fallback={t.logoUrl || null}
+                  busy={busy}
+                  onUpload={upload}
+                  onClear={clearArt}
+                />
               </li>
             ))}
           </ul>

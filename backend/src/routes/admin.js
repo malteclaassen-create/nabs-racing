@@ -3614,7 +3614,7 @@ router.post("/teams/:id/logo", upload.single("file"), async (req, res, next) => 
 // See lib/teamArt.js for why this is a Setting blob and not two more columns.
 // ---------------------------------------------------------------------------
 
-// GET /api/admin/team-art -> { "<teamId>": { car, mark } }
+// GET /api/admin/team-art -> { "<teamId>": { car, mark, badge } }
 router.get("/team-art", async (req, res, next) => {
   try {
     res.json(await readTeamArt(prisma));

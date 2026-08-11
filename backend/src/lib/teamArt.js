@@ -6,10 +6,15 @@
 //   mark  — the WIDE wordmark ("BRAWNGP", "WILLIAMS F1"). The site's own logo is
 //           a square badge, drawn at 20px next to a name; stretched across the
 //           middle of a results row it reads as a stray icon.
+//   badge — the square logo in the corner of a podium tile. The site's own logo
+//           is what goes there by default, and it is usually right; this is for
+//           the team whose logo is dark on dark, or who want a plain version on
+//           the poster without changing the one the whole site uses.
 //
-// Both are optional and both fall back: no mark means the square logo is used,
-// no car means the tile is drawn in the team's colour. So the graphic works the
-// day it is switched on and gets better as the art arrives.
+// All three are optional and all three fall back: no badge means the site's
+// logo, no mark means the site's logo too, no car means the tile is drawn in the
+// team's colour. So the graphic works the day it is switched on and gets better
+// as the art arrives.
 //
 // Kept as a Setting blob rather than columns on Team, like raceInfo and
 // trackInfo: it is presentation, it is edited in one place, and it saves a
@@ -18,7 +23,7 @@
 // ---------------------------------------------------------------------------
 
 const KEY = "team_art";
-export const ART_KINDS = ["car", "mark"];
+export const ART_KINDS = ["car", "mark", "badge"];
 
 function clean(input) {
   const out = {};

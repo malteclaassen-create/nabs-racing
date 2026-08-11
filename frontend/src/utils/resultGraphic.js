@@ -29,7 +29,17 @@ export const LAYOUT = {
 
   pad: 25, // page margin left and right
 
-  title: { y: 118, size: 66, gapToLogo: 24 },
+  // Every size below is solved rather than guessed: the string is rendered in
+  // Archivo Black, its INK measured, and the size chosen so that ink comes out
+  // the size the same string is in Steve's file. His text boxes are what is
+  // being matched, so "4." is 36px of ink here because it is 36px of ink there.
+  //
+  // The title is matched on WIDTH, not height, because it is the one line that
+  // spans the page: 845px of ink between the margins is what you see, and two
+  // pixels of cap height is what you do not. Archivo runs about 4% narrower
+  // per unit of height than the face Steve set it in, so one of the two has to
+  // give until his font arrives.
+  title: { y: 118, size: 83, gapToLogo: 24 },
   logo: { size: 82, right: 26, top: 18 },
 
   // The podium. `lift` is how much higher a tile sits than the lowest one. In
@@ -42,10 +52,10 @@ export const LAYOUT = {
     barHeight: 77,
     bottom: 589,
     lift: { 1: 13, 2: 0, 3: 0 },
-    posSize: 62, // "1." "2." "3."
+    posSize: 70, // "1." "2." "3." — 49px of ink in the file
     posX: 24,
     posY: 68, // baseline, from the top of the tile
-    nameSize: 40,
+    nameSize: 41, // 31px of ink
     flagW: 54,
     // The car is shown WHOLE, sitting low in the tile with the position number
     // in the empty black above it — not cropped to fill the tile. A cut-out is
@@ -61,7 +71,7 @@ export const LAYOUT = {
     // Sized so the VISIBLE pink edges land where the file's do: 59 in from the
     // tile's right edge and 53 above the name bar. The box itself is 2.5 bigger
     // on each of those sides, because a 5px stroke is drawn centred on the path.
-    chip: { h: 55, minW: 59, padX: 10.5, size: 18, radius: 16 },
+    chip: { h: 55, minW: 59, padX: 8.5, size: 20, radius: 16 },
   },
 
   // Places 4 down to whatever `rows` the caller asks for.
@@ -70,16 +80,16 @@ export const LAYOUT = {
     height: 80,
     gap: 25,
     numW: 85,
-    numSize: 44,
+    numSize: 51, // 36px of ink in the file
     flagX: 118, // where the flag starts, from the page's left edge
     flagW: 50,
     nameX: 189,
-    nameSize: 42,
+    nameSize: 42, // 31px of ink
     markCx: 652, // centre of the team mark
     markMaxW: 280,
     markMaxH: 56,
     ptsRight: 58, // from the right edge of the page
-    ptsSize: 38,
+    ptsSize: 42, // 30px of ink
   },
 
   // Team badge in the corner of a podium tile, opposite the position number.
@@ -565,11 +575,13 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
   // No wordmark uploaded? The site's own square logo stands in.
   const markSrc = (r) => artOf(r, "mark") || r.effectiveTeam?.logoUrl || r.team?.logoUrl || null;
 
-  // The badge in a podium tile's corner is the SQUARE team logo, not the wide
-  // one: it sits in a square, and the wide one would have to shrink to a
-  // thread to fit. Loaded whichever design is showing, because switching
-  // between them must not have to go back to the network.
-  const badgeSrc = (r) => r.effectiveTeam?.logoUrl || r.team?.logoUrl || null;
+  // The badge in a podium tile's corner is a SQUARE logo, not the wide one: it
+  // sits in a square, and the wide one would have to shrink to a thread to fit.
+  // The site's own logo is the default and is usually right; a team can upload
+  // a poster-only one for the case where theirs is dark on a black tile.
+  // Loaded whichever design is showing, because switching between them must not
+  // have to go back to the network.
+  const badgeSrc = (r) => artOf(r, "badge") || r.effectiveTeam?.logoUrl || r.team?.logoUrl || null;
 
   const [logo, cars, flags, badges, marks, rowFlags] = await Promise.all([
     loadImage(logoSrc),
