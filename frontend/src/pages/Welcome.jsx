@@ -8,11 +8,11 @@ import { Skeleton, CountUp, MEDAL, ErrorBox } from "../components/ui.jsx";
 import { useParallax, useTilt, useMagnetic, motionOff } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
+import NextRaceCard from "../components/NextRaceCard.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
 import SocialFeed from "../components/SocialFeed.jsx";
 import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
-import { fmtRaceTime } from "../utils/raceTime.js";
 import { heroFor, heroOnError } from "../utils/heroImage.js";
 import { seasonGameParts, seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
@@ -455,7 +455,13 @@ export default function Welcome() {
           style={{ WebkitMaskImage: "linear-gradient(to left,#000 35%,transparent)", maskImage: "linear-gradient(to left,#000 35%,transparent)" }}
         />
 
-        <div className="relative z-20 flex min-h-[520px] flex-col justify-center gap-6 p-7 sm:p-12 lg:max-w-3xl">
+        {/* Copy on the left, the next round on the right — the same two halves
+            the home page's hero has, so a newcomer who joins and comes back
+            finds the countdown where they last saw it. Below lg it stacks and
+            the card sits under the buttons, which is also where a phone reader
+            gets to it after the pitch rather than before. */}
+        <div className="relative z-20 flex min-h-[520px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
+        <div className="flex flex-col justify-center gap-6 lg:max-w-3xl lg:flex-1">
           <div className="hero-anim flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
             <span>{season ? season.name : "NABS Racing League"}{season?.game ? ` · ${season.game}` : ""}</span>
           </div>
@@ -506,13 +512,15 @@ export default function Welcome() {
             </button>
           </div>
 
+        </div>
+
+          {/* Bottom of the column rather than the middle of it: the copy is
+              centred against the whole hero and a card centred beside it just
+              floats. Sat on the baseline it reads as the corner of the panel,
+              which is where the home page's hero puts the same card. */}
           {nextRace && (
-            <div className="hero-anim mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] uppercase tracking-wider text-ink/55 dark:text-white/60" style={{ animationDelay: "0.38s" }}>
-              <span className="text-ink/40 dark:text-white/40">Next race</span>
-              {nextCircuit && <Flag code={nextCircuit.country} title={nextCircuit.countryName} w={18} h={13} />}
-              <span className="font-bold text-ink/90 dark:text-white/90">{nextRace.track}</span>
-              <span className="hidden sm:inline text-ink/30 dark:text-white/30">·</span>
-              <span className="hidden sm:inline">{fmtRaceTime(nextRace.date)}</span>
+            <div className="flex shrink-0 flex-col justify-end lg:ml-auto lg:w-72">
+              <NextRaceCard race={nextRace} className="hero-anim" style={{ animationDelay: "0.38s" }} />
             </div>
           )}
         </div>

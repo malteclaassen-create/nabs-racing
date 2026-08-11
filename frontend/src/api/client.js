@@ -670,11 +670,19 @@ export const api = {
   },
   // The championship table as a post: same channel, same two lengths. `upTo` is
   // the round it is frozen after, the same number the sheets are drawn from.
-  getStandingsPost: (upTo = null, tier = "all", withoutStarts = false) =>
-    request(
-      `/admin/standings-post?origin=${encodeURIComponent(window.location.origin)}${upTo ? `&upTo=${upTo}` : ""}&tier=${encodeURIComponent(tier)}${withoutStarts ? "&withoutStarts=1" : ""}`,
-      { auth: true }
-    ),
+  // `of` picks the championship: "drivers" (with its group and reserve rule) or
+  // "constructors" (with how many teams of each tier are on the sheet).
+  getStandingsPost: (upTo = null, opts = {}) => {
+    const q = [`origin=${encodeURIComponent(window.location.origin)}`];
+    if (upTo) q.push(`upTo=${upTo}`);
+    if (opts.of === "constructors") {
+      q.push("of=constructors", `t1Rows=${opts.t1Rows || 5}`, `t2Rows=${opts.t2Rows || 8}`);
+    } else {
+      q.push(`tier=${encodeURIComponent(opts.tier || "all")}`);
+      if (opts.withoutStarts) q.push("withoutStarts=1");
+    }
+    return request(`/admin/standings-post?${q.join("&")}`, { auth: true });
+  },
   // `images` is the table's sheets as Blobs, in order. A long table is several
   // pictures on one message, so this always goes as multipart.
   sendStandingsPost: (content, images = []) => {

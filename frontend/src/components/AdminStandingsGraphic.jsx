@@ -9,7 +9,7 @@ import {
   LAYOUT, THEMES, THEME_KEYS, renderStandingsTo, renderConstructorsTo, savedTheme, saveTheme,
   STANDINGS_PER_PAGE, savedStandingsSetup, saveStandingsSetup, standingsPageCount,
   standingsTitle, standingsSubtitle, constructorsTitle, upToRoundOf, filterStandings,
-  standingsTiersPresent, CONSTRUCTOR_SPOTS,
+  standingsTiersPresent, CONSTRUCTOR_SPOTS, DEFAULT_FRAMING, FRAMING_LIMITS, cleanFraming,
 } from "../utils/resultGraphic.js";
 
 // Which championship the poster is of. Same machine, two tables.
@@ -57,14 +57,31 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
   // round number to freeze the table at, so those show the season as it stands.
   const upTo = upToRoundOf(race);
 
-  // The team pictures, and the outline weight that both posters are drawn with
-  // (it lives with the car framing; see the Result tab, where it is set).
-  const [framing, setFraming] = useState(null);
+  // The team pictures, and the outline weight the posters are drawn with. That
+  // one is shared with the result poster rather than a second setting: it is
+  // the same pink line round the same kind of box, and two of them would drift.
+  const [framing, setFraming] = useState(DEFAULT_FRAMING);
+  const frameTimer = useRef(null);
   const loadArt = useCallback(() => {
     api.teamArt().then(setArt).catch((e) => setError(e.message));
-    api.posterFraming().then(setFraming).catch(() => {});
+    api.posterFraming().then((f) => setFraming(cleanFraming(f))).catch(() => {});
   }, []);
   useEffect(loadArt, [loadArt, artVersion]);
+  useEffect(() => () => clearTimeout(frameTimer.current), []);
+
+  // Redraws on every step of the drag and saves once it stops, the same way the
+  // car framing next door does.
+  function setFrameWidth(frameWidth) {
+    const next = { ...framing, frameWidth };
+    setFraming(next);
+    clearTimeout(frameTimer.current);
+    frameTimer.current = setTimeout(() => {
+      api
+        .setPosterFraming({ frameWidth })
+        .then(() => onArtChange?.())
+        .catch((e) => setError(e.message));
+    }, 400);
+  }
 
   // Both championships are fetched for the round in view. Two small reads, and
   // having them both in hand means the Drivers/Constructors switch redraws
@@ -292,6 +309,27 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
               }}
               btnClassName="px-4 py-1.5 text-xs"
             />
+
+            {/* The pink line round every row. Shared with the result poster,
+                which is where the car framing is set; here because a table
+                poster is often the one being looked at when the weight is
+                decided. */}
+            <label className="block">
+              <span className="mb-1.5 flex items-center justify-between font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+                Outline width
+                <span className="tabular-nums text-light">{framing.frameWidth} px</span>
+              </span>
+              <input
+                type="range"
+                min={FRAMING_LIMITS.frameWidth.min}
+                max={FRAMING_LIMITS.frameWidth.max}
+                step={FRAMING_LIMITS.frameWidth.step}
+                value={framing.frameWidth}
+                aria-label="Outline width"
+                className="w-full"
+                onChange={(e) => setFrameWidth(Number(e.target.value))}
+              />
+            </label>
 
             {/* How many teams of each tier. Steve's split: Tier 1 is a short
                 grid whose top five is the story, Tier 2 has more teams in it.

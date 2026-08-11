@@ -8,8 +8,10 @@ import SlidingTabs from "./SlidingTabs.jsx";
 import DiscordPreview from "./DiscordPreview.jsx";
 import {
   renderPosterBlob, renderPosterTo, renderStandingsTo, renderStandingsBlobs,
+  renderConstructorsTo, renderConstructorsBlob,
   savedTheme, THEMES, THEME_KEYS,
-  savedStandingsSetup, standingsPageCount, standingsTitle, standingsSubtitle, upToRoundOf, filterStandings,
+  savedStandingsSetup, standingsPageCount, standingsTitle, standingsSubtitle, constructorsTitle,
+  upToRoundOf, filterStandings,
 } from "../utils/resultGraphic.js";
 
 // ---------------------------------------------------------------------------
@@ -95,16 +97,26 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
   const upTo = upToRoundOf(race);
 
   const loadSource = useCallback(async () => {
-    const [r, teamArt, framing, standings] = await Promise.all([
+    const [r, teamArt, framing, standings, t1, t2] = await Promise.all([
       api.raceResults(raceId),
       api.teamArt(),
       api.posterFraming(),
-      // Only for the standings mode, but fetched either way: it is one small
-      // read, and having it in hand means switching modes redraws instead of
+      // Only for the standings mode, but fetched either way: they are small
+      // reads, and having them in hand means switching modes redraws instead of
       // showing an empty preview while the network catches up.
       api.driverStandings(undefined, upTo).catch(() => null),
+      api.t1Standings(undefined, upTo).catch(() => null),
+      api.t2Standings(undefined, upTo).catch(() => null),
     ]);
-    return { race: r.race, results: r.results, teamArt, framing, standings: standings?.standings || [] };
+    return {
+      race: r.race,
+      results: r.results,
+      teamArt,
+      framing,
+      standings: standings?.standings || [],
+      t1: t1?.standings || [],
+      t2: t2?.standings || [],
+    };
   }, [raceId, upTo]);
 
   useEffect(() => {
@@ -142,7 +154,8 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
   // picture, and read back from there. Two places to set them is two answers,
   // and the channel would get whichever one was touched last. Re-read on
   // `artVersion`, which the Standings half bumps whenever either changes.
-  const [{ perPage, tier, withoutStarts }, setSetup] = useState(savedStandingsSetup);
+  const [{ kind: tableKind, perPage, tier, withoutStarts, t1Rows, t2Rows }, setSetup] = useState(savedStandingsSetup);
+  const teamsTable = tableKind === "constructors";
   useEffect(() => setSetup(savedStandingsSetup()), [artVersion]);
 
   // And the same for the table.
@@ -153,30 +166,47 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
 
   const standingsFrom = useCallback(
     (src) => {
-      const rows = filterStandings(src?.standings || [], tier, { withoutStarts });
-      return graphic === "none" || !rows.length
-        ? null
-        : {
+      if (graphic === "none" || !src) return null;
+      if (teamsTable) {
+        if (!src.t1?.length && !src.t2?.length) return null;
+        return {
+          t1: src.t1,
+          t2: src.t2,
+          teamArt: src.teamArt,
+          logoSrc: "/logo-light.png",
+          title: constructorsTitle(),
+          subtitle: standingsSubtitle(upTo),
+          t1Rows,
+          t2Rows,
+          framing: src.framing,
+          theme: graphic,
+        };
+      }
+      const rows = filterStandings(src.standings || [], tier, { withoutStarts });
+      return rows.length
+        ? {
             standings: rows,
             teamArt: src.teamArt,
             countryOf: (r) => countryFor(r.driverId, r.country),
             logoSrc: "/logo-light.png",
             title: standingsTitle(tier),
             subtitle: standingsSubtitle(upTo),
+            framing: src.framing,
             theme: graphic,
-          };
+          }
+        : null;
     },
-    [graphic, upTo, tier, withoutStarts]
+    [graphic, upTo, tier, withoutStarts, teamsTable, t1Rows, t2Rows]
   );
 
-  const sheetCount = standingsPageCount(standingsRows.length, perPage);
+  const sheetCount = teamsTable ? 1 : standingsPageCount(standingsRows.length, perPage);
   // Which sheets go out. All of them to start with, because that is the whole
   // table and the usual answer; unticking one is how you post only the top ten
   // of a field of twenty.
   const [sheets, setSheets] = useState([]);
   useEffect(() => {
     setSheets(Array.from({ length: sheetCount }, (_, i) => i));
-  }, [sheetCount, tier]);
+  }, [sheetCount, tier, teamsTable]);
   const chosen = useMemo(() => [...sheets].sort((a, b) => a - b), [sheets]);
 
   // Exactly the files that will be attached, drawn by the functions that draw
@@ -188,11 +218,12 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
     }
     const opts = standingsFrom(source);
     if (!opts) return [];
+    if (teamsTable) return [{ id: `constructors-${graphic}`, draw: (c) => renderConstructorsTo(c, opts) }];
     return chosen.map((p) => ({
       id: `standings-${graphic}-${p}`,
       draw: (c) => renderStandingsTo(c, { ...opts, rows: perPage, offset: p * perPage }),
     }));
-  }, [kind, source, posterFrom, standingsFrom, graphic, perPage, chosen]);
+  }, [kind, source, posterFrom, standingsFrom, graphic, perPage, chosen, teamsTable]);
 
   async function run(fn, doneMsg) {
     setBusy(true);
@@ -213,7 +244,10 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
       const r =
         kind === "result"
           ? await api.getResultsPost(raceId)
-          : await api.getStandingsPost(upTo, tier, withoutStarts);
+          : await api.getStandingsPost(
+              upTo,
+              teamsTable ? { of: "constructors", t1Rows, t2Rows } : { tier, withoutStarts }
+            );
       setDrafts({ full: r.text || "", short: r.short || "" });
       setMentions(r.mentions || {});
     });
@@ -247,7 +281,11 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
           ? await api.sendResultsPost(raceId, text, graphic === "none" ? null : await renderPosterBlob(posterFrom(fresh)))
           : await api.sendStandingsPost(
               text,
-              graphic === "none" ? [] : await renderStandingsBlobs(standingsFrom(fresh), { perPage, pages: chosen })
+              graphic === "none"
+                ? []
+                : teamsTable
+                  ? [await renderConstructorsBlob(standingsFrom(fresh))]
+                  : await renderStandingsBlobs(standingsFrom(fresh), { perPage, pages: chosen })
             );
       const how = r.messages > 1 ? `as ${r.messages} messages (Discord length limit)` : "";
       const withPics =
@@ -299,7 +337,7 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
           <p className="text-sm text-light">
             {kind === "result"
               ? "Built from the saved result, so save any open edits in Edit Results first."
-              : `Built from the ${standingsTitle(tier).toLowerCase()}${upTo ? ` as they stood after round ${upTo}` : ""}. Who is on it and how many to a sheet are set under Standings.`}{" "}
+              : `Built from the ${(teamsTable ? constructorsTitle() : standingsTitle(tier)).toLowerCase()}${upTo ? ` as they stood after round ${upTo}` : ""}. Which table and who is on it are set under Standings.`}{" "}
             You get both lengths and a preview of the message as the channel will see it.
             {role?.roleId
               ? " The drivers' role is pinged on the first line; delete that line if a round should go out quietly."
