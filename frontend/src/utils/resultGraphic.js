@@ -158,14 +158,17 @@ export const THEMES = {
       alpha: 0.13,
       colour: "#ffffff",
     },
-    // Outlined rather than filled, and blue rather than the poster's pink: the
-    // pink is the design's own line colour and is already round every tile and
-    // every row, so a pink pill inside a pink-framed row reads as part of the
-    // frame. Blue is the one colour on the page that belongs to nothing else.
+    // Blue rather than the poster's pink: pink is the design's own line colour
+    // and is already round every tile and every row, so a pink pill inside a
+    // pink-framed row reads as part of the frame. Blue belongs to nothing else
+    // on the page.
     //
-    // No fill at all, so the same pill works on black in the rows and on gold,
-    // silver or bronze in a podium bar without a second set of colours.
-    tierPill: { fill: null, ink: "#2f8fff", frame: "#2f8fff" },
+    // Solid, with black text. Both designs use the same bright blue, because a
+    // filled pill has to carry black type: the darker blue that suited an
+    // outline leaves the "T2" too close to its background to read at 17px.
+    // Solid also means one pill works on black in the rows and on gold, silver
+    // or bronze in a podium bar, without a second set of colours per surface.
+    tierPill: { fill: "#2f8fff", ink: "#000000", frame: null },
     tile: { fill: "#000000", frame: "#ffaec8", frameWidth: 5, badge: true },
     // Gold, silver and bronze land TWICE: on the position number and on the
     // name bar under the car.
@@ -199,7 +202,7 @@ export const THEMES = {
     tile: { fill: "#000000", frame: "medal", frameWidth: 3, badge: false },
     pos: { colour: "#ffffff" },
     nameBar: { fill: "medal", ink: "#0a0a0a", frame: null },
-    tierPill: { fill: null, ink: "#1b6fd6", frame: "#1b6fd6" },
+    tierPill: { fill: "#2f8fff", ink: "#000000", frame: null },
     tilePoints: null,
     row: {
       numFill: "#0a0a0a", numInk: "#ffffff",
