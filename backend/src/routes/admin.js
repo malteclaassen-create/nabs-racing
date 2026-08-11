@@ -37,10 +37,11 @@ import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
 import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
-import { readTeamArt, writeTeamArt, ART_KINDS } from "../lib/teamArt.js";
+import { readTeamArt, writeTeamArt, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
 import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
+  dbThreadVoices,
 } from "../lib/reports.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
@@ -3750,6 +3751,26 @@ router.delete("/team-art/:id/:kind", async (req, res, next) => {
   }
 });
 
+// How those cars are cropped in the podium tiles. One setting for all three,
+// read by the poster and written by the slider under the preview.
+// GET /api/admin/poster-framing -> { zoom, x, y }
+// PUT /api/admin/poster-framing   { zoom, x, y }
+router.get("/poster-framing", async (req, res, next) => {
+  try {
+    res.json(await readCarFraming(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/poster-framing", async (req, res, next) => {
+  try {
+    res.json(await writeCarFraming(prisma, req.body));
+  } catch (e) {
+    next(e);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // TRACK INFO — admin-editable fun facts + custom map image per circuit, layered
 // on top of the computed track history (routes/tracks.js).
@@ -4532,14 +4553,14 @@ router.get("/reports/:id", async (req, res, next) => {
   try {
     const report = await dbGetReport(prisma, req.params.id);
     if (!report) return res.status(404).json({ error: "Report not found" });
+    const voices = await dbThreadVoices(prisma, report.id, report);
     res.json({
-      report,
+      report: { ...report, reporterTeam: voices.get(String(report.reporterDiscordId || "")) || null },
       // At the desk, "mine" means the office: a PIN admin has no Discord id
       // to match on, and every message written from here is the stewards'.
-      messages: (await dbMessages(prisma, report.id, req.user?.discordId || null)).map((m) => ({
-        ...m,
-        mine: m.mine || m.author === "ADMIN",
-      })),
+      messages: (
+        await dbMessages(prisma, report.id, req.user?.discordId || null, voices)
+      ).map((m) => ({ ...m, mine: m.mine || m.author === "ADMIN" })),
       viewers: await dbViewers(prisma, report.id),
       attachments: await dbAttachments(prisma, report.id),
     });
@@ -4585,10 +4606,9 @@ router.post("/reports/:id/messages", attachmentUpload.array("files", 4), async (
     }
     res.json({
       ok: true,
-      messages: (await dbMessages(prisma, report.id, req.user?.discordId || null)).map((m) => ({
-        ...m,
-        mine: m.mine || m.author === "ADMIN",
-      })),
+      messages: (
+        await dbMessages(prisma, report.id, req.user?.discordId || null, await dbThreadVoices(prisma, report.id, report))
+      ).map((m) => ({ ...m, mine: m.mine || m.author === "ADMIN" })),
       attachments: await dbAttachments(prisma, report.id),
     });
   } catch (e) {

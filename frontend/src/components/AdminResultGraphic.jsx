@@ -10,6 +10,7 @@ import { fmtDateShort } from "../utils/format.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import {
   LAYOUT, THEMES, THEME_KEYS, EXPORT_SCALE, renderPosterTo, savedTheme, saveTheme,
+  DEFAULT_FRAMING, FRAMING_LIMITS, cleanFraming,
 } from "../utils/resultGraphic.js";
 
 // Admin → Graphics: the result poster for a finished round, drawn from the
@@ -26,6 +27,31 @@ import {
 // page whose controls did not.
 
 const fmtDate = (d) => (d ? fmtDateShort(d) : "no date");
+
+// One slider, with what it is currently set to written next to its name. The
+// number matters here: "a bit more zoom" is not something you can tell a
+// colleague over Discord, and "1.6x, 40 left" is.
+function Slider({ label, value, format, limits, disabled, onChange }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 flex items-center justify-between font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+        {label}
+        <span className="tabular-nums text-light">{format(value)}</span>
+      </span>
+      <input
+        type="range"
+        min={limits.min}
+        max={limits.max}
+        step={limits.step}
+        value={value}
+        disabled={disabled}
+        aria-label={label}
+        className="w-full"
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </label>
+  );
+}
 
 // What each slot is called on screen, and what the hover says it is for. The
 // long logo is a "wordmark" in design language, which is precise and means
@@ -126,11 +152,34 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState(savedTheme);
+  const [framing, setFraming] = useState(DEFAULT_FRAMING);
   const canvasRef = useRef(null);
+  const saveTimer = useRef(null);
 
   useEffect(() => {
     api.teamArt().then(setArt).catch((e) => setError(e.message));
+    // A framing that will not load is not a reason to show no poster: the
+    // default draws every car whole, which is what it did before there was a
+    // slider at all.
+    api.posterFraming().then((f) => setFraming(cleanFraming(f))).catch(() => {});
+    return () => clearTimeout(saveTimer.current);
   }, []);
+
+  // Dragging a slider redraws on every step and saves once you stop. Saving on
+  // each step would be a hundred writes for one decision; not saving until a
+  // button is pressed would be a button nobody presses, and next week's poster
+  // would be framed like the day the cars were uploaded.
+  function nudge(patch) {
+    const next = cleanFraming({ ...framing, ...patch });
+    setFraming(next);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      api
+        .setPosterFraming(next)
+        .then(() => onArtChange?.()) // the Discord half draws its own copy
+        .catch((e) => setError(e.message));
+    }, 400);
+  }
 
   useEffect(() => {
     if (!raceId) return;
@@ -156,13 +205,14 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
       countryOf: (r) => countryFor(r.driverId, r.country),
       logoSrc: "/logo-light.png",
       theme,
+      framing,
     }).catch((e) => {
       if (alive) setError(e.message);
     });
     return () => {
       alive = false;
     };
-  }, [result, art, theme]);
+  }, [result, art, theme, framing]);
 
   async function upload(teamId, kind, file) {
     setBusy(true);
@@ -290,6 +340,49 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
             className="h-auto w-full max-w-[400px] rounded-lg shadow-lg"
             style={{ aspectRatio: `${LAYOUT.width} / ${LAYOUT.height}` }}
           />
+
+          {/* How the cars sit in the podium tiles. Directly under the poster
+              rather than in a card of its own, because you cannot set it by
+              reading a number — you set it by looking at the picture above,
+              which redraws as you drag. */}
+          <div className="w-full max-w-[400px] space-y-3 border-t border-border pt-4">
+            <Slider
+              label="Car zoom"
+              value={framing.zoom}
+              limits={FRAMING_LIMITS.zoom}
+              disabled={!result}
+              format={(v) => `${v.toFixed(2)}×`}
+              onChange={(zoom) => nudge({ zoom })}
+            />
+            <Slider
+              label="Left / right"
+              value={framing.x}
+              limits={FRAMING_LIMITS.x}
+              disabled={!result}
+              format={(v) => `${v > 0 ? "+" : ""}${Math.round(v)} px`}
+              onChange={(x) => nudge({ x })}
+            />
+            <Slider
+              label="Up / down"
+              value={framing.y}
+              limits={FRAMING_LIMITS.y}
+              disabled={!result}
+              format={(v) => `${v > 0 ? "+" : ""}${Math.round(v)} px`}
+              onChange={(y) => nudge({ y })}
+            />
+            <div className="flex items-start justify-between gap-3 text-xs">
+              <span className="text-light">
+                One framing for all three tiles. Whatever hangs over an edge is cut off there.
+              </span>
+              <button
+                type="button"
+                className="shrink-0 font-semibold text-light transition hover:text-dark"
+                onClick={() => nudge(DEFAULT_FRAMING)}
+              >
+                Reset
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

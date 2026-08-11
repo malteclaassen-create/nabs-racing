@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fmtStamp } from "../utils/format.js";
 import { reportFileUrl } from "../api/client.js";
+import TeamLogo from "./TeamLogo.jsx";
 
 // ---------------------------------------------------------------------------
 // A report, read as the conversation it is.
@@ -144,7 +145,7 @@ function Attachment({ file, admin }) {
 // themselves, and gets no tag at all beyond their part in the thread.
 const VOICE = { REPORTER: "reported this", ACCUSED: "named in this", ADMIN: "stewards", VIEWER: "" };
 
-function Bubble({ voice, name, at, body, files, first, admin, mine }) {
+function Bubble({ voice, name, at, body, files, first, admin, mine, team }) {
   const fromAdmin = voice === "ADMIN";
   return (
     // Yours down one side, everybody else's down the other. Nothing about a
@@ -160,14 +161,19 @@ function Bubble({ voice, name, at, body, files, first, admin, mine }) {
               : "rounded-br-sm border border-link/25 bg-link/5"
         }`}
       >
-        <div className="flex flex-wrap items-baseline gap-x-2">
-          {/* The name, always. Then what they are in this thread. */}
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-eyebrow">
+        {/* The name reads as a NAME: the team badge, then the person, at a
+            size you notice. It used to be ten-pixel mono capitals, the same
+            treatment as the timestamp beside it, so a thread was a wall of
+            text with no faces in it. The badge is small on purpose — it is
+            there to be recognised at a glance, not to be looked at. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          {team && <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={16} />}
+          <span className="text-sm font-bold leading-none text-dark">
             {name || (fromAdmin ? "Stewards" : "Driver")}
           </span>
-          {(first || voice !== "REPORTER") && (
+          {(first || voice !== "REPORTER") && (VOICE[first ? "REPORTER" : voice] || "") && (
             <span className="font-mono text-[10px] uppercase tracking-wider text-light">
-              {first ? VOICE.REPORTER : VOICE[voice] || ""}
+              {first ? VOICE.REPORTER : VOICE[voice]}
             </span>
           )}
           <span className="font-mono text-[10px] uppercase tracking-wider text-faint">{when(at)}</span>
@@ -213,6 +219,7 @@ export default function ReportChat({ report, messages = [], attachments = [], ad
         files={loose}
         admin={admin}
         mine={mineIsReporter}
+        team={report.reporterTeam}
       />
       {messages.map((m) => (
         <Bubble
@@ -224,6 +231,7 @@ export default function ReportChat({ report, messages = [], attachments = [], ad
           files={byMessage.get(m.id) || []}
           admin={admin}
           mine={m.mine}
+          team={m.team}
         />
       ))}
     </ul>

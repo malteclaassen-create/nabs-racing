@@ -3,7 +3,7 @@ import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import {
   dbCreateReport, dbGetReport, dbReportsFor, dbMessages, dbAddMessage, canRead, dbDeleteReport,
-  dbAttachments, roleOn, dbSetAccused,
+  dbAttachments, roleOn, dbSetAccused, dbThreadVoices,
 } from "../lib/reports.js";
 import { serveAttachment, saveAttachment, attachmentUpload } from "../lib/reportFiles.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
@@ -138,9 +138,10 @@ router.get("/:id", optionalUser, async (req, res, next) => {
     if (!report || !(await canRead(prisma, report, me.discordId, me.isAdmin))) {
       return res.status(404).json({ error: "Report not found" });
     }
+    const teams = await dbThreadVoices(prisma, report.id, report);
     res.json({
-      report,
-      messages: await dbMessages(prisma, report.id, me.discordId),
+      report: { ...report, reporterTeam: teams.get(String(report.reporterDiscordId || "")) || null },
+      messages: await dbMessages(prisma, report.id, me.discordId, teams),
       attachments: await dbAttachments(prisma, report.id),
     });
   } catch (e) {
@@ -178,7 +179,7 @@ router.post("/:id/messages", optionalUser, attachmentUpload.array("files", 4), a
     }
     res.json({
       ok: true,
-      messages: await dbMessages(prisma, report.id, me.discordId),
+      messages: await dbMessages(prisma, report.id, me.discordId, await dbThreadVoices(prisma, report.id, report)),
       attachments: await dbAttachments(prisma, report.id),
     });
   } catch (e) {

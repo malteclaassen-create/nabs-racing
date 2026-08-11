@@ -25,6 +25,47 @@
 const KEY = "team_art";
 export const ART_KINDS = ["car", "mark", "badge"];
 
+// How the cars are framed in the podium tiles: a zoom and two offsets, one set
+// for all three. Its own key rather than a fourth kind above, because it is not
+// a picture and belongs to no team — it is how the poster crops whichever cars
+// end up on it this week.
+//
+// The bounds are the same ones the sliders offer (FRAMING_LIMITS in the
+// frontend's resultGraphic.js). Repeated here on purpose: this is the edge of
+// the server, and it does not get to trust that a value arrived from a slider.
+const FRAMING_KEY = "poster_car_framing";
+const FRAMING_BOUNDS = { zoom: [1, 3], x: [-320, 320], y: [-260, 260] };
+export const DEFAULT_CAR_FRAMING = { zoom: 1, x: 0, y: 0 };
+
+function cleanFraming(input) {
+  const out = { ...DEFAULT_CAR_FRAMING };
+  if (!input || typeof input !== "object") return out;
+  for (const [k, [min, max]] of Object.entries(FRAMING_BOUNDS)) {
+    const v = Number(input[k]);
+    if (Number.isFinite(v)) out[k] = Math.min(max, Math.max(min, v));
+  }
+  return out;
+}
+
+export async function readCarFraming(prisma) {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: FRAMING_KEY } });
+    return row?.value ? cleanFraming(JSON.parse(row.value)) : { ...DEFAULT_CAR_FRAMING };
+  } catch {
+    return { ...DEFAULT_CAR_FRAMING };
+  }
+}
+
+export async function writeCarFraming(prisma, input) {
+  const value = JSON.stringify(cleanFraming(input));
+  await prisma.setting.upsert({
+    where: { key: FRAMING_KEY },
+    create: { key: FRAMING_KEY, value },
+    update: { value },
+  });
+  return JSON.parse(value);
+}
+
 function clean(input) {
   const out = {};
   if (!input || typeof input !== "object") return out;

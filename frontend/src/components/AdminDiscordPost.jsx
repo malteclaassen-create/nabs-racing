@@ -74,8 +74,12 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
   }, [raceId]);
 
   const loadSource = useCallback(async () => {
-    const [r, teamArt] = await Promise.all([api.raceResults(raceId), api.teamArt()]);
-    return { race: r.race, results: r.results, teamArt };
+    const [r, teamArt, framing] = await Promise.all([
+      api.raceResults(raceId),
+      api.teamArt(),
+      api.posterFraming(),
+    ]);
+    return { race: r.race, results: r.results, teamArt, framing };
   }, [raceId]);
 
   useEffect(() => {
@@ -100,6 +104,7 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
             race: src.race,
             results: src.results,
             teamArt: src.teamArt,
+            framing: src.framing,
             countryOf: (r) => countryFor(r.driverId, r.country),
             logoSrc: "/logo-light.png",
             theme: graphic,

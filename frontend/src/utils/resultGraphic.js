@@ -65,6 +65,11 @@ export const LAYOUT = {
     carCy: 0.62, // centre of the car, as a fraction of the tile's height
     carInset: 10,
     carMaxH: 0.52, // and of its height
+    // How far the fades at the top and bottom of a tile reach in, in pixels.
+    // They only matter once a car is zoomed in far enough to be under the
+    // position number or the time; see where they are drawn.
+    scrimTop: 104,
+    scrimBottom: 74,
     // The gap to the winner, in the strip between the car and the name bar.
     // Centred on the tile, so it sits over the middle of the car and directly
     // above the name, and the three tiles read as one column each rather than
@@ -256,6 +261,47 @@ export const THEMES = {
 
 export const THEME_KEYS = Object.keys(THEMES);
 
+// ---------------------------------------------------------------------------
+// How the car sits in a podium tile.
+//
+// The default draws each car WHOLE, which is the safe thing to do with artwork
+// nobody has seen yet: it cannot cut a nose cone off. But a whole car in a tall
+// tile is a small car with black around it, and the poster often wants the
+// opposite — the front wing and the sidepod filling the tile, the rest of the
+// car off the edge.
+//
+// So: one zoom and two offsets, and the tile clips whatever hangs out. They are
+// deliberately ONE setting for all three tiles rather than one per team, so the
+// podium stays three of the same picture rather than three different crops, and
+// so framing the poster is one decision instead of one per team per season.
+//
+// `x` and `y` are poster pixels at the design size (the 1080-wide canvas), so
+// the numbers mean the same thing whatever the export scale is.
+// ---------------------------------------------------------------------------
+export const DEFAULT_FRAMING = { zoom: 1, x: 0, y: 0 };
+
+// What the sliders may ask for. 3x is about where a car cut-out runs out of
+// resolution, and the offsets reach a little past the edge of a tile, which is
+// as far as a picture can usefully be pushed before it has left.
+export const FRAMING_LIMITS = {
+  zoom: { min: 1, max: 3, step: 0.01 },
+  x: { min: -320, max: 320, step: 1 },
+  y: { min: -260, max: 260, step: 1 },
+};
+
+const clampTo = (v, { min, max }, fallback) =>
+  Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
+
+// Anything can arrive here — an old blob, a half-saved value, undefined — and
+// it has to come out as three numbers a canvas can be handed.
+export function cleanFraming(f) {
+  return {
+    zoom: clampTo(Number(f?.zoom), FRAMING_LIMITS.zoom, DEFAULT_FRAMING.zoom),
+    x: clampTo(Number(f?.x), FRAMING_LIMITS.x, DEFAULT_FRAMING.x),
+    y: clampTo(Number(f?.y), FRAMING_LIMITS.y, DEFAULT_FRAMING.y),
+  };
+}
+
 // Montserrat, which is what Steve set the poster in. NOT the site's face: the
 // site is Archivo, and the poster is a thing he designed rather than a page of
 // ours, so it keeps his type.
@@ -426,6 +472,7 @@ function fitText(ctx, text, maxW, weight, startSize, minSize = 18) {
 export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
   const L = LAYOUT;
   const T = THEMES[themeKey] || THEMES.pink;
+  const F = cleanFraming(data.framing); // how the cars are cropped in their tiles
   ctx.save();
   ctx.scale(scale, scale);
   ctx.textBaseline = "alphabetic";
@@ -504,7 +551,37 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     ctx.fillStyle = T.tile.fill;
     ctx.fillRect(x, top, colW, tileH);
     if (entry.car) {
-      drawContain(ctx, entry.car, x + colW / 2, top + tileH * P.carCy, colW - P.carInset * 2, tileH * P.carMaxH);
+      // Zoomed and shifted per the framing, and clipped by the tile it is in:
+      // the clip above is the whole reason this can be pushed past the edges at
+      // all. A car blown up to three times its size stops at the pink outline
+      // rather than running into the tile next door, over the round title or
+      // down into the classification.
+      drawContain(
+        ctx,
+        entry.car,
+        x + colW / 2 + F.x,
+        top + tileH * P.carCy + F.y,
+        (colW - P.carInset * 2) * F.zoom,
+        tileH * P.carMaxH * F.zoom
+      );
+      // And it stays UNDER everything else the tile carries: the badge, the
+      // points chip and the name bar are all painted after it, and the position
+      // number and the time after that. So zooming in can never hide them.
+      //
+      // What it CAN do is put bodywork behind them, and grey text on a red car
+      // is not text. These two fades — the tile's own colour, solid at the edge
+      // and gone a few dozen pixels in — give the number at the top and the
+      // time at the bottom something to sit on. On an unzoomed tile they are
+      // black on black and change nothing at all.
+      const fade = (from, to) => {
+        const g = ctx.createLinearGradient(0, from, 0, to);
+        g.addColorStop(0, `${T.tile.fill}e6`);
+        g.addColorStop(1, `${T.tile.fill}00`);
+        ctx.fillStyle = g;
+        ctx.fillRect(x, Math.min(from, to), colW, Math.abs(to - from));
+      };
+      fade(top, top + P.scrimTop);
+      fade(barTop, barTop - P.scrimBottom);
     }
     if (T.tile.badge && entry.badge) {
       const b = L.tileBadge;
@@ -768,7 +845,7 @@ export async function renderPosterBlob(opts) {
 // with every picture already loaded. `teamArt` is the admin's uploaded cars and
 // wordmarks, keyed by team id; `countryOf` resolves a driver's flag the same
 // way the rest of the site does.
-export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf, logoSrc, rows = 7 }) {
+export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf, logoSrc, rows = 7, framing = null }) {
   // The gap column, worked out exactly the way the race page's own time column
   // is (RaceResults.jsx), because the poster and the page must not disagree
   // about how far behind somebody finished:
@@ -860,6 +937,7 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
   return {
     title: `${roundLabel} / ${race.track}`,
     logo,
+    framing: cleanFraming(framing),
     podium: top3.map((r, i) => ({
       position: r.position, name: r.name, points: r.points ?? 0, delta: deltaOf(r),
       car: cars[i], flag: flags[i], badge: badges[i], tier: tierOf(top3[i]),

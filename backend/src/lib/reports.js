@@ -26,7 +26,7 @@
 import { randomUUID } from "crypto";
 import { dbCreateNotification } from "./notifications.js";
 import { getAdminDiscordIds } from "./adminUsers.js";
-import { discordIdsForDrivers } from "./persons.js";
+import { discordIdsForDrivers, getPersonGroups } from "./persons.js";
 import { isSteward } from "./stewards.js";
 
 // Where a report has got to. NEW is where everything starts; the last three are
@@ -158,7 +158,7 @@ export async function dbReportsFor(prisma, discordId) {
 // `meDiscordId` marks the caller's own messages, so a thread can put them down
 // one side and everybody else down the other. The id itself never leaves the
 // server: what goes out is a boolean about YOU, not who anybody else is.
-export async function dbMessages(prisma, reportId, meDiscordId = null) {
+export async function dbMessages(prisma, reportId, meDiscordId = null, teams = null) {
   const rows = await prisma
     .$queryRawUnsafe(
       `SELECT * FROM "ReportMessage" WHERE "reportId" = ? ORDER BY datetime("createdAt") ASC`,
@@ -172,6 +172,7 @@ export async function dbMessages(prisma, reportId, meDiscordId = null) {
     body: m.body,
     createdAt: m.createdAt,
     mine: !!meDiscordId && String(m.authorDiscordId || "") === String(meDiscordId),
+    team: teams?.get(String(m.authorDiscordId || "")) || null,
   }));
 }
 
@@ -234,6 +235,79 @@ export async function dbAddAttachment(prisma, { reportId, messageId, storedName,
     uploaderDiscordId ? String(uploaderDiscordId) : null
   );
   return id;
+}
+
+// The team badge behind each name in a thread.
+//
+// Resolved from the writer's DISCORD id, not from a name: names repeat across
+// seasons and a driver's row changes every year, while the login follows the
+// person. Where somebody has rows in several seasons the active one wins, so a
+// badge is the team they are racing for now rather than the one they were in
+// when the incident happened. That is the right way round for a conversation
+// you are having today.
+//
+// One query for the whole thread, not one per message.
+export async function teamsByDiscordId(prisma, discordIds) {
+  const ids = [...new Set((discordIds || []).filter(Boolean).map(String))];
+  if (!ids.length) return new Map();
+  try {
+    // The id sits on ONE driver row per person and does not move when a new
+    // season's roster is built, so the row carrying it is often an old one.
+    // Going straight from id to row put Steve in Ferrari while the roster had
+    // him at Brawn. Follow the PERSON links out from that row, exactly as the
+    // results post does to find who to mention, and take the row from the
+    // season that is running.
+    const claimed = await prisma.driver.findMany({
+      where: { discordUserId: { in: ids } },
+      select: { id: true, discordUserId: true },
+    });
+    if (!claimed.length) return new Map();
+
+    const { byDriver, byPerson } = await getPersonGroups(prisma);
+    const wanted = new Map(); // driver row id -> the discord id it stands for
+    for (const c of claimed) {
+      const personId = byDriver.get(c.id);
+      const family = personId ? byPerson.get(personId) || [c.id] : [c.id];
+      for (const rowId of family) wanted.set(rowId, String(c.discordUserId));
+    }
+
+    const rows = await prisma.driver.findMany({
+      where: { id: { in: [...wanted.keys()] } },
+      select: {
+        id: true,
+        team: { select: { id: true, name: true, color: true, logoUrl: true } },
+        season: { select: { isActive: true, number: true } },
+      },
+    });
+
+    // The season that is running wins; among archived rows, the newest. A badge
+    // is who somebody races for NOW, which is the right tense for a
+    // conversation happening today.
+    const rank = (x) => (x.season?.isActive ? 1_000_000 : 0) + (x.season?.number ?? 0);
+    const best = new Map();
+    for (const r of rows) {
+      if (!r.team) continue;
+      const key = wanted.get(r.id);
+      const prev = best.get(key);
+      if (!prev || rank(r) > rank(prev)) best.set(key, r);
+    }
+    return new Map([...best].map(([k, v]) => [k, v.team]));
+  } catch {
+    return new Map();
+  }
+}
+
+// Messages with their author's team attached, plus the reporter's, so the
+// opening bubble is badged like every other one.
+export async function dbThreadVoices(prisma, reportId, report) {
+  const rows = await prisma
+    .$queryRawUnsafe(`SELECT "authorDiscordId" FROM "ReportMessage" WHERE "reportId" = ?`, reportId)
+    .catch(() => []);
+  const ids = rows.map((r) => r.authorDiscordId);
+  if (report?.reporterDiscordId) ids.push(report.reporterDiscordId);
+  const accused = await accusedDiscordId(prisma, report).catch(() => null);
+  if (accused) ids.push(accused);
+  return teamsByDiscordId(prisma, ids);
 }
 
 export async function dbViewers(prisma, reportId) {

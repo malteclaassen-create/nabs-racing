@@ -909,6 +909,10 @@ export const api = {
   },
   clearTeamArt: (teamId, kind) =>
     request(`/admin/team-art/${teamId}/${kind}`, { method: "DELETE", auth: true }).then((r) => r.art),
+  // How those cars are cropped in the podium tiles: { zoom, x, y }, one set for
+  // all three tiles.
+  posterFraming: () => request("/admin/poster-framing", { auth: true }),
+  setPosterFraming: (framing) => request("/admin/poster-framing", { method: "PUT", body: framing, auth: true }),
 
   // Who answered what for the races that have already run (season-scoped).
   attendanceHistory: () => request(`/admin/attendance-history${seasonQ()}`, { auth: true }),
