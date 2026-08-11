@@ -805,6 +805,22 @@ export const api = {
   },
   clearTrackMap: (key) => request(`/admin/tracks/${key}/map`, { method: "DELETE", auth: true }),
 
+  // Incident reports. The member's own side: file one, read the threads you are
+  // party to, write in them. Everything is scoped to the login server-side.
+  createReport: (body) => request("/reports", { method: "POST", body, auth: true }),
+  myReports: () => request("/reports", { auth: true }),
+  report: (id) => request(`/reports/${id}`, { auth: true }),
+  replyToReport: (id, body) => request(`/reports/${id}/messages`, { method: "POST", body: { body }, auth: true }),
+  // The office's side.
+  adminReports: () => request("/admin/reports", { auth: true }),
+  adminReport: (id) => request(`/admin/reports/${id}`, { auth: true }),
+  decideReport: (id, body) => request(`/admin/reports/${id}`, { method: "PUT", body, auth: true }),
+  addReportViewer: (id, discordId, name) =>
+    request(`/admin/reports/${id}/viewers`, { method: "POST", body: { discordId, name }, auth: true }),
+  removeReportViewer: (id, discordId) =>
+    request(`/admin/reports/${id}/viewers/${discordId}`, { method: "DELETE", auth: true }),
+  deleteReport: (id) => request(`/admin/reports/${id}`, { method: "DELETE", auth: true }),
+
   // Cars and wide wordmarks for the shareable result graphic, per team.
   teamArt: () => request("/admin/team-art", { auth: true }),
   uploadTeamArt: (teamId, kind, file) => {

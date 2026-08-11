@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import { openFeedback } from "../components/FeedbackWidget.jsx";
 import { SettingsDrawer } from "../components/SettingsPanel.jsx";
 import { CockpitPanels, COCKPIT_TABS } from "./Cockpit.jsx";
 import Tools from "./Tools.jsx";
@@ -736,6 +737,11 @@ function memberTabs(isAdmin) {
     ...COCKPIT_TABS,
     { key: "rating", label: "My Rating", dataTour: "tab-rating" },
     { key: "tools", label: "Race Tools" },
+    // Feedback used to be a floating button in the bottom right corner. That
+    // corner is the Report widget's now, and this is where the things you do
+    // ABOUT the site rather than in it belong anyway. It opens the same panel
+    // the burger menu opens, hence an action rather than a section.
+    { key: "feedback", label: "Feedback" },
     { key: "settings", label: "Settings" },
     ...(isAdmin ? [{ key: "admin", label: "Admin" }] : []),
   ];
@@ -752,6 +758,7 @@ function MyProfile() {
     : "profile";
   const setTab = (key) => {
     if (key === "settings") return setSettingsOpen(true); // drawer, not a page section
+    if (key === "feedback") return openFeedback(); // the panel, not a section
     if (key === "admin") return navigate("/admin");
     setParams(key === "profile" ? {} : { tab: key }, { replace: true });
   };

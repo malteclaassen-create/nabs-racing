@@ -24,6 +24,7 @@ import AdminMembers from "../components/AdminMembers.jsx";
 import AdminNotifications from "../components/AdminNotifications.jsx";
 import AdminAllTime from "../components/AdminAllTime.jsx";
 import AdminFeedback, { FEEDBACK_CHANGED_EVENT } from "../components/AdminFeedback.jsx";
+import AdminReports from "../components/AdminReports.jsx";
 import AdminSearch from "../components/AdminSearch.jsx";
 import RacePreview from "../components/RacePreview.jsx";
 // The tab strip and the searchable list of what each tab does live together in
@@ -311,6 +312,7 @@ export default function Admin() {
         {tab === "market" && <MarketAdmin />}
         {tab === "drivers" && <Drivers />}
         {tab === "members" && <AdminMembers />}
+        {tab === "reports" && <AdminReports />}
         {tab === "feedback" && <AdminFeedback />}
         {tab === "notify" && <AdminNotifications />}
         {tab === "social" && (

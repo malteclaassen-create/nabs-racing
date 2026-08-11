@@ -147,66 +147,15 @@ export default function FeedbackWidget() {
   // into the labelled pill on its own whenever you scrolled back up, which put
   // the button through a shape change nobody had asked for — and it happened
   // exactly when you were heading back up the page to read something. The word
-  // is one hover away, which is when you are actually looking at it.
-  //
-  // The open panel is the exception: the button is that panel's header row, and
-  // a circle sitting under it would read as a different control.
-  const collapsed = !open;
-
-  function toggle() {
-    setSent(false);
-    setError(null);
-    setOpen((o) => !o);
-  }
-
   return (
     <>
-      {/* The floating button. Desktop only, on purpose: on a phone a permanent
-          corner button covers content and sits where the thumb scrolls.
-          A circle that unrolls into the labelled pill when you point at it (or
-          tab to it — the word is the only thing that names this control, so it
-          has to appear for the keyboard too), and stays a pill while the panel
-          below it is open.
-
-          The icon does not move while it unrolls, and that takes two things.
-          The content is packed to the LEFT rather than centred: a centred row
-          inside a fixed-width pill is positioned by how wide the word happens
-          to render, and the icon slid 10.6px to the right as the pill opened —
-          the one part of this that was supposed to stand still. And the pill is
-          only as wide as it needs to be (13 + 20 icon + 8 + 67 for the word +
-          16 + 2 border = 126, so 128), instead of the 148 it had, which is
-          where those spare pixels came from.
-
-          13px, not the 14 the scale would offer, because the 1px border counts:
-          the circle is 48 across with 46 inside it, and a 20px icon sits in the
-          middle of THAT with 13 either side. So packing left and centring are
-          the same thing in the circle, and the icon does not have to move when
-          the pill grows out to the right of it. */}
-      <button
-        type="button"
-        ref={fabRef}
-        onClick={toggle}
-        aria-expanded={open}
-        data-tour="feedback-fab"
-        title="Report a bug or suggest a feature"
-        className={`fab-morph group fixed bottom-6 right-6 z-chrome hidden h-12 items-center justify-start overflow-hidden rounded-full border border-border bg-card pl-[13px] text-sm font-bold text-medium shadow-lg shadow-ink/10 transition-[width,padding,color,border-color] duration-base ease-out-soft hover:border-brand/50 hover:text-dark lg:flex ${
-          collapsed
-            ? "w-12 pr-0 hover:w-32 hover:pr-4 focus-visible:w-32 focus-visible:pr-4"
-            : "w-32 pr-4"
-        } ${open ? "border-brand/50 text-dark" : ""}`}
-      >
-        <span className="shrink-0 text-brand">{open ? <CloseIcon /> : <SendIcon />}</span>
-        <span
-          className={`fab-morph overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin] duration-base ease-out-soft ${
-            collapsed
-              ? "ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[6rem] group-hover:opacity-100 group-focus-visible:ml-2 group-focus-visible:max-w-[6rem] group-focus-visible:opacity-100"
-              : "ml-2 max-w-[6rem] opacity-100"
-          }`}
-        >
-          Feedback
-        </span>
-      </button>
-
+      {/* No floating button any more. The corner belongs to the Report widget
+          now (stewarding is the thing a driver reaches for mid-argument), and
+          feedback lives in the Personal Area next to the other settings, plus
+          the burger menu on a phone. Both open this panel through
+          FEEDBACK_OPEN_EVENT, which is why the panel stayed and only the button
+          went. `fabRef` is still handed to useDismiss: with nothing to anchor
+          to, a click outside simply closes, which is what it should do. */}
       {open && (
         <>
           {/* The scrim. On a phone the panel is a sheet over the page and this

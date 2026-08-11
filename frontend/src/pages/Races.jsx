@@ -7,6 +7,7 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent, SmoothHeight } from "../components/ui.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import { openReport } from "../components/ReportWidget.jsx";
 import RaceResults from "../components/RaceResults.jsx";
 import RaceFacts from "../components/RaceFacts.jsx";
 import RaceGallery from "../components/RaceGallery.jsx";
@@ -876,6 +877,22 @@ export default function Races() {
                               on phones they take the second line and leave the
                               title row to the name and the switch. */}
                           <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
+                            {/* Reporting an incident from the round you are
+                                looking at. It opens the same panel as the
+                                button in the corner, with this race already
+                                chosen — the one thing a driver would otherwise
+                                have to pick out of a list of forty. */}
+                            <button
+                              type="button"
+                              onClick={() => openReport({ raceId: head.id })}
+                              title="Report an incident from this round to the stewards"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark"
+                            >
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-brand" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M5 21V4M5 4h11l-1.6 3.5L16 11H5" />
+                              </svg>
+                              Report
+                            </button>
                             {/* replay of this round, registered in the admin Downloads tab */}
                             {!detailIsStale && detail.race.replayDownloadId && (
                               <Link

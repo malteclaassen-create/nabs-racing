@@ -40,6 +40,7 @@ export const TAB_GROUPS = [
     label: "Community",
     tabs: [
       { id: "members", label: "Members" },
+      { id: "reports", label: "Reports" },
       { id: "feedback", label: "Feedback" },
       { id: "notify", label: "Notifications" },
       { id: "downloads", label: "Downloads" },
@@ -314,6 +315,12 @@ export const ADMIN_INDEX = [
     title: "Same person across seasons",
     hint: "Link a driver's rows from different seasons so their career, photo and login follow them.",
     keywords: "person link merge same driver career history rename former name",
+  },
+  {
+    tab: "reports",
+    title: "Incident reports from drivers",
+    hint: "Someone hit me on lap 14. Read the thread, decide, and tell the drivers. Grouped by round.",
+    keywords: "report reports incident steward stewarding penalty crash contact protest complaint judge replay",
   },
   {
     tab: "feedback",
