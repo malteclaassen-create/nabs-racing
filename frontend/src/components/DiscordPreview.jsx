@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { LAYOUT, renderPosterTo } from "../utils/resultGraphic.js";
+import { LAYOUT } from "../utils/resultGraphic.js";
 
 // ---------------------------------------------------------------------------
 // What the message will look like once it lands in the channel.
@@ -74,20 +74,32 @@ function Line({ text, mentions, roleName }) {
   );
 }
 
-export default function DiscordPreview({ text, mentions, poster = null, when = "", roleName = "" }) {
+// One attachment under the message. `draw` is handed the canvas and is the SAME
+// function that draws the file which gets sent, so what is under the message
+// here is not a stand-in for the picture: it IS the picture, at preview size.
+function Shot({ draw, wide }) {
   const canvasRef = useRef(null);
-
-  // The attachment is drawn by the same function that draws the real one, so
-  // what is under the message here is not a stand-in for the poster: it IS the
-  // poster, at preview size.
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !poster) return;
-    renderPosterTo(canvas, poster).catch(() => {
+    if (!canvas) return;
+    Promise.resolve(draw(canvas)).catch(() => {
       /* the preview losing its picture is not worth an error box */
     });
-  }, [poster]);
+  }, [draw]);
+  return (
+    <canvas
+      ref={canvasRef}
+      className={`h-auto w-full rounded-lg ${wide ? "max-w-[280px]" : "max-w-[150px]"}`}
+      style={{ aspectRatio: `${LAYOUT.width} / ${LAYOUT.height}` }}
+    />
+  );
+}
 
+// `attachments` is what will actually be attached, in order: [{ id, draw }].
+// An array rather than one picture, because a championship table longer than a
+// sheet goes out as several on one message, and the preview has to show that
+// the way the channel will.
+export default function DiscordPreview({ text, mentions, attachments = [], when = "", roleName = "" }) {
   const lines = String(text || "").split("\n");
 
   return (
@@ -110,12 +122,12 @@ export default function DiscordPreview({ text, mentions, poster = null, when = "
                 <Line key={i} text={l} mentions={mentions} roleName={roleName} />
               ))}
             </div>
-            {poster && (
-              <canvas
-                ref={canvasRef}
-                className="mt-2 h-auto w-full max-w-[280px] rounded-lg"
-                style={{ aspectRatio: `${LAYOUT.width} / ${LAYOUT.height}` }}
-              />
+            {attachments.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {attachments.map((a) => (
+                  <Shot key={a.id} draw={a.draw} wide={attachments.length === 1} />
+                ))}
+              </div>
             )}
           </div>
         </div>

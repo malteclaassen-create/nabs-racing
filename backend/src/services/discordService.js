@@ -66,13 +66,18 @@ export async function setResultsRoleId(prisma, id) {
 // characters, so long posts (a 25-car field plus stats) are split at line
 // breaks and sent in order. allowed_mentions lets the <@id> codes ping the
 // drivers and any role mention the admin typed into the preview.
-// `image` (optional) is { buffer, filename } and rides on the LAST chunk, so a
-// post that had to be split still ends with the picture rather than burying it
-// mid-message. Discord takes an attachment as multipart with the usual JSON
-// body alongside it under `payload_json`.
+// `image` (optional) is { buffer, filename }, or an ARRAY of them for a table
+// that runs to more than one sheet. They ride on the LAST chunk, so a post that
+// had to be split still ends with the pictures rather than burying them
+// mid-message, and several sheets arrive as one message with several pictures
+// rather than as a second message nobody scrolls to. Discord takes attachments
+// as multipart with the usual JSON body alongside them under `payload_json`,
+// and allows ten files to a message — beyond that they are dropped here rather
+// than having Discord reject the whole post.
 export async function postToResultsChannel(prisma, content, image = null) {
   const url = await getResultsWebhookUrl(prisma);
   if (!url) return { ok: false, skipped: true, reason: "no results webhook configured" };
+  const images = (Array.isArray(image) ? image : image ? [image] : []).filter((f) => f?.buffer).slice(0, 10);
   const chunks = [];
   let current = "";
   for (const rawLine of String(content).split("\n")) {
@@ -88,17 +93,19 @@ export async function postToResultsChannel(prisma, content, image = null) {
   if (current.trim()) chunks.push(current);
   // An image with no text is a legitimate post: the poster already says the
   // result, and a league that stops listing everyone still wants the picture.
-  if (!chunks.length && image) chunks.push("");
+  if (!chunks.length && images.length) chunks.push("");
   if (!chunks.length) return { ok: false, reason: "empty message" };
   try {
     for (const [i, chunk] of chunks.entries()) {
       const payload = { content: chunk, allowed_mentions: { parse: ["users", "roles"] } };
       const last = i === chunks.length - 1;
       let res;
-      if (last && image) {
+      if (last && images.length) {
         const form = new FormData();
         form.append("payload_json", JSON.stringify(payload));
-        form.append("files[0]", new Blob([image.buffer], { type: "image/png" }), image.filename);
+        images.forEach((f, n) => {
+          form.append(`files[${n}]`, new Blob([f.buffer], { type: "image/png" }), f.filename);
+        });
         // No Content-Type header: fetch sets it WITH the multipart boundary,
         // and setting it by hand leaves the boundary off and Discord 400s.
         res = await fetch(url, { method: "POST", body: form });
@@ -114,7 +121,9 @@ export async function postToResultsChannel(prisma, content, image = null) {
         return { ok: false, reason: `discord ${res.status}: ${text.slice(0, 200)}` };
       }
     }
-    return { ok: true, messages: chunks.length, attached: !!image };
+    // `attached` stays the yes/no it has always been; `files` is the new count,
+    // for the caller that sent a table in several sheets and wants to say so.
+    return { ok: true, messages: chunks.length, attached: images.length > 0, files: images.length };
   } catch (e) {
     return { ok: false, reason: e.message };
   }

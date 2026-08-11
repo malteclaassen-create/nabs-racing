@@ -6,7 +6,11 @@ import { useAsk } from "./overlay.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import DiscordPreview from "./DiscordPreview.jsx";
-import { renderPosterBlob, savedTheme, THEMES, THEME_KEYS } from "../utils/resultGraphic.js";
+import {
+  renderPosterBlob, renderPosterTo, renderStandingsTo, renderStandingsBlobs,
+  savedTheme, THEMES, THEME_KEYS,
+  savedStandingsSetup, standingsPageCount, standingsTitle, standingsSubtitle, upToRoundOf, filterStandings,
+} from "../utils/resultGraphic.js";
 
 // ---------------------------------------------------------------------------
 // The "#results" message for a round: generated from the saved result, edited
@@ -28,6 +32,15 @@ import { renderPosterBlob, savedTheme, THEMES, THEME_KEYS } from "../utils/resul
 // generate.
 // ---------------------------------------------------------------------------
 
+// What is being posted. Both go to the same channel with the same webhook, the
+// same two lengths and the same preview, so they are one control here rather
+// than a second copy of this page somewhere else — the thing an admin looks for
+// is "post to Discord", not "post the standings to Discord".
+const KINDS = [
+  { key: "result", label: "Race result" },
+  { key: "standings", label: "Standings" },
+];
+
 const LENGTHS = [
   { key: "short", label: "Short" },
   { key: "full", label: "Full" },
@@ -42,11 +55,12 @@ const GRAPHICS = [...THEME_KEYS.map((k) => ({ key: k, label: THEMES[k].label }))
 // driver's flag is changed in the Graphic half. This half draws its OWN copy of
 // the poster, so without that signal it would keep sending the version from
 // before the fix.
-export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
+export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }) {
   const ask = useAsk();
   const { data: hook, reload: reloadHook } = useApi(useCallback(() => api.getResultsWebhook(), []));
   const { data: role, reload: reloadRole } = useApi(useCallback(() => api.getResultsRole(), []));
   const [roleInput, setRoleInput] = useState("");
+  const [kind, setKind] = useState("result");
   // Both drafts, edited separately. `null` until generated.
   const [drafts, setDrafts] = useState(null);
   const [mentions, setMentions] = useState({});
@@ -65,22 +79,33 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
   const text = drafts?.[length] ?? "";
   const setText = (v) => setDrafts((d) => ({ ...d, [length]: v }));
 
-  // A different round starts from a clean slate.
+  // A different round, or a different thing to post, starts from a clean slate:
+  // a standings draft left in the box while the switch says "race result" is
+  // the wrong message one click from going out.
   useEffect(() => {
     setDrafts(null);
     setMentions({});
     setMsg(null);
     setError(null);
-  }, [raceId]);
+  }, [raceId, kind]);
+
+  // The round the table is frozen after. The same number the Standings tab
+  // draws from, worked out by the same function, so the heading and the sheets
+  // cannot disagree about which week this is.
+  const upTo = upToRoundOf(race);
 
   const loadSource = useCallback(async () => {
-    const [r, teamArt, framing] = await Promise.all([
+    const [r, teamArt, framing, standings] = await Promise.all([
       api.raceResults(raceId),
       api.teamArt(),
       api.posterFraming(),
+      // Only for the standings mode, but fetched either way: it is one small
+      // read, and having it in hand means switching modes redraws instead of
+      // showing an empty preview while the network catches up.
+      api.driverStandings(undefined, upTo).catch(() => null),
     ]);
-    return { race: r.race, results: r.results, teamArt, framing };
-  }, [raceId]);
+    return { race: r.race, results: r.results, teamArt, framing, standings: standings?.standings || [] };
+  }, [raceId, upTo]);
 
   useEffect(() => {
     if (!raceId) return;
@@ -111,7 +136,63 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
           },
     [graphic]
   );
-  const poster = useMemo(() => posterFrom(source), [posterFrom, source]);
+
+  // How many drivers to a sheet and which group the table is of are NOT asked
+  // again here: they are set next door under Standings, by looking at the
+  // picture, and read back from there. Two places to set them is two answers,
+  // and the channel would get whichever one was touched last. Re-read on
+  // `artVersion`, which the Standings half bumps whenever either changes.
+  const [{ perPage, tier, withoutStarts }, setSetup] = useState(savedStandingsSetup);
+  useEffect(() => setSetup(savedStandingsSetup()), [artVersion]);
+
+  // And the same for the table.
+  const standingsRows = useMemo(
+    () => filterStandings(source?.standings || [], tier, { withoutStarts }),
+    [source, tier, withoutStarts]
+  );
+
+  const standingsFrom = useCallback(
+    (src) => {
+      const rows = filterStandings(src?.standings || [], tier, { withoutStarts });
+      return graphic === "none" || !rows.length
+        ? null
+        : {
+            standings: rows,
+            teamArt: src.teamArt,
+            countryOf: (r) => countryFor(r.driverId, r.country),
+            logoSrc: "/logo-light.png",
+            title: standingsTitle(tier),
+            subtitle: standingsSubtitle(upTo),
+            theme: graphic,
+          };
+    },
+    [graphic, upTo, tier, withoutStarts]
+  );
+
+  const sheetCount = standingsPageCount(standingsRows.length, perPage);
+  // Which sheets go out. All of them to start with, because that is the whole
+  // table and the usual answer; unticking one is how you post only the top ten
+  // of a field of twenty.
+  const [sheets, setSheets] = useState([]);
+  useEffect(() => {
+    setSheets(Array.from({ length: sheetCount }, (_, i) => i));
+  }, [sheetCount, tier]);
+  const chosen = useMemo(() => [...sheets].sort((a, b) => a - b), [sheets]);
+
+  // Exactly the files that will be attached, drawn by the functions that draw
+  // them for real.
+  const attachments = useMemo(() => {
+    if (kind === "result") {
+      const poster = posterFrom(source);
+      return poster ? [{ id: `result-${graphic}`, draw: (c) => renderPosterTo(c, poster) }] : [];
+    }
+    const opts = standingsFrom(source);
+    if (!opts) return [];
+    return chosen.map((p) => ({
+      id: `standings-${graphic}-${p}`,
+      draw: (c) => renderStandingsTo(c, { ...opts, rows: perPage, offset: p * perPage }),
+    }));
+  }, [kind, source, posterFrom, standingsFrom, graphic, perPage, chosen]);
 
   async function run(fn, doneMsg) {
     setBusy(true);
@@ -129,7 +210,10 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
 
   const generate = () =>
     run(async () => {
-      const r = await api.getResultsPost(raceId);
+      const r =
+        kind === "result"
+          ? await api.getResultsPost(raceId)
+          : await api.getStandingsPost(upTo, tier, withoutStarts);
       setDrafts({ full: r.text || "", short: r.short || "" });
       setMentions(r.mentions || {});
     });
@@ -140,11 +224,12 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
     }, "Copied. Paste it into Discord.");
 
   const post = async () => {
+    const shots = attachments.length;
     if (
       !(await ask({
         title: "Post this message to the results channel?",
-        body: poster
-          ? "Mentioned drivers get pinged, and the graphic below goes with it."
+        body: shots
+          ? `Mentioned drivers get pinged, and ${shots > 1 ? `the ${shots} sheets below go` : "the graphic below goes"} with it.`
           : "Mentioned drivers get pinged. No graphic is attached.",
         confirmLabel: "Post to Discord",
       }))
@@ -157,10 +242,17 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
       // cannot be edited from here once it is out.
       const fresh = await loadSource();
       setSource(fresh);
-      const image = graphic === "none" ? null : await renderPosterBlob(posterFrom(fresh));
-      const r = await api.sendResultsPost(raceId, text, image);
+      const r =
+        kind === "result"
+          ? await api.sendResultsPost(raceId, text, graphic === "none" ? null : await renderPosterBlob(posterFrom(fresh)))
+          : await api.sendStandingsPost(
+              text,
+              graphic === "none" ? [] : await renderStandingsBlobs(standingsFrom(fresh), { perPage, pages: chosen })
+            );
       const how = r.messages > 1 ? `as ${r.messages} messages (Discord length limit)` : "";
-      setMsg(`Posted to Discord${how ? ` ${how}` : ""}${r.attached ? ", graphic attached." : "."}`);
+      const withPics =
+        r.attached > 1 ? `, ${r.attached} sheets attached.` : r.attached ? ", graphic attached." : ".";
+      setMsg(`Posted to Discord${how ? ` ${how}` : ""}${withPics}`);
     });
   };
 
@@ -195,11 +287,20 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
       {error && <ErrorBox message={error} />}
       {msg && <Notice kind="success">{msg}</Notice>}
 
+      {/* First: which of the two posts this is. Above the drafts, because it
+          decides what they say. */}
+      <label className="flex items-center gap-2.5">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Post</span>
+        <SlidingTabs items={KINDS} value={kind} onChange={setKind} btnClassName="px-3.5 py-1.5 text-xs" />
+      </label>
+
       {!drafts ? (
         <>
           <p className="text-sm text-light">
-            Built from the saved result, so save any open edits in Edit Results first. You get both lengths and a
-            preview of the message as the channel will see it.
+            {kind === "result"
+              ? "Built from the saved result, so save any open edits in Edit Results first."
+              : `Built from the ${standingsTitle(tier).toLowerCase()}${upTo ? ` as they stood after round ${upTo}` : ""}. Who is on it and how many to a sheet are set under Standings.`}{" "}
+            You get both lengths and a preview of the message as the channel will see it.
             {role?.roleId
               ? " The drivers' role is pinged on the first line; delete that line if a round should go out quietly."
               : " Add the drivers' role below and it will be pinged on the first line."}
@@ -219,6 +320,36 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
               <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Image</span>
               <SlidingTabs items={GRAPHICS} value={graphic} onChange={setGraphic} btnClassName="px-3.5 py-1.5 text-xs" />
             </label>
+
+            {/* Which sheets of a long table go out. Only where there is more
+                than one and a picture is going at all — otherwise this is a
+                control over nothing. Posting places 1 to 10 and keeping the
+                rest back is a normal week, so every sheet can be unticked
+                except that the button below stops you sending none of them
+                with nothing else attached either. */}
+            {kind === "standings" && graphic !== "none" && sheetCount > 1 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Sheets</span>
+                {Array.from({ length: sheetCount }, (_, p) => {
+                  const on = sheets.includes(p);
+                  const a = p * perPage + 1;
+                  const b = Math.min((p + 1) * perPage, standingsRows.length);
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setSheets(on ? sheets.filter((n) => n !== p) : [...sheets, p])}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                        on ? "border-link text-dark" : "border-border text-faint hover:border-link"
+                      }`}
+                    >
+                      {a}&ndash;{b}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -235,7 +366,13 @@ export default function AdminDiscordPost({ raceId, artVersion = 0 }) {
                 can be added as :emoji_name: if the webhook&rsquo;s server has them.
               </p>
             </div>
-            <DiscordPreview text={text} mentions={mentions} poster={poster} when="Today" roleName="Drivers" />
+            <DiscordPreview
+              text={text}
+              mentions={mentions}
+              attachments={attachments}
+              when="Today"
+              roleName="Drivers"
+            />
           </div>
 
           <div className="flex flex-wrap gap-2">

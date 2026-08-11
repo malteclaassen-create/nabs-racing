@@ -14,7 +14,7 @@ import { saveRaceResults } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
 import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
 import { getWebhookUrl, setWebhookUrl, getResultsRoleId, getResultsWebhookUrl, setResultsRoleId, setResultsWebhookUrl, postToResultsChannel, announce, syncRaceToDiscord } from "../services/discordService.js";
-import { buildResultsPost } from "../services/resultsPostService.js";
+import { buildResultsPost, buildStandingsPost } from "../services/resultsPostService.js";
 import { resolveSeasonId, invalidatePrivateSeasonCache } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, streamFullBackupZip, deleteBackup, pruneBackupsTo } from "../services/backupService.js";
@@ -2668,6 +2668,52 @@ router.get("/races/:id/results-post", async (req, res, next) => {
     });
     if (post == null) return res.status(404).json({ error: "Race not found or has no results yet" });
     res.json({ text: post.full, short: post.short, mentions: post.mentions });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// The championship table as a post, to the same channel and by the same rules.
+// GET  /api/admin/standings-post?upTo=<round> -> { text, short, mentions }
+// POST /api/admin/standings-post  (multipart: content + image0..imageN)
+//
+// The sheets are drawn in the BROWSER and sent along, exactly as the round's
+// poster is — see the note on the results-post route below for why. A table
+// longer than one sheet arrives as several pictures on ONE message, which is
+// how a reader sees "places 1 to 20" rather than two posts an hour apart.
+router.get("/standings-post", async (req, res, next) => {
+  try {
+    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true, series: req.query.series });
+    const upTo = Number(req.query.upTo);
+    const post = await buildStandingsPost(prisma, seasonId, {
+      upToRound: Number.isFinite(upTo) && upTo > 0 ? Math.floor(upTo) : null,
+      // Which group the poster is of, and whether the people who have not
+      // driven are on it, so the text under it is the same table.
+      tier: ["all", "0", "1", "2"].includes(String(req.query.tier)) ? String(req.query.tier) : "all",
+      withoutStarts: req.query.withoutStarts === "1",
+      origin: postOrigin(req),
+      roleId: await getResultsRoleId(prisma),
+    });
+    if (post == null) return res.status(404).json({ error: "No standings for this season yet" });
+    res.json({ text: post.full, short: post.short, mentions: post.mentions });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/standings-post", upload.array("images", 10), async (req, res, next) => {
+  try {
+    const content = String(req.body?.content || "").trim();
+    const files = req.files || [];
+    if (!content && !files.length) return res.status(400).json({ error: "Message is empty" });
+    if (files.some((f) => f.mimetype !== "image/png")) {
+      return res.status(400).json({ error: "The sheets must be PNGs" });
+    }
+    const images = files.map((f, i) => ({ buffer: f.buffer, filename: `standings-${i + 1}.png` }));
+    const result = await postToResultsChannel(prisma, content, images);
+    if (result.skipped) return res.status(400).json({ error: "No results webhook configured" });
+    if (!result.ok) return res.status(502).json({ error: result.reason || "Discord rejected the message" });
+    res.json({ ok: true, messages: result.messages, attached: result.files });
   } catch (e) {
     next(e);
   }

@@ -24,10 +24,18 @@ function seasonOpts(req) {
   return { includePrivate: isAdminRequest(req), series: req.query.series };
 }
 
+// ?upTo=<round> freezes the table as it stood after that round, which is what
+// the standings poster is made of: the table the site showed that week, not
+// today's with the later rounds silently included.
 router.get("/drivers", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
-    res.json(await getDriverStandings(prisma, seasonId));
+    const upTo = Number(req.query.upTo);
+    res.json(
+      await getDriverStandings(prisma, seasonId, {
+        upToRound: Number.isFinite(upTo) && upTo > 0 ? Math.floor(upTo) : null,
+      })
+    );
   } catch (e) {
     next(e);
   }

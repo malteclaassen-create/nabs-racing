@@ -311,7 +311,12 @@ export const api = {
   // auth:true attaches the admin token when present (harmless for the public:
   // these routes never require it), so a signed-in admin can preview a PRIVATE
   // season on the real site. Without the token the backend hides that data.
-  driverStandings: (season) => request(`/standings/drivers${seasonParam(season)}`, { auth: true }),
+  // `upTo` is a round number: the table as it stood AFTER that round, for the
+  // standings poster. Omitted = the season as it stands now.
+  driverStandings: (season, upTo = null) =>
+    request(`/standings/drivers${seasonParam(season)}${upTo ? `${seasonParam(season) ? "&" : "?"}upTo=${upTo}` : ""}`, {
+      auth: true,
+    }),
   // End-of-season honours (champion, awards) for the finished-season home hero.
   seasonHonours: (season) => request(`/standings/honours${seasonParam(season)}`, { auth: true }),
   // Every rated driver of the season incl. card look — the standings "Cards" view.
@@ -653,6 +658,21 @@ export const api = {
     fd.append("content", content);
     fd.append("image", image, `${raceId}-result.png`);
     return request(path, { method: "POST", body: fd, auth: true, form: true });
+  },
+  // The championship table as a post: same channel, same two lengths. `upTo` is
+  // the round it is frozen after, the same number the sheets are drawn from.
+  getStandingsPost: (upTo = null, tier = "all", withoutStarts = false) =>
+    request(
+      `/admin/standings-post?origin=${encodeURIComponent(window.location.origin)}${upTo ? `&upTo=${upTo}` : ""}&tier=${encodeURIComponent(tier)}${withoutStarts ? "&withoutStarts=1" : ""}`,
+      { auth: true }
+    ),
+  // `images` is the table's sheets as Blobs, in order. A long table is several
+  // pictures on one message, so this always goes as multipart.
+  sendStandingsPost: (content, images = []) => {
+    const fd = new FormData();
+    fd.append("content", content);
+    images.forEach((b, i) => fd.append("images", b, `standings-${i + 1}.png`));
+    return request("/admin/standings-post", { method: "POST", body: fd, auth: true, form: true });
   },
   createEvent: (body) => request("/admin/events", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   updateEvent: (id, body) => request(`/admin/events/${id}`, { method: "PUT", body, auth: true }),

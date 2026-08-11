@@ -5,6 +5,7 @@ import { ErrorBox } from "./ui.jsx";
 import { fmtDateShort } from "../utils/format.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import AdminResultGraphic from "./AdminResultGraphic.jsx";
+import AdminStandingsGraphic from "./AdminStandingsGraphic.jsx";
 import AdminDiscordPost from "./AdminDiscordPost.jsx";
 
 // ---------------------------------------------------------------------------
@@ -21,7 +22,8 @@ import AdminDiscordPost from "./AdminDiscordPost.jsx";
 // ---------------------------------------------------------------------------
 
 const VIEWS = [
-  { key: "graphic", label: "Graphic" },
+  { key: "graphic", label: "Result" },
+  { key: "standings", label: "Standings" },
   { key: "post", label: "Discord post" },
 ];
 
@@ -61,6 +63,8 @@ export default function AdminContent() {
     if (!raceId && finished.length) setRaceId(finished[0].id);
   }, [finished, raceId]);
 
+  const selectedRace = useMemo(() => finished.find((r) => r.id === raceId) || null, [finished, raceId]);
+
   return (
     <div className="space-y-5">
       {error && <ErrorBox message={error} onRetry={reload} />}
@@ -93,8 +97,21 @@ export default function AdminContent() {
           <div className={view === "graphic" ? "" : "hidden"}>
             <AdminResultGraphic raceId={raceId} onArtChange={() => setArtVersion((v) => v + 1)} />
           </div>
+          {/* The standings poster is about the same round, read as "the table
+              after this one". It takes the whole race rather than the id
+              because what it needs is the ROUND NUMBER, and a training session
+              does not have one. */}
+          <div className={view === "standings" ? "" : "hidden"}>
+            {view === "standings" && (
+              <AdminStandingsGraphic
+                race={selectedRace}
+                artVersion={artVersion}
+                onArtChange={() => setArtVersion((v) => v + 1)}
+              />
+            )}
+          </div>
           <div className={view === "post" ? "" : "hidden"}>
-            {raceId && <AdminDiscordPost raceId={raceId} artVersion={artVersion} />}
+            {raceId && <AdminDiscordPost raceId={raceId} race={selectedRace} artVersion={artVersion} />}
           </div>
         </>
       )}

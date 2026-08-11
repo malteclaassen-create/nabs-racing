@@ -386,29 +386,29 @@ function drawFlag(ctx, img, x, cy, size) {
 // caller laying a row out can carry on after it. Nothing is drawn for a
 // first-tier driver: the pill marks the exception, and a "T1" on every other
 // line would turn a footnote into a column.
-function drawTierPill(ctx, theme, x, cy) {
+function drawTierPill(ctx, theme, x, cy, s = 1) {
   const P = LAYOUT.tierPill;
   const style = theme.tierPill;
   if (!style) return 0;
-  ctx.font = FONT(900, P.size);
-  const w = Math.round(ctx.measureText("T2").width) + P.padX * 2;
+  ctx.font = FONT(900, P.size * s);
+  const w = Math.round(ctx.measureText("T2").width) + P.padX * s * 2;
   // Inset by half the stroke, because a stroke is drawn centred on the path and
   // would otherwise hang half its width outside the size asked for.
-  const half = style.frame ? P.frameWidth / 2 : 0;
-  box(ctx, x + half, cy - P.h / 2 + half, w - half * 2, P.h - half * 2, P.radius);
+  const half = style.frame ? (P.frameWidth * s) / 2 : 0;
+  box(ctx, x + half, cy - (P.h * s) / 2 + half, w - half * 2, P.h * s - half * 2, P.radius * s);
   if (style.fill) {
     ctx.fillStyle = style.fill;
     ctx.fill();
   }
   if (style.frame) {
     ctx.strokeStyle = style.frame;
-    ctx.lineWidth = P.frameWidth;
+    ctx.lineWidth = P.frameWidth * s;
     ctx.stroke();
   }
   ctx.fillStyle = style.ink;
   ctx.textAlign = "center";
   // Centred on the pill's optical middle, the same way the points chip is.
-  ctx.fillText("T2", x + w / 2, cy + P.size * 0.35);
+  ctx.fillText("T2", x + w / 2, cy + P.size * s * 0.35);
   ctx.textAlign = "left";
   return w;
 }
@@ -416,10 +416,10 @@ function drawTierPill(ctx, theme, x, cy) {
 // How wide that pill will be, without drawing it. Needed by the podium, which
 // has to know the width of the whole flag-name-pill group before it can place
 // the first of the three.
-function tierPillWidth(ctx, theme, show) {
+function tierPillWidth(ctx, theme, show, s = 1) {
   if (!show || !theme.tierPill) return 0;
-  ctx.font = FONT(900, LAYOUT.tierPill.size);
-  return Math.round(ctx.measureText("T2").width) + LAYOUT.tierPill.padX * 2;
+  ctx.font = FONT(900, LAYOUT.tierPill.size * s);
+  return Math.round(ctx.measureText("T2").width) + LAYOUT.tierPill.padX * s * 2;
 }
 
 // A copy of `img` recoloured to one flat colour, keeping its shape. The league
@@ -716,95 +716,228 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
   });
 
   // --- places 4 and down ----------------------------------------------------
-  const R = L.rows;
   // The team mark gives up the width the gap column needs, but only on a round
   // that has times to put in it.
   const timed = data.rows.some((r) => r.delta) && !!T.delta;
-  const markCx = timed ? R.markCxTight : R.markCx;
-  const markMaxW = timed ? R.markMaxWTight : R.markMaxW;
   data.rows.forEach((row, i) => {
-    const y = R.top + i * (R.height + R.gap);
-    const barX = L.pad + R.numW;
-    const barW = L.width - L.pad - barX;
+    drawRow(ctx, T, row, {
+      y: L.rows.top + i * (L.rows.height + L.rows.gap),
+      h: L.rows.height,
+      showDelta: timed,
+    });
+  });
 
-    // One rounded row, clipped like the podium card so the number block takes
-    // the left corners with it instead of sitting square inside them.
-    const rowW = L.width - L.pad * 2;
-    ctx.save();
-    box(ctx, L.pad, y, rowW, R.height, T.radius);
-    ctx.clip();
-    ctx.fillStyle = T.row.barFill;
-    ctx.fillRect(barX, y, barW, R.height);
-    ctx.fillStyle = T.row.numFill;
-    ctx.fillRect(L.pad, y, R.numW, R.height);
-    ctx.restore();
-    if (T.row.barFrame) {
-      const w = T.row.frameWidth;
-      ctx.strokeStyle = T.row.barFrame;
-      ctx.lineWidth = w;
-      strokeBox(ctx, L.pad, y, rowW, R.height, w, T.radius);
-      ctx.stroke();
-    }
-    const midY = y + R.height / 2;
-    ctx.font = FONT(900, R.numSize);
-    ctx.fillStyle = T.row.numInk;
-    ctx.textAlign = "center";
-    ctx.fillText(`${row.position}.`, L.pad + R.numW / 2, midY + R.numSize * 0.36);
+  ctx.restore();
+}
 
-    // Points. "+20" on one line, or the number over the word PTS.
-    const ptsX = L.width - L.pad - R.ptsRight;
-    ctx.fillStyle = T.row.ptsInk;
+// ---------------------------------------------------------------------------
+// One line of a classification: number block, flag, name, "T2", team mark and
+// points, in a rounded bar. Shared, because the standings poster IS this row
+// eleven times and nothing else — and two copies of it would be two designs
+// within a week of the first change to either.
+//
+// `h` is the row's height. Everything inside scales with it against the height
+// the layout was measured at, so a table of twenty drivers is the same row
+// drawn smaller rather than a second set of numbers. At the result poster's own
+// height the scale is exactly 1 and every value is the measured one.
+//
+// `pointsPlain` drops the "+" from the design that has one: on a result "+18"
+// is what the driver won that afternoon, and on a standings table the same
+// number is a season total, which nobody gained.
+// ---------------------------------------------------------------------------
+function drawRow(ctx, T, row, { y, h, showDelta = false, pointsPlain = false }) {
+  const L = LAYOUT;
+  const R = L.rows;
+  // Never ABOVE 1: a short table is allowed taller bars so it fills the page,
+  // but the type in them stays the size it was measured at. Scaled up too, a
+  // six-row poster would be six banners with 60px names on it, which is a
+  // different thing from a table with room to breathe.
+  const s = Math.min(1, h / R.height);
+  const rowW = L.width - L.pad * 2;
+  const barX = L.pad + R.numW;
+  const midY = y + h / 2;
+  // The gap column only exists on a timed round; without it the mark keeps the
+  // width and the centre it was designed with.
+  const markCx = showDelta ? R.markCxTight : R.markCx;
+  const markMaxW = showDelta ? R.markMaxWTight : R.markMaxW;
+
+  // One rounded row, clipped like the podium card so the number block takes the
+  // left corners with it instead of sitting square inside them.
+  ctx.save();
+  box(ctx, L.pad, y, rowW, h, T.radius);
+  ctx.clip();
+  ctx.fillStyle = T.row.barFill;
+  ctx.fillRect(barX, y, L.width - L.pad - barX, h);
+  ctx.fillStyle = T.row.numFill;
+  ctx.fillRect(L.pad, y, R.numW, h);
+  ctx.restore();
+  if (T.row.barFrame) {
+    const w = T.row.frameWidth;
+    ctx.strokeStyle = T.row.barFrame;
+    ctx.lineWidth = w;
+    strokeBox(ctx, L.pad, y, rowW, h, w, T.radius);
+    ctx.stroke();
+  }
+
+  const numSize = R.numSize * s;
+  ctx.font = FONT(900, numSize);
+  ctx.fillStyle = T.row.numInk;
+  ctx.textAlign = "center";
+  ctx.fillText(`${row.position}.`, L.pad + R.numW / 2, midY + numSize * 0.36);
+
+  // Points. "+20" on one line, or the number over the word PTS.
+  const ptsSize = R.ptsSize * s;
+  const ptsX = L.width - L.pad - R.ptsRight;
+  ctx.fillStyle = T.row.ptsInk;
+  ctx.textAlign = "right";
+  if (T.points === "plus") {
+    ctx.font = FONT(900, ptsSize);
+    ctx.fillText(`${pointsPlain ? "" : "+"}${row.points}`, ptsX, midY + ptsSize * 0.36);
+  } else {
+    ctx.font = FONT(900, ptsSize);
+    ctx.fillText(String(row.points), ptsX, midY - 2 * s);
+    ctx.font = FONT(800, ptsSize * 0.8);
+    ctx.fillText("PTS", ptsX, midY + ptsSize * 0.9);
+  }
+
+  // The gap to the winner, right-aligned in its own column so the decimal
+  // points stack down the page. Still right-aligned (never centred) even though
+  // it shrinks to fit: a column of times is read down the fractions, and
+  // centring would leave them zig-zagging.
+  if (showDelta && row.delta) {
+    const deltaX = L.width - L.pad - R.deltaRight;
+    // Never into the team mark. A minute-plus gap is a long string and the mark
+    // is a picture with no room to give, so the time is what yields.
+    const size = fitText(ctx, row.delta, deltaX - (markCx + markMaxW / 2) - 16, 800, R.deltaSize * s, 18);
+    ctx.font = FONT(800, size);
+    ctx.fillStyle = T.delta.row;
     ctx.textAlign = "right";
-    if (T.points === "plus") {
-      ctx.font = FONT(900, R.ptsSize);
-      ctx.fillText(`+${row.points}`, ptsX, midY + R.ptsSize * 0.36);
-    } else {
-      ctx.font = FONT(900, R.ptsSize);
-      ctx.fillText(String(row.points), ptsX, midY - 2);
-      ctx.font = FONT(800, R.ptsSize * 0.8);
-      ctx.fillText("PTS", ptsX, midY + R.ptsSize * 0.9);
-    }
+    ctx.fillText(row.delta, deltaX, midY + size * 0.36);
+  }
 
-    // The gap to the winner, right-aligned in its own column so the decimal
-    // points stack down the page. Still right-aligned (never centred) even
-    // though it shrinks to fit: a column of times is read down the fractions,
-    // and centring would leave them zig-zagging.
-    if (timed && row.delta) {
-      const deltaX = L.width - L.pad - R.deltaRight;
-      // Never into the team mark. A minute-plus gap is a long string and the
-      // mark is a picture with no room to give, so the time is what yields.
-      const size = fitText(ctx, row.delta, deltaX - (markCx + markMaxW / 2) - 16, 800, R.deltaSize, 18);
-      ctx.font = FONT(800, size);
-      ctx.fillStyle = T.delta.row;
-      ctx.textAlign = "right";
-      ctx.fillText(row.delta, deltaX, midY + size * 0.36);
-    }
+  // Flag, then the name. The flag only appears where the design has one; the
+  // name starts at the same x either way, so the column of names lines up
+  // whether or not a driver has a country on file.
+  if (T.row.flags && row.flag) {
+    const flagW = R.flagW * s;
+    drawFlag(ctx, row.flag, barX + (R.nameX - barX - flagW) / 2, midY, flagW);
+  }
+  const markLeft = markCx - markMaxW / 2;
+  // The "T2" after a second-tier driver's name. The name gets the room left
+  // after it, so a long name shrinks rather than running under the pill.
+  const pillW = tierPillWidth(ctx, T, row.tier === 2, s);
+  const pillGap = pillW ? L.tierPill.gap * s : 0;
+  const nameSize = fitText(
+    ctx, row.name, Math.max(120, markLeft - 24 - R.nameX - pillW - pillGap), 900, R.nameSize * s, 16
+  );
+  ctx.font = FONT(900, nameSize);
+  ctx.fillStyle = T.row.nameInk;
+  ctx.textAlign = "left";
+  ctx.fillText(row.name, R.nameX, midY + nameSize * 0.36);
+  if (pillW) drawTierPill(ctx, T, R.nameX + ctx.measureText(row.name).width + pillGap, midY, s);
 
-    // Flag, then the name. The flag only appears where the design has one; the
-    // name starts at the same x either way, so the column of names lines up
-    // whether or not a driver has a country on file.
-    if (T.row.flags && row.flag) {
-      const flagX = barX + (R.nameX - barX - R.flagW) / 2;
-      drawFlag(ctx, row.flag, flagX, y + R.height / 2, R.flagW);
-    }
-    const nameX = R.nameX;
-    const markLeft = markCx - markMaxW / 2;
-    // The "T2" after a second-tier driver's name. The name gets the room left
-    // after it, so a long name shrinks rather than running under the pill.
-    const pillW = tierPillWidth(ctx, T, row.tier === 2);
-    const pillGap = pillW ? L.tierPill.gap : 0;
-    const nameSize = fitText(
-      ctx, row.name, Math.max(120, markLeft - 24 - nameX - pillW - pillGap), 900, R.nameSize, 22
+  // Team mark, centred in its own column so the marks line up down the page
+  // however wide each one is.
+  if (row.mark) drawContain(ctx, row.mark, markCx, midY, markMaxW, R.markMaxH * s);
+}
+
+// ---------------------------------------------------------------------------
+// The championship table, as a poster.
+//
+// Same page, same designs, same rows as the result poster with the podium taken
+// off the top: the two go out in the same channel a fortnight apart and have to
+// look like they came from the same place.
+//
+// The rows fill the page rather than sitting at a fixed pitch, because the
+// number of them is a choice — ten for a top ten, or the whole field. `maxH`
+// keeps a short list from turning into five fat bars, and below that everything
+// in a row scales together (see drawRow), so twenty drivers is the same row
+// drawn smaller instead of a second, denser design.
+// ---------------------------------------------------------------------------
+export const STANDINGS = {
+  title: { y: 96, size: 62 },
+  // "After round 2". Its own line under the title rather than part of it: the
+  // title is what the poster IS, this is which week it is from, and putting
+  // them in one string makes a heading nobody can set in a big enough size.
+  sub: { y: 150, size: 30, alpha: 0.62 },
+  top: 196,
+  bottomPad: 25,
+  maxH: 130, // a row never gets taller than this, however few there are
+  gap: 25, // at full height; it closes up with the rows as the list grows
+  maxGapOfRow: 0.42, // and never opens past this much of a row's height
+};
+
+export function drawStandingsGraphic(ctx, data, scale = 1, themeKey = "black") {
+  const L = LAYOUT;
+  const S = STANDINGS;
+  const T = THEMES[themeKey] || THEMES.black;
+  ctx.save();
+  ctx.scale(scale, scale);
+  ctx.textBaseline = "alphabetic";
+
+  ctx.fillStyle = T.bg;
+  ctx.fillRect(0, 0, L.width, L.height);
+
+  const rows = data.rows || [];
+  const n = Math.max(1, rows.length);
+  const area = L.height - S.bottomPad - S.top;
+  // Solve the pitch, then let the gap follow it: at eleven rows this lands on
+  // the result poster's own 80 and 25, and it closes up from there.
+  let pitch = area / n;
+  let gap = Math.min(S.gap, pitch * 0.24);
+  pitch = (area + gap) / n;
+  let h = Math.min(S.maxH, pitch - gap);
+  // A short list has height left over. Some of it goes back into the gaps, but
+  // only up to `maxGapOfRow`: past that the spaces are taller than the bars and
+  // the table stops reading as a list of one thing. What is still left over is
+  // split above and below, so six rows sit in the middle of the page rather
+  // than in a heap under the title.
+  if (h < pitch - gap) gap = Math.min(h * S.maxGapOfRow, n > 1 ? (area - n * h) / (n - 1) : 0);
+  const top = S.top + Math.max(0, (area - (n * h + (n - 1) * gap)) / 2);
+
+  // The big mark behind the table, exactly where the result poster puts it, so
+  // the two posters have the same thing in the same place. Clipped to the top of
+  // the list rather than to a fixed line, because the list starts higher here.
+  if (T.watermark && data.logo) {
+    const w = T.watermark;
+    const size = w.src.size * w.scale;
+    const wx = w.anchor.nRightX - w.src.nRight * w.scale;
+    const wy = w.anchor.ringTopY - w.src.ringTop * w.scale;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, S.top, L.width, L.height - S.top);
+    ctx.clip();
+    ctx.globalAlpha = w.alpha;
+    ctx.drawImage(tinted(data.logo, w.colour), wx, wy, size, size);
+    ctx.restore();
+  }
+
+  if (T.cornerMark && data.logo) {
+    drawContain(
+      ctx, data.logo,
+      L.width - L.logo.right - L.logo.size / 2, L.logo.top + L.logo.size / 2, L.logo.size, L.logo.size
     );
-    ctx.font = FONT(900, nameSize);
-    ctx.fillStyle = T.row.nameInk;
-    ctx.textAlign = "left";
-    ctx.fillText(row.name, nameX, midY + nameSize * 0.36);
-    if (pillW) drawTierPill(ctx, T, nameX + ctx.measureText(row.name).width + pillGap, midY);
+  }
 
-    // Team mark, centred in its own column so the marks line up down the page
-    // however wide each one is.
-    if (row.mark) drawContain(ctx, row.mark, markCx, y + R.height / 2, markMaxW, R.markMaxH);
+  // Title, centred on the page and shrunk rather than moved if it is long.
+  const cx = L.width / 2;
+  const titleMax = L.width - L.pad * 2 - (T.cornerMark ? L.logo.size * 2 + 40 : 0);
+  const titleSize = fitText(ctx, data.title, titleMax, 900, S.title.size, 28);
+  ctx.font = FONT(900, titleSize);
+  ctx.fillStyle = T.title;
+  ctx.textAlign = "center";
+  ctx.fillText(data.title, cx, S.title.y);
+
+  if (data.subtitle) {
+    ctx.font = FONT(800, S.sub.size);
+    ctx.globalAlpha = S.sub.alpha;
+    ctx.fillText(data.subtitle, cx, S.sub.y);
+    ctx.globalAlpha = 1;
+  }
+  ctx.textAlign = "left";
+
+  rows.forEach((row, i) => {
+    drawRow(ctx, T, row, { y: top + i * (h + gap), h, pointsPlain: true });
   });
 
   ctx.restore();
@@ -833,6 +966,128 @@ export function saveTheme(key) {
   }
 }
 
+// How the standings table is cut into sheets: ten drivers a page makes a top ten
+// and then places eleven to twenty, which is the whole reason for pages.
+//
+// Stored the same way the design is, and for the same reason: two places need
+// the same answer. The Standings tab is where you set it by looking at the
+// picture; the Discord post next door renders its OWN copies to attach, and if
+// the two disagreed the channel would get a different set of sheets from the
+// ones that were approved.
+const STANDINGS_STORE = "nabs_standings_setup";
+export const STANDINGS_PER_PAGE = { min: 5, max: 20, step: 1, def: 10 };
+
+// Which group the poster is of. The same four the standings page itself offers,
+// with the same meanings: `tier` on a row is the DRIVER's, and 0 is a reserve.
+export const STANDINGS_TIERS = [
+  { key: "all", label: "All" },
+  { key: "1", label: "Tier 1" },
+  { key: "2", label: "Tier 2" },
+  { key: "0", label: "Reserves" },
+];
+
+export function savedStandingsSetup() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STANDINGS_STORE) || "{}");
+    const n = Number(raw.perPage);
+    const ok = Number.isFinite(n) && n >= STANDINGS_PER_PAGE.min && n <= STANDINGS_PER_PAGE.max;
+    return {
+      perPage: ok ? Math.round(n) : STANDINGS_PER_PAGE.def,
+      tier: STANDINGS_TIERS.some((t) => t.key === raw.tier) ? raw.tier : "all",
+      // Off unless it was deliberately turned on: the reserve pool is mostly
+      // people who have not driven, and they are not what a standings poster is
+      // about.
+      withoutStarts: raw.withoutStarts === true,
+    };
+  } catch {
+    return { perPage: STANDINGS_PER_PAGE.def, tier: "all", withoutStarts: false };
+  }
+}
+
+export function saveStandingsSetup(setup) {
+  try {
+    localStorage.setItem(
+      STANDINGS_STORE,
+      JSON.stringify({ perPage: setup.perPage, tier: setup.tier, withoutStarts: !!setup.withoutStarts })
+    );
+  } catch {
+    /* private mode: the choice just does not survive the tab */
+  }
+}
+
+// The rows a poster of `tier` is actually made of.
+//
+//   * Every driver holding a seat is on it, Tier 1 and Tier 2 alike, whether or
+//     not they have driven yet. They are IN the championship: a seat with no
+//     start is somebody who missed the opening rounds, not somebody who is not
+//     racing this season, and leaving them off would be the poster deciding
+//     that for them.
+//
+//   * Reserves who have not STARTED a round are left off. That is a different
+//     group: a season's reserve pool is the whole sign-up list, and most of it
+//     is people who have never got in a car — page after page of identical zero
+//     rows that belong to no championship. A start counts even when it ended in
+//     a DNF with no points, which is why this asks perRace rather than the
+//     total, and `withoutStarts` puts them back.
+//
+//   * The rows that remain are numbered 1..n, ALWAYS. Whatever is taken out
+//     leaves a hole otherwise, and a table that reads 37, 49, 50, 53 is not a
+//     classification, it is a classification with most of it missing. It also
+//     means a tier reads as its own standings rather than as the main table
+//     with the other tier cut out of it.
+//
+// The one guard: if NOBODY has a start — a totals-only archived season, or a
+// table asked for before the first round — nothing is dropped, because an empty
+// poster is not an answer.
+export function filterStandings(rows, tier = "all", { withoutStarts = false } = {}) {
+  const started = (r) => Object.keys(r.perRace || {}).length > 0;
+  const idleReserve = (r) => Number(r.tier) === 0 && !started(r);
+  let picked = String(tier) === "all" ? rows : rows.filter((r) => String(r.tier) === String(tier));
+  if (!withoutStarts && rows.some(started)) picked = picked.filter((r) => !idleReserve(r));
+  return picked.map((r, i) => ({ ...r, position: i + 1 }));
+}
+
+// Which of the four groups this table actually has anybody in. A "Tier 2"
+// button on a single-class season is a button that empties the poster.
+export function standingsTiersPresent(rows) {
+  const present = new Set(rows.map((r) => r.tier));
+  return STANDINGS_TIERS.filter((t) => t.key === "all" || present.has(Number(t.key)));
+}
+
+// How many sheets a table of `total` drivers makes at `perPage` a page. One
+// place, because the preview, the page buttons and the post all have to agree
+// about how many there are.
+export function standingsPageCount(total, perPage) {
+  return Math.max(1, Math.ceil(total / Math.max(1, perPage)));
+}
+
+// What the standings poster is called, and which week it is from. Here rather
+// than in either component, because the preview and the copy the Discord post
+// renders have to be captioned the same or the picture in the channel is not
+// the picture that was approved.
+//
+// The heading follows the group: a Tier 2 table under "Driver's standings"
+// would read as THE championship, with the leader in fourteenth.
+export function standingsTitle(tier = "all") {
+  if (String(tier) === "1") return "Tier 1 standings";
+  if (String(tier) === "2") return "Tier 2 standings";
+  if (String(tier) === "0") return "Reserve standings";
+  return "Driver's standings";
+}
+
+export function standingsSubtitle(upToRound) {
+  return upToRound ? `After round ${upToRound}` : null;
+}
+
+// The round a table should be frozen after, from the round picked in the
+// Content area. A training session or a special event carries no round number,
+// so those mean "the season as it stands" rather than a table after nothing.
+export function upToRoundOf(race) {
+  if (!race) return null;
+  if (race.type === "TRAINING" || race.isSpecialEvent) return null;
+  return race.number ?? null;
+}
+
 // Exported at twice the design size: it is a poster people open full screen,
 // and 2x is the difference between crisp type and Discord's resampling.
 export const EXPORT_SCALE = 2;
@@ -857,6 +1112,72 @@ export async function renderPosterTo(canvas, opts) {
 export async function renderPosterBlob(opts) {
   const canvas = await renderPosterTo(document.createElement("canvas"), opts);
   return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
+// The championship table as a poster, same shape of call as the result one.
+export async function renderStandingsTo(canvas, opts) {
+  await ensureFonts();
+  const data = await loadStandingsAssets(opts);
+  canvas.width = LAYOUT.width * EXPORT_SCALE;
+  canvas.height = LAYOUT.height * EXPORT_SCALE;
+  drawStandingsGraphic(canvas.getContext("2d"), data, EXPORT_SCALE, opts.theme);
+  return canvas;
+}
+
+// Every sheet of a table, as PNG blobs in reading order. For the Discord post,
+// which attaches them all to one message. Drawn one after another rather than
+// at once: each one is a 2160x2700 canvas, and a dozen of those in flight is a
+// way to run a phone out of memory for no gain.
+// `pages` is which sheets to draw, as 0-based indexes: posting only the top ten
+// of a twenty-driver table is a normal week, and rendering the rest to throw it
+// away is work nobody asked for.
+export async function renderStandingsBlobs(opts, { perPage, pages }) {
+  const out = [];
+  for (const p of pages) {
+    const canvas = await renderStandingsTo(document.createElement("canvas"), {
+      ...opts,
+      rows: perPage,
+      offset: p * perPage,
+    });
+    out.push(await new Promise((resolve) => canvas.toBlob(resolve, "image/png")));
+  }
+  return out.filter(Boolean);
+}
+
+// The rows of /api/standings/drivers, with every picture already loaded. Same
+// job as loadGraphicAssets and the same rules: the team's WIDE wordmark where
+// one is uploaded and the site's own logo where it is not, the flag resolved
+// the way the rest of the site resolves it, and the TEAM's tier deciding which
+// table a driver's points land in.
+export async function loadStandingsAssets({
+  standings, teamArt = {}, countryOf, logoSrc, title, subtitle = null, rows = 10, offset = 0,
+}) {
+  const flagSrc = (code) => (code ? `/flags/w80/${String(code).toLowerCase()}.png` : null);
+  // `offset` is what makes a second sheet possible: places 11 to 20 are the same
+  // poster starting further down the same table. The positions come off the
+  // table rows themselves, so page two counts from eleven without being told.
+  const shown = standings.slice(offset, offset + rows);
+  const markSrc = (r) => teamArt[r.team?.id]?.mark || r.team?.logoUrl || null;
+
+  const [logo, marks, flags] = await Promise.all([
+    loadImage(logoSrc),
+    Promise.all(shown.map((r) => loadImage(markSrc(r)))),
+    Promise.all(shown.map((r) => loadImage(flagSrc(countryOf(r))))),
+  ]);
+
+  return {
+    title,
+    subtitle,
+    logo,
+    rows: shown.map((r, i) => ({
+      position: r.position ?? i + 1,
+      name: r.name,
+      points: r.total ?? 0,
+      tier: r.team?.tier ?? null,
+      mark: marks[i],
+      flag: flags[i],
+    })),
+  };
 }
 
 // Turn one race (as /api/races/:id/results hands it over) into the shape above,

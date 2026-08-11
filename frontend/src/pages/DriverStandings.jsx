@@ -214,6 +214,9 @@ export default function DriverStandings() {
   // out — the crowded table is the intended one. The count line under the table
   // still says how many rows a ticked box is holding back.
   const [onlyScoring, setOnlyScoring] = usePersistentState("nabs.standings.onlyScoring", false);
+  // Reserves who never got in a car this season (see isIdleReserve below) are
+  // off the table by default. This flips them back on.
+  const [showIdleReserves, setShowIdleReserves] = usePersistentState("nabs.standings.idleReserves", false);
   const [tier, setTier] = usePersistentState("nabs.standings.tier", "all");
   // "list" = the ranked cards/rows; "grid" = the per-round points matrix (same
   // table the Constructors page uses); "cards" = the whole field as their
@@ -273,17 +276,27 @@ export default function DriverStandings() {
   // A tier that no longer exists can't stay selected.
   const activeTier = multiTier && tierFilters.some((t) => t.id === tier) ? tier : "all";
 
-  // Filter by tier, then optionally hide point-less drivers, then re-rank the
-  // resulting view 1..n so a tier sub-table reads as its own standings.
+  // Filter by tier, drop the reserves who haven't raced, then optionally hide
+  // point-less drivers, then re-rank the resulting view 1..n so a tier
+  // sub-table reads as its own standings.
   let rows = activeTier === "all" ? all : all.filter((r) => String(r.tier) === activeTier);
-  // A full reserve pool joins the season roster whether or not those drivers
-  // ever start a race, so the table opened on 99 rows of which 56 sat on zero,
-  // alphabetical, every one of them showing the same gap to the leader. That is
-  // most of the page, and none of it is the championship. Hiding them is the
-  // default now — but only when there is a championship to show: before a
-  // season's first round nobody has scored, and defaulting to "scorers only"
-  // there would answer with an empty table. `hiddenCount` feeds the line under
-  // the table, so nothing disappears without saying so.
+  // Who the standings are actually for: everyone holding a seat in a Tier 1 or
+  // Tier 2 team, plus the reserves who turned up — scored a point, or started
+  // a round (a start counts even if it ended in a DNF and no points, which is
+  // why this asks perRace rather than the total). A season's reserve pool is
+  // the whole sign-up list, so the rest of it is people who haven't driven
+  // this season at all: dozens of identical zero rows that are not part of any
+  // championship. The count line under the table brings them back in one
+  // click, so nobody vanishes without the page saying so.
+  const isIdleReserve = (r) =>
+    r.tier === 0 && r.total <= 0 && Object.keys(r.perRace || {}).length === 0;
+  const idleReserves = rows.filter(isIdleReserve).length;
+  if (!showIdleReserves) rows = rows.filter((r) => !isIdleReserve(r));
+  // The opt-in "only drivers with points" box on top of that, which also takes
+  // out the seated drivers who haven't scored. It only bites once there is a
+  // championship to show: before a season's first round nobody has scored, and
+  // an empty table is no answer. `hiddenCount` feeds the line under the table,
+  // so nothing disappears without saying so.
   const anyScorer = rows.some((r) => r.total > 0);
   const hideScoreless = onlyScoring && anyScorer;
   const hiddenCount = hideScoreless ? rows.filter((r) => r.total <= 0).length : 0;
@@ -464,10 +477,32 @@ export default function DriverStandings() {
             <span className="font-mono font-bold tabular-nums">{hiddenCount}</span> without points hidden
           </button>
         )}
+        {/* Same idea for the reserve pool: the line names the people the table
+            is leaving out and puts them back (or away again) in one click. */}
+        {idleReserves > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowIdleReserves(!showIdleReserves)}
+            className="text-light underline decoration-dotted underline-offset-4 transition hover:text-dark"
+          >
+            {showIdleReserves ? (
+              <>Hide the <span className="font-mono font-bold tabular-nums">{idleReserves}</span> reserves without a start</>
+            ) : (
+              <><span className="font-mono font-bold tabular-nums">{idleReserves}</span> reserves without a start hidden</>
+            )}
+          </button>
+        )}
       </div>
 
       {rows.length === 0 ? (
-        <EmptyState title="No drivers here" hint="Nobody matches this filter yet. Try another tier, or include drivers without points." />
+        <EmptyState
+          title="No drivers here"
+          hint={
+            idleReserves > 0
+              ? "Nobody here has started a round yet. The line above shows the reserves who signed up."
+              : "Nobody matches this filter yet. Try another tier, or include drivers without points."
+          }
+        />
       ) : activeView === "cards" ? (
         // The field as their actual rating cards, in championship order of the
         // current filter view. Drivers without a card yet (no race this season)

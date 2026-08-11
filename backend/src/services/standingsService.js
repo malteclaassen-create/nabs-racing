@@ -448,8 +448,14 @@ export function attachPrevPositions(rows, raceNumbers, dropN) {
   for (const row of rows) row.prevPosition = prevPos.get(row.driverId) ?? null;
 }
 
-export async function getDriverStandings(prisma, seasonId, { extraResults = [], _depth = 1 } = {}) {
-  const [drivers, races, results, scoring, nameOverrides, identity] = await Promise.all([
+// `upToRound` freezes the table as it stood after that round: rounds above it
+// are dropped from the race list, and since every total, every drop and every
+// countback below is computed FROM that list, the whole table follows without
+// a second code path. That is the point of doing it here rather than in the
+// caller — a mid-season standings poster has to be the same table the site
+// showed that week, drop rule and tie-breaks included, not a re-sum of points.
+export async function getDriverStandings(prisma, seasonId, { extraResults = [], upToRound = null, _depth = 1 } = {}) {
+  const [drivers, allRaces, results, scoring, nameOverrides, identity] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
     // Championship rounds only, the same scope as the race list above. A
@@ -464,6 +470,9 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     getIdentityOverrides(prisma),
   ]);
   const table = scoring.pointsTable || DEFAULT_POINTS_TABLE;
+
+  const partial = upToRound != null && allRaces.some((r) => r.number > upToRound);
+  const races = partial ? allRaces.filter((r) => r.number <= upToRound) : allRaces;
 
   const raceNumberById = new Map(races.map((r) => [r.id, r.number]));
   const raceNumbers = races.map((r) => r.number);
@@ -548,15 +557,18 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // attachPrevPositions).
   attachPrevPositions(rows, raceNumbers, scoring.dropWorst);
 
-  // Archived seasons: official totals & order win over the computed ones.
-  applyFinalStandings(rows, scoring.finalStandings?.drivers, "driverId");
+  // Archived seasons: official totals & order win over the computed ones. Not
+  // for a mid-season view, though: the official sheet is where the season
+  // ENDED, so stamping it onto "after round 4" would answer a question nobody
+  // asked with numbers from eight rounds later.
+  if (!partial) applyFinalStandings(rows, scoring.finalStandings?.drivers, "driverId");
 
   // officialTotals tells the UI the totals come from the league's official
   // final sheet (not computed), so per-race sums may not add up exactly.
   return {
     raceNumbers,
     dropWorst: scoring.dropWorst,
-    officialTotals: !!scoring.finalStandings?.drivers?.length,
+    officialTotals: !partial && !!scoring.finalStandings?.drivers?.length,
     standings: rows,
   };
 }

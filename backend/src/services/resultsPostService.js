@@ -16,6 +16,10 @@ import { applyPenalties } from "./pointsCalculator.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
 
+// The other post this file makes: the championship table. See
+// buildStandingsPost at the bottom.
+import { getDriverStandings } from "./standingsService.js";
+
 // 1:38.853 — same shape the site uses for lap times.
 function fmtLap(ms) {
   if (!ms || ms <= 0) return null;
@@ -182,4 +186,98 @@ export async function buildResultsPost(prisma, raceId, { origin = null, roleId =
     short: shortLines.join("\n").trimEnd(),
     mentions,
   };
+}
+
+// The rows a table of `tier` is made of: a group, without the RESERVES who have
+// not started a round, re-ranked 1..n.
+//
+// Every seat holder stays, Tier 1 and Tier 2 alike, driven or not — they are in
+// the championship. The reserve pool is the whole sign-up list and most of it
+// has never got in a car, which is the part worth leaving off; a start counts
+// even when it ended in a DNF with no points, which is why this asks perRace
+// rather than the total, and `withoutStarts` puts them back. The re-rank is not
+// optional: taking rows out and keeping their old numbers gives a table that
+// reads 37, 49, 50.
+//
+// The SAME rule as filterStandings in the frontend's resultGraphic.js, which is
+// what cuts the poster this message goes out with. Two copies because one runs
+// on already-fetched rows in a browser and this one runs here; if either
+// changes, change both, or the picture and the text below it will be about
+// different tables.
+function pickRows(rows, tier, withoutStarts) {
+  const started = (r) => Object.keys(r.perRace || {}).length > 0;
+  const idleReserve = (r) => Number(r.tier) === 0 && !started(r);
+  let picked = String(tier) === "all" ? rows : rows.filter((r) => String(r.tier) === String(tier));
+  if (!withoutStarts && rows.some(started)) picked = picked.filter((r) => !idleReserve(r));
+  return picked.map((r, i) => ({ ...r, position: i + 1 }));
+}
+
+// ---------------------------------------------------------------------------
+// The championship-table post, in the same two lengths and by the same rules.
+//
+//   full   every driver with their total, which is the table as text for anyone
+//          reading on a phone with images off.
+//   short  the top three and a link. For the weeks the sheets go with it: the
+//          pictures already list everybody, and printing the table underneath
+//          them is the same information twice.
+//
+// `upToRound` is the round the table is frozen after, and it is the SAME number
+// the poster is drawn from, so the heading and the picture can never disagree
+// about which week this is.
+// ---------------------------------------------------------------------------
+export async function buildStandingsPost(
+  prisma, seasonId, { upToRound = null, tier = "all", withoutStarts = false, origin = null, roleId = null } = {}
+) {
+  if (!seasonId) return null;
+  const table = await getDriverStandings(prisma, seasonId, { upToRound });
+  const rows = pickRows(table?.standings || [], tier, withoutStarts);
+  if (!rows.length) return null;
+
+  const discordIds = await discordIdsForDrivers(prisma, rows.map((r) => r.driverId));
+  const who = (r) => {
+    const id = discordIds.get(r.driverId);
+    return id ? `<@${id}>` : `**${r.name}**`;
+  };
+
+  const season = await prisma.season
+    .findUnique({ where: { id: seasonId }, include: { series: true } })
+    .catch(() => null);
+  const slug = season?.series?.slug;
+  // Same address rule as raceLink above: the season number rides along for
+  // every season but the active one, or the link means "whichever season the
+  // reader happens to be on" the moment the next one starts.
+  const seasonQ = season && !season.isActive && season.number != null ? `?season=${season.number}` : "";
+  const link = origin ? `${origin}${slug ? `/s/${slug}` : ""}/drivers${seasonQ}` : null;
+
+  const group =
+    String(tier) === "1" ? "TIER 1 STANDINGS"
+    : String(tier) === "2" ? "TIER 2 STANDINGS"
+    : String(tier) === "0" ? "RESERVE STANDINGS"
+    : "DRIVER STANDINGS";
+  const heading = `**${group}${upToRound ? ` AFTER ROUND ${upToRound}` : ""}**`;
+  const ping = roleId ? `<@&${roleId}>` : null;
+
+  const MEDALS = ["🥇", "🥈", "🥉"];
+  const lines = ping ? [ping, heading, ""] : [heading, ""];
+  for (const r of rows) {
+    const badge = r.position <= 3 ? MEDALS[r.position - 1] : `**${r.position}.**`;
+    lines.push(`${badge} ${who(r)} - ${r.total}`);
+  }
+  if (link) lines.push("", `[The full table on the website](${link})`);
+
+  const top3 = rows
+    .filter((r) => r.position <= 3)
+    .map((r) => `${MEDALS[r.position - 1]} ${who(r)} ${r.total}`)
+    .join("  ");
+  const shortLines = ping ? [ping, heading, ""] : [heading, ""];
+  if (top3) shortLines.push(top3, "");
+  if (link) shortLines.push(`[The full table on the website](${link})`);
+
+  const mentions = {};
+  for (const r of rows) {
+    const id = discordIds.get(r.driverId);
+    if (id) mentions[id] = r.name;
+  }
+
+  return { full: lines.join("\n"), short: shortLines.join("\n").trimEnd(), mentions };
 }
