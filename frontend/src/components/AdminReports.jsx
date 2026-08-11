@@ -115,45 +115,18 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
   const willTell = DECIDED.includes(draft.status);
 
   return (
-    <div className="space-y-4 px-5 py-4">
+    // Two columns on a wide screen: the argument on the left, what you DO about
+    // it on the right. Stacked, the decision form sat below a thread that grows
+    // with every message, so the further a report got the further you had to
+    // scroll past it to act on it — and reading a reply while typing a verdict
+    // meant scrolling between the two.
+    <div className="px-5 py-4">
       {error && <ErrorBox message={error} />}
       {msg && <Notice kind="success">{msg}</Notice>}
 
-
-      {/* who it is about. Often nobody, on an in-game report or when the
-          reporter wrote "the blue car" — and until this is set, the other
-          driver cannot see the thread they are the subject of. */}
-      <div className="flex flex-wrap items-end gap-2 rounded-lg bg-surface2/60 p-3">
-        <Field label="The report is about" tone="plain">
-          <select
-            className="input w-auto min-w-52 py-1.5 text-sm"
-            value={r.accusedDriverId || ""}
-            disabled={busy}
-            onChange={(e) => {
-              const d = drivers.find((x) => x.id === e.target.value);
-              run(() => api.setReportAccused(id, e.target.value || "", d?.name || ""), (res) => {
-                if (!e.target.value) return "Nobody is named on this now.";
-                // The server says whether that driver has a Discord account to
-                // reach. Where they have not, saying "has been told" sends the
-                // steward away believing the other driver is in the loop.
-                return res?.report?.accusedReachable === false
-                  ? `${d?.name} is named on this now, but has never signed in with Discord — there is no account to tell, and they cannot read or answer it. You will have to reach them another way.`
-                  : `${d?.name} can now read this and has been told.`;
-              });
-            }}
-          >
-            <option value="">Nobody named{r.accusedName ? ` (it says "${r.accusedName}")` : ""}</option>
-            {drivers.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <p className="min-w-52 flex-1 text-xs leading-relaxed text-light">
-          Naming a driver is what lets them into this thread, and they get told. Nobody else can see it.
-        </p>
-      </div>
+      <div className="mt-3 grid items-start gap-6 lg:grid-cols-[minmax(0,1.35fr),minmax(0,1fr)]">
+        {/* LEFT — the conversation */}
+        <div className="min-w-0 space-y-3">
 
       {/* the conversation, opening message and all */}
       <ReportChat
@@ -164,15 +137,55 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
         mineIsReporter={!!myDiscordId() && r.reporterDiscordId === myDiscordId()}
       />
 
-      <ReportComposer
-        busy={busy}
-        placeholder="Write to the drivers…"
-        full
-        onSend={(body, files) => run(() => api.adminReplyToReport(id, body, files))}
-      />
+          <ReportComposer
+            busy={busy}
+            placeholder="Write to the drivers…"
+            full
+            onSend={(body, files) => run(() => api.adminReplyToReport(id, body, files))}
+          />
+        </div>
+
+        {/* RIGHT — everything you do about it. Sticks on a tall screen so a
+            long thread scrolls past it rather than pushing it away. */}
+        <div className="min-w-0 space-y-4 lg:sticky lg:top-4">
+          {/* who it is about. Often nobody, on an in-game report or when the
+              reporter wrote "the blue car" — and until this is set, the other
+              driver cannot see the thread they are the subject of. */}
+          <div className="flex flex-wrap items-end gap-2 rounded-lg bg-surface2/60 p-3">
+            <Field label="The report is about" tone="plain">
+              <select
+                className="input w-auto min-w-52 py-1.5 text-sm"
+                value={r.accusedDriverId || ""}
+                disabled={busy}
+                onChange={(e) => {
+                  const d = drivers.find((x) => x.id === e.target.value);
+                  run(() => api.setReportAccused(id, e.target.value || "", d?.name || ""), (res) => {
+                    if (!e.target.value) return "Nobody is named on this now.";
+                    // The server says whether that driver has a Discord account to
+                    // reach. Where they have not, saying "has been told" sends the
+                    // steward away believing the other driver is in the loop.
+                    return res?.report?.accusedReachable === false
+                      ? `${d?.name} is named on this now, but has never signed in with Discord — there is no account to tell, and they cannot read or answer it. You will have to reach them another way.`
+                      : `${d?.name} can now read this and has been told.`;
+                  });
+                }}
+              >
+                <option value="">Nobody named{r.accusedName ? ` (it says "${r.accusedName}")` : ""}</option>
+                {drivers.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <p className="min-w-52 flex-1 text-xs leading-relaxed text-light">
+              Naming a driver is what lets them into this thread, and they get told. Nobody else can see it.
+            </p>
+          </div>
+
 
       {/* the decision */}
-      <div className="border-t border-border pt-4">
+      <div className="rounded-lg border border-border p-4">
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Decision</div>
         <div className="flex flex-wrap items-end gap-3">
           <Field label="Outcome" tone="plain">
@@ -247,7 +260,7 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
       </div>
 
       {/* who else may read it */}
-      <div className="border-t border-border pt-4">
+      <div className="rounded-lg border border-border p-4">
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
           Who can read this
         </div>
@@ -305,7 +318,7 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
       </div>
 
       {/* removing it entirely */}
-      <div className="border-t border-border pt-4">
+      <div className="pt-1">
         <button
           className="transition text-xs font-semibold text-light hover:text-bad"
           disabled={busy}
@@ -334,6 +347,8 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
         >
           Delete this report
         </button>
+      </div>
+        </div>
       </div>
     </div>
   );

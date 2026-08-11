@@ -18,6 +18,8 @@
 // numbers in one place, and the export just draws the same thing at 2x.
 // ---------------------------------------------------------------------------
 
+import { fmtDuration, fmtGap } from "./raceDuration.js";
+
 // Every measurement below is read off Steve's Photoshop file rather than
 // guessed from a screenshot: the pink outlines were found by scanning the
 // composite for their colour, which gives the tile edges, the row pitch and the
@@ -63,6 +65,22 @@ export const LAYOUT = {
     carCy: 0.62, // centre of the car, as a fraction of the tile's height
     carInset: 10,
     carMaxH: 0.52, // and of its height
+    // The gap to the winner, in the strip between the car and the name bar.
+    // Centred on the tile, so it sits over the middle of the car and directly
+    // above the name, and the three tiles read as one column each rather than
+    // as a picture with a caption stuck to one corner.
+    //
+    // Set small and grey on purpose: the number and the name are what the tile
+    // is about, and a time that competed with them would turn three portraits
+    // into three timing screens.
+    //
+    // The baseline hangs off the TOP OF THE BAR rather than the top of the
+    // tile, because that edge is fixed while the car's own bottom is not — a
+    // tall cut-out and a wide one end in different places, and only the bar
+    // stays put. In the worst case (a car drawn to its full permitted height)
+    // this still clears the car by a few pixels.
+    deltaSize: 28,
+    deltaAboveBar: 14, // baseline, above the top of the name bar
     // The points, in a chip tucked into the tile's bottom right corner. Its
     // right edge IS the tile's edge and its bottom IS the top of the name bar,
     // so only the top and left sides are its own — which is why the corner is
@@ -93,6 +111,19 @@ export const LAYOUT = {
     markMaxH: 56,
     ptsRight: 58, // from the right edge of the page
     ptsSize: 40, // 30px of ink
+
+    // The gap to the winner gets a column of its own between the team mark and
+    // the points, right-aligned so the decimal points line up down the page —
+    // which is the whole reason anyone reads a column of times.
+    //
+    // The mark moves left and shrinks to make the room. It only does so on a
+    // round that HAS times: an archive round with none keeps the two numbers
+    // above, so Steve's layout is still drawn exactly as he set it wherever the
+    // new column would be empty anyway.
+    deltaRight: 178, // from the right edge of the page
+    deltaSize: 30,
+    markCxTight: 580,
+    markMaxWTight: 235,
   },
 
   // The little "T2" after a second-tier driver's name. Small enough to read as
@@ -178,6 +209,11 @@ export const THEMES = {
     // the pink outline is the whole of it, and white numbers like the points
     // down in the table.
     tilePoints: { fill: "#000000", ink: "#ffffff", frame: "#ffaec8", frameWidth: 5 },
+    // The gap to the winner, on a tile and in a row. Grey rather than white:
+    // it is the third thing on a line that already has a name and a score, and
+    // the one a reader should be able to skip. Bright enough to read at arm's
+    // length on a phone, dim enough not to be read first.
+    delta: { tile: "#9c9c9c", row: "#9c9c9c" },
     row: {
       numFill: "#ffaec8", numInk: "#000000",
       barFill: "#000000", barFrame: "#ffaec8", frameWidth: 5,
@@ -204,6 +240,10 @@ export const THEMES = {
     nameBar: { fill: "medal", ink: "#0a0a0a", frame: null },
     tierPill: { fill: "#2f8fff", ink: "#000000", frame: null },
     tilePoints: null,
+    // Two greys, because the gap sits on two different surfaces here: a black
+    // tile up top and a near-white row below. One value would be invisible on
+    // one of them.
+    delta: { tile: "#a8a8a8", row: "#6b6b6b" },
     row: {
       numFill: "#0a0a0a", numInk: "#ffffff",
       barFill: "#f2f2f2", barFrame: null, frameWidth: 0,
@@ -535,6 +575,18 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     ctx.textAlign = "left";
     ctx.fillText(`${place}.`, x + P.posX, top + P.posY);
 
+    // The gap to the winner, under the car — and on the winner's own tile, the
+    // race time that gap is measured from, which is what the number is for.
+    // The slot is the same on all three so the three tiles stay one row of
+    // cards rather than two designs side by side.
+    if (entry.delta && T.delta) {
+      ctx.font = FONT(800, P.deltaSize);
+      ctx.fillStyle = T.delta.tile;
+      ctx.textAlign = "center";
+      ctx.fillText(entry.delta, x + colW / 2, barTop - P.deltaAboveBar);
+      ctx.textAlign = "left";
+    }
+
     // Flag and name, centred in the bar as ONE group. Centring the name alone
     // would leave the flag stranded at the left edge with a gap after it, and
     // three tiles side by side make any drift off centre obvious — which is
@@ -570,6 +622,11 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
 
   // --- places 4 and down ----------------------------------------------------
   const R = L.rows;
+  // The team mark gives up the width the gap column needs, but only on a round
+  // that has times to put in it.
+  const timed = data.rows.some((r) => r.delta) && !!T.delta;
+  const markCx = timed ? R.markCxTight : R.markCx;
+  const markMaxW = timed ? R.markMaxWTight : R.markMaxW;
   data.rows.forEach((row, i) => {
     const y = R.top + i * (R.height + R.gap);
     const barX = L.pad + R.numW;
@@ -613,6 +670,21 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
       ctx.fillText("PTS", ptsX, midY + R.ptsSize * 0.9);
     }
 
+    // The gap to the winner, right-aligned in its own column so the decimal
+    // points stack down the page. Still right-aligned (never centred) even
+    // though it shrinks to fit: a column of times is read down the fractions,
+    // and centring would leave them zig-zagging.
+    if (timed && row.delta) {
+      const deltaX = L.width - L.pad - R.deltaRight;
+      // Never into the team mark. A minute-plus gap is a long string and the
+      // mark is a picture with no room to give, so the time is what yields.
+      const size = fitText(ctx, row.delta, deltaX - (markCx + markMaxW / 2) - 16, 800, R.deltaSize, 18);
+      ctx.font = FONT(800, size);
+      ctx.fillStyle = T.delta.row;
+      ctx.textAlign = "right";
+      ctx.fillText(row.delta, deltaX, midY + size * 0.36);
+    }
+
     // Flag, then the name. The flag only appears where the design has one; the
     // name starts at the same x either way, so the column of names lines up
     // whether or not a driver has a country on file.
@@ -621,7 +693,7 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
       drawFlag(ctx, row.flag, flagX, y + R.height / 2, R.flagW);
     }
     const nameX = R.nameX;
-    const markLeft = R.markCx - R.markMaxW / 2;
+    const markLeft = markCx - markMaxW / 2;
     // The "T2" after a second-tier driver's name. The name gets the room left
     // after it, so a long name shrinks rather than running under the pill.
     const pillW = tierPillWidth(ctx, T, row.tier === 2);
@@ -637,7 +709,7 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
 
     // Team mark, centred in its own column so the marks line up down the page
     // however wide each one is.
-    if (row.mark) drawContain(ctx, row.mark, R.markCx, y + R.height / 2, R.markMaxW, R.markMaxH);
+    if (row.mark) drawContain(ctx, row.mark, markCx, y + R.height / 2, markMaxW, R.markMaxH);
   });
 
   ctx.restore();
@@ -697,6 +769,21 @@ export async function renderPosterBlob(opts) {
 // wordmarks, keyed by team id; `countryOf` resolves a driver's flag the same
 // way the rest of the site does.
 export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf, logoSrc, rows = 7 }) {
+  // The gap column, worked out exactly the way the race page's own time column
+  // is (RaceResults.jsx), because the poster and the page must not disagree
+  // about how far behind somebody finished:
+  //
+  //   * steward penalties are IN the time, since they are in the order too;
+  //   * a lapped car says "+1 lap" rather than a meaningless number of minutes;
+  //   * the winner's cell holds the absolute race time the gaps are measured
+  //     from, which is what the whole column is relative to;
+  //   * a round with no times recorded — most of the archive — gets nothing at
+  //     all, rather than a column of dashes.
+  //
+  // fmtGap is the site's own formatter, so the poster is in the same English
+  // notation as everywhere else: "+1.234", and "+1:05.231" once it passes a
+  // minute.
+  const adjMs = (r) => (r.totalTimeMs > 0 ? r.totalTimeMs + (r.penaltySeconds || 0) * 1000 : null);
   // w80, the largest in the mirror: the poster draws a flag at 46px and the
   // export doubles that, so the 40px file the site uses would show its pixels.
   const flagSrc = (code) => (code ? `/flags/w80/${String(code).toLowerCase()}.png` : null);
@@ -707,6 +794,29 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
 
   const top3 = classified.slice(0, 3);
   const rest = classified.slice(3, 3 + rows);
+
+  const leader = classified[0] || null;
+  const leaderMs = leader ? adjMs(leader) : null;
+  const leaderLaps = leader?.laps ?? null;
+  const deltaOf = (r) => {
+    const ms = adjMs(r);
+    if (ms == null) return null;
+    if (r === leader) return fmtDuration(ms);
+    if (leaderMs == null) return null;
+    if (leaderLaps != null && r.laps != null && r.laps < leaderLaps) {
+      const down = leaderLaps - r.laps;
+      return `+${down} lap${down > 1 ? "s" : ""}`;
+    }
+    // A time at or below the winner's without a lap count to explain it is a
+    // half-recorded round, and no number here beats a wrong one.
+    const gap = fmtGap(ms - leaderMs);
+    if (!gap) return null;
+    // The unit goes on, because on a poster the number stands alone with no
+    // column heading to say what it is. Only where the number IS seconds,
+    // though: past a minute the string reads m:ss.mmm, and an "s" on the end of
+    // that would be naming the wrong one of the two.
+    return gap.includes(":") ? gap : `${gap}s`;
+  };
 
   // Which table this drive counts towards. The TEAM's tier, not the driver's,
   // the same rule the site's own Tier-2 standings use: a reserve standing in
@@ -751,11 +861,11 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
     title: `${roundLabel} / ${race.track}`,
     logo,
     podium: top3.map((r, i) => ({
-      position: r.position, name: r.name, points: r.points ?? 0,
+      position: r.position, name: r.name, points: r.points ?? 0, delta: deltaOf(r),
       car: cars[i], flag: flags[i], badge: badges[i], tier: tierOf(top3[i]),
     })),
     rows: rest.map((r, i) => ({
-      position: r.position, name: r.name, points: r.points ?? 0,
+      position: r.position, name: r.name, points: r.points ?? 0, delta: deltaOf(r),
       mark: marks[i], flag: rowFlags[i], tier: tierOf(rest[i]),
     })),
   };
