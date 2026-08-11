@@ -214,13 +214,16 @@ const FONT = (weight, size) => `${weight} ${size}px Montserrat, Archivo, Inter, 
 // browser fetch them, and document.fonts.ready then waits for the fetch.
 const POSTER_FONTS = ["900 100px Montserrat", "800 100px Montserrat"];
 async function ensureFonts() {
+  // The whole thing is best-effort, including the wait. A font that will not
+  // load is not a reason to draw nothing: the stack above falls back to
+  // Archivo and the poster still comes out, slightly wide.
   try {
+    if (!document.fonts) return;
     await Promise.all(POSTER_FONTS.map((f) => document.fonts.load(f)));
+    await document.fonts.ready;
   } catch {
-    // A font that will not load is not a reason to draw nothing: the stack
-    // above falls back to Archivo and the poster still comes out.
+    /* draw with whatever the stack resolves to */
   }
-  await document.fonts.ready;
 }
 
 // Load an image for the canvas. Resolves to null instead of throwing: a missing

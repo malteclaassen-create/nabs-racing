@@ -4,7 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { PageHeader, ErrorBox, Notice, CardHead, CheckField, DriverAvatar, Field, SafetyCarBadge } from "../components/ui.jsx";
+import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge } from "../components/ui.jsx";
 import { useAsk } from "../components/overlay.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
