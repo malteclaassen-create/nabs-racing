@@ -106,15 +106,21 @@ export const THEMES = {
     // page-wide, in the pink, at 13%. Position and size are measured off the
     // file, and it sits BEHIND the tiles and rows there too — only the slivers
     // of background between them show any of it.
+    //
+    // `fromRows` keeps it out of the gap between the podium and place four. The
+    // mark crossing that gap turns the one piece of clean black on the page
+    // into texture, and the podium stops sitting apart from the table.
     cornerMark: false,
-    watermark: { cx: 554, cy: 703, size: 1050, alpha: 0.13, colour: "#ffaec8" },
+    watermark: { cx: 554, cy: 703, size: 1050, alpha: 0.13, colour: "#ffaec8", fromRows: true },
     tile: { fill: "#000000", frame: "#ffaec8", frameWidth: 5, badge: true },
     // Gold, silver and bronze land TWICE: on the position number and on the
     // name bar under the car.
     pos: { colour: "medal" },
     nameBar: { fill: "medal", ink: "#000000", frame: "#ffaec8" },
-    // The winner's points in a chip in the corner of the tile.
-    tilePoints: { fill: "#ffffff", ink: "#000000" },
+    // The points in a chip in the corner of the tile. Black on white was the
+    // draft; the same black-and-white as the points down in the table means the
+    // poster says "points" one way rather than two.
+    tilePoints: { fill: "#000000", ink: "#ffffff" },
     row: {
       numFill: "#ffaec8", numInk: "#000000",
       barFill: "#000000", barFrame: "#ffaec8", frameWidth: 5,
@@ -245,6 +251,13 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
   if (T.watermark && data.logo) {
     const w = T.watermark;
     ctx.save();
+    if (w.fromRows) {
+      // Clipped to the classification's own band. Above it the page stays clean
+      // black, which is what keeps the podium reading as a separate block.
+      ctx.beginPath();
+      ctx.rect(0, L.rows.top, L.width, L.height - L.rows.top);
+      ctx.clip();
+    }
     ctx.globalAlpha = w.alpha;
     drawContain(ctx, tinted(data.logo, w.colour), w.cx, w.cy, w.size, w.size);
     ctx.restore();

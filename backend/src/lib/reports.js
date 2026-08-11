@@ -1,0 +1,289 @@
+// ---------------------------------------------------------------------------
+// Incident reports: "someone hit me on lap 14".
+//
+// A report is a PRIVATE conversation, and that is the whole design. Four kinds
+// of people can see one: whoever filed it, the driver it names, the admins, and
+// anybody an admin has explicitly let in. Nobody else, ever — not other
+// drivers, not the public site. A league argues about incidents quite enough
+// without an audience.
+//
+// The verdict does NOT touch the classification. An admin writing "5 seconds"
+// here records what was decided; entering it in the result stays a separate,
+// deliberate act in the results editor, which is where the penalty column
+// already lives. Two places that both write the same number would eventually
+// disagree, and the one that decides points has to be the one a human typed.
+//
+// `source` tells a report written on the site (SITE) from one the in-game
+// webPenalty app fired mid-race (INGAME). The in-game one carries a wall-clock
+// timestamp rather than a lap, because that is what the app knows and what an
+// admin needs to find the moment in the replay.
+//
+// Raw SQL like Feedback and Notification (the running dev server locks the
+// generated Prisma client on Windows). Keep in sync with the Report /
+// ReportMessage / ReportViewer models in prisma/schema.prisma and the
+// CREATE TABLEs in lib/ensureSchema.js.
+// ---------------------------------------------------------------------------
+import { randomUUID } from "crypto";
+import { dbCreateNotification } from "./notifications.js";
+import { getAdminDiscordIds } from "./adminUsers.js";
+import { discordIdsForDrivers } from "./persons.js";
+
+// Where a report has got to. NEW is where everything starts; the last three are
+// endings, and only an admin can set them.
+export const REPORT_STATUSES = ["NEW", "REVIEWING", "PENALTY", "NO_PENALTY", "DISMISSED"];
+export const REPORT_DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
+export const MESSAGE_AUTHORS = ["REPORTER", "ACCUSED", "ADMIN"];
+
+const MAX_BODY = 4000;
+const MIN_BODY = 5;
+const MAX_MSG = 4000;
+const MIN_MSG = 1;
+
+const clamp = (v, max) => String(v ?? "").trim().slice(0, max);
+
+export function sanitizeStatus(s) {
+  const v = String(s || "").toUpperCase();
+  return REPORT_STATUSES.includes(v) ? v : null;
+}
+
+function shape(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    raceId: r.raceId || null,
+    lap: r.lap ?? null,
+    reporterDiscordId: r.reporterDiscordId || null,
+    reporterName: r.reporterName || null,
+    accusedDriverId: r.accusedDriverId || null,
+    accusedName: r.accusedName || null,
+    body: r.body || "",
+    source: r.source || "SITE",
+    incidentAt: r.incidentAt || null,
+    status: r.status || "NEW",
+    verdict: r.verdict || null,
+    penaltySeconds: r.penaltySeconds ?? null,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt || null,
+  };
+}
+
+// --- who may see what -------------------------------------------------------
+
+// The Discord id of the driver a report names. Resolved through the person
+// links, like the results post's mentions: the id lives on ONE row per person
+// and moves on login, so the accused's current-season row may not carry it.
+async function accusedDiscordId(prisma, report) {
+  if (!report?.accusedDriverId) return null;
+  const map = await discordIdsForDrivers(prisma, [report.accusedDriverId]).catch(() => new Map());
+  return map.get(report.accusedDriverId) || null;
+}
+
+// Everyone entitled to read one report, as a Set of Discord ids. Admins are NOT
+// in here: they are allowed by being admins, which is checked separately, so
+// that removing somebody's admin rights removes their access to every thread at
+// once rather than leaving them listed on old ones.
+export async function readersOf(prisma, report) {
+  const out = new Set();
+  if (report.reporterDiscordId) out.add(String(report.reporterDiscordId));
+  const accused = await accusedDiscordId(prisma, report);
+  if (accused) out.add(String(accused));
+  const extra = await prisma
+    .$queryRawUnsafe(`SELECT "discordId" FROM "ReportViewer" WHERE "reportId" = ?`, report.id)
+    .catch(() => []);
+  for (const v of extra) out.add(String(v.discordId));
+  return out;
+}
+
+export async function canRead(prisma, report, discordId, isAdmin) {
+  if (isAdmin) return true;
+  if (!discordId) return false;
+  return (await readersOf(prisma, report)).has(String(discordId));
+}
+
+// --- reading ----------------------------------------------------------------
+
+export async function dbGetReport(prisma, id) {
+  const rows = await prisma.$queryRawUnsafe(`SELECT * FROM "Report" WHERE "id" = ?`, id).catch(() => []);
+  return shape(rows[0]);
+}
+
+export async function dbListReports(prisma) {
+  const rows = await prisma
+    .$queryRawUnsafe(`SELECT * FROM "Report" ORDER BY datetime("createdAt") DESC`)
+    .catch(() => []);
+  return rows.map(shape);
+}
+
+// The reports one member is party to, newest first.
+export async function dbReportsFor(prisma, discordId) {
+  if (!discordId) return [];
+  const all = await dbListReports(prisma);
+  const mine = [];
+  for (const r of all) if (await canRead(prisma, r, discordId, false)) mine.push(r);
+  return mine;
+}
+
+export async function dbMessages(prisma, reportId) {
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT * FROM "ReportMessage" WHERE "reportId" = ? ORDER BY datetime("createdAt") ASC`,
+      reportId
+    )
+    .catch(() => []);
+  return rows.map((m) => ({
+    id: m.id,
+    author: m.author,
+    authorName: m.authorName || null,
+    body: m.body,
+    createdAt: m.createdAt,
+  }));
+}
+
+export async function dbViewers(prisma, reportId) {
+  return prisma
+    .$queryRawUnsafe(`SELECT "discordId", "name" FROM "ReportViewer" WHERE "reportId" = ?`, reportId)
+    .catch(() => []);
+}
+
+// --- writing ----------------------------------------------------------------
+
+export async function dbCreateReport(prisma, input) {
+  const body = clamp(input.body, MAX_BODY);
+  if (body.length < MIN_BODY) throw Object.assign(new Error("Say a little more about what happened"), { status: 400 });
+  const id = randomUUID();
+  const lap = Number.isFinite(Number(input.lap)) && input.lap !== "" && input.lap !== null ? Number(input.lap) : null;
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "Report" ("id","raceId","lap","reporterDiscordId","reporterName","accusedDriverId","accusedName","body","source","incidentAt","status")
+     VALUES (?,?,?,?,?,?,?,?,?,?,'NEW')`,
+    id,
+    input.raceId || null,
+    lap,
+    input.reporterDiscordId ? String(input.reporterDiscordId) : null,
+    clamp(input.reporterName, 120) || null,
+    input.accusedDriverId || null,
+    clamp(input.accusedName, 120) || null,
+    body,
+    input.source === "INGAME" ? "INGAME" : "SITE",
+    input.incidentAt ? new Date(input.incidentAt).toISOString() : null
+  );
+  const report = await dbGetReport(prisma, id);
+  await notifyAdmins(prisma, report, "A new incident report is waiting");
+  return report;
+}
+
+export async function dbAddMessage(prisma, report, { author, discordId, name, body }) {
+  const text = clamp(body, MAX_MSG);
+  if (text.length < MIN_MSG) throw Object.assign(new Error("The message is empty"), { status: 400 });
+  if (!MESSAGE_AUTHORS.includes(author)) throw Object.assign(new Error("Unknown author"), { status: 400 });
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ReportMessage" ("id","reportId","author","authorDiscordId","authorName","body") VALUES (?,?,?,?,?,?)`,
+    randomUUID(),
+    report.id,
+    author,
+    discordId ? String(discordId) : null,
+    clamp(name, 120) || null,
+    text
+  );
+  await prisma.$executeRawUnsafe(`UPDATE "Report" SET "updatedAt" = ? WHERE "id" = ?`, new Date().toISOString(), report.id);
+
+  // Everybody on the thread except whoever just wrote.
+  const readers = await readersOf(prisma, report);
+  if (discordId) readers.delete(String(discordId));
+  for (const rid of readers) {
+    await dbCreateNotification(prisma, {
+      type: "REPORT",
+      title: "New message on an incident report",
+      body: `${clamp(name, 120) || "Someone"} wrote in the report you are part of.`,
+      link: `/reports?id=${report.id}`,
+      recipientId: rid,
+      dedupeKey: `report_msg:${report.id}:${Date.now()}`,
+    }).catch(() => {});
+  }
+  if (author !== "ADMIN") await notifyAdmins(prisma, report, "New message on an incident report");
+  return dbMessages(prisma, report.id);
+}
+
+// The admin's decision. Writes what was decided; it deliberately does not touch
+// the race result — see the note at the top of this file.
+export async function dbDecideReport(prisma, report, { status, verdict, penaltySeconds }) {
+  const s = sanitizeStatus(status);
+  if (!s) throw Object.assign(new Error("Unknown status"), { status: 400 });
+  const secs =
+    penaltySeconds === "" || penaltySeconds === null || penaltySeconds === undefined
+      ? null
+      : Math.max(0, Math.min(600, Math.round(Number(penaltySeconds) || 0)));
+  await prisma.$executeRawUnsafe(
+    `UPDATE "Report" SET "status" = ?, "verdict" = ?, "penaltySeconds" = ?, "updatedAt" = ? WHERE "id" = ?`,
+    s,
+    clamp(verdict, MAX_BODY) || null,
+    secs,
+    new Date().toISOString(),
+    report.id
+  );
+  const fresh = await dbGetReport(prisma, report.id);
+  // Only an ENDING is worth a notification. "Reviewing" is the admins saying
+  // they have opened it, which is not news to anyone waiting for an answer.
+  if (REPORT_DECIDED.includes(s)) {
+    const readers = await readersOf(prisma, fresh);
+    const outcome =
+      s === "PENALTY"
+        ? secs != null
+          ? `Penalty: ${secs} seconds.`
+          : "A penalty was given."
+        : s === "NO_PENALTY"
+          ? "No penalty was given."
+          : "The report was closed without a decision.";
+    for (const rid of readers) {
+      await dbCreateNotification(prisma, {
+        type: "REPORT",
+        title: "Your incident report has been decided",
+        body: outcome,
+        link: `/reports?id=${fresh.id}`,
+        recipientId: rid,
+        dedupeKey: `report_done:${fresh.id}:${s}`,
+      }).catch(() => {});
+    }
+  }
+  return fresh;
+}
+
+export async function dbAddViewer(prisma, reportId, discordId, name) {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ReportViewer" ("reportId","discordId","name") VALUES (?,?,?)
+     ON CONFLICT("reportId","discordId") DO UPDATE SET "name" = ?`,
+    reportId,
+    String(discordId),
+    clamp(name, 120) || null,
+    clamp(name, 120) || null
+  );
+  return dbViewers(prisma, reportId);
+}
+
+export async function dbRemoveViewer(prisma, reportId, discordId) {
+  await prisma.$executeRawUnsafe(
+    `DELETE FROM "ReportViewer" WHERE "reportId" = ? AND "discordId" = ?`,
+    reportId,
+    String(discordId)
+  );
+  return dbViewers(prisma, reportId);
+}
+
+export async function dbDeleteReport(prisma, id) {
+  await prisma.$executeRawUnsafe(`DELETE FROM "ReportMessage" WHERE "reportId" = ?`, id);
+  await prisma.$executeRawUnsafe(`DELETE FROM "ReportViewer" WHERE "reportId" = ?`, id);
+  await prisma.$executeRawUnsafe(`DELETE FROM "Report" WHERE "id" = ?`, id);
+}
+
+async function notifyAdmins(prisma, report, title) {
+  const ids = await getAdminDiscordIds(prisma).catch(() => []);
+  for (const id of ids) {
+    await dbCreateNotification(prisma, {
+      type: "REPORT",
+      title,
+      body: report.accusedName ? `About ${report.accusedName}.` : "Someone filed a report.",
+      link: "/admin?tab=reports",
+      recipientId: id,
+      dedupeKey: `report_admin:${report.id}:${Date.now()}`,
+    }).catch(() => {});
+  }
+}

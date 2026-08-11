@@ -327,6 +327,57 @@ export async function ensureAppSchema(prisma) {
     `CREATE INDEX IF NOT EXISTS "FeedbackReply_feedbackId_idx" ON "FeedbackReply"("feedbackId")`
   );
 
+  // --- Incident reports (migration reports): "someone hit me on lap 14".
+  // A report is a private conversation between the person who filed it, the
+  // driver it names, the admins, and anybody an admin lets in — never public.
+  // `source` is SITE for one written on the site and INGAME for one the
+  // webPenalty app fired mid-race, which carries a timestamp instead of a lap.
+  // See lib/reports.js.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Report" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "raceId" TEXT,
+    "lap" INTEGER,
+    "reporterDiscordId" TEXT,
+    "reporterName" TEXT,
+    "accusedDriverId" TEXT,
+    "accusedName" TEXT,
+    "body" TEXT NOT NULL DEFAULT '',
+    "source" TEXT NOT NULL DEFAULT 'SITE',
+    "incidentAt" DATETIME,
+    "status" TEXT NOT NULL DEFAULT 'NEW',
+    "verdict" TEXT,
+    "penaltySeconds" INTEGER,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME
+  )`);
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Report_raceId_idx" ON "Report"("raceId")`);
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Report_createdAt_idx" ON "Report"("createdAt")`);
+
+  // --- The conversation on a report. `author` is REPORTER, ACCUSED or ADMIN;
+  // the byline is stored so a thread still reads correctly after a rename.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ReportMessage" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "reportId" TEXT NOT NULL,
+    "author" TEXT NOT NULL,
+    "authorDiscordId" TEXT,
+    "authorName" TEXT,
+    "body" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "ReportMessage_reportId_idx" ON "ReportMessage"("reportId")`
+  );
+
+  // --- Extra people an admin has let into one report's thread (a witness, a
+  // team mate). Membership is per report, never a blanket permission.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ReportViewer" (
+    "reportId" TEXT NOT NULL,
+    "discordId" TEXT NOT NULL,
+    "name" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("reportId", "discordId")
+  )`);
+
   // --- Phase 3: cross-season person links. One row per driver row that belongs
   // to a person; all driver rows of the same person share one personId.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PersonLink" (

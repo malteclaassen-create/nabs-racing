@@ -37,6 +37,10 @@ import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.j
 import { invalidateRecordsCache } from "../services/recordsService.js";
 import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
 import { readTeamArt, writeTeamArt, ART_KINDS } from "../lib/teamArt.js";
+import {
+  dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport,
+  dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED,
+} from "../lib/reports.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
@@ -4396,6 +4400,91 @@ router.put("/welcome-faq", async (req, res, next) => {
   try {
     const content = await writeWelcomeFaq(prisma, req.body?.content ?? null);
     res.json({ ok: true, content });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Incident reports (stewarding) -------------------------------------------
+// Filed by members (routes/reports.js) or, later, by the in-game webPenalty
+// app. The office reads the thread, decides, and records the decision here.
+//
+// Deciding does NOT write the penalty into the classification. What is stored
+// is what was decided; putting the seconds on the driver stays a separate act
+// in the results editor, which is the one place that owns the points. See the
+// note at the top of lib/reports.js.
+
+router.get("/reports", async (req, res, next) => {
+  try {
+    const reports = await dbListReports(prisma);
+    // The races they belong to, so the tab can group by round without the
+    // browser fetching the calendar and joining it by hand.
+    const ids = [...new Set(reports.map((r) => r.raceId).filter(Boolean))];
+    const races = ids.length
+      ? await prisma.race.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, number: true, track: true, date: true },
+        })
+      : [];
+    res.json({ reports, races, open: reports.filter((r) => !REPORT_DECIDED.includes(r.status)).length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/reports/:id", async (req, res, next) => {
+  try {
+    const report = await dbGetReport(prisma, req.params.id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+    res.json({
+      report,
+      messages: await dbMessages(prisma, report.id),
+      viewers: await dbViewers(prisma, report.id),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/reports/:id  { status, verdict?, penaltySeconds? }
+router.put("/reports/:id", async (req, res, next) => {
+  try {
+    const report = await dbGetReport(prisma, req.params.id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+    const b = req.body || {};
+    res.json({ ok: true, report: await dbDecideReport(prisma, report, b) });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// Letting somebody else into one thread (a witness, a team mate). Per report,
+// never a blanket permission.
+router.post("/reports/:id/viewers", async (req, res, next) => {
+  try {
+    const { discordId, name } = req.body || {};
+    if (!/^\d{5,25}$/.test(String(discordId || ""))) {
+      return res.status(400).json({ error: "That is not a Discord user ID" });
+    }
+    res.json({ ok: true, viewers: await dbAddViewer(prisma, req.params.id, discordId, name) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/reports/:id/viewers/:discordId", async (req, res, next) => {
+  try {
+    res.json({ ok: true, viewers: await dbRemoveViewer(prisma, req.params.id, req.params.discordId) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/reports/:id", async (req, res, next) => {
+  try {
+    await dbDeleteReport(prisma, req.params.id);
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }

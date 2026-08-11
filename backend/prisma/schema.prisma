@@ -565,6 +565,58 @@ model FeedbackReply {
   @@index([feedbackId])
 }
 
+// An incident report: "someone hit me on lap 14". Private to the person who
+// filed it, the driver it names, the admins, and anyone an admin lets in.
+// `source` is SITE for one written on the site, INGAME for one the webPenalty
+// app fired mid-race (which carries a timestamp instead of a lap). The verdict
+// records what was decided and never writes itself into the classification —
+// see backend/src/lib/reports.js, which manages these three tables in raw SQL.
+model Report {
+  id                String    @id
+  raceId            String?
+  lap               Int?
+  reporterDiscordId String?
+  reporterName      String?
+  accusedDriverId   String?
+  accusedName       String?
+  body              String    @default("")
+  source            String    @default("SITE") // SITE | INGAME
+  status            String    @default("NEW") // NEW | REVIEWING | PENALTY | NO_PENALTY | DISMISSED
+  incidentAt        DateTime?
+  verdict           String?
+  penaltySeconds    Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime?
+
+  @@index([raceId])
+  @@index([createdAt])
+}
+
+// One message in a report's thread. `author` is REPORTER, ACCUSED or ADMIN; the
+// byline is stored so the thread still reads correctly after a rename.
+model ReportMessage {
+  id              String   @id
+  reportId        String
+  author          String
+  authorDiscordId String?
+  authorName      String?
+  body            String
+  createdAt       DateTime @default(now())
+
+  @@index([reportId])
+}
+
+// Somebody an admin has let into ONE report's thread. Never a blanket
+// permission: membership is granted per report and removed the same way.
+model ReportViewer {
+  reportId  String
+  discordId String
+  name      String?
+  createdAt DateTime @default(now())
+
+  @@id([reportId, discordId])
+}
+
 // Cross-season identity. Driver rows are per-season (a person racing in three
 // seasons has three Driver rows); this table groups those rows under one shared
 // personId so career stats aggregate and archive tables can show the person's
