@@ -70,6 +70,11 @@ export async function ensureAppSchema(prisma) {
   await addColumn(prisma, "Race", "qualiMinutes", "INTEGER");
   await addColumn(prisma, "Race", "raceLaps", "INTEGER");
 
+  // --- Highlights video of a finished round (migration race_highlights): one
+  // pasted link, shown as the Highlights button on the race results. Any
+  // http(s) address; see lib/raceHighlights.js.
+  await addColumn(prisma, "Race", "highlightsUrl", "TEXT");
+
   // --- Race type (migration race_type): CHAMPIONSHIP | TRAINING | SPECIAL.
   // Backfill: rows flagged isSpecialEvent become SPECIAL once (a CHAMPIONSHIP-
   // typed row with the flag set is by definition unmigrated — TRAINING rows

@@ -11,6 +11,7 @@ import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
 import RaceResults from "../components/RaceResults.jsx";
 import RaceFacts from "../components/RaceFacts.jsx";
 import RaceGallery from "../components/RaceGallery.jsx";
+import VideoEmbed from "../components/VideoEmbed.jsx";
 import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
@@ -18,6 +19,7 @@ import { circuitFor, flagFor } from "../data/circuits.js";
 import { useSpecificTitle, prettyTrack } from "../utils/pageTitle.js";
 import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { signupRaceIds } from "../utils/signupQueue.js";
+import { youtubeId } from "../utils/videoLinks.js";
 import { fmtRaceDate, fmtRaceDateFull } from "../utils/format.js";
 
 // The calendar is built entirely from the season's races (DB), so it stays in
@@ -29,6 +31,27 @@ import { fmtRaceDate, fmtRaceDateFull } from "../utils/format.js";
 // being redefined in two places.
 function kindOf(r) {
   return r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+}
+
+// A screen with a play mark on it, for the Highlights button. Deliberately not
+// the Replay button's solid triangle sitting next to it: two play triangles in
+// a row would read as one control drawn twice.
+function HighlightsIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-3.5 w-3.5 text-brand"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2.5" y="4.5" width="19" height="15" rx="3" />
+      <path d="M10.5 9.5l4.5 2.5-4.5 2.5v-5z" />
+    </svg>
+  );
 }
 
 // The championship rounds in calendar order: the "Rounds" rail, and the list
@@ -536,6 +559,13 @@ export default function Races() {
   // table (RaceResults handles that) until one with quali is picked again.
   const [session, setSession] = useState("race");
 
+  // Whether the round's highlights player is folded out. Per round, not sticky:
+  // the button is there to be pressed for the round you are looking at, and a
+  // video that unfolds itself on every round you click through would fight the
+  // classification for the screen.
+  const [showHighlights, setShowHighlights] = useState(false);
+  useEffect(() => setShowHighlights(false), [selectedId]);
+
   useEffect(() => {
     if (!selectedId) return;
     // `alive` guards against a slow answer for the PREVIOUS round landing after
@@ -699,6 +729,11 @@ export default function Races() {
   const detailIsStale = !!detail && detail.race.id !== selectedId;
   const head = (detailIsStale && selectedRace) || detail?.race || null;
 
+  // The round's highlights cut, if the admin pasted one. A YouTube link gets an
+  // id and plays on the page; anything else keeps its link and opens in a tab.
+  const highlightsUrl = detail?.race?.highlightsUrl || null;
+  const highlightsVideoId = youtubeId(highlightsUrl);
+
   // A round opened from the address bar (?race=<id>) is its own page as far as a
   // Switching tabs re-points the explorer at a sensible race of the NEW type —
   // same heuristic as the initial pick (most recent completed, else next
@@ -851,32 +886,48 @@ export default function Races() {
                               h={19}
                             />
                           )}
-                          <h2 className="min-w-0 flex-1 truncate font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">
+                          <h2 className="min-w-0 truncate font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">
                             {head.number != null && <span className="text-light">R{head.number}</span>} {head.track}
                           </h2>
-                          {/* Race | Qualifying switch — it belongs to THIS round,
-                              so it stays glued to the round title on every screen
-                              size (the tab bar at the top of the page filters
-                              which list you're browsing, a different job). Only
-                              for rounds with an imported qualifying. */}
-                          {!detailIsStale && detail.quali?.length > 0 && (
-                            <SlidingTabs
-                              className="shrink-0"
-                              wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
-                              btnClassName="px-2.5 py-1 text-[11px]"
-                              pillClassName="rounded-md bg-brand shadow"
-                              items={[
-                                { key: "race", label: "Race" },
-                                { key: "quali", label: "Quali" },
-                              ]}
-                              value={session}
-                              onChange={setSession}
-                            />
-                          )}
-                          {/* Replay + date are reference info, not controls, so
-                              on phones they take the second line and leave the
-                              title row to the name and the switch. */}
+                          {/* What you can DO with this round, grouped together
+                              on the left: watch the highlights, rewatch the
+                              race, report an incident. On phones they take a
+                              line of their own and leave the title its width. */}
                           <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
+                            {/* The night's highlights, pasted in the admin's
+                                race details. A YouTube cut folds out into the
+                                player below (nothing is loaded from YouTube
+                                until it does); any other link opens where it
+                                lives. No link, no button. */}
+                            {!detailIsStale && highlightsUrl && (
+                              highlightsVideoId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowHighlights((v) => !v)}
+                                  aria-expanded={showHighlights}
+                                  title="Watch the highlights of this round"
+                                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
+                                    showHighlights
+                                      ? "border-brand bg-brand/10 text-dark"
+                                      : "border-border bg-card text-medium hover:border-brand/60 hover:text-dark"
+                                  }`}
+                                >
+                                  <HighlightsIcon />
+                                  Highlights
+                                </button>
+                              ) : (
+                                <a
+                                  href={highlightsUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Watch the highlights of this round"
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark"
+                                >
+                                  <HighlightsIcon />
+                                  Highlights
+                                </a>
+                              )
+                            )}
                             {/* Reporting an incident from the round you are
                                 looking at. It opens the same panel as the
                                 button in the corner, with this race already
@@ -907,6 +958,34 @@ export default function Races() {
                                 Replay
                               </Link>
                             )}
+                          </span>
+                          {/* Pushes the switch and the date to the right edge,
+                              away from the buttons. Desktop only: on phones the
+                              groups are on their own lines already. */}
+                          <span className="hidden flex-1 sm:block" />
+                          {/* Race | Qualifying switch — not an action on the
+                              round but a view of the table underneath, so it
+                              sits on the right with the date rather than in
+                              among the buttons. Only for rounds with an
+                              imported qualifying. */}
+                          {/* justify-between only bites on the phone line, where
+                              the group is full width: switch left, date right,
+                              the way the row reads on a desktop. */}
+                          <span className="flex w-full items-center justify-between gap-3 sm:w-auto sm:shrink-0">
+                            {!detailIsStale && detail.quali?.length > 0 && (
+                              <SlidingTabs
+                                className="shrink-0"
+                                wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
+                                btnClassName="px-2.5 py-1 text-[11px]"
+                                pillClassName="rounded-md bg-brand shadow"
+                                items={[
+                                  { key: "race", label: "Race" },
+                                  { key: "quali", label: "Quali" },
+                                ]}
+                                value={session}
+                                onChange={setSession}
+                              />
+                            )}
                             {head.date && (
                               <span
                                 className="text-right font-mono text-xs font-semibold tabular-nums text-light sm:text-sm"
@@ -923,6 +1002,16 @@ export default function Races() {
                           </p>
                         )}
                       </div>
+                      {/* The highlights, folded out above the classification:
+                          the button is right there, and a video that opened
+                          below the table would be watched by nobody. Still a
+                          still image until it is clicked (VideoEmbed), so a
+                          visitor who never presses play never meets YouTube. */}
+                      {showHighlights && highlightsVideoId && (
+                        <div className="mb-4 overflow-hidden rounded-xl border border-border">
+                          <VideoEmbed videoId={highlightsVideoId} title={`${head.track} highlights`} />
+                        </div>
+                      )}
                       <RaceResults race={detail.race} results={detail.results} quali={detail.quali} session={session} />
                       {detail.race.hasPositions && <RaceFacts race={detail.race} results={detail.results} quali={detail.quali} />}
                       {/* The night's photos, last: the classification is what

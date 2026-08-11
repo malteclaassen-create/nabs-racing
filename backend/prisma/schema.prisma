@@ -274,6 +274,10 @@ model Race {
   // Managed via raw SQL (ensureAppSchema) like driverOfTheDay* below.
   qualiMinutes Int?
   raceLaps     Int?
+  // Highlights video of the finished round — one pasted http(s) link, shown as
+  // the Highlights button on the race results (migration race_highlights).
+  // Managed via raw SQL (ensureAppSchema + lib/raceHighlights.js).
+  highlightsUrl String?
   // Admin-picked "Driver of the Day" for this race (a driver id). Shown as a
   // fan-favourite fact on the results view. null = not chosen. Managed via raw
   // SQL (ensureAppSchema) so it's writable while the dev server holds the client.

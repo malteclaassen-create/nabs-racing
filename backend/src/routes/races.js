@@ -8,6 +8,7 @@ import { readDriverRoles } from "../lib/driverRoles.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
 import { readManualFastestLaps } from "../lib/raceHonours.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
+import { readRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
 import { dbReplaysByRace } from "../lib/downloads.js";
 import { readRaceCountries, staticCountryFor } from "../lib/raceCountries.js";
@@ -77,7 +78,7 @@ router.get("/", async (req, res, next) => {
     // Session format + race type (raw-SQL columns) for the upcoming-race panel
     // and the calendar's grouping, and any published replay downloads so the
     // calendar can offer a Replay button.
-    const [format, types, replays, winners, countries, photoCounts] = await Promise.all([
+    const [format, types, replays, winners, countries, photoCounts, highlights] = await Promise.all([
       readRaceFormat(prisma, races.map((r) => r.id)),
       readRaceTypes(prisma, races.map((r) => r.id)),
       dbReplaysByRace(prisma, races.map((r) => r.id)),
@@ -86,6 +87,9 @@ router.get("/", async (req, res, next) => {
       // How many gallery photos each round has, so the calendar can mark the
       // ones worth opening without loading a single image.
       readPhotoCounts(prisma, races.map((r) => r.id)),
+      // Which rounds have a highlights cut, so the admin's round picker can say
+      // so on arrival instead of one round at a time as they are opened.
+      readRaceHighlights(prisma, races.map((r) => r.id)),
     ]);
     res.json(
       races.map((r) => ({
@@ -102,6 +106,7 @@ router.get("/", async (req, res, next) => {
         qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
         raceLaps: format.get(r.id)?.raceLaps ?? null,
         replayDownloadId: replays.get(r.id) || null,
+        highlightsUrl: highlights.get(r.id) || null,
         photoCount: photoCounts.get(r.id) || 0,
         winner: winners.get(r.id) || null,
       }))
@@ -347,6 +352,8 @@ router.get("/:id/results", async (req, res, next) => {
         qualiMinutes: format.qualiMinutes ?? null,
         raceLaps: format.raceLaps ?? null,
         replayDownloadId: replays.get(race.id) || null,
+        // The round's highlights video, if the admin pasted one.
+        highlightsUrl: (await readRaceHighlights(prisma, [race.id])).get(race.id) || null,
         hasPositions,
         // Championship round, training session or special event. The list
         // endpoint has always sent this; the detail one did not, so the results

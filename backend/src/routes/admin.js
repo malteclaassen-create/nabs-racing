@@ -21,6 +21,7 @@ import { createBackup, tryCreateBackup, listBackups, streamFullBackupZip, delete
 import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnostics.js";
 import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
 import { parseFormatNumber } from "../lib/raceFormat.js";
+import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
 import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
@@ -2766,6 +2767,9 @@ function parseEventExtras(body) {
   const laps = parseFormatNumber(body.raceLaps, "Race laps", 999);
   if (laps.error) return { error: laps.error };
   if (laps.ok) out.raceLaps = laps.value;
+  const highlights = parseHighlightsUrl(body.highlightsUrl);
+  if (highlights.error) return { error: highlights.error };
+  if (highlights.ok) out.highlightsUrl = highlights.value;
   return out;
 }
 
@@ -2776,6 +2780,9 @@ async function writeRaceFormat(raceId, extras) {
   }
   if (extras.raceLaps !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Race" SET "raceLaps" = ? WHERE "id" = ?`, extras.raceLaps, raceId);
+  }
+  if (extras.highlightsUrl !== undefined) {
+    await writeRaceHighlights(prisma, raceId, extras.highlightsUrl);
   }
 }
 
