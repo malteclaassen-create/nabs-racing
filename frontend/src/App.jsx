@@ -54,6 +54,12 @@ const MyFeedback = lazy(() => import("./pages/MyFeedback.jsx"));
 // Your own incident-report threads. Every report notification links here
 // (/reports?id=…), and on a phone it is the way in.
 const MyReports = lazy(() => import("./pages/MyReports.jsx"));
+// Development only. The ternary is what keeps it out of a built site:
+// import.meta.env.DEV is replaced with a literal false at build time, so the
+// dynamic import below it is dead code and the chunk is never emitted. Written
+// as a lazy() call inside the route instead, the chunk still shipped — an
+// unreachable file, but one that hands out logins, sitting in dist/.
+const DevLogin = import.meta.env.DEV ? lazy(() => import("./pages/DevLogin.jsx")) : null;
 
 // Keeps the browser-tab title in sync with the page and the season being viewed.
 //
@@ -227,6 +233,11 @@ function AppRoutes() {
             answer sends (/feedback?id=…) and from the feedback panel itself. */}
         <Route path="/feedback" element={<MyFeedback />} />
         <Route path="/reports" element={<MyReports />} />
+        {/* Signing in as any driver, to try both sides of a report on one
+            machine. `import.meta.env.DEV` is false in a build, so this route
+            and the page behind it are removed from the shipped bundle; the API
+            half refuses anything that is not a loopback request anyway. */}
+        {import.meta.env.DEV && <Route path="/dev/login" element={<DevLogin />} />}
         {/* The member's private driver area (login required). */}
         <Route path="/cockpit" element={<Cockpit />} />
         {/* Focused editor for just the driver's rating card (linked from /profile). */}

@@ -25,6 +25,8 @@ import downloadsRoutes from "./routes/downloads.js";
 import notificationsRoutes from "./routes/notifications.js";
 import feedbackRoutes from "./routes/feedback.js";
 import reportsRoutes from "./routes/reports.js";
+import devLoginRoutes from "./routes/devLogin.js";
+import { IS_DEPLOYED } from "./lib/deployment.js";
 import searchRoutes from "./routes/search.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
@@ -244,6 +246,12 @@ app.use("/api/downloads", downloadsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/reports", reportsRoutes);
+// Signing in as any driver, for testing both sides of a report on one machine.
+// The router refuses to mount on anything that looks like a deployment, and
+// refuses every request that did not come from the loopback address. See the
+// note at the top of routes/devLogin.js — it is an authentication bypass and it
+// is treated as one.
+if (!IS_DEPLOYED) app.use("/api/dev", devLoginRoutes);
 app.use("/api/search", searchRoutes);
 
 // Admin
