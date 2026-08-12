@@ -4666,9 +4666,16 @@ function withSessionSecond(reports, races) {
   // One archive read per ROUND, not per report: a busy round can carry a dozen.
   const startOf = new Map();
   return reports.map((r) => {
-    if (r.contactSecond != null) return { ...r, sessionSecond: r.contactSecond };
     const race = r.raceId ? byId.get(r.raceId) : null;
-    if (!race || !r.incidentAt || race.number == null || race.season?.number == null) return r;
+    // Derive from the archive whenever it can be read, and fall back to the
+    // stored figure only when it cannot. For a pinned contact the two are the
+    // same arithmetic on the same anchor, so this costs nothing — and it means a
+    // correction to the anchor reaches reports that were filed before it. The
+    // first version measured from the green flag rather than the start of the
+    // session, which left every stored figure short by the grid wait.
+    if (!race || !r.incidentAt || race.number == null || race.season?.number == null) {
+      return r.contactSecond != null ? { ...r, sessionSecond: r.contactSecond } : r;
+    }
     if (!startOf.has(race.id)) {
       let start = null;
       try {
@@ -4679,7 +4686,7 @@ function withSessionSecond(reports, races) {
       startOf.set(race.id, start);
     }
     const start = startOf.get(race.id);
-    if (!start) return r;
+    if (!start) return r.contactSecond != null ? { ...r, sessionSecond: r.contactSecond } : r;
     const second = Math.round(new Date(r.incidentAt).getTime() / 1000 - start);
     // A negative figure means the report's clock and the round's archive
     // disagree about which session this was — showing "-4:12 into the race"

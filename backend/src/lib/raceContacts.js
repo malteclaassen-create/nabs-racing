@@ -32,11 +32,30 @@ const tsOf = (x) => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-// When the session actually started: the earliest thing in the file, minus the
-// first lap's duration where we have one. A contact in the run to turn one
-// happens BEFORE anybody has completed a lap, so anchoring on the first lap
-// crossing would put those at a negative time.
+// Where the REPLAY starts, which is what "N seconds into the race" has to be
+// measured from if a steward is going to drag a timeline to it.
+//
+// Not the green flag. An AC race session begins with `wait_time` seconds of
+// grid and formation, and the replay records all of it, so the flag is already
+// some minutes into the file. Anchoring on the first thing that happens ON
+// TRACK put every figure short by exactly that wait: 0:13 for an incident a
+// replay holds at 5:09.
+//
+// The formula is the one TeTeMaTeTe's replayTools uses, and the league already
+// runs that app: first lap's crossing, minus how long that lap took, minus the
+// wait. Matching it means our numbers and the numbers in that app's own event
+// list agree, so a steward can work from either.
+//
+// The old earliest-thing-in-the-file method stays as the fallback for a round
+// whose file has no laps or no SessionConfig; a figure measured from the green
+// flag is better than none, and it is never wrong by more than the wait.
 function sessionStart(data) {
+  const firstLap = (data.Laps || []).find((l) => tsOf(l));
+  const wait = Number(data.SessionConfig?.wait_time);
+  if (firstLap && Number.isFinite(wait)) {
+    return Math.round(tsOf(firstLap) - (Number(firstLap.LapTime) || 0) / 1000 - wait);
+  }
+
   const stamps = [];
   for (const e of data.Events || []) {
     const t = tsOf(e);
