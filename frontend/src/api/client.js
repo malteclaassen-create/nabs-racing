@@ -851,6 +851,10 @@ export const api = {
   standDownFromSeat: (offerId) => request(`/market/offer/${offerId}/stand-down`, { method: "POST", userAuth: true }),
   // Admin writes down a swap that was agreed on Discord.
   adminCreateOffer: (body) => request("/admin/market", { method: "POST", body, auth: true }),
+  // How many seats are going begging, and how many of those the reserves have
+  // been pointed at. The nudge on the members' side waits for this.
+  adminMarketAnnounceState: () => request("/admin/market/announce", { auth: true }),
+  adminMarketAnnounce: () => request("/admin/market/announce", { method: "POST", auth: true }),
   banMember: (discordId, banned, reason) =>
     request(`/admin/members/${discordId}/ban`, { method: "POST", body: { banned, reason }, auth: true }),
   linkMember: (discordId, driverId) =>

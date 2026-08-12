@@ -183,7 +183,20 @@ router.get("/", async (req, res, next) => {
 
 // POST /api/market/offer { raceId } -> the logged-in full-time driver offers
 // their seat for that race. Idempotent: re-offering reopens a cancelled offer.
-// GET /api/market/alert -> { isReserve, raceId, open: [offerId], mine: [offerId] }
+// What the admins have actually announced, and when. See POST
+// /api/admin/market/announce for why this exists at all.
+export const ANNOUNCE_KEY = "market_announce";
+export async function readAnnounce(prisma) {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: ANNOUNCE_KEY } });
+    const v = row?.value ? JSON.parse(row.value) : null;
+    return { at: v?.at || "", ids: Array.isArray(v?.ids) ? v.ids : [] };
+  } catch {
+    return { at: "", ids: [] };
+  }
+}
+
+// GET /api/market/alert -> { isReserve, raceId, open: [token], mine: [token] }
 //
 // The little bit the SITE CHROME needs: is a seat going begging, and has this
 // person already put their hand up for it. The full market list is a page's
@@ -193,6 +206,16 @@ router.get("/", async (req, res, next) => {
 //
 // Reserve drivers only. Everybody else gets isReserve:false and empty lists, and
 // the browser never asks again for the rest of the visit.
+//
+// Only seats an admin has ANNOUNCED count. A seat can sit open for a good
+// reason — the round is weeks off, the deal is half agreed on Discord, the
+// admin wants a word with somebody first — and a site that chases every reserve
+// the moment a row appears takes that decision away from them.
+//
+// The ids come back as "<offerId>@<announcedAt>" rather than bare ids. The
+// browser only ever compares them against what it has already shown, so
+// announcing the same seat a second time is a token it has not seen and the
+// nudge comes back, which is exactly what pressing the button again is for.
 router.get("/alert", async (req, res, next) => {
   try {
     const empty = { isReserve: false, raceId: null, open: [], mine: [] };
@@ -222,6 +245,8 @@ router.get("/alert", async (req, res, next) => {
       rowFor.set(sid, base && (await seasonRowForDriver(prisma, base, sid, req.user?.discordId)));
     }
 
+    const announced = await readAnnounce(prisma);
+    const live = new Set(announced.ids);
     const open = [];
     const mine = [];
     let raceId = null;
@@ -233,8 +258,10 @@ router.get("/alert", async (req, res, next) => {
       for (const offer of race.seatOffers) {
         // Their own seat is not an opportunity, however open it is.
         if (offer.driverId === row.id) continue;
-        open.push(offer.id);
-        if (offer.interests.some((i) => i.driverId === row.id)) mine.push(offer.id);
+        if (!live.has(offer.id)) continue; // open, but nobody has been told yet
+        const token = `${offer.id}@${announced.at}`;
+        open.push(token);
+        if (offer.interests.some((i) => i.driverId === row.id)) mine.push(token);
         if (!raceId) raceId = race.id;
       }
     }

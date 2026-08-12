@@ -15,7 +15,7 @@ import { previewRaceImpact } from "../services/previewService.js";
 import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
 // The entry-list answer that follows a seat, shared with the driver-facing
 // market routes so an admin override and a driver's own pick write the same row.
-import { setSeatRsvp } from "./market.js";
+import { setSeatRsvp, readAnnounce, ANNOUNCE_KEY } from "./market.js";
 import { getWebhookUrl, setWebhookUrl, getResultsRoleId, getResultsWebhookUrl, setResultsRoleId, setResultsWebhookUrl, postToResultsChannel, announce, syncRaceToDiscord } from "../services/discordService.js";
 import { buildResultsPost, buildStandingsPost, buildConstructorsPost } from "../services/resultsPostService.js";
 import { resolveSeasonId, invalidatePrivateSeasonCache } from "../services/seasonService.js";
@@ -894,6 +894,60 @@ router.post("/market/:offerId/assign", async (req, res, next) => {
     next(e);
   }
 });
+
+// GET  /api/admin/market/announce -> { openCount, announcedCount, at }
+// POST /api/admin/market/announce -> point every reserve at the open seats
+//
+// The nudge on the members' side (the count beside Attendance, the line above
+// the bottom of the attendance page, the ring around the free seats) used to
+// fire on its own the moment a seat row existed. That is the site deciding to
+// chase seventy-eight people, and it is not the site's decision: a seat can be
+// open because the round is weeks away, or because the swap is half agreed
+// somewhere else and the admin wants a word first.
+//
+// So it waits here. Pressing this writes down which seats are being announced
+// and when, and the members' side only lights up for those. Pressing it again
+// later is a fresh stamp, which is how you chase the same seat twice without
+// the site doing it behind your back.
+router.get("/market/announce", async (req, res, next) => {
+  try {
+    const openIds = await openOfferIds();
+    const announced = await readAnnounce(prisma);
+    res.json({
+      openCount: openIds.length,
+      // Only the ones that are still open — an announcement for a seat that has
+      // since been filled is not something waiting to be repeated.
+      announcedCount: openIds.filter((id) => announced.ids.includes(id)).length,
+      at: announced.at || null,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/market/announce", async (req, res, next) => {
+  try {
+    const ids = await openOfferIds();
+    const value = JSON.stringify({ at: new Date().toISOString(), ids });
+    await prisma.setting.upsert({
+      where: { key: ANNOUNCE_KEY },
+      update: { value },
+      create: { key: ANNOUNCE_KEY, value },
+    });
+    res.json({ ok: true, count: ids.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Every seat currently going begging on a race that has not been run.
+async function openOfferIds() {
+  const rows = await prisma.seatOffer.findMany({
+    where: { status: "OPEN", race: { isCompleted: false, isSpecialEvent: false } },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
 
 // POST /api/admin/market  { raceId, driverId, filledById? }
 // Enter a swap that was agreed somewhere else.

@@ -309,6 +309,7 @@ function MarketAdmin() {
     .sort((a, b) => a.name.localeCompare(b.name));
   const upcoming = market.data?.races || [];
   const [manual, setManual] = useState({ raceId: "", driverId: "", filledById: "" });
+  const announce = useApi(useCallback(() => api.adminMarketAnnounceState(), []));
 
   async function act(key, fn) {
     setError(null);
@@ -340,6 +341,39 @@ function MarketAdmin() {
       </div>
 
       {error && <Notice kind="error">{error}</Notice>}
+
+      {/* The one button that chases people. Deliberately a button and not an
+          automatic trigger — see the route for why. */}
+      <div className="card p-5">
+        <CardHead eyebrow="Driver Market" title="Tell the reserves" />
+        <p className="text-sm text-light">
+          Points every reserve driver at the seats that are going begging: a count beside Attendance in the nav bar,
+          a line above the bottom of the sign-up page, and a ring around the free seats. It stops for each of them as
+          soon as they have looked or put their hand up. Nothing happens on its own, so a seat can sit open while you
+          sort something out. Press it again to chase the same seat a second time.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            className="btn-primary"
+            disabled={busy === "announce" || !(announce.data?.openCount > 0)}
+            onClick={() =>
+              act("announce", async () => {
+                await api.adminMarketAnnounce();
+                await announce.reload();
+              })
+            }
+          >
+            {busy === "announce" ? "Sending…" : "Tell the reserves"}
+          </button>
+          <span className="text-sm text-medium">
+            {announce.loading
+              ? "…"
+              : announce.data?.openCount > 0
+                ? `${announce.data.openCount} seat${announce.data.openCount === 1 ? "" : "s"} open, ${announce.data.announcedCount} of them announced`
+                : "No seat is open right now."}
+          </span>
+        </div>
+      </div>
 
       {/* Deals struck somewhere else. Most swaps are agreed on Discord in two
           messages, and asking both drivers to repeat the whole thing here is
