@@ -28,6 +28,24 @@ function DriverName({ driverId, name, country, className = "" }) {
   );
 }
 
+// Points down when shut, up when open.
+function Chevron({ open }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={`h-4 w-4 transition-transform duration-base ease-out-soft ${open ? "rotate-180" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
 // Interested reserves, as a row of names. Chips became names on a line: a
 // rounded pill each was a lot of furniture for what is a list of people.
 function InterestRow({ interests, pickedId }) {
@@ -58,6 +76,17 @@ function InterestRow({ interests, pickedId }) {
 export default function SeatMarket({ race, me, reload, highlight = false, blockRef = null }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  // Which settled seats have been opened out. A settled seat is one line
+  // because that is all it usually needs to say, but "who else wanted it" is a
+  // fair question and used to be the only thing the tall version was good for.
+  const [open, setOpen] = useState(() => new Set());
+  const toggle = (id) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const offers = race?.offers || [];
   const iOffered = me && offers.some((o) => o.offeredBy.driverId === me.driverId);
@@ -80,19 +109,20 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
     }
   }
 
-  // Seats that still need somebody first, then by team tier. A reserve reading
-  // down the list meets every car they could actually be in before the ones
-  // that are settled, and within that the Tier-1 seats lead, which is the order
-  // the rest of the site puts teams in.
-  const sorted = [...offers].sort((a, b) => {
-    const openA = a.status !== "FILLED";
-    const openB = b.status !== "FILLED";
-    if (openA !== openB) return openA ? -1 : 1;
-    const tierA = a.team?.tier ?? 99;
-    const tierB = b.team?.tier ?? 99;
-    if (tierA !== tierB) return tierA - tierB;
-    return (a.team?.name || "").localeCompare(b.team?.name || "");
-  });
+  // Three groups, in the order a reserve reads them: what still needs somebody,
+  // then the settled seats by tier. Grouping rather than one long sort, because
+  // "Tier 1" written above three rows says what a sorted list only implies.
+  const rank = (o) => (o.team?.tier ?? 99);
+  const byTeam = (a, b) => (a.team?.name || "").localeCompare(b.team?.name || "");
+  const free = offers.filter((o) => o.status !== "FILLED").sort((a, b) => rank(a) - rank(b) || byTeam(a, b));
+  const settled = offers.filter((o) => o.status === "FILLED");
+  const groups = [
+    { key: "free", label: free.length === 1 ? "Still needs a driver" : "Still need a driver", rows: free },
+    { key: "t1", label: "Tier 1", rows: settled.filter((o) => o.team?.tier === 1).sort(byTeam) },
+    { key: "t2", label: "Tier 2", rows: settled.filter((o) => o.team?.tier === 2).sort(byTeam) },
+    // Anything whose team carries no tier still has to appear somewhere.
+    { key: "rest", label: "Other", rows: settled.filter((o) => o.team?.tier !== 1 && o.team?.tier !== 2).sort(byTeam) },
+  ].filter((g) => g.rows.length);
 
   return (
     <div ref={blockRef} className="border-t border-border bg-surface2/40 px-5 py-4">
@@ -118,8 +148,17 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
       {offers.length === 0 ? (
         <p className="text-sm text-faint">No open seats yet. Offer yours above if you can't make it.</p>
       ) : (
-        <div className="space-y-2">
-          {sorted.map((offer) => {
+        <div className="space-y-4">
+          {groups.map((group) => (
+            <div key={group.key}>
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-faint">
+                  {group.label}
+                </span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+              <div className="space-y-2">
+          {group.rows.map((offer) => {
             const mine = me && offer.offeredBy.driverId === me.driverId;
             const iAmInterested = me && offer.interests.some((i) => i.driverId === me.driverId);
             const iAmPicked = me && offer.filledBy?.driverId === me.driverId;
@@ -132,16 +171,29 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
             // hundred and sixty pixels to say something a single line says
             // better — and with several swaps in a round they pushed everything
             // still needing an answer off the screen.
-            if (filled && !mine && !iAmPicked) {
+            if (filled && !mine && !iAmPicked && !open.has(offer.id)) {
               return (
                 <div
                   key={offer.id}
                   className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-card px-3 py-2 text-sm"
                 >
                   <TeamLogo id={offer.team.id} name={offer.team.name} color={offer.team.color} logoUrl={offer.team.logoUrl} size={18} />
+                  <span className="font-semibold text-dark">{offer.team.name}</span>
+                  <span className="text-light">·</span>
                   <DriverName {...offer.filledBy} className="font-semibold text-dark" />
                   <span className="text-light">drives for</span>
                   <DriverName {...offer.offeredBy} className="text-medium" />
+                  {/* Its own control rather than the whole row, so the driver
+                      names in it stay real links. */}
+                  <button
+                    type="button"
+                    onClick={() => toggle(offer.id)}
+                    aria-expanded={false}
+                    className="ml-auto shrink-0 rounded p-1 text-faint transition hover:text-medium"
+                    title="Show who else wanted this seat"
+                  >
+                    <Chevron open={false} />
+                  </button>
                 </div>
               );
             }
@@ -162,7 +214,20 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
                       · seat of <DriverName {...offer.offeredBy} className="text-medium" />
                     </span>
                   </div>
-                  {filled ? (
+                  {filled && !mine && !iAmPicked ? (
+                    <span className="flex items-center gap-1">
+                      <span className="pill bg-emerald-500/15 text-ok">Filled · {offer.filledBy.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggle(offer.id)}
+                        aria-expanded
+                        className="shrink-0 rounded p-1 text-faint transition hover:text-medium"
+                        title="Show less"
+                      >
+                        <Chevron open />
+                      </button>
+                    </span>
+                  ) : filled ? (
                     <span className="pill bg-emerald-500/15 text-ok">Filled · {offer.filledBy.name}</span>
                   ) : forMe ? (
                     <span className="pill bg-brand/20 font-bold text-dark">This seat is free</span>
@@ -186,8 +251,10 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
                   </div>
                 )}
 
-                {/* actions */}
-                <div className="mt-2.5 border-t border-border pt-2.5">
+                {/* actions. A settled seat that is nobody's business shows the
+                    interest list and stops there, rather than an empty box with
+                    a hairline over it. */}
+                <div className={filled && !mine && !iAmPicked ? "hidden" : "mt-2.5 border-t border-border pt-2.5"}>
                   {/* Offerer: pick a reserve / withdraw */}
                   {mine && (
                     <div className="space-y-2">
@@ -249,8 +316,10 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
                     </div>
                   )}
 
-                  {/* Everyone else / logged out: read-only hint */}
-                  {!mine && !me?.isReserve && (
+                  {/* Everyone else / logged out: read-only hint. Never on a
+                      seat that is already taken — inviting somebody to take a
+                      car that has a driver in it is just wrong. */}
+                  {!mine && !me?.isReserve && !filled && (
                     <p className="text-xs text-faint">
                       {me ? "Only reserve drivers can take this seat." : "Sign in as a reserve driver to take a seat."}
                     </p>
@@ -259,6 +328,9 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
               </div>
             );
           })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
