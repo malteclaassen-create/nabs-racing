@@ -355,6 +355,10 @@ export default function AdminReports() {
   const [openId, setOpenId] = useState(null);
   const [show, setShow] = useState("open");
   const [busy, setBusy] = useState(false);
+  const ask = useAsk();
+  // The in-game URL's two destructive buttons stay out of reach until asked
+  // for. Resets itself after either one runs.
+  const [unlocked, setUnlocked] = useState(false);
 
   // Everybody who could be named in a report, once, sorted.
   const drivers = useMemo(() => {
@@ -610,45 +614,92 @@ export default function AdminReports() {
                 value={`${window.location.origin}/api/reports/ingest?key=${ingest.key}`}
                 onFocus={(e) => e.target.select()}
               />
-              <p className="text-xs text-light">Treat it like a password.</p>
+              <p className="text-xs text-light">
+                Treat it like a password. It is pasted once, into webPenalty on the PC that relays the
+                reports, and then left alone.
+              </p>
             </>
           ) : (
             <p className="text-sm text-light">In-game reporting is off.</p>
           )}
-          <div className="flex flex-wrap gap-2">
-            <button
-              className="btn-secondary"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await api.setReportIngest(!ingest?.configured);
-                  reloadIngest();
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              {ingest?.configured ? "Switch off" : "Switch on and make a key"}
+          {/* Both of these break a URL that is sitting in somebody ELSE's game,
+              on another PC, and the only way to repair it is to catch that
+              person and have them paste a new one. That is a phone call, not a
+              click, so neither is reachable until the row is unlocked, and each
+              then says out loud what it is about to cost. */}
+          {ingest?.configured && !unlocked ? (
+            <button className="btn-secondary" onClick={() => setUnlocked(true)}>
+              Change this
             </button>
-            {ingest?.configured && (
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 className="btn-secondary"
                 disabled={busy}
                 onClick={async () => {
+                  const off = !!ingest?.configured;
+                  if (
+                    off &&
+                    !(await ask({
+                      title: "Switch off in-game reporting?",
+                      body:
+                        "The URL stops working immediately. Nobody can report from inside a race until this is switched back on AND the new URL has been pasted into webPenalty again, on whichever PC relays the reports. Switching it on again does not bring the old URL back.",
+                      danger: true,
+                      confirmLabel: "Switch off",
+                    }))
+                  )
+                    return;
                   setBusy(true);
                   try {
-                    await api.setReportIngest(true);
+                    await api.setReportIngest(!off);
                     reloadIngest();
+                    setUnlocked(false);
                   } finally {
                     setBusy(false);
                   }
                 }}
               >
-                New key
+                {ingest?.configured ? "Switch off" : "Switch on and make a key"}
               </button>
-            )}
-          </div>
+              {ingest?.configured && (
+                <button
+                  className="btn-secondary"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (
+                      !(await ask({
+                        title: "Make a new key?",
+                        body:
+                          "The URL below stops working the moment this is done. In-game reporting stays dead until the new one has been pasted into webPenalty on the PC that relays. Only worth it if the old URL has got out to someone who should not have it.",
+                        danger: true,
+                        confirmLabel: "Make a new key",
+                      }))
+                    )
+                      return;
+                    setBusy(true);
+                    try {
+                      await api.setReportIngest(true);
+                      reloadIngest();
+                      setUnlocked(false);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  New key
+                </button>
+              )}
+              {ingest?.configured && (
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-light transition hover:text-dark"
+                  onClick={() => setUnlocked(false)}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
