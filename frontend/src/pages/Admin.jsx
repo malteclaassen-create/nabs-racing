@@ -21,9 +21,15 @@ import AdminHealth from "../components/AdminHealth.jsx";
 import AdminMembers from "../components/AdminMembers.jsx";
 import AdminNotifications from "../components/AdminNotifications.jsx";
 import AdminAllTime from "../components/AdminAllTime.jsx";
-import AdminFeedback, { FEEDBACK_CHANGED_EVENT } from "../components/AdminFeedback.jsx";
-import AdminReports, { REPORTS_CHANGED_EVENT } from "../components/AdminReports.jsx";
+// (Their "how many are waiting" counters live with the navigation now, since
+// the folding rail has to be able to show a hidden one on its group header.)
+import AdminFeedback from "../components/AdminFeedback.jsx";
+import AdminReports from "../components/AdminReports.jsx";
 import AdminSearch from "../components/AdminSearch.jsx";
+// The navigation itself: the same twenty-two tabs as either the strip across
+// the top or a folding list down the left, plus the switch between the two.
+import AdminNav, { AdminNavToggle } from "../components/AdminNav.jsx";
+import { NAV_RAIL, useAdminNavMode } from "../hooks/useAdminNavMode.js";
 import RacePreview from "../components/RacePreview.jsx";
 import StewardPenalties from "../components/StewardPenalties.jsx";
 // The tab strip and the searchable list of what each tab does live together in
@@ -35,145 +41,78 @@ import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
 import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
 
 
-// Prominent bar at the top of the admin: shows WHICH series + season every
-// scoped edit below applies to, and lets the admin switch both right here (no
-// hunting for the nav selector). Switching remounts the page (App keys on the
-// season / series), so we stash the current tab first — the admin stays where
-// they were.
-function AdminSeasonBar({ tab }) {
+// WHICH series and season every scoped edit below applies to, and the two
+// switches for them, in the page's own header row.
+//
+// This used to be a card of its own under the title: an icon, the words
+// "Currently editing", the season in display type, and the switches off to the
+// right. It said the same three things this row says, and cost a 90px band
+// above every single tab for the privilege. What matters is that the answer is
+// never off-screen and never ambiguous, not that it is large.
+//
+// Switching either one remounts the whole page (App keys on the season and the
+// series), so the current tab is stashed first — the admin stays where they
+// were instead of being dropped back on Seasons.
+function AdminScope({ tab }) {
   const { seasons, season, setSeason, current } = useSeason();
   const { seriesList, current: series, setSlug } = useSeries();
   if (!seasons?.length && seriesList.length <= 1) return null;
   const isActive = current?.isActive;
   const isPrivate = current?.isPublic === false;
   const ordered = [...(seasons || [])].sort((a, b) => b.number - a.number);
+  const stash = () => sessionStorage.setItem("nabs_admin_tab", tab); // survive the remount
   return (
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="flex items-center gap-3 border-l-4 pl-3" style={{ borderColor: isActive ? "#10b981" : isPrivate ? "#f43f5e" : "#f59e0b" }}>
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-link/10 text-link">
-          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v13a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 3v4M16 3v4" />
-          </svg>
-        </span>
-        <div>
-          <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Currently editing</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-display text-lg font-extrabold uppercase leading-none tracking-tight text-dark">
-              {seriesList.length > 1 && series ? `${series.name} · ` : ""}
-              {current?.name || NO_VALUE}
-            </span>
-            {isActive ? (
-              <span className="pill bg-emerald-500/15 text-ok">active · public</span>
-            ) : isPrivate ? (
-              <span className="pill bg-rose-500/15 text-rose-600">private · hidden</span>
-            ) : (
-              <span className="pill bg-amber-500/15 text-warn">archive · public</span>
-            )}
-          </div>
-          {current?.game && <div className="mt-0.5 text-xs text-light">{current.game}</div>}
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-4">
-        {seriesList.length > 1 && (
-          <label className="flex items-center gap-2 text-sm">
-            <span className="font-semibold text-medium">Series</span>
-            <select
-              className="input py-1.5"
-              value={series?.slug ?? ""}
-              onChange={(e) => {
-                sessionStorage.setItem("nabs_admin_tab", tab); // survive the remount
-                setSlug(e.target.value);
-              }}
-            >
-              {seriesList.map((s) => (
-                <option key={s.id} value={s.slug}>
-                  {s.name}
-                  {s.isActive ? " (primary)" : s.isPublic === false ? " (private)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label className="flex items-center gap-2 text-sm">
-          <span className="font-semibold text-medium">Switch season</span>
-          <select
-            className="input py-1.5"
-            value={season ?? ""}
-            onChange={(e) => {
-              sessionStorage.setItem("nabs_admin_tab", tab); // survive the remount
-              setSeason(Number(e.target.value));
-            }}
-          >
-            {ordered.map((s) => (
-              <option key={s.id} value={s.number}>
-                {s.name}
-                {s.isActive ? " (active)" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-    </div>
-  );
-}
-
-// Unread-style counter on the Feedback tab, so a bug report can't sit there
-// unnoticed. Rendered inside the tab strip (i.e. only once signed in), and it
-// simply disappears when there is nothing new.
-function FeedbackCount() {
-  const { data, reload } = useApi(useCallback(() => api.adminFeedback(), []));
-  // Working through an entry in the tab below must take the number down with it.
-  useEffect(() => {
-    window.addEventListener(FEEDBACK_CHANGED_EVENT, reload);
-    return () => window.removeEventListener(FEEDBACK_CHANGED_EVENT, reload);
-  }, [reload]);
-  const n = data?.newCount || 0;
-  if (!n) return null;
-  return (
-    <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 font-mono text-[10px] font-bold leading-none text-ink">
-      {n > 9 ? "9+" : n}
-    </span>
-  );
-}
-
-// The same, for incident reports: how many are still waiting on a decision.
-// A report sitting unnoticed is worse than a bug report sitting unnoticed —
-// two drivers are waiting on the other end of it, and one of them was accused
-// of something.
-function ReportCount() {
-  const { data, reload } = useApi(useCallback(() => api.adminReports(), []));
-  useEffect(() => {
-    window.addEventListener(REPORTS_CHANGED_EVENT, reload);
-    return () => window.removeEventListener(REPORTS_CHANGED_EVENT, reload);
-  }, [reload]);
-  const n = data?.open || 0;
-  if (!n) return null;
-  return (
-    <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 font-mono text-[10px] font-bold leading-none text-ink">
-      {n > 9 ? "9+" : n}
-    </span>
-  );
-}
-
-// Red launch-checklist banner while the shipped dev defaults are still in use.
-// Disappears on its own once the PIN is changed / a real JWT secret is set.
-function SecurityBanner() {
-  const { data } = useApi(useCallback(() => api.adminSecurity(), []));
-  if (!data || (!data.pinIsDefault && !data.jwtIsDefault)) return null;
-  return (
-    <div className="mb-4 space-y-2">
-      {data.pinIsDefault && (
-        <Notice kind="error">
-          The admin PIN is still the built-in default (<span className="font-mono">nabs2026</span>), so anyone who has
-          seen the project files can log in here. Change it in the <b>Change PIN</b> tab before sharing the site.
-        </Notice>
+    // A row of its own on phones, where the two switches then split the width
+    // between them rather than stepping down one per line. The word "Editing"
+    // goes with them: on a narrow screen it costs a switch a third of its
+    // width, and "Season 8 (active)" was never going to be read as anything
+    // else.
+    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+      <span className="hidden font-mono text-[10px] font-bold uppercase tracking-wider text-faint sm:inline">
+        Editing
+      </span>
+      {seriesList.length > 1 && (
+        <select
+          aria-label="Series being edited"
+          className="input w-auto min-w-0 flex-1 py-1.5 font-semibold sm:flex-none"
+          value={series?.slug ?? ""}
+          onChange={(e) => {
+            stash();
+            setSlug(e.target.value);
+          }}
+        >
+          {seriesList.map((s) => (
+            <option key={s.id} value={s.slug}>
+              {s.name}
+              {s.isActive ? " (primary)" : s.isPublic === false ? " (private)" : ""}
+            </option>
+          ))}
+        </select>
       )}
-      {data.jwtIsDefault && (
-        <Notice kind="error">
-          <span className="font-mono">JWT_SECRET</span> is not set, so sessions are signed with a publicly known default.
-          Set a long random <span className="font-mono">JWT_SECRET</span> in <span className="font-mono">backend/.env</span>{" "}
-          and restart the backend.
-        </Notice>
+      <select
+        aria-label="Season being edited"
+        className="input w-auto min-w-0 flex-1 py-1.5 font-semibold sm:flex-none"
+        value={season ?? ""}
+        onChange={(e) => {
+          stash();
+          setSeason(Number(e.target.value));
+        }}
+      >
+        {ordered.map((s) => (
+          <option key={s.id} value={s.number}>
+            {s.name}
+            {s.isActive ? " (active)" : ""}
+          </option>
+        ))}
+      </select>
+      {/* Whether what you are about to edit is the live season, an archive one
+          or a private draft. The colour is the whole point of keeping it. */}
+      {isActive ? (
+        <span className="pill bg-emerald-500/15 text-ok">active</span>
+      ) : isPrivate ? (
+        <span className="pill bg-rose-500/15 text-rose-600">private</span>
+      ) : (
+        <span className="pill bg-amber-500/15 text-warn">archive</span>
       )}
     </div>
   );
@@ -215,6 +154,9 @@ export default function Admin() {
   }
   const viewFor = (tabId) => (jump?.tab === tabId ? jump.view : null);
   const { season, setSeason } = useSeason();
+  // Which shape the navigation takes: the folding list down the left side, or
+  // the strip of tabs across the top. Remembered per browser.
+  const [navMode, setNavMode] = useAdminNavMode();
 
   // If any admin request reports an expired/invalid token, bounce to the login.
   useEffect(() => {
@@ -240,116 +182,108 @@ export default function Admin() {
 
   return (
     <div className="content-in">
-      <div className="mb-6 flex items-center justify-between">
+      {/* One row for everything that is true of the whole page: what is being
+          edited, where the menu sits, and the way out. */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <PageHeader eyebrow="League Office" title="Admin" />
-        <button
-          className="btn-secondary"
-          onClick={() => {
-            // Leave the admin area. Clears the PIN token; a Discord admin stays
-            // signed in to the site (their admin rights come from their account).
-            setToken(null);
-            window.location.href = "/";
-          }}
-        >
-          Sign out
-        </button>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <AdminScope tab={tab} />
+          {/* Same twenty-two tabs either way; this only says where they are. */}
+          <AdminNavToggle mode={navMode} onChange={setNavMode} />
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              // Leave the admin area. Clears the PIN token; a Discord admin stays
+              // signed in to the site (their admin rights come from their account).
+              setToken(null);
+              window.location.href = "/";
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
-
-      <SecurityBanner />
-
-      <AdminSeasonBar tab={tab} />
 
       {/* Above the tabs on purpose: it is the way in for anyone who does not
           already know which of the five menus below holds the thing they came
           for. */}
       <AdminSearch onGo={goTo} />
 
-      <div className="mb-6 flex flex-wrap gap-x-7 gap-y-3 border-b border-border">
-        {TAB_GROUPS.map((g) => (
-          <div key={g.label}>
-            <div className="mb-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
-              {g.label}
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {g.tabs.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`-mb-px rounded-t-lg border-b-2 px-3 py-2 text-sm font-semibold transition ${
-                    tab === t.id
-                      ? "border-primary text-link"
-                      : "border-transparent text-light hover:text-medium"
-                  }`}
-                >
-                  {t.label}
-                  {t.id === "feedback" && <FeedbackCount />}
-                  {t.id === "reports" && <ReportCount />}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* One wrapper for both shapes, and only its CLASSES change between them:
+          the panel below is the same element in either layout, so switching the
+          navigation does not remount twenty-two panels (and refetch everything
+          they hold) just to move a menu. The rail column is 15rem from lg up;
+          below that the grid is a single column and the rail sits on top of the
+          panel as its own folded-away line. */}
+      <div
+        className={
+          navMode === NAV_RAIL
+            ? "grid grid-cols-1 items-start gap-x-6 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]"
+            : ""
+        }
+      >
+        <AdminNav mode={navMode} tab={tab} onPick={setTab} />
 
-      {/* Keyed on the tab: all 22 panels fade in on switch instead of snapping.
-          One wrapper rather than 22 edits, and it means any tab added later is
-          animated by default. */}
-      <div key={tab} className="content-in min-h-[70vh]">
-        {tab === "seasons" && (
-          <Seasons
-            // One click from a season row to its race calendar: select that
-            // season in the global switcher, then jump to the Races tab.
-            gotoRaces={(s) => {
-              sessionStorage.setItem("nabs_admin_tab", "discord");
-              setSeason(s.number); // remounts the page; the tab survives above
-            }}
-          />
-        )}
-        {tab === "teams" && <Teams />}
-        {tab === "alltime" && (
-          <AdminAllTime
-            // Jump from a search hit to the tab that edits it. A hit in another
-            // season switches the global season first (which remounts the page,
-            // so the target tab is stashed to survive it); a hit in the season
-            // already being edited just changes the tab.
-            gotoTab={(t, seasonNumber) => {
-              if (seasonNumber != null && seasonNumber !== season) {
-                sessionStorage.setItem("nabs_admin_tab", t);
-                setSeason(seasonNumber);
-              } else {
-                setTab(t);
-              }
-            }}
-          />
-        )}
-        {tab === "import" && <AdminImport />}
-        {tab === "edit" && <EditResults />}
-        {tab === "content" && <AdminContent />}
-        {tab === "photos" && <AdminMedia jumpView={viewFor("photos")} jumpKey={jump?.n} />}
-        {tab === "ratings" && <AdminRatings />}
-        {tab === "discord" && <DiscordEvents />}
-        {tab === "market" && <MarketAdmin />}
-        {tab === "drivers" && <Drivers />}
-        {tab === "members" && <AdminMembers />}
-        {tab === "reports" && <AdminReports />}
-        {tab === "feedback" && <AdminFeedback />}
-        {tab === "notify" && <AdminNotifications />}
-        {tab === "social" && (
-          <div className="space-y-4">
-            <SocialAdmin />
-            <AdminSocialFeed />
-            <LiveLinksAdmin />
-            <LiveServersAdmin />
-          </div>
-        )}
-        {tab === "attendance" && <AdminAttendance jumpView={viewFor("attendance")} jumpKey={jump?.n} />}
-        {tab === "tracks" && <AdminTracks />}
-        {tab === "raceinfo" && <AdminRaceInfo />}
-        {tab === "faq" && <AdminWelcomeFaq />}
-        {tab === "downloads" && <AdminDownloads />}
-        {tab === "traffic" && <TrafficAdmin />}
-        {tab === "health" && <AdminHealth />}
-        {tab === "pin" && <ChangePin />}
+        {/* Keyed on the tab: all 22 panels fade in on switch instead of snapping.
+            One wrapper rather than 22 edits, and it means any tab added later is
+            animated by default. */}
+        <div key={tab} className="content-in min-h-[70vh] min-w-0">
+          {tab === "seasons" && (
+            <Seasons
+              // One click from a season row to its race calendar: select that
+              // season in the global switcher, then jump to the Races tab.
+              gotoRaces={(s) => {
+                sessionStorage.setItem("nabs_admin_tab", "discord");
+                setSeason(s.number); // remounts the page; the tab survives above
+              }}
+            />
+          )}
+          {tab === "teams" && <Teams />}
+          {tab === "alltime" && (
+            <AdminAllTime
+              // Jump from a search hit to the tab that edits it. A hit in another
+              // season switches the global season first (which remounts the page,
+              // so the target tab is stashed to survive it); a hit in the season
+              // already being edited just changes the tab.
+              gotoTab={(t, seasonNumber) => {
+                if (seasonNumber != null && seasonNumber !== season) {
+                  sessionStorage.setItem("nabs_admin_tab", t);
+                  setSeason(seasonNumber);
+                } else {
+                  setTab(t);
+                }
+              }}
+            />
+          )}
+          {tab === "import" && <AdminImport />}
+          {tab === "edit" && <EditResults />}
+          {tab === "content" && <AdminContent />}
+          {tab === "photos" && <AdminMedia jumpView={viewFor("photos")} jumpKey={jump?.n} />}
+          {tab === "ratings" && <AdminRatings />}
+          {tab === "discord" && <DiscordEvents />}
+          {tab === "market" && <MarketAdmin />}
+          {tab === "drivers" && <Drivers />}
+          {tab === "members" && <AdminMembers />}
+          {tab === "reports" && <AdminReports />}
+          {tab === "feedback" && <AdminFeedback />}
+          {tab === "notify" && <AdminNotifications />}
+          {tab === "social" && (
+            <div className="space-y-4">
+              <SocialAdmin />
+              <AdminSocialFeed />
+              <LiveLinksAdmin />
+              <LiveServersAdmin />
+            </div>
+          )}
+          {tab === "attendance" && <AdminAttendance jumpView={viewFor("attendance")} jumpKey={jump?.n} />}
+          {tab === "tracks" && <AdminTracks />}
+          {tab === "raceinfo" && <AdminRaceInfo />}
+          {tab === "faq" && <AdminWelcomeFaq />}
+          {tab === "downloads" && <AdminDownloads />}
+          {tab === "traffic" && <TrafficAdmin />}
+          {tab === "health" && <AdminHealth />}
+          {tab === "pin" && <ChangePin />}
+        </div>
       </div>
     </div>
   );
@@ -3499,7 +3433,12 @@ function SeriesPanel() {
                 /s/{s.slug} · {s.seasonCount} season{s.seasonCount === 1 ? "" : "s"}{s.game ? ` · ${s.game}` : ""}
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            {/* Wraps. A series row carries up to nine controls (order, colour,
+                logo, and five words of admin), which is a comfortable single
+                line on a desktop and roughly twice the width of a phone. Without
+                the wrap the whole admin page scrolled sideways and Delete sat
+                off the right edge where no thumb could reach it. */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               {sorted.length > 1 && (
                 <span className="flex items-center gap-1">
                   <button type="button" className="text-light transition hover:text-dark disabled:opacity-30" disabled={busy || i === 0}

@@ -453,6 +453,14 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "health",
+    // Was the red banner across the top of every tab until 2026-08-12; it is a
+    // card in Health now, which means it has to be findable.
+    title: "Default PIN and JWT secret",
+    hint: "Whether the admin PIN and JWT_SECRET are still the ones the project shipped with.",
+    keywords: "security secure default pin jwt secret warning red banner launch checklist before going public",
+  },
+  {
+    tab: "health",
     title: "Backups",
     hint: "Automatic database backups and the full download as a zip.",
     keywords: "backup backups database download zip restore save copy",

@@ -23,6 +23,46 @@ function SeverityBadge({ severity }) {
   );
 }
 
+// The two shipped defaults that must not survive going public: the built-in
+// admin PIN, and an unset JWT_SECRET.
+//
+// This used to be a red banner across the top of EVERY admin tab, which is the
+// loudest a warning can be and therefore the fastest one to stop being read.
+// It lives here instead, with the rest of the "is this server healthy" answers,
+// and says so either way — a check you can only see when it fails is a check
+// nobody can confirm ran.
+function SecurityCheck() {
+  const { data } = useApi(useCallback(() => api.adminSecurity(), []));
+  if (!data) return null;
+  const clean = !data.pinIsDefault && !data.jwtIsDefault;
+  return (
+    <section className="card p-5">
+      <CardHead title="Passwords and secrets" />
+      <div className="-mt-2 space-y-2">
+        {clean && (
+          <Notice kind="success">
+            The admin PIN has been changed and <span className="font-mono">JWT_SECRET</span> is set. Nothing here is
+            still on its shipped default.
+          </Notice>
+        )}
+        {data.pinIsDefault && (
+          <Notice kind="error">
+            The admin PIN is still the built-in default (<span className="font-mono">nabs2026</span>), so anyone who has
+            seen the project files can log in here. Change it in the <b>Change PIN</b> tab before sharing the site.
+          </Notice>
+        )}
+        {data.jwtIsDefault && (
+          <Notice kind="error">
+            <span className="font-mono">JWT_SECRET</span> is not set, so sessions are signed with a publicly known
+            default. Set a long random <span className="font-mono">JWT_SECRET</span> in{" "}
+            <span className="font-mono">backend/.env</span> and restart the backend.
+          </Notice>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function fmtSize(bytes) {
   if (bytes == null) return "";
   if (bytes > 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
@@ -204,6 +244,8 @@ export default function AdminHealth() {
   return (
     <div className="space-y-8">
       {error && <ErrorBox message={error} />}
+
+      <SecurityCheck />
 
       {/* --- Integrity check ------------------------------------------------ */}
       <section className="card p-5">
