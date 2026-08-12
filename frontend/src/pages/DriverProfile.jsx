@@ -3,6 +3,8 @@ import { useParams, Link, Navigate, useNavigate, useSearchParams } from "react-r
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
+import { useAdminAttention } from "../hooks/useAdminAttention.js";
+import AttentionDot from "../components/AttentionDot.jsx";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import {
@@ -1338,6 +1340,7 @@ export default function DriverProfile({ previewId, preview }) {
   const id = previewId || routeId;
   const navigate = useNavigate();
   const { user: authedUser } = useAuth();
+  const { total: adminAttention } = useAdminAttention();
   // Drawer for the site settings button shown on one's OWN profile.
   const { data, loading, error } = useApi(
     useCallback(() => Promise.all([api.driverProfile(id), api.driverRating(id)]), [id])
@@ -1456,11 +1459,20 @@ export default function DriverProfile({ previewId, preview }) {
 
   const ownControls = isOwnProfile && (
     <div className="-mb-2 flex justify-end gap-2">
-      <Link to="/profile" data-tour="personal-area" className="btn-secondary inline-flex items-center gap-1.5">
+      {/* The dot has to be on this button too, or the trail an admin follows
+          has a hole in the middle: the nav chip wears one, it leads HERE, and
+          the way on to the admin area is this button. `relative` is for the
+          dot's sake. */}
+      <Link
+        to="/profile"
+        data-tour="personal-area"
+        className="btn-secondary relative inline-flex items-center gap-1.5"
+      >
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
         </svg>
         Personal Area
+        <AttentionDot total={adminAttention} className="absolute -right-1 -top-1" />
       </Link>
       {/* Site settings moved into the /profile member bar — no gear here. */}
     </div>
