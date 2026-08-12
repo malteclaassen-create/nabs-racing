@@ -214,6 +214,10 @@ function NewReport({ races, presetRaceId, onFiled }) {
   const [error, setError] = useState(null);
   const [sent, setSent] = useState(null);
   const [unreachable, setUnreachable] = useState(null);
+  // The lap and the driver dropdown are the fallback, not the front door. AC
+  // recorded the contact; a person recalling it a day later did not. They come
+  // back on request, and on their own for a round with no recorded contacts.
+  const [byHand, setByHand] = useState(false);
 
   useEffect(() => {
     api
@@ -240,7 +244,11 @@ function NewReport({ races, presetRaceId, onFiled }) {
 
   // Picking a contact answers "who" and "which lap" from the race data, so both
   // controls step aside rather than sitting there contradicting it.
-  const picked = (contacts?.contacts || []).find((c) => c.id === contactId) || null;
+  const contactList = contacts?.contacts || [];
+  const picked = contactList.find((c) => c.id === contactId) || null;
+  // Nothing to pick from is not a dead end: the round may predate the archive,
+  // or the moment may be one AC never counted as a contact.
+  const handOnly = contacts != null && contactList.length === 0;
 
   async function submit() {
     setBusy(true);
@@ -296,120 +304,170 @@ function NewReport({ races, presetRaceId, onFiled }) {
     );
   }
 
+  // Three questions in order, one at a time: which race, which contact, what
+  // happened. The whole thing used to be one row of controls plus a list of
+  // stretched-out rows, which on a wide screen flung every field to a different
+  // corner of the monitor and read as a wall rather than a sequence.
   return (
-    <div className="card space-y-3 p-5">
-      <div className={`grid gap-3 ${picked ? "" : "sm:grid-cols-[2fr,1fr,2fr]"}`}>
+    <div className="card mx-auto max-w-3xl space-y-5 p-5">
+      <section className="space-y-1.5">
+        <Step n="1" label="Which race" />
         <select
           aria-label="Which race"
-          className="input"
+          className="input w-full"
           value={form.raceId}
           onChange={(e) => setForm({ ...form, raceId: e.target.value })}
         >
-          <option value="">Which race?</option>
+          <option value="">Pick the round</option>
           {races.map((r) => (
             <option key={r.id} value={r.id}>
               {r.number != null ? `R${r.number}` : "Session"} {r.track}
             </option>
           ))}
         </select>
-        {!picked && (
-          <>
-            <input
-              aria-label="Lap"
-              type="number"
-              min="1"
-              className="input"
-              placeholder="Lap"
-              value={form.lap}
-              onChange={(e) => setForm({ ...form, lap: e.target.value })}
-            />
-            <select
-              aria-label="Which driver"
-              className="input"
-              value={form.accusedDriverId}
-              onChange={(e) => setForm({ ...form, accusedDriverId: e.target.value })}
-            >
-              <option value="">Who?</option>
-              {drivers.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-      </div>
-      {picked && (
-        <p className="text-sm text-medium">
-          <span className="font-semibold text-dark">
-            Lap {picked.lap}, {picked.other.name}, {picked.kph} km/h
-          </span>{" "}
-          at {clock(picked.at)}, {mmss(picked.second)} into the race
-          {picked.eventIndex != null ? `, entry ${picked.eventIndex} in the race file` : ""}.
-        </p>
-      )}
+      </section>
+
       {/* What the race itself recorded. Picking one saves the reporter
           describing a moment and saves a steward hunting for it: the lap, the
-          other car and the clock time all come from the result file, and that
-          clock time is the one the in-game replay app displays. */}
-      {contacts?.contacts?.length > 0 && (
-        <div className="rounded-lg border border-border">
-          <div className="flex flex-wrap items-baseline gap-x-2 border-b border-border px-3 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-            Your contacts in this race
-            {/* The leading figure is a bare number on the row, which reads as
-                nothing at all unless it is named once. */}
-            <span className="font-normal normal-case tracking-normal text-faint">
-              the number is the entry in the race file, so a steward can find it
-            </span>
-          </div>
-          <ul className="max-h-52 divide-y divide-border overflow-y-auto">
-            {contacts.contacts.map((c) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left text-sm transition ${
-                    contactId === c.id ? "bg-brand/10" : "hover:bg-surface2/60"
-                  }`}
-                  onClick={() => setContactId(contactId === c.id ? "" : c.id)}
+          other car and the moment all come from the result file. */}
+      {form.raceId && (
+        <section className="space-y-1.5">
+          <Step n="2" label={handOnly ? "Which moment" : "Which contact"} />
+          {contactList.length > 0 && (
+            <>
+              <ul className="max-h-64 divide-y divide-border overflow-y-auto rounded-lg border border-border">
+                {contactList.map((c) => {
+                  const on = contactId === c.id;
+                  return (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        aria-pressed={on}
+                        // The title is the mouse's extra detail, but it also
+                        // becomes the whole accessible name unless one is given
+                        // outright, which left a screen reader announcing the
+                        // time and nothing about who or what.
+                        aria-label={`${c.other.name}, lap ${c.lap}, ${c.kph} km/h, ${mmss(c.second)} into the race${
+                          c.eventIndex != null ? `, entry ${c.eventIndex} in the race file` : ""
+                        }`}
+                        title={`${mmss(c.second)} into the race, at ${clock(c.at)}.`}
+                        // Every row is its own grid, so the last column needs a
+                        // fixed width or the times end up on a ragged edge.
+                        className={`grid w-full grid-cols-[2.25rem,minmax(0,1fr),3.25rem] items-center gap-3 px-3 py-2 text-left transition ${
+                          on ? "bg-brand/10" : "hover:bg-surface2/60"
+                        }`}
+                        onClick={() => setContactId(on ? "" : c.id)}
+                      >
+                        {/* The number the stewards' replay tool shows for the
+                            same incident. Named once in the footnote below. */}
+                        <span
+                          className={`rounded px-1 py-0.5 text-center font-mono text-[11px] font-bold tabular-nums ${
+                            on ? "bg-brand/20 text-dark" : "bg-surface2 text-faint"
+                          }`}
+                        >
+                          {c.eventIndex ?? "?"}
+                        </span>
+                        <span className="min-w-0 truncate">
+                          <span className="font-semibold text-dark">{c.other.name}</span>
+                          <span className="ml-2 font-mono text-[11px] text-faint">
+                            lap {c.lap} · {c.kph} km/h
+                          </span>
+                        </span>
+                        <span className="text-right font-mono text-[11px] font-bold tabular-nums text-medium">
+                          {mmss(c.second)}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="text-xs text-faint">
+                Left is the entry number in the race file, right is how far into the race it was. A steward sees the
+                same two.
+              </p>
+            </>
+          )}
+
+          {/* The hand-written route. Hidden while there is a list to pick from,
+              because two ways of answering the same question side by side reads
+              as two things that both need filling in. */}
+          {!picked &&
+            (byHand || handOnly ? (
+              <div className="grid gap-2 pt-1 sm:grid-cols-[7rem,minmax(0,1fr)]">
+                <input
+                  aria-label="Lap"
+                  type="number"
+                  min="1"
+                  className="input"
+                  placeholder="Lap"
+                  value={form.lap}
+                  onChange={(e) => setForm({ ...form, lap: e.target.value })}
+                />
+                <select
+                  aria-label="Which driver"
+                  className="input"
+                  value={form.accusedDriverId}
+                  onChange={(e) => setForm({ ...form, accusedDriverId: e.target.value })}
                 >
-                  {c.eventIndex != null && (
-                    <span
-                      className="font-mono text-[11px] font-bold tabular-nums text-faint"
-                      title={`Entry ${c.eventIndex} in the race's result file. A steward with the replay tool open finds this contact under the same number.`}
-                    >
-                      {c.eventIndex}
-                    </span>
-                  )}
-                  <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
-                    Lap {c.lap}
-                  </span>
-                  <span className="font-semibold text-dark">{c.other.name}</span>
-                  <span className="font-mono text-[11px] text-light">{c.kph} km/h</span>
-                  <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-faint">
-                    {mmss(c.second)} · {clock(c.at)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+                  <option value="">Which driver?</option>
+                  {drivers.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : contactList.length > 0 ? (
+              <button
+                type="button"
+                className="text-xs font-semibold text-brand underline-offset-2 hover:underline"
+                onClick={() => setByHand(true)}
+              >
+                Not one of these? Say it in your own words
+              </button>
+            ) : null)}
+
+          {picked && (
+            <p className="text-sm text-medium">
+              <span className="font-semibold text-dark">{picked.other.name}</span>, lap {picked.lap}, {picked.kph} km/h,{" "}
+              {mmss(picked.second)} into the race
+              {picked.eventIndex != null ? `, entry ${picked.eventIndex} in the race file` : ""}.
+            </p>
+          )}
+        </section>
       )}
 
-      <textarea
-        className="input h-28 resize-none"
-        placeholder="What happened? Where on the track, and what did it cost you?"
-        value={form.body}
-        onChange={(e) => setForm({ ...form, body: e.target.value })}
-      />
+      <section className="space-y-1.5">
+        <Step n="3" label="What happened" />
+        <textarea
+          className="input h-28 w-full resize-none"
+          placeholder={'What happened? "Nothing, just an incident" is not enough.'}
+          value={form.body}
+          onChange={(e) => setForm({ ...form, body: e.target.value })}
+        />
+      </section>
+
       {error && <p className="text-sm text-bad">{error}</p>}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-4">
         <button className="btn-primary" disabled={busy || form.body.trim().length < 5} onClick={submit}>
           {busy ? "Sending…" : "Send to the stewards"}
         </button>
-        <p className="text-xs leading-relaxed text-light">
+        <p className="max-w-xs text-xs leading-relaxed text-light">
           Only you, the driver you name and the stewards can read this. You can add pictures once it is filed.
         </p>
       </div>
+    </div>
+  );
+}
+
+// The numeral is what turns three stacked boxes into an order to work through.
+function Step({ n, label }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface2 font-mono text-[10px] font-bold text-faint">
+        {n}
+      </span>
+      <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">{label}</span>
     </div>
   );
 }
