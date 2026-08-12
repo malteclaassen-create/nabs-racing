@@ -5,11 +5,60 @@ import { NO_VALUE } from "../utils/format.js";
 
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
+// How close two names are, 0 to 1. A trimmed copy of the one the result import
+// has always used (backend/src/services/acJsonParser.js, which owns the
+// canonical version) — the board and the import should not disagree about who
+// somebody is.
+//
+// It is here because a name in the game drifts from the name on the roster and
+// nobody thinks to tell anyone: "Steven P6. Cheese" became "Steven H. Cheese",
+// and somebody typed "Gabrielle Grossi" for Gabriele. Both stood on the timing
+// board as strangers, with no flag and their car where their team should be.
+function levenshtein(a, b) {
+  const m = a.length;
+  const n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const row = [i];
+    for (let j = 1; j <= n; j++) {
+      row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = row;
+  }
+  return prev[n];
+}
+
+function similarity(acName, driver) {
+  const a = norm(acName);
+  if (!a) return 0;
+  let best = 0;
+  for (const candidate of [driver.name, driver.discordName, driver.id]) {
+    const b = norm(candidate);
+    if (!b) continue;
+    const maxLen = Math.max(a.length, b.length);
+    let score = maxLen ? 1 - levenshtein(a, b) / maxLen : 0;
+    if (a.includes(b) || b.includes(a)) score = Math.max(score, 0.9);
+    best = Math.max(best, score);
+  }
+  return best;
+}
+
+// Deliberately stricter than the import's 0.55. An import guess is reviewed by
+// an admin before it is saved; a guess here goes straight onto the board during
+// a race with nobody checking, so the wrong flag on the wrong car is worse than
+// no flag. The runner-up gap is the second half of that: a name has to be a
+// clear winner, not merely the least bad of a crowded field.
+const FUZZY_MIN = 0.8;
+const FUZZY_LEAD = 0.15;
+
 // Build a matcher from the /api/teams payload. Indexes each driver by their id,
 // name and discordName (normalised) so an Assetto Corsa DriverName resolves to
 // the NABS driver, their team colour and their flag.
 export function makeDriverMatcher(teams) {
   const index = new Map();
+  const all = [];
   for (const team of teams || []) {
     for (const d of team.drivers || []) {
       const entry = {
@@ -35,9 +84,38 @@ export function makeDriverMatcher(teams) {
         const k = norm(key);
         if (k && !index.has(k)) index.set(k, entry);
       }
+      // Kept for the fuzzy pass, which needs the raw names rather than the
+      // normalised keys.
+      all.push({ entry, name: d.name, discordName: d.discordName, id: d.id });
     }
   }
-  return (acName) => index.get(norm(acName)) || null;
+  // Every row of the board asks on every snapshot, several times a second. The
+  // exact lookup is a Map hit; the fuzzy pass walks the whole roster, so its
+  // answer is remembered per in-game name — the names change when somebody
+  // joins the server, not between frames.
+  const cache = new Map();
+  return (acName) => {
+    const key = norm(acName);
+    if (!key) return null;
+    const exact = index.get(key);
+    if (exact) return exact;
+    if (cache.has(key)) return cache.get(key);
+
+    let best = null;
+    let second = 0;
+    for (const cand of all) {
+      const score = similarity(acName, cand);
+      if (!best || score > best.score) {
+        second = best ? best.score : second;
+        best = { entry: cand.entry, score };
+      } else if (score > second) {
+        second = score;
+      }
+    }
+    const hit = best && best.score >= FUZZY_MIN && best.score - second >= FUZZY_LEAD ? best.entry : null;
+    cache.set(key, hit);
+    return hit;
+  };
 }
 
 // nanosecond-derived ms -> "1:27.622" / "27.6s". null -> NO_VALUE.
