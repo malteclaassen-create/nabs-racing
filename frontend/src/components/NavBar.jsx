@@ -177,7 +177,14 @@ const NAV_ICONS = {
   drivers: <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>,
   constructors: <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>,
   records: <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>,
+  // Four rows at the bottom of the phone menu used to share this one speech
+  // bubble, which made them read as one thing said four times. They are four
+  // different errands, so they get four marks: say something, read a reply,
+  // report a crash, look up what was decided.
   feedback: <><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></>,
+  messages: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3.5 7l8.5 6 8.5-6" /></>,
+  incident: <><path d="M10.3 3.9L1.9 18a2 2 0 001.7 3h16.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" /><path d="M12 9.5v4M12 17.2h.01" /></>,
+  myReports: <><path d="M9 4H7a2 2 0 00-2 2v13a2 2 0 002 2h10a2 2 0 002-2V6a2 2 0 00-2-2h-2" /><rect x="9" y="2.2" width="6" height="3.6" rx="1" /><path d="M9 13.5l2 2 4-4" /></>,
 };
 
 // The two pages the "Standings" item covers (matched with the series prefix
@@ -532,6 +539,9 @@ export default function NavBar() {
   // earns its row once there is a message in it, otherwise it is a row that
   // leads to an empty page.
   const [hasThreads, setHasThreads] = useState(false);
+  // Same question for stewarding: "My reports" is worth a row once somebody is
+  // actually in a report — either one they filed or one that names them.
+  const [hasReports, setHasReports] = useState(false);
   // One state machine, so open/closing can never contradict each other:
   // "closed" -> "open" (panel mounts, drop-in plays) -> "closing" (stays
   // mounted while the drop-out plays) -> "closed" (unmount). Tapping the
@@ -569,6 +579,18 @@ export default function NavBar() {
       .catch(() => {});
     return () => { alive = false; };
   }, [open, isLoggedIn, hasThreads]);
+
+  // Same shape, same reasoning. Two small reads on the first open of the menu
+  // for a signed-in member, and none at all for a visitor.
+  useEffect(() => {
+    if (!open || !isLoggedIn || hasReports || !REPORTS_OPEN_TO_MEMBERS) return;
+    let alive = true;
+    api
+      .myReports()
+      .then((d) => alive && setHasReports((d?.reports || []).length > 0))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [open, isLoggedIn, hasReports]);
 
   const openMenu = () => setMenu("open");
   // Functional update: only an OPEN menu starts closing, so a stray second
@@ -898,7 +920,7 @@ export default function NavBar() {
                 }}
               />
               {isLoggedIn && hasThreads && (
-                <MobileRow to="/feedback" icon={NAV_ICONS.feedback} label="Your messages" sub="What the admins replied" />
+                <MobileRow to="/feedback" icon={NAV_ICONS.messages} label="Your messages" sub="What the admins replied" />
               )}
               {/* Stewarding, on a phone. The corner button is desktop-only, and
                   a race night is the one evening the whole grid is on phones. */}
@@ -906,11 +928,21 @@ export default function NavBar() {
                 <>
                   <MobileRow
                     to={reportsPath({ nw: true })}
-                    icon={NAV_ICONS.feedback}
+                    icon={NAV_ICONS.incident}
                     label="Report an incident"
                     sub="To the stewards, privately"
                   />
-                  <MobileRow to="/reports" icon={NAV_ICONS.feedback} label="My reports" sub="And what was decided" />
+                  {/* Only once there is something in it. Until somebody is in
+                      an argument, this is a row that leads to an empty page —
+                      the same rule "Your messages" already follows. */}
+                  {hasReports && (
+                    <MobileRow
+                      to="/reports"
+                      icon={NAV_ICONS.myReports}
+                      label="My reports"
+                      sub="And what was decided"
+                    />
+                  )}
                 </>
               )}
             </div>
