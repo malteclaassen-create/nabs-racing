@@ -890,6 +890,25 @@ body::before {
 .proj-flash-down, .cascade > .proj-flash-down { animation: proj-flash-down var(--t-draw) ease-out; }
 .fx-lite .proj-flash-up, .fx-lite .proj-flash-down { animation: none !important; }
 
+/* In the round matrix the flash sits on the <tr>, but the frozen columns paint
+   their own opaque background over it (see .sticky-cell) — so the light stopped
+   at the first scrolling cell and the two columns people actually read, rank
+   and driver, never lit up at all. They get the same flash mixed INTO the card
+   tone rather than into transparency, so they stay opaque while it plays and
+   scrolled cells still can't bleed through them. */
+@keyframes proj-flash-up-cell {
+  from { background-color: color-mix(in srgb, #10b981 20%, var(--c-card)); }
+  to   { background-color: var(--c-card); }
+}
+@keyframes proj-flash-down-cell {
+  from { background-color: color-mix(in srgb, #ef4444 16%, var(--c-card)); }
+  to   { background-color: var(--c-card); }
+}
+.proj-flash-up .sticky-cell { animation: proj-flash-up-cell var(--t-draw) ease-out; }
+.proj-flash-down .sticky-cell { animation: proj-flash-down-cell var(--t-draw) ease-out; }
+.fx-lite .proj-flash-up .sticky-cell,
+.fx-lite .proj-flash-down .sticky-cell { animation: none !important; }
+
 /* Global search results dropdown: a quick fade + small drop. Lite mode and
    reduced motion skip it (rules below). */
 @keyframes search-pop-in {
@@ -934,6 +953,7 @@ body::before {
      it just does it instantly instead of gliding. */
   .fab-morph { transition: none !important; }
   .proj-flash-up, .proj-flash-down { animation: none !important; }
+  .proj-flash-up .sticky-cell, .proj-flash-down .sticky-cell { animation: none !important; }
   .shine::after { display: none; }
   .tilt { transform: none !important; }
   .roll-col { transition: none !important; }

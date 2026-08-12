@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { TierBadge, Rank, PosDelta, CountUp } from "./ui.jsx";
+import { TierBadge, Rank, PosDelta, CountUp, DriverAvatar } from "./ui.jsx";
 import { playStandingsReplay } from "../utils/standingsReplay.js";
+import { countryFor } from "../data/driverCountries.js";
+import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 
 // Tracks how far a horizontal scroller is scrolled, so the frozen Pos/Team and
@@ -180,7 +182,10 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
           <thead>
             <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-wider text-light">
               <th scope="col" className="sticky left-0 z-20 w-14 bg-card px-3 py-3 text-center">Pos</th>
-              <th scope="col" className={`sticky left-14 z-20 max-w-[34vw] sm:max-w-none bg-card px-3 py-3 transition-shadow ${leftShadow}`}>
+              {/* The cap must match the body cell below or the column resolves
+                  between two different maxima; the driver column is the wider
+                  of the two because it also carries a photo. */}
+              <th scope="col" className={`sticky left-14 z-20 ${isDriver ? "max-w-[44vw]" : "max-w-[34vw]"} sm:max-w-none bg-card px-3 py-3 transition-shadow ${leftShadow}`}>
                 {isDriver ? "Driver" : "Team"}
               </th>
               {isDriver && <th scope="col" className="hidden px-3 py-3 lg:table-cell">Discord</th>}
@@ -222,15 +227,28 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   </td>
 
                   {isDriver ? (
-                    <td className={`sticky left-14 z-10 max-w-[34vw] sm:max-w-none px-3 py-3 transition sticky-cell ${leftShadow}`}>
-                      <Link to={`/drivers/${row.driverId}`} className="group/name flex items-center gap-3">
+                    <td className={`sticky left-14 z-10 max-w-[44vw] sm:max-w-none px-3 py-3 transition sticky-cell ${leftShadow}`}>
+                      {/* Same driver line as the standings LIST: colour bar,
+                          photo, name, flag. The two views are the same table
+                          read two ways, and only one of them used to put a face
+                          to the name. */}
+                      <Link to={`/drivers/${row.driverId}`} className="group/name flex items-center gap-2.5">
                         <span
-                          className="h-7 w-1.5 shrink-0 rounded-full"
+                          className="h-8 w-1.5 shrink-0 rounded-full"
                           style={{ backgroundColor: row.team.color }}
                         />
+                        <DriverAvatar name={row.name} photoUrl={row.photoUrl} color={row.team.color} size={30} />
                         <span className="min-w-0">
-                          <span className="block truncate font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
-                            {row.name}
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
+                              {row.name}
+                            </span>
+                            {/* The photo already costs this frozen column
+                                ~40px; on a 375px screen the flag on top of it
+                                would eat the name itself. */}
+                            <span className="hidden sm:inline-flex">
+                              <Flag code={countryFor(row.driverId, row.country)} />
+                            </span>
                           </span>
                           {row.formerName && (
                             <span className="block font-mono text-[10px] uppercase tracking-wider text-faint">
@@ -286,7 +304,10 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   ))}
 
                   <td className={`sticky right-0 z-10 border-l border-border px-4 py-3 text-right font-mono text-lg font-bold tabular-nums text-dark transition sticky-cell sm:text-xl ${rightShadow}`}>
-                    <CountUp end={row.total} />
+                    {/* reserve: the total counts up from 0, and this column is
+                        auto-sized — without it every gained digit re-measured
+                        the whole table and the header twitched (see CountUp). */}
+                    <CountUp end={row.total} reserve />
                   </td>
                 </tr>
               );

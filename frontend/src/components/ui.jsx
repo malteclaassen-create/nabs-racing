@@ -12,7 +12,14 @@ export const MEDAL_TEXT = ["var(--medal-1)", "var(--medal-2)", "var(--medal-3)"]
 // Number that counts up from 0 to `end` the first time it scrolls into view.
 // Falls straight to the final value when motion is reduced. `prefix`/`suffix`
 // wrap the number (e.g. "+", "pts"); non-numeric stats should just render plain.
-export function CountUp({ end, prefix = "", suffix = "", duration = 1200, decimals = 0, className = "" }) {
+//
+// `reserve` holds the box at the FINAL value's width for the whole count. A
+// number that starts at "0" and lands on "127" grows by two digits on the way,
+// which is harmless in a fixed-width slot but not in a table: an auto-sized
+// column re-measures on every frame and drags every other column with it.
+// That's what made the round matrix twitch and pull in — header included —
+// for a second after opening it.
+export function CountUp({ end, prefix = "", suffix = "", duration = 1200, decimals = 0, className = "", reserve = false }) {
   // Pre-trigger a little below the viewport so the count-up is already running
   // when the number scrolls in — a standing "0" at the bottom edge looks broken.
   const [ref, inView] = useInView({ rootMargin: "0px 0px 20% 0px" });
@@ -47,6 +54,26 @@ export function CountUp({ end, prefix = "", suffix = "", duration = 1200, decima
     return <span className={className}>{end}</span>;
   }
   const shown = decimals > 0 ? n.toFixed(decimals) : Math.round(n).toLocaleString("en-US");
+  if (reserve) {
+    const final = decimals > 0 ? target.toFixed(decimals) : Math.round(target).toLocaleString("en-US");
+    // Both spans share one grid cell: the invisible final value sets the width,
+    // the counting one lies on top of it and keeps whatever text-align the
+    // surrounding cell carries.
+    return (
+      <span ref={ref} className={`inline-grid tabular-nums ${className}`}>
+        <span className="invisible col-start-1 row-start-1" aria-hidden="true">
+          {prefix}
+          {final}
+          {suffix}
+        </span>
+        <span className="col-start-1 row-start-1">
+          {prefix}
+          {shown}
+          {suffix}
+        </span>
+      </span>
+    );
+  }
   return (
     <span ref={ref} className={`tabular-nums ${className}`}>
       {prefix}
