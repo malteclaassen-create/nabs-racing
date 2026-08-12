@@ -2,7 +2,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { isAdminRequest } from "../middleware/auth.js";
-import { getNameOverrides, discordIdsForDrivers } from "../lib/persons.js";
+import { getNameOverrides, discordIdsForDrivers, getIdentityOverrides } from "../lib/persons.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import { stripPrivateDriverFields } from "../lib/privacy.js";
 import { getT1ConstructorStandings, getT2ConstructorStandings } from "../services/standingsService.js";
@@ -19,7 +19,7 @@ router.get("/", async (req, res, next) => {
       includePrivate: admin,
       series: req.query.series,
     });
-    const [teams, nameOverrides] = await Promise.all([
+    const [teams, nameOverrides, identity] = await Promise.all([
       prisma.team.findMany({
         where: { seasonId },
         include: {
@@ -28,6 +28,13 @@ router.get("/", async (req, res, next) => {
         orderBy: [{ tier: "asc" }, { name: "asc" }],
       }),
       getNameOverrides(prisma),
+      // The person's flag and photo, not just this season row's. Every other
+      // view already resolves them this way (races, standings, the calendar,
+      // the profile); this route did not, and it is the one the Live page
+      // builds its timing board from — so a driver whose country was set in an
+      // earlier season stood there with no flag while the entry list beside it
+      // showed one.
+      getIdentityOverrides(prisma),
     ]);
     // Special roles (raw-SQL column) for the role badge / admin role select.
     const allIds = teams.flatMap((t) => t.drivers.map((d) => d.id));
@@ -58,6 +65,12 @@ router.get("/", async (req, res, next) => {
         if (ov) {
           d.formerName = ov.formerName;
           d.name = ov.displayName;
+        }
+        // Own row first, the person's other rows only as a fallback.
+        const idov = identity.get(d.id);
+        if (idov) {
+          if (!d.country && idov.country) d.country = idov.country;
+          if (!d.photoUrl && idov.photoUrl) d.photoUrl = idov.photoUrl;
         }
         d.role = roles.get(d.id) || null;
         d.hideFromStandings = hiddenSet.has(d.id);

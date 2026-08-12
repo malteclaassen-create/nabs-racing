@@ -18,7 +18,14 @@ export function makeDriverMatcher(teams) {
         teamName: team.name,
         teamColor: team.color,
         tier: team.tier,
-        country: countryFor(d.id),
+        // The row's OWN country first, the baseline name list only as a
+        // fallback — the same order every other view uses. Called with just the
+        // id, this consulted a hand-written list of names from the early
+        // seasons and threw away whatever the admin or the driver had actually
+        // set, so anyone who joined later stood on the timing board with no
+        // flag while their profile, the entry list and the race pages all
+        // showed one.
+        country: countryFor(d.id, d.country),
         // Admin-set league role ('safety'), so the board can mark a safety car
         // driver by NAME. Not the same question as the board's own isSafetyCar,
         // which asks whether the car on track right now is the pace car.
