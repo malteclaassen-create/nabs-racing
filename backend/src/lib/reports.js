@@ -70,6 +70,7 @@ function shape(r) {
     incidentAt: r.incidentAt || null,
     contactKph: r.contactKph ?? null,
     contactSecond: r.contactSecond ?? null,
+    contactIndex: r.contactIndex ?? null,
     status: r.status || "NEW",
     verdict: r.verdict || null,
     penaltySeconds: r.penaltySeconds ?? null,
@@ -351,6 +352,11 @@ export async function dbCreateReport(prisma, input) {
   if (input.contactSecond != null) {
     await prisma
       .$executeRawUnsafe(`UPDATE "Report" SET "contactSecond" = ? WHERE "id" = ?`, Math.round(input.contactSecond), id)
+      .catch(() => {});
+  }
+  if (input.contactIndex != null) {
+    await prisma
+      .$executeRawUnsafe(`UPDATE "Report" SET "contactIndex" = ? WHERE "id" = ?`, Math.round(input.contactIndex), id)
       .catch(() => {});
   }
   const report = await dbGetReport(prisma, id);

@@ -344,7 +344,8 @@ function NewReport({ races, presetRaceId, onFiled }) {
           <span className="font-semibold text-dark">
             Lap {picked.lap}, {picked.other.name}, {picked.kph} km/h
           </span>{" "}
-          at {clock(picked.at)}, {mmss(picked.second)} into the race.
+          at {clock(picked.at)}, {mmss(picked.second)} into the race
+          {picked.eventIndex != null ? `, entry ${picked.eventIndex} in the race file` : ""}.
         </p>
       )}
       {/* What the race itself recorded. Picking one saves the reporter
@@ -353,8 +354,13 @@ function NewReport({ races, presetRaceId, onFiled }) {
           clock time is the one the in-game replay app displays. */}
       {contacts?.contacts?.length > 0 && (
         <div className="rounded-lg border border-border">
-          <div className="border-b border-border px-3 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+          <div className="flex flex-wrap items-baseline gap-x-2 border-b border-border px-3 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
             Your contacts in this race
+            {/* The leading figure is a bare number on the row, which reads as
+                nothing at all unless it is named once. */}
+            <span className="font-normal normal-case tracking-normal text-faint">
+              the number is the entry in the race file, so a steward can find it
+            </span>
           </div>
           <ul className="max-h-52 divide-y divide-border overflow-y-auto">
             {contacts.contacts.map((c) => (
@@ -366,6 +372,14 @@ function NewReport({ races, presetRaceId, onFiled }) {
                   }`}
                   onClick={() => setContactId(contactId === c.id ? "" : c.id)}
                 >
+                  {c.eventIndex != null && (
+                    <span
+                      className="font-mono text-[11px] font-bold tabular-nums text-faint"
+                      title={`Entry ${c.eventIndex} in the race's result file. A steward with the replay tool open finds this contact under the same number.`}
+                    >
+                      {c.eventIndex}
+                    </span>
+                  )}
                   <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
                     Lap {c.lap}
                   </span>

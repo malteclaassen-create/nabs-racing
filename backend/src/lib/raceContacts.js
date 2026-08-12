@@ -133,9 +133,15 @@ function buildRound(seasonNumber, raceNumber) {
   }
   for (const arr of lapsByGuid.values()) arr.sort((a, b) => a - b);
 
+  // The position in the file is captured BEFORE anything is thrown away,
+  // because that position is the one number the league's replay app puts in
+  // front of every incident it lists. It counts every event in the file, taps
+  // and walls included, so it cannot be recovered from our own filtered list
+  // afterwards. See `eventIndex` below.
   const raw = (data.Events || [])
+    .map((e, i) => ({ e, n: i + 1 }))
     .filter(
-      (e) =>
+      ({ e }) =>
         e?.Type === "COLLISION_WITH_CAR" &&
         !e.AfterSessionEnd &&
         (e.ImpactSpeed || 0) >= CONTACT_DEFAULTS.impactThreshold &&
@@ -143,13 +149,13 @@ function buildRound(seasonNumber, raceNumber) {
         e.OtherDriver?.Guid &&
         tsOf(e)
     )
-    .sort((a, b) => tsOf(a) - tsOf(b));
+    .sort((x, y) => tsOf(x.e) - tsOf(y.e));
 
   // The same pair banging together over two seconds is one incident, which is
   // how the site counts them everywhere else.
   const lastByPair = new Map();
   const out = [];
-  for (const e of raw) {
+  for (const { e, n } of raw) {
     const at = tsOf(e);
     const pair = [e.Driver.Guid, e.OtherDriver.Guid].sort().join("|");
     const last = lastByPair.get(pair);
@@ -163,6 +169,17 @@ function buildRound(seasonNumber, raceNumber) {
       id: `${at}:${pair}`,
       at, // unix seconds, the number the replay app shows
       second: start ? at - start : null, // into the session
+      // Which entry of the result file this is, counting from one. The league's
+      // steward tool (TeTeMaTeTe's replayTools) prints exactly this in front of
+      // every row of its own incident list, so quoting it turns "find the
+      // contact I mean" into reading one number off a report and looking for it
+      // there. Verified identical: the file we archive and the file that tool
+      // downloads from the server are the same bytes, same order.
+      //
+      // Expect gaps. Its list numbers every event in the file, ours keeps only
+      // real car-to-car hits above the threshold, so a jump from 4 to 6 is
+      // correct, not a missing contact.
+      eventIndex: n,
       // The lap is per SIDE. Two cars in the same contact are not always on the
       // same lap — a backmarker being lapped is exactly the case a steward
       // cares about — so each driver gets their own, and whoever is reading
@@ -177,7 +194,7 @@ function buildRound(seasonNumber, raceNumber) {
   return { start, contacts: out };
 }
 
-// The contacts one driver was in, from their side, newest first. `guid` is
+// The contacts one driver was in, from their side, oldest first. `guid` is
 // their Steam id, which the site already stores on Driver.steamId from the
 // import, so a person and an AC event can be matched without going through a
 // name.
@@ -193,6 +210,7 @@ export function contactsForDriver(seasonNumber, raceNumber, guid) {
         id: c.id,
         at: c.at,
         second: c.second,
+        eventIndex: c.eventIndex,
         // The lap is the reporting driver's OWN. This used to read
         // `mine ? c.lap : c.lap` — a ternary that picks the same branch either
         // way — so a driver who happened to be the event's OtherDriver was

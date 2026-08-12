@@ -581,6 +581,9 @@ model Report {
   contactKph        Int?
   // Seconds into the session. Timezone-proof replay anchor — see ensureSchema.
   contactSecond     Int?
+  // Position in the round's result file, the number the league's steward tool
+  // shows for the same incident. Not consecutive — see ensureSchema.
+  contactIndex      Int?
   id                String    @id
   raceId            String?
   lap               Int?

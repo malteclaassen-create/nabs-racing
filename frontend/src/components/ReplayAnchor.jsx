@@ -56,7 +56,7 @@ function leagueClock(iso) {
 // is invalid HTML that breaks tab order and confuses screen readers. In the
 // list the chip is there to be READ while triaging a round; the copy lives in
 // the opened report, one click further on, where it can be a real button.
-export default function ReplayAnchor({ second, at, kph, lap, readOnly = false, className = "" }) {
+export default function ReplayAnchor({ second, at, kph, lap, eventIndex, readOnly = false, className = "" }) {
   const [copied, setCopied] = useState(false);
   const into = mmss(second);
   const clock = leagueClock(at);
@@ -67,7 +67,7 @@ export default function ReplayAnchor({ second, at, kph, lap, readOnly = false, c
     return () => clearTimeout(t);
   }, [copied]);
 
-  if (!into && !clock && kph == null && lap == null) return null;
+  if (!into && !clock && kph == null && lap == null && eventIndex == null) return null;
 
   // Copy the timeline figure when there is one, else the clock: whichever is
   // actually usable is what lands on the clipboard.
@@ -83,9 +83,17 @@ export default function ReplayAnchor({ second, at, kph, lap, readOnly = false, c
     }
   }
 
-  const title = into
-    ? `${into} into the session. Drag the replay timeline here.${clock ? ` The league clock read ${clock} (${LEAGUE_TZ}).` : ""}`
-    : `The league clock read ${clock} (${LEAGUE_TZ}). Scrub until webPenalty shows this.`;
+  const title = [
+    into
+      ? `${into} into the session. Drag the replay timeline here.${clock ? ` The league clock read ${clock} (${LEAGUE_TZ}).` : ""}`
+      : `The league clock read ${clock} (${LEAGUE_TZ}). Scrub until webPenalty shows this.`,
+    // The number is only useful if the reader knows where to spend it.
+    eventIndex != null
+      ? `This is entry ${eventIndex} of the round's result file, which is the number replayTools puts in front of the same incident in its own list. Its numbering counts every event in the file, so entries either side of it may be walls or taps.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const shell = `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-medium ${className}`;
   const Tag = readOnly ? "span" : "button";
@@ -114,6 +122,7 @@ export default function ReplayAnchor({ second, at, kph, lap, readOnly = false, c
       {lap != null && <span className="text-faint">· lap {lap}</span>}
       {kph != null && <span className="text-faint">· {kph} km/h</span>}
       {into && clock && <span className="text-faint">· {clock}</span>}
+      {eventIndex != null && <span className="text-faint">· event {eventIndex}</span>}
       {!readOnly && (
         <span role="status" aria-live="polite" className={copied ? "font-bold text-ok" : "sr-only"}>
           {copied ? "copied" : ""}

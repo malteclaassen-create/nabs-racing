@@ -104,6 +104,7 @@ router.post("/", optionalUser, async (req, res, next) => {
       incidentAt: pinned ? new Date(pinned.at * 1000).toISOString() : null,
       contactKph: pinned ? pinned.kph : null,
       contactSecond: pinned ? pinned.second : null,
+      contactIndex: pinned ? pinned.eventIndex : null,
     });
     record(me.discordId);
     // `accusedReachable` is false when the driver named has never signed in

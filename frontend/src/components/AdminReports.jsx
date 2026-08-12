@@ -447,6 +447,7 @@ export default function AdminReports() {
                   at={openReportRow.incidentAt}
                   kph={openReportRow.contactKph}
                   lap={openReportRow.lap}
+                  eventIndex={openReportRow.contactIndex}
                 />
                 <span className={`pill ${s.cls}`}>{s.label}</span>
               </span>
@@ -542,7 +543,14 @@ export default function AdminReports() {
                         row is already a button, and nesting one inside it is
                         invalid HTML that breaks tab order. The copy is one
                         click away, in the opened report. */}
-                    <ReplayAnchor readOnly second={r.sessionSecond} at={r.incidentAt} kph={r.contactKph} lap={r.lap} />
+                    <ReplayAnchor
+                      readOnly
+                      second={r.sessionSecond}
+                      at={r.incidentAt}
+                      kph={r.contactKph}
+                      lap={r.lap}
+                      eventIndex={r.contactIndex}
+                    />
                     <span className="min-w-0 flex-1 truncate text-xs text-light">{r.body}</span>
                     <span className="font-mono text-[10px] uppercase tracking-wider text-faint">
                       {when(r.createdAt)}

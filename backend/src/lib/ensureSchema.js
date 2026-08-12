@@ -365,6 +365,12 @@ export async function ensureAppSchema(prisma) {
   // timeline to it. `incidentAt` says WHEN in the world, this says WHERE in the
   // race, and only the second one survives a server in another country.
   await addColumn(prisma, "Report", "contactSecond", "INTEGER");
+  // Which entry of the round's result file the contact is, counting from one.
+  // The steward tool the league already runs numbers its own incident list the
+  // same way, so this is the fastest way to say "that one" across two programs
+  // that share nothing but the file. Counts every event in the file, so the
+  // numbers a report carries are not consecutive.
+  await addColumn(prisma, "Report", "contactIndex", "INTEGER");
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Report_raceId_idx" ON "Report"("raceId")`);
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Report_createdAt_idx" ON "Report"("createdAt")`);
 
