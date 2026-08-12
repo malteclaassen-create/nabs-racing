@@ -345,6 +345,13 @@ export default function AdminRatings() {
             <span className="font-semibold">The public site is using the league defaults.</span>
           )}
         </p>
+        {/* The table below is the LIVE formula; the cards on the site are frozen
+            per season, so this is next season's card, not today's. */}
+        <p className="mt-2 text-sm leading-relaxed text-light">
+          The numbers below are the <b>live</b> ones for the season selected above. The cards on the site are locked
+          for a whole season and show the previous season&rsquo;s final numbers, so what you see here is the card this
+          season is building for the next one.
+        </p>
       </div>
 
       {error && <Notice kind="error">{error}</Notice>}

@@ -8,7 +8,7 @@ import {
 import { getSeasonHonours } from "../services/honoursService.js";
 import { getSeriesRecords } from "../services/recordsService.js";
 import { resolveSeasonId } from "../services/seasonService.js";
-import { getDriverRatings } from "../services/driverRatingsService.js";
+import { getCardRatings } from "../services/cardRatingService.js";
 import { parseCardPhotoPos } from "../lib/cardPhoto.js";
 import { isKnownEdition, DEFAULT_CARD_EDITION } from "../lib/cardEditions.js";
 import { getIdentityOverrides } from "../lib/persons.js";
@@ -44,14 +44,15 @@ router.get("/drivers", async (req, res, next) => {
 
 // GET /standings/ratings -> every rated driver of the season with their card
 // look (edition, picture, framing, animation), so the standings page can show
-// the whole field as actual rating cards. Same season/series scoping as the
-// other reads; null season -> empty list.
+// the whole field as actual rating cards. The NUMBERS are the season's frozen
+// card values (end of the previous season), not today's live form. Same
+// season/series scoping as the other reads; null season -> empty list.
 router.get("/ratings", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
     if (!seasonId) return res.json({ ratings: [] });
-    const [ratings, season, rows, identity] = await Promise.all([
-      getDriverRatings(prisma, seasonId),
+    const [cards, season, rows, identity] = await Promise.all([
+      getCardRatings(prisma, seasonId),
       prisma.season.findUnique({ where: { id: seasonId }, select: { number: true } }),
       // Card columns are raw-SQL columns; one bulk read for the whole field.
       prisma.$queryRaw`
@@ -63,7 +64,10 @@ router.get("/ratings", async (req, res, next) => {
     const byId = new Map(rows.map((r) => [r.id, r]));
     res.json({
       seasonNumber: season?.number ?? null,
-      ratings: ratings.map((r) => {
+      // Which season these cards were earned in (null = no earlier season, so
+      // the cards are still live).
+      cardFromSeasonNumber: cards.fromSeasonNumber,
+      ratings: cards.rows.map((r) => {
         const d = byId.get(r.driverId) || {};
         // Linked-person fallback (same rule as the standings): a row without
         // its own flag/photo shows the person's current one; a borrowed photo

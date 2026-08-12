@@ -22,6 +22,7 @@ import { cardUnlockInputs } from "../services/driverProfileService.js";
 import { notifyCardUnlocks } from "../lib/notifications.js";
 import { dbGetMember, dbSetRaceRequest } from "../lib/members.js";
 import { getDriverRatingHistory, getDriverCareerRatings } from "../services/ratingHistoryService.js";
+import { getCardRating } from "../services/cardRatingService.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const router = Router();
@@ -511,7 +512,18 @@ router.get("/rating/history", async (req, res, next) => {
     // zoom out right away. The per-race career curve is a separate call below,
     // fetched only when the reader actually asks for that detail.
     const career = await getDriverCareerRatings(prisma, driverId);
-    res.json({ ...history, careerSeasons: career?.points || [] });
+    // …and the frozen card the driver actually carries this season, so the page
+    // can put "what's on my card" next to "what I'm doing right now".
+    const card = history.driver?.seasonId
+      ? await getCardRating(prisma, history.driver.seasonId, driverId)
+      : null;
+    res.json({
+      ...history,
+      careerSeasons: career?.points || [],
+      card: card
+        ? { ratings: card.ratings, provisional: card.provisional, starts: card.starts, ...card.card }
+        : null,
+    });
   } catch (e) {
     next(e);
   }

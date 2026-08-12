@@ -327,7 +327,9 @@ function CareerBlock({ career, otherSeries }) {
 }
 
 // Companion panel beside the rating card: the four sub-ratings as labelled bars,
-// each backed by the real season stat that drives it.
+// each backed by the real season stat that drives it. Card values are frozen for
+// the season, so the stats quoted here are the ones from the season the card was
+// earned in — the line under the heading says which that is.
 function RatingBreakdown({ rating, stats, color }) {
   const g = rating.ratings;
   const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -341,9 +343,16 @@ function RatingBreakdown({ rating, stats, color }) {
   ];
   return (
     <div className="card p-5 sm:p-6">
-      <h2 className="mb-4 border-b border-border pb-3 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
-        Rating Breakdown
-      </h2>
+      <div className="mb-4 border-b border-border pb-3">
+        <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
+          Rating Breakdown
+        </h2>
+        {rating.card?.locked && rating.card.fromSeasonNumber != null && (
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+            card locked for the season · earned in Season {rating.card.fromSeasonNumber}
+          </span>
+        )}
+      </div>
       <div className="space-y-4">
         {rows.map((r) => (
           <div key={r.k}>

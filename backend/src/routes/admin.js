@@ -36,6 +36,7 @@ import {
 import { stashIncoming, archiveCommitted } from "../lib/resultsArchive.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
+import { invalidateCardRatingCache } from "../services/cardRatingService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
 import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
@@ -784,8 +785,10 @@ router.get("/ratings/weights", async (req, res, next) => {
 router.put("/ratings/weights", async (req, res, next) => {
   try {
     const saved = await writeRatingWeights(prisma, req.body?.weights ?? null);
-    // New weights bend every replayed curve — drop the cached histories.
+    // New weights bend every replayed curve — drop the cached histories and
+    // the frozen card values computed from them.
     invalidateRatingHistoryCache();
+    invalidateCardRatingCache();
     res.json({ ok: true, saved });
   } catch (e) {
     next(e);
@@ -1517,6 +1520,7 @@ router.put("/races/:id/honours", async (req, res, next) => {
     // a first pole can unlock card editions and achievements.
     invalidateRecordsCache();
     invalidateRatingHistoryCache();
+    invalidateCardRatingCache();
     notifyCardUnlocksForSeason(prisma, race.seasonId);
     res.json({ ok: true });
   } catch (e) {

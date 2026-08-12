@@ -1,7 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { getDriverProfile } from "../services/driverProfileService.js";
-import { getDriverRatings } from "../services/driverRatingsService.js";
+import { getCardRating } from "../services/cardRatingService.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { isAdminRequest } from "../middleware/auth.js";
 
@@ -28,16 +28,16 @@ router.get("/:id/profile", async (req, res, next) => {
   }
 });
 
-// GET /api/drivers/:id/rating -> this driver's computed EA-style rating, or null
-// when they have no races yet (so no card is shown). Field-relative, so it's
-// computed across the driver's whole season and the matching row returned.
+// GET /api/drivers/:id/rating -> this driver's CARD rating for their season, or
+// null when nobody has ever rated them (so no card is shown). The card is the
+// frozen end-of-previous-season snapshot — see cardRatingService; the live
+// numbers behind it are private (/api/me/rating/history).
 router.get("/:id/rating", async (req, res, next) => {
   try {
     const driver = await prisma.driver.findUnique({ where: { id: req.params.id } });
     if (!driver) return res.status(404).json({ error: "Driver not found" });
     if (await seasonHidden(req, driver.seasonId)) return res.status(404).json({ error: "Driver not found" });
-    const ratings = await getDriverRatings(prisma, driver.seasonId);
-    res.json(ratings.find((r) => r.driverId === driver.id) || null);
+    res.json(await getCardRating(prisma, driver.seasonId, driver.id));
   } catch (e) {
     next(e);
   }

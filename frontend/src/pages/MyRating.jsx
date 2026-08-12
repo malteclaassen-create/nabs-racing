@@ -639,6 +639,99 @@ function HighlightTile({ icon, eyebrow, main, subPrefix, subValue, tone }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// "Card vs. right now" — the section that makes the frozen card readable.
+//
+// A card is locked for a whole season: it shows where the driver stood at the
+// end of the season BEFORE it, and nothing they do this season moves it. What
+// this season IS building is the card they will carry next season, and that is
+// exactly what the live formula says today. So: the two sets of numbers side by
+// side, with the move between them.
+//
+// `card` is the /me/rating/history `card` block (frozen values + where they come
+// from), `live` the current live ratings (null until the first scored round).
+// ---------------------------------------------------------------------------
+function CardCompare({ card, live, color }) {
+  if (!card?.ratings) return null;
+  const season = card.seasonNumber ?? null;
+  const locked = !!card.locked;
+  const rows = SERIES.map((s) => {
+    const c = card.ratings[s.key] ?? null;
+    const l = live ? (live[s.key] ?? null) : null;
+    return { ...s, c, l, d: c != null && l != null ? l - c : null };
+  });
+
+  return (
+    <div className="reveal card overflow-hidden">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-border px-5 py-4 sm:px-6">
+        <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
+          Your card vs. right now
+        </h2>
+        <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+          {locked && card.fromSeasonNumber != null
+            ? `Season ${season} card · earned in Season ${card.fromSeasonNumber}`
+            : `Season ${season} card · your first one, still live`}
+        </span>
+      </div>
+
+      <div className="p-5 sm:p-6">
+        {/* Column headers: what is printed on the card, and what the formula
+            makes of this season so far. */}
+        <div className="grid grid-cols-[2.6rem_1fr_1fr_3.6rem] items-end gap-x-2 sm:gap-x-4">
+          <span />
+          <span className="font-mono text-[10px] font-bold uppercase leading-tight tracking-wider text-light">
+            On your card
+          </span>
+          <span className="font-mono text-[10px] font-bold uppercase leading-tight tracking-wider text-light">
+            {live ? "This season so far" : "Not scored yet"}
+          </span>
+          <span className="text-right font-mono text-[10px] font-bold uppercase leading-tight tracking-wider text-light">
+            Move
+          </span>
+        </div>
+
+        <div className="mt-2 divide-y divide-border">
+          {rows.map((r) => (
+            <div key={r.key} className="grid grid-cols-[2.6rem_1fr_1fr_3.6rem] items-center gap-x-2 py-2.5 sm:gap-x-4">
+              <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">{r.code}</span>
+              <span className="font-display text-2xl font-black leading-none tabular-nums text-medium">
+                {r.c ?? "–"}
+              </span>
+              <span
+                className="font-display text-2xl font-black leading-none tabular-nums"
+                style={{ color: r.l != null ? color : undefined }}
+              >
+                {r.l ?? "–"}
+              </span>
+              <span className="flex justify-end">
+                <span
+                  className={`inline-flex min-w-[3.1rem] items-center justify-center rounded-md px-2 py-1 font-mono text-[13px] font-bold tabular-nums ${
+                    r.d == null || r.d === 0
+                      ? "bg-surface2 text-light"
+                      : r.d > 0
+                        ? "bg-emerald-500/[0.12] text-ok"
+                        : "bg-red-500/[0.12] text-bad"
+                  }`}
+                >
+                  {r.d == null ? "–" : r.d === 0 ? "±0" : r.d > 0 ? `▲${r.d}` : `▼${-r.d}`}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <p className="border-t border-border px-5 py-2.5 font-mono text-[11px] leading-relaxed text-light sm:px-6">
+        {!locked
+          ? `Nobody rated you before, so this card still moves with every round. It locks in when Season ${season} finishes.`
+          : live
+            ? `Your card stays as it is all season. Where you stand at the end of Season ${season} becomes your Season ${season != null ? season + 1 : "next"} card.`
+            : `Your card stays as it is all season. Once the first round is scored, the right-hand column shows what your Season ${season != null ? season + 1 : "next"} card is heading for.`}
+      </p>
+    </div>
+  );
+}
+
 // `me` is the /api/me payload the Personal Area already holds (name, team, …).
 export default function MyRating({ me }) {
   const { data, loading, error } = useApi(useCallback(() => api.myRatingHistory(), []));
@@ -695,10 +788,14 @@ export default function MyRating({ me }) {
   if (!rating || ratedPoints.length === 0) {
     return (
       <div className="space-y-6">
+        {/* The card itself is carried over, so it exists even before the first
+            round — show it first, then say why the live column is empty. */}
+        <CardCompare card={data.card} live={null} color={color} />
         <div className="card px-6 py-12 text-center">
-          <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">No rating this season yet</h2>
+          <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">No live numbers this season yet</h2>
           <p className="mt-2 text-sm text-medium">
-            Your card is rated once the season&rsquo;s first result is in. {careerSeasons.length > 0 && "Your earlier seasons are below."}
+            Your card above is set for the whole season. The breakdown of what you are building for the next one appears
+            once your first result is in. {careerSeasons.length > 0 && "Your earlier seasons are below."}
           </p>
         </div>
         {careerSeasons.length > 0 && (
@@ -772,6 +869,11 @@ export default function MyRating({ me }) {
                 Rating breakdown
               </h2>
               <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
+                {/* This whole page is the LIVE view — the number on the card is
+                    frozen for the season and sits in the compare block below. */}
+                <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+                  live · this season so far
+                </span>
                 {latest?.rank != null && (
                   <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
                     <b className="text-dark">#{latest.rank}</b> of {latest.fieldSize} rated
@@ -790,6 +892,9 @@ export default function MyRating({ me }) {
           </div>
         )}
       </div>
+
+      {/* the frozen card next to the live numbers this season is building */}
+      <CardCompare card={data.card} live={rating.ratings} color={color} />
 
       {/* development chart — the picked value's own scoreboard sits in the
           header (current number + what it did across the season), so the card

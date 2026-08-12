@@ -66,7 +66,10 @@ export function cardPhotoFraming(pos) {
 
 // Plain-words explanation of each sub-rating, shown on the public profile when
 // `explain` is on (hover/tap a value). RAC and AWA carry a "still being tuned"
-// note on purpose — the admins are still refining those two formulas.
+// note on purpose — the admins are still refining those two formulas. The
+// values themselves are the card's own season snapshot (see cardRatingService):
+// what "this season" means below is the season the card was earned in, not
+// necessarily the one being raced.
 export const RATING_INFO = {
   exp: {
     code: "EXP",
@@ -78,7 +81,7 @@ export const RATING_INFO = {
     code: "RAC",
     label: "Racecraft",
     text:
-      "How you race, measured on this season and ranked against the field: finishing positions (45%), places gained from your grid slot (20%), podiums (20%) and on-track overtakes (15%).",
+      "How you race, measured over the season this card was earned in and ranked against that field: finishing positions (45%), places gained from your grid slot (20%), podiums (20%) and on-track overtakes (15%).",
     tuning: true,
   },
   aha: {
@@ -276,6 +279,18 @@ export default function RatingCard({ driver, rating, anim, explain = false }) {
           {RATING_INFO[info].tuning && (
             <p className="mt-1.5 text-[11px] font-semibold leading-relaxed text-warn">
               This formula is still being fine-tuned, so the exact maths may change.
+            </p>
+          )}
+          {/* Where the number comes from: a card is locked for a whole season
+              and shows the end of the season before it. */}
+          {rating?.card?.locked && rating.card.fromSeasonNumber != null && (
+            <p className="mt-1.5 text-[11px] font-semibold leading-relaxed text-light">
+              Locked for this season · earned by the end of Season {rating.card.fromSeasonNumber}.
+            </p>
+          )}
+          {rating?.card?.source === "live" && (
+            <p className="mt-1.5 text-[11px] font-semibold leading-relaxed text-light">
+              First season on a card · this one still moves with every round, then locks for next season.
             </p>
           )}
         </div>

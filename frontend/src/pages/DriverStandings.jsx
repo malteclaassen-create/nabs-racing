@@ -505,8 +505,10 @@ export default function DriverStandings() {
         />
       ) : activeView === "cards" ? (
         // The field as their actual rating cards, in championship order of the
-        // current filter view. Drivers without a card yet (no race this season)
-        // simply don't appear; the note below says so.
+        // current filter view. The numbers are the season's FROZEN card values
+        // (where each driver stood at the end of the previous season), so they
+        // don't move round by round. Drivers nobody has ever rated (a rookie
+        // before their first start) have no card; the note below says so.
         !cardData ? (
           <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3" style={{ justifyItems: "center" }}>
             {Array.from({ length: 6 }).map((_, i) => (
@@ -517,9 +519,15 @@ export default function DriverStandings() {
           const ratingById = new Map(cardData.ratings.map((r) => [r.driverId, r]));
           const withCards = rows.filter((d) => ratingById.has(d.driverId));
           if (withCards.length === 0)
-            return <EmptyState title="No rating cards yet" hint="Cards appear as soon as drivers have raced this season." />;
+            return <EmptyState title="No rating cards yet" hint="A card is carried over from the previous season, or earned with a driver's first races." />;
           return (
             <div>
+              {cardData.cardFromSeasonNumber != null && (
+                <p className="mb-6 text-center font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+                  These cards are locked for the season · they show where each driver stood at the end of Season{" "}
+                  {cardData.cardFromSeasonNumber}
+                </p>
+              )}
               <div className="rcard-fit cascade grid gap-x-4 gap-y-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" style={{ justifyItems: "center" }}>
                 {withCards.map((d, i) => {
                   const r = ratingById.get(d.driverId);
@@ -565,7 +573,7 @@ export default function DriverStandings() {
               </div>
               {withCards.length < rows.length && (
                 <p className="mt-6 text-center text-xs text-light">
-                  {rows.length - withCards.length} of {rows.length} drivers have no card yet (no race this season).
+                  {rows.length - withCards.length} of {rows.length} drivers have no card yet (never rated in an earlier season).
                 </p>
               )}
             </div>
