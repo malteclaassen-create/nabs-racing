@@ -3,6 +3,8 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
+import { useAdminAttention } from "../hooks/useAdminAttention.js";
+import AttentionDot from "./AttentionDot.jsx";
 import { api } from "../api/client.js";
 import Logo from "./Logo.jsx";
 import SeasonPicker from "./SeasonPicker.jsx";
@@ -22,6 +24,9 @@ import { useSlidingHighlight } from "./SlidingTabs.jsx";
 // lands on /profile, which explains the linking.
 function AuthControl({ mobile = false }) {
   const { user, isLoggedIn } = useAuth();
+  // Nothing for anyone but an admin, and nothing at all when the office is
+  // clear. See hooks/useAdminAttention.js for why it lives on the profile chip.
+  const { total } = useAdminAttention();
   if (isLoggedIn) {
     const name = user.driverName || user.discordName || "Profile";
     return (
@@ -30,13 +35,17 @@ function AuthControl({ mobile = false }) {
         title="Your driver profile"
         data-tour="nav-profile"
         className={({ isActive }) =>
-          `flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold transition ${
+          // `relative` is new: the dot below is positioned against this chip,
+          // and without it the nearest positioned ancestor is the whole nav
+          // strip, which would park it somewhere else entirely.
+          `relative flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold transition ${
             mobile ? "w-full" : ""
           } ${isActive ? "bg-brand/20 text-dark ring-1 ring-brand/50" : "text-medium hover:bg-surface2"}`
         }
       >
         <DriverAvatar name={name} photoUrl={user.avatarUrl} color="#4251a8" size={26} />
         <span className="max-w-[8rem] truncate">{name}</span>
+        <AttentionDot total={total} className="absolute right-1 top-1" />
       </NavLink>
     );
   }

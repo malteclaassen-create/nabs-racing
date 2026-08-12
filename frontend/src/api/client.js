@@ -836,6 +836,12 @@ export const api = {
 
   // members (admin) — Discord login accounts: link/unlink to drivers, ban/unban
   adminMembers: () => request("/admin/members", { auth: true }),
+  // Only the counts behind the Members tab's badge (cheap enough for every load).
+  adminMembersPending: () => request("/admin/members/pending", { auth: true }),
+  // Everything waiting on an admin as four numbers plus their sum. Drives the
+  // dots outside the admin area, where pulling the lists themselves would be
+  // four requests for a red circle.
+  adminAttention: () => request("/admin/attention", { auth: true }),
   banMember: (discordId, banned, reason) =>
     request(`/admin/members/${discordId}/ban`, { method: "POST", body: { banned, reason }, auth: true }),
   linkMember: (discordId, driverId) =>
@@ -973,11 +979,11 @@ export const api = {
     fd.append("file", file);
     return request(`/admin/team-art/${teamId}/${kind}`, { method: "POST", body: fd, auth: true, form: true });
   },
-  clearTeamArt: (teamId, kind) =>
-    request(`/admin/team-art/${teamId}/${kind}`, { method: "DELETE", auth: true }).then((r) => r.art),
   // The flag a team flies on the constructors poster ("" clears it).
   setTeamCountry: (teamId, country) =>
     request(`/admin/team-art/${teamId}/country`, { method: "PUT", body: { country }, auth: true }).then((r) => r.art),
+  clearTeamArt: (teamId, kind) =>
+    request(`/admin/team-art/${teamId}/${kind}`, { method: "DELETE", auth: true }).then((r) => r.art),
   // How those cars are cropped in the podium tiles — { zoom, x, y }, one set for
   // all three — plus the framings saved under a name. The PUT patches, so
   // sending only the numbers leaves the presets alone and vice versa.

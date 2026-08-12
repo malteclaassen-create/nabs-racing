@@ -161,6 +161,12 @@ export default function AdminNotifications() {
             value={form.seatFilled}
             onChange={(v) => set("seatFilled", v)}
           />
+          <ToggleRow
+            label="Admin alerts"
+            help="Admins only: a note when somebody signs in that no driver is connected to, and when somebody presses 'I want to race'. Both point at the Members tab. Nobody else sees these."
+            value={form.adminAlerts}
+            onChange={(v) => set("adminAlerts", v)}
+          />
         </div>
       </div>
 

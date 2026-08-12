@@ -19,7 +19,7 @@ import {
   unlockStateFor, isKnownEdition, readCardEdition, readCardAnim, DEFAULT_CARD_EDITION,
 } from "../lib/cardEditions.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
-import { notifyCardUnlocks } from "../lib/notifications.js";
+import { notifyCardUnlocks, notifyAdminsRaceRequest } from "../lib/notifications.js";
 import { dbGetMember, dbSetRaceRequest } from "../lib/members.js";
 import { getDriverRatingHistory, getDriverCareerRatings } from "../services/ratingHistoryService.js";
 import { getCardRating } from "../services/cardRatingService.js";
@@ -584,7 +584,10 @@ router.post("/race-request", async (req, res, next) => {
           .join(" · ");
       }
     }
-    await dbSetRaceRequest(prisma, req.user.discordId, text);
+    const updated = await dbSetRaceRequest(prisma, req.user.discordId, text);
+    // Straight to the admins' bell: a raised hand that nobody sees is the whole
+    // point of the button lost.
+    notifyAdminsRaceRequest(prisma, updated || acct, text).catch(() => {});
     res.json({ ok: true, pending: true, text });
   } catch (e) {
     next(e);

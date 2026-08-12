@@ -25,6 +25,7 @@ import AdminAllTime from "../components/AdminAllTime.jsx";
 // the folding rail has to be able to show a hidden one on its group header.)
 import AdminFeedback from "../components/AdminFeedback.jsx";
 import AdminReports from "../components/AdminReports.jsx";
+import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 import AdminSearch from "../components/AdminSearch.jsx";
 // The navigation itself: the same twenty-two tabs as either the strip across
 // the top or a folding list down the left, plus the switch between the two.
@@ -308,6 +309,7 @@ function MarketAdmin() {
     try {
       await fn();
       await Promise.all([market.reload(), history.reload()]);
+      window.dispatchEvent(new Event(MARKET_CHANGED_EVENT)); // nav badge
     } catch (e) {
       setError(e.message);
     } finally {
@@ -415,8 +417,12 @@ function MarketAdmin() {
 
 function OfferAdminRow({ offer, reserves, busy, onAssign, onDelete }) {
   const [sel, setSel] = useState(offer.filledBy?.driverId || "");
+  // The one state that is actually work: a seat still open that somebody has
+  // put their hand up for. An open seat nobody wants is not waiting on anyone,
+  // and a filled one is done. Same rule as the count behind the tab's badge.
+  const waiting = offer.status !== "FILLED" && offer.interests.length > 0;
   return (
-    <div className="rounded-xl border border-border p-4">
+    <div className={`rounded-xl border p-4 ${waiting ? "border-warn/50 bg-amber-500/5" : "border-border"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-semibold text-dark">
           {offer.team.name}
@@ -424,8 +430,13 @@ function OfferAdminRow({ offer, reserves, busy, onAssign, onDelete }) {
         </div>
         {offer.status === "FILLED" ? (
           <span className="pill bg-emerald-500/15 text-ok">Filled · {offer.filledBy.name}</span>
+        ) : waiting ? (
+          <span className="pill bg-amber-500/15 font-bold text-warn">
+            <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-warn align-middle" />
+            Waiting on you
+          </span>
         ) : (
-          <span className="pill bg-amber-500/15 text-warn">Open</span>
+          <span className="pill bg-surface2 text-light">Open, nobody interested yet</span>
         )}
       </div>
 

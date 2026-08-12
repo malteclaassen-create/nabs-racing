@@ -37,7 +37,7 @@ export default function IdChip({ platform, value, state, title, tone = "muted", 
   if (!value) {
     return (
       <span
-        className={`inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-faint ${className}`}
+        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-faint ${className}`}
         title={title || `No ${label} on file`}
       >
         <SocialIcon name={platform} className="h-3 w-3" />
@@ -75,7 +75,7 @@ export default function IdChip({ platform, value, state, title, tone = "muted", 
       onClick={reveal}
       title={title || undefined}
       aria-label={shown ? `Copy the ${label} ${value}` : `Show the ${label}, ending ${String(value).slice(-6)}`}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider transition ${toneClass} ${className}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider transition ${toneClass} ${className}`}
     >
       <SocialIcon name={platform} className="h-3 w-3" />
       <span className="normal-case tracking-normal">{shown ? value : masked}</span>

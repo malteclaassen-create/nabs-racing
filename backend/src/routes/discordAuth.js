@@ -15,6 +15,7 @@ import { resolveSeries } from "../lib/series.js";
 import { dbRecordLogin, dbGetMember } from "../lib/members.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
+import { notifyAdminsUnlinkedLogin } from "../lib/notifications.js";
 
 const router = Router();
 
@@ -194,6 +195,16 @@ router.post("/callback", async (req, res, next) => {
           }),
         ]);
       }
+    }
+
+    // Nobody claimed this login. That is an admin job, and the admin area is
+    // not a page anyone keeps open, so their bell gets told once per account.
+    if (!driver) {
+      notifyAdminsUnlinkedLogin(prisma, {
+        discordId: me.id,
+        username: me.username,
+        displayName: me.global_name || null,
+      }).catch(() => {});
     }
 
     // Keep the driver's Discord avatar fresh on each login (used as the profile

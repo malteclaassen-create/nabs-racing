@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { TeamDot, ErrorBox } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
+import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 
 // One reserve chip (name + flag) used in the interest list.
 function ReserveChip({ driverId, name, country, highlight }) {
@@ -39,6 +40,7 @@ export default function SeatMarket({ race, me, reload }) {
     try {
       await fn();
       await reload();
+      window.dispatchEvent(new Event(MARKET_CHANGED_EVENT));
     } catch (e) {
       setError(e.message);
     } finally {

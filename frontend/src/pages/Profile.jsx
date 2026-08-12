@@ -9,6 +9,8 @@ import Tools from "./Tools.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth, getUserToken, saveUser } from "../hooks/useAuth.js";
+import { useAdminAttention } from "../hooks/useAdminAttention.js";
+import AttentionDot from "../components/AttentionDot.jsx";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar, Field } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
@@ -732,7 +734,10 @@ function CopyProfileLink({ driverId }) {
 // Achievements) plus jump-offs (race tools, settings drawer, admin). The
 // public page gets its own separate button next to the bar. Synced to ?tab=
 // so bell links and bookmarks land on the right section.
-function memberTabs(isAdmin) {
+// `attention` is how much is waiting in the admin area, or 0. It rides on the
+// Admin tab so the chain from the nav bar is unbroken: a dot on your profile
+// chip, then a dot on the one tab that leads to the work.
+function memberTabs(isAdmin, attention = 0) {
   return [
     { key: "profile", label: "Edit Profile" },
     ...COCKPIT_TABS,
@@ -747,12 +752,26 @@ function memberTabs(isAdmin) {
     // notification lands and a notification has to have somewhere to land.
     ...(REPORTS_OPEN_TO_MEMBERS ? [{ key: "reports", label: "My reports" }] : []),
     { key: "settings", label: "Settings" },
-    ...(isAdmin ? [{ key: "admin", label: "Admin" }] : []),
+    ...(isAdmin
+      ? [
+          {
+            key: "admin",
+            label: (
+              <span className="relative inline-flex items-center">
+                Admin
+                <AttentionDot total={attention} className="absolute -right-2.5 -top-0.5" />
+              </span>
+            ),
+            title: attention ? `${attention} waiting in the admin area` : "Admin area",
+          },
+        ]
+      : []),
   ];
 }
 
 function MyProfile() {
   const { user, logout } = useAuth();
+  const { total: adminAttention } = useAdminAttention();
   const navigate = useNavigate();
   const me = useApi(useCallback(() => api.me(), []));
   const [params, setParams] = useSearchParams();
@@ -812,7 +831,7 @@ function MyProfile() {
             </Link>
             <div className="max-w-full overflow-x-auto pb-0.5">
               <SlidingTabs
-                items={memberTabs(!!user?.isAdmin)}
+                items={memberTabs(!!user?.isAdmin, adminAttention)}
                 // While the settings drawer is open the pill sits on Settings,
                 // and glides back to the section underneath when it closes.
                 value={settingsOpen ? "settings" : tab}

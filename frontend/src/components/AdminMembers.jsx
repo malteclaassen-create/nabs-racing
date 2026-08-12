@@ -18,6 +18,38 @@ import { fmtStamp, NO_VALUE } from "../utils/format.js";
 //   * ban an account (no more logins, running sessions stop working).
 const fmtDate = (v) => fmtStamp(v) || NO_VALUE;
 
+// The admin navigation puts the "logins with no driver" count on the Members
+// tab. Linking somebody (or creating their driver, or banning them) has to take
+// that number down straight away, so every finished action says so.
+export const MEMBERS_CHANGED_EVENT = "nabs:members-changed";
+
+// One row of this tab, in two parts: WHO on the left, WHAT YOU CAN DO on the
+// right. They used to be one long flex line, which meant the buttons ate the
+// width and squeezed the name column down to a few characters while the chips
+// under it wrapped into a tall stack — narrow and cut off on the left, four
+// controls crammed onto one line on the right, with empty space above them.
+//
+// They only go side by side from 2xl. The action group alone is about 500px
+// wide, and the admin panel sits beside the menu rail, so anything narrower
+// leaves the identity too thin to hold its own chips on one line — under each
+// other, both halves get the full width instead.
+function MemberRow({ avatar, children, actions, className = "" }) {
+  return (
+    <div className={`flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between 2xl:gap-6 ${className}`}>
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <span className="shrink-0">{avatar}</span>
+        <div className="min-w-0 flex-1">{children}</div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 2xl:shrink-0 2xl:justify-end">{actions}</div>
+    </div>
+  );
+}
+
+// Whether StatusPills has anything to say. A linked, unbanned, ordinary member
+// has none of them, and the row must not keep an empty line's worth of margin
+// for the pills that aren't there.
+const hasPills = (m) => !!(m.isAdmin || m.isSteward || m.banned || !m.driver || !m.driver.isActiveSeason);
+
 function StatusPills({ m }) {
   return (
     <span className="flex flex-wrap items-center gap-1.5">
@@ -80,6 +112,7 @@ export default function AdminMembers() {
   const unlinked = members
     .filter((m) => !m.driver)
     .sort((a, b) => (b.raceRequestAt ? 1 : 0) - (a.raceRequestAt ? 1 : 0));
+  const requests = unlinked.filter((m) => m.raceRequestAt).length;
   // Reserve first — that's where newcomers usually start.
   const teams = [...(teamsApi.data || [])].sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
 
@@ -89,6 +122,7 @@ export default function AdminMembers() {
     try {
       await fn();
       await reload();
+      window.dispatchEvent(new Event(MEMBERS_CHANGED_EVENT)); // nav badge
     } catch (e) {
       setMsg({ ok: false, text: e.message });
     } finally {
@@ -234,103 +268,129 @@ export default function AdminMembers() {
 
       {/* --- unlinked accounts first: this is the actual to-do list ---------- */}
       {unlinked.length > 0 && (
-        <div className="card border-amber-500/40 p-5">
-          <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
-            Needs attention: logged in, but no driver
-            <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 font-mono text-xs text-warn">{unlinked.length}</span>
-          </h3>
-          <p className="mt-1 text-sm text-light">
-            These people signed in but aren&rsquo;t connected to a roster driver yet. (Logins only auto-connect via a
-            stored Discord user ID; there is no name guessing, so nobody can claim someone else&rsquo;s profile.) Pick
-            their driver entry to link them, or, for someone completely new to the league, create a fresh driver in
-            one step with <b>New driver</b>.
-          </p>
-          <ul className="mt-3 divide-y divide-border">
+        <div className="card overflow-hidden border-amber-500/50 p-0">
+          {/* A banded header rather than a bare heading: this card is a to-do
+              list, and it has to read as one from across the tab. */}
+          <div className="border-b border-amber-500/30 bg-amber-500/10 px-5 py-4">
+            <h3 className="flex flex-wrap items-center gap-2 font-display text-base font-extrabold uppercase tracking-tight text-dark">
+              <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-warn" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+                <path d="M12 9v4M12 17h.01" />
+              </svg>
+              Needs attention: logged in, but no driver
+              <span className="rounded-full bg-amber-500/25 px-2 py-0.5 font-mono text-xs text-warn">
+                {unlinked.length} waiting
+              </span>
+              {requests > 0 && (
+                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 font-mono text-xs text-ok">
+                  {requests} asked for a seat
+                </span>
+              )}
+            </h3>
+            <p className="mt-1.5 max-w-3xl text-sm text-medium">
+              These people signed in but aren&rsquo;t connected to a roster driver yet. (Logins only auto-connect via a
+              stored Discord user ID; there is no name guessing, so nobody can claim someone else&rsquo;s profile.) Pick
+              their driver entry to link them, or, for someone completely new to the league, create a fresh driver in
+              one step with <b>New driver</b>.
+            </p>
+          </div>
+          <ul className="divide-y divide-border px-5 pb-2">
             {unlinked.map((m) => {
               const suggested = suggestionFor(m);
               const sel = linkChoice[m.discordId] ?? suggested?.id ?? "";
               return (
-              <li key={m.discordId} className="py-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <DriverAvatar name={m.displayName || m.username} photoUrl={m.avatarUrl} color="#64748b" size={36} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold text-dark">{m.displayName || m.username}</span>
-                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-light">
-                      <span>@{m.username}</span>
-                      <IdChip platform="discord" value={m.discordId} />
-                      <IdChip
-                        platform="steam"
-                        value={m.steamId}
-                        state={m.steamId ? "connected" : "not set"}
-                        title={
-                          m.steamId
-                            ? `Connected their Steam account themselves${m.steamVerifiedAt ? ` on ${fmtDate(m.steamVerifiedAt)}` : ""}. It moves onto the driver row when you link or create one.`
-                            : "No Steam account connected yet. Race results still match by name until one is on file."
-                        }
-                      />
-                      <span>last login {fmtDate(m.lastLoginAt)}</span>
-                    </span>
-                    {suggested && sel === suggested.id && (
-                      <span className="block font-mono text-[11px] text-ok">
-                        name matches {suggested.name} · check, then hit Link
+              <li key={m.discordId} className="py-4">
+                <MemberRow
+                  avatar={
+                    <DriverAvatar name={m.displayName || m.username} photoUrl={m.avatarUrl} color="#64748b" size={40} />
+                  }
+                  actions={
+                    <>
+                      <select
+                        aria-label={`Link ${m.displayName || m.username} to driver`}
+                        className="input w-full py-1.5 text-sm sm:w-64"
+                        value={sel}
+                        onChange={(e) => setLinkChoice((c) => ({ ...c, [m.discordId]: e.target.value }))}
+                      >
+                        <option value="">Link to driver…</option>
+                        {unclaimed.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name} ({d.team?.name || NO_VALUE}){d.preEnteredId ? " · replaces typed ID" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="btn-primary py-1.5 text-sm disabled:opacity-50"
+                        disabled={!sel || busy === m.discordId}
+                        onClick={() => link(m, sel)}
+                      >
+                        Link
+                      </button>
+                      <button
+                        className="btn-secondary py-1.5 text-sm"
+                        disabled={busy === m.discordId}
+                        onClick={() => (creating === m.discordId ? setCreating(null) : openCreate(m))}
+                      >
+                        New driver
+                      </button>
+                      {/* Pushed away from the two useful buttons: nobody should
+                          hit Ban while reaching for New driver. */}
+                      {m.banned ? (
+                        <button className="btn-secondary ml-auto py-1.5 text-sm 2xl:ml-1" disabled={busy === m.discordId} onClick={() => unban(m)}>
+                          Unban
+                        </button>
+                      ) : (
+                        <button
+                          className="ml-auto rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-bad transition hover:bg-red-500/10 2xl:ml-1"
+                          disabled={busy === m.discordId}
+                          onClick={() => ban(m)}
+                        >
+                          Ban
+                        </button>
+                      )}
+                    </>
+                  }
+                >
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="font-semibold text-dark">{m.displayName || m.username}</span>
+                    <span className="font-mono text-xs text-light">@{m.username}</span>
+                  </div>
+                  {/* Badges on their own line, so a long "wants to race" note
+                      can't push the name column narrow. */}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {m.raceRequestAt && (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-ok"
+                        title={`Asked to race${m.raceRequestText ? `: ${m.raceRequestText}` : ""} (${fmtDate(m.raceRequestAt)}). Link them or create a driver, and that answers the request.`}
+                      >
+                        <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M7 11V7a5 5 0 0110 0v4M5 11h14l-1 9H6z" />
+                        </svg>
+                        Wants to race{m.raceRequestText ? ` · ${m.raceRequestText}` : ""}
                       </span>
                     )}
-                  </span>
-                  {m.raceRequestAt && (
-                    <span
-                      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-ok"
-                      title={`Asked to race${m.raceRequestText ? `: ${m.raceRequestText}` : ""} (${fmtDate(m.raceRequestAt)}). Link them or create a driver, and that answers the request.`}
-                    >
-                      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M7 11V7a5 5 0 0110 0v4M5 11h14l-1 9H6z" />
-                      </svg>
-                      Wants to race{m.raceRequestText ? ` · ${m.raceRequestText}` : ""}
-                    </span>
+                    <StatusPills m={m} />
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-light">
+                    <IdChip platform="discord" value={m.discordId} />
+                    <IdChip
+                      platform="steam"
+                      value={m.steamId}
+                      state={m.steamId ? "connected" : "not set"}
+                      title={
+                        m.steamId
+                          ? `Connected their Steam account themselves${m.steamVerifiedAt ? ` on ${fmtDate(m.steamVerifiedAt)}` : ""}. It moves onto the driver row when you link or create one.`
+                          : "No Steam account connected yet. Race results still match by name until one is on file."
+                      }
+                    />
+                    <span className="whitespace-nowrap">last login {fmtDate(m.lastLoginAt)}</span>
+                  </div>
+                  {suggested && sel === suggested.id && (
+                    <p className="mt-1.5 font-mono text-[11px] text-ok">
+                      name matches {suggested.name} · check, then hit Link
+                    </p>
                   )}
-                  <StatusPills m={m} />
-                  <span className="flex items-center gap-2">
-                    <select
-                      aria-label={`Link ${m.displayName || m.username} to driver`}
-                      className="input py-1.5 text-sm"
-                      value={sel}
-                      onChange={(e) => setLinkChoice((c) => ({ ...c, [m.discordId]: e.target.value }))}
-                    >
-                      <option value="">Link to driver…</option>
-                      {unclaimed.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} ({d.team?.name || NO_VALUE}){d.preEnteredId ? " · replaces typed ID" : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      className="btn-primary py-1.5 text-sm disabled:opacity-50"
-                      disabled={!sel || busy === m.discordId}
-                      onClick={() => link(m, sel)}
-                    >
-                      Link
-                    </button>
-                    <button
-                      className="btn-secondary py-1.5 text-sm"
-                      disabled={busy === m.discordId}
-                      onClick={() => (creating === m.discordId ? setCreating(null) : openCreate(m))}
-                    >
-                      New driver
-                    </button>
-                    {m.banned ? (
-                      <button className="btn-secondary py-1.5 text-sm" disabled={busy === m.discordId} onClick={() => unban(m)}>
-                        Unban
-                      </button>
-                    ) : (
-                      <button
-                        className="rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-bad transition hover:bg-red-500/10"
-                        disabled={busy === m.discordId}
-                        onClick={() => ban(m)}
-                      >
-                        Ban
-                      </button>
-                    )}
-                  </span>
-                </div>
+                </MemberRow>
                 {/* one-step "create + link" for people not on the roster at all */}
                 {creating === m.discordId && (
                   <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg bg-surface2/60 p-3">
@@ -393,12 +453,83 @@ export default function AdminMembers() {
         ) : (
           <ul className="mt-3 divide-y divide-border">
             {members.map((m) => (
-              <li key={m.discordId} className={`flex flex-wrap items-center gap-3 py-3 ${m.banned ? "opacity-70" : ""}`}>
-                <DriverAvatar name={m.displayName || m.username} photoUrl={m.avatarUrl} color={m.driver?.team?.color || "#64748b"} size={36} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-dark">{m.displayName || m.username}</span>
-                  <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-light">
-                    <span>@{m.username}</span>
+              <li key={m.discordId} className={`py-4 ${m.banned ? "opacity-70" : ""}`}>
+                <MemberRow
+                  avatar={
+                    <DriverAvatar
+                      name={m.displayName || m.username}
+                      photoUrl={m.avatarUrl}
+                      color={m.driver?.team?.color || "#64748b"}
+                      size={40}
+                    />
+                  }
+                  actions={
+                    <>
+                      <button
+                        className={`py-1.5 text-sm font-semibold ${m.isAdmin ? "text-light hover:text-link" : "text-link hover:underline"}`}
+                        disabled={busy === m.discordId}
+                        onClick={() => toggleAdmin(m)}
+                        title={m.isAdmin ? "Revoke admin access" : "Grant full admin access on Discord login"}
+                      >
+                        {m.isAdmin ? "Remove admin" : "Make admin"}
+                      </button>
+                      {/* Pointless on an admin: they already read everything. */}
+                      {!m.isAdmin && (
+                        <button
+                          className={`py-1.5 text-sm font-semibold ${m.isSteward ? "text-light hover:text-link" : "text-link hover:underline"}`}
+                          disabled={busy === m.discordId}
+                          onClick={() => toggleSteward(m)}
+                          title={
+                            m.isSteward
+                              ? "Stop them reading every incident report"
+                              : "Let them read and answer every incident report, and nothing else"
+                          }
+                        >
+                          {m.isSteward ? "Remove steward" : "Make steward"}
+                        </button>
+                      )}
+                      {m.driver && (
+                        <button className="btn-secondary py-1.5 text-sm" disabled={busy === m.discordId} onClick={() => unlink(m)}>
+                          Unlink
+                        </button>
+                      )}
+                      {m.banned ? (
+                        <button className="btn-secondary ml-auto py-1.5 text-sm 2xl:ml-1" disabled={busy === m.discordId} onClick={() => unban(m)}>
+                          Unban
+                        </button>
+                      ) : (
+                        <button
+                          className="ml-auto rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-bad transition hover:bg-red-500/10 2xl:ml-1"
+                          disabled={busy === m.discordId}
+                          onClick={() => ban(m)}
+                        >
+                          Ban
+                        </button>
+                      )}
+                    </>
+                  }
+                >
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="font-semibold text-dark">{m.displayName || m.username}</span>
+                    <span className="font-mono text-xs text-light">@{m.username}</span>
+                    {m.driver && (
+                      <span className="inline-flex items-center gap-1.5 text-sm text-medium">
+                        <TeamLogo
+                          id={m.driver.team?.id}
+                          name={m.driver.team?.name || ""}
+                          color={m.driver.team?.color || "#64748b"}
+                          size={18}
+                        />
+                        <span className="font-semibold text-dark">{m.driver.name}</span>
+                      </span>
+                    )}
+                  </div>
+                  {hasPills(m) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <StatusPills m={m} />
+                    </div>
+                  )}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-light">
                     <IdChip platform="discord" value={m.discordId} />
                     {/* Four situations, and the difference has to be readable
                         without hovering (this tab gets used on a phone):
@@ -431,64 +562,11 @@ export default function AdminMembers() {
                                 : "No Steam account on file. Race results match by name for this person."
                       }
                     />
-                    <span>first {fmtDate(m.firstLoginAt)} · last {fmtDate(m.lastLoginAt)} · {m.loginCount}×</span>
-                  </span>
-                </span>
-                {m.driver && (
-                  <span className="flex items-center gap-2 text-sm text-medium">
-                    <TeamLogo
-                      id={m.driver.team?.id}
-                      name={m.driver.team?.name || ""}
-                      color={m.driver.team?.color || "#64748b"}
-                      size={18}
-                    />
-                    <span className="font-semibold text-dark">{m.driver.name}</span>
-                  </span>
-                )}
-                <StatusPills m={m} />
-                <span className="flex items-center gap-2">
-                  <button
-                    className={`py-1.5 text-sm font-semibold ${m.isAdmin ? "text-light hover:text-link" : "text-link hover:underline"}`}
-                    disabled={busy === m.discordId}
-                    onClick={() => toggleAdmin(m)}
-                    title={m.isAdmin ? "Revoke admin access" : "Grant full admin access on Discord login"}
-                  >
-                    {m.isAdmin ? "Remove admin" : "Make admin"}
-                  </button>
-                  {/* Pointless on an admin: they already read everything. */}
-                  {!m.isAdmin && (
-                    <button
-                      className={`py-1.5 text-sm font-semibold ${m.isSteward ? "text-light hover:text-link" : "text-link hover:underline"}`}
-                      disabled={busy === m.discordId}
-                      onClick={() => toggleSteward(m)}
-                      title={
-                        m.isSteward
-                          ? "Stop them reading every incident report"
-                          : "Let them read and answer every incident report, and nothing else"
-                      }
-                    >
-                      {m.isSteward ? "Remove steward" : "Make steward"}
-                    </button>
-                  )}
-                  {m.driver && (
-                    <button className="btn-secondary py-1.5 text-sm" disabled={busy === m.discordId} onClick={() => unlink(m)}>
-                      Unlink
-                    </button>
-                  )}
-                  {m.banned ? (
-                    <button className="btn-secondary py-1.5 text-sm" disabled={busy === m.discordId} onClick={() => unban(m)}>
-                      Unban
-                    </button>
-                  ) : (
-                    <button
-                      className="rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-bad transition hover:bg-red-500/10"
-                      disabled={busy === m.discordId}
-                      onClick={() => ban(m)}
-                    >
-                      Ban
-                    </button>
-                  )}
-                </span>
+                    <span className="whitespace-nowrap">
+                      first {fmtDate(m.firstLoginAt)} · last {fmtDate(m.lastLoginAt)} · {m.loginCount}×
+                    </span>
+                  </div>
+                </MemberRow>
               </li>
             ))}
           </ul>

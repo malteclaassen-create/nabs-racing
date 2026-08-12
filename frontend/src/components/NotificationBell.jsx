@@ -95,6 +95,14 @@ function TypeIcon({ type }) {
           <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
         </svg>
       );
+    case "ADMIN": // person with a plus — a login waiting to be given a driver
+      return (
+        <svg {...common}>
+          <path d="M15 20v-1.5a4 4 0 00-4-4H6a4 4 0 00-4 4V20" />
+          <circle cx="8.5" cy="7" r="3.5" />
+          <path d="M18 8v6M21 11h-6" />
+        </svg>
+      );
     case "AWARD": // laurel medal — achievement unlocks (Cockpit)
       return (
         <svg {...common}>

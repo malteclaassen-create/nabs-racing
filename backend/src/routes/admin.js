@@ -2207,6 +2207,77 @@ router.get("/members", async (req, res, next) => {
   }
 });
 
+// GET /api/admin/members/pending -> { unlinked, requests }
+// Just the two numbers the admin navigation puts on the Members tab, so the
+// badge doesn't have to pull the whole member list (every driver of every
+// season) on each admin page load.
+//   unlinked = login accounts no driver row carries the Discord id of,
+//   requests = how many of those pressed "I want to race".
+router.get("/members/pending", async (req, res, next) => {
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT COUNT(*) AS n,
+             SUM(CASE WHEN m."raceRequestAt" IS NOT NULL THEN 1 ELSE 0 END) AS r
+      FROM "MemberAccount" m
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "Driver" d WHERE d."discordUserId" = m."discordId"
+      )`;
+    res.json({ unlinked: Number(rows[0]?.n || 0), requests: Number(rows[0]?.r || 0) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/attention -> { feedback, reports, members, market, total }
+// Everything waiting on an admin, as four numbers and their sum.
+//
+// The admin's own navigation fetches its badges tab by tab, which is right
+// there: it needs the lists anyway. This is for the rest of the site, where a
+// dot in the corner has to say "there is work" without pulling four lists on
+// every page an admin loads. Numbers only, and one round trip.
+//
+// The rules are the ones the tabs themselves use, taken from the same helpers,
+// because a dot that disagrees with the tab it points at is worse than no dot.
+router.get("/attention", async (req, res, next) => {
+  try {
+    const [feedbackItems, reports, memberRows, market] = await Promise.all([
+      dbListFeedback(prisma).catch(() => []),
+      dbListReports(prisma).catch(() => []),
+      prisma.$queryRaw`
+        SELECT COUNT(*) AS n
+        FROM "MemberAccount" m
+        WHERE NOT EXISTS (
+          SELECT 1 FROM "Driver" d WHERE d."discordUserId" = m."discordId"
+        )`.catch(() => []),
+      // A seat still on the market that somebody has actually put their hand up
+      // for, on a race that has not been run. An offer nobody wants is not work,
+      // and neither is one whose race is over: the market ignores those too.
+      prisma.seatOffer
+        .count({
+          where: { status: "OPEN", race: { isCompleted: false }, interests: { some: {} } },
+        })
+        .catch(() => 0),
+    ]);
+    // Same predicate as GET /feedback: untouched, or the sender replied last.
+    const feedback = feedbackItems.filter((i) => {
+      if (i.status === "NEW") return true;
+      const last = i.replies?.[i.replies.length - 1];
+      return !!last && last.author === "SENDER";
+    }).length;
+    const open = reports.filter((r) => !REPORT_DECIDED.includes(r.status)).length;
+    const members = Number(memberRows[0]?.n || 0);
+    res.json({
+      feedback,
+      reports: open,
+      members,
+      market,
+      total: feedback + open + members + market,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /api/admin/members/:discordId/ban { banned, reason? }
 router.post("/members/:discordId/ban", async (req, res, next) => {
   try {
@@ -3867,6 +3938,17 @@ router.delete("/team-art/:id/:kind", async (req, res, next) => {
   }
 });
 
+// PUT /api/admin/team-art/:id/country { country: "de" | "" }
+// The flag a team flies on the constructors poster. Teams have no nationality
+// of their own in the database, so it is kept with their pictures.
+router.put("/team-art/:id/country", async (req, res, next) => {
+  try {
+    res.json({ ok: true, art: await writeTeamCountry(prisma, req.params.id, req.body?.country) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // How those cars are cropped in the podium tiles. One setting for all three,
 // read by the poster and written by the sliders beside the preview, plus the
 // framings that were worth keeping. The PUT patches, so the sliders and the
@@ -3892,17 +3974,6 @@ router.put("/poster-framing", async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // TRACK INFO — admin-editable fun facts + custom map image per circuit, layered
 // on top of the computed track history (routes/tracks.js).
-// PUT /api/admin/team-art/:id/country { country: "de" | "" }
-// The flag a team flies on the constructors poster. Teams have no nationality
-// of their own in the database, so it is kept with their pictures.
-router.put("/team-art/:id/country", async (req, res, next) => {
-  try {
-    res.json({ ok: true, art: await writeTeamCountry(prisma, req.params.id, req.body?.country) });
-  } catch (e) {
-    next(e);
-  }
-});
-
 // ---------------------------------------------------------------------------
 router.get("/tracks/:key/info", async (req, res, next) => {
   try {

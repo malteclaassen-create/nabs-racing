@@ -17,6 +17,7 @@ import { raceKickoff } from "./raceKickoff.js";
 import { readRaceTypes } from "./raceTypes.js";
 import { readHiddenRaceIds } from "./attendanceHidden.js";
 import { unlockStateFor, CARD_EDITIONS } from "./cardEditions.js";
+import { getAdminDiscordIds } from "./adminUsers.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
 
 // Type keys the frontend maps to icons: RESULTS | REMINDER | DOWNLOAD | MARKET.
@@ -97,6 +98,7 @@ export const NOTIFY_DEFAULTS = {
   downloads: true, // "new download" broadcast
   seatOffers: "reserves", // who hears about seat offers: "reserves" | "all" | "off"
   seatFilled: true, // personal "you got the seat" note to the picked reserve
+  adminAlerts: true, // admins-only: a login with no driver, a "I want to race"
   reminders: [24], // race reminders, hours before kickoff
   trainingReminders: true, // do the reminders above also cover training sessions?
   attendanceOpenDays: null, // sign-up opens N days before race day (null = always open)
@@ -113,6 +115,7 @@ export function sanitizeNotifySettings(input) {
     downloads: o.downloads !== false,
     seatOffers: ["reserves", "all", "off"].includes(o.seatOffers) ? o.seatOffers : "reserves",
     seatFilled: o.seatFilled !== false,
+    adminAlerts: o.adminAlerts !== false,
     reminders: REMINDER_OFFSETS.filter((h) =>
       (Array.isArray(o.reminders) ? o.reminders : NOTIFY_DEFAULTS.reminders).map(Number).includes(h)
     ),
@@ -383,6 +386,68 @@ export async function notifySeatFilled(prisma, { offerId, raceId, reserve }) {
       link: `${prefix}/attendance`,
       recipientId: reserve.discordUserId,
       dedupeKey: `market-filled:${offerId}:${reserve.id}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// --- admin alerts -------------------------------------------------------------
+// The two things in the Members tab that need a HUMAN: somebody signed in and no
+// driver row claims them, and somebody asked for a seat. Both sit in the admin
+// area, which nobody keeps open, so the bell carries them to whoever can act.
+//
+// Personal rows addressed to the Discord admins (no broadcast — the rest of the
+// league has no business seeing who logged in). Muteable in the Notifications
+// tab. Best-effort like every other trigger: a login must never fail because a
+// notification could not be written.
+async function notifyAdmins(prisma, { title, body, link, dedupeSuffix }) {
+  if (!(await readNotifySettings(prisma)).adminAlerts) return;
+  const admins = await getAdminDiscordIds(prisma);
+  for (const discordId of admins) {
+    await dbCreateNotification(prisma, {
+      type: "ADMIN",
+      title,
+      body,
+      link,
+      recipientId: discordId,
+      // Per admin, so a second admin appointed later still hears about the
+      // people already waiting the next time one comes in.
+      dedupeKey: `${dedupeSuffix}:${discordId}`,
+    });
+  }
+}
+
+const memberName = (m) => m?.displayName || m?.username || "Someone";
+
+// A Discord login that matched no driver row. Deduped per account for good: the
+// same person logging in twenty times is still one thing to deal with.
+export async function notifyAdminsUnlinkedLogin(prisma, member) {
+  try {
+    if (!member?.discordId) return;
+    await notifyAdmins(prisma, {
+      title: `New login with no driver: ${memberName(member)}`,
+      body: "They signed in with Discord but no roster driver carries their Discord id. Link them, or create a driver for them, in the Members tab.",
+      link: "/admin?tab=members",
+      dedupeSuffix: `admin-unlinked:${member.discordId}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Somebody pressed "I want to race". Deduped per hand-raise (the timestamp is
+// part of the key), so a request withdrawn and raised again is heard again.
+export async function notifyAdminsRaceRequest(prisma, member, text) {
+  try {
+    if (!member?.discordId) return;
+    await notifyAdmins(prisma, {
+      title: `${memberName(member)} wants to race`,
+      body: text
+        ? `They asked for a seat at ${text}. Link them to a driver in the Members tab, and that answers the request.`
+        : "They asked for a seat. Link them to a driver in the Members tab, and that answers the request.",
+      link: "/admin?tab=members",
+      dedupeSuffix: `admin-race-request:${member.discordId}:${member.raceRequestAt || ""}`,
     });
   } catch {
     /* best-effort */
