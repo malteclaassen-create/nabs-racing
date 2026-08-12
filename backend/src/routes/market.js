@@ -12,7 +12,7 @@ import { optionalUser, resolveDriverId, isAdminRequest } from "../middleware/aut
 import { resolveSeasonId } from "../services/seasonService.js";
 import { seasonRowForDriver } from "../lib/persons.js";
 import { eventSeasonIds } from "./events.js";
-import { notifySeatOffered, notifySeatFilled } from "../lib/notifications.js";
+import { notifySeatOffered, notifySeatFilled, notifyAdminsSeatDropped } from "../lib/notifications.js";
 import { syncRaceToDiscord } from "../services/discordService.js";
 
 const router = Router();
@@ -59,15 +59,43 @@ const hasRealSeat = (driver) => driver.team?.tier === 1 || driver.team?.tier ===
 // Only reserve-roster drivers (tier 0) can take a seat over.
 const isReserve = (driver) => driver.team?.tier === 0;
 
+// Being given a seat IS the answer to "are you on the grid", the mirror of the
+// DECLINED that offering one files. Without it a stand-in sat in nobody's
+// column while the admin built the grid from that very list, and the person who
+// had just been told "you are driving" still saw three unanswered buttons.
+//
+// Clearing the pick takes the answer away again rather than leaving it at
+// ACCEPTED: an accepted row is a promise to be on the grid, and somebody who no
+// longer has the car cannot keep it. Back to no answer, not to DECLINED, so
+// they can still say yes if a different seat opens.
+export async function setSeatRsvp(prisma, raceId, driverId, seated) {
+  if (!raceId || !driverId) return;
+  if (seated) {
+    await prisma.raceRsvp
+      .upsert({
+        where: { raceId_driverId: { raceId, driverId } },
+        update: { status: "ACCEPTED" },
+        create: { raceId, driverId, status: "ACCEPTED" },
+      })
+      .catch(() => {});
+    return;
+  }
+  await prisma.raceRsvp.deleteMany({ where: { raceId, driverId, status: "ACCEPTED" } }).catch(() => {});
+}
+
 // Shape one offer for the API (team, who offered, who's picked, interest list).
 function shapeOffer(o) {
   return {
     id: o.id,
     raceId: o.raceId,
     status: o.status,
-    team: { id: o.team.id, name: o.team.name, color: o.team.color },
-    offeredBy: { driverId: o.driver.id, name: o.driver.name },
-    filledBy: o.filledBy ? { driverId: o.filledBy.id, name: o.filledBy.name } : null,
+    // `tier` so the market can put the Tier-1 cars first, `logoUrl` so it can
+    // show whose car it is rather than a coloured dot.
+    team: { id: o.team.id, name: o.team.name, color: o.team.color, tier: o.team.tier ?? null, logoUrl: o.team.logoUrl || null },
+    offeredBy: { driverId: o.driver.id, name: o.driver.name, country: o.driver.country || null },
+    filledBy: o.filledBy
+      ? { driverId: o.filledBy.id, name: o.filledBy.name, country: o.filledBy.country || null }
+      : null,
     interests: o.interests
       .map((i) => ({
         driverId: i.driver.id,
@@ -381,11 +409,72 @@ router.post("/offer/:offerId/pick", async (req, res, next) => {
       data: { filledById: pickId, status: pickId ? "FILLED" : "OPEN" },
       include: offerInclude,
     });
+    // The person losing the seat and the person gaining it both need their
+    // entry-list answer put right. Order matters only in that the old one goes
+    // first, in case an admin re-picks the same driver.
+    if (offer.filledById && offer.filledById !== pickId) {
+      await setSeatRsvp(prisma, offer.raceId, offer.filledById, false);
+    }
+    if (pickId) await setSeatRsvp(prisma, offer.raceId, pickId, true);
     // Tell the picked reserve personally (needs their linked Discord id).
     if (updated.filledBy) {
       notifySeatFilled(prisma, { offerId: offer.id, raceId: offer.raceId, reserve: updated.filledBy });
     }
     res.json({ ok: true, offer: shapeOffer(updated) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/market/offer/:offerId/stand-down -> the reserve who was GIVEN this
+// seat gives it back.
+//
+// Withdrawing interest is not the same thing and cannot cover this: by the time
+// somebody has been picked, an admin has built a grid around them and the round
+// may be days away. So this is its own action, it puts the seat back on the
+// market, it takes their entry-list answer with it, and it tells the admins,
+// because nobody would otherwise find out until the cars lined up.
+router.post("/offer/:offerId/stand-down", async (req, res, next) => {
+  try {
+    const offer = await prisma.seatOffer.findUnique({
+      where: { id: req.params.offerId },
+      include: { driver: true, filledBy: true, race: true },
+    });
+    if (!offer) return res.status(404).json({ error: "Offer not found" });
+    if (offer.race?.isCompleted) {
+      return res.status(400).json({ error: "Race already ran. Talk to a steward" });
+    }
+    const driver = await requireDriverForSeason(req, res, offer.race?.seasonId);
+    if (!driver) return;
+    if (offer.filledById !== driver.id) {
+      return res.status(403).json({ error: "You do not hold this seat" });
+    }
+
+    await prisma.seatOffer.update({
+      where: { id: offer.id },
+      data: { filledById: null, status: "OPEN" },
+    });
+    await setSeatRsvp(prisma, offer.raceId, driver.id, false);
+    // Their interest goes too. Standing down and staying on the shortlist would
+    // put them straight back in front of whoever picks next.
+    await prisma.seatInterest
+      .deleteMany({ where: { offerId: offer.id, driverId: driver.id } })
+      .catch(() => {});
+
+    notifyAdminsSeatDropped(prisma, {
+      race: offer.race,
+      offerId: offer.id,
+      reserve: offer.filledBy || driver,
+      offeredByName: offer.driver?.name || null,
+    });
+    // The Discord post carries the three columns, so it has to hear about the
+    // answer that just disappeared.
+    try {
+      await syncRaceToDiscord(prisma, offer.raceId);
+    } catch {
+      /* Discord is a mirror of this, not the record of it */
+    }
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }

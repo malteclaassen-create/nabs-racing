@@ -346,11 +346,24 @@ export async function notifySeatOffered(prisma, { race, teamName, driver }) {
     });
     const reserveIds = new Set(roster.filter((d) => d.team?.tier === 0).map((d) => d.discordUserId));
 
+    // Anyone already driving this round. A reserve who has been given a seat is
+    // ON the grid, so a second offer for the same race is not an opportunity —
+    // it is a message about somebody else's problem, sent to the one person who
+    // definitely cannot help. Two full-time drivers dropping out of the same
+    // round is exactly when this used to fire twice at the person who had just
+    // taken the first seat.
+    const taken = await prisma.seatOffer.findMany({
+      where: { raceId: race.id, status: "FILLED", filledById: { not: null } },
+      select: { filledBy: { select: { discordUserId: true } } },
+    });
+    const seated = new Set(taken.map((o) => o.filledBy?.discordUserId).filter(Boolean));
+
     const members = await prisma.$queryRawUnsafe(
       `SELECT "discordId" FROM "MemberAccount" WHERE "banned" = 0`
     );
     const recipients = members.filter((m) => {
       if (m.discordId === driver?.discordUserId) return false; // not the offerer
+      if (seated.has(m.discordId)) return false; // already has a seat this round
       return audience === "all" || reserveIds.has(m.discordId);
     });
 
@@ -448,6 +461,26 @@ export async function notifyAdminsRaceRequest(prisma, member, text) {
         : "They asked for a seat. Link them to a driver in the Members tab, and that answers the request.",
       link: "/admin?tab=members",
       dedupeSuffix: `admin-race-request:${member.discordId}:${member.raceRequestAt || ""}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// A reserve who had already been given a seat has stood down again. This is the
+// one market event an admin has to hear about rather than discover: the grid
+// they built is now a car short, and the round may be days away. Deduped per
+// offer and driver, so backing out of the same seat twice (given it back, was
+// re-assigned, backed out again) is heard both times only if it is a new offer.
+export async function notifyAdminsSeatDropped(prisma, { race, offerId, reserve, offeredByName }) {
+  try {
+    if (!race?.id || !reserve) return;
+    const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
+    await notifyAdmins(prisma, {
+      title: `${reserve.name || "A reserve"} stood down from ${roundName(race)}`,
+      body: `They had the ${offeredByName ? `${offeredByName} ` : ""}seat at ${race.track} and have given it back. The seat is open again.`,
+      link: `${prefix}/attendance`,
+      dedupeSuffix: `admin-seat-dropped:${offerId}:${reserve.id}`,
     });
   } catch {
     /* best-effort */

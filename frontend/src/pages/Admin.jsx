@@ -302,6 +302,13 @@ function MarketAdmin() {
   const reserves = (teams || [])
     .filter((t) => t.tier === 0)
     .flatMap((t) => t.drivers.map((d) => ({ id: d.id, name: d.name })));
+  // Everyone who HAS a seat to give up, for the manual entry below.
+  const seated = (teams || [])
+    .filter((t) => t.tier === 1 || t.tier === 2)
+    .flatMap((t) => t.drivers.map((d) => ({ id: d.id, name: d.name, team: t.name })))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const upcoming = market.data?.races || [];
+  const [manual, setManual] = useState({ raceId: "", driverId: "", filledById: "" });
 
   async function act(key, fn) {
     setError(null);
@@ -333,6 +340,75 @@ function MarketAdmin() {
       </div>
 
       {error && <Notice kind="error">{error}</Notice>}
+
+      {/* Deals struck somewhere else. Most swaps are agreed on Discord in two
+          messages, and asking both drivers to repeat the whole thing here is
+          how the entry list and the actual grid drift apart. */}
+      <div className="card p-5">
+        <CardHead eyebrow="Driver Market" title="Enter a swap agreed elsewhere" />
+        <p className="text-sm text-light">
+          Write down what was arranged on Discord. The seat is filed exactly as if the driver had offered it here:
+          they go down as declined, the reserve goes down as accepted, and the takeover shows in the record and in
+          the result import. Leave the reserve empty to just put the seat on the market.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <select
+            aria-label="Which race"
+            className="input"
+            value={manual.raceId}
+            onChange={(e) => setManual({ ...manual, raceId: e.target.value })}
+          >
+            <option value="">Which race?</option>
+            {upcoming.map((r) => (
+              <option key={r.id} value={r.id}>
+                R{r.number} {r.track}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Whose seat"
+            className="input"
+            value={manual.driverId}
+            onChange={(e) => setManual({ ...manual, driverId: e.target.value })}
+          >
+            <option value="">Whose seat?</option>
+            {seated.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name} ({d.team})
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Who takes it"
+            className="input"
+            value={manual.filledById}
+            onChange={(e) => setManual({ ...manual, filledById: e.target.value })}
+          >
+            <option value="">Who takes it? (optional)</option>
+            {reserves.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          className="btn-primary mt-3"
+          disabled={!manual.raceId || !manual.driverId || busy === "manual"}
+          onClick={() =>
+            act("manual", async () => {
+              await api.adminCreateOffer({
+                raceId: manual.raceId,
+                driverId: manual.driverId,
+                filledById: manual.filledById || null,
+              });
+              setManual({ raceId: "", driverId: "", filledById: "" });
+            })
+          }
+        >
+          {busy === "manual" ? "Saving…" : "Enter this swap"}
+        </button>
+      </div>
 
       {races.length === 0 && (
         <div className="card p-8 text-center text-medium">No open seat offers right now.</div>

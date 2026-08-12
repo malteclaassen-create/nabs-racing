@@ -845,6 +845,12 @@ export const api = {
   // Just "is a seat free and have I already asked for it" — the market list
   // itself is far too big to pull for a dot in the nav bar.
   marketAlert: () => request(`/market/alert${seriesQ()}`, { userAuth: true }),
+  // The reserve who HOLDS a seat gives it back. Not the same as withdrawing
+  // interest: an admin has already built a grid around them, so this reopens
+  // the seat, clears their entry and tells the admins.
+  standDownFromSeat: (offerId) => request(`/market/offer/${offerId}/stand-down`, { method: "POST", userAuth: true }),
+  // Admin writes down a swap that was agreed on Discord.
+  adminCreateOffer: (body) => request("/admin/market", { method: "POST", body, auth: true }),
   banMember: (discordId, banned, reason) =>
     request(`/admin/members/${discordId}/ban`, { method: "POST", body: { banned, reason }, auth: true }),
   linkMember: (discordId, driverId) =>

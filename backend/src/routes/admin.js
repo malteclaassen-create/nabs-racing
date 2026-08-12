@@ -13,6 +13,9 @@ import { listRemoteResults, fetchRemoteResult } from "../services/emperorResults
 import { saveRaceResults } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
 import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
+// The entry-list answer that follows a seat, shared with the driver-facing
+// market routes so an admin override and a driver's own pick write the same row.
+import { setSeatRsvp } from "./market.js";
 import { getWebhookUrl, setWebhookUrl, getResultsRoleId, getResultsWebhookUrl, setResultsRoleId, setResultsWebhookUrl, postToResultsChannel, announce, syncRaceToDiscord } from "../services/discordService.js";
 import { buildResultsPost, buildStandingsPost, buildConstructorsPost } from "../services/resultsPostService.js";
 import { resolveSeasonId, invalidatePrivateSeasonCache } from "../services/seasonService.js";
@@ -869,16 +872,105 @@ router.post("/market/:offerId/assign", async (req, res, next) => {
         return res.status(400).json({ error: "That driver belongs to another season's roster" });
       }
     }
+    const previous = offer.filledById;
     await prisma.seatOffer.update({
       where: { id: offer.id },
       data: { filledById: pickId, status: pickId ? "FILLED" : "OPEN" },
     });
+    // The entry list has to follow the seat. Being given a car IS the answer to
+    // "are you on the grid", and the admin builds that grid from this very
+    // list — a stand-in who sat in nobody's column was the one person on track
+    // the list did not know about. Taking the seat away takes the answer with
+    // it, back to no answer rather than to declined.
+    if (previous && previous !== pickId) await setSeatRsvp(prisma, offer.raceId, previous, false);
+    if (pickId) await setSeatRsvp(prisma, offer.raceId, pickId, true);
     // Tell the picked reserve personally (needs their linked Discord id).
     if (pickId) {
       const reserve = await prisma.driver.findUnique({ where: { id: pickId } });
       notifySeatFilled(prisma, { offerId: offer.id, raceId: offer.raceId, reserve });
     }
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/market  { raceId, driverId, filledById? }
+// Enter a swap that was agreed somewhere else.
+//
+// Most of these deals happen on Discord: somebody says they cannot make Friday,
+// somebody else says they will take it, done. Until now the only way to get
+// that onto the site was to ask the two of them to repeat the whole dance here,
+// which nobody does, so the entry list and the grid quietly disagreed. An admin
+// can now write down what was agreed: whose seat it is, and who is taking it.
+//
+// It goes through the same rows as a seat offered on the site, so everything
+// downstream (the takeover record, the import pre-fill, the entry list) cannot
+// tell the difference and does not have to.
+router.post("/market", async (req, res, next) => {
+  try {
+    const { raceId, driverId, filledById } = req.body || {};
+    const race = await prisma.race.findUnique({ where: { id: String(raceId || "") } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    if (race.isSpecialEvent) {
+      return res.status(400).json({ error: "Only championship rounds have a driver market" });
+    }
+    const driver = await prisma.driver.findUnique({
+      where: { id: String(driverId || "") },
+      include: { team: true },
+    });
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
+    if (driver.seasonId !== race.seasonId) {
+      return res.status(400).json({ error: "That driver belongs to another season's roster" });
+    }
+    if (driver.team?.tier !== 1 && driver.team?.tier !== 2) {
+      return res.status(400).json({ error: "Only a full-time driver has a seat to give up" });
+    }
+
+    let reserve = null;
+    if (filledById) {
+      reserve = await prisma.driver.findUnique({ where: { id: String(filledById) }, include: { team: true } });
+      if (!reserve) return res.status(404).json({ error: "Reserve not found" });
+      if (reserve.team?.tier !== 0) return res.status(400).json({ error: "Only reserve drivers can fill a seat" });
+      if (reserve.seasonId !== race.seasonId) {
+        return res.status(400).json({ error: "That reserve belongs to another season's roster" });
+      }
+      if (reserve.id === driver.id) return res.status(400).json({ error: "That is the same driver" });
+    }
+
+    const offer = await prisma.seatOffer.upsert({
+      where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
+      update: { status: reserve ? "FILLED" : "OPEN", filledById: reserve?.id || null, teamId: driver.teamId },
+      create: {
+        raceId: race.id,
+        driverId: driver.id,
+        teamId: driver.teamId,
+        status: reserve ? "FILLED" : "OPEN",
+        filledById: reserve?.id || null,
+      },
+      include: { team: true },
+    });
+
+    // Both answers, exactly as the driver-facing routes write them.
+    await prisma.raceRsvp
+      .upsert({
+        where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
+        update: { status: "DECLINED" },
+        create: { raceId: race.id, driverId: driver.id, status: "DECLINED" },
+      })
+      .catch(() => {});
+    if (reserve) await setSeatRsvp(prisma, race.id, reserve.id, true);
+
+    // No seat-offered fan-out: this is a done deal being written down, not a
+    // seat going begging. The reserve is told, because being entered into a
+    // race by somebody else is worth hearing about.
+    if (reserve) notifySeatFilled(prisma, { offerId: offer.id, raceId: race.id, reserve });
+    try {
+      await syncRaceToDiscord(prisma, race.id);
+    } catch {
+      /* Discord is a mirror of this, not the record of it */
+    }
+    res.json({ ok: true, offerId: offer.id });
   } catch (e) {
     next(e);
   }

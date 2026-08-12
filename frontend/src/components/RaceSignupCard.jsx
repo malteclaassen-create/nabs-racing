@@ -4,6 +4,8 @@ import { TeamDot, NoData} from "./ui.jsx";
 import SeatMarket from "./SeatMarket.jsx";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
+import { api } from "../api/client.js";
+import { useAsk } from "./overlay.jsx";
 
 // Quiet by default, colour only where it means something: the three answer
 // buttons are neutral outlines with a tinted icon, and fill with their status
@@ -92,6 +94,30 @@ export default function RaceSignupCard({
   // CANCELLED offers never reach the page, and a FILLED one counts doubly —
   // somebody else is in that car.
   const myOffer = (marketRace?.offers || []).find((o) => myIds.has(o.offeredBy.driverId));
+  // The other side of the same coin: an offer somebody else made that I was
+  // given. The buttons above cannot answer for it, so it gets its own way out.
+  const mySeat = (marketRace?.offers || []).find(
+    (o) => o.status === "FILLED" && myIds.has(o.filledBy?.driverId)
+  );
+  const [standingDown, setStandingDown] = useState(false);
+  const ask = useAsk();
+  async function standDown() {
+    if (!mySeat) return;
+    const yes = await ask({
+      title: "Give this seat back?",
+      body: `You are down to drive ${mySeat.team?.name || "this car"} for ${mySeat.offeredBy?.name || "another driver"}. Giving it back puts the seat on the market again, takes you off the entry list, and tells the stewards.`,
+      confirmLabel: "Yes, I can't take it",
+      danger: true,
+    });
+    if (!yes) return;
+    setStandingDown(true);
+    try {
+      await api.standDownFromSeat(mySeat.id);
+      await reloadMarket?.();
+    } finally {
+      setStandingDown(false);
+    }
+  }
   const capacity = ev.capacity ?? 40;
   const accepted = ev.rsvps.ACCEPTED.length;
 
@@ -194,6 +220,20 @@ export default function RaceSignupCard({
                 You offered your seat, so you&rsquo;re down as declined. Withdraw the offer below to
                 answer for yourself again.
               </p>
+            )}
+            {/* A reserve who was GIVEN a seat is entered by somebody else, so
+                "Clear my answer" is not the way out: the seat would still be
+                theirs and the grid would still expect them. This puts the car
+                back on the market and tells the admins, because by now one of
+                them has built a grid around it. */}
+            {mySeat && (
+              <button
+                onClick={standDown}
+                disabled={busy === `${ev.id}:stand-down` || standingDown}
+                className="btn-secondary"
+              >
+                {standingDown ? "…" : "I can't take this seat"}
+              </button>
             )}
           </div>
         ) : isLoggedIn ? (

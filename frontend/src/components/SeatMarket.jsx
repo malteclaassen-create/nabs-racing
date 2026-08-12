@@ -1,20 +1,48 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
-import { TeamDot, ErrorBox } from "./ui.jsx";
+import { ErrorBox } from "./ui.jsx";
 import Flag from "./Flag.jsx";
+import TeamLogo from "./TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 
-// One reserve chip (name + flag) used in the interest list.
-function ReserveChip({ driverId, name, country, highlight }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm ${
-        highlight ? "bg-emerald-500/15 font-semibold text-ok" : "bg-surface2 text-dark"
-      }`}
-    >
-      {name}
+// A driver's name with their flag, going through to their page. Used for every
+// name in here: the whole block is about people, and a name you cannot click is
+// a dead end on a site whose other half is driver pages.
+function DriverName({ driverId, name, country, className = "" }) {
+  const inner = (
+    <>
       <Flag code={countryFor(driverId, country)} w={16} h={12} />
+      <span className="truncate">{name}</span>
+    </>
+  );
+  if (!driverId) return <span className={`inline-flex items-center gap-1.5 ${className}`}>{inner}</span>;
+  return (
+    <Link
+      to={`/drivers/${driverId}`}
+      className={`inline-flex items-center gap-1.5 transition hover:text-link hover:underline ${className}`}
+    >
+      {inner}
+    </Link>
+  );
+}
+
+// Interested reserves, as a row of names. Chips became names on a line: a
+// rounded pill each was a lot of furniture for what is a list of people.
+function InterestRow({ interests, pickedId }) {
+  if (!interests.length) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      {interests.map((i) => (
+        <DriverName
+          key={i.driverId}
+          driverId={i.driverId}
+          name={i.name}
+          country={i.country}
+          className={i.driverId === pickedId ? "font-semibold text-ok" : "text-medium"}
+        />
+      ))}
     </span>
   );
 }
@@ -23,6 +51,7 @@ function ReserveChip({ driverId, name, country, highlight }) {
 // `race` is the market race object ({ id, offers }) or undefined; `me` is the
 // caller's market context; `reload` refreshes the market after an action.
 // Renders nothing when there's no market activity and the caller can't offer.
+//
 // `highlight` marks the offers a RESERVE could still put their hand up for, so
 // the block a scroll cue just sent them to actually looks like the thing that
 // was worth scrolling for. Off once they have applied or looked once.
@@ -51,12 +80,24 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
     }
   }
 
+  // Seats that still need somebody first, then by team tier. A reserve reading
+  // down the list meets every car they could actually be in before the ones
+  // that are settled, and within that the Tier-1 seats lead, which is the order
+  // the rest of the site puts teams in.
+  const sorted = [...offers].sort((a, b) => {
+    const openA = a.status !== "FILLED";
+    const openB = b.status !== "FILLED";
+    if (openA !== openB) return openA ? -1 : 1;
+    const tierA = a.team?.tier ?? 99;
+    const tierB = b.team?.tier ?? 99;
+    if (tierA !== tierB) return tierA - tierB;
+    return (a.team?.name || "").localeCompare(b.team?.name || "");
+  });
+
   return (
     <div ref={blockRef} className="border-t border-border bg-surface2/40 px-5 py-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
-          Driver Market
-        </h3>
+        <h3 className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Driver Market</h3>
         {canOfferHere && race && (
           <button
             className="btn-primary"
@@ -68,39 +109,61 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
         )}
       </div>
 
-      {error && <div className="mb-3"><ErrorBox message={error} /></div>}
+      {error && (
+        <div className="mb-3">
+          <ErrorBox message={error} />
+        </div>
+      )}
 
       {offers.length === 0 ? (
-        <p className="text-sm text-faint">
-          No open seats yet. Offer yours above if you can't make it.
-        </p>
+        <p className="text-sm text-faint">No open seats yet. Offer yours above if you can't make it.</p>
       ) : (
-        <div className="space-y-3">
-          {offers.map((offer) => {
+        <div className="space-y-2">
+          {sorted.map((offer) => {
             const mine = me && offer.offeredBy.driverId === me.driverId;
             const iAmInterested = me && offer.interests.some((i) => i.driverId === me.driverId);
             const iAmPicked = me && offer.filledBy?.driverId === me.driverId;
+            const filled = offer.status === "FILLED";
             // Free, not mine, and I am a reserve who could take it.
-            const forMe = highlight && !mine && !iAmInterested && offer.status !== "FILLED" && me?.isReserve;
+            const forMe = highlight && !mine && !iAmInterested && !filled && me?.isReserve;
+
+            // A settled seat is a fact, not a decision. It used to carry the
+            // interest list, a divider and the whole action block, roughly a
+            // hundred and sixty pixels to say something a single line says
+            // better — and with several swaps in a round they pushed everything
+            // still needing an answer off the screen.
+            if (filled && !mine && !iAmPicked) {
+              return (
+                <div
+                  key={offer.id}
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-card px-3 py-2 text-sm"
+                >
+                  <TeamLogo id={offer.team.id} name={offer.team.name} color={offer.team.color} logoUrl={offer.team.logoUrl} size={18} />
+                  <DriverName {...offer.filledBy} className="font-semibold text-dark" />
+                  <span className="text-light">drives for</span>
+                  <DriverName {...offer.offeredBy} className="text-medium" />
+                </div>
+              );
+            }
 
             return (
               <div
                 key={offer.id}
-                className={`rounded-xl border p-4 ${
+                className={`rounded-xl border p-3 ${
                   forMe ? "border-brand/60 bg-brand/5 ring-1 ring-brand/30" : "border-border bg-card"
                 }`}
               >
                 {/* seat header */}
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 font-semibold text-dark">
-                    <TeamDot color={offer.team.color} />
-                    {offer.team.name}
-                    <span className="text-sm font-normal text-light">· seat of {offer.offeredBy.name}</span>
-                  </div>
-                  {offer.status === "FILLED" ? (
-                    <span className="pill bg-emerald-500/15 text-ok">
-                      Filled · {offer.filledBy.name}
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+                  <div className="flex min-w-0 items-center gap-2 font-semibold text-dark">
+                    <TeamLogo id={offer.team.id} name={offer.team.name} color={offer.team.color} logoUrl={offer.team.logoUrl} size={20} />
+                    <span className="truncate">{offer.team.name}</span>
+                    <span className="flex items-center gap-1.5 text-sm font-normal text-light">
+                      · seat of <DriverName {...offer.offeredBy} className="text-medium" />
                     </span>
+                  </div>
+                  {filled ? (
+                    <span className="pill bg-emerald-500/15 text-ok">Filled · {offer.filledBy.name}</span>
                   ) : forMe ? (
                     <span className="pill bg-brand/20 font-bold text-dark">This seat is free</span>
                   ) : (
@@ -108,52 +171,43 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
                   )}
                 </div>
 
-                {/* interest list */}
-                <div className="mt-3">
-                  <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
-                    Interested reserves ({offer.interests.length})
+                {/* Who wants it. One line with a label in front of it rather
+                    than a heading over a row of pills. */}
+                {(offer.interests.length > 0 || mine) && (
+                  <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
+                      Interested
+                    </span>
+                    {offer.interests.length ? (
+                      <InterestRow interests={offer.interests} pickedId={offer.filledBy?.driverId} />
+                    ) : (
+                      <span className="text-sm text-faint">nobody yet</span>
+                    )}
                   </div>
-                  {offer.interests.length === 0 ? (
-                    <p className="text-sm text-faint">No reserves yet.</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {offer.interests.map((i) => (
-                        <ReserveChip
-                          key={i.driverId}
-                          driverId={i.driverId}
-                          name={i.name}
-                          country={i.country}
-                          highlight={offer.filledBy?.driverId === i.driverId}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
+                )}
 
                 {/* actions */}
-                <div className="mt-3 border-t border-border pt-3">
+                <div className="mt-2.5 border-t border-border pt-2.5">
                   {/* Offerer: pick a reserve / withdraw */}
                   {mine && (
                     <div className="space-y-2">
                       {offer.interests.length > 0 && (
-                        <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-wrap gap-1.5">
                           {offer.interests.map((i) => {
                             const picked = offer.filledBy?.driverId === i.driverId;
                             return (
-                              <div key={i.driverId} className="flex items-center justify-between gap-2">
-                                <span className="text-sm text-dark">{i.name}</span>
-                                <button
-                                  className={picked ? "btn-secondary" : "btn-primary"}
-                                  disabled={busy === `pick:${offer.id}:${i.driverId}`}
-                                  onClick={() =>
-                                    act(`pick:${offer.id}:${i.driverId}`, () =>
-                                      api.pickReplacement(offer.id, picked ? null : i.driverId)
-                                    )
-                                  }
-                                >
-                                  {picked ? "Deselect" : "Choose"}
-                                </button>
-                              </div>
+                              <button
+                                key={i.driverId}
+                                className={picked ? "btn-secondary" : "btn-primary"}
+                                disabled={busy === `pick:${offer.id}:${i.driverId}`}
+                                onClick={() =>
+                                  act(`pick:${offer.id}:${i.driverId}`, () =>
+                                    api.pickReplacement(offer.id, picked ? null : i.driverId)
+                                  )
+                                }
+                              >
+                                {picked ? `Deselect ${i.name}` : `Choose ${i.name}`}
+                              </button>
                             );
                           })}
                         </div>
@@ -171,21 +225,18 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
                   {/* Reserve: express / withdraw interest */}
                   {!mine && me?.isReserve && (
                     <div className="flex flex-wrap items-center gap-3">
-                      {iAmInterested ? (
-                        <>
-                          <button
-                            className="btn-secondary"
-                            disabled={busy === `int:${offer.id}`}
-                            onClick={() => act(`int:${offer.id}`, () => api.withdrawInterest(offer.id))}
-                          >
-                            Withdraw interest
-                          </button>
-                          {iAmPicked && (
-                            <span className="text-sm font-semibold text-ok">
-                              You've been picked for this seat!
-                            </span>
-                          )}
-                        </>
+                      {iAmPicked ? (
+                        <span className="text-sm font-semibold text-ok">
+                          You have this seat. Use the sign-up buttons above if you cannot make it.
+                        </span>
+                      ) : iAmInterested ? (
+                        <button
+                          className="btn-secondary"
+                          disabled={busy === `int:${offer.id}`}
+                          onClick={() => act(`int:${offer.id}`, () => api.withdrawInterest(offer.id))}
+                        >
+                          Withdraw interest
+                        </button>
                       ) : (
                         <button
                           className="btn-primary"
@@ -201,9 +252,7 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
                   {/* Everyone else / logged out: read-only hint */}
                   {!mine && !me?.isReserve && (
                     <p className="text-xs text-faint">
-                      {me
-                        ? "Only reserve drivers can take this seat."
-                        : "Sign in as a reserve driver to take a seat."}
+                      {me ? "Only reserve drivers can take this seat." : "Sign in as a reserve driver to take a seat."}
                     </p>
                   )}
                 </div>
