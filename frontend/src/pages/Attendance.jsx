@@ -4,6 +4,8 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
+import { useReserveSeats } from "../hooks/useReserveSeats.js";
+import SeatCue from "../components/SeatCue.jsx";
 import { ErrorBox, PageHeader, TableSkeleton, EmptyState, Notice } from "../components/ui.jsx";
 import RaceSignupCard from "../components/RaceSignupCard.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
@@ -175,6 +177,12 @@ export default function Attendance() {
     }
   }
   const marketByRace = useMemo(() => new Map((market.data?.races || []).map((r) => [r.id, r])), [market.data]);
+  // A reserve who came here to answer "am I available" would otherwise never
+  // scroll as far as the seat that is going begging. See hooks/useReserveSeats.
+  const seats = useReserveSeats();
+  // A callback ref into state, not useRef: SeatCue has to re-run when the
+  // block appears, and a ref object never tells it that.
+  const [seatEl, setSeatEl] = useState(null);
   const reloadMarketAndEvents = useCallback(
     () => Promise.all([market.reload(), events.reload()]),
     [market.reload, events.reload]
@@ -364,6 +372,8 @@ export default function Attendance() {
               // buttons above them have to be refetched with the market, or the
               // page would sit there showing the answer the member just left.
               reloadMarket={reloadMarketAndEvents}
+              seatHighlight={seats.show}
+              seatRef={setSeatEl}
               driverId={driverId}
               canSignUp={canSignUp}
               isLoggedIn={isLoggedIn}
@@ -412,6 +422,11 @@ export default function Attendance() {
               <div className="min-w-0">
                 <div className="lg:sticky lg:top-28">{videoPanel}</div>
               </div>
+              {/* Floats over the page rather than sitting in a column: the whole
+                  point is to be visible from wherever they stopped reading. */}
+              {seats.show && (
+                <SeatCue count={seats.openCount} target={seatEl} onSeen={seats.markSeen} />
+              )}
             </div>
           );
           })()}

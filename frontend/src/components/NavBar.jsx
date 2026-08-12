@@ -4,6 +4,7 @@ import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
+import { useReserveSeats } from "../hooks/useReserveSeats.js";
 import AttentionDot from "./AttentionDot.jsx";
 import { api } from "../api/client.js";
 import Logo from "./Logo.jsx";
@@ -103,7 +104,7 @@ const desktopLinkClass = ({ isActive }) =>
 // meaning: the active page gets the usual brand tint, everything else is calm.
 // `alsoActiveOn` mirrors the desktop nav: the root and /s/<slug> are the same
 // page, so both have to light the Home row (see navLinks).
-function MobileRow({ to, end, icon, label, sub, alsoActiveOn }) {
+function MobileRow({ to, end, icon, label, sub, alsoActiveOn, badge = null }) {
   const { pathname } = useLocation();
   const forced = alsoActiveOn === pathname;
   return (
@@ -127,6 +128,7 @@ function MobileRow({ to, end, icon, label, sub, alsoActiveOn }) {
             <span className={`block truncate text-sm font-semibold ${isActive ? "text-dark" : "text-medium"}`}>{label}</span>
             {sub && <span className="mt-0.5 block truncate font-mono text-[10px] text-light">{sub}</span>}
           </span>
+          {badge}
         </>
         );
       }}
@@ -635,6 +637,8 @@ export default function NavBar() {
   }, [attCacheKey, location.pathname]);
 
   const links = navLinks(seriesPath).filter((l) => l.label !== "Attendance" || attendanceOpen);
+  // Reserve drivers only, and only until they have looked or applied.
+  const seats = useReserveSeats();
   // Handed to GlobalSearch so its expanded field + dropdown line up their left
   // edge with the "Live" nav item.
   const liveRef = useRef(null);
@@ -754,6 +758,24 @@ export default function NavBar() {
                   <span className="ml-1.5 font-mono text-[11px] font-bold tabular-nums opacity-70">{liveNow}</span>
                 )}
                 {l.label === "Live" && liveNow > 0 && <span className="sr-only"> ({liveNow} on track)</span>}
+                {/* Same shape as Live's count, for the same reason: the number
+                    is the interesting fact, not a dot. It is brand-coloured and
+                    breathes because unlike cars on track this is something the
+                    reader can ACT on, and it is gone the moment they have. The
+                    glow is opacity only — the sliding highlight measures these
+                    items with getBoundingClientRect, so anything that moves or
+                    scales here would drag the pill around with it. */}
+                {l.label === "Attendance" && seats.show && (
+                  <span className="glow-pulse ml-1.5 font-mono text-[11px] font-bold tabular-nums text-brand">
+                    {seats.openCount}
+                  </span>
+                )}
+                {l.label === "Attendance" && seats.show && (
+                  <span className="sr-only">
+                    {" "}
+                    ({seats.openCount === 1 ? "a seat is free" : `${seats.openCount} seats are free`})
+                  </span>
+                )}
               </NavLink>
             )
           )}
@@ -836,7 +858,19 @@ export default function NavBar() {
               <MobileRow to={seriesPath("")} end alsoActiveOn="/" icon={NAV_ICONS.home} label="Home" />
               <MobileRow to={seriesPath("/races")} icon={NAV_ICONS.races} label="Races" sub="Calendar & results" />
               {attendanceOpen && (
-                <MobileRow to={seriesPath("/attendance")} icon={NAV_ICONS.attendance} label="Attendance" sub="Race sign-up" />
+                <MobileRow
+                  to={seriesPath("/attendance")}
+                  icon={NAV_ICONS.attendance}
+                  label="Attendance"
+                  sub={seats.show ? (seats.openCount === 1 ? "A seat is free" : `${seats.openCount} seats are free`) : "Race sign-up"}
+                  badge={
+                    seats.show ? (
+                      <span className="glow-pulse shrink-0 font-mono text-[11px] font-bold tabular-nums text-brand">
+                        {seats.openCount}
+                      </span>
+                    ) : null
+                  }
+                />
               )}
               <MobileRow
                 to={seriesPath("/live")}

@@ -23,7 +23,10 @@ function ReserveChip({ driverId, name, country, highlight }) {
 // `race` is the market race object ({ id, offers }) or undefined; `me` is the
 // caller's market context; `reload` refreshes the market after an action.
 // Renders nothing when there's no market activity and the caller can't offer.
-export default function SeatMarket({ race, me, reload }) {
+// `highlight` marks the offers a RESERVE could still put their hand up for, so
+// the block a scroll cue just sent them to actually looks like the thing that
+// was worth scrolling for. Off once they have applied or looked once.
+export default function SeatMarket({ race, me, reload, highlight = false, blockRef = null }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
 
@@ -49,7 +52,7 @@ export default function SeatMarket({ race, me, reload }) {
   }
 
   return (
-    <div className="border-t border-border bg-surface2/40 px-5 py-4">
+    <div ref={blockRef} className="border-t border-border bg-surface2/40 px-5 py-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
           Driver Market
@@ -77,9 +80,16 @@ export default function SeatMarket({ race, me, reload }) {
             const mine = me && offer.offeredBy.driverId === me.driverId;
             const iAmInterested = me && offer.interests.some((i) => i.driverId === me.driverId);
             const iAmPicked = me && offer.filledBy?.driverId === me.driverId;
+            // Free, not mine, and I am a reserve who could take it.
+            const forMe = highlight && !mine && !iAmInterested && offer.status !== "FILLED" && me?.isReserve;
 
             return (
-              <div key={offer.id} className="rounded-xl border border-border bg-card p-4">
+              <div
+                key={offer.id}
+                className={`rounded-xl border p-4 ${
+                  forMe ? "border-brand/60 bg-brand/5 ring-1 ring-brand/30" : "border-border bg-card"
+                }`}
+              >
                 {/* seat header */}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 font-semibold text-dark">
@@ -91,6 +101,8 @@ export default function SeatMarket({ race, me, reload }) {
                     <span className="pill bg-emerald-500/15 text-ok">
                       Filled · {offer.filledBy.name}
                     </span>
+                  ) : forMe ? (
+                    <span className="pill bg-brand/20 font-bold text-dark">This seat is free</span>
                   ) : (
                     <span className="pill bg-amber-500/15 text-warn">Looking for a reserve</span>
                   )}

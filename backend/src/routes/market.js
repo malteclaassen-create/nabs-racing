@@ -155,6 +155,67 @@ router.get("/", async (req, res, next) => {
 
 // POST /api/market/offer { raceId } -> the logged-in full-time driver offers
 // their seat for that race. Idempotent: re-offering reopens a cancelled offer.
+// GET /api/market/alert -> { isReserve, raceId, open: [offerId], mine: [offerId] }
+//
+// The little bit the SITE CHROME needs: is a seat going begging, and has this
+// person already put their hand up for it. The full market list is a page's
+// worth of data (every upcoming race with its offers and everyone interested in
+// them) and the nav bar cannot pull that on every page just to decide whether to
+// light up an item.
+//
+// Reserve drivers only. Everybody else gets isReserve:false and empty lists, and
+// the browser never asks again for the rest of the visit.
+router.get("/alert", async (req, res, next) => {
+  try {
+    const empty = { isReserve: false, raceId: null, open: [], mine: [] };
+    const myDriverId = await resolveDriverId(prisma, req.user);
+    if (!myDriverId) return res.json(empty);
+
+    const seasonIds = await eventSeasonIds(prisma, req);
+    const races = await prisma.race.findMany({
+      where: { isCompleted: false, isSpecialEvent: false, seasonId: { in: seasonIds } },
+      orderBy: { number: "asc" },
+      select: {
+        id: true,
+        seasonId: true,
+        seatOffers: {
+          where: { status: "OPEN" },
+          select: { id: true, driverId: true, interests: { select: { driverId: true } } },
+        },
+      },
+    });
+    if (!races.some((r) => r.seatOffers.length)) return res.json(empty);
+
+    const base = await prisma.driver.findUnique({ where: { id: myDriverId }, include: { team: true } });
+    // The roster row of the race's own season, not the login's: a person can be
+    // a reserve next season and a full-time driver in this one.
+    const rowFor = new Map();
+    for (const sid of new Set(races.map((r) => r.seasonId))) {
+      rowFor.set(sid, base && (await seasonRowForDriver(prisma, base, sid, req.user?.discordId)));
+    }
+
+    const open = [];
+    const mine = [];
+    let raceId = null;
+    let reserveSomewhere = false;
+    for (const race of races) {
+      const row = rowFor.get(race.seasonId);
+      if (!row || !isReserve(row)) continue;
+      reserveSomewhere = true;
+      for (const offer of race.seatOffers) {
+        // Their own seat is not an opportunity, however open it is.
+        if (offer.driverId === row.id) continue;
+        open.push(offer.id);
+        if (offer.interests.some((i) => i.driverId === row.id)) mine.push(offer.id);
+        if (!raceId) raceId = race.id;
+      }
+    }
+    res.json({ isReserve: reserveSomewhere, raceId, open, mine });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.post("/offer", async (req, res, next) => {
   try {
     const { raceId } = req.body || {};

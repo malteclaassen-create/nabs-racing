@@ -842,6 +842,9 @@ export const api = {
   // dots outside the admin area, where pulling the lists themselves would be
   // four requests for a red circle.
   adminAttention: () => request("/admin/attention", { auth: true }),
+  // Just "is a seat free and have I already asked for it" — the market list
+  // itself is far too big to pull for a dot in the nav bar.
+  marketAlert: () => request(`/market/alert${seriesQ()}`, { userAuth: true }),
   banMember: (discordId, banned, reason) =>
     request(`/admin/members/${discordId}/ban`, { method: "POST", body: { banned, reason }, auth: true }),
   linkMember: (discordId, driverId) =>

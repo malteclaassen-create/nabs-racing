@@ -69,6 +69,10 @@ export default function RaceSignupCard({
   // Lets the page place the card — the attendance layout hands it `lg:grow` so
   // it fills whatever height the video beside it leaves over.
   className = "",
+  // Reserve nudge: whether to mark the free seats, and a handle on the market
+  // block so the page can scroll to it and notice when it is on screen.
+  seatHighlight = false,
+  seatRef = null,
 }) {
   // The market context of the RACE's season — see the note further down at
   // SeatMarket for why it is read this way even when null.
@@ -279,7 +283,7 @@ export default function RaceSignupCard({
       {/* meHere is the market context of the RACE's season (a member can be
           full-time in one season and a reserve in the next), worked out at the
           top because the sign-up buttons need it too. */}
-      <SeatMarket race={marketRace} me={meHere} reload={reloadMarket} />
+      <SeatMarket race={marketRace} me={meHere} reload={reloadMarket} highlight={seatHighlight} blockRef={seatRef} />
     </div>
   );
 }
