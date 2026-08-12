@@ -11,12 +11,109 @@ import { fmtStamp } from "../utils/format.js";
 
 const STATUSES = ["FINISHED", "DNS", "DNF", "DSQ"];
 
+// The round is picked FIRST and everything below is scoped to it. This value
+// stands for the one case the calendar can't answer: a round that was raced but
+// never entered, which is created on the fly from a typed number.
+const NEW_ROUND = "new";
+
+// How far from a round's stored date a server session may sit and still be
+// taken for that round's session. Wide enough for a date stored as a bare day
+// in either timezone and a race that rolls past midnight, tight enough that
+// last season's visit to the same circuit can never be mistaken for this one.
+const BEFORE_MS = 12 * 3600 * 1000;
+const AFTER_MS = 30 * 3600 * 1000;
+
 function fmtRemote(r) {
   const d = r.date ? new Date(r.date) : null;
   const when = d
     ? fmtStamp(d)
     : r.id;
   return `${when} · ${r.trackShort || r.track || r.type}`;
+}
+
+// "Round 9 · Spa · 12 Aug 2026" — how a race of this season reads in a picker.
+function raceLabel(r) {
+  const kind = r.number != null ? `Round ${r.number}` : r.type === "TRAINING" ? "Training" : "Event";
+  return `${kind} · ${r.track}${r.date ? ` · ${fmtStamp(r.date)}` : ""}`;
+}
+
+// What the picker says about a race without the admin having to open it.
+function raceState(r) {
+  if (!r.resultCount) return "nothing imported yet";
+  return r.hasQuali ? "race + qualifying" : "race only, no qualifying";
+}
+
+// Does `name` contain `token` as a whole word? The guard that lets a three
+// letter circuit be looked for at all: "Spa" is in "Spa 2022" and in
+// "Circuit de Spa-Francorchamps", but not in "Spain".
+function wordHit(name, token) {
+  if (!name || !token) return false;
+  const t = String(token).replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+  return new RegExp(`(^|[^a-z0-9])${t}([^a-z0-9]|$)`, "i").test(String(name));
+}
+
+// Is this server session run at the round's circuit? The calendar names a
+// circuit the way people do ("Hockenheim"); the server names it the way the
+// MOD does ("NABS Hockenheim 2026", "Spa 2022", "Hockenheim - GP - LFM"). So:
+// resolve both and compare, and failing that look for the round's circuit as a
+// whole word inside the session's name.
+function sameCircuit(session, track) {
+  if (!track) return false;
+  const name = session.trackShort || session.track || "";
+  const canon = canonicalTrack(track);
+  return canonicalTrack(name) === canon || wordHit(name, canon) || wordHit(name, track);
+}
+
+// The server session that belongs to a round: same circuit, on the round's
+// race night. Several the same evening (a practice race before the real one)
+// resolve to the last, which is how a race night runs. Returns null when the
+// round has no date to compare against — guessing from the circuit alone would
+// happily hand back the same race from a previous season.
+function sessionForRace(sessions, track, dateIso) {
+  if (!track || !dateIso) return null;
+  const ts = new Date(dateIso).getTime();
+  if (!Number.isFinite(ts)) return null;
+  return (
+    (sessions || [])
+      .filter((s) => s.ts != null && s.ts > ts - BEFORE_MS && s.ts < ts + AFTER_MS && sameCircuit(s, track))
+      .sort((a, b) => b.ts - a.ts)[0] || null
+  );
+}
+
+// A select of server sessions with the picked round's circuit lifted to the
+// top. Same list either way, just ordered so the right one isn't hunted for.
+function SessionOptions({ sessions, track }) {
+  if (!track) {
+    return sessions.map((s) => (
+      <option key={s.id} value={s.id}>
+        {fmtRemote(s)}
+      </option>
+    ));
+  }
+  const here = sessions.filter((s) => sameCircuit(s, track));
+  const rest = sessions.filter((s) => !sameCircuit(s, track));
+  return (
+    <>
+      {here.length > 0 && (
+        <optgroup label={`At ${track}`}>
+          {here.map((s) => (
+            <option key={s.id} value={s.id}>
+              {fmtRemote(s)}
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {rest.length > 0 && (
+        <optgroup label="Other sessions">
+          {rest.map((s) => (
+            <option key={s.id} value={s.id}>
+              {fmtRemote(s)}
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </>
+  );
 }
 
 export default function AdminImport({ onCommitted }) {
@@ -26,6 +123,7 @@ export default function AdminImport({ onCommitted }) {
   const remote = useApi(useCallback(() => api.remoteResults("RACE"), []));
   // QUALIFY sessions on the server — for the auto-found qualifying row below.
   const remoteQuali = useApi(useCallback(() => api.remoteResults("QUALIFY"), []));
+  const seasonRaces = useApi(useCallback(() => api.races(currentSeason?.number), [currentSeason?.number]));
   const drivers = useMemo(
     () => (teams || []).flatMap((t) => t.drivers.map((d) => ({ ...d, team: t }))),
     [teams]
@@ -34,20 +132,32 @@ export default function AdminImport({ onCommitted }) {
 
   const [parsed, setParsed] = useState(null);
   const [rows, setRows] = useState([]);
-  const [meta, setMeta] = useState({ number: "", track: "", date: "" });
-  // Where the result goes: "round" = a championship round (by number), or the
-  // id of an existing training/special race of the season (those carry no
-  // round number and never score, but their results become viewable).
-  const [target, setTarget] = useState("round");
-  const seasonRaces = useApi(useCallback(() => api.races(currentSeason?.number), [currentSeason?.number]));
-  const nonChampRaces = useMemo(
-    () =>
-      (seasonRaces.data || []).filter(
-        (r) => (r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP")) !== "CHAMPIONSHIP"
-      ),
-    [seasonRaces.data]
+  const [meta, setMeta] = useState({ track: "", date: "" });
+
+  // Step 1 — the race this import is for. Chosen before any file is touched,
+  // because it decides everything else on this page: which server session is
+  // the right one, whether a result is being added or replaced, and whether
+  // attaching a qualifying is even possible yet. It also removes the old
+  // "save as / round number" pair at the bottom, which asked the same question
+  // a second time, after the work.
+  const [targetRaceId, setTargetRaceId] = useState("");
+  const [newRoundNumber, setNewRoundNumber] = useState("");
+  const targetRace = useMemo(
+    () => (seasonRaces.data || []).find((r) => r.id === targetRaceId) || null,
+    [seasonRaces.data, targetRaceId]
   );
+  const hasTarget = targetRaceId === NEW_ROUND ? Number(newRoundNumber) > 0 : !!targetRace;
+  const champRaces = (seasonRaces.data || []).filter(
+    (r) => (r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP")) === "CHAMPIONSHIP"
+  );
+  const otherRaces = (seasonRaces.data || []).filter(
+    (r) => (r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP")) !== "CHAMPIONSHIP"
+  );
+  // Where the result goes on save, in the shape the commit endpoint wants.
+  const targetBody = targetRace ? { raceId: targetRace.id } : { number: Number(newRoundNumber) };
+
   const [remoteId, setRemoteId] = useState("");
+  const [remoteAuto, setRemoteAuto] = useState(false);
   const [remoteQuery, setRemoteQuery] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -55,40 +165,50 @@ export default function AdminImport({ onCommitted }) {
   // Optional qualifying JSON riding along with the race import: uploaded to the
   // committed race right after the results save (auto-matched, no review step).
   const [qualiFile, setQualiFile] = useState(null);
-  // Standalone quali attach (for past races): target race + file + status.
-  const [qualiRaceId, setQualiRaceId] = useState("");
+  // Standalone quali attach, for a race whose result is already stored.
   const [qualiBusy, setQualiBusy] = useState(false);
   const [qualiNote, setQualiNote] = useState(null);
-  // The server-side option of the standalone attach: picking a stored race
-  // auto-suggests the matching QUALIFY session (same circuit, same day —
-  // preferring the newest that day). Falls back to a track-only match for
-  // races whose stored date is missing.
+
+  // Picking the round pre-selects its session on the race server: same circuit,
+  // same race night. Keyed on the plain values rather than the race object so a
+  // background refresh of the calendar doesn't quietly re-pick.
+  const targetTrack = targetRace?.track || "";
+  const targetDate = targetRace?.date ? String(targetRace.date) : "";
+  useEffect(() => {
+    const pick = sessionForRace(remote.data?.results, targetTrack, targetDate);
+    setRemoteId(pick?.id || "");
+    setRemoteAuto(!!pick);
+  }, [targetTrack, targetDate, remote.data]);
+
+  // The standalone attach's server pick, same idea. Here a circuit-only match
+  // is an acceptable fallback for dateless archive rounds: a wrong qualifying
+  // is one re-upload away from being replaced, unlike a wrong race result.
   const [qualiAttachRemoteId, setQualiAttachRemoteId] = useState("");
   const [qualiAttachAuto, setQualiAttachAuto] = useState(false);
   useEffect(() => {
-    const race = (seasonRaces.data || []).find((r) => r.id === qualiRaceId);
-    if (!race) {
+    if (!targetTrack) {
       setQualiAttachRemoteId("");
       setQualiAttachAuto(false);
       return;
     }
-    const sameTrack = (remoteQuali.data?.results || []).filter(
-      (q) => canonicalTrack(q.trackShort) === race.track || (q.trackShort || "").toLowerCase() === (race.track || "").toLowerCase()
-    );
-    const sameDay = race.date
-      ? sameTrack.filter((q) => q.date && q.date.slice(0, 10) === String(race.date).slice(0, 10))
-      : [];
-    const pick = (sameDay.length ? sameDay : sameTrack).sort((a, b) => (b.ts || 0) - (a.ts || 0))[0];
+    const list = remoteQuali.data?.results || [];
+    const pick =
+      sessionForRace(list, targetTrack, targetDate) ||
+      (targetDate
+        ? null
+        : list.filter((q) => sameCircuit(q, targetTrack)).sort((a, b) => (b.ts || 0) - (a.ts || 0))[0]) ||
+      null;
     setQualiAttachRemoteId(pick?.id || "");
     setQualiAttachAuto(!!pick);
-  }, [qualiRaceId, seasonRaces.data, remoteQuali.data]);
+  }, [targetTrack, targetDate, remoteQuali.data]);
 
   async function attachRemoteQuali() {
-    if (!qualiRaceId || !qualiAttachRemoteId) return;
+    if (!targetRace || !qualiAttachRemoteId) return;
     setQualiNote(null);
     setQualiBusy(true);
     try {
-      setQualiNote({ kind: "success", text: qualiSummary(await api.importRemoteQuali(qualiRaceId, qualiAttachRemoteId)) });
+      setQualiNote({ kind: "success", text: qualiSummary(await api.importRemoteQuali(targetRace.id, qualiAttachRemoteId)) });
+      seasonRaces.reload();
     } catch (err) {
       setQualiNote({ kind: "error", text: err.message });
     } finally {
@@ -105,7 +225,9 @@ export default function AdminImport({ onCommitted }) {
   // Remote qualifying, auto-found: picking a race on the server looks for the
   // QUALIFY session of the same event — same circuit, and the closest session
   // in the 6 hours before the race started (quali runs right before the race
-  // on race night). The admin can always override or clear the pick.
+  // on race night). The admin can always override or clear the pick. When one
+  // is found it rides along on save, and the review form below drops its own
+  // qualifying upload: the session is already accounted for.
   const [qualiRemoteId, setQualiRemoteId] = useState("");
   const [qualiAuto, setQualiAuto] = useState(false);
   useEffect(() => {
@@ -129,15 +251,17 @@ export default function AdminImport({ onCommitted }) {
     setQualiAuto(!!cands[0]);
   }, [remoteId, remote.data, remoteQuali.data]);
 
+  // The picked qualifying session, spelled out where the upload used to be.
+  const pickedQuali = (remoteQuali.data?.results || []).find((q) => q.id === qualiRemoteId) || null;
+
   // Shared: turn a parsed AC result (from upload or server) into the review form.
   function applyParsed(res) {
     setParsed(res);
     const trackName = canonicalTrack(res.track) || "";
-    setMeta((m) => ({
-      ...m,
+    setMeta({
       track: trackName,
       date: res.date ? String(res.date).slice(0, 10) : "",
-    }));
+    });
     // Driver Market: pre-fill the "team this race" column for reserves who were
     // picked to sub. Prefer takeovers whose race matches this file's track; fall
     // back to all confirmed takeovers when none match (the admin still confirms
@@ -289,7 +413,7 @@ export default function AdminImport({ onCommitted }) {
 
   async function commit() {
     setError(null);
-    if (target === "round" && !meta.number) return setError("Enter a round number.");
+    if (!hasTarget) return setError("Choose the race this result belongs to first.");
     // Name them and make the admin press again. Not a block: leaving someone
     // out is legitimate. The point is that it has to be a decision.
     if (willBeSkipped.length && !skipsAcknowledged) {
@@ -331,7 +455,7 @@ export default function AdminImport({ onCommitted }) {
         stints: r.stints ?? null,
       }));
       const body = {
-        ...(target === "round" ? { number: Number(meta.number) } : { raceId: target }),
+        ...targetBody,
         track: meta.track,
         date: meta.date || null,
         // Save into the season the admin is editing (the season switcher),
@@ -388,7 +512,14 @@ export default function AdminImport({ onCommitted }) {
       );
       setParsed(null);
       setRows([]);
-      setRemoteId("");
+      // A round created from a typed number now exists in the calendar, so the
+      // picker can hold it like any other. Refresh and select it, which also
+      // opens the qualifying card underneath for the session that just ran.
+      seasonRaces.reload();
+      if (targetRaceId === NEW_ROUND && res.raceId) {
+        setTargetRaceId(res.raceId);
+        setNewRoundNumber("");
+      }
       setSkipsAcknowledged(false);
       onCommitted?.();
     } catch (err) {
@@ -413,197 +544,260 @@ export default function AdminImport({ onCommitted }) {
 
   return (
     <div className="space-y-5">
-      <div className="card space-y-5 p-5">
-        <CardHead eyebrow="Step 1" title="Import a race result" />
-
-        {/* Source A — straight from the race server */}
-        <div className="rounded-xl border border-border bg-surface2/40 p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">
-              From the race server
-            </span>
-            <span className="pill bg-emerald-500/15 text-ok">recommended · penalty-corrected</span>
-          </div>
-          <p className="mt-1 text-sm text-light">
-            Pull any finished race, current or past rounds, straight from NABS Server 1. No file
-            export needed.
-          </p>
-          {remote.error ? (
-            <p className="mt-3 text-sm text-warn">
-              Couldn’t reach the race server. Use the file upload below instead.
-            </p>
-          ) : (
-            <div className="mt-3 space-y-2">
-              {remoteList.length > 8 && (
-                <input
-                  aria-label="Filter by track or date"
-                  className="input max-w-sm"
-                  placeholder="Filter by track or date… (e.g. Monza, Spa)"
-                  value={remoteQuery}
-                  onChange={(e) => setRemoteQuery(e.target.value)}
-                />
-              )}
-              <div className="flex flex-wrap gap-2">
-                <select
-                  aria-label="Race on the server"
-                  className="input max-w-sm"
-                  value={remoteId}
-                  onChange={(e) => setRemoteId(e.target.value)}
-                  disabled={remote.loading || busy}
-                >
-                  <option value="">
-                    {remote.loading
-                      ? "Loading sessions…"
-                      : remoteList.length
-                      ? `Choose a race… (${filteredRemote.length})`
-                      : "No races on server"}
-                  </option>
-                  {filteredRemote.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {fmtRemote(r)}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn-primary" onClick={loadRemote} disabled={!remoteId || busy}>
-                  {busy ? "Loading…" : "Load"}
-                </button>
-              </div>
-              {/* second row: the qualifying session, auto-found for the picked
-                  race (same circuit, right before the start). Saved together
-                  with the race on confirm. */}
-              {remoteId && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    aria-label="Qualifying session"
-                    className="input max-w-sm"
-                    value={qualiRemoteId}
-                    onChange={(e) => { setQualiRemoteId(e.target.value); setQualiAuto(false); }}
-                    disabled={remoteQuali.loading || busy}
-                  >
-                    <option value="">
-                      {remoteQuali.loading ? "Looking for qualifying…" : "No qualifying session"}
-                    </option>
-                    {(remoteQuali.data?.results || []).map((q) => (
-                      <option key={q.id} value={q.id}>
-                        {fmtRemote(q)}
-                      </option>
-                    ))}
-                  </select>
-                  {qualiAuto && qualiRemoteId && (
-                    <span className="pill bg-emerald-500/15 text-ok">qualifying auto-found</span>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* divider */}
-        <div className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-wider text-faint">
-          <span className="h-px flex-1 bg-border" />
-          or
-          <span className="h-px flex-1 bg-border" />
-        </div>
-
-        {/* Source B — manual file upload */}
-        <div>
-          <div className="font-display text-sm font-bold uppercase tracking-tight text-dark">
-            Upload a result file
-          </div>
-          <p className="mt-1 text-sm text-light">
-            The AC result JSON exported from Content Manager / AC Server. Driver names are
-            fuzzy-matched; review and confirm the mapping before saving.
-          </p>
-          <input
-            aria-label="Upload a result file"
-            type="file"
-            accept="application/json,.json"
-            onChange={handleFile}
-            className="transition mt-3 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark"
-          />
-        </div>
-      </div>
-
-      {/* Qualifying for a race that's already stored (past rounds included):
-          pick the race, upload the QUALIFY JSON, done — matching is automatic,
-          re-uploading replaces the previous classification. */}
+      {/* Step 1 — the round. Nothing else on the page opens until this is
+          answered, because every later question depends on it. */}
       <div className="card space-y-3 p-5">
-        <CardHead eyebrow="Optional" title="Add qualifying to a stored race" />
+        <CardHead eyebrow="Step 1" title="Which race is this for?" />
         <p className="text-sm text-light">
-          Attach the AC QUALIFY result JSON to any race of this season, including past rounds. The race then
-          shows a Qualifying tab next to its result. Entrants are matched automatically by Steam ID, then name.
+          Pick the round of {currentSeason ? `Season ${currentSeason.number}` : "this season"} the result belongs
+          to. The right session on the race server is then found for you, and what you can do with it depends on
+          what that round already has.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <select
-            aria-label="Race to add qualifying to"
+            aria-label="Race this import is for"
             className="input max-w-md"
-            value={qualiRaceId}
-            onChange={(e) => { setQualiRaceId(e.target.value); setQualiNote(null); }}
-            disabled={qualiBusy}
-          >
-            <option value="">Choose a race…</option>
-            {(seasonRaces.data || []).map((r) => (
-              <option key={r.id} value={r.id}>
-                {(r.number != null ? `Round ${r.number}` : r.type === "TRAINING" ? "Training" : "Event") +
-                  ` · ${r.track}` +
-                  (r.date ? ` · ${fmtStamp(r.date)}` : "")}
-              </option>
-            ))}
-          </select>
-          <input
-            aria-label="Qualifying result file"
-            type="file"
-            accept="application/json,.json"
-            disabled={!qualiRaceId || qualiBusy}
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (!file || !qualiRaceId) return;
+            value={targetRaceId}
+            onChange={(e) => {
+              setTargetRaceId(e.target.value);
+              setNewRoundNumber("");
               setQualiNote(null);
-              setQualiBusy(true);
-              try {
-                setQualiNote({ kind: "success", text: qualiSummary(await api.importQuali(qualiRaceId, file)) });
-              } catch (err) {
-                setQualiNote({ kind: "error", text: err.message });
-              } finally {
-                setQualiBusy(false);
-              }
+              setDone(null);
             }}
-            className="transition block text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark file:disabled:opacity-50"
-          />
-        </div>
-        {/* …or straight from the race server: the matching QUALIFY session is
-            auto-found for the picked race (same circuit, same day). */}
-        {qualiRaceId && !remoteQuali.error && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">or from the server:</span>
-            <select
-              aria-label="Qualifying session on the server"
-              className="input max-w-sm"
-              value={qualiAttachRemoteId}
-              onChange={(e) => { setQualiAttachRemoteId(e.target.value); setQualiAttachAuto(false); }}
-              disabled={remoteQuali.loading || qualiBusy}
-            >
-              <option value="">
-                {remoteQuali.loading ? "Looking for qualifying…" : "Choose a qualifying session…"}
-              </option>
-              {(remoteQuali.data?.results || []).map((q) => (
-                <option key={q.id} value={q.id}>
-                  {fmtRemote(q)}
-                </option>
-              ))}
-            </select>
-            {qualiAttachAuto && qualiAttachRemoteId && (
-              <span className="pill bg-emerald-500/15 text-ok">auto-found</span>
+            disabled={seasonRaces.loading || busy}
+          >
+            <option value="">{seasonRaces.loading ? "Loading the calendar…" : "Choose a race…"}</option>
+            {champRaces.length > 0 && (
+              <optgroup label="Championship rounds">
+                {champRaces.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {`${raceLabel(r)} · ${raceState(r)}`}
+                  </option>
+                ))}
+              </optgroup>
             )}
-            <button className="btn-primary" onClick={attachRemoteQuali} disabled={!qualiAttachRemoteId || qualiBusy}>
-              {qualiBusy ? "Saving…" : "Attach"}
-            </button>
-          </div>
+            {otherRaces.length > 0 && (
+              <optgroup label="Training and events">
+                {otherRaces.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {`${raceLabel(r)} · ${raceState(r)}`}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="Not in the calendar">
+              <option value={NEW_ROUND}>A round that isn’t in the calendar yet…</option>
+            </optgroup>
+          </select>
+          {targetRaceId === NEW_ROUND && (
+            <input
+              aria-label="Round number"
+              className="input w-32"
+              type="number"
+              min="1"
+              value={newRoundNumber}
+              onChange={(e) => setNewRoundNumber(e.target.value)}
+              placeholder="Round #"
+            />
+          )}
+        </div>
+        {targetRace && (
+          <p className="text-sm text-medium">
+            {targetRace.resultCount > 0
+              ? `${targetRace.resultCount} results are stored for this race${
+                  targetRace.hasQuali ? ", qualifying included" : ", but no qualifying"
+                }. Importing the race again replaces the stored classification.`
+              : "Nothing is stored for this race yet."}
+            {targetRace.number == null &&
+              " Training and event results are viewable on the Races page but never count towards any standings."}
+          </p>
         )}
-        {qualiBusy && <p className="text-sm text-light">Uploading…</p>}
-        {qualiNote && <Notice kind={qualiNote.kind}>{qualiNote.text}</Notice>}
+        {targetRaceId === NEW_ROUND && (
+          <p className="text-sm text-medium">
+            The round is created with this number when you save. Use it only for a race that was run but never
+            entered in the calendar.
+          </p>
+        )}
       </div>
+
+      {hasTarget && (
+        <div className="card space-y-5 p-5">
+          <CardHead
+            eyebrow="Step 2"
+            title={targetRace?.resultCount ? "Import the race result again" : "Import the race result"}
+          />
+
+          {/* Source A — straight from the race server */}
+          <div className="rounded-xl border border-border bg-surface2/40 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">
+                From the race server
+              </span>
+              <span className="pill bg-emerald-500/15 text-ok">recommended · penalty-corrected</span>
+            </div>
+            <p className="mt-1 text-sm text-light">
+              Pull the finished race straight from NABS Server 1. No file export needed.
+            </p>
+            {remote.error ? (
+              <p className="mt-3 text-sm text-warn">
+                Couldn’t reach the race server. Use the file upload below instead.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {remoteList.length > 8 && (
+                  <input
+                    aria-label="Filter by track or date"
+                    className="input max-w-sm"
+                    placeholder="Filter by track or date… (e.g. Monza, Spa)"
+                    value={remoteQuery}
+                    onChange={(e) => setRemoteQuery(e.target.value)}
+                  />
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    aria-label="Race on the server"
+                    className="input max-w-sm"
+                    value={remoteId}
+                    onChange={(e) => { setRemoteId(e.target.value); setRemoteAuto(false); }}
+                    disabled={remote.loading || busy}
+                  >
+                    <option value="">
+                      {remote.loading
+                        ? "Loading sessions…"
+                        : remoteList.length
+                        ? `Choose a race… (${filteredRemote.length})`
+                        : "No races on server"}
+                    </option>
+                    <SessionOptions sessions={filteredRemote} track={targetTrack} />
+                  </select>
+                  {remoteAuto && remoteId && (
+                    <span className="pill bg-emerald-500/15 text-ok">found for this round</span>
+                  )}
+                  <button className="btn-primary" onClick={loadRemote} disabled={!remoteId || busy}>
+                    {busy ? "Loading…" : "Load"}
+                  </button>
+                </div>
+                {/* second row: the qualifying session, auto-found for the picked
+                    race (same circuit, right before the start). Saved together
+                    with the race on confirm. */}
+                {remoteId && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      aria-label="Qualifying session"
+                      className="input max-w-sm"
+                      value={qualiRemoteId}
+                      onChange={(e) => { setQualiRemoteId(e.target.value); setQualiAuto(false); }}
+                      disabled={remoteQuali.loading || busy}
+                    >
+                      <option value="">
+                        {remoteQuali.loading ? "Looking for qualifying…" : "No qualifying session"}
+                      </option>
+                      <SessionOptions sessions={remoteQuali.data?.results || []} track={targetTrack} />
+                    </select>
+                    {qualiAuto && qualiRemoteId && (
+                      <span className="pill bg-emerald-500/15 text-ok">qualifying auto-found</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* divider */}
+          <div className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-wider text-faint">
+            <span className="h-px flex-1 bg-border" />
+            or
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          {/* Source B — manual file upload */}
+          <div>
+            <div className="font-display text-sm font-bold uppercase tracking-tight text-dark">
+              Upload a result file
+            </div>
+            <p className="mt-1 text-sm text-light">
+              The AC result JSON exported from Content Manager / AC Server. Driver names are
+              fuzzy-matched; review and confirm the mapping before saving.
+            </p>
+            <input
+              aria-label="Upload a result file"
+              type="file"
+              accept="application/json,.json"
+              onChange={handleFile}
+              className="transition mt-3 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Qualifying on its own. Only for a race whose result is already stored:
+          before that there is nothing to attach it to, and a fresh import
+          carries its qualifying along in step 2 anyway. */}
+      {targetRace && targetRace.resultCount > 0 && (
+        <div className="card space-y-3 p-5">
+          <CardHead
+            eyebrow="Optional"
+            title={targetRace.hasQuali ? "Replace the qualifying of this race" : "Add the qualifying of this race"}
+          />
+          <p className="text-sm text-light">
+            {targetRace.hasQuali
+              ? `${raceLabel(targetRace)} already has a qualifying classification. Attaching another one replaces it.`
+              : `${raceLabel(targetRace)} has its result but no qualifying yet. Attach the QUALIFY session and the race gets a Qualifying tab next to its result.`}{" "}
+            Entrants are matched automatically by Steam ID, then name.
+          </p>
+          {!remoteQuali.error && (
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                aria-label="Qualifying session on the server"
+                className="input max-w-sm"
+                value={qualiAttachRemoteId}
+                onChange={(e) => { setQualiAttachRemoteId(e.target.value); setQualiAttachAuto(false); }}
+                disabled={remoteQuali.loading || qualiBusy}
+              >
+                <option value="">
+                  {remoteQuali.loading ? "Looking for qualifying…" : "Choose a qualifying session…"}
+                </option>
+                <SessionOptions sessions={remoteQuali.data?.results || []} track={targetTrack} />
+              </select>
+              {qualiAttachAuto && qualiAttachRemoteId && (
+                <span className="pill bg-emerald-500/15 text-ok">found for this round</span>
+              )}
+              <button className="btn-primary" onClick={attachRemoteQuali} disabled={!qualiAttachRemoteId || qualiBusy}>
+                {qualiBusy ? "Saving…" : "Attach"}
+              </button>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+              or upload the file:
+            </span>
+            <input
+              aria-label="Qualifying result file"
+              type="file"
+              accept="application/json,.json"
+              disabled={qualiBusy}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                setQualiNote(null);
+                setQualiBusy(true);
+                try {
+                  setQualiNote({ kind: "success", text: qualiSummary(await api.importQuali(targetRace.id, file)) });
+                  seasonRaces.reload();
+                } catch (err) {
+                  setQualiNote({ kind: "error", text: err.message });
+                } finally {
+                  setQualiBusy(false);
+                }
+              }}
+              className="transition block text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark file:disabled:opacity-50"
+            />
+          </div>
+          {qualiBusy && <p className="text-sm text-light">Uploading…</p>}
+          {qualiNote && <Notice kind={qualiNote.kind}>{qualiNote.text}</Notice>}
+        </div>
+      )}
 
       {busy && !parsed && <p className="text-sm text-light">Working…</p>}
       {error && <Notice kind="error">{error}</Notice>}
@@ -611,63 +805,54 @@ export default function AdminImport({ onCommitted }) {
 
       {parsed && (
         <div className="space-y-4">
-          <div className="card grid gap-4 p-5 sm:grid-cols-3">
-            {nonChampRaces.length > 0 && (
-              <Field
-                label="Save as"
-                tone="plain"
-                className="sm:col-span-3"
-                hint="Training/event results are stored and viewable on the Races page, but never count towards any standings."
-              >
-                <select className="input max-w-md" value={target} onChange={(e) => setTarget(e.target.value)}>
-                  <option value="round">Championship round (scored, by round number)</option>
-                  {nonChampRaces.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {(r.type === "TRAINING" ? "Training" : "Event") + ` · ${r.track}` + (r.date ? ` · ${fmtStamp(r.date)}` : "") + (r.resultCount > 0 ? " (has results)" : "")}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            )}
-            {target === "round" && (
-              <Field label="Round #" tone="plain">
+          <div className="card p-5">
+            <CardHead
+              eyebrow="Step 3"
+              title={`Check the drivers and save into ${
+                targetRace ? raceLabel(targetRace) : `Round ${newRoundNumber}`
+              }`}
+            />
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Track" tone="plain">
                 <input
                   className="input"
-                  type="number"
-                  value={meta.number}
-                  onChange={(e) => setMeta((m) => ({ ...m, number: e.target.value }))}
-                  placeholder="10"
+                  value={meta.track}
+                  onChange={(e) => setMeta((m) => ({ ...m, track: e.target.value }))}
                 />
               </Field>
-            )}
-            <Field label="Track" tone="plain">
-              <input
-                className="input"
-                value={meta.track}
-                onChange={(e) => setMeta((m) => ({ ...m, track: e.target.value }))}
-              />
-            </Field>
-            <Field label="Date" tone="plain">
-              <input
-                className="input"
-                type="date"
-                value={meta.date}
-                onChange={(e) => setMeta((m) => ({ ...m, date: e.target.value }))}
-              />
-            </Field>
-            <Field
-              label={<>Qualifying JSON <span className="font-normal text-light">(optional)</span></>}
-              tone="plain"
-              className="sm:col-span-3"
-              hint="The AC QUALIFY result JSON of the same event. Saved together with the race: entrants are matched automatically (Steam ID first, then name) and the race gets a Qualifying tab on the Races page."
-            >
-              <input
-                type="file"
-                accept="application/json,.json"
-                onChange={(e) => setQualiFile(e.target.files?.[0] || null)}
-                className="transition block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-surface2 file:px-4 file:py-2 file:font-semibold file:text-dark hover:file:bg-border"
-              />
-            </Field>
+              <Field label="Date" tone="plain">
+                <input
+                  className="input"
+                  type="date"
+                  value={meta.date}
+                  onChange={(e) => setMeta((m) => ({ ...m, date: e.target.value }))}
+                />
+              </Field>
+              {/* The qualifying is only asked for once. A session picked in step
+                  2 already rides along on save, so the upload would be a second
+                  answer to a question that has one. */}
+              {qualiRemoteId ? (
+                <Field label="Qualifying" tone="plain">
+                  <p className="pt-2 text-sm text-medium">
+                    {pickedQuali ? fmtRemote(pickedQuali) : "Session from the race server"} is saved with the race.
+                  </p>
+                </Field>
+              ) : (
+                <Field
+                  label={<>Qualifying JSON <span className="font-normal text-light">(optional)</span></>}
+                  tone="plain"
+                  className="sm:col-span-3"
+                  hint="The AC QUALIFY result JSON of the same event. Saved together with the race: entrants are matched automatically (Steam ID first, then name) and the race gets a Qualifying tab on the Races page."
+                >
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={(e) => setQualiFile(e.target.files?.[0] || null)}
+                    className="transition block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-surface2 file:px-4 file:py-2 file:font-semibold file:text-dark hover:file:bg-border"
+                  />
+                </Field>
+              )}
+            </div>
           </div>
 
           <div className="card overflow-hidden">
@@ -812,7 +997,7 @@ export default function AdminImport({ onCommitted }) {
             </div>
           </div>
 
-          <RacePreview request={{ number: meta.number, results: rows }} />
+          <RacePreview request={{ ...targetBody, results: rows }} />
 
           {willBeSkipped.length > 0 && (
             <div

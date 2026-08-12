@@ -62,6 +62,26 @@ async function raceWinners(races) {
   return winners;
 }
 
+// Which of these races already carry a qualifying classification. The import
+// page asks so it can tell a round that still needs its quali from one that is
+// complete, instead of the admin opening each round to find out.
+// Raw SQL because qualiJson is an ensureAppSchema column (see raceHighlights).
+async function racesWithQuali(raceIds) {
+  const ids = [...new Set((raceIds || []).filter(Boolean))];
+  const out = new Set();
+  if (!ids.length) return out;
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "id" FROM "Race" WHERE "qualiJson" IS NOT NULL AND "id" IN (${ids.map(() => "?").join(",")})`,
+      ...ids
+    );
+    for (const r of rows) out.add(r.id);
+  } catch {
+    /* column missing pre-migration */
+  }
+  return out;
+}
+
 // GET /api/races -> list of all races in the selected (default: active) season.
 // An admin may target a private season (site preview); the public can't.
 router.get("/", async (req, res, next) => {
@@ -78,7 +98,7 @@ router.get("/", async (req, res, next) => {
     // Session format + race type (raw-SQL columns) for the upcoming-race panel
     // and the calendar's grouping, and any published replay downloads so the
     // calendar can offer a Replay button.
-    const [format, types, replays, winners, countries, photoCounts, highlights] = await Promise.all([
+    const [format, types, replays, winners, countries, photoCounts, highlights, withQuali] = await Promise.all([
       readRaceFormat(prisma, races.map((r) => r.id)),
       readRaceTypes(prisma, races.map((r) => r.id)),
       dbReplaysByRace(prisma, races.map((r) => r.id)),
@@ -90,6 +110,7 @@ router.get("/", async (req, res, next) => {
       // Which rounds have a highlights cut, so the admin's round picker can say
       // so on arrival instead of one round at a time as they are opened.
       readRaceHighlights(prisma, races.map((r) => r.id)),
+      racesWithQuali(races.map((r) => r.id)),
     ]);
     res.json(
       races.map((r) => ({
@@ -102,6 +123,7 @@ router.get("/", async (req, res, next) => {
         isSpecialEvent: r.isSpecialEvent,
         type: types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
         resultCount: r._count.results,
+        hasQuali: withQuali.has(r.id),
         info: r.info || null,
         qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
         raceLaps: format.get(r.id)?.raceLaps ?? null,

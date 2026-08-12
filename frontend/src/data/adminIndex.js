@@ -131,13 +131,13 @@ export const ADMIN_INDEX = [
   {
     tab: "import",
     title: "Import a race result",
-    hint: "Upload the Assetto Corsa results file and match its drivers to the roster.",
-    keywords: "import upload json assetto corsa results file match steam guid telemetry",
+    hint: "Pick the round, pull its session off the race server (or upload the Assetto Corsa file) and match the drivers to the roster.",
+    keywords: "import upload json assetto corsa results file match steam guid telemetry round",
   },
   {
     tab: "import",
     title: "Add qualifying to a stored race",
-    hint: "Import a qualifying session for a round whose race is already saved.",
+    hint: "Pick a round whose race result is already saved; the qualifying card opens underneath.",
     keywords: "qualifying quali import json grid pole session",
   },
   {
