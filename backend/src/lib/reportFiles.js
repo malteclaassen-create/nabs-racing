@@ -17,20 +17,81 @@
 //      called .png all stop at that door rather than being filtered out of a
 //      string.
 //
+//   3. The bytes never sit in memory. Four files of twenty megabytes is eighty
+//      megabytes of heap per request, and the route cannot even say who is
+//      sending them until the last one has arrived. They are streamed to a
+//      staging folder instead and moved into the thread's folder once the
+//      route has said they belong there.
+//
 // Shared by the member routes and the admin ones, because both halves of a
 // thread put pictures in it and there is no version of this worth having twice.
 // ---------------------------------------------------------------------------
 import multer from "multer";
 import { randomUUID } from "crypto";
-import { createReadStream, existsSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from "fs";
+import {
+  copyFileSync, createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, unlinkSync,
+} from "fs";
 import { join } from "path";
 import { REPORT_FILES_DIR } from "./dataDirs.js";
 import { dbAddAttachment, dbGetAttachment, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES } from "./reports.js";
 
-// In memory, then written by hand: multer's disk storage would name the file
-// before anything has checked what it is.
-export const attachmentUpload = multer({
-  storage: multer.memoryStorage(),
+// Everything arrives here first, under a name of ours, and is moved into the
+// report's own folder by saveAttachment. One staging folder rather than
+// straight into the thread's, because the report id is still just a string out
+// of the URL while multer is writing: it has no business being part of a path
+// before the route has looked it up.
+const STAGING_DIR = join(REPORT_FILES_DIR, "_incoming");
+
+// The staging paths multer created for THIS request. Anything still listed when
+// the response is over was never moved into a report and is rubbish: a rejected
+// upload, a handler that threw, or a client that hung up mid-file (multer only
+// deletes the files it had already finished writing).
+const PENDING = Symbol("staged report attachments");
+
+// A crash between multer writing and saveAttachment moving would leave a file
+// nothing will ever come back for. The folder is empty almost all the time, so
+// glancing at it when an upload starts costs nothing and keeps that from piling
+// up. An hour old is far longer than any upload this accepts can take.
+let lastSweep = 0;
+function stagingDir() {
+  mkdirSync(STAGING_DIR, { recursive: true });
+  if (Date.now() - lastSweep > 10 * 60 * 1000) {
+    lastSweep = Date.now();
+    try {
+      for (const name of readdirSync(STAGING_DIR)) {
+        const p = join(STAGING_DIR, name);
+        // Per file: one that will not budge (still being written on Windows)
+        // must not stop the rest from going.
+        try {
+          if (Date.now() - statSync(p).mtimeMs > 60 * 60 * 1000) unlinkSync(p);
+        } catch {
+          /* busy, or gone between the listing and now */
+        }
+      }
+    } catch {
+      /* nothing to sweep */
+    }
+  }
+  return STAGING_DIR;
+}
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      try {
+        cb(null, stagingDir());
+      } catch (e) {
+        cb(e);
+      }
+    },
+    filename: (req, file, cb) => {
+      // fileFilter has already run, so the type is one from the closed list.
+      const name = `${randomUUID()}${ATTACHMENT_TYPES[file.mimetype] || ""}`;
+      if (!req[PENDING]) req[PENDING] = [];
+      req[PENDING].push(join(STAGING_DIR, name));
+      cb(null, name);
+    },
+  }),
   limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 4 },
   fileFilter: (req, file, cb) => {
     if (!ATTACHMENT_TYPES[file.mimetype]) {
@@ -39,6 +100,49 @@ export const attachmentUpload = multer({
     cb(null, true);
   },
 });
+
+function binStaged(req) {
+  const paths = req[PENDING] || [];
+  req[PENDING] = [];
+  for (const p of paths) {
+    try {
+      unlinkSync(p);
+    } catch {
+      /* moved into a report already, or never finished */
+    }
+  }
+}
+
+// The same `.array("files", 4)` the routes have always mounted, wrapped so the
+// staging folder cannot fill up with files nobody claimed. The hook goes on
+// BEFORE multer runs, because the case that needs it most is a client hanging
+// up mid-upload: multer never calls back then, and the part-written file is
+// ours to take away.
+//
+// Only until the route has them, though. Once multer has handed the files on,
+// the handler is the one moving them into the thread, and it does that a few
+// awaits after it has already written the message. A browser that goes away in
+// between (a phone locking the screen after "send", a tab closed while the
+// reply is being filed) closes the response right then, and taking the file
+// away at that moment would leave the message standing in the thread with its
+// picture missing — which is worse than the file it was meant to save. From
+// that point on the sweep above is what catches anything the handler failed to
+// move.
+export const attachmentUpload = {
+  array(field, maxCount) {
+    const inner = upload.array(field, maxCount);
+    return (req, res, next) => {
+      let routeHasThem = false;
+      res.on("close", () => {
+        if (!routeHasThem) binStaged(req);
+      });
+      inner(req, res, (err) => {
+        routeHasThem = !err;
+        next(err);
+      });
+    };
+  },
+};
 
 // One directory per report, so deleting a thread is a directory nobody has to
 // search for, and so a folder listing never runs to tens of thousands of files.
@@ -52,7 +156,24 @@ export async function saveAttachment(prisma, { report, messageId, file, uploader
   const ext = ATTACHMENT_TYPES[file.mimetype];
   if (!ext) throw Object.assign(new Error("Not a kind of file this takes"), { status: 400 });
   const storedName = `${randomUUID()}${ext}`;
-  writeFileSync(join(dirFor(report.id), storedName), file.buffer);
+  const target = join(dirFor(report.id), storedName);
+  // A move, not a re-read: the bytes are already on disk in the staging folder
+  // and this is the moment they become part of the thread. Either they are
+  // there or they are here, never half in both.
+  try {
+    renameSync(file.path, target);
+  } catch (e) {
+    // Both folders sit under the same data directory, so this is the same
+    // volume everywhere it runs; a staging folder mounted separately would make
+    // the rename cross-device, and that is worth a copy rather than a 500.
+    if (e.code !== "EXDEV") throw e;
+    copyFileSync(file.path, target);
+    try {
+      unlinkSync(file.path);
+    } catch {
+      /* the sweep will get it */
+    }
+  }
   return dbAddAttachment(prisma, {
     reportId: report.id,
     messageId,

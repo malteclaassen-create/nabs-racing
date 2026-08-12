@@ -289,11 +289,83 @@ app.get("/sitemap.xml", async (req, res, next) => {
 // (frontend/dist); local dev has no dist, so nothing changes there (the Vite dev
 // server keeps serving the site and proxying /api here).
 const DIST_DIR = join(__dir, "../../frontend/dist");
+// The file types the build precompresses, mapped to the Content-Type the
+// browser must still see. Written out rather than guessed from the name,
+// because the name it would guess from ends in ".br".
+// (res.type() appends the charset for the text formats, same as express.static.)
+const PRECOMPRESSED_TYPES = {
+  js: "application/javascript",
+  mjs: "application/javascript",
+  css: "text/css",
+  json: "application/json",
+  map: "application/json",
+  svg: "image/svg+xml",
+  txt: "text/plain",
+  xml: "application/xml",
+};
 if (existsSync(join(DIST_DIR, "index.html"))) {
   // Old flat addresses (/drivers, /races, …) answer with a real redirect into
   // the series they belong to, instead of the app rewriting the address after
   // it has loaded. Before the static files, so it also catches a crawler.
   app.use(legacyRedirects(prisma));
+  // Hand out the ready-made .br / .gz copies the build wrote next to each
+  // hashed asset (frontend/scripts/precompress-assets.mjs). The compression
+  // middleware above would otherwise gzip the same unchanged bundle again for
+  // every visitor, at zlib's fast-and-weak default level; brotli-11 from the
+  // build is both smaller and free at request time.
+  //
+  // Only /assets/ — those names carry a content hash, so the pair of files can
+  // never drift apart. Everything else (API answers, uploads, index.html, which
+  // is rewritten per request) keeps going through compression() as before.
+  app.use("/assets", (req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+
+    let rel;
+    try {
+      rel = decodeURIComponent(req.path);
+    } catch {
+      return next(); // malformed escape: let express.static deal with it
+    }
+    // Nothing may reach outside the assets folder, and only the file types the
+    // build actually precompresses are worth looking up.
+    if (rel.includes("\0") || rel.includes("..")) return next();
+    const type = PRECOMPRESSED_TYPES[(rel.match(/\.([a-z0-9]+)$/i)?.[1] || "").toLowerCase()];
+    if (!type) return next();
+
+    // Brotli first where the client takes it (smaller), gzip otherwise. Asked
+    // one at a time on purpose: acceptsEncodings() with a list answers with the
+    // client's own order, and browsers list "gzip, deflate, br" — which would
+    // hand out the bigger file to everyone. Both calls still honour a "br;q=0".
+    const encoding = req.acceptsEncodings("br") ? "br" : req.acceptsEncodings("gzip") ? "gzip" : null;
+    if (!encoding) return next();
+
+    const original = join(DIST_DIR, "assets", rel);
+    const file = original + (encoding === "br" ? ".br" : ".gz");
+    if (!existsSync(file)) return next(); // older build, or a file not worth compressing
+
+    // Content-Type must stay the ORIGINAL one: the browser has to run this as
+    // JavaScript, not download it as an octet-stream. Setting it here also stops
+    // sendFile from guessing "br"/"gz" from the extension.
+    res.type(type);
+    res.setHeader("Content-Encoding", encoding);
+    // Caches must key on the encoding, or a gzip copy could be replayed to a
+    // client that only speaks identity.
+    res.setHeader("Vary", "Accept-Encoding");
+    // Same rule express.static applies to /assets/ below — hashed names never
+    // go stale.
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    // compression() skips any response that already carries a Content-Encoding,
+    // so the body is sent exactly as it lies on disk (no double compression).
+    res.sendFile(file, (err) => {
+      if (!err) return;
+      if (res.headersSent) return res.end(); // mid-stream: nothing left to do
+      // Never let a half-set Content-Encoding follow us into the plain
+      // delivery below, or the browser would try to un-brotli a raw file.
+      res.removeHeader("Content-Encoding");
+      res.removeHeader("Content-Type");
+      next();
+    });
+  });
   app.use(express.static(DIST_DIR, {
     // Do NOT answer "/" with index.html from here. The handler below adds the
     // link preview and the canonical address, and static delivery would skip

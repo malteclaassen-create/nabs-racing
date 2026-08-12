@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
+import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { api } from "../api/client.js";
 import Logo from "./Logo.jsx";
 import SeasonPicker from "./SeasonPicker.jsx";
@@ -532,20 +533,16 @@ export default function NavBar() {
   // Cars on track right now, for the dot on the Live item. Its own tiny endpoint
   // rather than the timing board (that is the whole grid, and this runs on every
   // page of the site). 45s is plenty: the point is "there is something on", not
-  // a live feed.
+  // a live feed. Paused while the tab is in the background (see useVisiblePoll)
+  // — the dot is only worth a request when somebody can see it.
   const [liveNow, setLiveNow] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    const load = () =>
-      api
-        .liveStatus()
-        .then((d) => alive && setLiveNow(d?.onTrack || 0))
-        // A decoration must never make noise: unreachable simply means no dot.
-        .catch(() => alive && setLiveNow(0));
-    load();
-    const id = setInterval(load, 45_000);
-    return () => { alive = false; clearInterval(id); };
-  }, []);
+  useVisiblePoll((alive) => {
+    api
+      .liveStatus()
+      .then((d) => alive() && setLiveNow(d?.onTrack || 0))
+      // A decoration must never make noise: unreachable simply means no dot.
+      .catch(() => alive() && setLiveNow(0));
+  }, 45_000);
 
   // Asked the moment the menu opens, and only for a member — a menu row is not
   // a reason to hit the API on every page load for every visitor. Re-asked on

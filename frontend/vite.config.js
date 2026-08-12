@@ -1,5 +1,33 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { resolve } from "path";
+import { precompressAssets } from "./scripts/precompress-assets.mjs";
+
+// After the build, lay a .br and a .gz next to every text asset so the server
+// can hand out a ready-made compressed file instead of compressing the same
+// bundle again for every visitor (see backend/src/index.js). Build-only, and
+// deliberately forgiving: a shipped site without .br files is merely as fast as
+// before, a failed build is a broken deployment.
+function precompressBuildOutput() {
+  // Read from the resolved config rather than assuming "dist": that is where
+  // the root and outDir are settled, whoever started the build and from where.
+  let outDir = "dist";
+  return {
+    name: "precompress-build-output",
+    apply: "build",
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    async closeBundle() {
+      try {
+        const { files } = await precompressAssets(resolve(outDir, "assets"));
+        console.log(`precompress: wrote ${files} .br/.gz files`);
+      } catch (e) {
+        console.warn("precompress skipped:", e?.message || e);
+      }
+    },
+  };
+}
 
 // `vite preview` (the shared/tunnelled build) sends no Cache-Control headers by
 // itself, so browsers re-ask for every flag/logo/font on each page switch —
@@ -27,7 +55,7 @@ function previewCacheHeaders() {
 }
 
 export default defineConfig({
-  plugins: [react(), previewCacheHeaders()],
+  plugins: [react(), previewCacheHeaders(), precompressBuildOutput()],
   server: {
     port: 5173,
     host: true, // listen on all interfaces (needed for LAN / tunnels)

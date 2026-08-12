@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import bcrypt from "bcryptjs";
-import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, readdirSync, statSync } from "fs";
+import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync } from "fs";
 import { join, extname, basename, dirname } from "path";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
@@ -174,11 +174,51 @@ router.use((req, res, next) => {
   next();
 });
 
+// The log only ever grows and the view below only ever shows its newest lines,
+// so it is read from the end: a chunk off the tail, grown fourfold until it
+// holds enough lines or the whole file has been covered. Same lines, same order, but
+// the request no longer pulls the entire history onto the heap.
+function readTailLines(path, wantLines) {
+  const fd = openSync(path, "r");
+  try {
+    const size = fstatSync(fd).size;
+    let chunk = 64 * 1024;
+    for (;;) {
+      const start = Math.max(0, size - chunk);
+      const buf = Buffer.alloc(size - start);
+      // readSync may come back short; keep going, a truncated tail would hide
+      // the newest entries.
+      let filled = 0;
+      while (filled < buf.length) {
+        const n = readSync(fd, buf, filled, buf.length - filled, start + filled);
+        if (!n) break;
+        filled += n;
+      }
+      let text = buf.subarray(0, filled).toString("utf-8");
+      if (start > 0) {
+        // A chunk starting mid-file also starts mid-line, and possibly mid
+        // UTF-8 character (an umlaut in a driver name would decode to garbage).
+        // Everything up to the first newline is therefore dropped; only a chunk
+        // that reaches byte 0 keeps its first line.
+        const nl = text.indexOf("\n");
+        text = nl === -1 ? "" : text.slice(nl + 1).replace(/\s+$/, "");
+      } else {
+        text = text.trim();
+      }
+      const lines = text.split("\n");
+      if (lines.length >= wantLines || start === 0) return lines;
+      chunk *= 4;
+    }
+  } finally {
+    closeSync(fd);
+  }
+}
+
 // GET /api/admin/activity -> the latest admin actions, newest first.
 router.get("/activity", (req, res) => {
   try {
     if (!existsSync(ACTIVITY_LOG)) return res.json({ entries: [] });
-    const lines = readFileSync(ACTIVITY_LOG, "utf-8").trim().split("\n");
+    const lines = readTailLines(ACTIVITY_LOG, 150);
     const entries = lines.slice(-150).reverse().map((l) => {
       try { return JSON.parse(l); } catch { return null; }
     }).filter(Boolean);

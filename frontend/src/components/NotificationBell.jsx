@@ -3,6 +3,7 @@ import { useDismiss } from "./overlay.jsx";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
+import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useTour } from "./Tour.jsx";
 import { SettingsDrawer, GearIcon } from "./SettingsPanel.jsx";
 
@@ -130,26 +131,28 @@ export default function NotificationBell({ className = "" }) {
   const [loading, setLoading] = useState(false);
   const wrapRef = useRef(null);
 
-  // Unread badge: poll once a minute while logged in; refetch on login/logout.
+  // Logging out has to clear what the previous account left behind, which is
+  // its own concern now that the polling below is only about polling.
   useEffect(() => {
-    if (!isLoggedIn) {
-      setUnread(0);
-      setItems(null);
-      return;
-    }
-    let alive = true;
-    const load = () =>
+    if (isLoggedIn) return;
+    setUnread(0);
+    setItems(null);
+  }, [isLoggedIn]);
+
+  // Unread badge: poll once a minute while logged in; refetch on login/logout.
+  // A hidden tab does not poll at all and refetches the moment it is looked at
+  // again (see useVisiblePoll), so the badge is one roundtrip behind on the
+  // switch back and current from then on.
+  useVisiblePoll(
+    (alive) => {
       api
         .notificationsCount()
-        .then((d) => alive && setUnread(d?.unread || 0))
+        .then((d) => alive() && setUnread(d?.unread || 0))
         .catch(() => {});
-    load();
-    const id = setInterval(load, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [isLoggedIn]);
+    },
+    POLL_MS,
+    isLoggedIn,
+  );
 
   const close = useCallback(() => setOpen(false), []);
 

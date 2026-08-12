@@ -21,14 +21,40 @@ const MAX_LAP_MS = 1_800_000;
 // write-once per round, so caching by path alone is safe; capped small.
 const fileCache = new Map();
 const FILE_CACHE_MAX = 12;
+// A full race file parses into a couple of MB, so twelve of them sit on the
+// heap for as long as the process lives. They expire instead of being capped
+// harder: a smaller cap would re-read and re-parse while somebody is actually
+// clicking through races, which is the one moment it has to be fast. The idle
+// timer only fires when nobody is using it any more, e.g. after a race night.
+const FILE_CACHE_TTL_MS = 10 * 60 * 1000;
+const fileCacheTimers = new Map();
+
+// (Re)start an entry's idle timer. unref'd so a pending expiry can never keep
+// the Node process alive on shutdown.
+function keepAlive(path) {
+  clearTimeout(fileCacheTimers.get(path));
+  const timer = setTimeout(() => dropCached(path), FILE_CACHE_TTL_MS);
+  timer.unref?.();
+  fileCacheTimers.set(path, timer);
+}
+
+function dropCached(path) {
+  clearTimeout(fileCacheTimers.get(path));
+  fileCacheTimers.delete(path);
+  fileCache.delete(path);
+}
 
 function readArchiveFile(path) {
   const hit = fileCache.get(path);
-  if (hit) return hit;
+  if (hit) {
+    keepAlive(path); // still in use: push the expiry back
+    return hit;
+  }
   const data = JSON.parse(readFileSync(path, "utf8"));
   fileCache.set(path, data);
+  keepAlive(path);
   if (fileCache.size > FILE_CACHE_MAX) {
-    fileCache.delete(fileCache.keys().next().value); // drop the oldest entry
+    dropCached(fileCache.keys().next().value); // drop the oldest entry
   }
   return data;
 }

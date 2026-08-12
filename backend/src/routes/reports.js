@@ -233,12 +233,43 @@ router.get("/:id", optionalUser, async (req, res, next) => {
   }
 });
 
+// May this caller see this thread? One function, used twice on the route
+// below: once as the gate in FRONT of the upload and once in the handler
+// itself. Written this way on purpose — a door that checks something slightly
+// different from the room behind it is how a gate quietly stops matching what
+// it is guarding.
+async function readableReport(req) {
+  const me = caller(req);
+  const report = await dbGetReport(prisma, req.params.id);
+  if (!report || !(await canRead(prisma, report, me.discordId, me.isAdmin))) return null;
+  return report;
+}
+
+// Runs BEFORE multer sees the request. A reply may carry four files of twenty
+// megabytes, and until this was here the server took all eighty of them from
+// whoever asked and only then looked at whether they were signed in or party to
+// the thread: a stranger with no session at all could make it swallow 80 MB per
+// request, as often as they liked, and be told "Report not found" afterwards.
+// The answer is exactly the same one the handler gives, it just arrives before
+// the bytes do.
+async function requireReadableReport(req, res, next) {
+  try {
+    if (!(await readableReport(req))) return res.status(404).json({ error: "Report not found" });
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+
 // POST /api/reports/:id/messages  { body }
-router.post("/:id/messages", optionalUser, attachmentUpload.array("files", 4), async (req, res, next) => {
+router.post("/:id/messages", optionalUser, requireReadableReport, attachmentUpload.array("files", 4), async (req, res, next) => {
   try {
     const me = caller(req);
-    const report = await dbGetReport(prisma, req.params.id);
-    if (!report || !(await canRead(prisma, report, me.discordId, me.isAdmin))) {
+    // Read again, after the upload: a thread can be withdrawn or decided while
+    // a clip is still going up, and the message lands in the state the report
+    // is in NOW rather than the one it was in when the browser started sending.
+    const report = await readableReport(req);
+    if (!report) {
       return res.status(404).json({ error: "Report not found" });
     }
     // Which voice this is written in. Nothing written HERE is ever the

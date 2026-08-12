@@ -4,6 +4,7 @@ import { api } from "../api/client.js";
 import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { useApi } from "../hooks/useApi.js";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
+import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { PageHeader, SectionHeading, SafetyCarBadge, NoData} from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -1810,25 +1811,21 @@ export default function Live() {
   // Championship projection: polled (the standings only move when the race
   // order does, so ~20s is plenty). { active: false } or any error hides the
   // section entirely. `?demo=1` asks the backend for the admin-only simulation.
+  // This poll is not the timing feed — that is the WebSocket in useLiveTiming,
+  // which stays connected in a hidden tab so a viewer coming back has missed
+  // nothing. Only this HTTP projection pauses, and it refetches on return
+  // before anything is read off it (see useVisiblePoll).
   const [champ, setChamp] = useState(null);
-  useEffect(() => {
+  useVisiblePoll((alive) => {
     const demo = new URLSearchParams(window.location.search).has("demo");
-    let alive = true;
-    const load = () =>
-      api
-        .liveChampionship(demo)
-        .then((d) => alive && setChamp(d))
-        // A failed poll (server restart, hiccup) keeps the last table on
-        // screen instead of tearing the whole section down and rebuilding it
-        // on the next success; a real deactivation arrives as active:false.
-        .catch(() => {});
-    load();
-    const t = setInterval(load, 12000); // matches the server-side 10s cache
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
+    api
+      .liveChampionship(demo)
+      .then((d) => alive() && setChamp(d))
+      // A failed poll (server restart, hiccup) keeps the last table on
+      // screen instead of tearing the whole section down and rebuilding it
+      // on the next success; a real deactivation arrives as active:false.
+      .catch(() => {});
+  }, 12000); // matches the server-side 10s cache
 
   // The Standings view only exists while the projection is active (race day);
   // if it deactivates mid-visit the switch falls back to Timing.

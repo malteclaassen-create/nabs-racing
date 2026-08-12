@@ -51,18 +51,40 @@ import * as pitRecorder from "./pitRecorder.js";
 // costs nothing — the board simply re-keys its rows on the next frame.
 const PUBLIC_ID_SALT = randomBytes(16).toString("hex");
 const publicIdCache = new Map(); // real guid -> public id (hashing runs per driver, not per frame)
+// Ceiling on that cache. It is keyed by Steam id and nothing ever removed an
+// entry, so every driver who has touched any of the league's servers since the
+// process started stayed in it for the process's lifetime. Five thousand is far
+// beyond anything the league will see in one run of the server (a grid is under
+// forty), so in practice nothing is ever evicted — and an eviction costs
+// nothing anyway: the id is a pure function of the salt and the guid, so a
+// re-hash hands back the exact same value. Oldest out first (a Map iterates in
+// insertion order).
+const PUBLIC_ID_CACHE_MAX = 5000;
 
 function publicDriverId(guid) {
   if (!guid) return guid;
   let id = publicIdCache.get(guid);
   if (!id) {
     id = createHash("sha256").update(PUBLIC_ID_SALT).update(String(guid)).digest("hex").slice(0, 16);
+    if (publicIdCache.size >= PUBLIC_ID_CACHE_MAX) publicIdCache.delete(publicIdCache.keys().next().value);
     publicIdCache.set(guid, id);
   }
   return id;
 }
 
 const BROADCAST_MS = 700; // how often we push a fresh board to frontend clients
+// …but only when the board actually says something new (see the broadcast
+// loop). A board that has not moved is still WORTH sending now and then, both
+// as a sign of life and because nothing else re-syncs a viewer whose socket
+// swallowed a frame — so this is the longest a viewer may go without one.
+//
+// The number has to sit well under what the live page treats as a gap. The page
+// has no arrival timer of its own (useLiveTiming only reacts to messages), and
+// the strictest related value on that side is LIVE_GRACE_MS = 40s, the window
+// it holds a board for after the feed reports itself down. Fifteen seconds is
+// comfortably under half of it, and it also keeps getBoard() being called often
+// enough to expire a finished race's frozen result on time.
+const KEEPALIVE_MS = 15000;
 // How long a finished race's final classification stays on the board after the
 // server has already cycled on to the next session. Born after the first race
 // of season 8 (2026-08-07): the sim flips back to practice moments after the
@@ -386,6 +408,18 @@ function createRelay(server) {
   // null-checked. Reset whenever the session changes.
   const stintsByGuid = new Map(); // guid -> { stints:[{tyre,fromLap,toLap}], lastPits }
   let stintSessionKey = null;
+  // Ceiling on one driver's history, oldest dropped first. A genuine entry costs
+  // a pit stop or a real compound change, so no session anyone watches can come
+  // near this — the longest race the league has ever run is a fraction of it, and
+  // outside a race the list is wiped on every return to the pits. It is the
+  // dishonest case this is for: a compound name the tyreKey mapping doesn't
+  // recognise can read differently from one snapshot to the next, and that opens
+  // a stint every time, forever, on a server that sits in an open practice
+  // session all week. Deliberately generous rather than the tightest fit: the
+  // strategy view sizes its axis off the SUM of a driver's stint laps, so a
+  // truncated history would be visibly wrong, and that must never happen to a
+  // real one.
+  const MAX_STINTS = 128;
 
   // Every driver seen in the CURRENT race, raw upstream record and all. The
   // upstream forgets a car some time after it disconnects; on race night that
@@ -502,6 +536,7 @@ function createRelay(server) {
         // driver rejoins the track (covers both a fresh session and a post-reset).
       } else if (!cur) {
         st.stints.push({ tyre: tyre || "?", fromLap: lap, toLap: lap });
+        if (st.stints.length > MAX_STINTS) st.stints.shift();
       } else if (pitted || tyreChanged) {
         cur.toLap = lap;
         // Remember WHY the stint broke. The server's own pit counter rising is
@@ -509,6 +544,7 @@ function createRelay(server) {
         // repair pass in stintsFor is allowed to undo the guess but not the
         // fact (see the note there).
         st.stints.push({ tyre: tyre || cur.tyre, fromLap: lap, toLap: lap, pitted });
+        if (st.stints.length > MAX_STINTS) st.stints.shift();
       } else {
         if (lap > cur.toLap) cur.toLap = lap;
         if ((!cur.tyre || cur.tyre === "?") && tyre) cur.tyre = tyre;
@@ -1182,6 +1218,26 @@ export function getLiveStats() {
   };
 }
 
+// What the viewer sockets were still holding on the last broadcast tick.
+//
+// The suspicion behind the race-night memory climb is buffered payloads rather
+// than the JS heap (see CLIENT_HEARTBEAT_MS): a socket nobody reads keeps every
+// board ws has handed it, and none of that shows up in a heap snapshot. The
+// broadcast loop already reads bufferedAmount per viewer to decide whether to
+// drop the socket, so the numbers are free — this just keeps the last tick's
+// total and worst offender around for the memory diagnostics to print.
+//
+// Sampling only, no behaviour. `sampledAt` stays null until the broadcast loop
+// has run once at all — that is, until initLiveTiming has built the client
+// socket server (before that, and in tests, there is nothing to sample). A tick
+// with nobody connected is still a sample: it writes zeros, so the reading is
+// always "right now", never a stale race-night high-water mark left behind.
+let viewerBufferStats = { viewers: 0, totalBufferedBytes: 0, maxBufferedBytes: 0, sampledAt: null };
+
+export function getViewerBufferStats() {
+  return viewerBufferStats;
+}
+
 // Test hook: the stint accumulator carries per-relay state; tests drive a
 // dedicated detached relay (never connected) and reset between cases.
 const testRelay = createRelay({ key: "test", origin: "https://test.invalid", ws: "wss://test.invalid" });
@@ -1456,12 +1512,58 @@ export function initLiveTiming(server) {
     }
   });
 
+  // The last frame each board variant went out as: the serialized board with
+  // its timestamp blanked, and when we sent it. Keyed by server key (plus the
+  // demo), exactly like the per-tick build below.
+  const lastFrameByKey = new Map();
+
+  // The frame to send for one board, or null when there is nothing to say.
+  //
+  // A board that is byte-for-byte what this variant last received is not worth
+  // sending again, and the finished-race hold makes that the normal case rather
+  // than a corner one: for RESULT_HOLD_MS (fifteen minutes) after the flag the
+  // classification is frozen, and every viewer was handed the same unchanging
+  // result about one and a half times a second for the whole quarter of an hour.
+  //
+  // `updatedAt` has to sit outside the comparison or none of this works: it is
+  // Date.now() on every build, so no two boards ever compare equal. It is
+  // blanked for the comparison only — the board that goes on the wire carries
+  // the real value, so "when was this frame produced" means on the frontend
+  // exactly what it always did.
+  //
+  // Blanking mutates the board, which is safe because every path that produces
+  // one returns a fresh object (buildBoard, the frozen-result copy, the demo).
+  //
+  // The demo board never reaches this as "unchanged": its splines and lap clocks
+  // are derived from Date.now() on every read, so it moves on every tick — which
+  // is the point of it.
+  function frameFor(key, board, now) {
+    const at = board.updatedAt;
+    board.updatedAt = 0;
+    const cmp = JSON.stringify(board);
+    const prev = lastFrameByKey.get(key);
+    if (prev && prev.cmp === cmp && now - prev.at < KEEPALIVE_MS) return null;
+    lastFrameByKey.set(key, { cmp, at: now });
+    board.updatedAt = at;
+    return JSON.stringify(board);
+  }
+
   setInterval(() => {
-    if (wss.clients.size === 0) return;
+    const now = Date.now();
+    if (wss.clients.size === 0) {
+      viewerBufferStats = { viewers: 0, totalBufferedBytes: 0, maxBufferedBytes: 0, sampledAt: now };
+      return;
+    }
     // Build each variant at most once per tick (demo + one per server), then
-    // fan out to the clients following it.
-    const jsonByKey = new Map();
-    let demoJson = null;
+    // fan out to the clients following it. Note that the board is still BUILT
+    // every tick even when it is not sent: getBoard() is what expires a
+    // finished race's frozen result (see the hold in the relay), and it must
+    // keep being asked at the old cadence.
+    const frameByKey = new Map(); // key -> json to send, or null when unchanged
+    let demoFrame; // undefined = not built this tick
+    let viewers = 0;
+    let totalBuffered = 0;
+    let maxBuffered = 0;
     for (const c of wss.clients) {
       if (c.readyState !== WebSocket.OPEN) continue;
       // OPEN can go stale between the check and the send (the socket dies in
@@ -1473,8 +1575,14 @@ export function initLiveTiming(server) {
       // every unsent board for as long as the TCP entry survives. terminate()
       // rather than close(), for the same reason as upstream — a peer that is
       // already gone never finishes a closing handshake.
-      if (c.bufferedAmount > MAX_BUFFERED_BYTES) {
-        console.log(`[live] dropping a viewer socket with ${Math.round(c.bufferedAmount / 1024)} kB unsent`);
+      // Read once: it is both the drop criterion and the sample the memory
+      // diagnostics report (getViewerBufferStats).
+      const buffered = c.bufferedAmount;
+      viewers += 1;
+      totalBuffered += buffered;
+      if (buffered > maxBuffered) maxBuffered = buffered;
+      if (buffered > MAX_BUFFERED_BYTES) {
+        console.log(`[live] dropping a viewer socket with ${Math.round(buffered / 1024)} kB unsent`);
         try {
           c.terminate();
         } catch {
@@ -1484,17 +1592,23 @@ export function initLiveTiming(server) {
       }
       try {
         if (c.isDemo) {
-          demoJson ??= JSON.stringify(getDemoBoard());
-          c.send(demoJson);
+          if (demoFrame === undefined) demoFrame = frameFor("demo", getDemoBoard(), now);
+          if (demoFrame) c.send(demoFrame);
         } else {
           const key = c.serverKey || DEFAULT_SERVER_KEY;
-          if (!jsonByKey.has(key)) jsonByKey.set(key, JSON.stringify(getBoard(key)));
-          c.send(jsonByKey.get(key));
+          if (!frameByKey.has(key)) frameByKey.set(key, frameFor(key, getBoard(key), now));
+          const frame = frameByKey.get(key);
+          // Nothing new for this board. A viewer who joined during a quiet spell
+          // is not left waiting by that: the connection handler above sends them
+          // the current board the moment they arrive, and "current" is by
+          // definition the very frame being skipped here.
+          if (frame) c.send(frame);
         }
       } catch {
         /* dead socket — ws will clean it up */
       }
     }
+    viewerBufferStats = { viewers, totalBufferedBytes: totalBuffered, maxBufferedBytes: maxBuffered, sampledAt: now };
   }, BROADCAST_MS);
 
   // Ping every viewer; anything that has not answered since the last round is
