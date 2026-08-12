@@ -86,6 +86,7 @@ import {
 import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride } from "../lib/attendanceGate.js";
 import { writeHiddenRace } from "../lib/attendanceHidden.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
+import { sessionStartForRound } from "../lib/raceContacts.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap } from "../lib/liveServers.js";
@@ -4636,6 +4637,42 @@ router.put("/welcome-faq", async (req, res, next) => {
 // in the results editor, which is the one place that owns the points. See the
 // note at the top of lib/reports.js.
 
+// How far into its round each report happened, in seconds — the figure a
+// steward drags the replay's timeline to.
+//
+// Worked out at READ time, not stored at insert time, because the two things it
+// needs arrive at different moments: a report is filed during the race, and the
+// session's start only becomes knowable when the result file is imported
+// afterwards. A pinned contact already carries its own `contactSecond` from the
+// archive and keeps it; everything else, above all every report fired from
+// inside the race, gets one derived here as soon as the round is imported.
+function withSessionSecond(reports, races) {
+  const byId = new Map(races.map((r) => [r.id, r]));
+  // One archive read per ROUND, not per report: a busy round can carry a dozen.
+  const startOf = new Map();
+  return reports.map((r) => {
+    if (r.contactSecond != null) return { ...r, sessionSecond: r.contactSecond };
+    const race = r.raceId ? byId.get(r.raceId) : null;
+    if (!race || !r.incidentAt || race.number == null || race.season?.number == null) return r;
+    if (!startOf.has(race.id)) {
+      let start = null;
+      try {
+        start = sessionStartForRound(race.season.number, race.number);
+      } catch {
+        start = null;
+      }
+      startOf.set(race.id, start);
+    }
+    const start = startOf.get(race.id);
+    if (!start) return r;
+    const second = Math.round(new Date(r.incidentAt).getTime() / 1000 - start);
+    // A negative figure means the report's clock and the round's archive
+    // disagree about which session this was — showing "-4:12 into the race"
+    // would be worse than showing nothing.
+    return second >= 0 ? { ...r, sessionSecond: second } : r;
+  });
+}
+
 router.get("/reports", async (req, res, next) => {
   try {
     const reports = await dbListReports(prisma);
@@ -4645,11 +4682,11 @@ router.get("/reports", async (req, res, next) => {
     const races = ids.length
       ? await prisma.race.findMany({
           where: { id: { in: ids } },
-          select: { id: true, number: true, track: true, date: true },
+          select: { id: true, number: true, track: true, date: true, season: { select: { number: true } } },
         })
       : [];
     res.json({
-      reports,
+      reports: withSessionSecond(reports, races),
       races,
       open: reports.filter((r) => !REPORT_DECIDED.includes(r.status)).length,
       // Which of the decided ones still have to be entered in a classification.
@@ -4667,8 +4704,19 @@ router.get("/reports/:id", async (req, res, next) => {
     const report = await dbGetReport(prisma, req.params.id);
     if (!report) return res.status(404).json({ error: "Report not found" });
     const voices = await dbThreadVoices(prisma, report.id, report);
+    // The same replay anchor the list carries, so opening a report never shows
+    // less than the row it was opened from.
+    const race = report.raceId
+      ? await prisma.race
+          .findUnique({
+            where: { id: report.raceId },
+            select: { id: true, number: true, track: true, date: true, season: { select: { number: true } } },
+          })
+          .catch(() => null)
+      : null;
+    const [anchored] = withSessionSecond([report], race ? [race] : []);
     res.json({
-      report: { ...report, reporterTeam: voices.get(String(report.reporterDiscordId || "")) || null },
+      report: { ...anchored, reporterTeam: voices.get(String(report.reporterDiscordId || "")) || null },
       // At the desk, "mine" means the office: a PIN admin has no Discord id
       // to match on, and every message written from here is the stewards'.
       messages: (

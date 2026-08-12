@@ -579,6 +579,8 @@ model Report {
   // Set when the reporter pinned this to one of the round's recorded contacts:
   // impact speed in km/h. The lap and the moment live in `lap` / `incidentAt`.
   contactKph        Int?
+  // Seconds into the session. Timezone-proof replay anchor — see ensureSchema.
+  contactSecond     Int?
   id                String    @id
   raceId            String?
   lap               Int?

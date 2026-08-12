@@ -61,7 +61,39 @@ function lapAt(lapsOfDriver, at) {
 // Returns [] when the round has no archived file (a hand-entered archive
 // round, or an import from before the archive existed) — the caller shows the
 // plain form and nobody sees an error about a file they have never heard of.
+// A handful of rounds' reduced results, so opening a report list doesn't
+// re-read and re-parse a multi-megabyte AC result file per report. The REDUCED
+// shape is cached, never the raw JSON — holding those would undo the memory
+// work the site did elsewhere. Small and bounded: a steward works through one
+// round at a time, and a stale entry can only exist if a round is re-imported,
+// which restarts the server anyway.
+const ROUND_CACHE_MAX = 8;
+const roundCache = new Map();
+
 export function contactsForRound(seasonNumber, raceNumber) {
+  const cacheKey = `${seasonNumber}|${raceNumber}`;
+  const hit = roundCache.get(cacheKey);
+  if (hit) {
+    // Re-insert so the most recently used round is the last to be evicted.
+    roundCache.delete(cacheKey);
+    roundCache.set(cacheKey, hit);
+    return hit;
+  }
+  const built = buildRound(seasonNumber, raceNumber);
+  roundCache.set(cacheKey, built);
+  if (roundCache.size > ROUND_CACHE_MAX) roundCache.delete(roundCache.keys().next().value);
+  return built;
+}
+
+// When the round's session started, as unix seconds, or null when the round has
+// no archived result file. The anchor that turns an absolute moment into
+// "N seconds into the race", which is the one figure a replay can be scrubbed
+// to without knowing anybody's timezone.
+export function sessionStartForRound(seasonNumber, raceNumber) {
+  return contactsForRound(seasonNumber, raceNumber).start;
+}
+
+function buildRound(seasonNumber, raceNumber) {
   let data;
   try {
     data = findArchiveFor(seasonNumber, raceNumber);
@@ -112,10 +144,15 @@ export function contactsForRound(seasonNumber, raceNumber) {
       id: `${at}:${pair}`,
       at, // unix seconds, the number the replay app shows
       second: start ? at - start : null, // into the session
+      // The lap is per SIDE. Two cars in the same contact are not always on the
+      // same lap — a backmarker being lapped is exactly the case a steward
+      // cares about — so each driver gets their own, and whoever is reading
+      // picks theirs (see contactsForDriver). `lap` stays as the Driver side's
+      // for the callers that only want one number.
       lap: lapAt(lapsByGuid.get(e.Driver.Guid) || [], at),
       kph: Math.round(Number(e.ImpactSpeed) || 0),
-      a: { guid: String(e.Driver.Guid), name: e.Driver.Name || "" },
-      b: { guid: String(e.OtherDriver.Guid), name: e.OtherDriver.Name || "" },
+      a: { guid: String(e.Driver.Guid), name: e.Driver.Name || "", lap: lapAt(lapsByGuid.get(e.Driver.Guid) || [], at) },
+      b: { guid: String(e.OtherDriver.Guid), name: e.OtherDriver.Name || "", lap: lapAt(lapsByGuid.get(e.OtherDriver.Guid) || [], at) },
     });
   }
   return { start, contacts: out };
@@ -137,8 +174,13 @@ export function contactsForDriver(seasonNumber, raceNumber, guid) {
         id: c.id,
         at: c.at,
         second: c.second,
-        // The lap is the reporting driver's own, so show theirs.
-        lap: mine ? c.lap : c.lap,
+        // The lap is the reporting driver's OWN. This used to read
+        // `mine ? c.lap : c.lap` — a ternary that picks the same branch either
+        // way — so a driver who happened to be the event's OtherDriver was
+        // shown, and filed, the other car's lap number. Wrong by a whole lap
+        // for anyone lapping or being lapped, which is precisely the incident
+        // a steward is being asked about.
+        lap: (mine ? c.a.lap : c.b.lap) ?? c.lap,
         kph: c.kph,
         other: mine ? c.b : c.a,
       };

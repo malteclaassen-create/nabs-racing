@@ -103,6 +103,7 @@ router.post("/", optionalUser, async (req, res, next) => {
       source: "SITE",
       incidentAt: pinned ? new Date(pinned.at * 1000).toISOString() : null,
       contactKph: pinned ? pinned.kph : null,
+      contactSecond: pinned ? pinned.second : null,
     });
     record(me.discordId);
     // `accusedReachable` is false when the driver named has never signed in
@@ -399,10 +400,25 @@ router.post("/ingest", async (req, res, next) => {
       .catch(() => "");
     if (!secret) return res.status(503).json({ error: "In-game reporting is switched off" });
     if (String(req.query.key || "") !== secret) return res.status(401).json({ error: "Bad key" });
+    // A whole grid pressing the button in the same incident is a real evening,
+    // not an attack, so the ceiling is generous — it exists to stop a stuck
+    // key or a loop filling the table, nothing else.
+    if (ingestFlooded()) return res.status(429).json({ error: "Too many in-game reports at once" });
 
     // "13bot | 21:04:11" — the app's own thread title.
+    //
+    // Split on the LAST pipe, not the first. Plenty of drivers race under a
+    // clan tag ("NABS | Malte"), and splitting on the first pipe made the name
+    // "NABS" and the time "Malte": no roster match, and no timestamp either,
+    // because "Malte" doesn't parse as a clock. The tail is only taken as the
+    // time when it actually looks like one; otherwise the whole title is the
+    // name and the report simply has no clock from the app.
     const title = String(req.body?.thread_name || "").trim();
-    const [rawName, rawTime] = title.split("|").map((s) => (s || "").trim());
+    const cut = title.lastIndexOf("|");
+    const tail = cut === -1 ? "" : title.slice(cut + 1).trim();
+    const looksLikeClock = /^\d{1,2}:\d{2}(?::\d{2})?$/.test(tail);
+    const rawName = (looksLikeClock ? title.slice(0, cut) : title).trim();
+    const rawTime = looksLikeClock ? tail : "";
     if (!rawName) return res.status(400).json({ error: "No driver in thread_name" });
 
     // Match the name to a roster driver so the report attaches to a person
@@ -410,7 +426,18 @@ router.post("/ingest", async (req, res, next) => {
     // just without the link, and an admin can see who it says it is.
     const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     const drivers = await prisma.driver.findMany({ select: { id: true, name: true, discordName: true } });
-    const hit = drivers.find((d) => norm(d.name) === norm(rawName) || norm(d.discordName) === norm(rawName));
+    // The whole title first, then the part after the last remaining pipe. A
+    // driver racing as "NABS | Maltegoat" is on the roster as "Maltegoat", and
+    // matching only the full string left every clan-tagged member unlinked —
+    // the report landed, but it could not be shown to them and they could not
+    // answer in their own thread.
+    const candidates = [rawName];
+    const tagCut = rawName.lastIndexOf("|");
+    if (tagCut !== -1) candidates.push(rawName.slice(tagCut + 1).trim());
+    const hit = candidates
+      .filter(Boolean)
+      .map((c) => drivers.find((d) => norm(d.name) === norm(c) || norm(d.discordName) === norm(c)))
+      .find(Boolean);
     const discordIds = hit ? await discordIdsForDrivers(prisma, [hit.id]).catch(() => new Map()) : new Map();
 
     // The round it belongs to: whatever race is currently live, or the most
@@ -418,23 +445,50 @@ router.post("/ingest", async (req, res, next) => {
     // and an admin has to work out which evening it was from the timestamp.
     const raceId = await currentRaceId(prisma);
 
-    // The app sends a wall clock ("21:04:11"), not a date. Combined with
-    // today's date on the SERVER, which is the machine that just received it,
-    // so an admin gets a real timestamp to scrub the replay to instead of three
-    // numbers in a sentence. Kept in the body too, in case the date is wrong
-    // for a session that ran past midnight.
-    const incidentAt = clockToday(rawTime);
+    // The same press, relayed twice. Exactly one person in the lobby is meant
+    // to have webPenalty's relay switched on, which makes the feature silently
+    // dead whenever that person isn't racing — so the league should be free to
+    // switch it on for two or three people. That only works if the second and
+    // third copies of one press collapse, which is what this does: the same
+    // driver, the same round, within a minute, is one incident.
+    const dupe = await recentIngestFor(prisma, rawName, raceId);
+    if (dupe) return res.json({ ok: true, id: dupe.id, duplicate: true });
+
+    // WHEN it happened is the single most useful field on an in-game report,
+    // and it is stamped HERE, on arrival, rather than parsed out of the app's
+    // clock string.
+    //
+    // The app sends a bare wall clock with no date and no zone. Turning that
+    // into a real moment meant guessing a date on the server and a timezone
+    // nobody had established — three clocks in the chain (the reporting
+    // driver's PC, the relaying PC, this server) and a browser rendering a
+    // fourth. A session running past midnight in any of them landed a whole
+    // day out. The press-to-post path, meanwhile, is a button, a network
+    // message inside the lobby and one HTTP request: the arrival time is
+    // within a second or two of the incident, and it involves nobody's clock
+    // but this machine's.
+    //
+    // The app's own clock string still travels, appended to the body, so an
+    // admin can see what the game thought the time was and any drift is
+    // visible rather than silently baked into the evidence.
+    const incidentAt = new Date().toISOString();
+    const said = String(req.body?.content || "").trim();
+    const body = [
+      said || "Reported from inside the race. The driver can add what happened below.",
+      rawTime ? `(The app's clock read ${rawTime} when this was sent.)` : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
 
     const report = await dbCreateReport(prisma, {
-      body:
-        String(req.body?.content || "").trim() ||
-        `Reported from inside the race at ${rawTime || "an unknown time"}. The driver can add what happened below.`,
+      body,
       reporterDiscordId: hit ? discordIds.get(hit.id) || null : null,
       reporterName: rawName,
       raceId,
       source: "INGAME",
       incidentAt,
     });
+    recordIngest(rawName);
     res.json({ ok: true, id: report.id });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
@@ -442,14 +496,51 @@ router.post("/ingest", async (req, res, next) => {
   }
 });
 
-// "21:04:11" against today's date here. Anything unparseable is simply no
-// timestamp, which is better than a wrong one.
-function clockToday(hhmmss) {
-  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(hhmmss || "").trim());
-  if (!m) return null;
-  const d = new Date();
-  d.setHours(Number(m[1]), Number(m[2]), Number(m[3] || 0), 0);
-  return d.toISOString();
+// --- in-game report guards --------------------------------------------------
+
+// A ceiling on in-game reports as a whole, keyed on nothing: every post
+// carries the one shared key, so there is no per-person identity to count here
+// (the name in the title is a claim, not an authenticated one). Deliberately
+// high — a first-corner pile-up genuinely produces a dozen presses.
+const INGEST_WINDOW_MS = 10 * 60 * 1000;
+const INGEST_MAX = 40;
+let ingestHits = [];
+
+function ingestFlooded() {
+  const cutoff = Date.now() - INGEST_WINDOW_MS;
+  ingestHits = ingestHits.filter((t) => t > cutoff);
+  return ingestHits.length >= INGEST_MAX;
+}
+
+function recordIngest() {
+  ingestHits.push(Date.now());
+}
+
+// The same driver's press already landed for this round, moments ago: almost
+// certainly a second relay machine forwarding the same lobby message. Returns
+// the existing report so the caller answers OK — the app must not see an error
+// for something that worked.
+const DUPE_WINDOW_MS = 60 * 1000;
+async function recentIngestFor(prisma, name, raceId) {
+  try {
+    // Raw SQL, like every other read of these tables: the Report models are
+    // managed by hand (see lib/reports.js) and the generated client does not
+    // expose `prisma.report` at all. Going through the client here failed
+    // silently inside the catch below and the dedupe never ran.
+    const since = new Date(Date.now() - DUPE_WINDOW_MS).toISOString();
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "id", "raceId" FROM "Report"
+        WHERE "source" = 'INGAME' AND "reporterName" = ? AND datetime("createdAt") >= datetime(?)
+        ORDER BY datetime("createdAt") DESC LIMIT 5`,
+      name,
+      since
+    );
+    return rows.find((r) => (r.raceId || null) === (raceId || null)) || null;
+  } catch {
+    // A failed lookup must never block a report. Worst case the league gets
+    // two rows for one incident, which an admin can delete.
+    return null;
+  }
 }
 
 // The race an in-game report belongs to: one running right now, else the most
@@ -461,12 +552,27 @@ async function currentRaceId(prisma) {
     // Bounded by DATE, not by a row count. Taking the twenty newest and then
     // filtering to the ones that have started finds nothing at all in a season
     // whose calendar is published far enough ahead.
+    // Bounded on BOTH sides. With only an upper bound, a report fired on a
+    // quiet Tuesday attached itself to whatever round last happened, however
+    // long ago — and an in-game report can only ever be about a session
+    // happening right now. An evening's window: from an hour before the
+    // scheduled start (grid, formation, a red flag restart) to six hours
+    // after, which covers the longest race night the league has ever run.
     const races = await prisma.race.findMany({
-      where: { date: { not: null, lte: new Date(now + 60 * 60 * 1000) } },
+      where: {
+        date: {
+          not: null,
+          lte: new Date(now + 60 * 60 * 1000),
+          gte: new Date(now - 6 * 60 * 60 * 1000),
+        },
+      },
       select: { id: true },
       orderBy: { date: "desc" },
       take: 1,
     });
+    // Nothing in the window is a real answer: the report lands under "no round
+    // given" and an admin moves it, which is honest. Guessing a round from
+    // three weeks ago is not.
     return races[0]?.id || null;
   } catch {
     return null;

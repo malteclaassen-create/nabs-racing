@@ -360,6 +360,11 @@ export async function ensureAppSchema(prisma) {
   // columns that already exist ("lap" and "incidentAt"); this is the only part
   // with nowhere to live.
   await addColumn(prisma, "Report", "contactKph", "INTEGER");
+  // How far into the session it happened, in seconds. The one anchor that no
+  // clock, date or timezone can spoil: a steward drags the replay's own
+  // timeline to it. `incidentAt` says WHEN in the world, this says WHERE in the
+  // race, and only the second one survives a server in another country.
+  await addColumn(prisma, "Report", "contactSecond", "INTEGER");
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Report_raceId_idx" ON "Report"("raceId")`);
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Report_createdAt_idx" ON "Report"("createdAt")`);
 

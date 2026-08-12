@@ -5,6 +5,7 @@ import { CardBar, ErrorBox, Field, Notice } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 import { fmtStamp } from "../utils/format.js";
 import ReportChat, { ReportComposer } from "./ReportChat.jsx";
+import ReplayAnchor from "./ReplayAnchor.jsx";
 
 // ---------------------------------------------------------------------------
 // Admin → Reports: the stewarding desk.
@@ -435,28 +436,14 @@ export default function AdminReports() {
                 {openReportRow.source === "INGAME" && (
                   <span className="pill bg-brand/15 text-brand">in-game</span>
                 )}
-                {openReportRow.lap != null && (
-                  <span className="font-mono text-[11px] uppercase tracking-wider text-light">
-                    lap {openReportRow.lap}
-                  </span>
-                )}
-                {/* The moment, in the clock the in-game replay app shows, so a
-                    steward can scrub straight to it. */}
-                {openReportRow.incidentAt && (
-                  <span
-                    className="font-mono text-[11px] uppercase tracking-wider text-link"
-                    title="Scrub the replay until webPenalty's clock reads this"
-                  >
-                    {new Date(openReportRow.incidentAt).toLocaleTimeString(undefined, {
-                      hour: "2-digit", minute: "2-digit", second: "2-digit",
-                    })}
-                  </span>
-                )}
-                {openReportRow.contactKph != null && (
-                  <span className="font-mono text-[11px] uppercase tracking-wider text-light">
-                    {openReportRow.contactKph} km/h
-                  </span>
-                )}
+                {/* Everything a steward needs to find the moment, in one chip
+                    that copies the timeline figure. */}
+                <ReplayAnchor
+                  second={openReportRow.sessionSecond}
+                  at={openReportRow.incidentAt}
+                  kph={openReportRow.contactKph}
+                  lap={openReportRow.lap}
+                />
                 <span className={`pill ${s.cls}`}>{s.label}</span>
               </span>
             }
@@ -544,9 +531,14 @@ export default function AdminReports() {
                       {r.reporterName || "Someone"}
                       {r.accusedName ? ` → ${r.accusedName}` : ""}
                     </span>
-                    {r.lap != null && (
-                      <span className="font-mono text-[10px] uppercase tracking-wider text-faint">lap {r.lap}</span>
-                    )}
+                    {/* In the LIST too, not just inside the opened report: a
+                        steward working through a round's dozen reports can see
+                        at a glance which ones come with a replay position and
+                        which are somebody's recollection. Read-only here — the
+                        row is already a button, and nesting one inside it is
+                        invalid HTML that breaks tab order. The copy is one
+                        click away, in the opened report. */}
+                    <ReplayAnchor readOnly second={r.sessionSecond} at={r.incidentAt} kph={r.contactKph} lap={r.lap} />
                     <span className="min-w-0 flex-1 truncate text-xs text-light">{r.body}</span>
                     <span className="font-mono text-[10px] uppercase tracking-wider text-faint">
                       {when(r.createdAt)}
