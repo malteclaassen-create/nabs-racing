@@ -38,7 +38,7 @@ import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
 import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
-import { readTeamArt, writeTeamArt, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
+import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
 import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
@@ -3888,6 +3888,17 @@ router.put("/poster-framing", async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // TRACK INFO — admin-editable fun facts + custom map image per circuit, layered
 // on top of the computed track history (routes/tracks.js).
+// PUT /api/admin/team-art/:id/country { country: "de" | "" }
+// The flag a team flies on the constructors poster. Teams have no nationality
+// of their own in the database, so it is kept with their pictures.
+router.put("/team-art/:id/country", async (req, res, next) => {
+  try {
+    res.json({ ok: true, art: await writeTeamCountry(prisma, req.params.id, req.body?.country) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // ---------------------------------------------------------------------------
 router.get("/tracks/:key/info", async (req, res, next) => {
   try {

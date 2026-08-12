@@ -110,13 +110,13 @@ function ArtSlot({ team, kind, url, busy, onUpload, onClear, fallback = null }) 
 // longer race under, and without this the only way to fix that was to be them.
 // The ones without a flag are listed first, because they are the ones the
 // poster shows a hole for.
-export function PosterFlags({ drivers, busy, onSet }) {
+export function PosterFlags({ drivers, busy, onSet, title = "Flags", idKey = "driverId" }) {
   if (!drivers.length) return null;
   const flagless = drivers.filter((d) => !d.country).length;
   return (
     <div className="card overflow-hidden">
       <CardBar
-        title="Flags"
+        title={title}
         right={
           <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
             {flagless > 0 ? `${flagless} without` : "all set"}
@@ -125,7 +125,7 @@ export function PosterFlags({ drivers, busy, onSet }) {
       />
       <ul className="divide-y divide-border">
         {drivers.map((d) => (
-          <li key={d.driverId} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2.5">
+          <li key={d[idKey]} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2.5">
             {/* The flag they have, so the row shows the answer rather than
                 asking the question twice. */}
             <span className="flex h-[15px] w-5 shrink-0 items-center justify-center">
@@ -137,7 +137,7 @@ export function PosterFlags({ drivers, busy, onSet }) {
               className="input w-auto max-w-[15rem] py-1.5 text-sm"
               value={d.country}
               disabled={busy}
-              onChange={(e) => onSet(d.driverId, e.target.value)}
+              onChange={(e) => onSet(d[idKey], e.target.value)}
             >
               <option value="">No country</option>
               {COUNTRIES.map((c) => (

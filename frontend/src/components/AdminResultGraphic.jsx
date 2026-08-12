@@ -354,6 +354,29 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
               onChange={(frameWidth) => nudge({ frameWidth })}
             />
 
+            {/* The same two switches the standings half has, on the same
+                stored setting: they are about the poster, not about which
+                poster you happen to be looking at. The box shows what the
+                design in front of you is currently doing. */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-medium">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={framing.pts === "on" || (framing.pts === "design" && (THEMES[theme] || THEMES.black).points === "pts")}
+                  onChange={(e) => nudge({ pts: e.target.checked ? "on" : "off" })}
+                />
+                <span>&ldquo;PTS&rdquo; after the points</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={framing.flags === "on" || (framing.flags === "design" && (THEMES[theme] || THEMES.black).row.flags)}
+                  onChange={(e) => nudge({ flags: e.target.checked ? "on" : "off" })}
+                />
+                <span>Flags</span>
+              </label>
+            </div>
+
             <div className="flex items-start justify-between gap-3 text-xs">
               <span className="text-light">
                 One framing for all three tiles. Whatever hangs over an edge is cut off there.

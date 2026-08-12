@@ -83,6 +83,20 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
     }, 400);
   }
 
+  // The PTS label and the flags. Stored as "design" until somebody decides, so
+  // the checkbox has to ask the DESIGN what it is currently doing rather than
+  // read a boolean that does not exist yet.
+  const design = THEMES[theme] || THEMES.black;
+  const switchOn = (key, byDesign) => framing[key] === "on" || (framing[key] === "design" && byDesign);
+  function setSwitch(key, on) {
+    const next = { ...framing, [key]: on ? "on" : "off" };
+    setFraming(next);
+    api
+      .setPosterFraming({ [key]: next[key] })
+      .then(() => onArtChange?.())
+      .catch((e) => setError(e.message));
+  }
+
   // Both championships are fetched for the round in view. Two small reads, and
   // having them both in hand means the Drivers/Constructors switch redraws
   // instead of showing an empty poster while the network catches up.
@@ -234,6 +248,19 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
     }
   }
 
+  async function setTeamCountry(teamId, code) {
+    setBusy(true);
+    setError(null);
+    try {
+      setArt(await api.setTeamCountry(teamId, code));
+      onArtChange?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function upload(teamId, slot, file) {
     setBusy(true);
     setError(null);
@@ -330,6 +357,28 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
                 onChange={(e) => setFrameWidth(Number(e.target.value))}
               />
             </label>
+
+            {/* Two things the designs disagree about, now yours to settle. The
+                box shows what the design in front of you is doing; ticking it
+                pins the answer for every design. */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-medium">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={switchOn("pts", design.points === "pts")}
+                  onChange={(e) => setSwitch("pts", e.target.checked)}
+                />
+                <span>&ldquo;PTS&rdquo; after the points</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={switchOn("flags", design.row.flags)}
+                  onChange={(e) => setSwitch("flags", e.target.checked)}
+                />
+                <span>Flags</span>
+              </label>
+            </div>
 
             {/* How many teams of each tier. Steve's split: Tier 1 is a short
                 grid whose top five is the story, Tier 2 has more teams in it.
@@ -478,7 +527,17 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
         </div>
       </div>
 
-      {!isTeams && <PosterFlags drivers={onPoster} busy={busy} onSet={setCountry} />}
+      {isTeams ? (
+        <PosterFlags
+          title="Team flags"
+          idKey="id"
+          drivers={teamsOnPoster.map((t) => ({ id: t.id, name: t.name, country: art?.[t.id]?.country || "" }))}
+          busy={busy}
+          onSet={setTeamCountry}
+        />
+      ) : (
+        <PosterFlags drivers={onPoster} busy={busy} onSet={setCountry} />
+      )}
 
       <PosterTeamArt
         teams={teamsOnPoster}

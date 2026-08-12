@@ -975,6 +975,9 @@ export const api = {
   },
   clearTeamArt: (teamId, kind) =>
     request(`/admin/team-art/${teamId}/${kind}`, { method: "DELETE", auth: true }).then((r) => r.art),
+  // The flag a team flies on the constructors poster ("" clears it).
+  setTeamCountry: (teamId, country) =>
+    request(`/admin/team-art/${teamId}/country`, { method: "PUT", body: { country }, auth: true }).then((r) => r.art),
   // How those cars are cropped in the podium tiles — { zoom, x, y }, one set for
   // all three — plus the framings saved under a name. The PUT patches, so
   // sending only the numbers leaves the presets alone and vice versa.

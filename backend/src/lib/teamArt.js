@@ -45,7 +45,11 @@ export const ART_KINDS = ["car", "mark", "badge"];
 const FRAMING_KEY = "poster_car_framing";
 const FRAMING_BOUNDS = { zoom: [1, 3], x: [-320, 320], y: [-260, 260], frameWidth: [1, 10] };
 const MAX_PRESETS = 24;
-export const DEFAULT_CAR_FRAMING = { zoom: 1, x: 0, y: 0, frameWidth: 5 };
+export const DEFAULT_CAR_FRAMING = { zoom: 1, x: 0, y: 0, frameWidth: 5, pts: "design", flags: "design" };
+// "design" = whatever the chosen design does by itself; see the note on
+// FRAMING_SWITCHES in the frontend's resultGraphic.js for why it is not a
+// plain yes/no.
+const SWITCHES = ["design", "on", "off"];
 
 function cleanNumbers(input, into) {
   for (const [k, [min, max]] of Object.entries(FRAMING_BOUNDS)) {
@@ -72,7 +76,9 @@ function cleanPresets(input) {
 }
 
 function cleanStored(input) {
-  return { ...cleanNumbers(input, { ...DEFAULT_CAR_FRAMING }), presets: cleanPresets(input?.presets) };
+  const out = cleanNumbers(input, { ...DEFAULT_CAR_FRAMING });
+  for (const k of ["pts", "flags"]) if (SWITCHES.includes(input?.[k])) out[k] = input[k];
+  return { ...out, presets: cleanPresets(input?.presets) };
 }
 
 export async function readCarFraming(prisma) {
@@ -90,6 +96,7 @@ export async function readCarFraming(prisma) {
 export async function writeCarFraming(prisma, input) {
   const next = await readCarFraming(prisma);
   cleanNumbers(input, next);
+  for (const k of ["pts", "flags"]) if (SWITCHES.includes(input?.[k])) next[k] = input[k];
   if (Array.isArray(input?.presets)) next.presets = cleanPresets(input.presets);
   const value = JSON.stringify(next);
   await prisma.setting.upsert({
@@ -111,9 +118,28 @@ function clean(input) {
       // Only our own upload paths, never an arbitrary string from the blob.
       if (typeof v === "string" && v.startsWith("/api/uploads/team-art/")) entry[kind] = v.slice(0, 300);
     }
+    // The team's flag for the constructors poster. Teams have no nationality
+    // column in the database (drivers do), and one belongs to the poster rather
+    // than to the championship, so it lives here with their pictures. Two
+    // letters, which is what the flag files are named by.
+    if (typeof art.country === "string" && /^[a-z]{2}$/i.test(art.country)) entry.country = art.country.toLowerCase();
     if (Object.keys(entry).length) out[teamId] = entry;
   }
   return out;
+}
+
+// Sets (or with an empty code clears) the flag a team flies on the poster.
+export async function writeTeamCountry(prisma, teamId, country) {
+  const all = await readTeamArt(prisma);
+  const entry = { ...(all[teamId] || {}) };
+  const code = String(country || "").trim().toLowerCase();
+  if (/^[a-z]{2}$/.test(code)) entry.country = code;
+  else delete entry.country;
+  if (Object.keys(entry).length) all[teamId] = entry;
+  else delete all[teamId];
+  const json = JSON.stringify(clean(all));
+  await prisma.setting.upsert({ where: { key: KEY }, create: { key: KEY, value: json }, update: { value: json } });
+  return clean(all);
 }
 
 export async function readTeamArt(prisma) {

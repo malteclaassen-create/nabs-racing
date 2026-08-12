@@ -126,6 +126,7 @@ export const LAYOUT = {
     // above, so Steve's layout is still drawn exactly as he set it wherever the
     // new column would be empty anyway.
     deltaRight: 178, // from the right edge of the page
+    deltaGap: 26, // and never closer than this to the points beside it
     deltaSize: 30,
     markCxTight: 580,
     markMaxWTight: 235,
@@ -240,7 +241,7 @@ export const THEMES = {
     radius: 0,
     cornerMark: true, // the league mark, top right
     watermark: null, // no big mark behind the rows
-    tile: { fill: "#000000", frame: "medal", frameWidth: 3, badge: false },
+    tile: { fill: "#000000", frame: "medal", frameWidth: 3, badge: true },
     pos: { colour: "#ffffff" },
     nameBar: { fill: "medal", ink: "#0a0a0a", frame: null },
     tierPill: { fill: "#2f8fff", ink: "#000000", frame: null },
@@ -257,6 +258,37 @@ export const THEMES = {
     },
     points: "pts",
   },
+};
+
+
+// A third, and deliberately not a recolour of the other two: both of those are
+// dark-on-dark or a pink page, and a league that posts every week wants one
+// design that is quiet. White paper, black number blocks, hairline rules, the
+// medals still gold/silver/bronze so a podium still reads as one. It is also
+// the one that survives being printed or dropped into a light-themed post.
+THEMES.white = {
+  label: "White",
+  bg: "#ffffff",
+  title: "#0a0a0a",
+  medal: { 1: "#d4a418", 2: "#a8a8a8", 3: "#b07a3c" },
+  radius: 12,
+  cornerMark: true,
+  watermark: null,
+  tierPill: { fill: "#0a0a0a", ink: "#ffffff", frame: null },
+  tile: { fill: "#0a0a0a", frame: "medal", frameWidth: 4, badge: true },
+  pos: { colour: "#ffffff" },
+  nameBar: { fill: "medal", ink: "#0a0a0a", frame: null },
+  // The chip keeps the tile's own black with a medal outline, so the points sit
+  // in the corner as a mark rather than as a second white box on a white page.
+  tilePoints: { fill: "#0a0a0a", ink: "#ffffff", frame: "medal", frameWidth: 4 },
+  delta: { tile: "#9a9a9a", row: "#8a8a8a" },
+  row: {
+    numFill: "#0a0a0a", numInk: "#ffffff",
+    barFill: "#ffffff", barFrame: "#d8d8d8", frameWidth: 3,
+    nameInk: "#0a0a0a", ptsInk: "#0a0a0a",
+    flags: true,
+  },
+  points: "pts",
 };
 
 export const THEME_KEYS = Object.keys(THEMES);
@@ -278,7 +310,16 @@ export const THEME_KEYS = Object.keys(THEMES);
 // `x` and `y` are poster pixels at the design size (the 1080-wide canvas), so
 // the numbers mean the same thing whatever the export scale is.
 // ---------------------------------------------------------------------------
-export const DEFAULT_FRAMING = { zoom: 1, x: 0, y: 0, frameWidth: 5 };
+export const DEFAULT_FRAMING = { zoom: 1, x: 0, y: 0, frameWidth: 5, pts: "design", flags: "design" };
+
+// The two switches, and why they have three values rather than two. "design"
+// means whatever the chosen design says: the black poster prints a bare number
+// and carries a flag on every row, the pink one prints PTS after the number and
+// carries none. A plain on/off default would have had to pick one of those and
+// silently restyle the other. So the stored value starts as "design" and only
+// becomes "on" or "off" when somebody actually decides; the checkbox in the
+// admin shows what you are currently getting either way.
+export const FRAMING_SWITCHES = ["design", "on", "off"];
 
 // What the sliders may ask for. 3x is about where a car cut-out runs out of
 // resolution, and the offsets reach a little past the edge of a tile, which is
@@ -317,6 +358,8 @@ export function cleanFraming(f) {
     frameWidth: Math.round(
       clampTo(Number(f?.frameWidth), FRAMING_LIMITS.frameWidth, DEFAULT_FRAMING.frameWidth)
     ),
+    pts: FRAMING_SWITCHES.includes(f?.pts) ? f.pts : DEFAULT_FRAMING.pts,
+    flags: FRAMING_SWITCHES.includes(f?.flags) ? f.flags : DEFAULT_FRAMING.flags,
   };
 }
 
@@ -467,7 +510,8 @@ function tinted(img, colour) {
 // the path — the caller decides whether it is filled, stroked or clipped.
 function box(ctx, x, y, w, h, r = 0) {
   ctx.beginPath();
-  if (r > 0) ctx.roundRect(x, y, w, h, r);
+  if (Array.isArray(r)) ctx.roundRect(x, y, w, h, r);
+  else if (r > 0) ctx.roundRect(x, y, w, h, r);
   else ctx.rect(x, y, w, h);
 }
 
@@ -486,7 +530,32 @@ function box(ctx, x, y, w, h, r = 0) {
 // the outline ends exactly where the shape does, all the way round.
 function strokeBox(ctx, x, y, w, h, lineWidth, r = 0) {
   const half = lineWidth / 2;
-  box(ctx, x + half, y + half, w - lineWidth, h - lineWidth, Math.max(0, r - half));
+  const inner = Array.isArray(r) ? r.map((v) => Math.max(0, v - half)) : Math.max(0, r - half);
+  box(ctx, x + half, y + half, w - lineWidth, h - lineWidth, inner);
+}
+
+// Right-align on the INK rather than on the advance width.
+//
+// ctx.textAlign = "right" lines strings up by where the next character would
+// start, and a digit's advance includes its side bearing. Montserrat's round
+// figures carry a different one from its straight ones, so a column of
+// right-aligned numbers comes out with its edge wandering by a pixel or two:
+// 232 and 87 and 9 each stop somewhere slightly different, which down a table
+// of ten rows reads as the numbers not being lined up. They were not.
+//
+// actualBoundingBoxRight is the distance from the anchor to the rightmost mark
+// actually painted, so shifting by it puts the last pixel of every number on
+// the same x. Falls back to plain right alignment where the browser does not
+// report it.
+// The alignment has to be set BEFORE measuring: measureText reports the box
+// relative to the alignment point, so measuring while the context is still
+// centred from the last thing drawn returns half a string's width and shifts
+// every number left by it.
+function fillTextInkRight(ctx, text, x, y) {
+  ctx.textAlign = "right";
+  const m = ctx.measureText(text);
+  const over = Number.isFinite(m.actualBoundingBoxRight) ? m.actualBoundingBoxRight : 0;
+  ctx.fillText(text, x - over, y);
 }
 
 // Shrink the font until the text fits, rather than letting a long name run into
@@ -636,13 +705,21 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
       const cx = x + colW - w;
       const cy = barTop - c.h;
 
-      ctx.fillStyle = T.tilePoints.fill;
+      // "medal" is allowed on every colour in a design, and it has to be turned
+      // into gold, silver or bronze HERE. Assigning the word itself to
+      // strokeStyle is not an error a canvas reports: it quietly ignores the
+      // assignment and keeps the last colour used, which is the tile before
+      // this one. That is why the first tile's chip came out silver, the third
+      // one's gold, and the one drawn first had no outline at all.
+      const medalOr = (v) => (v === "medal" ? medal : v);
+
+      ctx.fillStyle = medalOr(T.tilePoints.fill);
       ctx.beginPath();
       ctx.roundRect(cx, cy, w, c.h, [c.radius, 0, 0, 0]);
       ctx.fill();
 
       if (T.tilePoints.frame) {
-        ctx.strokeStyle = T.tilePoints.frame;
+        ctx.strokeStyle = medalOr(T.tilePoints.frame);
         const cw = frameW(T.tilePoints.frameWidth, F);
         ctx.lineWidth = cw;
         const half = cw / 2;
@@ -654,7 +731,7 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
         ctx.stroke();
       }
 
-      ctx.fillStyle = T.tilePoints.ink;
+      ctx.fillStyle = medalOr(T.tilePoints.ink);
       ctx.textAlign = "center";
       ctx.fillText(label, cx + w / 2, cy + c.h / 2 + c.size * 0.36);
     }
@@ -678,7 +755,11 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
         ctx.lineTo(x + colW, barTop);
         ctx.stroke();
       } else {
-        strokeBox(ctx, x, top, colW, tileH, w, r);
+        // Square at the bottom, rounded at the top. This outline ENDS on the
+        // name bar rather than wrapping round it, and a rounded bottom corner
+        // curls inwards away from the bar, which reads as two little hooks
+        // where the black half meets the coloured one.
+        strokeBox(ctx, x, top, colW, tileH, w, [r, r, 0, 0]);
         ctx.stroke();
       }
     }
@@ -706,13 +787,12 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     // three tiles side by side make any drift off centre obvious — which is
     // also why the pair is measured first and placed second, rather than drawn
     // left to right and hoped about.
-    const gap = entry.flag ? 12 : 0;
+    const podiumFlag = F.flags === "off" ? null : entry.flag;
+    const gap = podiumFlag ? 12 : 0;
     // How wide this particular flag comes out in its square slot. Measured
     // rather than assumed, so the gap to the name is the same 12px whether the
     // flag is a wide one or a square one.
-    const flagW = entry.flag
-      ? P.flagW * Math.min(1, entry.flag.width / entry.flag.height)
-      : 0;
+    const flagW = podiumFlag ? P.flagW * Math.min(1, podiumFlag.width / podiumFlag.height) : 0;
     // A second-tier driver carries a "T2" after the name, and it joins the
     // group being centred rather than hanging off the end of it.
     const pillW = tierPillWidth(ctx, T, entry.tier === 2);
@@ -724,8 +804,8 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
     const barCy = barTop + P.barHeight / 2;
     const groupW = flagW + gap + ctx.measureText(entry.name).width + pillGap + pillW;
     let cursor = x + (colW - groupW) / 2;
-    if (entry.flag) {
-      drawFlag(ctx, entry.flag, cursor - (P.flagW - flagW) / 2, barCy, P.flagW);
+    if (podiumFlag) {
+      drawFlag(ctx, podiumFlag, cursor - (P.flagW - flagW) / 2, barCy, P.flagW);
       cursor += flagW + gap;
     }
     ctx.fillStyle = T.nameBar.ink;
@@ -744,6 +824,8 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
       h: L.rows.height,
       showDelta: timed,
       frame: frameW(T.row.frameWidth, F),
+      pts: F.pts,
+      flags: F.flags,
     });
   });
 
@@ -765,7 +847,7 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
 // is what the driver won that afternoon, and on a standings table the same
 // number is a season total, which nobody gained.
 // ---------------------------------------------------------------------------
-function drawRow(ctx, T, row, { y, h, showDelta = false, pointsPlain = false, frame = null }) {
+function drawRow(ctx, T, row, { y, h, showDelta = false, pointsPlain = false, frame = null, pts = "design", flags = "design" }) {
   const L = LAYOUT;
   const R = L.rows;
   // Never ABOVE 1: a short table is allowed taller bars so it fills the page,
@@ -805,40 +887,54 @@ function drawRow(ctx, T, row, { y, h, showDelta = false, pointsPlain = false, fr
   ctx.textAlign = "center";
   ctx.fillText(`${row.position}.`, L.pad + R.numW / 2, midY + numSize * 0.36);
 
-  // Points. "+20" on one line, or the number over the word PTS.
+  // Points, with "PTS" AFTER the number rather than stacked under it. Under it
+  // the word pushed the figure off the row's middle line and made a two-line
+  // block out of a one-line fact; beside it the row reads as a sentence and
+  // every number keeps the same baseline as the name it belongs to.
+  //
+  // The word is drawn first, at a fixed width, so the numbers to its left still
+  // end on one x whether the label is showing or not.
   const ptsSize = R.ptsSize * s;
   const ptsX = L.width - L.pad - R.ptsRight;
+  const showLabel = pts === "on" || (pts === "design" && T.points === "pts");
   ctx.fillStyle = T.row.ptsInk;
-  ctx.textAlign = "right";
-  if (T.points === "plus") {
-    ctx.font = FONT(900, ptsSize);
-    ctx.fillText(`${pointsPlain ? "" : "+"}${row.points}`, ptsX, midY + ptsSize * 0.36);
-  } else {
-    ctx.font = FONT(900, ptsSize);
-    ctx.fillText(String(row.points), ptsX, midY - 2 * s);
-    ctx.font = FONT(800, ptsSize * 0.8);
-    ctx.fillText("PTS", ptsX, midY + ptsSize * 0.9);
+  const baseline = midY + ptsSize * 0.36;
+  let numRight = ptsX;
+  if (showLabel) {
+    ctx.font = FONT(800, ptsSize * 0.62);
+    ctx.textAlign = "right";
+    ctx.fillText("PTS", ptsX, baseline);
+    numRight = ptsX - ctx.measureText("PTS").width - ptsSize * 0.2;
   }
+  const label = `${pointsPlain ? "" : "+"}${row.points}`;
+  ctx.font = FONT(900, ptsSize);
+  fillTextInkRight(ctx, label, numRight, baseline);
+  // Where the points block actually starts. The gap column is placed against
+  // THIS rather than against a fixed x, because the block's width is not fixed:
+  // it grows by the whole word when PTS is showing and by a digit when somebody
+  // scores a hundred. Pinned to a constant, the time ran into it — which is
+  // exactly what happened the day PTS moved out beside the number.
+  const ptsLeft = numRight - ctx.measureText(label).width;
 
   // The gap to the winner, right-aligned in its own column so the decimal
   // points stack down the page. Still right-aligned (never centred) even though
   // it shrinks to fit: a column of times is read down the fractions, and
   // centring would leave them zig-zagging.
   if (showDelta && row.delta) {
-    const deltaX = L.width - L.pad - R.deltaRight;
+    const deltaX = Math.min(L.width - L.pad - R.deltaRight, ptsLeft - R.deltaGap * s);
     // Never into the team mark. A minute-plus gap is a long string and the mark
     // is a picture with no room to give, so the time is what yields.
     const size = fitText(ctx, row.delta, deltaX - (markCx + markMaxW / 2) - 16, 800, R.deltaSize * s, 18);
     ctx.font = FONT(800, size);
     ctx.fillStyle = T.delta.row;
-    ctx.textAlign = "right";
-    ctx.fillText(row.delta, deltaX, midY + size * 0.36);
+    fillTextInkRight(ctx, row.delta, deltaX, midY + size * 0.36);
   }
 
   // Flag, then the name. The flag only appears where the design has one; the
   // name starts at the same x either way, so the column of names lines up
   // whether or not a driver has a country on file.
-  if (T.row.flags && row.flag) {
+  const showFlag = flags === "on" || (flags === "design" && T.row.flags);
+  if (showFlag && row.flag) {
     const flagW = R.flagW * s;
     drawFlag(ctx, row.flag, barX + (R.nameX - barX - flagW) / 2, midY, flagW);
   }
@@ -981,7 +1077,7 @@ export function drawStandingsGraphic(ctx, data, scale = 1, themeKey = "black") {
       y += S.section.h + S.section.gapAfter;
     }
     for (const row of section.rows) {
-      drawRow(ctx, T, row, { y, h, pointsPlain: true, frame });
+      drawRow(ctx, T, row, { y, h, pointsPlain: true, frame, pts: F.pts, flags: F.flags });
       y += h + gap;
     }
   }
@@ -1221,22 +1317,31 @@ export async function loadConstructorsAssets({
   t1Rows = CONSTRUCTOR_SPOTS.t1, t2Rows = CONSTRUCTOR_SPOTS.t2, framing = null,
 }) {
   const markSrc = (r) => teamArt[r.teamId]?.mark || r.logoUrl || null;
+  // A team's country is not in the database — teams have no nationality column
+  // — so it is set per team in the poster's own settings, next to their
+  // pictures. No flag on file simply means no flag on the row.
+  const flagSrc = (r) => {
+    const code = teamArt[r.teamId]?.country;
+    return code ? `/flags/w80/${String(code).toLowerCase()}.png` : null;
+  };
   const shown1 = t1.slice(0, t1Rows);
   const shown2 = t2.slice(0, t2Rows);
 
-  const [logo, marks1, marks2] = await Promise.all([
+  const [logo, marks1, marks2, flags1, flags2] = await Promise.all([
     loadImage(logoSrc),
     Promise.all(shown1.map((r) => loadImage(markSrc(r)))),
     Promise.all(shown2.map((r) => loadImage(markSrc(r)))),
+    Promise.all(shown1.map((r) => loadImage(flagSrc(r)))),
+    Promise.all(shown2.map((r) => loadImage(flagSrc(r)))),
   ]);
 
-  const row = (r, i, marks) => ({
+  const row = (r, i, marks, flags) => ({
     position: r.position ?? i + 1,
     name: r.name,
     points: r.total ?? 0,
     tier: null, // the section heading already says which tier this is
     mark: marks[i],
-    flag: null,
+    flag: flags[i],
   });
 
   return {
@@ -1245,8 +1350,8 @@ export async function loadConstructorsAssets({
     logo,
     framing: cleanFraming(framing),
     sections: [
-      { heading: "TIER 1", rows: shown1.map((r, i) => row(r, i, marks1)) },
-      { heading: "TIER 2", rows: shown2.map((r, i) => row(r, i, marks2)) },
+      { heading: "TIER 1", rows: shown1.map((r, i) => row(r, i, marks1, flags1)) },
+      { heading: "TIER 2", rows: shown2.map((r, i) => row(r, i, marks2, flags2)) },
     ].filter((s) => s.rows.length),
   };
 }
