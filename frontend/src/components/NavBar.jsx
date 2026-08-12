@@ -696,6 +696,21 @@ export default function NavBar() {
     return () => clearTimeout(t);
   }, [onSeasonPage]);
 
+  // What the PHONE menu shows is decided when it opens and then holds still
+  // until the panel is gone.
+  //
+  // Tapping a row navigates at once, and the menu closes from an effect on the
+  // path — so in the render where the route changed the panel is still fully
+  // open and has not begun its exit. The season row appeared right there, in a
+  // menu that was about to slide away, which reads as a glitch rather than as a
+  // control arriving. Gating on "closing" is a beat too late for the same
+  // reason; the gate has to be "the panel is on screen at all".
+  const [menuSeason, setMenuSeason] = useState(onSeasonPage);
+  useEffect(() => {
+    if (menu !== "closed") return;
+    setMenuSeason(onSeasonPage);
+  }, [onSeasonPage, menu]);
+
   return (
     <header className="sticky top-0 z-30">
       {/* Blurred, tinted backdrop for the bar only. Its bottom edge is masked
@@ -867,7 +882,7 @@ export default function NavBar() {
               {/* No series switcher here — the one under the wordmark in the bar
                   covers that on every page. Only the season filter docks in,
                   and only on season-scoped pages (phones have no other one). */}
-              {onSeasonPage && (
+              {menuSeason && (
                 <>
                   <MobileMenuLabel>Season</MobileMenuLabel>
                   <div className="px-2 py-1">
