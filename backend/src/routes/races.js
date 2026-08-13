@@ -9,6 +9,7 @@ import { telemetryForRace } from "../lib/telemetryRead.js";
 import { readManualFastestLaps } from "../lib/raceHonours.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceHighlights } from "../lib/raceHighlights.js";
+import { readRaceHeroes } from "../lib/raceHero.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
 import { dbReplaysByRace } from "../lib/downloads.js";
 import { readRaceCountries, staticCountryFor } from "../lib/raceCountries.js";
@@ -98,7 +99,7 @@ router.get("/", async (req, res, next) => {
     // Session format + race type (raw-SQL columns) for the upcoming-race panel
     // and the calendar's grouping, and any published replay downloads so the
     // calendar can offer a Replay button.
-    const [format, types, replays, winners, countries, photoCounts, highlights, withQuali] = await Promise.all([
+    const [format, types, replays, winners, countries, photoCounts, highlights, withQuali, heroes] = await Promise.all([
       readRaceFormat(prisma, races.map((r) => r.id)),
       readRaceTypes(prisma, races.map((r) => r.id)),
       dbReplaysByRace(prisma, races.map((r) => r.id)),
@@ -111,6 +112,9 @@ router.get("/", async (req, res, next) => {
       // so on arrival instead of one round at a time as they are opened.
       readRaceHighlights(prisma, races.map((r) => r.id)),
       racesWithQuali(races.map((r) => r.id)),
+      // The per-round main-card photo, so the Home hero can wear the picture of
+      // the round it is actually about (lib/raceHero.js).
+      readRaceHeroes(prisma, races.map((r) => r.id)),
     ]);
     res.json(
       races.map((r) => ({
@@ -129,6 +133,7 @@ router.get("/", async (req, res, next) => {
         raceLaps: format.get(r.id)?.raceLaps ?? null,
         replayDownloadId: replays.get(r.id) || null,
         highlightsUrl: highlights.get(r.id) || null,
+        heroImageUrl: heroes.get(r.id) || null,
         photoCount: photoCounts.get(r.id) || 0,
         winner: winners.get(r.id) || null,
       }))

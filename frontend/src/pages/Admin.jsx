@@ -2530,6 +2530,84 @@ function DriverSteamId({ d, busy, onSave }) {
   );
 }
 
+// The main-card photo of ONE round: the picture behind the Home hero while
+// this round is the latest one. Without it the hero keeps the season's photo,
+// which is also where "Reset" puts it back. Uploading happens on the spot, not
+// on Save — same as the season photo in the Seasons tab.
+//
+// Offered for upcoming rounds too, on purpose: an admin can have Spa's picture
+// waiting, and it appears by itself the moment Spa's results are imported.
+function RaceHero({ race, onSaved, onError, onChanged }) {
+  const ask = useAsk();
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const label = race.number != null ? `Round ${race.number} · ${race.track}` : race.track;
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // so re-picking the same file still fires onChange
+    if (!file) return;
+    setBusy(true);
+    try {
+      await api.uploadRaceHero(race.id, file);
+      onSaved(`Main-card photo updated for ${label}.`);
+      onChanged();
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  async function clear() {
+    if (
+      !(await ask({
+        title: `Remove the photo for ${label}?`,
+        body: "The main card falls back to the season's photo.",
+        danger: true,
+        confirmLabel: "Remove photo",
+      }))
+    )
+      return;
+    setBusy(true);
+    try {
+      await api.clearRaceHero(race.id);
+      onSaved(`Main-card photo reset for ${label}.`);
+      onChanged();
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="font-semibold text-light">Main-card photo</span>
+      {race.heroImageUrl && (
+        <img
+          src={race.heroImageUrl}
+          alt=""
+          className="h-10 w-20 rounded object-cover ring-1 ring-border"
+        />
+      )}
+      <input
+        aria-label={`Main-card photo for ${label}`}
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={pick}
+      />
+      <button type="button" className="btn-secondary px-3 py-1 text-xs" disabled={busy}
+        onClick={() => fileRef.current?.click()}>
+        {race.heroImageUrl ? "Replace" : "Upload"}
+      </button>
+      {race.heroImageUrl && (
+        <button type="button" className="font-semibold text-light transition hover:text-rose-500" disabled={busy}
+          onClick={clear}>
+          Reset to season photo
+        </button>
+      )}
+      <span className="text-light" title="Shown on the home page's main card while this round is the latest one, cropped to fill the panel">
+        Shown while this round is the latest result · wide landscape, at least 1920×800px
+      </span>
+    </div>
+  );
+}
+
 // --- DISCORD & EVENTS ------------------------------------------------------
 function DiscordEvents() {
   const ask = useAsk();
@@ -2824,6 +2902,17 @@ function DiscordEvents() {
                       <textarea className="input min-h-24" value={edit.info}
                         onChange={(e) => setEdit({ ...edit, info: e.target.value })} />
                     </Field>
+                    {/* Photo uploads/clears take effect immediately — they are
+                        not part of the Save below, which is why this sits
+                        under its own line rather than among the fields. */}
+                    <div className="border-t border-border pt-3">
+                      <RaceHero
+                        race={r}
+                        onSaved={(m) => { setMsg(m); setError(null); }}
+                        onError={(m) => { setError(m); setMsg(null); }}
+                        onChanged={reloadRaces}
+                      />
+                    </div>
                     <div className="flex gap-2">
                       <button className="btn-primary py-1.5 text-sm" disabled={busy || !edit.track.trim()} onClick={saveEdit}>
                         Save

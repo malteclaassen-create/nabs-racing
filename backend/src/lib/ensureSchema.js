@@ -75,6 +75,11 @@ export async function ensureAppSchema(prisma) {
   // http(s) address; see lib/raceHighlights.js.
   await addColumn(prisma, "Race", "highlightsUrl", "TEXT");
 
+  // --- Per-round main-card photo: the Home hero shows the latest round, so
+  // each round can carry its own picture of the place it was run at. Without
+  // one the hero keeps the season photo, exactly as before (lib/raceHero.js).
+  await addColumn(prisma, "Race", "heroImageUrl", "TEXT");
+
   // --- Race type (migration race_type): CHAMPIONSHIP | TRAINING | SPECIAL.
   // Backfill: rows flagged isSpecialEvent become SPECIAL once (a CHAMPIONSHIP-
   // typed row with the flag set is by definition unmigrated — TRAINING rows

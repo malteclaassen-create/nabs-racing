@@ -743,6 +743,16 @@ export const api = {
   },
   clearSeasonCar: (id) => request(`/admin/seasons/${id}/car`, { method: "DELETE", auth: true }),
 
+  // The round's own main-card photo: what the Home hero wears while this round
+  // is the latest one. Cleared = back to the season photo. The public side
+  // reads it off the races list (heroImageUrl), so there is no public call.
+  uploadRaceHero: (raceId, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/races/${raceId}/hero`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  clearRaceHero: (raceId) => request(`/admin/races/${raceId}/hero`, { method: "DELETE", auth: true }),
+
   // Race photo gallery (admin). The public side reads the photos straight off
   // the round detail, so there is no public call here.
   racePhotos: (raceId) => request(`/admin/races/${raceId}/photos`, { auth: true }),

@@ -25,6 +25,7 @@ import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnosti
 import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
 import { parseFormatNumber } from "../lib/raceFormat.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
+import { writeRaceHero } from "../lib/raceHero.js";
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
 import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
@@ -4404,6 +4405,54 @@ router.put("/races/:id/photos", async (req, res, next) => {
       }
     }
     res.json({ ok: true, photos: withAdminPhotoInfo(saved) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// RACE MAIN-CARD PHOTO
+// The picture behind the Home hero while this round is the latest one. Same
+// mechanics as the season photo it overrides (POST /seasons/:id/hero above),
+// one folder further along: the file lives with the round's gallery photos and
+// the URL on Race.heroImageUrl (lib/raceHero.js).
+// ---------------------------------------------------------------------------
+
+// POST /api/admin/races/:id/hero  (multipart: file=<image>)
+router.post("/races/:id/hero", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    // The gallery's list, minus GIF: this one is a background behind text, and
+    // an animation under the podium is a different decision from a clip in the
+    // gallery. No SVG either, for the reason given there.
+    const ext = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp" }[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG or WEBP)" });
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+
+    mkdirSync(RACES_DIR, { recursive: true });
+    const filename = `${photoFileTag(race.id)}-hero${ext}`;
+    const dest = safeUploadPath(RACES_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "This race's id can't be used as a file name" });
+    writeFileSync(dest, req.file.buffer);
+    // Cache-bust, or a replaced photo keeps showing the old one.
+    const heroImageUrl = `/api/uploads/races/${filename}?v=${Date.now()}`;
+    await writeRaceHero(prisma, race.id, heroImageUrl);
+    res.json({ ok: true, heroImageUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/races/:id/hero -> back to the season's photo. The file is
+// left where it is, exactly like the season photo's clear: a replacement
+// overwrites it, and an orphan costs nothing.
+router.delete("/races/:id/hero", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    await writeRaceHero(prisma, race.id, null);
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }
