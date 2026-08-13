@@ -12,6 +12,7 @@ import PointsChart from "../components/PointsChart.jsx";
 import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { NO_VALUE } from "../utils/format.js";
+import { isIdleReserve } from "../utils/standingsRow.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
@@ -270,7 +271,12 @@ export default function TeamProfile() {
                     <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{d.name}</span>
                     <Flag code={countryFor(d.driverId, d.country)} />
                   </div>
-                  <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">P{d.position} overall</span>
+                  {/* No overall position for a reserve who never started a
+                      round — the standings table doesn't list them either, so
+                      the number would point at a row that isn't there. */}
+                  <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+                    {isIdleReserve(d) ? "no starts yet" : `P${d.position} overall`}
+                  </span>
                 </div>
                 <span className="font-display text-lg font-black tabular-nums text-dark">{d.total}</span>
               </Link>

@@ -22,6 +22,7 @@ import { readDriverRoles } from "../lib/driverRoles.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
 import { achievementMeta } from "../lib/achievements.js";
+import { isIdleReserve } from "../lib/standingsRow.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -817,6 +818,9 @@ export async function getDriverProfile(prisma, driverId) {
     // DNF-only outing, and none of those should inflate the field. The rank is
     // recomputed within that group (same order as the standings); a driver
     // without a single finish gets no position at all.
+    // A reserve who never got in a car is the one row that must not get a
+    // number here at all: the standings page hides those rows, so a place
+    // shown on their profile points into a table they are not in.
     championship: (() => {
       let raced = standings.standings.filter((row) =>
         Object.values(row.perRace || {}).some((v) => v && v.status === "FINISHED")
@@ -826,10 +830,16 @@ export async function getDriverProfile(prisma, driverId) {
       // official classification — fall back to the full table there. A season
       // that simply hasn't raced yet (no finishes, no points) stays empty:
       // fieldSize 0, no position, and the page says "no races yet".
+      // The totals-only fallback keeps the reserves who never drove OUT of the
+      // field: without per-race rows every sign-up looks the same as a driver
+      // who raced the season, and each of them would otherwise be handed a
+      // place in an official classification they were never part of.
       if (raced.length === 0 && standings.standings.some((r) => r.total > 0)) {
-        raced = standings.standings;
+        raced = standings.standings.filter((r) => !isIdleReserve(r));
       }
-      const rank = raced.findIndex((row) => row.driverId === driverId) + 1;
+      const rank = isIdleReserve(standingRow)
+        ? 0
+        : raced.findIndex((row) => row.driverId === driverId) + 1;
       return {
         position: rank > 0 ? rank : null,
         points: standingRow?.total ?? 0,
