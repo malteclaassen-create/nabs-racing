@@ -168,7 +168,12 @@ function Hero() {
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-1 font-mono text-[11px] text-white/50">of {ch?.fieldSize} classified</div>
+                {/* Without a position there is no field to be part of: a
+                    reserve who hasn't started a round is not classified, and
+                    "– of 96 classified" would only look like a broken number. */}
+                <div className="mt-1 font-mono text-[11px] text-white/50">
+                  {ch?.position == null ? "no starts yet" : `of ${ch?.fieldSize} classified`}
+                </div>
               </div>
               <div>
                 <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Points</div>

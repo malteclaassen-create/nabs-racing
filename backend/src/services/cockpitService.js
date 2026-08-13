@@ -18,6 +18,7 @@ import { readManualFastestLaps } from "../lib/raceHonours.js";
 import { groupKeyFor, displayNameFor, countryFor } from "../lib/trackKeys.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import { achievementStateFor } from "../lib/achievements.js";
+import { isIdleReserve } from "../lib/standingsRow.js";
 import { findArchiveFor, analyzeRaceFor, raceInsightsFor } from "../lib/cockpitArchive.js";
 
 const MAX_LAP_MS = 1_800_000;
@@ -115,7 +116,7 @@ export async function getCockpitOverview(prisma, driverId) {
   // Position trend: where the driver stood BEFORE the latest completed round
   // (same drop rule with that round zeroed for everyone).
   let trend = 0;
-  if (me && races.length >= 2) {
+  if (me && !isIdleReserve(me) && races.length >= 2) {
     const lastNum = races[races.length - 1].number;
     const before = standings.standings
       .map((r) => {
@@ -181,7 +182,10 @@ export async function getCockpitOverview(prisma, driverId) {
         : null,
     },
     championship: {
-      position: me?.position ?? null,
+      // No place for a reserve who hasn't started a round: the standings page
+      // doesn't list those rows, and their position is only where an all-zero
+      // row landed in the sort. The header shows a dash until the first start.
+      position: isIdleReserve(me) ? null : me?.position ?? null,
       points: me?.total ?? 0,
       fieldSize: standings.standings.length,
       trend,

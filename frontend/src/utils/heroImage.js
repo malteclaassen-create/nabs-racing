@@ -1,4 +1,9 @@
-// Per-season hero photo. Three levels, most specific wins:
+// The hero photo of the main card. Four levels, most specific wins:
+//   0. race.heroImageUrl — the photo uploaded for the ROUND the card is about
+//      (admin: Discord & Events → Season races → Edit). The Home hero leads
+//      with the latest round, so it can wear a picture of that place; the
+//      moment the next round's results are in, the card is about that round
+//      and takes its photo, or falls through to the season's.
 //   1. season.heroImageUrl — admin-uploaded (Seasons tab), works with no
 //      file-system access (e.g. Railway).
 //   2. public/heroes/s<number>.jpg — drop-a-file convention for anyone who DOES
@@ -17,7 +22,12 @@ export const DEFAULT_HERO = "/hero.jpg";
 // Dropped a real photo in as s4.jpg? Add 4 (see public/heroes/README.txt).
 const SEASONS_WITH_OWN_HERO = new Set([]);
 
-export function heroFor(season) {
+// `race` is the round the card is currently about, where there is one — pass
+// nothing for a card that speaks about the season as a whole (the landing page,
+// the season-complete hero), which is what everyone did before per-round photos
+// existed.
+export function heroFor(season, race = null) {
+  if (race?.heroImageUrl) return race.heroImageUrl;
   if (season?.heroImageUrl) return season.heroImageUrl;
   // Number(): season numbers arrive as numbers today, but a Set lookup would
   // silently miss a "4" from a hand-written entry. The file name is built from
@@ -37,14 +47,25 @@ export function carFor(season) {
   return season?.number ? `/cars/s${season.number}.jpg` : null;
 }
 
-// onError chain for a hero <img>: a missing season photo swaps to the default
-// hero; if that is missing too, the image hides itself (as before).
+// onError chain for a hero <img>: a missing photo swaps to the default hero;
+// if that is missing too, the image hides itself (as before).
+//
+// A card carrying a ROUND's photo can name the season's as the step in
+// between (data-hero-fallback): a round photo that has gone missing from disk
+// should land on the season's picture, not skip past it to the league default.
+// Each step is tried once — dataset.fellBack keeps a broken chain from looping.
 export function heroOnError(e) {
   const img = e.currentTarget;
-  if (img.dataset.fellBack || img.src.endsWith(DEFAULT_HERO)) {
+  const next = img.dataset.heroFallback;
+  if (next && !img.dataset.fellBack && !img.src.endsWith(next)) {
+    img.dataset.fellBack = "1";
+    img.src = next;
+    return;
+  }
+  if (img.dataset.fellBackDefault || img.src.endsWith(DEFAULT_HERO)) {
     img.style.display = "none";
     return;
   }
-  img.dataset.fellBack = "1";
+  img.dataset.fellBackDefault = "1";
   img.src = DEFAULT_HERO;
 }

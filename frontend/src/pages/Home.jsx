@@ -565,6 +565,13 @@ export default function Home() {
   const seasonOver =
     !isPast && !isUpcomingSeason && champRaces.length > 0 && champRaces.every((r) => r.isCompleted);
 
+  // Which round the hero is ABOUT, and therefore whose photo it may wear (a
+  // round without an uploaded one falls through to the season's). Only the
+  // latest-race hero qualifies: the season-complete and archive layouts speak
+  // about the whole season, over its own photo, and the coming-soon one has no
+  // round to speak of yet.
+  const heroRace = seasonOver || isPast || awaitingOpener || isUpcomingSeason ? null : lastRace;
+
   // The announced next season. Asked for right away, not once the season turns
   // out to be over: waiting made the hero paint its off-season layout twice,
   // first centred without the card and then shifted aside when the answer
@@ -890,9 +897,12 @@ export default function Home() {
       <section className="reveal relative overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10">
         <img
           ref={heroImgRef}
-          key={heroFor(season)}
-          src={heroFor(season)}
+          key={heroFor(season, heroRace)}
+          src={heroFor(season, heroRace)}
           alt=""
+          // A round photo that has gone missing from disk lands on the season's
+          // picture before the league default (see heroOnError).
+          data-hero-fallback={heroFor(season)}
           onError={heroOnError}
           // Same as the landing page's hero: exactly the size of the card, and
           // the scroll drift moves the crop rather than the picture. Nothing

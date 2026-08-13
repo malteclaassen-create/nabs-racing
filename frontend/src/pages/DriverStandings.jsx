@@ -13,6 +13,7 @@ import StandingsTable from "../components/StandingsTable.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { countryFor } from "../data/driverCountries.js";
+import { isIdleReserve } from "../utils/standingsRow.js";
 
 // The caption under a driver's points, on the podium cards and in every row.
 //
@@ -287,9 +288,9 @@ export default function DriverStandings() {
   // the whole sign-up list, so the rest of it is people who haven't driven
   // this season at all: dozens of identical zero rows that are not part of any
   // championship. The count line under the table brings them back in one
-  // click, so nobody vanishes without the page saying so.
-  const isIdleReserve = (r) =>
-    r.tier === 0 && r.total <= 0 && Object.keys(r.perRace || {}).length === 0;
+  // click, so nobody vanishes without the page saying so. The rule itself
+  // lives in utils/standingsRow.js — the driver and team profiles withhold a
+  // P-number from exactly these rows, and the two have to agree.
   const idleReserves = rows.filter(isIdleReserve).length;
   if (!showIdleReserves) rows = rows.filter((r) => !isIdleReserve(r));
   // The opt-in "only drivers with points" box on top of that, which also takes

@@ -20,6 +20,7 @@ import { countryFor } from "../data/driverCountries.js";
 import { flagFor } from "../data/circuits.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
 import { fmtLap, NO_VALUE} from "../utils/format.js";
+import { isIdleReserve } from "../utils/standingsRow.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
@@ -605,8 +606,11 @@ function HeadToHead({ me, meRow, standings }) {
         // actual racers — a comparison picker listing all 99, most of whom
         // share an identical empty record, is not a picker. Anyone who scored
         // stays, and so does the driver's own team mate even on zero, since a
-        // team mate is the one comparison a driver always wants.
-        .filter((s) => s.total > 0 || s.team?.id === me.driver.team?.id)
+        // team mate is the one comparison a driver always wants. The team-mate
+        // exception has to stop short of a reserve who never drove, though:
+        // on a reserve's own profile the whole pool counts as team mates, and
+        // that put the 99 empty records straight back into the picker.
+        .filter((s) => (s.total > 0 || s.team?.id === me.driver.team?.id) && !isIdleReserve(s))
         .sort((a, b) => a.position - b.position),
     [standings, me.driver.id, me.driver.team?.id]
   );
@@ -919,7 +923,12 @@ function TeamPanel({ driver, standings, career, teammateHistory = [] }) {
                       </span>
                     )}
                   </span>
-                  <span className="font-mono text-xs font-semibold tabular-nums text-light">P{m.position}</span>
+                  {/* A standings position, but only for the people the
+                      standings actually list: a reserve who never started a
+                      round holds a row number, not a championship place. */}
+                  <span className="font-mono text-xs font-semibold tabular-nums text-light">
+                    {isIdleReserve(m) ? NO_VALUE : `P${m.position}`}
+                  </span>
                   <span className="font-display text-sm font-black tabular-nums text-dark">{m.total}</span>
                   {pct != null && (
                     <span className="w-9 text-right font-mono text-[10px] font-semibold tabular-nums text-light">{Math.round(pct)}%</span>
