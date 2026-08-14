@@ -64,8 +64,9 @@ export default function RaceLapChart({ data, className = "" }) {
   // pixels a place gives every line somewhere to be; the cap keeps a full grid
   // from turning the panel into a wall.
   const plotH = Math.min(540, Math.max(224, maxPos * 12));
-  // Thinner strokes once the field is deep, for the same reason.
-  const stroke = maxPos > 24 ? 1.6 : 2;
+  // Weight enough to be followed across the plot, a touch less on a deep grid
+  // so neighbouring lines don't merge into a band.
+  const stroke = maxPos > 24 ? 2.2 : 2.6;
 
   const colorOf = (d, i) => d.color || NEUTRAL[i % NEUTRAL.length];
   // What identifies a line. NOT the file's GUID — that is a SteamID, and the
@@ -139,12 +140,16 @@ export default function RaceLapChart({ data, className = "" }) {
                       points={pts}
                       fill="none"
                       stroke={colorOf(d, i)}
-                      strokeWidth={focus === id ? 3.5 : stroke}
+                      strokeWidth={focus === id ? stroke + 2 : stroke}
                       strokeDasharray={focus === id ? undefined : dashes[i]}
                       strokeLinejoin="round"
                       strokeLinecap="round"
                       vectorEffect="non-scaling-stroke"
-                      opacity={dim ? 0.08 : 1}
+                      // Dimmed, not erased: picking a driver should show where
+                      // they were in the race, and a field faded to nothing
+                      // leaves one line floating in an empty box with no
+                      // traffic to have overtaken.
+                      opacity={dim ? 0.28 : 1}
                       className="transition-opacity"
                     />
                   );
