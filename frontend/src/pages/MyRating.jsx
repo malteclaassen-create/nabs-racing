@@ -285,7 +285,7 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
           {/* Pinned y-axis. Its solid column is a touch wider than the numbers
               (pr-2) so scrolled-away content can never peek through between
               the numbers and the plot — and the numbers sit clearly apart. */}
-          <div className="sticky left-0 z-10 w-10 shrink-0 bg-card pr-2">
+          <div className="sticky-fade sticky left-0 z-10 w-10 shrink-0 bg-card pr-2">
             <div className="relative h-full">
               {ticks.map((v) => (
                 <span key={v} className="absolute right-0 -translate-y-1/2 font-mono text-[10px] font-bold tabular-nums text-faint" style={{ top: `${yPct(v)}%` }}>
@@ -469,7 +469,7 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
             all-time view the season name spans its own block of races */}
         <div className="flex pt-2.5">
           {/* sticky spacer: covers scrolled-away labels, like the axis above */}
-          <div className="sticky left-0 z-10 w-10 shrink-0 bg-card" />
+          <div className="sticky-fade sticky left-0 z-10 w-10 shrink-0 bg-card" />
           {points.map((p, i) => (
             <div key={p.raceId || i} className="min-w-0 flex-1 px-0.5 text-center">
               <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-faint">

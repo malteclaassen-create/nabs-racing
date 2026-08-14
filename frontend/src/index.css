@@ -261,6 +261,44 @@ body::before {
   .group:hover .sticky-cell {
     background-color: var(--c-surface2);
   }
+  /* Softens the inner edge of a pinned column, for the charts whose position
+     axis stays put while the rounds scroll past it.
+     An opaque frozen column cuts whatever slides under it dead straight, and
+     the cut lands wherever the scroll happens to stop: half a dot ring, a
+     result chip missing its left side, both hanging against the position
+     labels as if the labels had grown an outline. Two things fix that here.
+       ::before is the column's own cover, and it reaches half a rem PAST the
+     row top and bottom — the plot lets rings and strokes overflow its box by
+     8px (see .wipe-ltr), and those few pixels were sailing straight over a
+     background that stopped exactly at the row's edge. It sits behind the
+     labels, which come later in the DOM and are positioned, so they still
+     read.
+       ::after is the fade itself, just outside the column (`left: 100%`, so
+     the column keeps its width and everything that lines up with it stays
+     put): solid for the half rem of gap before the plot begins, then gone by
+     the end of the strip. Content dissolves into the axis instead of being
+     guillotined by it, and at rest — where the first chip starts past the
+     strip — nothing looks faded that isn't actually scrolling away.
+     Goes on the pinned element itself, which is `sticky` and therefore
+     already the containing block both pseudos need. */
+  .sticky-fade::before,
+  .sticky-fade::after {
+    content: "";
+    position: absolute;
+    top: -0.5rem;
+    bottom: -0.5rem;
+    pointer-events: none;
+  }
+  .sticky-fade::before {
+    left: 0;
+    right: 0;
+    background-color: var(--c-card);
+  }
+  .sticky-fade::after {
+    left: 100%;
+    width: 0.875rem;
+    background-image: linear-gradient(to right, var(--c-card) 0.5rem, transparent);
+  }
 }
 
 /* --- Home / editorial accents -------------------------------------- */

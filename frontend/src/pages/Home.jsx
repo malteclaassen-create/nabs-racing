@@ -1183,17 +1183,23 @@ export default function Home() {
             )}
 
             <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
+              {/* The two of them share the first line on a phone (flex-1, and
+                  a tighter inline padding so both fit even on a 360px screen);
+                  from sm up they go back to their natural widths and the row
+                  is untouched. Left to themselves they wrapped one per line on
+                  narrow phones, which turned three buttons into three ragged
+                  rows. */}
               <Link
                 ref={ctaRef}
                 to="/races"
-                className="shine group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
+                className="shine group inline-flex flex-auto items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-brand px-4 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105 sm:flex-none sm:justify-start sm:px-6"
               >
                 Full Results
                 <span className="transition group-hover:translate-x-0.5">→</span>
               </Link>
               <Link
                 to="/drivers"
-                className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
+                className="inline-flex flex-auto items-center justify-center whitespace-nowrap rounded-lg border border-ink/15 bg-ink/[0.03] px-4 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15 sm:flex-none sm:justify-start sm:px-6"
               >
                 Standings
               </Link>
@@ -1207,7 +1213,12 @@ export default function Home() {
               {isLoggedIn && REPORTS_OPEN_TO_MEMBERS && (
                 <Link
                   to={reportsPath({ nw: true })}
-                  className="inline-flex items-center gap-2 rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink/70 backdrop-blur-sm transition hover:bg-ink/[0.06] hover:text-ink dark:border-white/20 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/15 dark:hover:text-white"
+                  // On a phone the two buttons above fill the first line and
+                  // this one wrapped to a second, half-empty and ragged, as if
+                  // it had fallen off the row. Given a line of its own it takes
+                  // the whole width and centres itself: a deliberate third
+                  // action under the two, not a leftover.
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink/70 backdrop-blur-sm transition hover:bg-ink/[0.06] hover:text-ink dark:border-white/20 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/15 dark:hover:text-white sm:w-auto sm:justify-start"
                 >
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M5 21V4M5 4h11l-1.6 3.5L16 11H5" />
