@@ -5,7 +5,8 @@ import { useApi } from "../hooks/useApi.js";
 import CircuitMap from "./CircuitMap.jsx";
 import Flag from "./Flag.jsx";
 import RaceCountdown from "./RaceCountdown.jsx";
-import { TeamDot, NoData} from "./ui.jsx";
+import { NoData } from "./ui.jsx";
+import TeamLogo from "./TeamLogo.jsx";
 import { STATUS_UI, StatusIcon } from "./RaceSignupCard.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { circuitFor, flagFor } from "../data/circuits.js";
@@ -113,7 +114,15 @@ function SignupOutcome({ ev }) {
               <ul className="space-y-1.5">
                 {ev.rsvps[status].map((r) => (
                   <li key={r.driverId} className="flex min-w-0 items-center gap-1.5 text-sm sm:gap-2">
-                    <TeamDot color={r.team.color} />
+                    {/* Same mark as the attendance card's list — this panel is
+                        that list, frozen. */}
+                    <TeamLogo
+                      id={r.team.id}
+                      name={r.team.name}
+                      color={r.team.color}
+                      logoUrl={r.team.logoUrl}
+                      size={18}
+                    />
                     <span className="truncate text-dark">{r.name}</span>
                     <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
                   </li>

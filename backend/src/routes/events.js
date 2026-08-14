@@ -134,7 +134,16 @@ router.get("/", async (req, res, next) => {
           // Linked-person fallback: a row without its own flag shows the
           // person's current one (same rule as the standings).
           country: r.driver.country || identity.get(r.driverId)?.country || null,
-          team: { name: r.driver.team.name, color: r.driver.team.color },
+          // `id` and `logoUrl` so the entry list can show the team's mark next
+          // to the name instead of a coloured dot: the id picks the bundled
+          // /teams/<id>.png, logoUrl an admin-uploaded one, and colour still
+          // backs the monogram for a team with neither.
+          team: {
+            id: r.driver.team.id,
+            name: r.driver.team.name,
+            color: r.driver.team.color,
+            logoUrl: r.driver.team.logoUrl || null,
+          },
         });
       }
       return {
