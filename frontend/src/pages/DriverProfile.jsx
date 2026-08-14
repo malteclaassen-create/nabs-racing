@@ -440,7 +440,15 @@ function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
     // sticky y-axis pinned to the left. On a phone this means the trend line and
     // the result chips beneath it always scroll together and stay aligned —
     // before, they were two separate scroll strips that could drift apart.
-    <div className="scrollbar-slim h-full min-h-[240px] w-full overflow-x-auto overscroll-x-none">
+    //
+    // Sideways ONLY: `overflow-x: auto` alone leaves the other axis at `auto`
+    // too, so a few stray pixels of height were enough to make the chart
+    // draggable up and down inside its own box — a second scrollbar, and a plot
+    // that could be pushed off its floor. There is nothing below to scroll to.
+    // No bars either (scrollbar-none): the chart moving under the thumb says
+    // everything a bar would, and the fade at the pinned edge shows there is
+    // more to come.
+    <div className="scrollbar-none h-full min-h-[240px] w-full overflow-x-auto overflow-y-hidden overscroll-x-none">
       <div className="flex h-full flex-col" style={{ minWidth: minW + 36 }}>
       {/* plot region — pinned y-axis + plot, both share this row's height so
           the position ticks line up exactly with the dots */}
