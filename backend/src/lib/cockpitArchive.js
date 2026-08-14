@@ -82,6 +82,21 @@ export function findArchiveFor(seasonNumber, raceNumber) {
   return best?.data ?? null;
 }
 
+// Is there an archived file for this round at all? A directory listing and a
+// name check, no reading and no parsing — cheap enough to answer on every
+// results request, which is what lets the round page offer its lap-by-lap view
+// only where there is one to show.
+export function hasArchiveFor(seasonNumber, raceNumber) {
+  const dir = join(RESULTS_ARCHIVE_DIR, `season${seasonNumber}`);
+  if (!existsSync(dir)) return false;
+  const prefix = `r${String(Number(raceNumber)).padStart(2, "0")}-`;
+  try {
+    return readdirSync(dir).some((n) => n.startsWith(prefix) && n.endsWith(".json"));
+  } catch {
+    return false;
+  }
+}
+
 // --- lap-level extraction ------------------------------------------------------
 
 // All laps of the race grouped per driver GUID, in the order driven, with the
@@ -120,6 +135,46 @@ function positionsPerLap(byGuid) {
     finishers.forEach((f, i) => posByGuid.get(f.guid).push({ lap: n, position: i + 1 }));
   }
   return posByGuid;
+}
+
+// The whole field's running order, lap by lap — the same computation the
+// per-driver analysis above has always done, for everyone at once.
+//
+// It is the one view of a race the results table cannot give: who came from
+// where, when the lead changed, which two cars spent twenty laps swapping
+// places. Everything needed is already in the archived file; this only stops
+// throwing it away after one driver.
+//
+// A driver drops out of their line the lap they stop appearing in the file
+// (retirement, disconnect), which is exactly what should happen — the line
+// ends where the race ended for them, and the classification below the chart
+// stays the authority on the result.
+//
+// Names come from the file's own classification, and the caller matches them
+// to league drivers for colours and links. `Result` is in finishing order, so
+// the drivers come back that way too.
+export function lapChartFrom(json) {
+  const byGuid = lapsByGuid(json);
+  if (!byGuid.size) return null;
+  const posByGuid = positionsPerLap(byGuid);
+  const maxLap = Math.max(0, ...[...byGuid.values()].map((l) => l.length));
+  if (maxLap < 2) return null; // one lap is a start, not a story
+
+  const order = (json?.Result || []).filter((r) => r?.DriverGuid && byGuid.has(r.DriverGuid));
+  // A GUID with laps but no classification row still gets a line — the file's
+  // Result can be short after a disconnect, and a car that ran belongs in the
+  // picture.
+  const seen = new Set(order.map((r) => r.DriverGuid));
+  const extras = [...byGuid.keys()].filter((g) => !seen.has(g)).map((g) => ({ DriverGuid: g, DriverName: null }));
+
+  return {
+    maxLap,
+    drivers: [...order, ...extras].map((r) => ({
+      guid: String(r.DriverGuid),
+      name: r.DriverName || null,
+      points: (posByGuid.get(String(r.DriverGuid)) || []).map((p) => ({ lap: p.lap, position: p.position })),
+    })),
+  };
 }
 
 const isRealLap = (ms) => ms != null && ms > 0 && ms <= MAX_LAP_MS;
