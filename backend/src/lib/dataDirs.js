@@ -13,7 +13,9 @@ import { fileURLToPath } from "url";
 
 const __dir = dirname(fileURLToPath(import.meta.url)); // backend/src/lib
 
-const DATA_ROOT = process.env.DATA_DIR
+// Exported for the one consumer (telemetry laps) that builds its own folder
+// under the volume the same way the four below do.
+export const DATA_ROOT = process.env.DATA_DIR
   ? resolve(process.env.DATA_DIR)
   : join(__dir, "../.."); // backend/
 

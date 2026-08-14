@@ -26,6 +26,7 @@ import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from 
 import { parseFormatNumber } from "../lib/raceFormat.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { writeRaceHero } from "../lib/raceHero.js";
+import { deleteLap as deleteTelemetryLap } from "../lib/telemetryLaps.js";
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
 import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
@@ -5191,6 +5192,45 @@ router.put("/reports-ingest", async (req, res, next) => {
       update: { value },
     });
     res.json({ ok: true, configured: !!value, key: value || null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET/PUT /api/admin/telemetry-ingest — the in-game telemetry recorder's key.
+// Same contract as the report ingest right above: no key = the feature is off,
+// and the key is minted here, never typed. DELETE /telemetry-laps/... removes
+// one stored lap (a modded-car time, a wrong person) without touching the rest.
+router.get("/telemetry-ingest", async (req, res, next) => {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: "telemetry_ingest_key" } }).catch(() => null);
+    const key = row?.value || "";
+    res.json({ configured: !!key, key: key || null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/telemetry-ingest", async (req, res, next) => {
+  try {
+    const on = req.body?.enabled !== false;
+    const value = on ? randomUUID().replace(/-/g, "") : "";
+    await prisma.setting.upsert({
+      where: { key: "telemetry_ingest_key" },
+      create: { key: "telemetry_ingest_key", value },
+      update: { value },
+    });
+    res.json({ ok: true, configured: !!value, key: value || null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/telemetry-laps/:trackKey/:steamId", async (req, res, next) => {
+  try {
+    const ok = deleteTelemetryLap(req.params.trackKey, req.params.steamId);
+    if (!ok) return res.status(404).json({ error: "No lap stored there" });
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }
