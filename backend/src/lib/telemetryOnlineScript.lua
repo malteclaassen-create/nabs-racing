@@ -57,7 +57,7 @@ end
 local function newRec(lapCount)
   return {
     lap = lapCount, lastBucket = -1, filled = 0, dirty = false, pit = false,
-    t = {}, speed = {}, gas = {}, brake = {}, steer = {}, gear = {},
+    t = {}, speed = {}, gas = {}, brake = {}, steer = {}, gear = {}, x = {}, z = {},
   }
 end
 
@@ -80,10 +80,18 @@ local function sampleInto(r, car)
   local brake = math.floor((car.brake or 0) * 100 + 0.5)
   local steer = math.floor((car.steer or 0) * 10 + 0.5)
   local gear = math.floor(car.gear or 0)
+  -- World position in decimetres: the site draws the track map FROM the lap,
+  -- so no track files are ever needed. pcall-free field reads with fallbacks,
+  -- like everything else here.
+  local px, pz = 0, 0
+  if car.position ~= nil then
+    px = math.floor((car.position.x or 0) * 10 + 0.5)
+    pz = math.floor((car.position.z or 0) * 10 + 0.5)
+  end
   for b = r.lastBucket + 1, bucket do
     local i = b + 1
     r.t[i] = t; r.speed[i] = speed; r.gas[i] = gas; r.brake[i] = brake
-    r.steer[i] = steer; r.gear[i] = gear
+    r.steer[i] = steer; r.gear[i] = gear; r.x[i] = px; r.z[i] = pz
     r.filled = r.filled + 1
   end
   r.lastBucket = bucket
@@ -105,6 +113,7 @@ local function postLap(r, lapMs)
       end
       r.t[i] = r.t[src]; r.speed[i] = r.speed[src]; r.gas[i] = r.gas[src]
       r.brake[i] = r.brake[src]; r.steer[i] = r.steer[src]; r.gear[i] = r.gear[src]
+      r.x[i] = r.x[src]; r.z[i] = r.z[src]
     end
   end
 
@@ -112,6 +121,7 @@ local function postLap(r, lapMs)
     v = 1, steamId = id.steamId, name = id.name, car = id.car,
     track = id.track, layout = id.layout, lapTimeMs = lapMs, n = N,
     t = r.t, speed = r.speed, gas = r.gas, brake = r.brake, steer = r.steer, gear = r.gear,
+    x = r.x, z = r.z,
   }
   web.post(INGEST_URL, { ['Content-Type'] = "application/json" }, JSON.stringify(payload), function (err, response)
     if err then

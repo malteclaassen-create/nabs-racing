@@ -898,6 +898,172 @@ function TraceSvg({ n, lines }) {
   );
 }
 
+// Centred moving average, for every signal that gets eyeballed or thresholded:
+// raw 60fps samples wobble, and both the corner detector and the map colouring
+// would flicker on the noise.
+function smoothSeries(arr, w = 9) {
+  const half = Math.floor(w / 2);
+  const out = new Array(arr.length);
+  for (let i = 0; i < arr.length; i++) {
+    let sum = 0, cnt = 0;
+    for (let j = Math.max(0, i - half); j <= Math.min(arr.length - 1, i + half); j++) { sum += arr[j]; cnt++; }
+    out[i] = sum / cnt;
+  }
+  return out;
+}
+
+// Corners, read off the speed trace: contiguous stretches clearly below the
+// lap's fast pace, close ones merged, each with its apex (slowest slice).
+// Good enough on purpose — this feeds labels and map markers, not scoring.
+function detectCorners(speedRaw) {
+  const speed = smoothSeries(speedRaw, 9);
+  const vmax = Math.max(...speed);
+  const thr = vmax * 0.8;
+  const regions = [];
+  let cur = null;
+  for (let i = 0; i < speed.length; i++) {
+    if (speed[i] < thr) {
+      if (!cur) cur = { start: i, end: i };
+      cur.end = i;
+    } else if (cur) {
+      regions.push(cur);
+      cur = null;
+    }
+  }
+  if (cur) regions.push(cur);
+  const merged = [];
+  for (const r of regions) {
+    const last = merged[merged.length - 1];
+    if (last && r.start - last.end < 12) last.end = r.end;
+    else merged.push({ ...r });
+  }
+  return merged
+    .filter((r) => r.end - r.start >= 4)
+    .slice(0, 15)
+    .map((r) => {
+      let apex = r.start;
+      for (let i = r.start; i <= r.end; i++) if (speed[i] < speed[apex]) apex = i;
+      return { ...r, apex };
+    });
+}
+
+// Metres driven up to each slice, from the recorded world position (stored in
+// decimetres). What turns "brakes 6 slices later" into "brakes 14 m later".
+function cumulativeDist(x, z, n) {
+  const d = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const dx = (x[i] - x[i - 1]) / 10, dz = (z[i] - z[i - 1]) / 10;
+    d[i] = d[i - 1] + Math.hypot(dx, dz);
+  }
+  return d;
+}
+
+// The per-corner story in numbers: who gains how much through the corner, who
+// brakes later (metres, when positions were recorded), who carries more
+// mid-corner speed, who exits faster. Numbers, deliberately not coaching prose
+// — "brake earlier next time" would be the site guessing at causality.
+function cornerInsights(lapA, lapB, corners, dist, n) {
+  const brakePoint = (lap, from, to) => {
+    for (let i = from; i <= to; i++) if (lap.brake[i] >= 30) return i;
+    return null;
+  };
+  return corners.map((c, k) => {
+    const s0 = Math.max(0, c.start - 30);
+    const e0 = Math.min(n - 1, c.end + 12);
+    // + = B lost time across the corner = A gained.
+    const gainMs = (lapB.t[e0] - lapA.t[e0]) - (lapB.t[s0] - lapA.t[s0]);
+    const bA = brakePoint(lapA, s0, c.apex);
+    const bB = brakePoint(lapB, s0, c.apex);
+    const minA = Math.min(...lapA.speed.slice(c.start, c.end + 1));
+    const minB = Math.min(...lapB.speed.slice(c.start, c.end + 1));
+    return {
+      n: k + 1,
+      apex: c.apex,
+      gainMs,
+      // + = B brakes later than A.
+      brakeDeltaM: bA != null && bB != null && dist ? Math.round(dist[bB] - dist[bA]) : null,
+      midDelta: minB - minA, // + = B carries more mid-corner speed
+      exitDelta: lapB.speed[e0] - lapA.speed[e0], // + = B exits faster
+    };
+  });
+}
+
+// The track, drawn from the lap itself: the recorded positions ARE the racing
+// line, so no track files, no calibration. Coloured by who gains where when
+// two laps are up (smoothed per-slice time gain), with the corner numbers at
+// their apexes and the shared cursor as a dot. Clicking jumps the cursor.
+function TrackMap({ lapA, lapB, n, corners, cursor, onPick }) {
+  const geo = useMemo(() => {
+    if (!lapA?.x || !lapA?.z) return null;
+    const xs = lapA.x.slice(0, n).map((v) => v / 10);
+    const zs = lapA.z.slice(0, n).map((v) => v / 10);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+    const spanX = Math.max(1, maxX - minX), spanZ = Math.max(1, maxZ - minZ);
+    const W = 100, H = (spanZ / spanX) * 100;
+    const pad = 6;
+    const px = xs.map((v) => pad + ((v - minX) / spanX) * (W - 2 * pad));
+    const py = zs.map((v) => pad + ((v - minZ) / spanZ) * (H * ((W - 2 * pad) / W)) );
+    return { px, py, W, H: Math.max(30, H * ((W - 2 * pad) / W) + 2 * pad) };
+  }, [lapA, n]);
+
+  const segs = useMemo(() => {
+    if (!geo) return [];
+    if (!lapB) return [{ color: "var(--c-faint)", from: 0, to: n - 1 }];
+    const g = new Array(n - 1);
+    for (let i = 0; i < n - 1; i++) g[i] = (lapB.t[i + 1] - lapB.t[i]) - (lapA.t[i + 1] - lapA.t[i]);
+    const sg = smoothSeries(g, 11);
+    const thr = 1.2; // ms per slice; below it the stretch reads as even
+    const catOf = (v) => (v > thr ? "a" : v < -thr ? "b" : "even");
+    const out = [];
+    let from = 0, cat = catOf(sg[0]);
+    for (let i = 1; i < n - 1; i++) {
+      const c = catOf(sg[i]);
+      if (c !== cat) { out.push({ cat, from, to: i }); cat = c; from = i; }
+    }
+    out.push({ cat, from, to: n - 1 });
+    const color = { a: COL_A, b: COL_B, even: "var(--c-faint)" };
+    return out.map((s) => ({ ...s, color: color[s.cat] }));
+  }, [geo, lapA, lapB, n]);
+
+  if (!geo) return null;
+  const pts = (from, to) => {
+    let out = "";
+    for (let i = from; i <= to; i++) out += `${geo.px[i].toFixed(1)},${geo.py[i].toFixed(1)} `;
+    return out;
+  };
+  const pick = (e) => {
+    if (!onPick) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    const mx = ((e.clientX - box.left) / box.width) * geo.W;
+    const my = ((e.clientY - box.top) / box.height) * geo.H;
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < n; i++) {
+      const d = (geo.px[i] - mx) ** 2 + (geo.py[i] - my) ** 2;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    onPick(best);
+  };
+  return (
+    <svg viewBox={`0 0 ${geo.W} ${geo.H}`} className="h-full w-full cursor-crosshair" onClick={pick} aria-label="Track map, coloured by who gains where">
+      {segs.map((sg, i) => (
+        <polyline key={i} points={pts(sg.from, sg.to)} fill="none" stroke={sg.color}
+          strokeWidth={sg.cat && sg.cat !== "even" ? 2.4 : 1.6} strokeLinecap="round" strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke" opacity={sg.cat === "even" ? 0.55 : 1} />
+      ))}
+      {(corners || []).map((c) => (
+        <text key={c.apex} x={geo.px[c.apex]} y={geo.py[c.apex] - 2.5}
+          className="fill-current font-mono text-light" fontSize="3.4" textAnchor="middle">
+          T{c.n ?? ""}
+        </text>
+      ))}
+      {cursor != null && cursor < n && (
+        <circle cx={geo.px[cursor]} cy={geo.py[cursor]} r="1.8" fill="var(--c-text)" stroke="var(--c-bg)" strokeWidth="0.6" />
+      )}
+    </svg>
+  );
+}
+
 const COL_A = "#0ea5e9"; // sky — lap A
 const COL_B = "#f43f5e"; // rose — lap B
 
@@ -973,6 +1139,23 @@ function TelemetryCompare() {
     return Math.max(300, ...all.map(Math.abs));
   }, [lapA, lapB, both]);
 
+  // Corners off lap A's speed trace, numbered in lap order; distance from its
+  // recorded positions (metres), for "brakes 14 m later". Older laps recorded
+  // before positions existed simply have no map and no metre figures.
+  const corners = useMemo(
+    () => (lapA ? detectCorners(lapA.speed.slice(0, n || lapA.n)).map((c, k) => ({ ...c, n: k + 1 })) : []),
+    [lapA, n]
+  );
+  const dist = useMemo(
+    () => (lapA?.x && lapA?.z ? cumulativeDist(lapA.x, lapA.z, n || lapA.n) : null),
+    [lapA, n]
+  );
+  const insights = useMemo(
+    () => (both && corners.length ? cornerInsights(lapA, lapB, corners, dist, n) : []),
+    [both, lapA, lapB, corners, dist, n]
+  );
+  const hasMap = !!(lapA?.x && lapA?.z);
+
   const onMove = (e) => {
     const box = e.currentTarget.getBoundingClientRect();
     const frac = Math.min(1, Math.max(0, (e.clientX - box.left) / box.width));
@@ -1034,6 +1217,58 @@ function TelemetryCompare() {
                   </span>
                 )}
               </div>
+
+              {/* The map and the per-corner numbers, when the lap recorded its
+                  positions. The map IS the racing line — coloured by who gains
+                  where — and clicking it drops the cursor there, so map,
+                  charts and corner list all point at the same spot. */}
+              {(hasMap || insights.length > 0) && (
+                <div className={`grid gap-4 ${hasMap && insights.length ? "lg:grid-cols-2" : ""}`}>
+                  {hasMap && (
+                    <div className="relative overflow-hidden rounded-lg border border-border bg-surface2/30 p-2" style={{ minHeight: 180 }}>
+                      <TrackMap lapA={lapA} lapB={both ? lapB : null} n={n} corners={corners} cursor={cursor} onPick={setCursor} />
+                      {both && (
+                        <div className="pointer-events-none absolute bottom-1.5 right-2 flex gap-3 font-mono text-[10px] text-light">
+                          <span className="flex items-center gap-1"><span className="h-0.5 w-3 rounded-full" style={{ background: COL_A }} />{lapA.name} faster</span>
+                          <span className="flex items-center gap-1"><span className="h-0.5 w-3 rounded-full" style={{ background: COL_B }} />{lapB.name} faster</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {insights.length > 0 && (
+                    <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                      {insights.map((c) => {
+                        const aGains = c.gainMs >= 0;
+                        const winner = aGains ? lapA.name : lapB.name;
+                        const col = aGains ? COL_A : COL_B;
+                        // Only the differences big enough to mean something —
+                        // a 1 km/h delta is noise wearing a label.
+                        const clauses = [];
+                        if (c.brakeDeltaM != null && Math.abs(c.brakeDeltaM) >= 3)
+                          clauses.push(`${c.brakeDeltaM > 0 ? lapB.name : lapA.name} brakes ${Math.abs(c.brakeDeltaM)} m later`);
+                        if (Math.abs(c.midDelta) >= 2)
+                          clauses.push(`${c.midDelta > 0 ? lapB.name : lapA.name} +${Math.abs(c.midDelta)} km/h mid-corner`);
+                        if (Math.abs(c.exitDelta) >= 2)
+                          clauses.push(`${c.exitDelta > 0 ? lapB.name : lapA.name} +${Math.abs(c.exitDelta)} km/h on exit`);
+                        return (
+                          <button
+                            key={c.n}
+                            type="button"
+                            onClick={() => setCursor(c.apex)}
+                            className={`flex w-full items-baseline gap-2.5 px-3 py-2 text-left text-xs transition hover:bg-surface2 ${cursor != null && Math.abs(cursor - c.apex) < 12 ? "bg-surface2" : ""}`}
+                          >
+                            <span className="font-mono text-[10px] font-bold text-light">T{c.n}</span>
+                            <span className="font-mono font-bold tabular-nums" style={{ color: col }}>
+                              {winner} {c.gainMs >= 0 ? "+" : "+"}{(Math.abs(c.gainMs) / 1000).toFixed(2)}s
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-light">{clauses.join(" · ") || "even on the numbers — the gain is in the line"}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* All panels share one mouse surface so the cursor line runs
                   through every chart at once — that is what makes "he brakes

@@ -100,7 +100,11 @@ export function parseLapPayload(body) {
   const brake = channel(body.brake, n, 0, 100);
   const steer = channel(body.steer, n, -12_000, 12_000); // tenths of a degree
   const gear = channel(body.gear, n, -1, 12);
-  if (!t || !speed || !gas || !brake || !steer || !gear) return { error: "Bad lap shape" };
+  // World position in decimetres (±40 km covers any track), for the map the
+  // comparison draws FROM the lap itself — no track files involved.
+  const x = channel(body.x, n, -400_000, 400_000);
+  const z = channel(body.z, n, -400_000, 400_000);
+  if (!t || !speed || !gas || !brake || !steer || !gear || !x || !z) return { error: "Bad lap shape" };
   // Time must move forward through the lap, or the delta chart would lie.
   for (let i = 1; i < n; i++) if (t[i] < t[i - 1]) return { error: "Non-monotonic time channel" };
 
@@ -123,6 +127,8 @@ export function parseLapPayload(body) {
       brake,
       steer,
       gear,
+      x,
+      z,
     },
   };
 }
