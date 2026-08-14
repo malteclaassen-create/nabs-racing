@@ -103,6 +103,19 @@ const MATCH_AFTER_S = 10;
 // "NABS | Malte" also tried on its own). A name that two different people race
 // under is thrown away rather than guessed at: a wrong guid here would pin the
 // report to somebody else's crash.
+// Steam ids proved on the login rather than captured by a result import. Raw
+// SQL because MemberAccount's columns are hand-managed (lib/members.js), and
+// never fatal: a report that cannot be matched keeps the anchor it came with.
+async function accountSteamIds(prisma) {
+  try {
+    return await prisma.$queryRawUnsafe(
+      `SELECT "discordId", "steamId" FROM "MemberAccount" WHERE "steamId" IS NOT NULL`
+    );
+  } catch {
+    return [];
+  }
+}
+
 async function reporterGuids(prisma, reports) {
   const out = new Map();
   const drivers = await prisma.driver
@@ -111,10 +124,14 @@ async function reporterGuids(prisma, reports) {
       select: { name: true, discordName: true, discordUserId: true, steamId: true },
     })
     .catch(() => []);
-  if (!drivers.length) return out;
 
   const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const byDiscord = new Map();
+  // The id proved on the LOGIN by "Sign in through Steam", for the drivers whose
+  // season row has not picked one up from a result import yet. Loaded first so a
+  // Driver row's id, which is the one Assetto Corsa actually raced under, wins
+  // where both exist.
+  for (const m of await accountSteamIds(prisma)) byDiscord.set(String(m.discordId), m.steamId);
   const byName = new Map();
   const ambiguous = new Set();
   for (const d of drivers) {

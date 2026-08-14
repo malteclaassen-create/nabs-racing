@@ -117,9 +117,9 @@ function buildRound(seasonNumber, raceNumber) {
   try {
     data = findArchiveFor(seasonNumber, raceNumber);
   } catch {
-    return { start: null, contacts: [] };
+    return { archived: false, start: null, contacts: [] };
   }
-  if (!data) return { start: null, contacts: [] };
+  if (!data) return { archived: false, start: null, contacts: [] };
 
   const start = sessionStart(data);
 
@@ -191,7 +191,15 @@ function buildRound(seasonNumber, raceNumber) {
       b: { guid: String(e.OtherDriver.Guid), name: e.OtherDriver.Name || "", lap: lapAt(lapsByGuid.get(e.OtherDriver.Guid) || [], at) },
     });
   }
-  return { start, contacts: out };
+  return { archived: true, start, contacts: out };
+}
+
+// Whether the round's result file is on disk at all. An empty contact list means
+// two completely different things — "the race has not been imported yet, come
+// back tomorrow" and "Assetto Corsa recorded nothing for you in it" — and a
+// driver told the wrong one goes looking for a bug that isn't there.
+export function roundHasArchive(seasonNumber, raceNumber) {
+  return contactsForRound(seasonNumber, raceNumber).archived === true;
 }
 
 // The contacts one driver was in, from their side, oldest first. `guid` is

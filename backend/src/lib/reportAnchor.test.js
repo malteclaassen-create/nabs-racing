@@ -19,7 +19,13 @@ const DRIVERS = [
   { name: "Maltegoat", discordName: "malte", discordUserId: "111", steamId: "STEAM1" },
   { name: "Kronos", discordName: "kronos", discordUserId: "222", steamId: "STEAM2" },
 ];
-const prisma = { driver: { findMany: async () => DRIVERS } };
+// The Steam id a driver proved on their LOGIN, which is all a newcomer has
+// until the league has imported a race they were in.
+let accounts = [];
+const prisma = {
+  driver: { findMany: async () => DRIVERS },
+  $queryRawUnsafe: async () => accounts,
+};
 
 // A report as it comes out of the table: the moment the BUTTON was pressed.
 const pressedAt = (second, over = {}) => ({
@@ -47,6 +53,7 @@ const contact = (guid, second, over = {}) => ({
 
 beforeEach(() => {
   contacts = [];
+  accounts = [];
 });
 
 // An in-game report knows when the button was pressed, and that is the incident
@@ -103,6 +110,32 @@ describe("matching an in-game report to the contact it is about", () => {
     expect((await anchorReports(prisma, [pressedAt(1208)], [RACE]))[0].sessionSecond).toBe(1212);
     contacts = [contact("STEAM1", 1260)];
     expect((await anchorReports(prisma, [pressedAt(1208)], [RACE]))[0].sessionSecond).toBe(1208);
+  });
+
+  // Driver.steamId is written by the result import, so a newcomer has none on
+  // any season row — only the one they proved when they linked Steam. Without
+  // this their reports could never be matched to anything.
+  it("falls back to the Steam id proved on the login", async () => {
+    accounts = [{ discordId: "999", steamId: "STEAM_NEW" }];
+    contacts = [contact("STEAM_NEW", 1200)];
+    const [r] = await anchorReports(
+      prisma,
+      [pressedAt(1209, { reporterName: "Rookie", reporterDiscordId: "999" })],
+      [RACE]
+    );
+    expect(r.sessionSecond).toBe(1200);
+  });
+
+  // The season row's id is the one Assetto Corsa actually raced under.
+  it("prefers the driver row's Steam id over the login's", async () => {
+    accounts = [{ discordId: "111", steamId: "STEAM_STALE" }];
+    contacts = [contact("STEAM1", 1200), contact("STEAM_STALE", 1150)];
+    const [r] = await anchorReports(
+      prisma,
+      [pressedAt(1208, { reporterDiscordId: "111" })],
+      [RACE]
+    );
+    expect(r.sessionSecond).toBe(1200);
   });
 
   it("finds the driver by their Discord link when the report carries one", async () => {
