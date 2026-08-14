@@ -99,6 +99,13 @@ router.get("/", async (req, res, next) => {
       orderBy: [{ number: "asc" }, { date: "asc" }],
       include: {
         rsvps: { include: { driver: { include: { team: true } } } },
+        // Filled seat offers: who stepped out of a car and who took it over.
+        // The entry list marks both ends of the swap, and shows the stand-in
+        // under the team whose car they are actually driving.
+        seatOffers: {
+          where: { status: "FILLED", filledById: { not: null } },
+          include: { team: true, driver: true, filledBy: true },
+        },
       },
     });
     const types = await readRaceTypes(prisma, allUpcoming.map((r) => r.id));
@@ -126,7 +133,19 @@ router.get("/", async (req, res, next) => {
     const events = races.map((race) => {
       const gate = attendanceGate(race, notify, overrides);
       const grouped = { ACCEPTED: [], DECLINED: [], TENTATIVE: [] };
+      // Both ends of every completed seat swap for this race, by driver id.
+      // `IN` is the reserve who took the car — their own row says "Reserve",
+      // which is not the car they are driving on Sunday, so the swap carries
+      // the team it happened into. `OUT` is the driver who gave it up; the
+      // team stays their own, they are simply not in it this round.
+      const swaps = new Map();
+      for (const o of race.seatOffers) {
+        const team = { id: o.team.id, name: o.team.name, color: o.team.color, logoUrl: o.team.logoUrl || null };
+        swaps.set(o.filledById, { direction: "IN", team, forName: o.driver?.name || null });
+        swaps.set(o.driverId, { direction: "OUT", team, forName: o.filledBy?.name || null });
+      }
       for (const r of race.rsvps) {
+        const swap = swaps.get(r.driverId) || null;
         (grouped[r.status] || (grouped[r.status] = [])).push({
           driverId: r.driverId,
           name: r.driver.name,
@@ -134,7 +153,24 @@ router.get("/", async (req, res, next) => {
           // Linked-person fallback: a row without its own flag shows the
           // person's current one (same rule as the standings).
           country: r.driver.country || identity.get(r.driverId)?.country || null,
-          team: { name: r.driver.team.name, color: r.driver.team.color },
+          // `id` and `logoUrl` so the entry list can show the team's mark next
+          // to the name instead of a coloured dot: the id picks the bundled
+          // /teams/<id>.png, logoUrl an admin-uploaded one, and colour still
+          // backs the monogram for a team with neither.
+          //
+          // For a stand-in this is the car they are driving, not the Reserve
+          // pool they are rostered in — same rule the results table follows
+          // with its `effectiveTeam`.
+          team:
+            swap?.direction === "IN"
+              ? swap.team
+              : {
+                  id: r.driver.team.id,
+                  name: r.driver.team.name,
+                  color: r.driver.team.color,
+                  logoUrl: r.driver.team.logoUrl || null,
+                },
+          sub: swap && { direction: swap.direction, teamName: swap.team.name, forName: swap.forName },
         });
       }
       return {

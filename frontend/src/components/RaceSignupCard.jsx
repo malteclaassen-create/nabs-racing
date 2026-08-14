@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { TeamDot, NoData} from "./ui.jsx";
+import { NoData } from "./ui.jsx";
+import TeamLogo from "./TeamLogo.jsx";
 import SeatMarket from "./SeatMarket.jsx";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
@@ -50,6 +51,38 @@ export function StatusIcon({ d, className = "" }) {
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={d} />
     </svg>
+  );
+}
+
+// Substitution mark, the football convention: a green arrow going up for the
+// stand-in coming on, a red one going down for the driver sitting the round
+// out. Only ever shown for a seat somebody has actually taken over — an offer
+// still looking for a taker is the Driver Market's business, below.
+//
+// The logo beside the name already shows the stand-in in the car they will
+// drive, so the arrow is what says it is a swap and not their own seat.
+// Exported: the frozen entry list on the Races page shows the same mark.
+export function SubMark({ sub }) {
+  if (!sub) return null;
+  const inbound = sub.direction === "IN";
+  const label = inbound
+    ? `Standing in${sub.forName ? ` for ${sub.forName}` : ""}${sub.teamName ? ` at ${sub.teamName}` : ""}`
+    : `Sitting this one out${sub.forName ? ` — ${sub.forName} takes the seat` : ""}`;
+  return (
+    <span title={label} aria-label={label} className="shrink-0 leading-none">
+      <svg
+        viewBox="0 0 24 24"
+        className={`h-3.5 w-3.5 ${inbound ? "text-ok" : "text-bad"}`}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {inbound ? <path d="M12 20V5M6 11l6-6 6 6" /> : <path d="M12 4v15M6 13l6 6 6-6" />}
+      </svg>
+    </span>
   );
 }
 
@@ -306,10 +339,21 @@ export default function RaceSignupCard({
             <ul className="cascade space-y-1.5">
               {ev.rsvps[status].map((r, i) => (
                 <li key={r.driverId} style={{ "--i": i }} className="flex min-w-0 items-center gap-1.5 text-sm sm:gap-2">
-                  <TeamDot color={r.team.color} />
+                  {/* The team's mark rather than a coloured dot: on a grid
+                      with two cars per team the colour alone was a quiz, and
+                      the logo says who at a glance. Falls back to the
+                      colour-tinted monogram for a team without one. */}
+                  <TeamLogo
+                    id={r.team.id}
+                    name={r.team.name}
+                    color={r.team.color}
+                    logoUrl={r.team.logoUrl}
+                    size={18}
+                  />
                   <span className={`truncate ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}>
                     {r.name}
                   </span>
+                  <SubMark sub={r.sub} />
                   <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
                 </li>
               ))}
