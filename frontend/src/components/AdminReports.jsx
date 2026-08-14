@@ -350,6 +350,11 @@ export default function AdminReports() {
   // you were on.
   const { data: db } = useApi(useCallback(() => api.adminDriverDb().catch(() => ({ entries: [] })), []));
   const { data: ingest, reload: reloadIngest } = useApi(useCallback(() => api.reportIngest(), []));
+  const { data: telIngest, reload: reloadTelIngest } = useApi(useCallback(() => api.telemetryIngest(), []));
+  const [telUnlocked, setTelUnlocked] = useState(false);
+  // A key typed in rather than minted — see the field below.
+  const [telGivenKey, setTelGivenKey] = useState("");
+  const telGivenKeyOk = !telGivenKey.trim() || /^[a-f0-9]{32}$/i.test(telGivenKey.trim());
   const { data: retention, reload: reloadRetention } = useApi(useCallback(() => api.reportRetention(), []));
   const [swept, setSwept] = useState(null);
   const [openId, setOpenId] = useState(null);
@@ -706,6 +711,137 @@ export default function AdminReports() {
                   Cancel
                 </button>
               )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* the in-game telemetry recorder — same key contract as the card above,
+          same reason to live next to it: both are things a Lua app in the game
+          posts to the site. */}
+      <div className="card overflow-hidden">
+        <CardBar title="Telemetry from inside the car" />
+        <div className="space-y-3 p-5">
+          <p className="text-sm text-light">
+            A URL for the nabsTelemetry app. Drivers who switch it on send their fastest clean lap per
+            track — throttle, brake, steering, speed — for the comparison on the Tools page. Only their
+            best lap is kept; slower posts are dropped.
+          </p>
+          {telIngest?.configured ? (
+            <>
+              <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                Paste this into the race server&rsquo;s CSP extra options
+              </label>
+              {/* The whole point of the server route: CSP hands this script to
+                  every driver who joins, so nobody installs anything. The same
+                  key gates the script download and rides inside it as the
+                  ingest address — one mint invalidates both. */}
+              <textarea
+                readOnly
+                aria-label="csp_extra_options snippet"
+                className="input w-full font-mono text-xs"
+                rows={2}
+                value={`[SCRIPT_NABS_TELEMETRY]
+SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.key}"`}
+                onFocus={(e) => e.target.select()}
+              />
+              <p className="text-xs text-light">
+                Into <span className="font-mono">csp_extra_options.ini</span> in the server panel (where the
+                penalty script lives). From then on every driver who joins records automatically — nothing
+                to install. The script announces itself with an in-game toast; announce it in Discord too.
+              </p>
+              <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                Hand-install URL (testing, or drivers without the server script)
+              </label>
+              <input
+                readOnly
+                aria-label="nabsTelemetry URL"
+                className="input w-full font-mono text-xs"
+                value={`${window.location.origin}/api/telemetry-laps/ingest?key=${telIngest.key}`}
+                onFocus={(e) => e.target.select()}
+              />
+              <p className="text-xs text-light">
+                For the nabsTelemetry app&rsquo;s settings. Unlike the reports URL, either of these may go to
+                every driver — the key only ever adds their own laps, nothing else.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-light">Telemetry recording is off.</p>
+          )}
+          {telIngest?.configured && !telUnlocked ? (
+            <button className="btn-secondary" onClick={() => setTelUnlocked(true)}>
+              Change this
+            </button>
+          ) : (
+            <div className="space-y-2">
+            {/* The race server's config is written by whoever runs the server,
+                which is often not the person standing here. If those two lines
+                already carry a key — settled up front, or surviving a database
+                restore — this is how the site is told to honour it instead of
+                minting a new one and breaking a config nobody wants to redo.
+                Only on the way ON: switching off needs no key. */}
+            {!telIngest?.configured && (
+              <>
+                <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                  Key to use (optional &mdash; leave blank to make a fresh one)
+                </label>
+                <input
+                  className="input w-full font-mono text-xs"
+                  placeholder="32 characters, 0-9 and a-f"
+                  value={telGivenKey}
+                  onChange={(e) => setTelGivenKey(e.target.value)}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                {!telGivenKeyOk && (
+                  <p className="text-xs text-bad">That is not a key: 32 characters, digits and a&ndash;f only.</p>
+                )}
+              </>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="btn-secondary"
+                disabled={busy || !telGivenKeyOk}
+                onClick={async () => {
+                  const off = !!telIngest?.configured;
+                  if (
+                    off &&
+                    !(await ask({
+                      title: "Switch off telemetry recording?",
+                      body:
+                        "The URL stops working immediately, in every driver's game at once. Switching back on can reuse the same key — type it into the field — but without it the race server's config has to be pasted again.",
+                      danger: true,
+                      confirmLabel: "Switch off",
+                    }))
+                  )
+                    return;
+                  setBusy(true);
+                  try {
+                    await api.setTelemetryIngest(!off, telGivenKey.trim().toLowerCase() || undefined);
+                    setTelGivenKey("");
+                    reloadTelIngest();
+                    setTelUnlocked(false);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {telIngest?.configured
+                  ? "Switch off"
+                  : telGivenKey.trim()
+                    ? "Switch on with this key"
+                    : "Switch on and make a key"}
+              </button>
+              {telIngest?.configured && (
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-light transition hover:text-dark"
+                  onClick={() => setTelUnlocked(false)}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
             </div>
           )}
         </div>

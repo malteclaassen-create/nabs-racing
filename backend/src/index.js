@@ -10,6 +10,7 @@ import standingsRoutes from "./routes/standings.js";
 import driversRoutes from "./routes/drivers.js";
 import racesRoutes from "./routes/races.js";
 import tracksRoutes from "./routes/tracks.js";
+import telemetryLapsRoutes from "./routes/telemetryLaps.js";
 import eventsRoutes from "./routes/events.js";
 import marketRoutes from "./routes/market.js";
 import meRoutes from "./routes/me.js";
@@ -233,6 +234,8 @@ app.use("/api/standings", standingsRoutes);
 app.use("/api/drivers", driversRoutes);
 app.use("/api/races", racesRoutes);
 app.use("/api/tracks", tracksRoutes);
+// Telemetry laps: the in-game recorder posts here (key-gated), /tools reads.
+app.use("/api/telemetry-laps", telemetryLapsRoutes);
 app.use("/api/events", eventsRoutes);
 app.use("/api/market", marketRoutes);
 app.use("/api/me/cockpit", cockpitRoutes); // before /api/me: the more specific mount wins

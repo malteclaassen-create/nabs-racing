@@ -1,0 +1,59 @@
+# nabsTelemetry
+
+Records throttle, brake, steering, speed and gear over every lap you drive,
+and sends your **fastest clean lap per track** to the league website — where
+two drivers' laps can be laid over each other, pedal for pedal.
+
+Why an in-game app at all: the race server's own data (Stracker, the server
+manager) has lap times and sectors, but throttle/brake/steering never leave
+your PC. This is the only place they can be read.
+
+## What leaves your PC, and when
+
+One JSON post per clean lap (or only on a session-best — the default), to the
+league URL you paste in, and nowhere else. It contains: your SteamID, driver
+name, car, track, the lap time, and ~800 samples of speed/gas/brake/steering/
+gear across the lap. Laps with four wheels off track or through the pit lane
+are never sent. The site keeps only your fastest lap per track and discards
+slower posts. Untick "record and send my laps" and nothing is recorded at all.
+
+## Installing (by hand)
+
+Copy the whole `nabsTelemetry` folder into
+
+```
+assettocorsa/apps/lua/nabsTelemetry/
+```
+
+enable **NABS TELEMETRY** in Content Manager under Settings → Custom Shaders
+Patch → New Lua Apps, open it once from the in-game app bar, and in its
+settings (spanner):
+
+1. paste the **league URL** — an admin makes it under Admin → Reports →
+   *Telemetry from inside the car* → **Switch on and make a key**;
+2. tick **record and send my laps**;
+3. press **Test connection** — it should say `HTTP 200`.
+
+That's it. The app loads with every session from then on (no window needed)
+and posts automatically when you set a clean session best.
+
+## Serving it from the league server (the real path)
+
+Nobody is meant to install this by hand. The site serves a windowless variant
+of this same recorder at `/api/telemetry-laps/app.lua?key=…`, and the admin
+card prints a ready-made `[SCRIPT_NABS_TELEMETRY]` snippet for the race
+server's `csp_extra_options.ini` — the same mechanism that already delivers
+the league's penalty script to every joining driver. Once that snippet is in,
+drivers do nothing: the script records and posts on its own and announces
+itself with an in-game toast.
+
+This folder remains for testing (one person, before the server snippet goes
+in) and for anyone whose CSP is too old for server scripts.
+
+## First-version honesty
+
+This has not run inside the game yet. It is written against the same CSP API
+surface as webPenaltyNABS (which does run), everything engine-touching is
+guarded, and any error prints inside the app window instead of vanishing —
+but expect to fix a field name or two on first contact. `ac.debug` lines are
+tagged `nabsTelemetry`.
