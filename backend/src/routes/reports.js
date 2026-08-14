@@ -8,6 +8,9 @@ import {
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
 import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
 import { contactsForDriver } from "../lib/raceContacts.js";
+import { liveRaceSecond } from "../services/liveTiming.js";
+import { serverKeyForSeries } from "../lib/liveServers.js";
+import { clockNote } from "../lib/reportClock.js";
 
 const router = Router();
 
@@ -469,17 +472,34 @@ router.post("/ingest", async (req, res, next) => {
     // within a second or two of the incident, and it involves nobody's clock
     // but this machine's.
     //
-    // The app's own clock string still travels, appended to the body, so an
-    // admin can see what the game thought the time was and any drift is
-    // visible rather than silently baked into the evidence.
-    const incidentAt = new Date().toISOString();
+    // The app's own clock string is still checked against that arrival, and it
+    // earns a line in the body only when the two genuinely disagree about the
+    // moment — drift stays visible, while the ordinary evening stops printing a
+    // second, differently-zoned time under every report for a steward to
+    // second-guess the first one with. See lib/reportClock.js.
+    const incidentAt = new Date();
     const said = String(req.body?.content || "").trim();
     const body = [
       said || "Reported from inside the race. The driver can add what happened below.",
-      rawTime ? `(The app's clock read ${rawTime} when this was sent.)` : null,
+      clockNote(rawTime, incidentAt),
     ]
       .filter(Boolean)
       .join("\n\n");
+
+    // How far into the session it happened, taken off the live board while the
+    // session is still on air.
+    //
+    // Without this an in-game report carried a wall clock and nothing else
+    // until the round's result file was imported — which is the one figure a
+    // steward cannot use, because dragging a replay timeline needs "N seconds
+    // in", not "20:36 in somebody's timezone". A report filed after the race by
+    // picking the contact out of the result file has carried that figure all
+    // along; this is the mid-race button catching up with it.
+    //
+    // Provisional on purpose: the archive-derived figure replaces it the moment
+    // the round is imported (see withSessionSecond in routes/admin.js), because
+    // that one is measured off the same file the replay is.
+    const sessionSecond = await liveSessionSecond(raceId);
 
     const report = await dbCreateReport(prisma, {
       body,
@@ -487,7 +507,8 @@ router.post("/ingest", async (req, res, next) => {
       reporterName: rawName,
       raceId,
       source: "INGAME",
-      incidentAt,
+      incidentAt: incidentAt.toISOString(),
+      contactSecond: sessionSecond,
     });
     recordIngest(rawName);
     res.json({ ok: true, id: report.id });
@@ -498,6 +519,25 @@ router.post("/ingest", async (req, res, next) => {
 });
 
 // --- in-game report guards --------------------------------------------------
+
+// How far into the live session we are, for a report arriving from inside it.
+// Best-effort in every direction: no live board, no race on air, or two races
+// on air at once and the report simply keeps its wall clock, which is what it
+// had before this existed.
+async function liveSessionSecond(raceId) {
+  try {
+    const race = raceId
+      ? await prisma.race.findUnique({
+          where: { id: raceId },
+          select: { season: { select: { series: { select: { slug: true } } } } },
+        })
+      : null;
+    const slug = race?.season?.series?.slug || null;
+    return liveRaceSecond(slug ? await serverKeyForSeries(prisma, slug) : null);
+  } catch {
+    return null;
+  }
+}
 
 // A ceiling on in-game reports as a whole, keyed on nothing: every post
 // carries the one shared key, so there is no per-person identity to count here

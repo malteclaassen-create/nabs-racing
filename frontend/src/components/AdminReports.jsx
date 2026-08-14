@@ -444,6 +444,7 @@ export default function AdminReports() {
                     that copies the timeline figure. */}
                 <ReplayAnchor
                   second={openReportRow.sessionSecond}
+                  approx={openReportRow.sessionSecondApprox}
                   at={openReportRow.incidentAt}
                   kph={openReportRow.contactKph}
                   lap={openReportRow.lap}
@@ -546,6 +547,7 @@ export default function AdminReports() {
                     <ReplayAnchor
                       readOnly
                       second={r.sessionSecond}
+                      approx={r.sessionSecondApprox}
                       at={r.incidentAt}
                       kph={r.contactKph}
                       lap={r.lap}
