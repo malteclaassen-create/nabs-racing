@@ -368,18 +368,23 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
               maskImage: "linear-gradient(to bottom, #000 0%, rgba(0,0,0,0.35) 55%, transparent 92%)",
               WebkitMaskImage: "linear-gradient(to bottom, #000 0%, rgba(0,0,0,0.35) 55%, transparent 92%)",
             }}
-            className="h-full w-full scale-125 object-cover opacity-[0.3] blur-[5px] saturate-150"
+            className="h-full w-full scale-110 object-cover opacity-[0.3] blur-[1px] saturate-150"
           />
         </div>
       )}
 
       {/* watermark: circuit outline, or a ghost "SE" for special events */}
       {circuit ? (
+        // The outline is drawn in the text's own colour rather than the card's
+        // state colour: a green line at 18% over a flag was a suggestion of a
+        // circuit, not a circuit. White on the dark theme, ink on the light
+        // one, and heavier — it is the one thing on the card that says WHICH
+        // track this is before the name is read.
         <div
           className="pointer-events-none absolute inset-0 flex items-center justify-center p-7"
-          style={{ color: tone || "var(--c-faint)" }}
+          style={{ color: "var(--c-text)" }}
         >
-          <CircuitMap track={e.track} animate={isNext} className="h-full w-full opacity-[0.18]" strokeWidth={2} />
+          <CircuitMap track={e.track} animate={isNext} className="h-full w-full opacity-40" strokeWidth={2.4} />
         </div>
       ) : (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
