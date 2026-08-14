@@ -249,6 +249,17 @@ body::before {
   .scrollbar-slim::-webkit-scrollbar-thumb:hover {
     background-color: var(--c-faint);
   }
+  /* No scrollbar at all. For the charts you drag sideways with a thumb: the
+     content moving IS the feedback, and a phone drew a bar under the plot for
+     the whole gesture. Both spellings are needed — the standard property for
+     Firefox, the pseudo-element for everything on Blink/WebKit, mobile's
+     overlay bars included. Scrolling itself is untouched. */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
   .section-title {
     @apply text-xs font-bold uppercase tracking-[0.18em] text-light;
   }
@@ -281,12 +292,17 @@ body::before {
      strip — nothing looks faded that isn't actually scrolling away.
      Goes on the pinned element itself, which is `sticky` and therefore
      already the containing block both pseudos need. */
+  /* Upwards only: anything hanging past the BOTTOM of the last row would be
+     scrollable overflow, and the chart would gain eight pixels of vertical
+     scroll it has no use for (two scrollbars on a phone, and a plot that can
+     be dragged off its own floor). Nothing needs covering down there anyway —
+     the rows below carry their own piece of the column. */
   .sticky-fade::before,
   .sticky-fade::after {
     content: "";
     position: absolute;
     top: -0.5rem;
-    bottom: -0.5rem;
+    bottom: 0;
     pointer-events: none;
   }
   .sticky-fade::before {

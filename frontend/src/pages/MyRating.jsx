@@ -267,7 +267,7 @@ function RatingChart({ points, statKey, color, career = false, perRace = false }
     <div className="relative">
       <div
         ref={scrollRef}
-        className={`scrollbar-slim w-full overflow-x-auto overscroll-x-none ${
+        className={`scrollbar-none w-full overflow-x-auto overflow-y-hidden overscroll-x-none ${
           dragging ? "cursor-grabbing select-none" : fade.l || fade.r ? "cursor-grab" : ""
         }`}
         onScroll={() => {
