@@ -7,7 +7,7 @@ import Flag from "./Flag.jsx";
 import RaceCountdown from "./RaceCountdown.jsx";
 import { NoData } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
-import { STATUS_UI, StatusIcon } from "./RaceSignupCard.jsx";
+import { STATUS_UI, StatusIcon, SubMark } from "./RaceSignupCard.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { exportSvgToPng } from "../utils/svgExport.js";
@@ -124,6 +124,7 @@ function SignupOutcome({ ev }) {
                       size={18}
                     />
                     <span className="truncate text-dark">{r.name}</span>
+                    <SubMark sub={r.sub} />
                     <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
                   </li>
                 ))}
