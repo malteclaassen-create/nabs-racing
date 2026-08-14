@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { TeamDot, NoData} from "./ui.jsx";
+import { NoData } from "./ui.jsx";
+import TeamLogo from "./TeamLogo.jsx";
 import SeatMarket from "./SeatMarket.jsx";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
@@ -306,7 +307,17 @@ export default function RaceSignupCard({
             <ul className="cascade space-y-1.5">
               {ev.rsvps[status].map((r, i) => (
                 <li key={r.driverId} style={{ "--i": i }} className="flex min-w-0 items-center gap-1.5 text-sm sm:gap-2">
-                  <TeamDot color={r.team.color} />
+                  {/* The team's mark rather than a coloured dot: on a grid
+                      with two cars per team the colour alone was a quiz, and
+                      the logo says who at a glance. Falls back to the
+                      colour-tinted monogram for a team without one. */}
+                  <TeamLogo
+                    id={r.team.id}
+                    name={r.team.name}
+                    color={r.team.color}
+                    logoUrl={r.team.logoUrl}
+                    size={18}
+                  />
                   <span className={`truncate ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}>
                     {r.name}
                   </span>
