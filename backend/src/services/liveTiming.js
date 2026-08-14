@@ -95,6 +95,9 @@ const RESULT_HOLD_MS = 15 * 60 * 1000;
 // no per-car telemetry in between, so the stale threshold must sit comfortably
 // above that gap or the badge flaps to "Reconnecting" between snapshots.
 const STALE_MS = 75000; // no upstream message for this long => mark stale
+// The longest a session could plausibly have been running. A reading past this
+// is not a long race, it is an anchor left over from something else.
+const MAX_SESSION_S = 6 * 60 * 60;
 // How often to ping the race server, and (times two) how long an unanswered
 // socket may hang around before it is dropped as dead. Well above the stale
 // threshold on purpose: silence is normal and only means "nothing is happening",
@@ -319,6 +322,11 @@ function createRelay(server) {
   // bottom. Cleared with the stint history on a session change.
   const lastRacePosByGuid = new Map();
   let lastMessageAt = 0;
+  // When the last FULL snapshot landed. `lastMessageAt` counts telemetry too,
+  // and an in-game report has to know whether the session state it is about to
+  // stamp itself with is a live reading or the last thing a dead socket left
+  // behind. See raceSecond().
+  let lastSnapshotAt = 0;
 
   // ---- Track map assets -----------------------------------------------------
   // The server manager publicly serves each track's overhead map (the very PNG
@@ -614,6 +622,7 @@ function createRelay(server) {
       }
     }
     status = next;
+    lastSnapshotAt = Date.now();
     // Keep the per-car telemetry across snapshots — clearing it here blanked
     // every map dot for a beat (pos gone until each car's next ET53). Only
     // drop cars that actually left the server.
@@ -1116,10 +1125,39 @@ function createRelay(server) {
     };
   }
 
+  // How far into the race that is on air RIGHT NOW, in seconds — or null when
+  // this server is not running one.
+  //
+  // The reason it exists is the in-game report button. A report fired mid-race
+  // knows the moment it happened as a wall clock and nothing else, and the one
+  // figure a steward actually wants — how far into the session to drag the
+  // replay — could only be worked out after the round's result file was
+  // imported, which is hours later. The session is on air while the button is
+  // being pressed, so the figure is knowable at that instant: this hands it
+  // over. See routes/reports.js POST /ingest.
+  //
+  // Measured from `sessionStartedAt`, which is the same anchor the board's
+  // opening-lap timer uses: the start of the SESSION, grid wait included, which
+  // is also where the replay file begins. That is what makes this number and
+  // the one derived from the archive afterwards mean the same thing.
+  //
+  // Null rather than a guess whenever the reading cannot be trusted: no
+  // snapshot recently (a dead socket keeps the last one forever), not a race,
+  // no anchor yet, or a figure outside any plausible session length.
+  function raceSecond() {
+    const si = status?.SessionInfo;
+    if (!si || si.Type !== 3) return null;
+    if (sessionStartedAt == null) return null;
+    if (!lastSnapshotAt || Date.now() - lastSnapshotAt > STALE_MS) return null;
+    const second = Math.round((Date.now() - sessionStartedAt) / 1000);
+    return second >= 0 && second <= MAX_SESSION_S ? second : null;
+  }
+
   return {
     key: server.key,
     connect: connectUpstream,
     getBoard,
+    raceSecond,
     getTrackMapPng: () => trackMap?.png || null,
     // Size of every per-relay structure that can grow, for the memory
     // diagnostics. Counts only — the point is spotting the one that climbs.
@@ -1149,6 +1187,9 @@ function createRelay(server) {
       finishedRace = null;
       stintSessionKey = null;
       status = null;
+      sessionStartedAt = null;
+      startedAtKey = null;
+      lastSnapshotAt = 0;
     },
   };
 }
@@ -1169,6 +1210,24 @@ export function getBoard(serverKey) {
 
 export function getTrackMapPng(serverKey) {
   return relayFor(serverKey).getTrackMapPng();
+}
+
+// How far into a live race we are, in seconds, for something that has to stamp
+// itself with "this happened N seconds into the session" while the session is
+// still running (routes/reports.js POST /ingest).
+//
+// `serverKey` is the server the round's SERIES is assigned to, and it is asked
+// first — with two servers the league can run two races at once, and the round
+// a report belongs to knows which one it is. But that assignment is admin
+// managed and can be out of date, so a server that turns out not to be racing
+// falls through to the one that is. Two races on air at the same time and no
+// usable assignment is genuinely ambiguous: null, and the report keeps its
+// wall-clock anchor alone until the result file settles the question.
+export function liveRaceSecond(serverKey) {
+  const preferred = serverKey && relays.has(serverKey) ? relays.get(serverKey).raceSecond() : null;
+  if (preferred != null) return preferred;
+  const running = [...relays.values()].map((r) => r.raceSecond()).filter((s) => s != null);
+  return running.length === 1 ? running[0] : null;
 }
 
 // Live-timing internals for the memory diagnostics (services/memoryDiagnostics
@@ -1246,6 +1305,7 @@ export const __testing = {
   stintsFor: testRelay.__stintsFor,
   ingest: testRelay.__ingest,
   getBoard: testRelay.__getBoard,
+  raceSecond: testRelay.raceSecond,
   reset: testRelay.__reset,
 };
 

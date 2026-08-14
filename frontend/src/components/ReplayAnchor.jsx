@@ -56,7 +56,16 @@ function leagueClock(iso) {
 // is invalid HTML that breaks tab order and confuses screen readers. In the
 // list the chip is there to be READ while triaging a round; the copy lives in
 // the opened report, one click further on, where it can be a real button.
-export default function ReplayAnchor({ second, at, kph, lap, eventIndex, readOnly = false, className = "" }) {
+export default function ReplayAnchor({
+  second,
+  approx = false,
+  at,
+  kph,
+  lap,
+  eventIndex,
+  readOnly = false,
+  className = "",
+}) {
   const [copied, setCopied] = useState(false);
   const into = mmss(second);
   const clock = leagueClock(at);
@@ -87,6 +96,12 @@ export default function ReplayAnchor({ second, at, kph, lap, eventIndex, readOnl
     into
       ? `${into} into the session. Drag the replay timeline here.${clock ? ` The league clock read ${clock} (${LEAGUE_TZ}).` : ""}`
       : `The league clock read ${clock} (${LEAGUE_TZ}). Scrub until webPenalty shows this.`,
+    // Read off the live board as the report was fired rather than off the round's
+    // result file, so it is a second or two rough. Worth saying: a steward who
+    // lands a frame early should look, not conclude they have the wrong incident.
+    approx && into
+      ? "Taken from the live timing while the race was on, so it is good to a second or two. It is replaced by the exact figure once the round's result file is imported."
+      : null,
     // The number is only useful if the reader knows where to spend it.
     eventIndex != null
       ? `This is entry ${eventIndex} of the round's result file, which is the number replayTools puts in front of the same incident in its own list. Its numbering counts every event in the file, so entries either side of it may be walls or taps.`
@@ -114,7 +129,9 @@ export default function ReplayAnchor({ second, at, kph, lap, eventIndex, readOnl
         <path d="M3 12h18M9 8v8" />
       </svg>
       {into ? (
-        <span className="normal-case tracking-normal font-bold text-dark">{into}</span>
+        <span className="normal-case tracking-normal font-bold text-dark">
+          {approx ? `~${into}` : into}
+        </span>
       ) : (
         <span className="normal-case tracking-normal font-bold text-dark">{clock}</span>
       )}

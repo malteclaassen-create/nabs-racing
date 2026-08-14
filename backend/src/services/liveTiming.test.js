@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { __testing } from "./liveTiming.js";
 
-const { accumulateStints, stintsFor, ingest, getBoard, reset } = __testing;
+const { accumulateStints, stintsFor, ingest, getBoard, raceSecond, reset } = __testing;
 
 // Build a minimal EventType-200 snapshot for one driver, enough to exercise the
 // stint accumulator (session type, laps, current tyre, pit count, in-pits flag).
@@ -401,5 +401,53 @@ describe("liveTiming race board", () => {
     const board = getBoard();
     expect(board.session.finished).toBeUndefined();
     expect(board.entries.map((e) => e.name)).toEqual(["Bob"]);
+  });
+});
+
+// How far into the session we are, asked WHILE the session is running. The
+// in-game report button is the caller: a report fired mid-race had a wall clock
+// and nothing else until the round's result file was imported hours later, and
+// a wall clock is the one thing a replay timeline cannot be dragged to.
+describe("liveTiming live session second", () => {
+  beforeEach(() => reset());
+
+  // The session's own elapsed reading, which is what the anchor is built from.
+  const racing = (elapsed, type = 3) => ({
+    ...fullSnap({ type, drivers: { g1: { name: "Alice", laps: 3, pos: 1 } } }),
+    SessionInfo: {
+      Type: type,
+      Track: "monza",
+      CurrentSessionIndex: 0,
+      Name: type === 3 ? "Race" : "Practice",
+      Laps: 0,
+      ElapsedMilliseconds: elapsed,
+    },
+  });
+
+  it("answers with how long the race on air has been running", () => {
+    ingest(racing(10 * 60 * 1000)); // ten minutes in
+    expect(raceSecond()).toBeGreaterThanOrEqual(600);
+    expect(raceSecond()).toBeLessThan(605);
+  });
+
+  it("says nothing when the session on air is not a race", () => {
+    ingest(racing(10 * 60 * 1000, 1)); // practice
+    expect(raceSecond()).toBe(null);
+  });
+
+  it("says nothing before the session has an anchor", () => {
+    ingest(racing(0)); // the first snapshot of a session reports zero elapsed
+    expect(raceSecond()).toBe(null);
+  });
+
+  it("says nothing with no session at all", () => {
+    expect(raceSecond()).toBe(null);
+  });
+
+  // A race whose anchor is hours old is not a long race, it is a leftover — and
+  // a report stamped with it would send a steward to a frame that does not exist.
+  it("says nothing about a session that has been running implausibly long", () => {
+    ingest(racing(9 * 60 * 60 * 1000));
+    expect(raceSecond()).toBe(null);
   });
 });

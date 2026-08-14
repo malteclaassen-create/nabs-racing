@@ -4932,6 +4932,17 @@ function withSessionSecond(reports, races) {
   const byId = new Map(races.map((r) => [r.id, r]));
   // One archive read per ROUND, not per report: a busy round can carry a dozen.
   const startOf = new Map();
+  // The figure a report already carries, used when the archive cannot supply
+  // one. For a report pinned to a contact after the race that IS the archive's
+  // own arithmetic and is exact; for one fired from inside the race it was read
+  // off the live board mid-session (routes/reports.js POST /ingest) and is
+  // right to a second or two, so it is flagged as approximate — a steward
+  // scrubbing to it should know whether to expect the incident on the frame or
+  // a moment either side of it.
+  const stored = (r) =>
+    r.contactSecond != null
+      ? { ...r, sessionSecond: r.contactSecond, sessionSecondApprox: r.source === "INGAME" }
+      : r;
   return reports.map((r) => {
     const race = r.raceId ? byId.get(r.raceId) : null;
     // Derive from the archive whenever it can be read, and fall back to the
@@ -4941,7 +4952,7 @@ function withSessionSecond(reports, races) {
     // first version measured from the green flag rather than the start of the
     // session, which left every stored figure short by the grid wait.
     if (!race || !r.incidentAt || race.number == null || race.season?.number == null) {
-      return r.contactSecond != null ? { ...r, sessionSecond: r.contactSecond } : r;
+      return stored(r);
     }
     if (!startOf.has(race.id)) {
       let start = null;
@@ -4953,12 +4964,13 @@ function withSessionSecond(reports, races) {
       startOf.set(race.id, start);
     }
     const start = startOf.get(race.id);
-    if (!start) return r.contactSecond != null ? { ...r, sessionSecond: r.contactSecond } : r;
+    if (!start) return stored(r);
     const second = Math.round(new Date(r.incidentAt).getTime() / 1000 - start);
     // A negative figure means the report's clock and the round's archive
     // disagree about which session this was — showing "-4:12 into the race"
-    // would be worse than showing nothing.
-    return second >= 0 ? { ...r, sessionSecond: second } : r;
+    // would be worse than showing nothing, and the figure the report came in
+    // with is the better answer if it has one.
+    return second >= 0 ? { ...r, sessionSecond: second, sessionSecondApprox: false } : stored(r);
   });
 }
 

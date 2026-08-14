@@ -422,6 +422,26 @@ export async function ensureAppSchema(prisma) {
   // that share nothing but the file. Counts every event in the file, so the
   // numbers a report carries are not consecutive.
   await addColumn(prisma, "Report", "contactIndex", "INTEGER");
+  // Reports already filed by the in-game app carry a line quoting the app's own
+  // wall clock, which was appended unconditionally. It is the same moment as
+  // the report's timestamp seen from another timezone (the relaying machine
+  // runs on UTC, the league reads its site from Berlin), so every one of those
+  // reports showed two times two hours apart and nothing to say which one a
+  // steward should scrub to — see lib/reportClock.js, which now only writes
+  // that line when the clocks genuinely disagree.
+  //
+  // Strips the sentence off the ones already in the table. Idempotent by
+  // construction: it only matches text this app generated, and once removed
+  // there is nothing left to match. The note is always the last paragraph, so
+  // taking everything from the marker on leaves the driver's own words intact.
+  await prisma
+    .$executeRawUnsafe(
+      `UPDATE "Report"
+          SET "body" = substr("body", 1, instr("body", char(10) || char(10) || '(The app''s clock read ') - 1)
+        WHERE "source" = 'INGAME'
+          AND instr("body", char(10) || char(10) || '(The app''s clock read ') > 0`
+    )
+    .catch(() => {});
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Report_raceId_idx" ON "Report"("raceId")`);
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Report_createdAt_idx" ON "Report"("createdAt")`);
 
