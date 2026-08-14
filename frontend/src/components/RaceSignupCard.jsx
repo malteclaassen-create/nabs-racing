@@ -54,6 +54,38 @@ export function StatusIcon({ d, className = "" }) {
   );
 }
 
+// Substitution mark, the football convention: a green arrow going up for the
+// stand-in coming on, a red one going down for the driver sitting the round
+// out. Only ever shown for a seat somebody has actually taken over — an offer
+// still looking for a taker is the Driver Market's business, below.
+//
+// The logo beside the name already shows the stand-in in the car they will
+// drive, so the arrow is what says it is a swap and not their own seat.
+// Exported: the frozen entry list on the Races page shows the same mark.
+export function SubMark({ sub }) {
+  if (!sub) return null;
+  const inbound = sub.direction === "IN";
+  const label = inbound
+    ? `Standing in${sub.forName ? ` for ${sub.forName}` : ""}${sub.teamName ? ` at ${sub.teamName}` : ""}`
+    : `Sitting this one out${sub.forName ? ` — ${sub.forName} takes the seat` : ""}`;
+  return (
+    <span title={label} aria-label={label} className="shrink-0 leading-none">
+      <svg
+        viewBox="0 0 24 24"
+        className={`h-3.5 w-3.5 ${inbound ? "text-ok" : "text-bad"}`}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {inbound ? <path d="M12 20V5M6 11l6-6 6 6" /> : <path d="M12 4v15M6 13l6 6 6-6" />}
+      </svg>
+    </span>
+  );
+}
+
 // One upcoming race: attendance buttons (when signed in) + the three status
 // columns + the embedded Driver Market. State/actions are owned by the parent.
 export default function RaceSignupCard({
@@ -321,6 +353,7 @@ export default function RaceSignupCard({
                   <span className={`truncate ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}>
                     {r.name}
                   </span>
+                  <SubMark sub={r.sub} />
                   <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
                 </li>
               ))}
