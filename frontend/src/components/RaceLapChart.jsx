@@ -96,11 +96,19 @@ export default function RaceLapChart({ data, className = "" }) {
     <div className={`card overflow-hidden ${className}`}>
       {/* Same scrolling contract as the season-form chart: sideways only, no
           bars, and the pinned axis fades whatever slides under it. */}
-      <div className="scrollbar-none w-full overflow-x-auto overflow-y-hidden overscroll-x-none px-5 pt-5 sm:px-6">
-        <div style={{ minWidth: minW + 32 }}>
+      {/* The card's side padding belongs to the CONTENT here, not to the
+          scroll box. As padding on the scroller it sat inside the clip region,
+          so a scrolled line slid into those twenty pixels and stayed visible
+          there — to the LEFT of the pinned axis, which sticks to the content
+          edge and so never covered them. Lines reappeared past the labels they
+          had just disappeared behind. With the inset carried by the axis
+          column (pl-5) and the right edge (pr-5), the pinned column starts at
+          the scroll box's own edge and there is nowhere left to hide. */}
+      <div className="scrollbar-none w-full overflow-x-auto overflow-y-hidden overscroll-x-none pt-5">
+        <div style={{ minWidth: minW + 52 }} className="pr-5 sm:pr-6">
           <div className="flex items-stretch gap-2">
             {/* pinned position axis */}
-            <div className="sticky-fade sticky left-0 z-10 w-7 shrink-0 bg-card" style={{ height: plotH }}>
+            <div className="sticky-fade sticky left-0 z-10 w-12 shrink-0 bg-card pl-5 sm:w-[3.25rem] sm:pl-6" style={{ height: plotH }}>
               <div className="relative h-full">
                 {ticks.map((p) => (
                   <span
@@ -160,7 +168,7 @@ export default function RaceLapChart({ data, className = "" }) {
 
           {/* lap axis, under the plot and aligned with it */}
           <div className="mt-2 flex gap-2">
-            <div className="sticky-fade sticky left-0 z-10 w-7 shrink-0 bg-card" />
+            <div className="sticky-fade sticky left-0 z-10 w-12 shrink-0 bg-card pl-5 sm:w-[3.25rem] sm:pl-6" />
             <div className="relative h-4 flex-1">
               {Array.from({ length: maxLap }, (_, i) => i + 1)
                 .filter((n) => n === 1 || n === maxLap || n % lapStep === 0)
@@ -181,13 +189,13 @@ export default function RaceLapChart({ data, className = "" }) {
                 ))}
             </div>
           </div>
-          <div className="mt-1 flex gap-2">
-            <div className="w-7 shrink-0" />
-            <div className="flex-1 text-center font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
-              Lap
-            </div>
-          </div>
         </div>
+      </div>
+      {/* Outside the scroller: centred on the card, where it can be read,
+          rather than centred on a plot that is wider than the screen and
+          therefore off to one side of it. */}
+      <div className="pb-1 pt-1 text-center font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
+        Lap
       </div>
 
       {/* The legend is also the control: the lines are thin and many, so the
