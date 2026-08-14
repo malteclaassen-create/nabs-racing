@@ -14,6 +14,7 @@ import { readRaceTypes } from "../lib/raceTypes.js";
 import { dbReplaysByRace } from "../lib/downloads.js";
 import { readRaceCountries, staticCountryFor } from "../lib/raceCountries.js";
 import { readRacePhotos, readPhotoCounts, withUrls } from "../lib/racePhotos.js";
+import { findArchiveFor, lapChartFrom, hasArchiveFor } from "../lib/cockpitArchive.js";
 
 const router = Router();
 
@@ -143,10 +144,72 @@ router.get("/", async (req, res, next) => {
   }
 });
 
+// GET /api/races/:id/laps -> the running order lap by lap, whole field.
+//
+// Feeds the "Lap by lap" view of a round's classification: one line per car,
+// position on the y-axis, laps along the x. The numbers come from the archived
+// raw result file (lib/cockpitArchive.js), which is also where the Cockpit's
+// per-driver race analysis reads from — so a round has this view exactly when
+// it has that one, and answers { available: false } when the file was never
+// archived. The page then simply doesn't offer the switch.
+//
+// League identity (team colour, profile link, current display name) is matched
+// on by the driver's captured SteamID, falling back to an exact name match in
+// the file — the same two steps, in the same order, as the Cockpit's analysis.
+router.get("/:id/laps", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({
+      where: { id: req.params.id },
+      include: { season: { select: { number: true } } },
+    });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    if (race.seasonId && !isAdminRequest(req) && (await getPrivateSeasonIds(prisma)).has(race.seasonId)) {
+      return res.status(404).json({ error: "Race not found" });
+    }
+
+    const json = findArchiveFor(race.season?.number, race.number);
+    const chart = json ? lapChartFrom(json) : null;
+    if (!chart) return res.json({ available: false, maxLap: 0, drivers: [] });
+
+    const [drivers, overrides] = await Promise.all([
+      prisma.driver.findMany({
+        where: { seasonId: race.seasonId },
+        include: { team: { select: { color: true, name: true } } },
+      }),
+      getNameOverrides(prisma),
+    ]);
+    const bySteam = new Map();
+    for (const d of drivers) if (d.steamId) bySteam.set(String(d.steamId), d);
+    const byName = new Map(drivers.map((d) => [d.name.trim().toLowerCase(), d]));
+
+    res.json({
+      available: true,
+      maxLap: chart.maxLap,
+      drivers: chart.drivers.map((c) => {
+        const d = bySteam.get(c.guid) || (c.name ? byName.get(c.name.trim().toLowerCase()) : null) || null;
+        return {
+          driverId: d?.id ?? null,
+          // The league's own display name wins over the one the game recorded:
+          // a driver who changed their in-game handle mid-season should not
+          // read as two different people between the table and the chart.
+          name: (d && (overrides.get(d.id)?.displayName || d.name)) || c.name || "?",
+          color: d?.team?.color || null,
+          points: c.points,
+        };
+      }),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // GET /api/races/:id/results -> full results of one race
 router.get("/:id/results", async (req, res, next) => {
   try {
-    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    const race = await prisma.race.findUnique({
+      where: { id: req.params.id },
+      include: { season: { select: { number: true } } },
+    });
     if (!race) return res.status(404).json({ error: "Race not found" });
     // A race in a private (unpublished) season is 404 to the public.
     if (race.seasonId && !isAdminRequest(req) && (await getPrivateSeasonIds(prisma)).has(race.seasonId)) {
@@ -382,6 +445,11 @@ router.get("/:id/results", async (req, res, next) => {
         // The round's highlights video, if the admin pasted one.
         highlightsUrl: (await readRaceHighlights(prisma, [race.id])).get(race.id) || null,
         hasPositions,
+        // Whether this round has an archived raw result file, and therefore a
+        // lap-by-lap view to switch the classification over to. A directory
+        // listing, not a parse (lib/cockpitArchive.js) — the chart itself is
+        // fetched only if somebody asks for it.
+        hasLapChart: hasArchiveFor(race.season?.number, race.number),
         // Championship round, training session or special event. The list
         // endpoint has always sent this; the detail one did not, so the results
         // table had no way to tell them apart and showed a points column for

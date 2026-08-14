@@ -9,6 +9,7 @@ import { useTheme } from "../hooks/useTheme.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
 import RaceResults from "../components/RaceResults.jsx";
+import RaceLapChart from "../components/RaceLapChart.jsx";
 import RaceFacts from "../components/RaceFacts.jsx";
 import RaceGallery from "../components/RaceGallery.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
@@ -333,13 +334,44 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
   else pill = <span className="pill bg-surface2 text-light">Upcoming</span>;
 
   const inner = (
+    // The card's state is the frame, and only the frame: a completed round is
+    // ringed green, the next one pink, a training session blue. There used to
+    // be a coloured seam along the top edge as well, saying the same thing a
+    // second time an inch from where the border already said it.
     <div
       className={`shine relative h-44 overflow-hidden rounded-2xl border bg-card transition ${
         selected ? "border-emerald-500 ring-2 ring-emerald-500/50" : isNext ? "border-brand/50" : "border-border"
       }`}
+      style={!selected && !isNext && tone ? { borderColor: tone } : undefined}
     >
-      {/* accent edge */}
-      <div className="absolute inset-x-0 top-0 h-1" style={{ background: tone || "transparent" }} />
+      {/* The round's country, as the card's own backdrop. It was a 20px flag
+          beside the track name; at this size it is the first thing you see
+          across a grid of twelve cards, and the name no longer has to share
+          its line. Two things keep the text legible over it: the picture is
+          faint to begin with, and a veil in the card's own colour sits between
+          it and the content — one veil for both themes, since it is the card
+          colour that changes, not this rule. The flags are 80px wide (the
+          largest size self-hosted), so blown up to card width they are soft
+          rather than sharp, which is exactly what a backdrop wants. */}
+      {flag && (
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <img
+            src={`/flags/w80/${String(flag.country).toLowerCase()}.png`}
+            alt=""
+            loading="lazy"
+            onError={(e) => (e.currentTarget.style.display = "none")}
+            // Strongest across the top, where the only things on the card are
+            // two solid chips that bring their own background, and gone by the
+            // bottom, where the track name, the date and the winner live. The
+            // flag gets to be recognisable without ever being behind a word.
+            style={{
+              maskImage: "linear-gradient(to bottom, #000 0%, rgba(0,0,0,0.35) 55%, transparent 92%)",
+              WebkitMaskImage: "linear-gradient(to bottom, #000 0%, rgba(0,0,0,0.35) 55%, transparent 92%)",
+            }}
+            className="h-full w-full scale-125 object-cover opacity-[0.3] blur-[5px] saturate-150"
+          />
+        </div>
+      )}
 
       {/* watermark: circuit outline, or a ghost "SE" for special events */}
       {circuit ? (
@@ -371,8 +403,12 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
               read as the same layout. */}
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
-              {flag && <Flag code={flag.country} title={flag.countryName} />}
-              <h4 className={`truncate font-display text-xl font-extrabold uppercase tracking-tight ${training ? "text-sky-600" : se ? "text-ok" : "text-dark"}`}>
+              {/* The flag moved to the card's backdrop; the country stays here
+                  for anyone reading with a screen reader or hovering. */}
+              <h4
+                title={flag?.countryName || undefined}
+                className={`truncate font-display text-xl font-extrabold uppercase tracking-tight ${training ? "text-sky-600" : se ? "text-ok" : "text-dark"}`}
+              >
                 {e.track}
               </h4>
             </div>
@@ -558,6 +594,11 @@ export default function Races() {
   // toggle every time. A round without quali simply falls back to the race
   // table (RaceResults handles that) until one with quali is picked again.
   const [session, setSession] = useState("race");
+  // Table or lap-by-lap chart — a view of the same classification, not another
+  // section under it: the round panel is long enough already, so the chart
+  // stands in the table's place. Resets to the table on every round change,
+  // because the table is what somebody opening a round came for.
+  const [view, setView] = useState("table");
 
   // Whether the round's highlights player is folded out. Per round, not sticky:
   // the button is there to be pressed for the round you are looking at, and a
@@ -565,6 +606,33 @@ export default function Races() {
   // classification for the screen.
   const [showHighlights, setShowHighlights] = useState(false);
   useEffect(() => setShowHighlights(false), [selectedId]);
+  useEffect(() => setView("table"), [selectedId]);
+
+  // The lap-by-lap data, fetched only once somebody actually asks for that
+  // view: it is a point per car per lap, which is a lot of numbers to send to
+  // everyone who opens a round to read the result. Kept per round, so flipping
+  // back and forth costs one request; `alive` guards a slow answer for a round
+  // the visitor has already left, exactly like the detail fetch below.
+  const [laps, setLaps] = useState({ raceId: null, data: null, loading: false, error: null });
+  // Which round the fetch above has already been started for. A ref, not the
+  // state it writes: keeping it in the dependency list re-ran the effect the
+  // moment the request registered itself, and the re-run's cleanup declared
+  // the answer stale before it arrived — the panel sat on "Reading the laps…"
+  // for ever.
+  const lapsAsked = useRef(null);
+  useEffect(() => {
+    if (view !== "chart" || !selectedId || lapsAsked.current === selectedId) return;
+    lapsAsked.current = selectedId;
+    let alive = true;
+    setLaps({ raceId: selectedId, data: null, loading: true, error: null });
+    api
+      .raceLaps(selectedId)
+      .then((d) => alive && setLaps({ raceId: selectedId, data: d, loading: false, error: null }))
+      .catch((e) => alive && setLaps({ raceId: selectedId, data: null, loading: false, error: e.message }));
+    return () => {
+      alive = false;
+    };
+  }, [view, selectedId]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -986,6 +1054,28 @@ export default function Races() {
                                 onChange={setSession}
                               />
                             )}
+                            {/* Table ⇄ lap chart. Two switches, one job each:
+                                that one picks the session, this one picks how
+                                to look at it. Only for the race (a qualifying
+                                classification has no laps to plot) and only
+                                where the round was archived with its raw
+                                result file — hasLapChart, a directory listing
+                                on the server, not a promise the chart can't
+                                keep. */}
+                            {!detailIsStale && session === "race" && detail.race?.hasLapChart && (
+                              <SlidingTabs
+                                className="shrink-0"
+                                wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
+                                btnClassName="px-2.5 py-1 text-[11px]"
+                                pillClassName="rounded-md bg-brand shadow"
+                                items={[
+                                  { key: "table", label: "Table" },
+                                  { key: "chart", label: "Lap by lap" },
+                                ]}
+                                value={view}
+                                onChange={setView}
+                              />
+                            )}
                             {head.date && (
                               <span
                                 className="text-right font-mono text-xs font-semibold tabular-nums text-light sm:text-sm"
@@ -1012,7 +1102,21 @@ export default function Races() {
                           <VideoEmbed videoId={highlightsVideoId} title={`${head.track} highlights`} />
                         </div>
                       )}
-                      <RaceResults race={detail.race} results={detail.results} quali={detail.quali} session={session} />
+                      {view === "chart" && session === "race" && detail.race?.hasLapChart ? (
+                        laps.loading || laps.raceId !== selectedId ? (
+                          <div className="px-5 py-10 text-center text-sm text-light">Reading the laps…</div>
+                        ) : laps.error ? (
+                          <div className="px-5 py-10 text-center text-sm text-bad">{laps.error}</div>
+                        ) : laps.data?.available ? (
+                          <RaceLapChart data={laps.data} />
+                        ) : (
+                          <div className="px-5 py-10 text-center text-sm text-light">
+                            This round has no lap-by-lap data on file.
+                          </div>
+                        )
+                      ) : (
+                        <RaceResults race={detail.race} results={detail.results} quali={detail.quali} session={session} />
+                      )}
                       {detail.race.hasPositions && <RaceFacts race={detail.race} results={detail.results} quali={detail.quali} />}
                       {/* The night's photos, last: the classification is what
                           people come for, the gallery is what they stay for. */}
