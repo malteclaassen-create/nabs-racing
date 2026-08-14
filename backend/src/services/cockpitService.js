@@ -18,7 +18,7 @@ import { readManualFastestLaps } from "../lib/raceHonours.js";
 import { groupKeyFor, displayNameFor, countryFor } from "../lib/trackKeys.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import { achievementStateFor } from "../lib/achievements.js";
-import { isIdleReserve } from "../lib/standingsRow.js";
+import { hasRaced } from "../lib/standingsRow.js";
 import { findArchiveFor, analyzeRaceFor, raceInsightsFor } from "../lib/cockpitArchive.js";
 
 const MAX_LAP_MS = 1_800_000;
@@ -113,12 +113,23 @@ export async function getCockpitOverview(prisma, driverId) {
     };
   });
 
+  // The championship field: everyone who has STARTED a round. The roster also
+  // carries the season's whole reserve sign-up list, and a place counted
+  // against people who never got in a car is not a championship position — the
+  // public profile draws its "P4 of 19" from exactly this rule, so the two
+  // agree wherever a driver reads their own number (lib/standingsRow.js).
+  // Everything below — the rank, the field size, the trend arrow and both gaps
+  // — is measured inside this list.
+  const field = standings.standings.filter(hasRaced);
+  const idx = field.findIndex((r) => r.driverId === driverId);
+  const position = idx >= 0 ? idx + 1 : null;
+
   // Position trend: where the driver stood BEFORE the latest completed round
   // (same drop rule with that round zeroed for everyone).
   let trend = 0;
-  if (me && !isIdleReserve(me) && races.length >= 2) {
+  if (position != null && races.length >= 2) {
     const lastNum = races[races.length - 1].number;
-    const before = standings.standings
+    const before = field
       .map((r) => {
         const pts = {};
         for (const [num, v] of Object.entries(r.perRace || {})) {
@@ -129,13 +140,12 @@ export async function getCockpitOverview(prisma, driverId) {
       })
       .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
     const prevPos = before.findIndex((r) => r.driverId === driverId) + 1;
-    if (prevPos > 0 && me.position != null) trend = prevPos - me.position;
+    if (prevPos > 0) trend = prevPos - position;
   }
 
   // Points gaps to the car ahead and the leader.
-  const idx = me ? standings.standings.findIndex((r) => r.driverId === driverId) : -1;
-  const leader = standings.standings[0] || null;
-  const ahead = idx > 0 ? standings.standings[idx - 1] : null;
+  const leader = field[0] || null;
+  const ahead = idx > 0 ? field[idx - 1] : null;
 
   // Next race + this person's history on that circuit (linked rows, all seasons).
   let nextRace = null;
@@ -182,12 +192,11 @@ export async function getCockpitOverview(prisma, driverId) {
         : null,
     },
     championship: {
-      // No place for a reserve who hasn't started a round: the standings page
-      // doesn't list those rows, and their position is only where an all-zero
-      // row landed in the sort. The header shows a dash until the first start.
-      position: isIdleReserve(me) ? null : me?.position ?? null,
+      // Null until the first start — the header shows a dash and says so
+      // rather than inventing a place in a championship nobody has driven.
+      position,
       points: me?.total ?? 0,
-      fieldSize: standings.standings.length,
+      fieldSize: field.length,
       trend,
       gapToLeader: leader && me ? leader.total - me.total : null,
       gapToAhead: ahead && me ? ahead.total - me.total : null,

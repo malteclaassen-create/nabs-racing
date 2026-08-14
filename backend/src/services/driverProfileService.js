@@ -22,7 +22,7 @@ import { readDriverRoles } from "../lib/driverRoles.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
 import { achievementMeta } from "../lib/achievements.js";
-import { isIdleReserve } from "../lib/standingsRow.js";
+import { hasRaced } from "../lib/standingsRow.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -181,6 +181,11 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
     const st = ld.seasonId === ownSeasonId ? ownStandings : await getDriverStandings(prisma, ld.seasonId);
     const row = st.standings.find((r) => r.driverId === ld.id);
     if (!row) continue;
+    // That season's championship place, counted among the people who STARTED a
+    // round of it — the same rule as the headline "P4 of 19" above, so the
+    // career table and the scoreboard can't disagree about the same season.
+    const seasonField = st.standings.filter(hasRaced);
+    const seasonRank = hasRaced(row) ? seasonField.findIndex((r) => r.driverId === ld.id) + 1 : 0;
     const rounds = Object.values(row.perRace || {});
     const finishes = rounds.filter((v) => v.status === "FINISHED" && v.position != null);
     const line = {
@@ -190,7 +195,7 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
       isCurrent: ld.seasonId === ownSeasonId,
       teamName: ld.team?.name ?? null,
       teamColor: ld.team?.color ?? null,
-      position: row.position ?? null,
+      position: seasonRank > 0 ? seasonRank : null,
       points: row.total ?? 0,
       starts: rounds.filter((v) => v.status !== "DNS").length,
       wins: finishes.filter((v) => v.position === 1).length,
@@ -813,37 +818,31 @@ export async function getDriverProfile(prisma, driverId) {
     // Constructor seals for the teams this person drove for: [{ type,
     // position, seasonNumber, seasonName, game, points, team }].
     teamBadges,
-    // The "P1 of 68" line speaks about people who FINISHED at least one race
-    // this season — the roster also carries every sign-up, reserve and
-    // DNF-only outing, and none of those should inflate the field. The rank is
-    // recomputed within that group (same order as the standings); a driver
-    // without a single finish gets no position at all.
-    // A reserve who never got in a car is the one row that must not get a
-    // number here at all: the standings page hides those rows, so a place
-    // shown on their profile points into a table they are not in.
+    // The "P4 of 19" line. The field is everyone who has STARTED a round this
+    // season, and the rank is that person's place within it — the same
+    // definition the private Cockpit uses, so a driver's championship position
+    // is one number wherever they read it.
+    //
+    // A start is the line, not a finish: someone who retired from every round
+    // was there, drove, and is in the championship, while the roster's other
+    // half — the sign-up list of reserves who never got in a car — would
+    // otherwise inflate the field by dozens of identical empty rows and push
+    // everyone's "of N" into fiction. Points with no per-race rows at all is an
+    // archived season stored as official totals only; there the total is the
+    // only evidence of a season raced, and it counts (see lib/standingsRow.js).
+    //
+    // A driver who hasn't started gets no position at all — including a seat
+    // holder who hasn't turned up yet. Before the season's first round nobody
+    // has, so the field is 0 and the page says "no races yet".
     championship: (() => {
-      let raced = standings.standings.filter((row) =>
-        Object.values(row.perRace || {}).some((v) => v && v.status === "FINISHED")
-      );
-      // Future-proofing: a season stored ONLY as official totals (points on
-      // the board but no per-race rows to detect finishes from) already IS the
-      // official classification — fall back to the full table there. A season
-      // that simply hasn't raced yet (no finishes, no points) stays empty:
-      // fieldSize 0, no position, and the page says "no races yet".
-      // The totals-only fallback keeps the reserves who never drove OUT of the
-      // field: without per-race rows every sign-up looks the same as a driver
-      // who raced the season, and each of them would otherwise be handed a
-      // place in an official classification they were never part of.
-      if (raced.length === 0 && standings.standings.some((r) => r.total > 0)) {
-        raced = standings.standings.filter((r) => !isIdleReserve(r));
-      }
-      const rank = isIdleReserve(standingRow)
-        ? 0
-        : raced.findIndex((row) => row.driverId === driverId) + 1;
+      const started = standings.standings.filter(hasRaced);
+      const rank = hasRaced(standingRow)
+        ? started.findIndex((row) => row.driverId === driverId) + 1
+        : 0;
       return {
         position: rank > 0 ? rank : null,
         points: standingRow?.total ?? 0,
-        fieldSize: raced.length,
+        fieldSize: started.length,
       };
     })(),
     // The full standings of THIS driver's own season, so the profile page's

@@ -11,6 +11,7 @@
 //     not affect championship points.
 // ---------------------------------------------------------------------------
 import { PrismaClient } from "@prisma/client";
+import { ensureAppSchema } from "../src/lib/ensureSchema.js";
 import bcrypt from "bcryptjs";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
@@ -337,6 +338,14 @@ async function writeStoredRace(raceId, data, teamTier) {
 
 async function main() {
   console.log("Seeding NABS Racing League...");
+
+  // The schema upkeep the server runs on every boot, run here too. Part of this
+  // database is not managed by `prisma migrate` at all (raw-SQL columns and
+  // tables — see src/lib/ensureSchema.js), so a database built the documented
+  // way, `prisma migrate deploy` followed by a seed, was missing pieces the
+  // seed itself writes to. It is idempotent, so on an already-running instance
+  // this changes nothing.
+  await ensureAppSchema(prisma);
 
   // Wipe (idempotent reseed) — SCOPED to Season 7, the only season this seed
   // creates. Archive seasons 1-6 (imported via `npm run import:archive`) and

@@ -14,6 +14,15 @@
 // one-time backfill exactly once per database.
 async function addColumn(prisma, table, name, def) {
   const cols = await prisma.$queryRawUnsafe(`PRAGMA table_info("${table}")`);
+  // A table with no columns is a table that isn't there. Say so and carry on
+  // rather than throwing: the whole upkeep is one promise chain with one catch
+  // (src/index.js), so a single missing table used to take every section below
+  // it down with it — and the sections are independent of each other. The line
+  // in the log names the table, which is the thing worth knowing.
+  if (!cols.length) {
+    console.warn(`schema upkeep: no "${table}" table — skipping column "${name}"`);
+    return false;
+  }
   if (cols.some((c) => c.name === name)) return false;
   await prisma.$executeRawUnsafe(`ALTER TABLE "${table}" ADD COLUMN "${name}" ${def}`);
   return true;
@@ -208,6 +217,21 @@ export async function ensureAppSchema(prisma) {
     `CREATE UNIQUE INDEX IF NOT EXISTS "Driver_seasonId_steamId_key" ON "Driver"("seasonId", "steamId")`
   );
 
+  // --- What a driver writes about themselves in their own profile: a short
+  // "about me" line and an optional racing number.
+  //
+  // These two are in schema.prisma and in NO migration — they reached the
+  // running database through `prisma db push` and have been there ever since,
+  // which is why nothing ever noticed. A database built the documented way
+  // (`prisma migrate deploy`) has neither, and the seed dies on the first
+  // driver it writes. Here rather than in a new migration on purpose: a
+  // migration adding a column the live database already has fails, and
+  // `start:prod` runs `prisma migrate deploy` before the server, so the deploy
+  // that carried the fix would be the one that stopped booting. addColumn asks
+  // first and does nothing when the column is there.
+  await addColumn(prisma, "Driver", "bio", "TEXT");
+  await addColumn(prisma, "Driver", "number", "INTEGER");
+
   // --- Self-hosted traffic counter (admin Traffic tab). Aggregated page views
   // per day+path, plus anonymous daily-unique visitor markers (see lib/traffic.js
   // for the privacy story). Raw SQL tables like PersonLink below.
@@ -281,6 +305,28 @@ export async function ensureAppSchema(prisma) {
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "Notification_createdAt_idx" ON "Notification"("createdAt")`
   );
+  // --- The Discord login itself. Every column below hangs off this table, and
+  // until now nothing created it: it is in schema.prisma, in no migration, and
+  // reached the running database through `prisma db push`. On a database built
+  // the documented way the next line hit a table that wasn't there, the upkeep
+  // threw, and — because the whole chain is one promise with one catch
+  // (src/index.js) — everything defined AFTER this point never ran either:
+  // feedback, reports, series, person links, the traffic counter. A fresh
+  // install came up looking healthy and fell over on the first login.
+  //
+  // Read and written in raw SQL throughout (lib/members.js, lib/notifications.js),
+  // so this DDL is the whole definition, not a mirror of a Prisma-managed one.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "MemberAccount" (
+    "discordId" TEXT NOT NULL PRIMARY KEY,
+    "username" TEXT NOT NULL,
+    "displayName" TEXT,
+    "avatarUrl" TEXT,
+    "banned" BOOLEAN NOT NULL DEFAULT 0,
+    "banReason" TEXT,
+    "firstLoginAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastLoginAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "loginCount" INTEGER NOT NULL DEFAULT 1
+  )`);
   // When this member last opened the bell — everything newer counts as unread.
   await addColumn(prisma, "MemberAccount", "notificationsSeenAt", "DATETIME");
   // "I want to race": a logged-in account with no driver profile can raise a
