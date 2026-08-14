@@ -92,7 +92,7 @@ import {
 import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride } from "../lib/attendanceGate.js";
 import { writeHiddenRace } from "../lib/attendanceHidden.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
-import { sessionStartForRound } from "../lib/raceContacts.js";
+import { anchorReports } from "../lib/reportAnchor.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap } from "../lib/liveServers.js";
@@ -4919,61 +4919,6 @@ router.put("/welcome-faq", async (req, res, next) => {
 // in the results editor, which is the one place that owns the points. See the
 // note at the top of lib/reports.js.
 
-// How far into its round each report happened, in seconds — the figure a
-// steward drags the replay's timeline to.
-//
-// Worked out at READ time, not stored at insert time, because the two things it
-// needs arrive at different moments: a report is filed during the race, and the
-// session's start only becomes knowable when the result file is imported
-// afterwards. A pinned contact already carries its own `contactSecond` from the
-// archive and keeps it; everything else, above all every report fired from
-// inside the race, gets one derived here as soon as the round is imported.
-function withSessionSecond(reports, races) {
-  const byId = new Map(races.map((r) => [r.id, r]));
-  // One archive read per ROUND, not per report: a busy round can carry a dozen.
-  const startOf = new Map();
-  // The figure a report already carries, used when the archive cannot supply
-  // one. For a report pinned to a contact after the race that IS the archive's
-  // own arithmetic and is exact; for one fired from inside the race it was read
-  // off the live board mid-session (routes/reports.js POST /ingest) and is
-  // right to a second or two, so it is flagged as approximate — a steward
-  // scrubbing to it should know whether to expect the incident on the frame or
-  // a moment either side of it.
-  const stored = (r) =>
-    r.contactSecond != null
-      ? { ...r, sessionSecond: r.contactSecond, sessionSecondApprox: r.source === "INGAME" }
-      : r;
-  return reports.map((r) => {
-    const race = r.raceId ? byId.get(r.raceId) : null;
-    // Derive from the archive whenever it can be read, and fall back to the
-    // stored figure only when it cannot. For a pinned contact the two are the
-    // same arithmetic on the same anchor, so this costs nothing — and it means a
-    // correction to the anchor reaches reports that were filed before it. The
-    // first version measured from the green flag rather than the start of the
-    // session, which left every stored figure short by the grid wait.
-    if (!race || !r.incidentAt || race.number == null || race.season?.number == null) {
-      return stored(r);
-    }
-    if (!startOf.has(race.id)) {
-      let start = null;
-      try {
-        start = sessionStartForRound(race.season.number, race.number);
-      } catch {
-        start = null;
-      }
-      startOf.set(race.id, start);
-    }
-    const start = startOf.get(race.id);
-    if (!start) return stored(r);
-    const second = Math.round(new Date(r.incidentAt).getTime() / 1000 - start);
-    // A negative figure means the report's clock and the round's archive
-    // disagree about which session this was — showing "-4:12 into the race"
-    // would be worse than showing nothing, and the figure the report came in
-    // with is the better answer if it has one.
-    return second >= 0 ? { ...r, sessionSecond: second, sessionSecondApprox: false } : stored(r);
-  });
-}
-
 router.get("/reports", async (req, res, next) => {
   try {
     const reports = await dbListReports(prisma);
@@ -4987,7 +4932,7 @@ router.get("/reports", async (req, res, next) => {
         })
       : [];
     res.json({
-      reports: withSessionSecond(reports, races),
+      reports: await anchorReports(prisma, reports, races),
       races,
       open: reports.filter((r) => !REPORT_DECIDED.includes(r.status)).length,
       // Which of the decided ones still have to be entered in a classification.
@@ -5015,7 +4960,7 @@ router.get("/reports/:id", async (req, res, next) => {
           })
           .catch(() => null)
       : null;
-    const [anchored] = withSessionSecond([report], race ? [race] : []);
+    const [anchored] = await anchorReports(prisma, [report], race ? [race] : []);
     res.json({
       report: { ...anchored, reporterTeam: voices.get(String(report.reporterDiscordId || "")) || null },
       // At the desk, "mine" means the office: a PIN admin has no Discord id

@@ -450,6 +450,7 @@ export default function AdminReports() {
                 <ReplayAnchor
                   second={openReportRow.sessionSecond}
                   approx={openReportRow.sessionSecondApprox}
+                  matched={openReportRow.contactMatched}
                   at={openReportRow.incidentAt}
                   kph={openReportRow.contactKph}
                   lap={openReportRow.lap}
@@ -553,6 +554,7 @@ export default function AdminReports() {
                       readOnly
                       second={r.sessionSecond}
                       approx={r.sessionSecondApprox}
+                      matched={r.contactMatched}
                       at={r.incidentAt}
                       kph={r.contactKph}
                       lap={r.lap}

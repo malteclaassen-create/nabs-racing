@@ -496,9 +496,10 @@ router.post("/ingest", async (req, res, next) => {
     // picking the contact out of the result file has carried that figure all
     // along; this is the mid-race button catching up with it.
     //
-    // Provisional on purpose: the archive-derived figure replaces it the moment
-    // the round is imported (see withSessionSecond in routes/admin.js), because
-    // that one is measured off the same file the replay is.
+    // Provisional on purpose: the round's result file replaces it the moment it
+    // is imported (see lib/reportAnchor.js), first with the same arithmetic
+    // measured off the archive and then, where the file can name the contact
+    // this report is about, with that contact's own timestamp.
     const sessionSecond = await liveSessionSecond(raceId);
 
     const report = await dbCreateReport(prisma, {
