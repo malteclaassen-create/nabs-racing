@@ -496,6 +496,14 @@ const ontrackCols = (isRace) => [
 // column lives in its entry — the header, how a cell renders, what sorting by it
 // means — so the table itself is a loop and adding a column is one object here.
 //
+// The order is the reading order of a timing screen: who, how fast, how far
+// behind — best lap and gap come first, then the sectors that explain them, then
+// the last lap. It matters most on a phone, where the table scrolls sideways and
+// only the first columns are on screen: the three wide sector chips used to sit
+// in front of the lap time everyone came for. Somebody who picked their own
+// columns gets this order too — the picker remembers WHICH columns, never their
+// arrangement (hooks/useLiveTablePrefs.js).
+//
 //   bp      the width from which the column appears in AUTOMATIC mode ("" =
 //           always). A phone gets the essentials, a wide monitor the lot.
 //   optIn   not in the automatic set at all: only shows if someone ticks it in
@@ -577,20 +585,6 @@ const TIMING_COLUMNS = [
     ),
   },
   {
-    key: "sectors",
-    label: "Sectors",
-    bp: "lg",
-    align: "left",
-    hint: "The three sectors of their best lap",
-    cell: (e) => (
-      <div className="flex gap-1">
-        {e.sectors.map((s, i) => (
-          <Sector key={i} s={s} />
-        ))}
-      </div>
-    ),
-  },
-  {
     key: "best",
     label: "Best",
     sortLabel: "Best lap",
@@ -619,6 +613,55 @@ const TIMING_COLUMNS = [
         ) : null}
       </>
     ),
+  },
+  {
+    key: "gap",
+    label: "Gap",
+    // Left deliberately plain: this column means two different things depending
+    // on the session, and the menu row that shows this string has no way of
+    // knowing which. The hint below spells both out.
+    sortLabel: "Gap",
+    bp: "sm",
+    align: "right",
+    // In a race this is distance up the road; anywhere else it is lap time. The
+    // board only fills in the race numbers during a race, so the column can
+    // simply prefer them wherever they exist — no session type to thread in.
+    hint: "In a race: behind the leader. Otherwise: off the fastest lap.",
+    sortValue: (e) => (e.gapToLeaderMs != null || e.lapsDown > 0 ? (e.lapsDown || 0) * 1e7 + (e.gapToLeaderMs ?? 0) : e.gapToBestMs ?? null),
+    sortDir: "asc",
+    cell: (e) =>
+      e.gapToLeaderMs != null || e.lapsDown > 0 ? (
+        <span className="font-mono text-sm tabular-nums text-light" title="Behind the leader">
+          {formatRaceGap(e.gapToLeaderMs, e.lapsDown)}
+        </span>
+      ) : (
+        <span className="font-mono text-sm tabular-nums text-light">{formatGap(e.gapToBestMs)}</span>
+      ),
+  },
+  {
+    key: "sectors",
+    label: "Sectors",
+    bp: "lg",
+    align: "left",
+    hint: "The three sectors of their best lap",
+    cell: (e) => (
+      <div className="flex gap-1">
+        {e.sectors.map((s, i) => (
+          <Sector key={i} s={s} />
+        ))}
+      </div>
+    ),
+  },
+  {
+    key: "last",
+    label: "Last",
+    sortLabel: "Last lap",
+    bp: "sm",
+    align: "right",
+    hint: "Their most recent lap time",
+    sortValue: (e) => e.lastLapMs || null,
+    sortDir: "asc",
+    cell: (e) => <span className="font-mono text-sm tabular-nums text-medium">{formatLap(e.lastLapMs)}</span>,
   },
   {
     key: "potential",
@@ -657,30 +700,6 @@ const TIMING_COLUMNS = [
     },
   },
   {
-    key: "gap",
-    label: "Gap",
-    // Left deliberately plain: this column means two different things depending
-    // on the session, and the menu row that shows this string has no way of
-    // knowing which. The hint below spells both out.
-    sortLabel: "Gap",
-    bp: "sm",
-    align: "right",
-    // In a race this is distance up the road; anywhere else it is lap time. The
-    // board only fills in the race numbers during a race, so the column can
-    // simply prefer them wherever they exist — no session type to thread in.
-    hint: "In a race: behind the leader. Otherwise: off the fastest lap.",
-    sortValue: (e) => (e.gapToLeaderMs != null || e.lapsDown > 0 ? (e.lapsDown || 0) * 1e7 + (e.gapToLeaderMs ?? 0) : e.gapToBestMs ?? null),
-    sortDir: "asc",
-    cell: (e) =>
-      e.gapToLeaderMs != null || e.lapsDown > 0 ? (
-        <span className="font-mono text-sm tabular-nums text-light" title="Behind the leader">
-          {formatRaceGap(e.gapToLeaderMs, e.lapsDown)}
-        </span>
-      ) : (
-        <span className="font-mono text-sm tabular-nums text-light">{formatGap(e.gapToBestMs)}</span>
-      ),
-  },
-  {
     key: "interval",
     label: "Int.",
     sortLabel: "Interval",
@@ -697,17 +716,6 @@ const TIMING_COLUMNS = [
           {formatGap(ctx.intervals.get(e.guid) ?? null)}
         </span>
       ),
-  },
-  {
-    key: "last",
-    label: "Last",
-    sortLabel: "Last lap",
-    bp: "sm",
-    align: "right",
-    hint: "Their most recent lap time",
-    sortValue: (e) => e.lastLapMs || null,
-    sortDir: "asc",
-    cell: (e) => <span className="font-mono text-sm tabular-nums text-medium">{formatLap(e.lastLapMs)}</span>,
   },
   {
     key: "delta",
