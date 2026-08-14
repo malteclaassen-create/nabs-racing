@@ -446,7 +446,7 @@ function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
           the position ticks line up exactly with the dots */}
       <div className="flex min-h-0 flex-1 items-stretch gap-2">
         {/* y-axis: finishing positions, stays put while the plot scrolls */}
-        <div className="sticky left-0 z-10 w-7 shrink-0 bg-card">
+        <div className="sticky-fade sticky left-0 z-10 w-7 shrink-0 bg-card">
           <div className="relative h-full">
           {ticks.map((p) => (
             <span
@@ -536,7 +536,7 @@ function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
       {/* per-round result chips — a spacer matching the pinned y-axis keeps
           each chip directly under its dot */}
       <div className="mt-3 flex shrink-0 gap-2">
-        <div className="sticky left-0 z-10 w-7 shrink-0 bg-card" />
+        <div className="sticky-fade sticky left-0 z-10 w-7 shrink-0 bg-card" />
         {/* same wipe, same duration as the plot above — chips surface exactly
             when the line reaches their round */}
         <div className="wipe-ltr flex flex-1" style={{ "--wipe-dur": "2s" }}>
