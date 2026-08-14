@@ -350,6 +350,8 @@ export default function AdminReports() {
   // you were on.
   const { data: db } = useApi(useCallback(() => api.adminDriverDb().catch(() => ({ entries: [] })), []));
   const { data: ingest, reload: reloadIngest } = useApi(useCallback(() => api.reportIngest(), []));
+  const { data: telIngest, reload: reloadTelIngest } = useApi(useCallback(() => api.telemetryIngest(), []));
+  const [telUnlocked, setTelUnlocked] = useState(false);
   const { data: retention, reload: reloadRetention } = useApi(useCallback(() => api.reportRetention(), []));
   const [swept, setSwept] = useState(null);
   const [openId, setOpenId] = useState(null);
@@ -702,6 +704,85 @@ export default function AdminReports() {
                   type="button"
                   className="text-sm font-semibold text-light transition hover:text-dark"
                   onClick={() => setUnlocked(false)}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* the in-game telemetry recorder — same key contract as the card above,
+          same reason to live next to it: both are things a Lua app in the game
+          posts to the site. */}
+      <div className="card overflow-hidden">
+        <CardBar title="Telemetry from inside the car" />
+        <div className="space-y-3 p-5">
+          <p className="text-sm text-light">
+            A URL for the nabsTelemetry app. Drivers who switch it on send their fastest clean lap per
+            track — throttle, brake, steering, speed — for the comparison on the Tools page. Only their
+            best lap is kept; slower posts are dropped.
+          </p>
+          {telIngest?.configured ? (
+            <>
+              <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                Paste this into nabsTelemetry
+              </label>
+              <input
+                readOnly
+                aria-label="nabsTelemetry URL"
+                className="input w-full font-mono text-xs"
+                value={`${window.location.origin}/api/telemetry-laps/ingest?key=${telIngest.key}`}
+                onFocus={(e) => e.target.select()}
+              />
+              <p className="text-xs text-light">
+                Unlike the reports URL this one goes to EVERY driver who wants in — it only ever adds
+                their own laps, nothing else.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-light">Telemetry recording is off.</p>
+          )}
+          {telIngest?.configured && !telUnlocked ? (
+            <button className="btn-secondary" onClick={() => setTelUnlocked(true)}>
+              Change this
+            </button>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="btn-secondary"
+                disabled={busy}
+                onClick={async () => {
+                  const off = !!telIngest?.configured;
+                  if (
+                    off &&
+                    !(await ask({
+                      title: "Switch off telemetry recording?",
+                      body:
+                        "The URL stops working immediately, in every driver's game at once. Switching back on makes a NEW url that everyone has to paste again.",
+                      danger: true,
+                      confirmLabel: "Switch off",
+                    }))
+                  )
+                    return;
+                  setBusy(true);
+                  try {
+                    await api.setTelemetryIngest(!off);
+                    reloadTelIngest();
+                    setTelUnlocked(false);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {telIngest?.configured ? "Switch off" : "Switch on and make a key"}
+              </button>
+              {telIngest?.configured && (
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-light transition hover:text-dark"
+                  onClick={() => setTelUnlocked(false)}
                 >
                   Cancel
                 </button>
