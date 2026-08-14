@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 
 // ---------------------------------------------------------------------------
 // The round, lap by lap: one line per car, position down the y-axis, laps
@@ -26,8 +25,14 @@ const PLOT_BOTTOM = 94;
 // ones cycle through a few neutral greys rather than all sharing one.
 const NEUTRAL = ["#94a3b8", "#64748b", "#a1a1aa", "#71717a"];
 
+// How many names the legend shows before it asks. Roughly the front half of a
+// normal grid: enough that the people being talked about after a race are
+// there, short enough that the chart stays the biggest thing on the card.
+const LEGEND_CAP = 12;
+
 export default function RaceLapChart({ data, className = "" }) {
   const [focus, setFocus] = useState(null); // guid of the highlighted driver
+  const [allNames, setAllNames] = useState(false);
 
   const { drivers, maxLap, maxPos } = useMemo(() => {
     const ds = (data?.drivers || []).filter((d) => (d.points || []).length > 0);
@@ -53,7 +58,34 @@ export default function RaceLapChart({ data, className = "" }) {
   // squeezes into a phone and the swaps turn into noise. Scrolls sideways.
   const minW = Math.max(320, maxLap * 22);
 
+  // The plot grows with the field instead of being one fixed height. A 38-car
+  // grid in the 224px box this started with left six pixels between one
+  // position and the next, which is not a chart, it is a texture. Twelve
+  // pixels a place gives every line somewhere to be; the cap keeps a full grid
+  // from turning the panel into a wall.
+  const plotH = Math.min(540, Math.max(224, maxPos * 12));
+  // Thinner strokes once the field is deep, for the same reason.
+  const stroke = maxPos > 24 ? 1.6 : 2;
+
   const colorOf = (d, i) => d.color || NEUTRAL[i % NEUTRAL.length];
+  // What identifies a line. NOT the file's GUID — that is a SteamID, and the
+  // endpoint deliberately doesn't hand those to the public — so a driver's own
+  // id, and their place in the field for anyone the league couldn't match.
+  const idOf = (d, i) => d.driverId || `row-${i}`;
+  const shownDrivers = allNames ? drivers : drivers.slice(0, LEGEND_CAP);
+
+  // Team mates share a team colour, so on a full grid half the lines have a
+  // twin. The second car of a colour is dashed and the third dotted, which
+  // separates them without inventing colours the rest of the site doesn't use.
+  const dashes = useMemo(() => {
+    const seen = new Map();
+    return (data?.drivers || []).map((d, i) => {
+      const c = d.color || NEUTRAL[i % NEUTRAL.length];
+      const n = (seen.get(c) || 0) + 1;
+      seen.set(c, n);
+      return n === 1 ? undefined : n === 2 ? "7 4" : "2 3";
+    });
+  }, [data]);
 
   return (
     // Its own card, like the results table it stands in for — and the reason
@@ -67,7 +99,7 @@ export default function RaceLapChart({ data, className = "" }) {
         <div style={{ minWidth: minW + 32 }}>
           <div className="flex items-stretch gap-2">
             {/* pinned position axis */}
-            <div className="sticky-fade sticky left-0 z-10 h-56 w-7 shrink-0 bg-card">
+            <div className="sticky-fade sticky left-0 z-10 w-7 shrink-0 bg-card" style={{ height: plotH }}>
               <div className="relative h-full">
                 {ticks.map((p) => (
                   <span
@@ -81,7 +113,7 @@ export default function RaceLapChart({ data, className = "" }) {
               </div>
             </div>
 
-            <div className="relative h-56 flex-1">
+            <div className="relative flex-1" style={{ height: plotH }}>
               {ticks.map((p) => (
                 <span
                   key={p}
@@ -99,18 +131,20 @@ export default function RaceLapChart({ data, className = "" }) {
                   const pts = d.points
                     .map((p) => `${(p.lap - 1).toFixed(2)},${yPct(p.position).toFixed(2)}`)
                     .join(" ");
-                  const dim = focus && focus !== d.guid;
+                  const id = idOf(d, i);
+                  const dim = focus && focus !== id;
                   return (
                     <polyline
-                      key={d.guid || i}
+                      key={id}
                       points={pts}
                       fill="none"
                       stroke={colorOf(d, i)}
-                      strokeWidth={focus === d.guid ? 3.5 : 2}
+                      strokeWidth={focus === id ? 3.5 : stroke}
+                      strokeDasharray={focus === id ? undefined : dashes[i]}
                       strokeLinejoin="round"
                       strokeLinecap="round"
                       vectorEffect="non-scaling-stroke"
-                      opacity={dim ? 0.12 : 1}
+                      opacity={dim ? 0.08 : 1}
                       className="transition-opacity"
                     />
                   );
@@ -153,39 +187,57 @@ export default function RaceLapChart({ data, className = "" }) {
 
       {/* The legend is also the control: the lines are thin and many, so the
           way to follow one driver is to pick their name. Finishing order, so
-          it reads like the classification it replaced. */}
-      <div className="mt-4 flex flex-wrap gap-1.5 border-t border-border px-5 py-4 sm:px-6">
-        {drivers.map((d, i) => {
-          const active = focus === d.guid;
-          const chip = (
-            <>
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colorOf(d, i) }} />
-              <span className="truncate">{d.name}</span>
-            </>
-          );
+          it reads like the classification it replaced.
+          On a full grid it is also the longest thing on the card — 38 names is
+          eight rows of chips under a chart people came to look AT — so it
+          starts at the front of the field and opens on request. */}
+      <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-border px-5 py-4 sm:px-6">
+        {shownDrivers.map((d, i) => {
+          const id = idOf(d, i);
+          const active = focus === id;
+          const dash = dashes[i];
           const cls = `flex items-center gap-1.5 rounded-lg px-2 py-1 font-display text-[11px] font-bold uppercase tracking-tight transition ${
             active ? "bg-surface2 text-dark ring-1 ring-border" : "text-medium hover:bg-surface2 hover:text-dark"
           }`;
           return (
+            // A plain button, and only a button. It used to carry a link to
+            // the driver's profile inside it — an <a> in a <button>, which is
+            // invalid and behaved like it: a tap meant to follow a line
+            // navigated away instead. Every name in the classification next
+            // door is already a link; here the job is to pick out one line.
             <button
-              key={d.guid || i}
+              key={id}
               type="button"
               className={cls}
-              onMouseEnter={() => setFocus(d.guid)}
+              onMouseEnter={() => setFocus(id)}
               onMouseLeave={() => setFocus(null)}
-              onClick={() => setFocus(active ? null : d.guid)}
-              title={d.driverId ? `${d.name} — tap to follow, name links to their profile` : d.name}
+              onClick={() => setFocus(active ? null : id)}
+              aria-pressed={active}
+              title={`${d.name} — tap to follow their line`}
             >
-              {d.driverId ? (
-                <Link to={`/drivers/${d.driverId}`} className="flex items-center gap-1.5 truncate" onClick={(e) => e.stopPropagation()}>
-                  {chip}
-                </Link>
-              ) : (
-                chip
-              )}
+              {/* The swatch repeats the line's dash pattern, or two lines of
+                  the same colour would look like one entry in the key. */}
+              <span
+                className="h-0.5 w-4 shrink-0 rounded-full"
+                style={
+                  dash
+                    ? { backgroundImage: `repeating-linear-gradient(to right, ${colorOf(d, i)} 0 ${dash === "7 4" ? "5px" : "2px"}, transparent ${dash === "7 4" ? "5px 8px" : "2px 4px"})` }
+                    : { backgroundColor: colorOf(d, i) }
+                }
+              />
+              <span className="truncate">{d.name}</span>
             </button>
           );
         })}
+        {drivers.length > LEGEND_CAP && (
+          <button
+            type="button"
+            className="rounded-lg px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-link transition hover:underline"
+            onClick={() => setAllNames((v) => !v)}
+          >
+            {allNames ? "Show fewer" : `All ${drivers.length} drivers`}
+          </button>
+        )}
       </div>
     </div>
   );
