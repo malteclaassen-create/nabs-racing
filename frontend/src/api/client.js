@@ -1000,8 +1000,10 @@ export const api = {
     request("/admin/reports-ingest", { method: "PUT", body: { enabled }, auth: true }),
   // The in-game telemetry recorder's key — same on/off contract as above.
   telemetryIngest: () => request("/admin/telemetry-ingest", { auth: true }),
-  setTelemetryIngest: (enabled) =>
-    request("/admin/telemetry-ingest", { method: "PUT", body: { enabled }, auth: true }),
+  // `key` optional: a given key instead of a freshly minted one, for when the
+  // race server's config was written before the site had one.
+  setTelemetryIngest: (enabled, key) =>
+    request("/admin/telemetry-ingest", { method: "PUT", body: { enabled, key }, auth: true }),
   // Recorded telemetry laps (public reads; the /tools comparison).
   telemetryTracks: () => request("/telemetry-laps"),
   telemetryLaps: (trackKey) => request(`/telemetry-laps/${trackKey}`),

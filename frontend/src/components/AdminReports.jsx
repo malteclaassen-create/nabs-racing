@@ -352,6 +352,9 @@ export default function AdminReports() {
   const { data: ingest, reload: reloadIngest } = useApi(useCallback(() => api.reportIngest(), []));
   const { data: telIngest, reload: reloadTelIngest } = useApi(useCallback(() => api.telemetryIngest(), []));
   const [telUnlocked, setTelUnlocked] = useState(false);
+  // A key typed in rather than minted — see the field below.
+  const [telGivenKey, setTelGivenKey] = useState("");
+  const telGivenKeyOk = !telGivenKey.trim() || /^[a-f0-9]{32}$/i.test(telGivenKey.trim());
   const { data: retention, reload: reloadRetention } = useApi(useCallback(() => api.reportRetention(), []));
   const [swept, setSwept] = useState(null);
   const [openId, setOpenId] = useState(null);
@@ -770,10 +773,35 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
               Change this
             </button>
           ) : (
+            <div className="space-y-2">
+            {/* The race server's config is written by whoever runs the server,
+                which is often not the person standing here. If those two lines
+                already carry a key — settled up front, or surviving a database
+                restore — this is how the site is told to honour it instead of
+                minting a new one and breaking a config nobody wants to redo.
+                Only on the way ON: switching off needs no key. */}
+            {!telIngest?.configured && (
+              <>
+                <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                  Key to use (optional &mdash; leave blank to make a fresh one)
+                </label>
+                <input
+                  className="input w-full font-mono text-xs"
+                  placeholder="32 characters, 0-9 and a-f"
+                  value={telGivenKey}
+                  onChange={(e) => setTelGivenKey(e.target.value)}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                {!telGivenKeyOk && (
+                  <p className="text-xs text-bad">That is not a key: 32 characters, digits and a&ndash;f only.</p>
+                )}
+              </>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               <button
                 className="btn-secondary"
-                disabled={busy}
+                disabled={busy || !telGivenKeyOk}
                 onClick={async () => {
                   const off = !!telIngest?.configured;
                   if (
@@ -781,7 +809,7 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
                     !(await ask({
                       title: "Switch off telemetry recording?",
                       body:
-                        "The URL stops working immediately, in every driver's game at once. Switching back on makes a NEW url that everyone has to paste again.",
+                        "The URL stops working immediately, in every driver's game at once. Switching back on can reuse the same key — type it into the field — but without it the race server's config has to be pasted again.",
                       danger: true,
                       confirmLabel: "Switch off",
                     }))
@@ -789,7 +817,8 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
                     return;
                   setBusy(true);
                   try {
-                    await api.setTelemetryIngest(!off);
+                    await api.setTelemetryIngest(!off, telGivenKey.trim().toLowerCase() || undefined);
+                    setTelGivenKey("");
                     reloadTelIngest();
                     setTelUnlocked(false);
                   } finally {
@@ -797,7 +826,11 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
                   }
                 }}
               >
-                {telIngest?.configured ? "Switch off" : "Switch on and make a key"}
+                {telIngest?.configured
+                  ? "Switch off"
+                  : telGivenKey.trim()
+                    ? "Switch on with this key"
+                    : "Switch on and make a key"}
               </button>
               {telIngest?.configured && (
                 <button
@@ -808,6 +841,7 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
                   Cancel
                 </button>
               )}
+            </div>
             </div>
           )}
         </div>
