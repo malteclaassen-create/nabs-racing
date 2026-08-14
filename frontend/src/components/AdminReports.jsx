@@ -727,7 +727,28 @@ export default function AdminReports() {
           {telIngest?.configured ? (
             <>
               <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-                Paste this into nabsTelemetry
+                Paste this into the race server&rsquo;s CSP extra options
+              </label>
+              {/* The whole point of the server route: CSP hands this script to
+                  every driver who joins, so nobody installs anything. The same
+                  key gates the script download and rides inside it as the
+                  ingest address — one mint invalidates both. */}
+              <textarea
+                readOnly
+                aria-label="csp_extra_options snippet"
+                className="input w-full font-mono text-xs"
+                rows={2}
+                value={`[SCRIPT_NABS_TELEMETRY]
+SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.key}"`}
+                onFocus={(e) => e.target.select()}
+              />
+              <p className="text-xs text-light">
+                Into <span className="font-mono">csp_extra_options.ini</span> in the server panel (where the
+                penalty script lives). From then on every driver who joins records automatically — nothing
+                to install. The script announces itself with an in-game toast; announce it in Discord too.
+              </p>
+              <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                Hand-install URL (testing, or drivers without the server script)
               </label>
               <input
                 readOnly
@@ -737,8 +758,8 @@ export default function AdminReports() {
                 onFocus={(e) => e.target.select()}
               />
               <p className="text-xs text-light">
-                Unlike the reports URL this one goes to EVERY driver who wants in — it only ever adds
-                their own laps, nothing else.
+                For the nabsTelemetry app&rsquo;s settings. Unlike the reports URL, either of these may go to
+                every driver — the key only ever adds their own laps, nothing else.
               </p>
             </>
           ) : (

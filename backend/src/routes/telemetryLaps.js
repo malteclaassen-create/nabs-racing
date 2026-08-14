@@ -10,11 +10,15 @@
 // deletes with it.
 // ---------------------------------------------------------------------------
 import { Router } from "express";
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
 import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId } from "../lib/telemetryLaps.js";
 import { getNameOverrides } from "../lib/persons.js";
 
 const router = Router();
+const __dir = dirname(fileURLToPath(import.meta.url));
 
 // The same generous flood ceiling as the report ingest: it exists to stop a
 // stuck loop filling the disk, not to ration a busy practice evening.
@@ -75,6 +79,41 @@ async function leagueNames(steamIds) {
   }
   return out;
 }
+
+// GET /api/telemetry-laps/app.lua?key=... — the script itself, served by the
+// site so the RACE SERVER can hand it to every driver who joins.
+//
+// This is the "drivers do nothing" path: the league server's
+// csp_extra_options.ini points a [SCRIPT_...] section at this URL, CSP
+// downloads it into each joining client, and it records and posts on its own.
+// The key does double duty — it gates the download exactly like the ingest,
+// and it is baked into the served source as the ingest address, so minting a
+// new key invalidates both ends at once. The admin card prints the ready-made
+// ini snippet.
+router.get("/app.lua", async (req, res, next) => {
+  try {
+    const secret = await ingestKey();
+    // 404, not 401/503: an unauthenticated probe learns nothing, not even
+    // whether the feature exists.
+    if (!secret || String(req.query.key || "") !== secret) return res.status(404).end();
+    const base = `${req.protocol}://${req.get("host")}`;
+    // replaceAll, learned the embarrassing way: the placeholder appears in the
+    // template's own header comment too, and .replace() swapped only that one —
+    // the served script compiled fine and would have posted to the literal
+    // string "__INGEST_URL__" for ever.
+    const src = readFileSync(join(__dir, "../lib/telemetryOnlineScript.lua"), "utf8").replaceAll(
+      "__INGEST_URL__",
+      `${base}/api/telemetry-laps/ingest?key=${secret}`
+    );
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    // No caching: a re-minted key must reach the server's next fetch, not a
+    // stale copy of the old script with the dead key inside.
+    res.setHeader("Cache-Control", "no-store");
+    res.send(src);
+  } catch (e) {
+    next(e);
+  }
+});
 
 // GET /api/telemetry-laps -> tracks that have laps
 router.get("/", async (req, res, next) => {

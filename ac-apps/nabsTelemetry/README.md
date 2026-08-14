@@ -37,13 +37,18 @@ settings (spanner):
 That's it. The app loads with every session from then on (no window needed)
 and posts automatically when you set a clean session best.
 
-## Serving it from the league server
+## Serving it from the league server (the real path)
 
-CSP can hand Lua scripts to everyone who joins a server, which is how the
-penalty app reaches drivers without a download. The same should work here —
-but the exact server-side setup depends on the hosting panel, and whether a
-server-delivered script may post to an outside URL has to be confirmed in
-that setup before promising it. Until then, the manual install above works.
+Nobody is meant to install this by hand. The site serves a windowless variant
+of this same recorder at `/api/telemetry-laps/app.lua?key=…`, and the admin
+card prints a ready-made `[SCRIPT_NABS_TELEMETRY]` snippet for the race
+server's `csp_extra_options.ini` — the same mechanism that already delivers
+the league's penalty script to every joining driver. Once that snippet is in,
+drivers do nothing: the script records and posts on its own and announces
+itself with an in-game toast.
+
+This folder remains for testing (one person, before the server snippet goes
+in) and for anyone whose CSP is too old for server scripts.
 
 ## First-version honesty
 
