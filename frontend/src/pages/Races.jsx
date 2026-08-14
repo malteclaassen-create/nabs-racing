@@ -1102,7 +1102,21 @@ export default function Races() {
                           <VideoEmbed videoId={highlightsVideoId} title={`${head.track} highlights`} />
                         </div>
                       )}
-                      {view === "chart" && session === "race" && detail.race?.hasLapChart ? (
+                      {/* While a DIFFERENT round is loading, a placeholder cut
+                          to that round's size — resultCount comes with the
+                          calendar, so the panel already knows how tall the
+                          table it is waiting for will be.
+                          The stale round's own table used to stay up instead,
+                          which held the height steady between two completed
+                          rounds and fell apart everywhere else: coming from an
+                          upcoming round there was nothing to hold, so the panel
+                          collapsed to an empty table header, the calendar rode
+                          up into the gap, and the results shoved it back down a
+                          moment later. A placeholder sized for where you are
+                          GOING does both jobs. */}
+                      {detailIsStale ? (
+                        <TableSkeleton rows={Math.max(selectedRace?.resultCount || 10, 4)} />
+                      ) : view === "chart" && session === "race" && detail.race?.hasLapChart ? (
                         laps.loading || laps.raceId !== selectedId ? (
                           <div className="px-5 py-10 text-center text-sm text-light">Reading the laps…</div>
                         ) : laps.error ? (
@@ -1117,10 +1131,12 @@ export default function Races() {
                       ) : (
                         <RaceResults race={detail.race} results={detail.results} quali={detail.quali} session={session} />
                       )}
-                      {detail.race.hasPositions && <RaceFacts race={detail.race} results={detail.results} quali={detail.quali} />}
+                      {!detailIsStale && detail.race.hasPositions && (
+                        <RaceFacts race={detail.race} results={detail.results} quali={detail.quali} />
+                      )}
                       {/* The night's photos, last: the classification is what
                           people come for, the gallery is what they stay for. */}
-                      <RaceGallery photos={detail.photos} title={detail.race.track} />
+                      {!detailIsStale && <RaceGallery photos={detail.photos} title={detail.race.track} />}
                     </div>
                   )}
                 </>
