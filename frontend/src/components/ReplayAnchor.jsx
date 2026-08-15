@@ -50,12 +50,19 @@ function leagueClock(iso) {
 // Does this report have anything for the chip to draw? Exported because a
 // caller that renders "lap 14" of its own next to the chip has to know: the
 // chip carries the lap too, and a row printing it twice is the version of this
-// nobody wants. The condition is the one the component itself bails on.
+// nobody wants.
+//
+// The component itself bails on this exact call, rather than on a copy of the
+// condition — a second copy is a thing that drifts, and the way it drifts is a
+// row that reserves space for a chip which then renders nothing, or prints the
+// lap twice. It asks the RENDERED values, not the raw ones, so an unusable
+// figure (a negative second, an unparseable date) counts as nothing to draw,
+// which is what it looks like on screen.
 export function hasReplayAnchor(r) {
   if (!r) return false;
-  return (
-    (r.sessionSecond != null && Number.isFinite(r.sessionSecond) && r.sessionSecond >= 0) ||
-    !!r.incidentAt ||
+  return !!(
+    mmss(r.sessionSecond) ||
+    leagueClock(r.incidentAt) ||
     r.contactKph != null ||
     r.lap != null ||
     r.contactIndex != null
@@ -92,7 +99,9 @@ export default function ReplayAnchor({
     return () => clearTimeout(t);
   }, [copied]);
 
-  if (!into && !clock && kph == null && lap == null && eventIndex == null) return null;
+  if (!hasReplayAnchor({ sessionSecond: second, incidentAt: at, contactKph: kph, lap, contactIndex: eventIndex })) {
+    return null;
+  }
 
   // Copy the timeline figure when there is one, else the clock: whichever is
   // actually usable is what lands on the clipboard.
