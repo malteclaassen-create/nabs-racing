@@ -145,17 +145,52 @@ export async function dbListReports(prisma) {
   return rows.map(shape);
 }
 
+// The same question as roleOn, asked about a whole list at once.
+//
+// roleOn is three round trips per report — the accused's account, the viewer
+// row, the steward list — which is right for one report and wrong for a page
+// of them: a steward is party to every report in the league, so their list
+// asked the database three times for each of hundreds of rows to answer a
+// question that takes three queries in total. The order of the tests is
+// roleOn's, exactly: being in the argument beats having been let in, which
+// beats being appointed to judge it.
+export async function dbRolesFor(prisma, reports, discordId) {
+  const out = new Map();
+  const me = String(discordId || "");
+  if (!me || !reports.length) return out;
+
+  const accusedIds = [...new Set(reports.map((r) => r.accusedDriverId).filter(Boolean))];
+  const accused = accusedIds.length
+    ? await discordIdsForDrivers(prisma, accusedIds).catch(() => new Map())
+    : new Map();
+  // Every thread this account was let into, in one read. Keyed by report, so a
+  // membership in a report that is not in this list simply never matches.
+  const viewerRows = await prisma
+    .$queryRawUnsafe(`SELECT "reportId" FROM "ReportViewer" WHERE "discordId" = ?`, me)
+    .catch(() => []);
+  const viewer = new Set(viewerRows.map((v) => String(v.reportId)));
+  const steward = await isSteward(prisma, me);
+
+  for (const r of reports) {
+    if (String(r.reporterDiscordId || "") === me) out.set(r.id, "REPORTER");
+    else if (r.accusedDriverId && String(accused.get(r.accusedDriverId) || "") === me) out.set(r.id, "ACCUSED");
+    else if (viewer.has(String(r.id))) out.set(r.id, "VIEWER");
+    else if (steward) out.set(r.id, "STEWARD");
+  }
+  return out;
+}
+
 // The reports one member may see, newest first, each carrying WHY. A steward
 // sees every report; everybody else sees the ones they are in or were let into.
-export async function dbReportsFor(prisma, discordId) {
+//
+// `rows` lets a caller hand in a list it has already read and narrowed — the
+// member route reads once and then asks about a window of rounds — rather than
+// this reading the table a second time.
+export async function dbReportsFor(prisma, discordId, rows = null) {
   if (!discordId) return [];
-  const all = await dbListReports(prisma);
-  const mine = [];
-  for (const r of all) {
-    const role = await roleOn(prisma, r, discordId);
-    if (role) mine.push({ ...r, myRole: role });
-  }
-  return mine;
+  const all = rows || (await dbListReports(prisma));
+  const roles = await dbRolesFor(prisma, all, discordId);
+  return all.filter((r) => roles.has(r.id)).map((r) => ({ ...r, myRole: roles.get(r.id) }));
 }
 
 // `meDiscordId` marks the caller's own messages, so a thread can put them down

@@ -949,7 +949,9 @@ export const api = {
   // own thread list came back empty. These four are the MEMBER's endpoints and
   // must always travel as the member.
   createReport: (body) => request("/reports", { method: "POST", body, userAuth: true }),
-  myReports: () => request("/reports", { userAuth: true }),
+  // The last few rounds by default; `all` asks for every round this account is
+  // party to, which is the slow read and so is a button rather than the default.
+  myReports: (all = false) => request(`/reports${all ? "?all=1" : ""}`, { userAuth: true }),
   report: (id) => request(`/reports/${id}`, { userAuth: true }),
   // Text, files, or both. Always multipart: one shape for the endpoint means
   // one code path on the server, and a message with a clip on it is the normal
