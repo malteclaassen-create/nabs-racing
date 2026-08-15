@@ -1,4 +1,8 @@
+import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../api/client.js";
+import { useApi } from "../hooks/useApi.js";
+import { useAsk } from "./overlay.jsx";
 import TelemetryCompare from "./TelemetryCompare.jsx";
 
 // ---------------------------------------------------------------------------
@@ -11,9 +15,47 @@ import TelemetryCompare from "./TelemetryCompare.jsx";
 // away from the other is how they drift.
 //
 // This tab is where the feature is tried out before anybody decides whether
-// the members' side gets it. Nothing here is a switch: everything is a read.
+// the members' side gets it — and it holds the switch that makes that decision,
+// which is the only thing here that writes anything.
 // ---------------------------------------------------------------------------
 export default function AdminTelemetry() {
+  const ask = useAsk();
+  const [busy, setBusy] = useState(false);
+  const { data: vis, reload } = useApi(useCallback(() => api.telemetryVisibility(), []));
+  const isPublic = vis?.public === true;
+
+  // Both directions ask first, and for opposite reasons. Opening it up is the
+  // decision this whole feature was held back for, and it is not one to make by
+  // mis-clicking a switch. Closing it again is the awkward one: the laps were
+  // visible, drivers have seen each other's, and taking that away is a thing
+  // people notice — so it says so rather than quietly reverting.
+  async function flip() {
+    const next = !isPublic;
+    const ok = await ask(
+      next
+        ? {
+            title: "Show recorded laps to everyone?",
+            body:
+              "Every member will be able to open any driver's fastest lap at any track and compare it with their own — throttle, brake, steering and where the time goes. This is the decision the feature has been waiting on. It can be switched back, but the drivers will have seen it.",
+            confirmLabel: "Show everyone",
+          }
+        : {
+            title: "Back to admins only?",
+            body:
+              "The comparison disappears from the members' side. Nothing is deleted and recording carries on — but drivers who have been using it will find it gone.",
+            confirmLabel: "Admins only",
+          }
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.setTelemetryVisibility(next);
+      reload();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="card p-5">

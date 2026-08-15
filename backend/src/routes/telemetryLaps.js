@@ -14,7 +14,7 @@ import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
-import { requireAdmin } from "../middleware/auth.js";
+import { telemetryReadGate } from "../lib/telemetryAccess.js";
 import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId } from "../lib/telemetryLaps.js";
 import { getNameOverrides } from "../lib/persons.js";
 
@@ -129,10 +129,11 @@ router.get("/app.lua", async (req, res, next) => {
 // running the league to try out, and the answer to "who may look" is one line
 // here rather than a page that quietly went public with the feature.
 //
-// Opening it later is deleting this middleware. The public /tools card that
-// used to read these endpoints is gone with it, so nothing on the site breaks
-// while the answer is "not yet".
-router.use(requireAdmin);
+// Opening it later is ONE SWITCH, not a deploy: Admin -> League -> Telemetry
+// flips `telemetry_public`, and the same view appears on the members' side.
+// Until then this is the stewards' desk and nothing else. See
+// lib/telemetryAccess.js, which owns the question and answers it in one place.
+router.use(telemetryReadGate(prisma));
 
 // GET /api/telemetry-laps -> tracks that have laps
 router.get("/", async (req, res, next) => {

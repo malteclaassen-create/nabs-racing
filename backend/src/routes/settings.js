@@ -7,6 +7,7 @@ import { readRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq } from "../lib/welcomeFaq.js";
 import { discordMemberCount, leagueSince, yearsOfRacing } from "../lib/leagueStats.js";
 import { buildFeed } from "../lib/socialFeed.js";
+import { isTelemetryPublic } from "../lib/telemetryAccess.js";
 
 const router = Router();
 
@@ -45,6 +46,21 @@ export async function readLiveLinks(prismaClient) {
     streamUrl: get("live_stream_url") || LIVE_LINK_DEFAULTS.streamUrl,
   };
 }
+
+// GET /api/settings/telemetry -> may the members' side show recorded laps.
+//
+// One boolean, read by the /tools page to decide whether to draw the
+// comparison at all. Public on purpose: it says whether a feature is on, which
+// is what the page it belongs to would say anyway, and asking costs a member
+// nothing. The endpoints it gates check for themselves (lib/telemetryAccess.js)
+// — this only saves the page from drawing a card that would then 401.
+router.get("/telemetry", async (req, res, next) => {
+  try {
+    res.json({ public: await isTelemetryPublic(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
 
 // GET /api/settings/social -> the public social links map.
 router.get("/social", async (req, res, next) => {

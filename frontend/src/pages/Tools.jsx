@@ -5,6 +5,7 @@ import SlidingTabs from "../components/SlidingTabs.jsx";
 import { fmtLap, NO_VALUE } from "../utils/format.js";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import TelemetryCompare from "../components/TelemetryCompare.jsx";
 
 // ---------------------------------------------------------------------------
 // /tools — race-prep calculators for members. Deliberately NOT in the main
@@ -847,6 +848,10 @@ function PracticeStrategy({ store, update }) {
 // around it already has a header, so this skips its own.
 
 export default function Tools({ embedded = false }) {
+  // `false` until the answer arrives, so the card cannot flash into view on a
+  // page load and then vanish for a member who is not meant to have it.
+  const { data: tel } = useApi(useCallback(() => api.telemetryIsPublic().catch(() => ({ public: false })), []));
+  const telemetryOpen = tel?.public === true;
   const [store, setStore] = useState(loadStore);
   useEffect(() => {
     try {
@@ -868,6 +873,11 @@ export default function Tools({ embedded = false }) {
       )}
       <FuelCalculator store={store} update={update} />
       <PracticeStrategy store={store} update={update} />
+      {/* The lap comparison, once the league has opened it. Until then this
+          asks one cheap question and draws nothing — rather than drawing a card
+          whose every request would come back 401. The switch is in
+          Admin -> League -> Telemetry; the endpoints check for themselves. */}
+      {telemetryOpen && <TelemetryCompare />}
       <div>
         <Link to="/races" className="transition text-sm font-semibold text-link hover:underline">Race calendar</Link>
       </div>
