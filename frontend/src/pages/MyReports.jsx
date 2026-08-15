@@ -329,10 +329,30 @@ function NewReport({ races, presetRaceId, onFiled }) {
 
       {/* What the race itself recorded. Picking one saves the reporter
           describing a moment and saves a steward hunting for it: the lap, the
-          other car and the moment all come from the result file. */}
-      {form.raceId && (
+          other car and the moment all come from the result file.
+
+          Rendered even before a round is picked, greyed out. Hiding it left the
+          page numbered 1, 3 — and a driver looking at a form that skips a step
+          concludes the step is broken and that their contacts are missing,
+          which is exactly what was reported. An empty step that says what it is
+          waiting for is a step; a missing one is a fault. */}
+      {!form.raceId ? (
+        <section className="space-y-1.5">
+          <Step n="2" label="Which contact" />
+          <p className="text-sm text-faint">
+            Pick the round above and the contacts Assetto Corsa recorded for you appear here.
+          </p>
+        </section>
+      ) : (
         <section className="space-y-1.5">
           <Step n="2" label={handOnly ? "Which moment" : "Which contact"} />
+          {/* Why the list is empty, when it is. All four reasons used to render
+              as the same nothing, so "the file is not imported yet" and "the
+              league has no Steam id for you" — one of which fixes itself
+              overnight and one of which needs the driver to do something — were
+              indistinguishable from a broken page. */}
+          {contacts == null && <p className="text-sm text-faint">Looking up what the race recorded…</p>}
+          {handOnly && <EmptyContacts reason={contacts?.reason} />}
           {contactList.length > 0 && (
             <>
               <ul className="max-h-64 divide-y divide-border overflow-y-auto rounded-lg border border-border">
@@ -457,6 +477,48 @@ function NewReport({ races, presetRaceId, onFiled }) {
         </p>
       </div>
     </div>
+  );
+}
+
+// Why there is nothing to pick from. The hand-written fields are underneath
+// either way — this is only about telling the driver which of the reasons it is,
+// because two of them are somebody's to fix and two of them are nobody's.
+function EmptyContacts({ reason }) {
+  if (reason === "no-steam-id") {
+    return (
+      <p className="text-sm leading-relaxed text-light">
+        The league has no Steam account for you yet, and Assetto Corsa knows people by that and nothing else — so
+        your contacts cannot be looked up.{" "}
+        <a className="font-semibold text-brand underline-offset-2 hover:underline" href="/profile">
+          Link Steam on your profile
+        </a>{" "}
+        and they appear here from then on. Meanwhile, say it in your own words below.
+      </p>
+    );
+  }
+  if (reason === "not-imported") {
+    return (
+      <p className="text-sm leading-relaxed text-light">
+        This round&rsquo;s result file has not been imported yet, so there is nothing recorded to pick from for
+        anybody. It usually lands soon after the race — until then, say it in your own words below.
+      </p>
+    );
+  }
+  if (reason === "none-recorded") {
+    return (
+      <p className="text-sm leading-relaxed text-light">
+        Assetto Corsa recorded no contact for you in this round. A moment it never counted as one — a spin, a
+        push wide, a tap too light to register — still belongs in a report: say it in your own words below.
+      </p>
+    );
+  }
+  // "no-race", "error", or a reason a newer server sent that this page has not
+  // learned yet: no claim about which, because a wrong explanation is worse
+  // than none.
+  return (
+    <p className="text-sm leading-relaxed text-light">
+      No recorded contacts to pick from for this round. Say it in your own words below.
+    </p>
   );
 }
 

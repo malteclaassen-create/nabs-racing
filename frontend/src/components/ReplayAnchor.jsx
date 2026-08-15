@@ -59,6 +59,7 @@ function leagueClock(iso) {
 export default function ReplayAnchor({
   second,
   approx = false,
+  matched = false,
   at,
   kph,
   lap,
@@ -101,6 +102,14 @@ export default function ReplayAnchor({
     // lands a frame early should look, not conclude they have the wrong incident.
     approx && into
       ? "Taken from the live timing while the race was on, so it is good to a second or two. It is replaced by the exact figure once the round's result file is imported."
+      : null,
+    // An in-game report says when the BUTTON was pressed, which is the incident
+    // plus however long the driver took to reach for it. This one was matched
+    // to the collision the result file recorded just before that, so the figure
+    // is the file's own and the details beside it are what a steward checks the
+    // match against.
+    matched
+      ? "Matched to the contact Assetto Corsa recorded just before the report was sent, so this is the file's own timestamp rather than the moment the button was pressed. The impact speed, lap and event number are that contact's — worth a look before acting on the match."
       : null,
     // The number is only useful if the reader knows where to spend it.
     eventIndex != null

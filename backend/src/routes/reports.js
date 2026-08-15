@@ -7,7 +7,7 @@ import {
 } from "../lib/reports.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
 import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
-import { contactsForDriver } from "../lib/raceContacts.js";
+import { contactsForDriver, roundHasArchive } from "../lib/raceContacts.js";
 import { liveRaceSecond } from "../services/liveTiming.js";
 import { serverKeyForSeries } from "../lib/liveServers.js";
 import { clockNote } from "../lib/reportClock.js";
@@ -158,6 +158,15 @@ router.delete("/:id", optionalUser, async (req, res, next) => {
 // The Steam GUID this account races under, across every season row the person
 // owns. Assetto Corsa knows people by that number and nothing else, and it is
 // captured onto Driver.steamId by the result import.
+//
+// The LOGIN's own Steam id is the fallback, and it matters more than it looks.
+// Driver.steamId is written by the result import, so a driver only has one once
+// they have been in a race the league has imported — while the id proved on the
+// account by "Sign in through Steam" exists from the moment they linked it.
+// Without this fallback a newcomer, and anyone whose season row simply never
+// picked the id up, asked for their contacts and got an empty list with no
+// explanation, on a page whose entire point is that the league already knows
+// what happened to them.
 async function steamIdOf(prisma, discordId) {
   if (!discordId) return null;
   try {
@@ -167,12 +176,18 @@ async function steamIdOf(prisma, discordId) {
     });
     const ids = new Set();
     for (const c of claimed) for (const id of await getLinkedDriverIds(prisma, c.id)) ids.add(id);
-    if (!ids.size) return null;
-    const rows = await prisma.$queryRawUnsafe(
-      `SELECT "steamId" FROM "Driver" WHERE "id" IN (${[...ids].map(() => "?").join(",")}) AND "steamId" IS NOT NULL`,
-      ...ids
+    if (ids.size) {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT "steamId" FROM "Driver" WHERE "id" IN (${[...ids].map(() => "?").join(",")}) AND "steamId" IS NOT NULL`,
+        ...ids
+      );
+      if (rows[0]?.steamId) return rows[0].steamId;
+    }
+    const account = await prisma.$queryRawUnsafe(
+      `SELECT "steamId" FROM "MemberAccount" WHERE "discordId" = ? AND "steamId" IS NOT NULL`,
+      String(discordId)
     );
-    return rows[0]?.steamId || null;
+    return account[0]?.steamId || null;
   } catch {
     return null;
   }
@@ -199,7 +214,16 @@ router.get("/contacts", optionalUser, async (req, res, next) => {
     const guid = await steamIdOf(prisma, me.discordId);
     if (!guid) return res.json({ contacts: [], reason: "no-steam-id" });
     const contacts = contactsForDriver(race.season.number, race.number, guid);
-    res.json({ contacts, reason: contacts.length ? null : "none-recorded" });
+    // An empty list has two very different causes and the driver deserves the
+    // right one: the round's result file has not been imported yet (nobody has
+    // contacts, come back tomorrow), or it has and Assetto Corsa recorded no
+    // contact for THIS driver. Told the wrong one, they go hunting for a fault
+    // that isn't there — which is exactly what happened.
+    if (contacts.length) return res.json({ contacts, reason: null });
+    res.json({
+      contacts: [],
+      reason: roundHasArchive(race.season.number, race.number) ? "none-recorded" : "not-imported",
+    });
   } catch (e) {
     next(e);
   }
@@ -496,9 +520,10 @@ router.post("/ingest", async (req, res, next) => {
     // picking the contact out of the result file has carried that figure all
     // along; this is the mid-race button catching up with it.
     //
-    // Provisional on purpose: the archive-derived figure replaces it the moment
-    // the round is imported (see withSessionSecond in routes/admin.js), because
-    // that one is measured off the same file the replay is.
+    // Provisional on purpose: the round's result file replaces it the moment it
+    // is imported (see lib/reportAnchor.js), first with the same arithmetic
+    // measured off the archive and then, where the file can name the contact
+    // this report is about, with that contact's own timestamp.
     const sessionSecond = await liveSessionSecond(raceId);
 
     const report = await dbCreateReport(prisma, {
