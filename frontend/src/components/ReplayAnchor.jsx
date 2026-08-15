@@ -170,11 +170,11 @@ export default function ReplayAnchor({
 
   return (
     <Tag {...interactive} className={readOnly ? shell : `${shell} transition hover:border-brand/50 hover:text-dark`}>
-      {/* play-head on a timeline */}
-      <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0 text-brand" fill="none" stroke="currentColor"
-        strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-        <path d="M3 12h18M9 8v8" />
-      </svg>
+      {/* No icon. There was one — a play-head, a tick crossing a timeline —
+          and it failed twice over: at twelve pixels it drew a plus sign, and
+          even drawn correctly it had to be explained, which is a symbol doing
+          no work. The figure and the words say all of it, and the box, the
+          hover and the pointer already say it can be pressed. */}
       {/* Each part is its own unbreakable token: the box wraps BETWEEN them,
           never inside one, so "22 km/h" and "into the race" always read whole.
           The leading separator travels with the part it belongs to, which is
