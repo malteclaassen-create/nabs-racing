@@ -9,6 +9,7 @@ import { PageHeader, ErrorBox, EmptyState, Spinner } from "../components/ui.jsx"
 import { REPORTS_OPEN_TO_MEMBERS } from "../reportsAccess.js";
 import { fmtStamp } from "../utils/format.js";
 import ReportChat, { ReportComposer } from "../components/ReportChat.jsx";
+import ReplayAnchor, { hasReplayAnchor } from "../components/ReplayAnchor.jsx";
 
 // ---------------------------------------------------------------------------
 // A driver's side of the stewarding conversation: the incident reports they
@@ -131,8 +132,23 @@ function Thread({ id, races, onBack, onChanged }) {
               {race.track}
             </span>
           )}
-          {r.lap != null && (
-            <span className="font-mono text-[11px] uppercase tracking-wider text-light">Lap {r.lap}</span>
+          {/* The same anchor the row carried, and here it is a real button: a
+              steward opening the thread from this page copies the position
+              straight into the replay app's jump box. */}
+          {hasReplayAnchor(r) ? (
+            <ReplayAnchor
+              second={r.sessionSecond}
+              approx={r.sessionSecondApprox}
+              matched={r.contactMatched}
+              at={r.incidentAt}
+              kph={r.contactKph}
+              lap={r.lap}
+              eventIndex={r.contactIndex}
+            />
+          ) : (
+            r.lap != null && (
+              <span className="font-mono text-[11px] uppercase tracking-wider text-light">Lap {r.lap}</span>
+            )
           )}
           {r.accusedName && <span className="text-sm text-light">about {r.accusedName}</span>}
           <span className="ml-auto font-mono text-[11px] uppercase tracking-wider text-faint">
@@ -676,6 +692,16 @@ function Section({ title, hint, rows, races, onOpen, empty }) {
                 >
                   <span className="flex flex-wrap items-center gap-2">
                     <span className={`pill ${s.cls}`}>{s.label}</span>
+                    {/* Which of these are the button in the car and which are
+                        somebody sitting down afterwards to write it out. The
+                        two read very differently, and the in-game ones all
+                        carry the same generated first line, so without this
+                        they look like one report filed six times. */}
+                    {r.source === "INGAME" && (
+                      <span className="pill bg-brand/15 text-brand" title="Fired from inside the race by webPenalty">
+                        in-game
+                      </span>
+                    )}
                     {race && (
                       <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">
                         {race.number != null ? `R${race.number} ` : ""}
@@ -686,8 +712,28 @@ function Section({ title, hint, rows, races, onOpen, empty }) {
                       {r.reporterName || "Someone"}
                       {r.accusedName ? ` → ${r.accusedName}` : ""}
                     </span>
-                    {r.lap != null && (
-                      <span className="font-mono text-[10px] uppercase tracking-wider text-faint">lap {r.lap}</span>
+                    {/* Where in the round it happened — and, for a report fired
+                        from inside the race, the contact the result file
+                        matched it to. Without this a round's reports were a
+                        column of identical rows: same status, same boilerplate
+                        first line, nothing to tell one incident from the next
+                        or to take to the replay. Read-only because the row is
+                        already a button; the copy is in the opened report. */}
+                    {hasReplayAnchor(r) ? (
+                      <ReplayAnchor
+                        readOnly
+                        second={r.sessionSecond}
+                        approx={r.sessionSecondApprox}
+                        matched={r.contactMatched}
+                        at={r.incidentAt}
+                        kph={r.contactKph}
+                        lap={r.lap}
+                        eventIndex={r.contactIndex}
+                      />
+                    ) : (
+                      r.lap != null && (
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-faint">lap {r.lap}</span>
+                      )
                     )}
                     <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-faint">
                       {when(r.createdAt)}

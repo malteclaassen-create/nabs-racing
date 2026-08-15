@@ -47,6 +47,21 @@ function leagueClock(iso) {
   }
 }
 
+// Does this report have anything for the chip to draw? Exported because a
+// caller that renders "lap 14" of its own next to the chip has to know: the
+// chip carries the lap too, and a row printing it twice is the version of this
+// nobody wants. The condition is the one the component itself bails on.
+export function hasReplayAnchor(r) {
+  if (!r) return false;
+  return (
+    (r.sessionSecond != null && Number.isFinite(r.sessionSecond) && r.sessionSecond >= 0) ||
+    !!r.incidentAt ||
+    r.contactKph != null ||
+    r.lap != null ||
+    r.contactIndex != null
+  );
+}
+
 // `second` — seconds into the session (preferred). `at` — ISO moment.
 // `kph` — impact speed when the report was pinned to a recorded contact.
 // Renders nothing at all when there is no anchor of either kind.

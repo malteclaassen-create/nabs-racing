@@ -8,6 +8,7 @@ import {
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
 import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
 import { contactsForDriver, roundHasArchive } from "../lib/raceContacts.js";
+import { anchorReports } from "../lib/reportAnchor.js";
 import { liveRaceSecond } from "../services/liveTiming.js";
 import { serverKeyForSeries } from "../lib/liveServers.js";
 import { clockNote } from "../lib/reportClock.js";
@@ -229,12 +230,34 @@ router.get("/contacts", optionalUser, async (req, res, next) => {
   }
 });
 
+// The rounds a set of reports belong to, in the shape the anchor needs: it
+// measures "N into the session" against the round's archived result file, and
+// finds that file by season number and round number.
+async function racesForReports(reports) {
+  const ids = [...new Set(reports.map((r) => r.raceId).filter(Boolean))];
+  if (!ids.length) return [];
+  return prisma.race
+    .findMany({
+      where: { id: { in: ids } },
+      select: { id: true, number: true, track: true, date: true, season: { select: { number: true } } },
+    })
+    .catch(() => []);
+}
+
 // GET /api/reports -> the ones this member may see
 router.get("/", optionalUser, async (req, res, next) => {
   try {
     const me = caller(req);
     if (!me.discordId) return res.json({ reports: [] });
-    res.json({ reports: await dbReportsFor(prisma, me.discordId) });
+    const reports = await dbReportsFor(prisma, me.discordId);
+    // Anchored here as well as at the stewards' desk (routes/admin.js), and for
+    // the same reason: a report fired from inside the race carries the moment
+    // the BUTTON was pressed and nothing else until the round is imported. The
+    // position in the session, the lap, the impact speed and the matched
+    // contact are all worked out at read time — so serving this list without
+    // running it showed the driver, and the steward reading the same page, a
+    // row that said only who filed it, while the admin tab showed the incident.
+    res.json({ reports: await anchorReports(prisma, reports, await racesForReports(reports)) });
   } catch (e) {
     next(e);
   }
@@ -252,8 +275,11 @@ router.get("/:id", optionalUser, async (req, res, next) => {
       return res.status(404).json({ error: "Report not found" });
     }
     const teams = await dbThreadVoices(prisma, report.id, report);
+    // The same anchor the list carries, so opening a report never shows less
+    // than the row it was opened from.
+    const [anchored] = await anchorReports(prisma, [report], await racesForReports([report]));
     res.json({
-      report: { ...report, reporterTeam: teams.get(String(report.reporterDiscordId || "")) || null },
+      report: { ...anchored, reporterTeam: teams.get(String(report.reporterDiscordId || "")) || null },
       messages: await dbMessages(prisma, report.id, me.discordId, teams),
       attachments: await dbAttachments(prisma, report.id),
     });
