@@ -116,7 +116,7 @@ async function accountSteamIds(prisma) {
   }
 }
 
-async function reporterGuids(prisma, reports) {
+export async function reporterGuids(prisma, reports) {
   const out = new Map();
   const drivers = await prisma.driver
     .findMany({
@@ -188,14 +188,18 @@ function contactBehind(seasonNumber, raceNumber, guid, second) {
 
 // The read shape both report endpoints hand out: the session figure, and then
 // the exact contact where the file can name one.
-export async function anchorReports(prisma, reports, races) {
+// `knownGuids` lets a caller that has already worked out who filed what hand
+// the map in — the stewards' desk needs the same map for its contact
+// suggestions (lib/reportSuggest.js), and resolving it twice per request would
+// read the whole roster twice to reach the same answer.
+export async function anchorReports(prisma, reports, races, knownGuids = null) {
   const anchored = withSessionSecond(reports, races);
   const byId = new Map(races.map((x) => [x.id, x]));
   const candidates = anchored.filter(
     (r) => r.source === "INGAME" && r.sessionSecond != null && byId.get(r.raceId)?.season?.number != null
   );
   if (!candidates.length) return anchored;
-  const guids = await reporterGuids(prisma, candidates).catch(() => new Map());
+  const guids = knownGuids || (await reporterGuids(prisma, candidates).catch(() => new Map()));
   if (!guids.size) return anchored;
 
   const wanted = new Set(candidates.map((r) => r.id));

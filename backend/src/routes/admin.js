@@ -92,7 +92,8 @@ import {
 import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride } from "../lib/attendanceGate.js";
 import { writeHiddenRace } from "../lib/attendanceHidden.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
-import { anchorReports } from "../lib/reportAnchor.js";
+import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
+import { withContactSuggestions } from "../lib/reportSuggest.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap } from "../lib/liveServers.js";
@@ -4919,6 +4920,21 @@ router.put("/welcome-faq", async (req, res, next) => {
 // in the results editor, which is the one place that owns the points. See the
 // note at the top of lib/reports.js.
 
+// What the stewards' desk reads on top of the stored row: where in the session
+// it happened, and — for a report that never pinned a contact of its own — what
+// the result file has on that lap that could be it.
+//
+// The suggestion is the after-the-race half of the same idea as the in-game
+// match. A driver who files afterwards can pick their contact off a list, and
+// the report then carries the moment exactly; most do not, and write "lap 32,
+// he hit me in the esses" instead. The file can still be asked, because the
+// report says a lap and usually a name.
+async function stewardView(reports, races) {
+  const guids = await reporterGuids(prisma, reports).catch(() => new Map());
+  const anchored = await anchorReports(prisma, reports, races, guids);
+  return withContactSuggestions(prisma, anchored, races, guids).catch(() => anchored);
+}
+
 router.get("/reports", async (req, res, next) => {
   try {
     const reports = await dbListReports(prisma);
@@ -4932,7 +4948,11 @@ router.get("/reports", async (req, res, next) => {
         })
       : [];
     res.json({
-      reports: await anchorReports(prisma, reports, races),
+      // Who filed what, once: the anchor needs it to pin an in-game press to a
+      // recorded contact, and the suggestions need it to ask the file what this
+      // driver was in on that lap. Two resolutions would read the roster twice
+      // to reach the same map.
+      reports: await stewardView(reports, races),
       races,
       open: reports.filter((r) => !REPORT_DECIDED.includes(r.status)).length,
       // Which of the decided ones still have to be entered in a classification.
@@ -4960,7 +4980,7 @@ router.get("/reports/:id", async (req, res, next) => {
           })
           .catch(() => null)
       : null;
-    const [anchored] = await anchorReports(prisma, [report], race ? [race] : []);
+    const [anchored] = await stewardView([report], race ? [race] : []);
     res.json({
       report: { ...anchored, reporterTeam: voices.get(String(report.reporterDiscordId || "")) || null },
       // At the desk, "mine" means the office: a PIN admin has no Discord id
