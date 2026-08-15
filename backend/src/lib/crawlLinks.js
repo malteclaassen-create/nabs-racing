@@ -28,6 +28,7 @@
 // ---------------------------------------------------------------------------
 import { getSiteIndex } from "./siteIndex.js";
 import { isCrawlable } from "./sitemap.js";
+import { buildEntityBlock } from "./crawlEntities.js";
 
 const esc = (s) =>
   String(s ?? "")
@@ -88,11 +89,15 @@ export async function buildCrawlLinks(prisma, path, query) {
   const parts = path.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
   let slug = null;
   let section = null;
+  let entityId = null;
   if (parts[0] === "s") {
     slug = parts[1] || null;
-    // parts[3] is an entity id (/s/<slug>/drivers/<id>): that page shows ONE
-    // driver, not the list, so it gets the footer links and nothing more.
-    section = parts.length === 3 ? SECTION_ALIASES[parts[2]] || parts[2] : null;
+    // parts[3] is an entity id (/s/<slug>/drivers/<id>). That page shows ONE
+    // driver rather than the list, so it gets no list of drivers — it gets its
+    // own facts and its own links instead, from lib/crawlEntities.js.
+    section = parts[2] ? SECTION_ALIASES[parts[2]] || parts[2] : null;
+    entityId = parts.length === 4 ? parts[3] : null;
+    if (parts.length !== 3 && !entityId) section = null;
   }
 
   // No slug in the address means the primary series, the same fold the app and
@@ -111,7 +116,11 @@ export async function buildCrawlLinks(prisma, path, query) {
     series.seasons.find((s) => s.isActive) ||
     series.seasons[0];
 
-  if (season) {
+  // The LISTING pages only. A driver's own page is not the driver list and must
+  // not be handed one: it shows that driver, and what it shows is built below
+  // by lib/crawlEntities.js. Getting this wrong is the whole cloaking trap —
+  // four hundred driver links on a page that renders one driver.
+  if (season && !entityId && !query?.race) {
     if (section === "drivers") groups.push(renderGroup(`${season.name} drivers`, season.drivers));
     if (section === "constructors") groups.push(renderGroup(`${season.name} teams`, season.teams));
     if (section === "races") groups.push(renderGroup(`${season.name} rounds`, season.races));
@@ -125,6 +134,33 @@ export async function buildCrawlLinks(prisma, path, query) {
         .map((s) => ({ href: s.listing[section], label: s.name }));
       groups.push(renderGroup("Seasons", others));
     }
+  }
+
+  // What THIS page is about, for the addresses that are about one thing: a
+  // driver, a team, a round, or the home page's title race. Until this existed
+  // those pages were a title, a nav bar and a footer, and Google wrote every
+  // driver's description out of the footer because it was the only prose in
+  // the document.
+  const entity = await buildEntityBlock(prisma, {
+    base: series.base,
+    section,
+    id: entityId,
+    raceId: section === "races" && query?.race ? String(query.race) : null,
+    seasonId: season?.id || null,
+    isHome: !section && !entityId,
+  });
+  if (entity) {
+    const head = [
+      entity.heading
+        ? `<h1 class="font-display text-2xl font-black uppercase tracking-tight">${esc(entity.heading)}</h1>`
+        : "",
+      entity.line ? `<p class="mt-1 text-sm text-medium">${esc(entity.line)}</p>` : "",
+    ].join("");
+    const blocks = head ? [`<section>${head}</section>`] : [];
+    for (const g of entity.groups || []) blocks.push(renderGroup(g.title, g.links));
+    // In FRONT of the footer links: what the address is about leads, and the
+    // eight links every page carries are not what it is about.
+    groups.unshift(...blocks);
   }
 
   const body = groups.filter(Boolean).join("");

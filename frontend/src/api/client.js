@@ -1007,9 +1007,17 @@ export const api = {
   setTelemetryIngest: (enabled, key) =>
     request("/admin/telemetry-ingest", { method: "PUT", body: { enabled, key }, auth: true }),
   // Recorded telemetry laps (public reads; the /tools comparison).
-  telemetryTracks: () => request("/telemetry-laps"),
-  telemetryLaps: (trackKey) => request(`/telemetry-laps/${trackKey}`),
-  telemetryLap: (trackKey, steamId) => request(`/telemetry-laps/${trackKey}/${steamId}`),
+  // Who may read a lap is a switch, not a deploy: admins only until the league
+  // flips it, everyone after (backend: lib/telemetryAccess.js). The token rides
+  // along either way — it is required in the first state and ignored in the
+  // second, so one call works in both.
+  telemetryIsPublic: () => request("/settings/telemetry"),
+  telemetryVisibility: () => request("/admin/telemetry-visibility", { auth: true }),
+  setTelemetryVisibility: (isPublic) =>
+    request("/admin/telemetry-visibility", { method: "PUT", body: { public: isPublic }, auth: true }),
+  telemetryTracks: () => request("/telemetry-laps", { auth: true }),
+  telemetryLaps: (trackKey) => request(`/telemetry-laps/${trackKey}`, { auth: true }),
+  telemetryLap: (trackKey, steamId) => request(`/telemetry-laps/${trackKey}/${steamId}`, { auth: true }),
 
   // Cars and wide wordmarks for the shareable result graphic, per team.
   teamArt: () => request("/admin/team-art", { auth: true }),

@@ -9,6 +9,7 @@ import { useAsk } from "../components/overlay.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
 import AdminRatings from "../components/AdminRatings.jsx";
+import AdminTelemetry from "../components/AdminTelemetry.jsx";
 import AdminMedia from "../components/AdminMedia.jsx";
 import AdminContent from "../components/AdminContent.jsx";
 import AdminDownloads from "../components/AdminDownloads.jsx";
@@ -261,6 +262,7 @@ export default function Admin() {
           {tab === "content" && <AdminContent />}
           {tab === "photos" && <AdminMedia jumpView={viewFor("photos")} jumpKey={jump?.n} />}
           {tab === "ratings" && <AdminRatings />}
+          {tab === "telemetry" && <AdminTelemetry />}
           {tab === "discord" && <DiscordEvents />}
           {tab === "market" && <MarketAdmin />}
           {tab === "drivers" && <Drivers />}

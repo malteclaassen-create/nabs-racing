@@ -94,6 +94,7 @@ import { writeHiddenRace } from "../lib/attendanceHidden.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
 import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
 import { withContactSuggestions } from "../lib/reportSuggest.js";
+import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap } from "../lib/liveServers.js";
@@ -5210,6 +5211,30 @@ router.put("/telemetry-ingest", async (req, res, next) => {
       update: { value },
     });
     res.json({ ok: true, configured: !!value, key: value || null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET/PUT /api/admin/telemetry-visibility — who may READ the recorded laps.
+//
+// Separate from the key above, and that separation is the feature: the key
+// decides whether cars record, this decides whether the league gets to look.
+// Recording runs for a while at the stewards' desk first, and when the
+// comparison has proved itself this opens the same view to the members' side
+// without a deploy.
+router.get("/telemetry-visibility", async (req, res, next) => {
+  try {
+    res.json({ public: await isTelemetryPublic(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/telemetry-visibility", async (req, res, next) => {
+  try {
+    const on = await setTelemetryPublic(prisma, req.body?.public === true);
+    res.json({ ok: true, public: on });
   } catch (e) {
     next(e);
   }

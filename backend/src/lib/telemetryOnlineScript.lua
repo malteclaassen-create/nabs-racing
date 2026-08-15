@@ -16,10 +16,15 @@
 -- session. The site keeps one lap per driver per track (their fastest) and
 -- answers slower posts with "kept: false", so re-posting costs nothing.
 --
--- Transparency: the one visible thing it does is a toast on first lap start,
--- so nobody's inputs are recorded without the screen having said so. Every
--- engine call is pcall-guarded — an API this build doesn't have must degrade
--- to "no recording", never to a broken session.
+-- It draws NOTHING. There was a toast on first lap start, and the league took
+-- it out: it fired on every join, for every driver, on a server where the
+-- recording is announced in Discord and on the site instead. Which puts the
+-- whole weight of telling people on those announcements — this script is
+-- silent, and a driver who has not read them has no way to know from the game
+-- that a lap was sent. Say it somewhere the drivers actually read.
+--
+-- Every engine call is pcall-guarded — an API this build doesn't have must
+-- degrade to "no recording", never to a broken session.
 --------------------------------------------------------------------------------
 
 local INGEST_URL = "__INGEST_URL__"
@@ -28,7 +33,6 @@ local N = 800
 local sim = ac.getSim()
 local rec = nil
 local bestSentMs = nil
-local announced = false
 
 local function safeCall(fn, fallback)
   local ok, v = pcall(fn)
@@ -145,16 +149,6 @@ function script.update(dt)
     if sim.isReplayActive then return end
     local car = ac.getCar(0)
     if car == nil then return end
-
-    -- Said once, on screen, before anything is recorded. pcall'd: a CSP old
-    -- enough to lack toasts simply skips the announcement, not the courtesy —
-    -- the league announces the recording in Discord as well.
-    if not announced then
-      announced = true
-      pcall(function()
-        ui.toast(ui.Icons.Stopwatch, "NABS telemetry: your fastest clean lap is sent to nabsracing.com")
-      end)
-    end
 
     local lc = car.lapCount or 0
     if rec == nil then
