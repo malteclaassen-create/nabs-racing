@@ -125,6 +125,10 @@ async function seasonEntities(prisma, season, base) {
     season.isActive ? `${base}/${page}` : `${base}/${page}?season=${season.number}`;
 
   return {
+    // Carried so a page block can ask about THIS season without resolving it a
+    // second time (lib/crawlEntities.js: which drivers a team fielded, who is
+    // leading). Not an address, never rendered — an internal key.
+    id: season.id,
     number: season.number,
     name: season.name || `Season ${season.number}`,
     isActive: season.isActive,

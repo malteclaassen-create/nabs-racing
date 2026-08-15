@@ -316,3 +316,47 @@ describe("applyCrawlLinks", () => {
     expect(applyCrawlLinks(shell, "")).toBe(shell);
   });
 });
+
+// The boundary between the two halves, which is the one that can get the site
+// removed from the index rather than added to it.
+//
+// A driver's page renders ONE driver. The block it gets must be that driver's
+// facts and that driver's links — never the four hundred links the driver LIST
+// page gets, however good four hundred internal links would look. Same for a
+// team, and same for a single round.
+describe("a page about one thing is not the list it came from", () => {
+  const nobody = {}; // buildEntityBlock swallows its own errors and returns null
+
+  it("gives a driver's own page no season driver list", async () => {
+    const html = await buildCrawlLinks(nobody, "/s/friday-f1/drivers/m1c_s8", {});
+    expect(html).not.toContain("/s/friday-f1/drivers/tball_s8");
+    expect(html).not.toContain("Season 8 drivers");
+    expect(html).toContain("/s/friday-f1/drivers"); // the footer's Drivers link stays
+  });
+
+  it("gives a team's own page no season team list", async () => {
+    const html = await buildCrawlLinks(nobody, "/s/friday-f1/constructors/ferrari_s8", {});
+    expect(html).not.toContain("Season 8 teams");
+    expect(html).not.toContain("/s/friday-f1/constructors/reserve_s8");
+  });
+
+  it("gives one round no list of the season's rounds", async () => {
+    const html = await buildCrawlLinks(nobody, "/s/friday-f1/races", { race: "r1" });
+    expect(html).not.toContain("Season 8 rounds");
+    expect(html).not.toContain("race=r2");
+  });
+
+  // The driver entries themselves are asserted further up; an earlier test in
+  // this file rewrites them to check escaping, so this one asks only that the
+  // list group is still built for the address that renders a list.
+  it("still gives the listing pages their lists", async () => {
+    const html = await buildCrawlLinks(nobody, "/s/friday-f1/drivers", {});
+    expect(html).toContain("Season 8 drivers");
+    expect(html).toContain("Seasons");
+  });
+
+  it("still gives the season's rounds to the races page with no round chosen", async () => {
+    const html = await buildCrawlLinks(nobody, "/s/friday-f1/races", {});
+    expect(html).toContain("Season 8 rounds");
+  });
+});
