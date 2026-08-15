@@ -14,6 +14,7 @@ import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
+import { requireAdmin } from "../middleware/auth.js";
 import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId } from "../lib/telemetryLaps.js";
 import { getNameOverrides } from "../lib/persons.js";
 
@@ -114,6 +115,24 @@ router.get("/app.lua", async (req, res, next) => {
     next(e);
   }
 });
+
+// --- reading: the stewards' desk only, for now ------------------------------
+//
+// Everything above this line is the RECORDING half: the app downloads itself
+// and posts laps with the minted key, and none of it is affected by the gate
+// below. A driver's car keeps sending whatever the league switched on.
+//
+// Reading is what is held back. A lap is a driver's inputs — where they lift,
+// how they trail the brake, what they do with the wheel mid-corner — and the
+// league has not decided yet whether that is something everyone gets to study
+// about everyone. Until it has, the comparison is a tool for the people
+// running the league to try out, and the answer to "who may look" is one line
+// here rather than a page that quietly went public with the feature.
+//
+// Opening it later is deleting this middleware. The public /tools card that
+// used to read these endpoints is gone with it, so nothing on the site breaks
+// while the answer is "not yet".
+router.use(requireAdmin);
 
 // GET /api/telemetry-laps -> tracks that have laps
 router.get("/", async (req, res, next) => {

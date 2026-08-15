@@ -33,6 +33,9 @@ export const TAB_GROUPS = [
       { id: "drivers", label: "Drivers" },
       { id: "market", label: "Driver Market" },
       { id: "ratings", label: "Ratings" },
+      // Held back from the members' side on purpose while the league decides
+      // whether a driver's inputs are public. See routes/telemetryLaps.js.
+      { id: "telemetry", label: "Telemetry" },
       { id: "alltime", label: "All-time" },
     ],
   },

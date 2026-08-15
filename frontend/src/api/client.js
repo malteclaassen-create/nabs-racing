@@ -1007,9 +1007,12 @@ export const api = {
   setTelemetryIngest: (enabled, key) =>
     request("/admin/telemetry-ingest", { method: "PUT", body: { enabled, key }, auth: true }),
   // Recorded telemetry laps (public reads; the /tools comparison).
-  telemetryTracks: () => request("/telemetry-laps"),
-  telemetryLaps: (trackKey) => request(`/telemetry-laps/${trackKey}`),
-  telemetryLap: (trackKey, steamId) => request(`/telemetry-laps/${trackKey}/${steamId}`),
+  // Reading laps is admin-only while the league decides whether a driver's
+  // inputs are public (backend: routes/telemetryLaps.js). The RECORDING half
+  // is unaffected — that runs on the minted key, from inside the game.
+  telemetryTracks: () => request("/telemetry-laps", { auth: true }),
+  telemetryLaps: (trackKey) => request(`/telemetry-laps/${trackKey}`, { auth: true }),
+  telemetryLap: (trackKey, steamId) => request(`/telemetry-laps/${trackKey}/${steamId}`, { auth: true }),
 
   // Cars and wide wordmarks for the shareable result graphic, per team.
   teamArt: () => request("/admin/team-art", { auth: true }),
