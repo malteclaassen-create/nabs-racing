@@ -119,7 +119,21 @@ export default function ReplayAnchor({
     .filter(Boolean)
     .join(" ");
 
-  const shell = `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-medium ${className}`;
+  // WRAPS, and that is the whole point of the shape.
+  //
+  // This chip grew: it started as one figure and now carries the position, the
+  // lap, the impact speed, the clock and the file's event number. On a desktop
+  // that is one comfortable line. On a phone it was one line far wider than the
+  // screen, inside a card that clips — so a steward opening a report on their
+  // phone saw "· LAP 32" and no time at all, which is the one thing the chip
+  // exists to show.
+  //
+  // So the box wraps and each PART holds together: "22 km/h" never splits
+  // across two lines, but the parts after it move down as one. `rounded-2xl`
+  // rather than `rounded-full` because a stadium radius on a two-line box curves
+  // in far enough to crowd the first character of each line; at one line, at
+  // this height, the two are indistinguishable.
+  const shell = `inline-flex max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-2xl border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-medium ${className}`;
   const Tag = readOnly ? "span" : "button";
   const interactive = readOnly
     ? { title }
@@ -137,18 +151,23 @@ export default function ReplayAnchor({
         strokeWidth="2" strokeLinecap="round" aria-hidden="true">
         <path d="M3 12h18M9 8v8" />
       </svg>
+      {/* Each part is its own unbreakable token: the box wraps BETWEEN them,
+          never inside one, so "22 km/h" and "into the race" always read whole.
+          The leading separator travels with the part it belongs to, which is
+          what makes a wrapped second line read as a continuation of the first
+          rather than as something new. */}
       {into ? (
-        <span className="normal-case tracking-normal font-bold text-dark">
+        <span className="whitespace-nowrap normal-case tracking-normal font-bold text-dark">
           {approx ? `~${into}` : into}
         </span>
       ) : (
-        <span className="normal-case tracking-normal font-bold text-dark">{clock}</span>
+        <span className="whitespace-nowrap normal-case tracking-normal font-bold text-dark">{clock}</span>
       )}
-      {into && <span className="text-faint">into the race</span>}
-      {lap != null && <span className="text-faint">· lap {lap}</span>}
-      {kph != null && <span className="text-faint">· {kph} km/h</span>}
-      {into && clock && <span className="text-faint">· {clock}</span>}
-      {eventIndex != null && <span className="text-faint">· event {eventIndex}</span>}
+      {into && <span className="whitespace-nowrap text-faint">into the race</span>}
+      {lap != null && <span className="whitespace-nowrap text-faint">· lap {lap}</span>}
+      {kph != null && <span className="whitespace-nowrap text-faint">· {kph} km/h</span>}
+      {into && clock && <span className="whitespace-nowrap text-faint">· {clock}</span>}
+      {eventIndex != null && <span className="whitespace-nowrap text-faint">· event {eventIndex}</span>}
       {!readOnly && (
         <span role="status" aria-live="polite" className={copied ? "font-bold text-ok" : "sr-only"}>
           {copied ? "copied" : ""}
