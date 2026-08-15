@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
-import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
+import { REPORTS_OPEN_TO_MEMBERS, reportsPath, reportsWindowOpen } from "../reportsAccess.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { Skeleton, TableSkeleton, CountUp, Rank, MEDAL_TEXT, DriverAvatar, ErrorBox } from "../components/ui.jsx";
 import { useParallax, useMagnetic } from "../hooks/motion.js";
@@ -545,6 +545,19 @@ export default function Home() {
   const completedRaces = champRaces.filter((r) => r.isCompleted);
   const lastRace = completedRaces[completedRaces.length - 1];
   const nextRace = champRaces.find((r) => !r.isCompleted);
+
+  // The round the report button belongs to: the most recent one that has
+  // STARTED, completed or not, special event or not.
+  //
+  // Not `lastRace`, which is the last round with results in. Those only land
+  // when an admin imports them, which is the morning after at the earliest — so
+  // measuring the window from there would have hidden the button through the
+  // entire race night, the one evening it exists for, and shown it for a round
+  // decided a week ago instead.
+  const startedRaces = (races.data || [])
+    .filter((r) => r.date && new Date(r.date).getTime() <= Date.now())
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  const reportableRace = startedRaces[startedRaces.length - 1];
 
   // Is the season being viewed an archived (past) one? Computed up here because
   // the hero needs it before the data-loading guard below.
@@ -1210,7 +1223,7 @@ export default function Home() {
                   grid is on at nine on a Friday. Quieter than the two beside
                   it: reporting an incident is not what the league wants people
                   doing, only what it wants possible. */}
-              {isLoggedIn && REPORTS_OPEN_TO_MEMBERS && (
+              {isLoggedIn && REPORTS_OPEN_TO_MEMBERS && reportsWindowOpen(reportableRace?.date) && (
                 <Link
                   to={reportsPath({ nw: true })}
                   // On a phone the two buttons above fill the first line and
@@ -1218,7 +1231,15 @@ export default function Home() {
                   // it had fallen off the row. Given a line of its own it takes
                   // the whole width and centres itself: a deliberate third
                   // action under the two, not a leftover.
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink/70 backdrop-blur-sm transition hover:bg-ink/[0.06] hover:text-ink dark:border-white/20 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/15 dark:hover:text-white sm:w-auto sm:justify-start"
+                  //
+                  // Red, and the only red on the page. It is not competing with
+                  // the two buttons beside it for the same kind of attention —
+                  // those are where the season lives, this is the one to reach
+                  // for when something went wrong, and a driver who has never
+                  // needed it should be able to find it without reading. It can
+                  // afford to shout now that it only appears on the nights it
+                  // is for.
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/40 bg-red-500/15 px-6 py-3 text-sm font-bold uppercase tracking-wide text-red-700 backdrop-blur-sm transition hover:border-red-500/60 hover:bg-red-500/25 dark:border-red-400/40 dark:bg-red-500/20 dark:text-red-200 dark:hover:bg-red-500/30 sm:w-auto sm:justify-start"
                 >
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M5 21V4M5 4h11l-1.6 3.5L16 11H5" />
