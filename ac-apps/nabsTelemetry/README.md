@@ -44,8 +44,9 @@ of this same recorder at `/api/telemetry-laps/app.lua?key=…`, and the admin
 card prints a ready-made `[SCRIPT_NABS_TELEMETRY]` snippet for the race
 server's `csp_extra_options.ini` — the same mechanism that already delivers
 the league's penalty script to every joining driver. Once that snippet is in,
-drivers do nothing: the script records and posts on its own and announces
-itself with an in-game toast.
+drivers do nothing: the script records and posts on its own. It draws nothing
+in the game — no window, no toast — so whatever drivers are told about the
+recording, they are told in Discord and on the site, not by the script.
 
 This folder remains for testing (one person, before the server snippet goes
 in) and for anyone whose CSP is too old for server scripts.
