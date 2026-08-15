@@ -487,12 +487,12 @@ function EmptyContacts({ reason }) {
   if (reason === "no-steam-id") {
     return (
       <p className="text-sm leading-relaxed text-light">
-        The league has no Steam account for you yet, and Assetto Corsa knows people by that and nothing else — so
-        your contacts cannot be looked up.{" "}
+        The league has no Steam account for you yet. Assetto Corsa knows people by that and nothing else, so your
+        contacts cannot be looked up.{" "}
         <a className="font-semibold text-brand underline-offset-2 hover:underline" href="/profile">
           Link Steam on your profile
         </a>{" "}
-        and they appear here from then on. Meanwhile, say it in your own words below.
+        and they appear here from then on. For now, say it in your own words below.
       </p>
     );
   }
@@ -500,15 +500,15 @@ function EmptyContacts({ reason }) {
     return (
       <p className="text-sm leading-relaxed text-light">
         This round&rsquo;s result file has not been imported yet, so there is nothing recorded to pick from for
-        anybody. It usually lands soon after the race — until then, say it in your own words below.
+        anybody. It usually lands soon after the race. Until then, say it in your own words below.
       </p>
     );
   }
   if (reason === "none-recorded") {
     return (
       <p className="text-sm leading-relaxed text-light">
-        Assetto Corsa recorded no contact for you in this round. A moment it never counted as one — a spin, a
-        push wide, a tap too light to register — still belongs in a report: say it in your own words below.
+        Assetto Corsa recorded no contact for you in this round. A spin, a push wide or a tap too light to
+        register still belongs in a report, so say it in your own words below.
       </p>
     );
   }

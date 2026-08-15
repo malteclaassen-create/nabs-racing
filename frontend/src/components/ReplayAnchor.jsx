@@ -109,7 +109,7 @@ export default function ReplayAnchor({
     // is the file's own and the details beside it are what a steward checks the
     // match against.
     matched
-      ? "Matched to the contact Assetto Corsa recorded just before the report was sent, so this is the file's own timestamp rather than the moment the button was pressed. The impact speed, lap and event number are that contact's — worth a look before acting on the match."
+      ? "Matched to the contact Assetto Corsa recorded just before the report was sent, so this is the file's own timestamp rather than the moment the button was pressed. The impact speed, lap and event number are that contact's, so check them before acting on the match."
       : null,
     // The number is only useful if the reader knows where to spend it.
     eventIndex != null
