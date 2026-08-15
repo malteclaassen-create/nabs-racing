@@ -726,9 +726,14 @@ export function CardBar({ title, right, as: Tag = "h2", className = "", children
   const heading = "font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl";
   if (children) return <div className={bar}>{children}</div>;
   if (!right) return <Tag className={`${bar} ${heading}`}>{title}</Tag>;
+  // Wraps rather than squeezes. With a fixed row, a title and a right-hand side
+  // that together outgrow a phone fought each other: the title was pinched into
+  // a three-line column and whatever sat on the right was pushed off the card,
+  // which clips. Wrapping costs nothing where both already fit — it only ever
+  // engages at the width where the old behaviour was breaking something.
   return (
-    <div className={`flex items-center justify-between gap-3 ${bar}`}>
-      <Tag className={heading}>{title}</Tag>
+    <div className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 ${bar}`}>
+      <Tag className={`min-w-0 ${heading}`}>{title}</Tag>
       {right}
     </div>
   );

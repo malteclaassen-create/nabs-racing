@@ -441,10 +441,17 @@ export default function AdminReports() {
                 : "No round given"
             }
             right={
+              // The two SHORT labels first and the wide chip last. On a phone
+              // this row has to wrap, and in the old order — pill, chip, pill —
+              // the chip took a line of its own and left the status pill
+              // stranded on a third, so the header ran to four lines with one
+              // word on most of them. Pills together, chip beneath: two lines,
+              // and what a report IS still reads as one group.
               <span className="flex flex-wrap items-center gap-2">
                 {openReportRow.source === "INGAME" && (
                   <span className="pill bg-brand/15 text-brand">in-game</span>
                 )}
+                <span className={`pill ${s.cls}`}>{s.label}</span>
                 {/* Everything a steward needs to find the moment, in one chip
                     that copies the timeline figure. */}
                 <ReplayAnchor
@@ -456,7 +463,6 @@ export default function AdminReports() {
                   lap={openReportRow.lap}
                   eventIndex={openReportRow.contactIndex}
                 />
-                <span className={`pill ${s.cls}`}>{s.label}</span>
               </span>
             }
           />
@@ -560,7 +566,13 @@ export default function AdminReports() {
                       lap={r.lap}
                       eventIndex={r.contactIndex}
                     />
-                    <span className="min-w-0 flex-1 truncate text-xs text-light">{r.body}</span>
+                    {/* The first line of what was written, for triage — and
+                        only where there is room to read some of it. On a phone
+                        this shared its line with the name and the date and was
+                        cut to two characters and an ellipsis, which tells a
+                        steward nothing and cost a third of the row. The report
+                        is one tap away. */}
+                    <span className="hidden min-w-0 flex-1 truncate text-xs text-light sm:block">{r.body}</span>
                     <span className="font-mono text-[10px] uppercase tracking-wider text-faint">
                       {when(r.createdAt)}
                     </span>
