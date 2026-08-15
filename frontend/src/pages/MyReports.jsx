@@ -556,11 +556,21 @@ export default function MyReports() {
   const [params, setParams] = useSearchParams();
   const openId = params.get("id");
 
+  // The page serves the last few rounds and says what it is holding back. A
+  // steward is party to every report in the league, and each ROUND behind those
+  // reports costs a multi-megabyte result file to be read and parsed for the
+  // replay positions — so the whole history is a button, pressed by somebody
+  // who wants it, rather than the price of opening the page after a race.
+  const [allRounds, setAllRounds] = useState(false);
   const { data, loading, error, reload } = useApi(
-    useCallback(() => (isLoggedIn ? api.myReports() : Promise.resolve({ reports: [] })), [isLoggedIn])
+    useCallback(
+      () => (isLoggedIn ? api.myReports(allRounds) : Promise.resolve({ reports: [] })),
+      [isLoggedIn, allRounds]
+    )
   );
   const { data: races } = useApi(useCallback(() => api.races().catch(() => []), []));
   const list = useMemo(() => data?.reports || [], [data]);
+  const older = data?.older || 0;
   const raceList = useMemo(() => races || [], [races]);
 
   const openThread = (id) => setParams(id ? { id } : {}, { replace: false });
@@ -661,6 +671,21 @@ export default function MyReports() {
               races={raceList}
               onOpen={openThread}
             />
+          )}
+
+          {/* Says what is missing rather than just offering more: a list that
+              quietly stops at three rounds reads as "there were no reports
+              before this", which is the wrong thing to believe about a season
+              of stewarding. */}
+          {!allRounds && older > 0 && (
+            <div className="flex flex-wrap items-center gap-3 border-t border-border pt-5">
+              <button className="btn-secondary" disabled={loading} onClick={() => setAllRounds(true)}>
+                {loading ? "Reading…" : `Show ${older} from earlier rounds`}
+              </button>
+              <span className="text-xs text-light">
+                Showing the last {data?.rounds ?? 3} rounds. The rest are still there.
+              </span>
+            </div>
           )}
         </div>
       )}

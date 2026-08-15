@@ -2,13 +2,14 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import {
-  dbCreateReport, dbGetReport, dbReportsFor, dbMessages, dbAddMessage, canRead, dbDeleteReport,
+  dbCreateReport, dbGetReport, dbReportsFor, dbListReports, dbMessages, dbAddMessage, canRead, dbDeleteReport,
   dbAttachments, roleOn, dbSetAccused, dbThreadVoices,
 } from "../lib/reports.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
 import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
 import { contactsForDriver, roundHasArchive } from "../lib/raceContacts.js";
 import { anchorReports } from "../lib/reportAnchor.js";
+import { RECENT_ROUNDS, recentRoundIds, withinRounds } from "../lib/reportWindow.js";
 import { liveRaceSecond } from "../services/liveTiming.js";
 import { serverKeyForSeries } from "../lib/liveServers.js";
 import { clockNote } from "../lib/reportClock.js";
@@ -245,11 +246,24 @@ async function racesForReports(reports) {
 }
 
 // GET /api/reports -> the ones this member may see
+//
+// ?all=1 drops the round window and serves the lot, which is what the "earlier
+// rounds" button asks for. Deliberately a choice somebody makes rather than the
+// default: it is the slow read, and on a full season it is slow in proportion
+// to how many result files it has to open.
 router.get("/", optionalUser, async (req, res, next) => {
   try {
     const me = caller(req);
-    if (!me.discordId) return res.json({ reports: [] });
-    const reports = await dbReportsFor(prisma, me.discordId);
+    if (!me.discordId) return res.json({ reports: [], older: 0, rounds: RECENT_ROUNDS });
+    // Read once, then narrow. Roles are worked out for the whole table in three
+    // queries (lib/reports.js), so knowing what is behind the window costs
+    // nothing and the button can say how much is there.
+    const readable = await dbReportsFor(prisma, me.discordId, await dbListReports(prisma));
+    const races = await racesForReports(readable);
+    const reports =
+      String(req.query.all || "") === "1"
+        ? readable
+        : withinRounds(readable, recentRoundIds(races, RECENT_ROUNDS));
     // Anchored here as well as at the stewards' desk (routes/admin.js), and for
     // the same reason: a report fired from inside the race carries the moment
     // the BUTTON was pressed and nothing else until the round is imported. The
@@ -257,7 +271,14 @@ router.get("/", optionalUser, async (req, res, next) => {
     // contact are all worked out at read time — so serving this list without
     // running it showed the driver, and the steward reading the same page, a
     // row that said only who filed it, while the admin tab showed the incident.
-    res.json({ reports: await anchorReports(prisma, reports, await racesForReports(reports)) });
+    res.json({
+      reports: await anchorReports(prisma, reports, races),
+      // What the window is holding back, counted on reports this account may
+      // actually read — so the button never offers rounds that turn out to be
+      // somebody else's arguments.
+      older: readable.length - reports.length,
+      rounds: RECENT_ROUNDS,
+    });
   } catch (e) {
     next(e);
   }
