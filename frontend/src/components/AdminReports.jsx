@@ -365,7 +365,54 @@ export default function AdminReports() {
   // for. Resets itself after either one runs.
   const [unlocked, setUnlocked] = useState(false);
 
-  // Everybody who could be named in a report, once, sorted.
+  // What the result file has that could be the incident this report describes.
+//
+// A report filed after the race can pin itself to the exact contact, and then
+// the chip at the top says everything. Most do not: they say "lap 32" and name
+// somebody, and the steward is back to scrubbing a replay. So the file is asked
+// the same question the reporter answered in words — this driver, that lap,
+// that other car — and whatever it has is offered here.
+//
+// A suggestion, and drawn as one. Nothing is written to the report, nobody is
+// named who was not named already, and where the file has nothing this renders
+// nothing at all: an empty answer is a real one, and a confident wrong contact
+// is worse than none.
+function ContactSuggestions({ report }) {
+  const hits = report?.contactSuggestions || [];
+  if (!hits.length) return null;
+  const named = report.accusedName;
+  return (
+    <div className="border-t border-border px-5 py-4">
+      <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+        {hits.length === 1 ? "A contact this could be" : "Contacts this could be"}
+      </div>
+      <p className="mt-1 text-xs leading-relaxed text-light">
+        {named
+          ? `What Assetto Corsa recorded between ${report.reporterName || "the reporter"} and ${named} around the lap they gave.`
+          : `What Assetto Corsa recorded for ${report.reporterName || "the reporter"} around the lap they gave.`}{" "}
+        Nobody picked these — check one against the replay before acting on it.
+      </p>
+      <ul className="mt-3 space-y-2">
+        {hits.map((c) => (
+          <li key={c.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <ReplayAnchor second={c.second} kph={c.kph} lap={c.lap} eventIndex={c.eventIndex} />
+            {c.other?.name && <span className="text-xs text-medium">with {c.other.name}</span>}
+            {/* The neighbouring lap is offered because the two lap countings
+                disagree on the line, but a steward should know which one they
+                are looking at before it becomes a verdict. */}
+            {!c.exactLap && (
+              <span className="font-mono text-[10px] uppercase tracking-wider text-faint">
+                a lap off what was said
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// Everybody who could be named in a report, once, sorted.
   const drivers = useMemo(() => {
     const out = new Map();
     // This season first, so the people currently racing sort to their own
@@ -466,6 +513,7 @@ export default function AdminReports() {
               </span>
             }
           />
+          <ContactSuggestions report={openReportRow} />
           <Thread
             id={openReportRow.id}
             drivers={drivers}
