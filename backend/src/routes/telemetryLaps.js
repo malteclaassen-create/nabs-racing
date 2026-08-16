@@ -21,9 +21,22 @@ import { getNameOverrides } from "../lib/persons.js";
 const router = Router();
 const __dir = dirname(fileURLToPath(import.meta.url));
 
-// The same generous flood ceiling as the report ingest: it exists to stop a
-// stuck loop filling the disk, not to ration a busy practice evening.
-const INGEST_MAX = 60; // per minute, across everyone
+// A ceiling against a stuck loop, and nothing else — which is why it is high.
+//
+// It cannot be sized like the report ingest, which was its first draft at 60 a
+// minute. Reports are a handful on a race night; laps come from a PRACTICE
+// server that stands between races with a full grid on it, and the moment that
+// server restarts every driver rejoins at once, the script's memory of its own
+// session best resets, and each of them posts their first clean lap. Forty-odd
+// cars around a 66-second circuit puts that well past sixty in a minute, and a
+// refused post is a lap silently dropped: the script logs the 429 and moves on.
+//
+// It can afford to be high because it is not what protects the disk. The store
+// keeps three laps per driver per track and prunes the rest (lib/telemetryLaps
+// .js), so the space this can ever occupy is drivers x tracks x 3 no matter how
+// many posts arrive. What is left to protect is CPU and bandwidth, and 300 laps
+// a minute is about 8 MB — far below anything that troubles either.
+const INGEST_MAX = 300; // per minute, across everyone
 let hits = [];
 function flooded() {
   const cutoff = Date.now() - 60_000;
