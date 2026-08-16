@@ -79,7 +79,9 @@ export default function AdminTelemetry() {
         <div className="space-y-3 p-5">
           <p className="text-sm text-light">
             Every driver who joins the race server sends their fastest clean laps — throttle, brake,
-            steering, speed. Three per track per season are kept.
+            steering, speed. Three per track are kept, and when a new season&rsquo;s first lap arrives the
+            previous seasons are deleted — the cars change with the season, so their times are not
+            something anybody is chasing.
           </p>
           {telIngest?.configured ? (
             <>

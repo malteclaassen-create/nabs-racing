@@ -41,7 +41,7 @@
 // rather than accumulate.
 // ---------------------------------------------------------------------------
 import { join } from "path";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, rmSync } from "fs";
 import { DATA_ROOT } from "./dataDirs.js";
 
 export const TELEMETRY_LAPS_DIR = join(DATA_ROOT, "telemetry-laps");
@@ -153,6 +153,15 @@ export function parseLapPayload(body) {
 // How many of a driver's laps are kept at one track. Three, and the number
 // lives here because every function below has to agree about it.
 export const KEEP_PER_DRIVER = 3;
+
+// How many seasons of laps are kept. One: the season being raced.
+//
+// The league asked for the old ones to go when a new season starts, and the
+// reason the seasons are separate in the first place is the reason they are
+// not worth keeping — the cars change, so last season's times are not
+// something anybody is chasing. Raise this to 2 and the season before stays as
+// well; nothing else has to change.
+export const KEEP_SEASONS = 1;
 
 const LAP_ID_RE = /^\d{4,8}$/; // a lap time in ms: 20s to 30min, the bounds above
 export const isLapId = (s) => LAP_ID_RE.test(String(s || ""));
@@ -292,6 +301,38 @@ export function deleteLap(season, trackKey, steamId, lapId = null) {
     }
   }
   return gone;
+}
+
+// Throw away the seasons nobody is racing any more.
+//
+// Triggered by the first lap of a new season arriving (routes/telemetryLaps.js)
+// rather than by a clock or a button: that is the exact moment the old ones
+// stop being current, and it needs nobody to remember to press anything.
+//
+// The season-0 bucket is left alone. Those are laps that arrived while the site
+// could not name a season, so there is no number to compare them against, and
+// throwing away data we cannot place is worse than keeping a few files.
+//
+// Returns the season numbers it removed, so the caller can say so in the log —
+// a silent deletion is a thing nobody can debug afterwards.
+export function pruneSeasonsBefore(season) {
+  const keepFrom = Number(season) - (KEEP_SEASONS - 1);
+  if (!Number.isFinite(keepFrom) || keepFrom <= 0) return [];
+  if (!existsSync(TELEMETRY_LAPS_DIR)) return [];
+  const gone = [];
+  for (const name of readdirSync(TELEMETRY_LAPS_DIR)) {
+    const m = /^s(\d+)$/.exec(name);
+    const n = m ? Number(m[1]) : null;
+    // s0 is the "could not tell" bucket, never pruned by number.
+    if (!n || n >= keepFrom) continue;
+    try {
+      rmSync(join(TELEMETRY_LAPS_DIR, name), { recursive: true, force: true });
+      gone.push(n);
+    } catch {
+      /* left for the next new season to try again */
+    }
+  }
+  return gone.sort((a, b) => a - b);
 }
 
 // All tracks in one season that have at least one lap, with a light summary

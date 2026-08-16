@@ -30,6 +30,7 @@ const {
   listTracks,
   deleteLap,
   lapFilesOf,
+  pruneSeasonsBefore,
 } = await import("./telemetryLaps.js");
 
 const TRACK = "watkins-glen";
@@ -287,5 +288,50 @@ describe("laps from before the store had seasons", () => {
   it("is not handed to an older season the reader happens to open", () => {
     writeSeasonless(ME, 91000);
     expect(listLaps(S7, TRACK, false)).toEqual([]);
+  });
+});
+
+// The league drives a different car each season, so last season's times are not
+// something anybody is chasing — and 40 MB a season adds up over the years. The
+// first lap of a new season takes the old ones with it.
+describe("a new season clears out the old ones", () => {
+  beforeEach(() => {
+    for (const ms of [91000, 92000]) keepIfFaster(lap(ME, ms, "Maltegoat", S8));
+    keepIfFaster(lap(ME, 85000, "Maltegoat", S7));
+    keepIfFaster(lap(OTHER, 84000, "Neesh", 6));
+  });
+
+  it("removes every season before the one that started, and says which", () => {
+    expect(pruneSeasonsBefore(9)).toEqual([6, 7, 8]);
+    expect(timesOf(ME, S8)).toEqual([]);
+    expect(timesOf(ME, S7)).toEqual([]);
+  });
+
+  it("leaves the season that is being raced alone", () => {
+    pruneSeasonsBefore(S8);
+    expect(timesOf(ME, S8)).toEqual([91000, 92000]);
+    expect(timesOf(ME, S7)).toEqual([]);
+  });
+
+  it("does nothing at all for the season already kept", () => {
+    expect(pruneSeasonsBefore(6)).toEqual([]);
+    expect(timesOf(ME, S8)).toHaveLength(2);
+  });
+
+  it("never touches the bucket for laps whose season could not be told", () => {
+    // No number to compare them against, and throwing away data we cannot
+    // place is worse than keeping a few files.
+    const orphan = lap(ME, 80000);
+    delete orphan.season;
+    keepIfFaster(orphan);
+    pruneSeasonsBefore(9);
+    expect(timesOf(ME, 0)).toEqual([80000]);
+  });
+
+  it("is a no-op when there is nothing older, and when the number is nonsense", () => {
+    expect(pruneSeasonsBefore(1)).toEqual([]);
+    expect(pruneSeasonsBefore(null)).toEqual([]);
+    expect(pruneSeasonsBefore(undefined)).toEqual([]);
+    expect(timesOf(ME, S8)).toHaveLength(2);
   });
 });

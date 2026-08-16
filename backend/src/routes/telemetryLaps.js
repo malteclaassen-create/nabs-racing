@@ -15,7 +15,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
 import { telemetryReadGate } from "../lib/telemetryAccess.js";
-import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId, isLapId } from "../lib/telemetryLaps.js";
+import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId, isLapId, pruneSeasonsBefore } from "../lib/telemetryLaps.js";
 import { getNameOverrides } from "../lib/persons.js";
 import { ensureTrackMap } from "../lib/trackMaps.js";
 import { resolveSeason } from "../services/seasonService.js";
@@ -72,6 +72,7 @@ router.post("/ingest", async (req, res, next) => {
     // is only comparable within one.
     parsed.lap.season = await activeSeasonNumber();
     const result = keepIfFaster(parsed.lap);
+    dropOldSeasons(parsed.lap.season);
     // `kept` tells the app whether the lap made this driver's stored three, so
     // the in-game line can say "saved" vs "your stored 1:31.2 stands".
     res.json({ ok: true, kept: result.kept, bestMs: result.bestMs, stored: result.stored });
@@ -79,6 +80,27 @@ router.post("/ingest", async (req, res, next) => {
     next(e);
   }
 });
+
+// The first lap of a new season takes the old ones with it.
+//
+// Triggered here rather than by a clock or a button because this is the exact
+// moment the old seasons stop being current: somebody is out on track in the
+// new car. The guard is so that a busy practice evening does not read the
+// directory on every post — the work only ever happens once per season, on
+// whichever lap happens to be the first.
+let prunedFor = null;
+function dropOldSeasons(season) {
+  if (!season || season === prunedFor) return;
+  prunedFor = season;
+  try {
+    const gone = pruneSeasonsBefore(season);
+    if (gone.length) {
+      console.log(`[telemetry] season ${season} started: removed laps from season ${gone.join(", ")}`);
+    }
+  } catch {
+    /* never worth failing an ingest over; the next new season tries again */
+  }
+}
 
 // The season a lap belongs to, and the season a reader is looking at. The
 // practice server runs between the rounds of whatever season is on, so "now" is
