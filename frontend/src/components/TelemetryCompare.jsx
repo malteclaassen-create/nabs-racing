@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { Field } from "./ui.jsx";
@@ -189,10 +189,23 @@ function cornerInsights(lapA, lapB, corners, dist, n) {
 }
 
 // The track, drawn from the lap itself: the recorded positions ARE the racing
-// line, so no track files, no calibration. Coloured by who gains where when
-// two laps are up (smoothed per-slice time gain), with the cursor as a dot.
-// Clicking jumps the cursor.
-function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick }) {
+// line, so no track files, no calibration. Two ways to read it, because they
+// answer different questions and cannot share a picture:
+//
+//   gain   one line — lap A's — coloured by who is quicker along it.
+//   lines  both laps' own paths, for "where do they actually drive
+//          differently". Only worth looking at ZOOMED IN: over a whole lap the
+//          two are a metre or two apart on a map at roughly 3 m per pixel, so
+//          they sit exactly on top of each other. Zoomed to a corner it is
+//          centimetres per pixel and the difference is the whole point.
+//
+// The zoom follows the cursor, which is wherever the reader last pointed —
+// hovering a chart, clicking a row in the list, or the playback clock.
+function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick, mode = "gain", zoom = 1 }) {
+  // One projection, shared: both laps are in the same world coordinates, so
+  // lap B has to be drawn through lap A's transform or the two would be laid
+  // out independently and every difference between them would be invented by
+  // the scaling.
   const geo = useMemo(() => {
     if (!lapA?.x || !lapA?.z) return null;
     const xs = lapA.x.slice(0, n).map((v) => v / 10);
@@ -200,12 +213,28 @@ function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick }) {
     const minX = Math.min(...xs), maxX = Math.max(...xs);
     const minZ = Math.min(...zs), maxZ = Math.max(...zs);
     const spanX = Math.max(1, maxX - minX), spanZ = Math.max(1, maxZ - minZ);
-    const W = 100, H = (spanZ / spanX) * 100;
-    const pad = 6;
-    const px = xs.map((v) => pad + ((v - minX) / spanX) * (W - 2 * pad));
-    const py = zs.map((v) => pad + ((v - minZ) / spanZ) * (H * ((W - 2 * pad) / W)) );
-    return { px, py, W, H: Math.max(30, H * ((W - 2 * pad) / W) + 2 * pad) };
+    const W = 100, pad = 6;
+    const inner = W - 2 * pad;
+    const H = Math.max(30, (spanZ / spanX) * 100 * (inner / W) + 2 * pad);
+    const projX = (v) => pad + ((v / 10 - minX) / spanX) * inner;
+    const projY = (v) => pad + ((v / 10 - minZ) / spanZ) * ((spanZ / spanX) * 100 * (inner / W));
+    return {
+      W,
+      H,
+      projX,
+      projY,
+      px: lapA.x.slice(0, n).map(projX),
+      py: lapA.z.slice(0, n).map(projY),
+    };
   }, [lapA, n]);
+
+  // Lap B through the same transform, from ITS OWN positions. Drawing it from
+  // lap A's would put the second car on the first car's line, which is exactly
+  // the thing this mode exists to disprove.
+  const bxy = useMemo(() => {
+    if (!geo || !lapB?.x || !lapB?.z) return null;
+    return { px: lapB.x.slice(0, n).map(geo.projX), py: lapB.z.slice(0, n).map(geo.projY) };
+  }, [geo, lapB, n]);
 
   const segs = useMemo(() => {
     if (!geo) return [];
@@ -227,16 +256,28 @@ function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick }) {
   }, [geo, lapA, lapB, n]);
 
   if (!geo) return null;
-  const pts = (from, to) => {
+  const lines = mode === "lines" && bxy;
+  const pts = (px, py, from, to) => {
     let out = "";
-    for (let i = from; i <= to; i++) out += `${geo.px[i].toFixed(1)},${geo.py[i].toFixed(1)} `;
+    for (let i = from; i <= to; i++) out += `${px[i].toFixed(1)},${py[i].toFixed(1)} `;
     return out;
   };
+  // The camera: centred on the cursor when zoomed, on the whole track at 1x.
+  const fx = cursor != null && cursor < n ? geo.px[cursor] : geo.W / 2;
+  const fy = cursor != null && cursor < n ? geo.py[cursor] : geo.H / 2;
+  const cam = zoom > 1 ? `translate(${geo.W / 2 - zoom * fx} ${geo.H / 2 - zoom * fy}) scale(${zoom})` : undefined;
+
   const pick = (e) => {
     if (!onPick) return;
     const box = e.currentTarget.getBoundingClientRect();
-    const mx = ((e.clientX - box.left) / box.width) * geo.W;
-    const my = ((e.clientY - box.top) / box.height) * geo.H;
+    // Undo the camera, or a click while zoomed lands wherever that point would
+    // have been at 1x — which is somewhere else entirely.
+    let mx = ((e.clientX - box.left) / box.width) * geo.W;
+    let my = ((e.clientY - box.top) / box.height) * geo.H;
+    if (zoom > 1) {
+      mx = (mx - (geo.W / 2 - zoom * fx)) / zoom;
+      my = (my - (geo.H / 2 - zoom * fy)) / zoom;
+    }
     let best = 0, bestD = Infinity;
     for (let i = 0; i < n; i++) {
       const d = (geo.px[i] - mx) ** 2 + (geo.py[i] - my) ** 2;
@@ -244,33 +285,63 @@ function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick }) {
     }
     onPick(best);
   };
+
   return (
-    <svg viewBox={`0 0 ${geo.W} ${geo.H}`} className="h-full w-full cursor-crosshair" onClick={pick} aria-label="Track map, coloured by who gains where">
-      {segs.map((sg, i) => (
-        <polyline key={i} points={pts(sg.from, sg.to)} fill="none" stroke={sg.color}
-          strokeWidth={sg.cat && sg.cat !== "even" ? 2.4 : 1.6} strokeLinecap="round" strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke" opacity={sg.cat === "even" ? 0.55 : 1} />
-      ))}
-      {/* One dot while a hand is on the chart — both laps are at the same
-          place on the track there, because the charts are drawn by position.
-          Two while it plays, each in its own colour: that gap IS the delta,
-          and watching it open is the thing a number cannot show. */}
-      {cursorB != null && cursorB < n && (
-        <circle cx={geo.px[cursorB]} cy={geo.py[cursorB]} r="1.8" fill={COL_B} stroke="var(--c-bg)" strokeWidth="0.6" />
-      )}
-      {cursor != null && cursor < n && (
-        <circle
-          cx={geo.px[cursor]}
-          cy={geo.py[cursor]}
-          r="1.8"
-          fill={cursorB != null ? COL_A : "var(--c-text)"}
-          stroke="var(--c-bg)"
-          strokeWidth="0.6"
-        />
-      )}
+    <svg
+      viewBox={`0 0 ${geo.W} ${geo.H}`}
+      className="h-full w-full cursor-crosshair"
+      onClick={pick}
+      aria-label={lines ? "Track map, both racing lines" : "Track map, coloured by who gains where"}
+    >
+      <g transform={cam}>
+        {lines ? (
+          <>
+            <polyline points={pts(geo.px, geo.py, 0, n - 1)} fill="none" stroke={COL_A} strokeWidth={2}
+              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            <polyline points={pts(bxy.px, bxy.py, 0, n - 1)} fill="none" stroke={COL_B} strokeWidth={2}
+              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          </>
+        ) : (
+          segs.map((sg, i) => (
+            <polyline key={i} points={pts(geo.px, geo.py, sg.from, sg.to)} fill="none" stroke={sg.color}
+              strokeWidth={sg.cat && sg.cat !== "even" ? 2.4 : 1.6} strokeLinecap="round" strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke" opacity={sg.cat === "even" ? 0.55 : 1} />
+          ))
+        )}
+        {/* One dot while a hand is on the chart — both laps are at the same
+            place on the track there, because the charts are drawn by position.
+            Two while it plays, each in its own colour and each on its OWN line:
+            that gap IS the delta, and watching it open is the thing a number
+            cannot show. */}
+        {cursorB != null && cursorB < n && (
+          <circle
+            cx={(lines && bxy ? bxy.px : geo.px)[cursorB]}
+            cy={(lines && bxy ? bxy.py : geo.py)[cursorB]}
+            r={1.8 / zoom}
+            fill={COL_B}
+            stroke="var(--c-bg)"
+            strokeWidth={0.6 / zoom}
+          />
+        )}
+        {cursor != null && cursor < n && (
+          <circle
+            cx={geo.px[cursor]}
+            cy={geo.py[cursor]}
+            r={1.8 / zoom}
+            fill={cursorB != null || lines ? COL_A : "var(--c-text)"}
+            stroke="var(--c-bg)"
+            strokeWidth={0.6 / zoom}
+          />
+        )}
+      </g>
     </svg>
   );
 }
+
+// The live map's zoom buttons, to the pixel: the same control in two places on
+// the site should not be two different controls.
+const ZOOM_BTN =
+  "flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 font-mono text-sm font-bold text-white backdrop-blur transition hover:bg-black/75";
 
 const COL_A = "#0ea5e9"; // sky — lap A
 const COL_B = "#f43f5e"; // rose — lap B
@@ -324,6 +395,28 @@ function TelemetryCompare() {
   // two dots pull apart exactly as much as the delta says.
   const [playing, setPlaying] = useState(false);
   const [bIdx, setBIdx] = useState(null);
+  // "gain" = one line, coloured by who is quicker. "lines" = both paths, which
+  // only says anything zoomed in (see TrackMap). Switching to it zooms, because
+  // at 1x the answer is "they are identical" and that is an artefact of the
+  // scale rather than a fact about the driving.
+  const [mapMode, setMapMode] = useState("gain");
+  const [zoom, setZoom] = useState(1);
+
+  // Zooming needs somewhere to point. The camera centres on the cursor, and
+  // with no cursor it centred on the middle of the bounding box — which on a
+  // closed circuit is the infield, so the first zoom showed an empty white
+  // square.
+  //
+  // Where it points when nobody has chosen: the place the two laps differ MOST,
+  // which is the reason somebody pressed the button. Failing that the first
+  // slow part of the lap, and failing that the line itself.
+  const focusSomewhere = useCallback(() => {
+    setCursor((c) => {
+      if (c != null) return c;
+      const worst = [...insightsRef.current].sort((x, y) => Math.abs(y.gainMs) - Math.abs(x.gainMs))[0];
+      return worst?.apex ?? cornersRef.current[0]?.apex ?? 0;
+    });
+  }, []);
 
   const list = tracks.data?.tracks || [];
   // Which season these laps are from. The endpoint answers with it rather than
@@ -396,10 +489,13 @@ function TelemetryCompare() {
   // Corners off lap A's speed trace, numbered in lap order; distance from its
   // recorded positions (metres), for "brakes 14 m later". Older laps recorded
   // before positions existed simply have no map and no metre figures.
+  const cornersRef = useRef([]);
+  const insightsRef = useRef([]);
   const corners = useMemo(
     () => (lapA ? detectCorners(lapA.speed.slice(0, n || lapA.n)).map((c, k) => ({ ...c, n: k + 1 })) : []),
     [lapA, n]
   );
+  cornersRef.current = corners;
   const dist = useMemo(
     () => (lapA?.x && lapA?.z ? cumulativeDist(lapA.x, lapA.z, n || lapA.n) : null),
     [lapA, n]
@@ -408,6 +504,7 @@ function TelemetryCompare() {
     () => (both && corners.length ? cornerInsights(lapA, lapB, corners, dist, n) : []),
     [both, lapA, lapB, corners, dist, n]
   );
+  insightsRef.current = insights;
   const hasMap = !!(lapA?.x && lapA?.z);
 
   const onMove = (e) => {
@@ -453,10 +550,13 @@ function TelemetryCompare() {
   }, [playing, lapA, lapB, both, n]);
 
   // Changing either lap ends the run: the cursor it left behind belongs to a
-  // lap that is no longer on screen.
+  // lap that is no longer on screen. The camera goes back out too — a corner
+  // of one lap is not a corner of the next.
   useEffect(() => {
     setPlaying(false);
     setBIdx(null);
+    setMapMode("gain");
+    setZoom(1);
   }, [aId, bId, trackKey]);
 
   const rows = lapRows(laps);
@@ -548,7 +648,69 @@ function TelemetryCompare() {
                 <div className={`grid gap-4 ${hasMap && insights.length ? "lg:grid-cols-2" : ""}`}>
                   {hasMap && (
                     <div className="relative overflow-hidden rounded-lg border border-border bg-surface2/30 p-2" style={{ minHeight: 180 }}>
-                      <TrackMap lapA={lapA} lapB={both ? lapB : null} n={n} cursor={cursor} cursorB={bIdx} onPick={setCursor} />
+                      <TrackMap
+                        lapA={lapA}
+                        lapB={both ? lapB : null}
+                        n={n}
+                        cursor={cursor}
+                        cursorB={bIdx}
+                        onPick={setCursor}
+                        mode={both ? mapMode : "gain"}
+                        zoom={zoom}
+                      />
+                      {/* What the map is answering. Two questions, one picture
+                          each: they cannot share one, because the lines only
+                          separate under a zoom the gain colours do not need. */}
+                      {both && (
+                        <div className="absolute left-2 top-2 flex overflow-hidden rounded-lg border border-border bg-card/90 text-[10px] font-bold uppercase tracking-wider backdrop-blur">
+                          {[
+                            ["gain", "Who gains"],
+                            ["lines", "Racing lines"],
+                          ].map(([key, label]) => (
+                            <button
+                              key={key}
+                              type="button"
+                              className={`px-2 py-1 font-mono transition ${
+                                mapMode === key ? "bg-brand/15 text-dark" : "text-light hover:text-dark"
+                              }`}
+                              onClick={() => {
+                                setMapMode(key);
+                                // Straight to a useful magnification: at 1x the
+                                // two lines are sub-pixel apart and the mode
+                                // looks broken.
+                                if (key === "lines" && zoom < 4) {
+                                  focusSomewhere();
+                                  setZoom(5);
+                                }
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {/* Same controls as the live map, same place, same feel. */}
+                      <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          className={ZOOM_BTN}
+                          title="Zoom out"
+                          onClick={() => setZoom((z) => Math.max(1, z / 1.5))}
+                        >
+                          &minus;
+                        </button>
+                        <button
+                          type="button"
+                          className={ZOOM_BTN}
+                          title="Zoom in"
+                          onClick={() => {
+                            focusSomewhere();
+                            setZoom((z) => Math.min(20, z * 1.5));
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
                       {both && (
                         <div className="pointer-events-none absolute bottom-1.5 right-2 flex gap-3 font-mono text-[10px] text-light">
                           <span className="flex items-center gap-1"><span className="h-0.5 w-3 rounded-full" style={{ background: COL_A }} />{lapA.name} faster</span>
