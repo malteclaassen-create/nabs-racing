@@ -411,6 +411,37 @@ function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick, mode = "gain", zoom 
 const ZOOM_BTN =
   "flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 font-mono text-sm font-bold text-white backdrop-blur transition hover:bg-black/75";
 
+// Put a lap on another lap's grid.
+//
+// Every channel is sampled at i/(n-1) of the way round the track, so two laps
+// only line up slice-for-slice while they share n. The store deliberately
+// accepts 50 to 1500 samples so the in-game script can be tweaked without a
+// lockstep deploy — which means the day that number changes, one lap in a
+// comparison has 800 slices and the other 1000, and index 400 is a different
+// CORNER in each. Nothing would have said so: the delta, the corner list and
+// the map colours would all have been quietly wrong.
+//
+// Linear interpolation between the neighbouring slices, which is exact enough
+// for channels already smoothed over a car length.
+function resampleLap(lap, n) {
+  if (!lap || lap.n === n) return lap;
+  const keys = ["t", "speed", "gas", "brake", "steer", "gear", "x", "z"];
+  const out = { ...lap, n, resampledFrom: lap.n };
+  for (const k of keys) {
+    const src = lap[k];
+    if (!Array.isArray(src) || src.length < 2) continue;
+    const dst = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const p = (i / (n - 1)) * (src.length - 1);
+      const lo = Math.floor(p);
+      const hi = Math.min(src.length - 1, lo + 1);
+      dst[i] = src[lo] + (src[hi] - src[lo]) * (p - lo);
+    }
+    out[k] = dst;
+  }
+  return out;
+}
+
 const COL_A = "#0ea5e9"; // sky — lap A
 const COL_B = "#f43f5e"; // rose — lap B
 
@@ -456,7 +487,7 @@ function TelemetryCompare() {
   const [bId, setBId] = useState("");
   const [laps, setLaps] = useState(null);   // meta list for the track
   const [lapA, setLapA] = useState(null);   // full channels
-  const [lapB, setLapB] = useState(null);
+  const [lapBRaw, setLapB] = useState(null);
   const [cursor, setCursor] = useState(null); // slice index under the mouse
   // Playback. `bIdx` is where the OTHER lap is at the same moment in time —
   // which is not the same place on the track, and that is the whole point: the
@@ -534,7 +565,9 @@ function TelemetryCompare() {
 
   // Everything below draws from these two; n comes from lap A (both laps of a
   // track share it — the app's constant — but clamp to the shorter to be safe).
-  const n = lapA && lapB ? Math.min(lapA.n, lapB.n) : lapA ? lapA.n : 0;
+  // Lap A's grid is the grid; lap B is moved onto it when the two differ.
+  const n = lapA?.n || 0;
+  const lapB = useMemo(() => (lapBRaw && lapA ? resampleLap(lapBRaw, lapA.n) : lapBRaw), [lapBRaw, lapA]);
   const both = !!(lapA && lapB);
 
   // Delta: how far behind lap A the other lap is at every point of the track.
