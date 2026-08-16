@@ -75,7 +75,8 @@ export default function AdminTelemetry() {
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-light">
           Throttle, brake, steering and speed over a lap, sampled by position on the track rather than by
           time — so two laps line up slice for slice and the difference between them is a subtraction
-          rather than a guess. The site keeps one lap per driver per track: their fastest clean one.
+          rather than a guess. The site keeps a driver's three fastest clean laps per track, and starts
+          fresh every season, because the cars change with it.
         </p>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-light">
           Nothing is recorded until the key below is minted, and no driver appears in the comparison who
@@ -93,9 +94,9 @@ export default function AdminTelemetry() {
         <CardBar title="Telemetry from inside the car" />
         <div className="space-y-3 p-5">
           <p className="text-sm text-light">
-            A URL for the nabsTelemetry app. Drivers who switch it on send their fastest clean lap per
-            track — throttle, brake, steering, speed — for the comparison on the Tools page. Only their
-            best lap is kept; slower posts are dropped.
+            A URL for the nabsTelemetry app. Every driver who joins the race server sends their fastest
+            clean laps — throttle, brake, steering, speed — for the comparison below. Three per track per
+            season are kept; anything slower than those is dropped on arrival.
           </p>
           {telIngest?.configured ? (
             <>
@@ -118,7 +119,8 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
               <p className="text-xs text-light">
                 Into <span className="font-mono">csp_extra_options.ini</span> in the server panel (where the
                 penalty script lives). From then on every driver who joins records automatically — nothing
-                to install. The script announces itself with an in-game toast; announce it in Discord too.
+                to install. The script shows nothing in the game — no window, no message — so the drivers
+                only know about the recording if you tell them. Announce it in Discord.
               </p>
               <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
                 Hand-install URL (testing, or drivers without the server script)
