@@ -100,6 +100,17 @@ function smoothSeries(arr, w = 9) {
 // Corners, read off the speed trace: contiguous stretches clearly below the
 // lap's fast pace, close ones merged, each with its apex (slowest slice).
 // Good enough on purpose — this feeds labels and map markers, not scoring.
+// The SLOW PARTS of a lap: everywhere the car went below 80% of that lap's own
+// top speed, merged across short gaps and trimmed of anything too brief.
+//
+// These are not the circuit's corners and this file cannot know those. A corner
+// taken flat never drops below the line and is invisible here; a lift for
+// traffic or a mistake looks exactly like one; a chicane counts once; and the
+// threshold moves with the lap's own top speed, so a slipstreamed lap finds a
+// different set. They used to be numbered T1, T2, … on the map and in the list,
+// which read as the circuit's numbering and is a thing a steward could act on
+// and be standing in the wrong place. Each one now says how far into the lap it
+// is, which is measured rather than guessed.
 function detectCorners(speedRaw) {
   const speed = smoothSeries(speedRaw, 9);
   const vmax = Math.max(...speed);
@@ -164,6 +175,10 @@ function cornerInsights(lapA, lapB, corners, dist, n) {
     return {
       n: k + 1,
       apex: c.apex,
+      // Where this is in the lap, which is a fact — unlike a corner number,
+      // which this file is in no position to know (see detectCorners).
+      atM: dist ? Math.round(dist[c.apex]) : null,
+      atPct: Math.round((c.apex / (n - 1)) * 100),
       gainMs,
       // + = B brakes later than A.
       brakeDeltaM: bA != null && bB != null && dist ? Math.round(dist[bB] - dist[bA]) : null,
@@ -175,9 +190,9 @@ function cornerInsights(lapA, lapB, corners, dist, n) {
 
 // The track, drawn from the lap itself: the recorded positions ARE the racing
 // line, so no track files, no calibration. Coloured by who gains where when
-// two laps are up (smoothed per-slice time gain), with the corner numbers at
-// their apexes and the shared cursor as a dot. Clicking jumps the cursor.
-function TrackMap({ lapA, lapB, n, corners, cursor, cursorB, onPick }) {
+// two laps are up (smoothed per-slice time gain), with the cursor as a dot.
+// Clicking jumps the cursor.
+function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick }) {
   const geo = useMemo(() => {
     if (!lapA?.x || !lapA?.z) return null;
     const xs = lapA.x.slice(0, n).map((v) => v / 10);
@@ -235,12 +250,6 @@ function TrackMap({ lapA, lapB, n, corners, cursor, cursorB, onPick }) {
         <polyline key={i} points={pts(sg.from, sg.to)} fill="none" stroke={sg.color}
           strokeWidth={sg.cat && sg.cat !== "even" ? 2.4 : 1.6} strokeLinecap="round" strokeLinejoin="round"
           vectorEffect="non-scaling-stroke" opacity={sg.cat === "even" ? 0.55 : 1} />
-      ))}
-      {(corners || []).map((c) => (
-        <text key={c.apex} x={geo.px[c.apex]} y={geo.py[c.apex] - 2.5}
-          className="fill-current font-mono text-light" fontSize="3.4" textAnchor="middle">
-          T{c.n ?? ""}
-        </text>
       ))}
       {/* One dot while a hand is on the chart — both laps are at the same
           place on the track there, because the charts are drawn by position.
@@ -530,15 +539,16 @@ function TelemetryCompare() {
                 )}
               </div>
 
-              {/* The map and the per-corner numbers, when the lap recorded its
+              {/* The map and the slow parts of the lap, when it recorded its
                   positions. The map IS the racing line — coloured by who gains
-                  where — and clicking it drops the cursor there, so map,
-                  charts and corner list all point at the same spot. */}
+                  where — and clicking it drops the cursor there; clicking a row
+                  in the list does the same, which is what ties the two together
+                  now that nothing is numbered. */}
               {(hasMap || insights.length > 0) && (
                 <div className={`grid gap-4 ${hasMap && insights.length ? "lg:grid-cols-2" : ""}`}>
                   {hasMap && (
                     <div className="relative overflow-hidden rounded-lg border border-border bg-surface2/30 p-2" style={{ minHeight: 180 }}>
-                      <TrackMap lapA={lapA} lapB={both ? lapB : null} n={n} corners={corners} cursor={cursor} cursorB={bIdx} onPick={setCursor} />
+                      <TrackMap lapA={lapA} lapB={both ? lapB : null} n={n} cursor={cursor} cursorB={bIdx} onPick={setCursor} />
                       {both && (
                         <div className="pointer-events-none absolute bottom-1.5 right-2 flex gap-3 font-mono text-[10px] text-light">
                           <span className="flex items-center gap-1"><span className="h-0.5 w-3 rounded-full" style={{ background: COL_A }} />{lapA.name} faster</span>
@@ -569,7 +579,9 @@ function TelemetryCompare() {
                             onClick={() => setCursor(c.apex)}
                             className={`flex w-full items-baseline gap-2.5 px-3 py-2 text-left text-xs transition hover:bg-surface2 ${cursor != null && Math.abs(cursor - c.apex) < 12 ? "bg-surface2" : ""}`}
                           >
-                            <span className="font-mono text-[10px] font-bold text-light">T{c.n}</span>
+                            <span className="font-mono text-[10px] font-bold tabular-nums text-light">
+                              {c.atM != null ? `${c.atM.toLocaleString("en-GB")} m` : `${c.atPct}%`}
+                            </span>
                             <span className="font-mono font-bold tabular-nums" style={{ color: col }}>
                               {winner} {c.gainMs >= 0 ? "+" : "+"}{(Math.abs(c.gainMs) / 1000).toFixed(2)}s
                             </span>
