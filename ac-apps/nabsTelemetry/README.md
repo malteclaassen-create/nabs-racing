@@ -1,7 +1,7 @@
 # nabsTelemetry
 
 Records throttle, brake, steering, speed and gear over every lap you drive,
-and sends your **fastest clean lap per track** to the league website — where
+and sends your **fastest clean laps per track** to the league website, where
 two drivers' laps can be laid over each other, pedal for pedal.
 
 Why an in-game app at all: the race server's own data (Stracker, the server
@@ -10,12 +10,13 @@ your PC. This is the only place they can be read.
 
 ## What leaves your PC, and when
 
-One JSON post per clean lap (or only on a session-best — the default), to the
-league URL you paste in, and nowhere else. It contains: your SteamID, driver
-name, car, track, the lap time, and ~800 samples of speed/gas/brake/steering/
-gear across the lap. Laps with four wheels off track or through the pit lane
-are never sent. The site keeps only your fastest lap per track and discards
-slower posts. Untick "record and send my laps" and nothing is recorded at all.
+One JSON post per clean lap (or only on a session-best, which is the default),
+to the league URL you paste in, and nowhere else. It contains: your SteamID,
+driver name, car, track, the lap time, and ~800 samples of speed/gas/brake/
+steering/gear across the lap. Laps with four wheels off track or through the
+pit lane are never sent. The site keeps your fastest three laps per track per
+season and discards anything slower. Untick "record and send my laps" and
+nothing is recorded at all.
 
 ## Installing (by hand)
 
@@ -29,8 +30,9 @@ enable **NABS TELEMETRY** in Content Manager under Settings → Custom Shaders
 Patch → New Lua Apps, open it once from the in-game app bar, and in its
 settings (spanner):
 
-1. paste the **league URL** — an admin makes it under Admin → Reports →
-   *Telemetry from inside the car* → **Switch on and make a key**;
+1. paste the **league URL**. An admin makes it under Admin → League →
+   Telemetry → *Telemetry from inside the car* → **Switch on and make a key**,
+   and hands out the "hand-install URL" the card prints under the snippet;
 2. tick **record and send my laps**;
 3. press **Test connection** — it should say `HTTP 200`.
 

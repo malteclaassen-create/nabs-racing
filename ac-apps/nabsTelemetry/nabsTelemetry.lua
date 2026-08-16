@@ -25,7 +25,7 @@
 --   * any part of the lap in the pit lane -> not sent;
 --   * fewer than 90% of slices filled (joined mid-lap, teleport) -> not sent.
 -- By default only a lap FASTER than the fastest already sent this session goes
--- out; the website keeps only the fastest per driver per track anyway.
+-- out; the website keeps a driver's fastest three per track per season anyway.
 --------------------------------------------------------------------------------
 
 local stored = ac.storage{
