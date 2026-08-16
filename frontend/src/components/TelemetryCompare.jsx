@@ -926,8 +926,7 @@ function TelemetryCompare() {
               {both && (
                 <p className="text-xs text-faint">
                   Solid {sideName(lapA)}, dashed {sideName(lapB)}. The delta is how far behind{" "}
-                  {sideName(lapA)}
-                  — rising means losing time there, falling means gaining it.
+                  {sideName(lapA)} — rising means losing time there, falling means gaining it.
                 </p>
               )}
             </>
