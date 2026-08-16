@@ -223,6 +223,11 @@ function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick, mode = "gain", zoom 
       H,
       projX,
       projY,
+      // Metres per map unit — the same in both axes by construction above, and
+      // what the scale bar is drawn from. Nothing here stretches one axis: two
+      // laps a metre apart are drawn a metre apart, which at whole-lap zoom is
+      // a fraction of a pixel and at corner zoom is plain.
+      mPerUnit: spanX / inner,
       px: lapA.x.slice(0, n).map(projX),
       py: lapA.z.slice(0, n).map(projY),
     };
@@ -286,6 +291,13 @@ function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick, mode = "gain", zoom 
     onPick(best);
   };
 
+  // A round number of metres, sized to about a quarter of the frame, drawn
+  // OUTSIDE the camera so it stays put and stays readable. Without it "the
+  // lines are this far apart" is a feeling; with it, it is a measurement.
+  const nice = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+  const barM = nice.find((m) => (m / geo.mPerUnit) * zoom >= 18) ?? nice[nice.length - 1];
+  const barUnits = (barM / geo.mPerUnit) * zoom;
+
   return (
     <svg
       viewBox={`0 0 ${geo.W} ${geo.H}`}
@@ -334,6 +346,23 @@ function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick, mode = "gain", zoom 
           />
         )}
       </g>
+      {barUnits <= geo.W * 0.6 && (
+        <g>
+          <line
+            x1={4}
+            y1={geo.H - 4}
+            x2={4 + barUnits}
+            y2={geo.H - 4}
+            stroke="var(--c-text)"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+            opacity={0.5}
+          />
+          <text x={4} y={geo.H - 5.5} fontSize={3} className="fill-current text-light" opacity={0.75}>
+            {barM} m
+          </text>
+        </g>
+      )}
     </svg>
   );
 }
@@ -711,8 +740,12 @@ function TelemetryCompare() {
                           +
                         </button>
                       </div>
-                      {both && (
-                        <div className="pointer-events-none absolute bottom-1.5 right-2 flex gap-3 font-mono text-[10px] text-light">
+                      {/* Only in the mode it describes. In "racing lines" the
+                          colours are the drivers, not who is quicker, so this
+                          would have been a legend for a thing not on screen —
+                          and it sat under the zoom buttons besides. */}
+                      {both && mapMode === "gain" && (
+                        <div className="pointer-events-none absolute right-2 top-2 flex gap-3 font-mono text-[10px] text-light">
                           <span className="flex items-center gap-1"><span className="h-0.5 w-3 rounded-full" style={{ background: COL_A }} />{lapA.name} faster</span>
                           <span className="flex items-center gap-1"><span className="h-0.5 w-3 rounded-full" style={{ background: COL_B }} />{lapB.name} faster</span>
                         </div>
