@@ -73,6 +73,7 @@ router.post("/ingest", async (req, res, next) => {
     parsed.lap.season = await activeSeasonNumber();
     const result = keepIfFaster(parsed.lap);
     dropOldSeasons(parsed.lap.season);
+    grabTrackMap(parsed.lap.track, parsed.lap.layout);
     // `kept` tells the app whether the lap made this driver's stored three, so
     // the in-game line can say "saved" vs "your stored 1:31.2 stands".
     res.json({ ok: true, kept: result.kept, bestMs: result.bestMs, stored: result.stored });
@@ -80,6 +81,24 @@ router.post("/ingest", async (req, res, next) => {
     next(e);
   }
 });
+
+// Take the track's map while the car is still on it.
+//
+// The comparison draws laps inside the real track edges using the map.png and
+// map.ini the server manager publishes (lib/trackMaps.js). Fetching those the
+// first time somebody OPENS a comparison is too late: the servers only serve
+// what is installed, and a track is installed around the rounds it is used for
+// — measured, not assumed, and half the circuits the league has raced answer
+// 404 for their map today. A lap arriving is proof that the track is on a
+// server right now, which makes it the one moment the map is certain to be
+// there.
+//
+// Fire and forget, and cheap to call on every lap: ensureTrackMap returns
+// immediately once the map is on disk, and remembers a miss for an hour so a
+// track nobody publishes is not re-fetched by every post.
+function grabTrackMap(track, layout) {
+  ensureTrackMap(track, layout).catch(() => {});
+}
 
 // The first lap of a new season takes the old ones with it.
 //
