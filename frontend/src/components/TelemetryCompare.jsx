@@ -177,7 +177,7 @@ function cornerInsights(lapA, lapB, corners, dist, n) {
 // line, so no track files, no calibration. Coloured by who gains where when
 // two laps are up (smoothed per-slice time gain), with the corner numbers at
 // their apexes and the shared cursor as a dot. Clicking jumps the cursor.
-function TrackMap({ lapA, lapB, n, corners, cursor, onPick }) {
+function TrackMap({ lapA, lapB, n, corners, cursor, cursorB, onPick }) {
   const geo = useMemo(() => {
     if (!lapA?.x || !lapA?.z) return null;
     const xs = lapA.x.slice(0, n).map((v) => v / 10);
@@ -242,8 +242,22 @@ function TrackMap({ lapA, lapB, n, corners, cursor, onPick }) {
           T{c.n ?? ""}
         </text>
       ))}
+      {/* One dot while a hand is on the chart — both laps are at the same
+          place on the track there, because the charts are drawn by position.
+          Two while it plays, each in its own colour: that gap IS the delta,
+          and watching it open is the thing a number cannot show. */}
+      {cursorB != null && cursorB < n && (
+        <circle cx={geo.px[cursorB]} cy={geo.py[cursorB]} r="1.8" fill={COL_B} stroke="var(--c-bg)" strokeWidth="0.6" />
+      )}
       {cursor != null && cursor < n && (
-        <circle cx={geo.px[cursor]} cy={geo.py[cursor]} r="1.8" fill="var(--c-text)" stroke="var(--c-bg)" strokeWidth="0.6" />
+        <circle
+          cx={geo.px[cursor]}
+          cy={geo.py[cursor]}
+          r="1.8"
+          fill={cursorB != null ? COL_A : "var(--c-text)"}
+          stroke="var(--c-bg)"
+          strokeWidth="0.6"
+        />
       )}
     </svg>
   );
@@ -251,6 +265,17 @@ function TrackMap({ lapA, lapB, n, corners, cursor, onPick }) {
 
 const COL_A = "#0ea5e9"; // sky — lap A
 const COL_B = "#f43f5e"; // rose — lap B
+
+// Where a lap had got to after `ms`. The channels are sampled by track
+// POSITION, so this is the one place that has to think in time: it walks the
+// lap's own time channel, from a hint index, because playback only ever moves
+// forward and rescanning 800 slices sixty times a second for two laps is work
+// nobody needs.
+function indexAtTime(lap, ms, n, hint = 0) {
+  let i = Math.max(0, Math.min(hint, n - 1));
+  while (i < n - 1 && lap.t[i] < ms) i++;
+  return i;
+}
 
 // One dropdown value naming one lap: driver, then which of their laps.
 const pickOf = (l) => `${l.steamId}:${l.lapId}`;
@@ -285,6 +310,11 @@ function TelemetryCompare() {
   const [lapA, setLapA] = useState(null);   // full channels
   const [lapB, setLapB] = useState(null);
   const [cursor, setCursor] = useState(null); // slice index under the mouse
+  // Playback. `bIdx` is where the OTHER lap is at the same moment in time —
+  // which is not the same place on the track, and that is the whole point: the
+  // two dots pull apart exactly as much as the delta says.
+  const [playing, setPlaying] = useState(false);
+  const [bIdx, setBIdx] = useState(null);
 
   const list = tracks.data?.tracks || [];
   // Which season these laps are from. The endpoint answers with it rather than
@@ -372,10 +402,53 @@ function TelemetryCompare() {
   const hasMap = !!(lapA?.x && lapA?.z);
 
   const onMove = (e) => {
+    // A hand on the chart wins over the clock — otherwise the two fight over
+    // the cursor and it stutters between them.
+    if (playing) {
+      setPlaying(false);
+      setBIdx(null);
+    }
     const box = e.currentTarget.getBoundingClientRect();
     const frac = Math.min(1, Math.max(0, (e.clientX - box.left) / box.width));
     setCursor(Math.min(n - 1, Math.round(frac * (n - 1))));
   };
+
+  // Real time, not frames: a slow machine plays the lap slower, it does not
+  // play a different lap. Stops itself at the flag.
+  useEffect(() => {
+    if (!playing || !lapA) return undefined;
+    const end = Math.max(lapA.lapTimeMs, both ? lapB.lapTimeMs : 0);
+    let raf = 0;
+    let last = null;
+    let elapsed = 0;
+    let hintA = 0;
+    let hintB = 0;
+    const step = (ts) => {
+      if (last == null) last = ts;
+      elapsed += ts - last;
+      last = ts;
+      if (elapsed >= end) {
+        setPlaying(false);
+        return;
+      }
+      hintA = indexAtTime(lapA, elapsed, n, hintA);
+      setCursor(hintA);
+      if (both) {
+        hintB = indexAtTime(lapB, elapsed, n, hintB);
+        setBIdx(hintB);
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, lapA, lapB, both, n]);
+
+  // Changing either lap ends the run: the cursor it left behind belongs to a
+  // lap that is no longer on screen.
+  useEffect(() => {
+    setPlaying(false);
+    setBIdx(null);
+  }, [aId, bId, trackKey]);
 
   const rows = lapRows(laps);
   // Comparing a driver against themselves is half of what three laps are for,
@@ -389,14 +462,12 @@ function TelemetryCompare() {
   return (
     <ToolCard
       title="Telemetry comparison"
-      subtitle={`Any two recorded laps at a track${season ? ` in Season ${season}` : ""} — two drivers, or one driver against themselves — throttle, brake and steering laid over each other.`}
+      subtitle={`Two laps laid over each other${season ? ` · Season ${season}` : ""}`}
     >
       {list.length === 0 ? (
         <p className="text-sm text-light">
-          No laps recorded{season ? ` in Season ${season}` : ""} yet. The in-game{" "}
-          <span className="font-semibold">nabsTelemetry</span> app sends your fastest clean laps here — the
-          three quickest per track — so drive a clean lap and come back. Every season starts empty on
-          purpose: the cars change with it, so last season&rsquo;s times are not something to chase.
+          Nothing recorded{season ? ` in Season ${season}` : ""} yet. Laps arrive from the race server as
+          drivers set them. Every season starts empty — the cars change with it.
         </p>
       ) : (
         <>
@@ -440,6 +511,17 @@ function TelemetryCompare() {
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                 <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full" style={{ background: COL_A }} />{lapLabel(lapA)}</span>
                 {lapB && <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full" style={{ background: COL_B }} />{lapLabel(lapB)}</span>}
+                <button
+                  type="button"
+                  className="font-mono text-[11px] font-bold uppercase tracking-wider text-link transition hover:text-dark"
+                  onClick={() => {
+                    setBIdx(null);
+                    setCursor(0);
+                    setPlaying((p) => !p);
+                  }}
+                >
+                  {playing ? "Stop" : "Play lap"}
+                </button>
                 {cursor != null && (
                   <span className="ml-auto font-mono tabular-nums text-light">
                     {Math.round((cursor / (n - 1)) * 100)}% · {lapA.speed[cursor]} km/h
@@ -456,7 +538,7 @@ function TelemetryCompare() {
                 <div className={`grid gap-4 ${hasMap && insights.length ? "lg:grid-cols-2" : ""}`}>
                   {hasMap && (
                     <div className="relative overflow-hidden rounded-lg border border-border bg-surface2/30 p-2" style={{ minHeight: 180 }}>
-                      <TrackMap lapA={lapA} lapB={both ? lapB : null} n={n} corners={corners} cursor={cursor} onPick={setCursor} />
+                      <TrackMap lapA={lapA} lapB={both ? lapB : null} n={n} corners={corners} cursor={cursor} cursorB={bIdx} onPick={setCursor} />
                       {both && (
                         <div className="pointer-events-none absolute bottom-1.5 right-2 flex gap-3 font-mono text-[10px] text-light">
                           <span className="flex items-center gap-1"><span className="h-0.5 w-3 rounded-full" style={{ background: COL_A }} />{lapA.name} faster</span>
@@ -539,8 +621,8 @@ function TelemetryCompare() {
               </div>
               {both && (
                 <p className="text-xs text-faint">
-                  Solid lines are {sideName(lapA)}, dashed {sideName(lapB)}. The delta reads "how far behind{" "}
-                  {sideName(lapA)}"
+                  Solid {sideName(lapA)}, dashed {sideName(lapB)}. The delta is how far behind{" "}
+                  {sideName(lapA)}
                   — rising means losing time there, falling means gaining it.
                 </p>
               )}
