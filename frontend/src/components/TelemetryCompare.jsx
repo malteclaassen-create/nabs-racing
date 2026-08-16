@@ -691,7 +691,7 @@ function TelemetryCompare() {
   const sameDriver = lapA && lapB && lapA.steamId === lapB.steamId;
   const sideName = (l) => (sameDriver ? fmtLap(l.lapTimeMs) ?? "?" : l.name);
   const cursorLeft = cursor != null && n > 1 ? `${(cursor / (n - 1)) * 100}%` : null;
-  const lapLabel = (l) => l ? `${l.name} — ${fmtLap(l.lapTimeMs) ?? "?"}${l.car ? ` · ${l.car}` : ""}` : "";
+  const lapLabel = (l) => l ? `${l.name} · ${fmtLap(l.lapTimeMs) ?? "?"}${l.car ? ` · ${l.car}` : ""}` : "";
 
   return (
     <ToolCard
@@ -701,7 +701,7 @@ function TelemetryCompare() {
       {list.length === 0 ? (
         <p className="text-sm text-light">
           Nothing recorded{season ? ` in Season ${season}` : ""} yet. Laps arrive from the race server as
-          drivers set them. Every season starts empty — the cars change with it.
+          drivers set them. Every season starts empty, because the cars change with it.
         </p>
       ) : (
         <>
@@ -726,7 +726,7 @@ function TelemetryCompare() {
             </Field>
             <Field label="Lap B">
               <select className="input" value={bId} onChange={(e) => setBId(e.target.value)}>
-                <option value="">—</option>
+                <option value="">No second lap</option>
                 {/* Only the lap already chosen as A is excluded, not the rest
                     of that driver's — comparing your own two laps against each
                     other is half of what three laps are for. */}
@@ -877,7 +877,7 @@ function TelemetryCompare() {
                             <span className="font-mono font-bold tabular-nums" style={{ color: col }}>
                               {winner} {c.gainMs >= 0 ? "+" : "+"}{(Math.abs(c.gainMs) / 1000).toFixed(2)}s
                             </span>
-                            <span className="min-w-0 flex-1 truncate text-light">{clauses.join(" · ") || "even on the numbers — the gain is in the line"}</span>
+                            <span className="min-w-0 flex-1 truncate text-light">{clauses.join(" · ") || "even on the numbers, so the gain is in the line"}</span>
                           </button>
                         );
                       })}
@@ -892,7 +892,7 @@ function TelemetryCompare() {
               <div className="relative cursor-crosshair select-none" onMouseMove={onMove} onMouseLeave={() => setCursor(null)}>
                 <div className="space-y-3">
                   {both && delta && (
-                    <TracePanel title={`Delta — ${sideName(lapB)} behind ${sideName(lapA)}`} unit={`±${delta.maxAbs.toFixed(2)}s`} height={72}>
+                    <TracePanel title={`Delta · ${sideName(lapB)} behind ${sideName(lapA)}`} unit={`±${delta.maxAbs.toFixed(2)}s`} height={72}>
                       <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-border" />
                       <TraceSvg n={n} lines={[{ points: tracePoints(delta.d, -delta.maxAbs, delta.maxAbs), color: COL_B, width: 2 }]} />
                     </TracePanel>
@@ -926,7 +926,8 @@ function TelemetryCompare() {
               {both && (
                 <p className="text-xs text-faint">
                   Solid {sideName(lapA)}, dashed {sideName(lapB)}. The delta is how far behind{" "}
-                  {sideName(lapA)} — rising means losing time there, falling means gaining it.
+                  {sideName(lapA)} the other lap is. Rising means losing time there, falling means
+                  gaining it.
                 </p>
               )}
             </>

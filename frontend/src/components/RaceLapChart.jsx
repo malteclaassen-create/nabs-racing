@@ -226,7 +226,7 @@ export default function RaceLapChart({ data, className = "" }) {
               onMouseLeave={() => setFocus(null)}
               onClick={() => setFocus(active ? null : id)}
               aria-pressed={active}
-              title={`${d.name} — tap to follow their line`}
+              title={`${d.name}: tap to follow their line`}
             >
               {/* The swatch repeats the line's dash pattern, or two lines of
                   the same colour would look like one entry in the key. */}

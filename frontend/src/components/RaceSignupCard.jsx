@@ -67,7 +67,7 @@ export function SubMark({ sub }) {
   const inbound = sub.direction === "IN";
   const label = inbound
     ? `Standing in${sub.forName ? ` for ${sub.forName}` : ""}${sub.teamName ? ` at ${sub.teamName}` : ""}`
-    : `Sitting this one out${sub.forName ? ` — ${sub.forName} takes the seat` : ""}`;
+    : `Sitting this one out${sub.forName ? `, ${sub.forName} takes the seat` : ""}`;
   return (
     <span title={label} aria-label={label} className="shrink-0 leading-none">
       <svg

@@ -684,7 +684,7 @@ export async function notifyAchievements(prisma, driverId, state) {
         await dbCreateNotification(prisma, {
           type: "AWARD",
           title: `Achievement unlocked: ${a?.name || key}`,
-          body: a?.tagline ? `${a.tagline} — see it in your Cockpit.` : null,
+          body: a?.tagline ? `${a.tagline}. See it in your Cockpit.` : null,
           link: "/cockpit?tab=achievements",
           recipientId: row.discordUserId,
           dedupeKey: `achievement:${driverId}:${key}`,
