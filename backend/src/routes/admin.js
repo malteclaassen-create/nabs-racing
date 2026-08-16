@@ -5240,9 +5240,12 @@ router.put("/telemetry-visibility", async (req, res, next) => {
   }
 });
 
-router.delete("/telemetry-laps/:trackKey/:steamId", async (req, res, next) => {
+// Without a lap id: every lap that driver has at this track. With one: that
+// lap alone. Removing a modded-car time is one lap; removing somebody who
+// should not be in the list at all is all of them.
+router.delete("/telemetry-laps/:trackKey/:steamId/:lapId?", async (req, res, next) => {
   try {
-    const ok = deleteTelemetryLap(req.params.trackKey, req.params.steamId);
+    const ok = deleteTelemetryLap(req.params.trackKey, req.params.steamId, req.params.lapId ?? null);
     if (!ok) return res.status(404).json({ error: "No lap stored there" });
     res.json({ ok: true });
   } catch (e) {

@@ -252,9 +252,33 @@ function TrackMap({ lapA, lapB, n, corners, cursor, onPick }) {
 const COL_A = "#0ea5e9"; // sky — lap A
 const COL_B = "#f43f5e"; // rose — lap B
 
+// One dropdown value naming one lap: driver, then which of their laps.
+const pickOf = (l) => `${l.steamId}:${l.lapId}`;
+const splitPick = (v) => {
+  const cut = String(v || "").indexOf(":");
+  return cut === -1 ? [v, null] : [v.slice(0, cut), v.slice(cut + 1)];
+};
+
+// "Neesh · 1:31.010" when it is their only lap here, "Neesh · 1:31.010 (2nd)"
+// when it is not — otherwise a driver appears three times in the list with
+// nothing to tell the rows apart but a time nobody has memorised.
+const ORDINAL = ["best", "2nd", "3rd"];
+function lapRows(laps) {
+  const seen = new Map();
+  return (laps || []).map((l) => {
+    const n = seen.get(l.steamId) || 0;
+    seen.set(l.steamId, n + 1);
+    return { ...l, rank: n, only: (laps || []).filter((x) => x.steamId === l.steamId).length === 1 };
+  });
+}
+
 function TelemetryCompare() {
   const tracks = useApi(useCallback(() => api.telemetryTracks(), []));
   const [trackKey, setTrackKey] = useState("");
+  // A driver has up to three laps here, so the dropdowns are keyed on the LAP:
+  // "<steamId>:<lapId>". Keyed on the driver, as they were when everybody had
+  // exactly one, React drew three <option>s with the same value and the
+  // selection jumped to whichever came first.
   const [aId, setAId] = useState("");
   const [bId, setBId] = useState("");
   const [laps, setLaps] = useState(null);   // meta list for the track
@@ -277,8 +301,8 @@ function TelemetryCompare() {
       setLaps(d.laps);
       // The two fastest preselect: the card shows a real comparison at first
       // sight instead of two empty dropdowns.
-      if (d.laps[0]) setAId(d.laps[0].steamId);
-      if (d.laps[1]) setBId(d.laps[1].steamId);
+      if (d.laps[0]) setAId(pickOf(d.laps[0]));
+      if (d.laps[1]) setBId(pickOf(d.laps[1]));
     }).catch(() => alive && setLaps([]));
     return () => { alive = false; };
   }, [trackKey]);
@@ -287,14 +311,14 @@ function TelemetryCompare() {
     setLapA(null);
     if (!trackKey || !aId) return;
     let alive = true;
-    api.telemetryLap(trackKey, aId).then((d) => alive && setLapA(d)).catch(() => {});
+    api.telemetryLap(trackKey, ...splitPick(aId)).then((d) => alive && setLapA(d)).catch(() => {});
     return () => { alive = false; };
   }, [trackKey, aId]);
   useEffect(() => {
     setLapB(null);
     if (!trackKey || !bId) return;
     let alive = true;
-    api.telemetryLap(trackKey, bId).then((d) => alive && setLapB(d)).catch(() => {});
+    api.telemetryLap(trackKey, ...splitPick(bId)).then((d) => alive && setLapB(d)).catch(() => {});
     return () => { alive = false; };
   }, [trackKey, bId]);
 
@@ -347,18 +371,24 @@ function TelemetryCompare() {
     setCursor(Math.min(n - 1, Math.round(frac * (n - 1))));
   };
 
+  const rows = lapRows(laps);
+  // Comparing a driver against themselves is half of what three laps are for,
+  // and it made the delta read "Maltegoat behind Maltegoat". When both laps
+  // belong to one person, their times do the naming instead.
+  const sameDriver = lapA && lapB && lapA.steamId === lapB.steamId;
+  const sideName = (l) => (sameDriver ? fmtLap(l.lapTimeMs) ?? "?" : l.name);
   const cursorLeft = cursor != null && n > 1 ? `${(cursor / (n - 1)) * 100}%` : null;
   const lapLabel = (l) => l ? `${l.name} — ${fmtLap(l.lapTimeMs) ?? "?"}${l.car ? ` · ${l.car}` : ""}` : "";
 
   return (
     <ToolCard
       title="Telemetry comparison"
-      subtitle="Two drivers' fastest recorded laps at a track, throttle, brake and steering laid over each other."
+      subtitle="Any two recorded laps at a track — two drivers, or one driver against themselves — throttle, brake and steering laid over each other."
     >
       {list.length === 0 ? (
         <p className="text-sm text-light">
           No laps recorded yet. The in-game <span className="font-semibold">nabsTelemetry</span> app sends
-          your fastest clean lap per track here — ask an admin for the URL, drive a clean lap, come back.
+          your fastest clean laps here — the three quickest per track — so drive a clean lap and come back.
         </p>
       ) : (
         <>
@@ -374,16 +404,23 @@ function TelemetryCompare() {
             </Field>
             <Field label="Lap A">
               <select className="input" value={aId} onChange={(e) => setAId(e.target.value)}>
-                {(laps || []).map((l) => (
-                  <option key={l.steamId} value={l.steamId}>{l.name} · {fmtLap(l.lapTimeMs) ?? "?"}</option>
+                {rows.map((l) => (
+                  <option key={pickOf(l)} value={pickOf(l)}>
+                    {l.name} · {fmtLap(l.lapTimeMs) ?? "?"}{l.only ? "" : ` (${ORDINAL[l.rank] || l.rank + 1})`}
+                  </option>
                 ))}
               </select>
             </Field>
             <Field label="Lap B">
               <select className="input" value={bId} onChange={(e) => setBId(e.target.value)}>
                 <option value="">—</option>
-                {(laps || []).filter((l) => l.steamId !== aId).map((l) => (
-                  <option key={l.steamId} value={l.steamId}>{l.name} · {fmtLap(l.lapTimeMs) ?? "?"}</option>
+                {/* Only the lap already chosen as A is excluded, not the rest
+                    of that driver's — comparing your own two laps against each
+                    other is half of what three laps are for. */}
+                {rows.filter((l) => pickOf(l) !== aId).map((l) => (
+                  <option key={pickOf(l)} value={pickOf(l)}>
+                    {l.name} · {fmtLap(l.lapTimeMs) ?? "?"}{l.only ? "" : ` (${ORDINAL[l.rank] || l.rank + 1})`}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -461,7 +498,7 @@ function TelemetryCompare() {
               <div className="relative cursor-crosshair select-none" onMouseMove={onMove} onMouseLeave={() => setCursor(null)}>
                 <div className="space-y-3">
                   {both && delta && (
-                    <TracePanel title={`Delta — ${lapB.name} behind ${lapA.name}`} unit={`±${delta.maxAbs.toFixed(2)}s`} height={72}>
+                    <TracePanel title={`Delta — ${sideName(lapB)} behind ${sideName(lapA)}`} unit={`±${delta.maxAbs.toFixed(2)}s`} height={72}>
                       <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-border" />
                       <TraceSvg n={n} lines={[{ points: tracePoints(delta.d, -delta.maxAbs, delta.maxAbs), color: COL_B, width: 2 }]} />
                     </TracePanel>
@@ -494,7 +531,8 @@ function TelemetryCompare() {
               </div>
               {both && (
                 <p className="text-xs text-faint">
-                  Solid lines are {lapA.name}, dashed {lapB.name}. The delta reads "how far behind {lapA.name}"
+                  Solid lines are {sideName(lapA)}, dashed {sideName(lapB)}. The delta reads "how far behind{" "}
+                  {sideName(lapA)}"
                   — rising means losing time there, falling means gaining it.
                 </p>
               )}

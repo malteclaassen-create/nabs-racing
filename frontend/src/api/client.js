@@ -1017,7 +1017,11 @@ export const api = {
     request("/admin/telemetry-visibility", { method: "PUT", body: { public: isPublic }, auth: true }),
   telemetryTracks: () => request("/telemetry-laps", { auth: true }),
   telemetryLaps: (trackKey) => request(`/telemetry-laps/${trackKey}`, { auth: true }),
-  telemetryLap: (trackKey, steamId) => request(`/telemetry-laps/${trackKey}/${steamId}`, { auth: true }),
+  // A driver has up to three laps per track; `lapId` is the lap time in ms.
+  // Omitted, the endpoint answers with their fastest, which is what this call
+  // meant when everybody had exactly one.
+  telemetryLap: (trackKey, steamId, lapId = null) =>
+    request(`/telemetry-laps/${trackKey}/${steamId}${lapId ? `/${lapId}` : ""}`, { auth: true }),
 
   // Cars and wide wordmarks for the shareable result graphic, per team.
   teamArt: () => request("/admin/team-art", { auth: true }),

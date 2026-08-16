@@ -5,9 +5,9 @@
 // The ingest works exactly like the in-race report ingest one file over: OFF
 // until an admin mints a key (Setting telemetry_ingest_key), and the key rides
 // in the URL because a CSP Lua app cannot set request headers. A key that only
-// ever ADDS a lap — and only a faster one than the driver's own stored best —
-// is an acceptable thing to have in a query string; nothing here reads or
-// deletes with it.
+// ever ADDS a lap — and only one that belongs in the driver's own fastest
+// three — is an acceptable thing to have in a query string; nothing here reads
+// or deletes with it.
 // ---------------------------------------------------------------------------
 import { Router } from "express";
 import { readFileSync } from "fs";
@@ -15,7 +15,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
 import { telemetryReadGate } from "../lib/telemetryAccess.js";
-import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId } from "../lib/telemetryLaps.js";
+import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId, isLapId } from "../lib/telemetryLaps.js";
 import { getNameOverrides } from "../lib/persons.js";
 
 const router = Router();
@@ -52,9 +52,9 @@ router.post("/ingest", async (req, res, next) => {
     const parsed = parseLapPayload(req.body);
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
     const result = keepIfFaster(parsed.lap);
-    // `kept` tells the app whether this beat the driver's stored best, so the
-    // in-game line can say "saved" vs "your stored 1:31.2 stands".
-    res.json({ ok: true, kept: result.kept, bestMs: result.bestMs });
+    // `kept` tells the app whether the lap made this driver's stored three, so
+    // the in-game line can say "saved" vs "your stored 1:31.2 stands".
+    res.json({ ok: true, kept: result.kept, bestMs: result.bestMs, stored: result.stored });
   } catch (e) {
     next(e);
   }
@@ -162,13 +162,18 @@ router.get("/:trackKey", async (req, res, next) => {
   }
 });
 
-// GET /api/telemetry-laps/:trackKey/:steamId -> one lap, channels included
-router.get("/:trackKey/:steamId", async (req, res, next) => {
+// GET /api/telemetry-laps/:trackKey/:steamId[/:lapId] -> one lap, channels
+// included. Without a lapId, the driver's fastest — which is what the address
+// meant when a driver had only one, so old links still answer.
+router.get("/:trackKey/:steamId/:lapId?", async (req, res, next) => {
   try {
     if (!isTrackKey(req.params.trackKey) || !isSteamId(req.params.steamId)) {
       return res.status(400).json({ error: "Bad address" });
     }
-    const lap = readLap(req.params.trackKey, req.params.steamId);
+    if (req.params.lapId != null && !isLapId(req.params.lapId)) {
+      return res.status(400).json({ error: "Bad lap" });
+    }
+    const lap = readLap(req.params.trackKey, req.params.steamId, req.params.lapId ?? null);
     if (!lap) return res.status(404).json({ error: "No lap stored there" });
     const known = await leagueNames([lap.steamId]);
     res.json({ ...lap, driverId: known.get(lap.steamId)?.driverId ?? null, name: known.get(lap.steamId)?.name || lap.name });
