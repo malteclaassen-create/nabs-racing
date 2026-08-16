@@ -28,6 +28,11 @@ backend/downloads/*
 # Archived raw AC result JSONs (kept so telemetry can be recomputed later).
 # Runtime data under DATA_DIR — regeneratable from imports/backfill, not source.
 backend/results-archive/
+# Driver-recorded laps, and the track outlines fetched from the server manager.
+# Same story: runtime data that lands here whenever the server is run straight
+# out of the checkout, and neither belongs in the repository.
+backend/telemetry-laps/
+backend/track-maps/
 
 # Logs
 *.log

@@ -17,6 +17,7 @@ import prisma from "../lib/prisma.js";
 import { telemetryReadGate } from "../lib/telemetryAccess.js";
 import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId, isLapId } from "../lib/telemetryLaps.js";
 import { getNameOverrides } from "../lib/persons.js";
+import { ensureTrackMap } from "../lib/trackMaps.js";
 import { resolveSeason } from "../services/seasonService.js";
 
 const router = Router();
@@ -204,6 +205,50 @@ router.get("/:trackKey", async (req, res, next) => {
         name: known.get(l.steamId)?.name || l.name,
       })),
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/telemetry-laps/:trackKey/map -> the track's real outline, if the
+// server manager publishes one, as the calibration plus a URL for the image.
+//
+// The lap's own recorded positions can always draw an outline of the racing
+// line; this draws the TRACK, so two lines can be read against the kerbs they
+// were actually near. Answers 404 when the track has no published map, which is
+// a normal outcome for anything raced outside the league's own servers — the
+// comparison falls back to the lap's own shape.
+//
+// Declared before the driver route below, or "map" is read as a Steam id.
+router.get("/:trackKey/map", async (req, res, next) => {
+  try {
+    if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
+    const { season, legacy } = await seasonAsked(req);
+    // The AC track and layout ids, taken from a lap rather than from the slug:
+    // the slug is lossy (lower case, punctuation folded) and the upstream path
+    // needs them exactly as the game spells them.
+    const one = listLaps(season, req.params.trackKey, legacy)[0];
+    if (!one) return res.status(404).json({ error: "No laps at that track" });
+    const map = await ensureTrackMap(one.track, one.layout);
+    if (!map) return res.status(404).json({ error: "No published map for that track" });
+    res.json({ ...map.calib, url: `/api/telemetry-laps/${req.params.trackKey}/map.png` });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/:trackKey/map.png", async (req, res, next) => {
+  try {
+    if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
+    const { season, legacy } = await seasonAsked(req);
+    const one = listLaps(season, req.params.trackKey, legacy)[0];
+    const map = one ? await ensureTrackMap(one.track, one.layout) : null;
+    if (!map) return res.status(404).end();
+    // Immutable: a track's overhead map does not change, and the file is only
+    // ever written once (lib/trackMaps.js).
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    res.sendFile(map.png);
   } catch (e) {
     next(e);
   }

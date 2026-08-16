@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api/client.js";
+import { api, telemetryTrackMapUrl } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { Field } from "./ui.jsx";
 import { fmtLap } from "../utils/format.js";
@@ -201,13 +201,39 @@ function cornerInsights(lapA, lapB, corners, dist, n) {
 //
 // The zoom follows the cursor, which is wherever the reader last pointed —
 // hovering a chart, clicking a row in the list, or the playback clock.
-function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick, mode = "gain", zoom = 1 }) {
+function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick, mode = "gain", zoom = 1, track = null }) {
   // One projection, shared: both laps are in the same world coordinates, so
   // lap B has to be drawn through lap A's transform or the two would be laid
   // out independently and every difference between them would be invented by
   // the scaling.
   const geo = useMemo(() => {
     if (!lapA?.x || !lapA?.z) return null;
+
+    // THE REAL TRACK, when the league's server manager publishes one. Assetto
+    // Corsa ships an overhead map with each track and a map.ini saying how to
+    // place a world coordinate on it — the same two files the live page draws
+    // its cars with — and the laps here record the same world coordinates. So
+    // the lines land inside the actual kerbs rather than floating in white.
+    //
+    // Positions are stored in DECIMETRES (a tenth of the game's unit), hence
+    // the /10 before the ini's own arithmetic.
+    if (track?.calib?.scaleFactor) {
+      const { width, height, scaleFactor, xOffset, zOffset, padding } = track.calib;
+      const pad = padding || 0;
+      const projX = (v) => (v / 10 + xOffset) / scaleFactor + pad;
+      const projY = (v) => (v / 10 + zOffset) / scaleFactor + pad;
+      return {
+        W: width,
+        H: height,
+        projX,
+        projY,
+        px: lapA.x.slice(0, n).map(projX),
+        py: lapA.z.slice(0, n).map(projY),
+        mPerUnit: scaleFactor,
+        image: track.href,
+      };
+    }
+
     const xs = lapA.x.slice(0, n).map((v) => v / 10);
     const zs = lapA.z.slice(0, n).map((v) => v / 10);
     const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -228,10 +254,11 @@ function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick, mode = "gain", zoom 
       // laps a metre apart are drawn a metre apart, which at whole-lap zoom is
       // a fraction of a pixel and at corner zoom is plain.
       mPerUnit: spanX / inner,
+      image: null,
       px: lapA.x.slice(0, n).map(projX),
       py: lapA.z.slice(0, n).map(projY),
     };
-  }, [lapA, n]);
+  }, [lapA, n, track]);
 
   // Lap B through the same transform, from ITS OWN positions. Drawing it from
   // lap A's would put the second car on the first car's line, which is exactly
@@ -291,11 +318,18 @@ function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick, mode = "gain", zoom 
     onPick(best);
   };
 
+  // Everything drawn in map units below — the cursor dot, the scale bar, its
+  // label — was sized for the 100-unit box this map used to invent for itself.
+  // A real track map's box is its PNG's pixel size, 1680 wide for the Red Bull
+  // Ring, and at that scale the same numbers are a seventeenth of the size they
+  // were meant to be. So they are expressed against the frame instead.
+  const u = geo.W / 100;
+
   // A round number of metres, sized to about a quarter of the frame, drawn
   // OUTSIDE the camera so it stays put and stays readable. Without it "the
   // lines are this far apart" is a feeling; with it, it is a measurement.
   const nice = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
-  const barM = nice.find((m) => (m / geo.mPerUnit) * zoom >= 18) ?? nice[nice.length - 1];
+  const barM = nice.find((m) => (m / geo.mPerUnit) * zoom >= 18 * u) ?? nice[nice.length - 1];
   const barUnits = (barM / geo.mPerUnit) * zoom;
 
   return (
@@ -306,6 +340,11 @@ function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick, mode = "gain", zoom 
       aria-label={lines ? "Track map, both racing lines" : "Track map, coloured by who gains where"}
     >
       <g transform={cam}>
+        {/* The outline first, everything else over it. Slightly held back so
+            two thin coloured lines stay the thing being read. */}
+        {geo.image && (
+          <image href={geo.image} x={0} y={0} width={geo.W} height={geo.H} opacity={0.5} preserveAspectRatio="none" />
+        )}
         {lines ? (
           <>
             <polyline points={pts(geo.px, geo.py, 0, n - 1)} fill="none" stroke={COL_A} strokeWidth={2}
@@ -329,36 +368,36 @@ function TrackMap({ lapA, lapB, n, cursor, cursorB, onPick, mode = "gain", zoom 
           <circle
             cx={(lines && bxy ? bxy.px : geo.px)[cursorB]}
             cy={(lines && bxy ? bxy.py : geo.py)[cursorB]}
-            r={1.8 / zoom}
+            r={(1.8 * u) / zoom}
             fill={COL_B}
             stroke="var(--c-bg)"
-            strokeWidth={0.6 / zoom}
+            strokeWidth={(0.6 * u) / zoom}
           />
         )}
         {cursor != null && cursor < n && (
           <circle
             cx={geo.px[cursor]}
             cy={geo.py[cursor]}
-            r={1.8 / zoom}
+            r={(1.8 * u) / zoom}
             fill={cursorB != null || lines ? COL_A : "var(--c-text)"}
             stroke="var(--c-bg)"
-            strokeWidth={0.6 / zoom}
+            strokeWidth={(0.6 * u) / zoom}
           />
         )}
       </g>
       {barUnits <= geo.W * 0.6 && (
         <g>
           <line
-            x1={4}
-            y1={geo.H - 4}
-            x2={4 + barUnits}
-            y2={geo.H - 4}
+            x1={4 * u}
+            y1={geo.H - 4 * u}
+            x2={4 * u + barUnits}
+            y2={geo.H - 4 * u}
             stroke="var(--c-text)"
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
             opacity={0.5}
           />
-          <text x={4} y={geo.H - 5.5} fontSize={3} className="fill-current text-light" opacity={0.75}>
+          <text x={4 * u} y={geo.H - 5.5 * u} fontSize={3 * u} className="fill-current text-light" opacity={0.75}>
             {barM} m
           </text>
         </g>
@@ -428,6 +467,10 @@ function TelemetryCompare() {
   // only says anything zoomed in (see TrackMap). Switching to it zooms, because
   // at 1x the answer is "they are identical" and that is an artefact of the
   // scale rather than a fact about the driving.
+  // The track's real outline, when there is one. `null` means "asked and there
+  // is none", which is a normal answer for anything raced off the league's own
+  // servers — the map then draws the lap's own shape, as it always did.
+  const [track, setTrack] = useState(null); // { calib, href }
   const [mapMode, setMapMode] = useState("gain");
   const [zoom, setZoom] = useState(1);
 
@@ -578,6 +621,26 @@ function TelemetryCompare() {
     return () => cancelAnimationFrame(raf);
   }, [playing, lapA, lapB, both, n]);
 
+  useEffect(() => {
+    let alive = true;
+    let href = null;
+    setTrack(null);
+    if (!trackKey) return undefined;
+    api
+      .telemetryTrackMap(trackKey)
+      .then(async (calib) => {
+        href = await telemetryTrackMapUrl(calib.url);
+        if (alive && href) setTrack({ calib, href });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      // The blob is this component's; nothing else can reach it once the track
+      // changes, and an unreleased one is a leak per switch.
+      if (href) URL.revokeObjectURL(href);
+    };
+  }, [trackKey]);
+
   // Changing either lap ends the run: the cursor it left behind belongs to a
   // lap that is no longer on screen. The camera goes back out too — a corner
   // of one lap is not a corner of the next.
@@ -686,6 +749,7 @@ function TelemetryCompare() {
                         onPick={setCursor}
                         mode={both ? mapMode : "gain"}
                         zoom={zoom}
+                        track={track}
                       />
                       {/* What the map is answering. Two questions, one picture
                           each: they cannot share one, because the lines only

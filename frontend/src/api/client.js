@@ -42,6 +42,23 @@ export function myDiscordId() {
   }
 }
 
+// The track map's bytes, behind the same admin gate as everything else here.
+// An <image> element cannot carry an Authorization header, so the PNG is
+// fetched with the caller's token and handed back as a blob: URL — the same
+// trick report attachments use one function down.
+export async function telemetryTrackMapUrl(path) {
+  const token = adminAuthToken();
+  // `path` arrives from the endpoint already rooted at /api — unlike
+  // reportFileUrl below, which is handed the part after it. Prefixing again
+  // asked the server for /api/api/… and got a 404 that looked, from the page,
+  // exactly like "this track has no map".
+  const res = await fetch(withApiBase(path), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) return null;
+  return URL.createObjectURL(await res.blob());
+}
+
 export async function reportFileUrl(file, admin = false) {
   const path = admin
     ? `/admin/reports/${file.reportId}/files/${file.id}`
@@ -1020,6 +1037,9 @@ export const api = {
   // inside one. Without a season the endpoints answer for the season running
   // now, which is what a reader who has not touched the switcher wants.
   telemetryTracks: () => request(`/telemetry-laps${seasonQ()}`, { auth: true }),
+  // The track's real outline, when the server manager publishes one. 404 is a
+  // normal answer and means "draw the lap's own shape instead".
+  telemetryTrackMap: (trackKey) => request(`/telemetry-laps/${trackKey}/map${seasonQ()}`, { auth: true }),
   telemetryLaps: (trackKey) => request(`/telemetry-laps/${trackKey}${seasonQ()}`, { auth: true }),
   // A driver has up to three laps per track; `lapId` is the lap time in ms.
   // Omitted, the endpoint answers with their fastest, which is what this call
