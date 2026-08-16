@@ -385,7 +385,7 @@ function ContactSuggestions({ report }) {
         {named
           ? `What Assetto Corsa recorded between ${report.reporterName || "the reporter"} and ${named} around the lap they gave.`
           : `What Assetto Corsa recorded for ${report.reporterName || "the reporter"} around the lap they gave.`}{" "}
-        Nobody picked these — check one against the replay before acting on it.
+        Nobody picked these, so check one against the replay before acting on it.
       </p>
       <ul className="mt-3 space-y-2">
         {hits.map((c) => (

@@ -5,9 +5,9 @@
 // The ingest works exactly like the in-race report ingest one file over: OFF
 // until an admin mints a key (Setting telemetry_ingest_key), and the key rides
 // in the URL because a CSP Lua app cannot set request headers. A key that only
-// ever ADDS a lap — and only a faster one than the driver's own stored best —
-// is an acceptable thing to have in a query string; nothing here reads or
-// deletes with it.
+// ever ADDS a lap — and only one that belongs in the driver's own fastest
+// three — is an acceptable thing to have in a query string; nothing here reads
+// or deletes with it.
 // ---------------------------------------------------------------------------
 import { Router } from "express";
 import { readFileSync } from "fs";
@@ -15,15 +15,30 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
 import { telemetryReadGate } from "../lib/telemetryAccess.js";
-import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId } from "../lib/telemetryLaps.js";
+import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId, isLapId, pruneSeasonsBefore } from "../lib/telemetryLaps.js";
 import { getNameOverrides } from "../lib/persons.js";
+import { ensureTrackMap } from "../lib/trackMaps.js";
+import { resolveSeason } from "../services/seasonService.js";
 
 const router = Router();
 const __dir = dirname(fileURLToPath(import.meta.url));
 
-// The same generous flood ceiling as the report ingest: it exists to stop a
-// stuck loop filling the disk, not to ration a busy practice evening.
-const INGEST_MAX = 60; // per minute, across everyone
+// A ceiling against a stuck loop, and nothing else — which is why it is high.
+//
+// It cannot be sized like the report ingest, which was its first draft at 60 a
+// minute. Reports are a handful on a race night; laps come from a PRACTICE
+// server that stands between races with a full grid on it, and the moment that
+// server restarts every driver rejoins at once, the script's memory of its own
+// session best resets, and each of them posts their first clean lap. Forty-odd
+// cars around a 66-second circuit puts that well past sixty in a minute, and a
+// refused post is a lap silently dropped: the script logs the 429 and moves on.
+//
+// It can afford to be high because it is not what protects the disk. The store
+// keeps three laps per driver per track and prunes the rest (lib/telemetryLaps
+// .js), so the space this can ever occupy is drivers x tracks x 3 no matter how
+// many posts arrive. What is left to protect is CPU and bandwidth, and 300 laps
+// a minute is about 8 MB — far below anything that troubles either.
+const INGEST_MAX = 300; // per minute, across everyone
 let hits = [];
 function flooded() {
   const cutoff = Date.now() - 60_000;
@@ -51,14 +66,86 @@ router.post("/ingest", async (req, res, next) => {
 
     const parsed = parseLapPayload(req.body);
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    // WHICH SEASON this lap belongs to is the site's to say, not the game's:
+    // the car knows the track and nothing about the league's calendar. Stamped
+    // on arrival, because the league runs different cars each season and a lap
+    // is only comparable within one.
+    parsed.lap.season = await activeSeasonNumber();
     const result = keepIfFaster(parsed.lap);
-    // `kept` tells the app whether this beat the driver's stored best, so the
-    // in-game line can say "saved" vs "your stored 1:31.2 stands".
-    res.json({ ok: true, kept: result.kept, bestMs: result.bestMs });
+    dropOldSeasons(parsed.lap.season);
+    grabTrackMap(parsed.lap.track, parsed.lap.layout);
+    // `kept` tells the app whether the lap made this driver's stored three, so
+    // the in-game line can say "saved" vs "your stored 1:31.2 stands".
+    res.json({ ok: true, kept: result.kept, bestMs: result.bestMs, stored: result.stored });
   } catch (e) {
     next(e);
   }
 });
+
+// Take the track's map while the car is still on it.
+//
+// The comparison draws laps inside the real track edges using the map.png and
+// map.ini the server manager publishes (lib/trackMaps.js). Fetching those the
+// first time somebody OPENS a comparison is too late: the servers only serve
+// what is installed, and a track is installed around the rounds it is used for
+// — measured, not assumed, and half the circuits the league has raced answer
+// 404 for their map today. A lap arriving is proof that the track is on a
+// server right now, which makes it the one moment the map is certain to be
+// there.
+//
+// Fire and forget, and cheap to call on every lap: ensureTrackMap returns
+// immediately once the map is on disk, and remembers a miss for an hour so a
+// track nobody publishes is not re-fetched by every post.
+function grabTrackMap(track, layout) {
+  ensureTrackMap(track, layout).catch(() => {});
+}
+
+// The first lap of a new season takes the old ones with it.
+//
+// Triggered here rather than by a clock or a button because this is the exact
+// moment the old seasons stop being current: somebody is out on track in the
+// new car. The guard is so that a busy practice evening does not read the
+// directory on every post — the work only ever happens once per season, on
+// whichever lap happens to be the first.
+let prunedFor = null;
+function dropOldSeasons(season) {
+  if (!season || season === prunedFor) return;
+  prunedFor = season;
+  try {
+    const gone = pruneSeasonsBefore(season);
+    if (gone.length) {
+      console.log(`[telemetry] season ${season} started: removed laps from season ${gone.join(", ")}`);
+    }
+  } catch {
+    /* never worth failing an ingest over; the next new season tries again */
+  }
+}
+
+// The season a lap belongs to, and the season a reader is looking at. The
+// practice server runs between the rounds of whatever season is on, so "now" is
+// the right answer for an arriving lap; a reader can ask for an older one.
+//
+// Series: the ingest cannot say which one it came from — a key, a car and a
+// track is all it has — so an arriving lap is stamped with the primary series'
+// active season. A second series recording telemetry would need its own key to
+// tell them apart, and that is a bridge for the day it happens.
+async function activeSeasonNumber() {
+  try {
+    const season = await resolveSeason(prisma, null, { includePrivate: true });
+    return Number(season?.number) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Which season the caller is asking about, and whether that is the one running
+// now — laps recorded before this store had seasons can only belong to that one.
+async function seasonAsked(req) {
+  const active = await activeSeasonNumber();
+  const wanted = Number(req.query?.season);
+  const season = Number.isFinite(wanted) && wanted > 0 ? wanted : active;
+  return { season, legacy: season === active };
+}
 
 // League identity for a set of steamIds: current display name + profile link,
 // resolved the same two ways as everywhere else (captured SteamID on a roster
@@ -138,7 +225,8 @@ router.use(telemetryReadGate(prisma));
 // GET /api/telemetry-laps -> tracks that have laps
 router.get("/", async (req, res, next) => {
   try {
-    res.json({ tracks: listTracks() });
+    const { season, legacy } = await seasonAsked(req);
+    res.json({ season, tracks: listTracks(season, legacy) });
   } catch (e) {
     next(e);
   }
@@ -148,7 +236,8 @@ router.get("/", async (req, res, next) => {
 router.get("/:trackKey", async (req, res, next) => {
   try {
     if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
-    const laps = listLaps(req.params.trackKey);
+    const { season, legacy } = await seasonAsked(req);
+    const laps = listLaps(season, req.params.trackKey, legacy);
     const known = await leagueNames(laps.map((l) => l.steamId));
     res.json({
       laps: laps.map((l) => ({
@@ -162,13 +251,63 @@ router.get("/:trackKey", async (req, res, next) => {
   }
 });
 
-// GET /api/telemetry-laps/:trackKey/:steamId -> one lap, channels included
-router.get("/:trackKey/:steamId", async (req, res, next) => {
+// GET /api/telemetry-laps/:trackKey/map -> the track's real outline, if the
+// server manager publishes one, as the calibration plus a URL for the image.
+//
+// The lap's own recorded positions can always draw an outline of the racing
+// line; this draws the TRACK, so two lines can be read against the kerbs they
+// were actually near. Answers 404 when the track has no published map, which is
+// a normal outcome for anything raced outside the league's own servers — the
+// comparison falls back to the lap's own shape.
+//
+// Declared before the driver route below, or "map" is read as a Steam id.
+router.get("/:trackKey/map", async (req, res, next) => {
+  try {
+    if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
+    const { season, legacy } = await seasonAsked(req);
+    // The AC track and layout ids, taken from a lap rather than from the slug:
+    // the slug is lossy (lower case, punctuation folded) and the upstream path
+    // needs them exactly as the game spells them.
+    const one = listLaps(season, req.params.trackKey, legacy)[0];
+    if (!one) return res.status(404).json({ error: "No laps at that track" });
+    const map = await ensureTrackMap(one.track, one.layout);
+    if (!map) return res.status(404).json({ error: "No published map for that track" });
+    res.json({ ...map.calib, url: `/api/telemetry-laps/${req.params.trackKey}/map.png` });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/:trackKey/map.png", async (req, res, next) => {
+  try {
+    if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
+    const { season, legacy } = await seasonAsked(req);
+    const one = listLaps(season, req.params.trackKey, legacy)[0];
+    const map = one ? await ensureTrackMap(one.track, one.layout) : null;
+    if (!map) return res.status(404).end();
+    // Immutable: a track's overhead map does not change, and the file is only
+    // ever written once (lib/trackMaps.js).
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    res.sendFile(map.png);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/telemetry-laps/:trackKey/:steamId[/:lapId] -> one lap, channels
+// included. Without a lapId, the driver's fastest — which is what the address
+// meant when a driver had only one, so old links still answer.
+router.get("/:trackKey/:steamId/:lapId?", async (req, res, next) => {
   try {
     if (!isTrackKey(req.params.trackKey) || !isSteamId(req.params.steamId)) {
       return res.status(400).json({ error: "Bad address" });
     }
-    const lap = readLap(req.params.trackKey, req.params.steamId);
+    if (req.params.lapId != null && !isLapId(req.params.lapId)) {
+      return res.status(400).json({ error: "Bad lap" });
+    }
+    const { season, legacy } = await seasonAsked(req);
+    const lap = readLap(season, req.params.trackKey, req.params.steamId, req.params.lapId ?? null, legacy);
     if (!lap) return res.status(404).json({ error: "No lap stored there" });
     const known = await leagueNames([lap.steamId]);
     res.json({ ...lap, driverId: known.get(lap.steamId)?.driverId ?? null, name: known.get(lap.steamId)?.name || lap.name });

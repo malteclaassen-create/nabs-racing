@@ -705,7 +705,7 @@ const TIMING_COLUMNS = [
     sortLabel: "Interval",
     optIn: true,
     align: "right",
-    hint: "To the car ahead — on the road in a race, on best lap otherwise",
+    hint: "To the car ahead: on the road in a race, on best lap otherwise",
     cell: (e, ctx) =>
       ctx.isRace ? (
         <span className="font-mono text-sm tabular-nums text-light" title="Gap to the car ahead on the road">

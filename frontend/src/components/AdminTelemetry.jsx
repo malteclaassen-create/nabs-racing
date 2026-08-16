@@ -46,13 +46,13 @@ export default function AdminTelemetry() {
         ? {
             title: "Show recorded laps to everyone?",
             body:
-              "Every member will be able to open any driver's fastest lap at any track and put their own against it — throttle, brake, steering, and where the time goes. This is the decision the feature has been waiting on. It can be switched back, but the drivers will have seen it.",
+              "Every member will be able to open any driver's fastest lap at any track and put their own against it: throttle, brake, steering, and where the time goes. This is the decision the feature has been waiting on. It can be switched back, but the drivers will have seen it.",
             confirmLabel: "Show everyone",
           }
         : {
             title: "Back to admins only?",
             body:
-              "The comparison disappears from the members' side. Nothing is deleted and recording carries on — but drivers who have been using it will find it gone.",
+              "The comparison disappears from the members' side. Nothing is deleted and recording carries on, but drivers who have been using it will find it gone.",
             confirmLabel: "Admins only",
           }
     );
@@ -68,21 +68,6 @@ export default function AdminTelemetry() {
 
   return (
     <div className="space-y-6">
-      <div className="card p-5">
-        <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">
-          Laps from inside the car
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-light">
-          Throttle, brake, steering and speed over a lap, sampled by position on the track rather than by
-          time — so two laps line up slice for slice and the difference between them is a subtraction
-          rather than a guess. The site keeps one lap per driver per track: their fastest clean one.
-        </p>
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-light">
-          Nothing is recorded until the key below is minted, and no driver appears in the comparison who
-          has not sent a lap.
-        </p>
-      </div>
-
       {/* RECORDING: the key, and the line the race server needs.
           This lived on the Reports tab until this tab existed, because it
           shares its key contract with the in-race reporting app — a good
@@ -93,9 +78,10 @@ export default function AdminTelemetry() {
         <CardBar title="Telemetry from inside the car" />
         <div className="space-y-3 p-5">
           <p className="text-sm text-light">
-            A URL for the nabsTelemetry app. Drivers who switch it on send their fastest clean lap per
-            track — throttle, brake, steering, speed — for the comparison on the Tools page. Only their
-            best lap is kept; slower posts are dropped.
+            Every driver who joins the race server sends their fastest clean laps: throttle, brake,
+            steering, speed. Three per track are kept, and when a new season&rsquo;s first lap arrives the
+            previous seasons are deleted, because the cars change with the season and their times are
+            not something anybody is chasing.
           </p>
           {telIngest?.configured ? (
             <>
@@ -116,9 +102,9 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
                 onFocus={(e) => e.target.select()}
               />
               <p className="text-xs text-light">
-                Into <span className="font-mono">csp_extra_options.ini</span> in the server panel (where the
-                penalty script lives). From then on every driver who joins records automatically — nothing
-                to install. The script announces itself with an in-game toast; announce it in Discord too.
+                Into <span className="font-mono">csp_extra_options.ini</span>, where the penalty script
+                lives. Drivers install nothing. The script shows nothing in the game either, so announce
+                the recording in Discord.
               </p>
               <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
                 Hand-install URL (testing, or drivers without the server script)
@@ -132,7 +118,7 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
               />
               <p className="text-xs text-light">
                 For the nabsTelemetry app&rsquo;s settings. Unlike the reports URL, either of these may go to
-                every driver — the key only ever adds their own laps, nothing else.
+                every driver: the key only ever adds their own laps, nothing else.
               </p>
             </>
           ) : (
@@ -153,7 +139,7 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
             {!telIngest?.configured && (
               <>
                 <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-                  Key to use (optional &mdash; leave blank to make a fresh one)
+                  Key to use (optional, leave blank to make a fresh one)
                 </label>
                 <input
                   className="input w-full font-mono text-xs"
@@ -179,7 +165,7 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
                     !(await ask({
                       title: "Switch off telemetry recording?",
                       body:
-                        "The URL stops working immediately, in every driver's game at once. Switching back on can reuse the same key — type it into the field — but without it the race server's config has to be pasted again.",
+                        "The URL stops working immediately, in every driver's game at once. Switching back on can reuse the same key by typing it into the field. Without it, the race server's config has to be pasted again.",
                       danger: true,
                       confirmLabel: "Switch off",
                     }))
@@ -239,9 +225,7 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
         <button className="btn-secondary mt-4" disabled={busy || !vis} onClick={flipVisibility}>
           {busy ? "Saving…" : isPublic ? "Go back to admins only" : "Show everyone"}
         </button>
-        <p className="mt-3 max-w-2xl text-xs leading-relaxed text-faint">
-          Recording is unaffected either way: laps keep arriving and keep being stored while this is shut.
-        </p>
+        <p className="mt-3 text-xs text-faint">Recording carries on either way.</p>
       </div>
 
       <TelemetryCompare />
