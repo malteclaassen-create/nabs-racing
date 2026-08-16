@@ -13,8 +13,8 @@
 -- brake, steering and gear over each lap by TRACK POSITION (N equal slices of
 -- the spline), and posts a lap only when it is clean — no four-wheels-off, no
 -- pit lane, fully recorded — and faster than anything already sent this
--- session. The site keeps one lap per driver per track (their fastest) and
--- answers slower posts with "kept: false", so re-posting costs nothing.
+-- session. The site keeps a driver's fastest THREE laps per track per season
+-- and answers a slower post with "kept: false", so re-posting costs nothing.
 --
 -- It draws NOTHING. There was a toast on first lap start, and the league took
 -- it out: it fired on every join, for every driver, on a server where the
