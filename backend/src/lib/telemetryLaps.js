@@ -20,11 +20,19 @@
 // every 1/N of the lap, so two laps line up bucket-for-bucket and "where does
 // the time go" is a subtraction, not an interpolation problem.
 //
-// Files under DATA_DIR/telemetry-laps/<trackKey>/<steamId>/<lapTimeMs>.json —
+// Files under DATA_DIR/telemetry-laps/s<season>/<trackKey>/<steamId>/<lapTimeMs>.json —
 // the steamId is digits-only and the lap time is a number, so both are safe as
 // path segments; the trackKey is slugged here. On-disk rather than in the DB
 // for the same reason the results archive is: a few tens of KB of arrays per
 // lap is a file, not a row.
+//
+// The SEASON leads the path because a lap only means something inside one. The
+// league runs different cars every season, so a Red Bull Ring time from last
+// season and one from this season are not two attempts at the same problem —
+// they are two different cars, and putting them in one list would invite a
+// comparison that says nothing. Each season starts empty, and the season is
+// decided HERE, on arrival: the game knows nothing about the league's
+// calendar, so the site stamps the active season on a lap as it lands.
 //
 // The lap TIME is the file name, which makes the three questions this store
 // has to answer cheap: what is a driver's best (first name in a sorted list),
@@ -149,57 +157,79 @@ export const KEEP_PER_DRIVER = 3;
 const LAP_ID_RE = /^\d{4,8}$/; // a lap time in ms: 20s to 30min, the bounds above
 export const isLapId = (s) => LAP_ID_RE.test(String(s || ""));
 
-function driverDir(trackKey, steamId) {
+// A season's folder. Season 0 is "we could not tell" — a lap that arrived while
+// the site had no active season to name. It is a bucket, not a season, and it
+// keeps such laps out of a real one rather than throwing them away.
+export const seasonKeyOf = (season) => `s${Number.isFinite(Number(season)) && Number(season) > 0 ? Number(season) : 0}`;
+
+function seasonDir(season) {
+  return join(TELEMETRY_LAPS_DIR, seasonKeyOf(season));
+}
+
+function driverDir(season, trackKey, steamId) {
+  return join(seasonDir(season), trackKey, steamId);
+}
+
+function fileFor(season, trackKey, steamId, lapTimeMs) {
+  return join(driverDir(season, trackKey, steamId), `${lapTimeMs}.json`);
+}
+
+// Laps recorded before the store had seasons in it, in either of the two
+// shapes it has had: one file per driver, and one folder per driver. Both sat
+// directly under the track, with no season above them.
+//
+// They can only have been driven in the season running now — the feature has
+// never been switched on for longer than that — so they are read as part of it
+// and never written again. `season` is compared against the active one by the
+// caller; this just says where the old files are.
+function legacyDirFor(trackKey, steamId) {
   return join(TELEMETRY_LAPS_DIR, trackKey, steamId);
 }
 
-function fileFor(trackKey, steamId, lapTimeMs) {
-  return join(driverDir(trackKey, steamId), `${lapTimeMs}.json`);
-}
-
-// Where a lap lived before this store kept more than one: one file per driver,
-// named after them. Read wherever laps are read so a round already recorded
-// does not vanish when this ships; never written again.
 function legacyFileFor(trackKey, steamId) {
   return join(TELEMETRY_LAPS_DIR, trackKey, `${steamId}.json`);
 }
 
-// One driver's stored laps at one track, fastest first: { lapTimeMs, path }.
-// Reads the file NAMES only — the arrays inside stay on disk until somebody
-// opens a comparison.
-export function lapFilesOf(trackKey, steamId) {
+// One driver's stored laps at one track in one season, fastest first:
+// { lapTimeMs, path }. Reads the file NAMES only — the arrays inside stay on
+// disk until somebody opens a comparison.
+//
+// `legacy` pulls in the pre-season files as well. The caller passes it only
+// when the season asked for is the one running now (see activeLegacy below),
+// because that is the only season those laps can belong to.
+export function lapFilesOf(season, trackKey, steamId, legacy = false) {
   if (!isTrackKey(trackKey) || !isSteamId(steamId)) return [];
   const out = [];
-  const dir = driverDir(trackKey, steamId);
-  if (existsSync(dir)) {
+  const add = (dir) => {
+    if (!existsSync(dir)) return;
     for (const f of readdirSync(dir)) {
       const ms = Number(f.replace(/\.json$/, ""));
       if (!f.endsWith(".json") || !Number.isFinite(ms)) continue;
-      out.push({ lapTimeMs: ms, path: join(dir, f) });
+      // The same time from an older shape is the same lap; keep one.
+      if (!out.some((x) => x.lapTimeMs === ms)) out.push({ lapTimeMs: ms, path: join(dir, f) });
     }
-  }
-  const legacy = legacyFileFor(trackKey, steamId);
-  if (existsSync(legacy)) {
-    try {
-      const ms = Number(JSON.parse(readFileSync(legacy, "utf8")).lapTimeMs);
-      // Skip it when the same time already sits in the new layout, or the same
-      // lap would be offered twice under two names.
-      if (Number.isFinite(ms) && !out.some((x) => x.lapTimeMs === ms)) {
-        out.push({ lapTimeMs: ms, path: legacy });
+  };
+  add(driverDir(season, trackKey, steamId));
+  if (legacy) {
+    add(legacyDirFor(trackKey, steamId));
+    const one = legacyFileFor(trackKey, steamId);
+    if (existsSync(one)) {
+      try {
+        const ms = Number(JSON.parse(readFileSync(one, "utf8")).lapTimeMs);
+        if (Number.isFinite(ms) && !out.some((x) => x.lapTimeMs === ms)) out.push({ lapTimeMs: ms, path: one });
+      } catch {
+        /* unreadable: it simply does not exist as far as this goes */
       }
-    } catch {
-      /* unreadable legacy file: it simply does not exist as far as this goes */
     }
   }
   return out.sort((a, b) => a.lapTimeMs - b.lapTimeMs);
 }
 
 // One stored lap, channels and all. `lapId` is the lap time in milliseconds;
-// without one, the driver's fastest — which is what a caller that has not
-// chosen wants, and what every caller wanted before there was a choice.
-export function readLap(trackKey, steamId, lapId = null) {
+// without one, the driver's fastest in that season.
+export function readLap(season, trackKey, steamId, lapId = null, legacy = false) {
   if (!isTrackKey(trackKey) || !isSteamId(steamId)) return null;
-  const files = lapFilesOf(trackKey, steamId);
+  const files = lapFilesOf(season, trackKey, steamId, legacy);
   if (!files.length) return null;
   const want = lapId == null ? files[0] : files.find((f) => String(f.lapTimeMs) === String(lapId));
   if (!want) return null;
@@ -210,44 +240,46 @@ export function readLap(trackKey, steamId, lapId = null) {
   }
 }
 
-// Keep the lap if it belongs in this driver's fastest three here, and drop
-// whatever it pushed out. Returns what happened, so the app can tell the
-// driver "kept" or "your stored three are all quicker".
+// Keep the lap if it belongs in this driver's fastest three at this track THIS
+// SEASON, and drop whatever it pushed out. `lap.season` is stamped by the
+// ingest; a lap without one lands in the season-0 bucket rather than in
+// somebody's real season.
+//
+// Legacy files count towards the three here: they are this season's laps in an
+// older shape, and ignoring them would let a driver keep six.
 export function keepIfFaster(lap) {
-  const files = lapFilesOf(lap.trackKey, lap.steamId);
+  const season = lap.season;
+  const files = lapFilesOf(season, lap.trackKey, lap.steamId, true);
   const best = files.length ? files[0].lapTimeMs : null;
 
-  // Already stored, to the millisecond: nothing to write, and nothing lost.
   if (files.some((f) => f.lapTimeMs === lap.lapTimeMs)) {
     return { kept: false, bestMs: best, stored: files.length };
   }
-  // Slower than all three of them, and there are already three.
   if (files.length >= KEEP_PER_DRIVER && lap.lapTimeMs >= files[KEEP_PER_DRIVER - 1].lapTimeMs) {
     return { kept: false, bestMs: best, stored: files.length };
   }
 
-  mkdirSync(driverDir(lap.trackKey, lap.steamId), { recursive: true });
-  writeFileSync(fileFor(lap.trackKey, lap.steamId, lap.lapTimeMs), JSON.stringify(lap));
+  mkdirSync(driverDir(season, lap.trackKey, lap.steamId), { recursive: true });
+  writeFileSync(fileFor(season, lap.trackKey, lap.steamId, lap.lapTimeMs), JSON.stringify(lap));
 
-  // Prune from the slow end. Recomputed rather than assumed: a legacy file or
-  // a hand-dropped one means the count before the write is not always what is
-  // on disk after it.
-  for (const extra of lapFilesOf(lap.trackKey, lap.steamId).slice(KEEP_PER_DRIVER)) {
+  for (const extra of lapFilesOf(season, lap.trackKey, lap.steamId, true).slice(KEEP_PER_DRIVER)) {
     try {
       unlinkSync(extra.path);
     } catch {
       /* it will be pruned on the next post */
     }
   }
-  return { kept: true, bestMs: Math.min(lap.lapTimeMs, best ?? lap.lapTimeMs), stored: Math.min(files.length + 1, KEEP_PER_DRIVER) };
+  return {
+    kept: true,
+    bestMs: Math.min(lap.lapTimeMs, best ?? lap.lapTimeMs),
+    stored: Math.min(files.length + 1, KEEP_PER_DRIVER),
+  };
 }
 
-// Remove one lap, or every lap this driver has at this track when no lap is
-// named. The admin card removes a modded-car time or somebody else's entry;
-// removing the person means all of them.
-export function deleteLap(trackKey, steamId, lapId = null) {
+// Remove one lap, or every lap this driver has at this track this season.
+export function deleteLap(season, trackKey, steamId, lapId = null) {
   if (!isTrackKey(trackKey) || !isSteamId(steamId)) return false;
-  const files = lapFilesOf(trackKey, steamId);
+  const files = lapFilesOf(season, trackKey, steamId, true);
   const targets = lapId == null ? files : files.filter((f) => String(f.lapTimeMs) === String(lapId));
   if (!targets.length) return false;
   let gone = false;
@@ -262,37 +294,49 @@ export function deleteLap(trackKey, steamId, lapId = null) {
   return gone;
 }
 
-// All tracks that have at least one lap, with a light summary each.
-export function listTracks() {
-  if (!existsSync(TELEMETRY_LAPS_DIR)) return [];
-  const out = [];
-  for (const dirName of readdirSync(TELEMETRY_LAPS_DIR)) {
-    if (!isTrackKey(dirName)) continue;
-    const laps = listLaps(dirName);
-    if (!laps.length) continue;
-    out.push({
-      trackKey: dirName,
-      track: laps[0].track,
-      layout: laps[0].layout,
-      laps: laps.length,
-      bestMs: laps[0].lapTimeMs,
-    });
+// All tracks in one season that have at least one lap, with a light summary
+// each. `legacy` folds in the pre-season files, and is passed only for the
+// season running now.
+export function listTracks(season, legacy = false) {
+  const dirs = [seasonDir(season)];
+  // The old shape put track folders directly under the root. Read alongside,
+  // and merged below, so a track that exists in both appears once.
+  if (legacy && existsSync(TELEMETRY_LAPS_DIR)) dirs.push(TELEMETRY_LAPS_DIR);
+  const byTrack = new Map();
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    for (const dirName of readdirSync(dir)) {
+      // Season folders live at the root next to the old track folders; they are
+      // not tracks.
+      if (!isTrackKey(dirName) || /^s\d+$/.test(dirName)) continue;
+      const laps = listLaps(season, dirName, legacy);
+      if (!laps.length || byTrack.has(dirName)) continue;
+      byTrack.set(dirName, {
+        trackKey: dirName,
+        track: laps[0].track,
+        layout: laps[0].layout,
+        laps: laps.length,
+        bestMs: laps[0].lapTimeMs,
+      });
+    }
   }
-  return out.sort((a, b) => a.trackKey.localeCompare(b.trackKey));
+  return [...byTrack.values()].sort((a, b) => a.trackKey.localeCompare(b.trackKey));
 }
 
-// Every stored lap of one track — metadata only, channels stay on disk until
-// somebody actually opens a comparison. Fastest first, and every entry carries
-// a `lapId` because a driver now has more than one: it is the lap time in
-// milliseconds, which is unique per driver per track by construction.
-export function listLaps(trackKey) {
+// Every stored lap of one track in one season — metadata only, channels stay on
+// disk until somebody actually opens a comparison. Fastest first, and every
+// entry carries a `lapId` because a driver has up to three: it is the lap time
+// in milliseconds, unique per driver per track per season by construction.
+export function listLaps(season, trackKey, legacy = false) {
   if (!isTrackKey(trackKey)) return [];
-  const dir = join(TELEMETRY_LAPS_DIR, trackKey);
-  if (!existsSync(dir)) return [];
   const out = [];
+  const seen = new Set(); // steamId:lapTimeMs, so an old shape cannot double up
   const read = (path, lapId) => {
     try {
       const lap = JSON.parse(readFileSync(path, "utf8"));
+      const key = `${lap.steamId}:${lap.lapTimeMs}`;
+      if (seen.has(key)) return;
+      seen.add(key);
       out.push({
         steamId: lap.steamId,
         lapId: String(lapId ?? lap.lapTimeMs),
@@ -307,19 +351,22 @@ export function listLaps(trackKey) {
       /* an unreadable file is skipped, not fatal */
     }
   };
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    // A driver's folder: their laps, one file each.
-    if (entry.isDirectory() && isSteamId(entry.name)) {
-      for (const f of lapFilesOf(trackKey, entry.name)) read(f.path, f.lapTimeMs);
-      continue;
+
+  // Everybody who has a folder here, in this season and (when asked) in the
+  // shapes that predate seasons.
+  const drivers = new Set();
+  for (const dir of [join(seasonDir(season), trackKey), ...(legacy ? [join(TELEMETRY_LAPS_DIR, trackKey)] : [])]) {
+    if (!existsSync(dir)) continue;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory() && isSteamId(entry.name)) drivers.add(entry.name);
+      else if (legacy && entry.isFile() && entry.name.endsWith(".json")) {
+        const steamId = entry.name.replace(/\.json$/, "");
+        if (isSteamId(steamId)) drivers.add(steamId);
+      }
     }
-    // The old one-file-per-driver layout, still read (see legacyFileFor). Skip
-    // it where that driver has a folder, or the same lap appears twice.
-    if (entry.isFile() && entry.name.endsWith(".json")) {
-      const steamId = entry.name.replace(/\.json$/, "");
-      if (isSteamId(steamId) && existsSync(join(dir, steamId))) continue;
-      read(join(dir, entry.name), null);
-    }
+  }
+  for (const steamId of drivers) {
+    for (const f of lapFilesOf(season, trackKey, steamId, legacy)) read(f.path, f.lapTimeMs);
   }
   return out.sort((a, b) => a.lapTimeMs - b.lapTimeMs);
 }

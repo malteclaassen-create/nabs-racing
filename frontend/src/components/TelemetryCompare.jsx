@@ -287,6 +287,12 @@ function TelemetryCompare() {
   const [cursor, setCursor] = useState(null); // slice index under the mouse
 
   const list = tracks.data?.tracks || [];
+  // Which season these laps are from. The endpoint answers with it rather than
+  // the page assuming: a reader who has not touched the season switcher is
+  // looking at the season running now, and should be told which that is —
+  // otherwise an empty list after a season change looks like a broken feature
+  // rather than a fresh start.
+  const season = tracks.data?.season;
   // First track with laps preselects itself — an empty dropdown helps nobody.
   useEffect(() => {
     if (!trackKey && list.length) setTrackKey(list[0].trackKey);
@@ -383,12 +389,14 @@ function TelemetryCompare() {
   return (
     <ToolCard
       title="Telemetry comparison"
-      subtitle="Any two recorded laps at a track — two drivers, or one driver against themselves — throttle, brake and steering laid over each other."
+      subtitle={`Any two recorded laps at a track${season ? ` in Season ${season}` : ""} — two drivers, or one driver against themselves — throttle, brake and steering laid over each other.`}
     >
       {list.length === 0 ? (
         <p className="text-sm text-light">
-          No laps recorded yet. The in-game <span className="font-semibold">nabsTelemetry</span> app sends
-          your fastest clean laps here — the three quickest per track — so drive a clean lap and come back.
+          No laps recorded{season ? ` in Season ${season}` : ""} yet. The in-game{" "}
+          <span className="font-semibold">nabsTelemetry</span> app sends your fastest clean laps here — the
+          three quickest per track — so drive a clean lap and come back. Every season starts empty on
+          purpose: the cars change with it, so last season&rsquo;s times are not something to chase.
         </p>
       ) : (
         <>

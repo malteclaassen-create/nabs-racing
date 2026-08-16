@@ -1015,13 +1015,17 @@ export const api = {
   telemetryVisibility: () => request("/admin/telemetry-visibility", { auth: true }),
   setTelemetryVisibility: (isPublic) =>
     request("/admin/telemetry-visibility", { method: "PUT", body: { public: isPublic }, auth: true }),
-  telemetryTracks: () => request("/telemetry-laps", { auth: true }),
-  telemetryLaps: (trackKey) => request(`/telemetry-laps/${trackKey}`, { auth: true }),
+  // Season-scoped, through the same switcher the rest of the site uses: the
+  // league runs different cars each season, so a lap only means something
+  // inside one. Without a season the endpoints answer for the season running
+  // now, which is what a reader who has not touched the switcher wants.
+  telemetryTracks: () => request(`/telemetry-laps${seasonQ()}`, { auth: true }),
+  telemetryLaps: (trackKey) => request(`/telemetry-laps/${trackKey}${seasonQ()}`, { auth: true }),
   // A driver has up to three laps per track; `lapId` is the lap time in ms.
   // Omitted, the endpoint answers with their fastest, which is what this call
   // meant when everybody had exactly one.
   telemetryLap: (trackKey, steamId, lapId = null) =>
-    request(`/telemetry-laps/${trackKey}/${steamId}${lapId ? `/${lapId}` : ""}`, { auth: true }),
+    request(`/telemetry-laps/${trackKey}/${steamId}${lapId ? `/${lapId}` : ""}${seasonQ()}`, { auth: true }),
 
   // Cars and wide wordmarks for the shareable result graphic, per team.
   teamArt: () => request("/admin/team-art", { auth: true }),

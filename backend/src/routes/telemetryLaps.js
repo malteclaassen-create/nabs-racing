@@ -17,6 +17,7 @@ import prisma from "../lib/prisma.js";
 import { telemetryReadGate } from "../lib/telemetryAccess.js";
 import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId, isLapId } from "../lib/telemetryLaps.js";
 import { getNameOverrides } from "../lib/persons.js";
+import { resolveSeason } from "../services/seasonService.js";
 
 const router = Router();
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -64,6 +65,11 @@ router.post("/ingest", async (req, res, next) => {
 
     const parsed = parseLapPayload(req.body);
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    // WHICH SEASON this lap belongs to is the site's to say, not the game's:
+    // the car knows the track and nothing about the league's calendar. Stamped
+    // on arrival, because the league runs different cars each season and a lap
+    // is only comparable within one.
+    parsed.lap.season = await activeSeasonNumber();
     const result = keepIfFaster(parsed.lap);
     // `kept` tells the app whether the lap made this driver's stored three, so
     // the in-game line can say "saved" vs "your stored 1:31.2 stands".
@@ -72,6 +78,32 @@ router.post("/ingest", async (req, res, next) => {
     next(e);
   }
 });
+
+// The season a lap belongs to, and the season a reader is looking at. The
+// practice server runs between the rounds of whatever season is on, so "now" is
+// the right answer for an arriving lap; a reader can ask for an older one.
+//
+// Series: the ingest cannot say which one it came from — a key, a car and a
+// track is all it has — so an arriving lap is stamped with the primary series'
+// active season. A second series recording telemetry would need its own key to
+// tell them apart, and that is a bridge for the day it happens.
+async function activeSeasonNumber() {
+  try {
+    const season = await resolveSeason(prisma, null, { includePrivate: true });
+    return Number(season?.number) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Which season the caller is asking about, and whether that is the one running
+// now — laps recorded before this store had seasons can only belong to that one.
+async function seasonAsked(req) {
+  const active = await activeSeasonNumber();
+  const wanted = Number(req.query?.season);
+  const season = Number.isFinite(wanted) && wanted > 0 ? wanted : active;
+  return { season, legacy: season === active };
+}
 
 // League identity for a set of steamIds: current display name + profile link,
 // resolved the same two ways as everywhere else (captured SteamID on a roster
@@ -151,7 +183,8 @@ router.use(telemetryReadGate(prisma));
 // GET /api/telemetry-laps -> tracks that have laps
 router.get("/", async (req, res, next) => {
   try {
-    res.json({ tracks: listTracks() });
+    const { season, legacy } = await seasonAsked(req);
+    res.json({ season, tracks: listTracks(season, legacy) });
   } catch (e) {
     next(e);
   }
@@ -161,7 +194,8 @@ router.get("/", async (req, res, next) => {
 router.get("/:trackKey", async (req, res, next) => {
   try {
     if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
-    const laps = listLaps(req.params.trackKey);
+    const { season, legacy } = await seasonAsked(req);
+    const laps = listLaps(season, req.params.trackKey, legacy);
     const known = await leagueNames(laps.map((l) => l.steamId));
     res.json({
       laps: laps.map((l) => ({
@@ -186,7 +220,8 @@ router.get("/:trackKey/:steamId/:lapId?", async (req, res, next) => {
     if (req.params.lapId != null && !isLapId(req.params.lapId)) {
       return res.status(400).json({ error: "Bad lap" });
     }
-    const lap = readLap(req.params.trackKey, req.params.steamId, req.params.lapId ?? null);
+    const { season, legacy } = await seasonAsked(req);
+    const lap = readLap(season, req.params.trackKey, req.params.steamId, req.params.lapId ?? null, legacy);
     if (!lap) return res.status(404).json({ error: "No lap stored there" });
     const known = await leagueNames([lap.steamId]);
     res.json({ ...lap, driverId: known.get(lap.steamId)?.driverId ?? null, name: known.get(lap.steamId)?.name || lap.name });

@@ -18,7 +18,7 @@ import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsServ
 import { setSeatRsvp, readAnnounce, ANNOUNCE_KEY } from "./market.js";
 import { getWebhookUrl, setWebhookUrl, getResultsRoleId, getResultsWebhookUrl, setResultsRoleId, setResultsWebhookUrl, postToResultsChannel, announce, syncRaceToDiscord } from "../services/discordService.js";
 import { buildResultsPost, buildStandingsPost, buildConstructorsPost } from "../services/resultsPostService.js";
-import { resolveSeasonId, invalidatePrivateSeasonCache } from "../services/seasonService.js";
+import { resolveSeasonId, resolveSeason, invalidatePrivateSeasonCache } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, streamFullBackupZip, deleteBackup, pruneBackupsTo } from "../services/backupService.js";
 import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnostics.js";
@@ -5240,12 +5240,29 @@ router.put("/telemetry-visibility", async (req, res, next) => {
   }
 });
 
+// The season a lap sits in, when the caller did not name one. Telemetry is
+// stored per season because the cars change with it (lib/telemetryLaps.js).
+async function activeSeasonForTelemetry() {
+  try {
+    return Number((await resolveSeason(prisma, null, { includePrivate: true }))?.number) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 // Without a lap id: every lap that driver has at this track. With one: that
 // lap alone. Removing a modded-car time is one lap; removing somebody who
 // should not be in the list at all is all of them.
 router.delete("/telemetry-laps/:trackKey/:steamId/:lapId?", async (req, res, next) => {
   try {
-    const ok = deleteTelemetryLap(req.params.trackKey, req.params.steamId, req.params.lapId ?? null);
+    // ?season=<n>, the same parameter the read endpoints take; without one,
+    // the season running now.
+    const ok = deleteTelemetryLap(
+      Number(req.query.season) || (await activeSeasonForTelemetry()),
+      req.params.trackKey,
+      req.params.steamId,
+      req.params.lapId ?? null
+    );
     if (!ok) return res.status(404).json({ error: "No lap stored there" });
     res.json({ ok: true });
   } catch (e) {
