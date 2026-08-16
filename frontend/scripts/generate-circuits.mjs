@@ -24,6 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { toPath } from "./circuitPath.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(__dirname, "..", "src", "data", "circuits.js");
@@ -42,7 +43,8 @@ const TRACKS = {
   // --- circuits the current/recent seasons race on -------------------------
   Melbourne:   { match: "Albert Park Circuit",                     country: "au", countryName: "Australia",            circuit: "Albert Park" },
   Mugello:     { match: "Autodromo Internazionale del Mugello",    country: "it", countryName: "Italy",                circuit: "Mugello" },
-  Most:        { osm: 60905520,                                    country: "cz", countryName: "Czechia",              circuit: "Autodrom Most" },
+  Most:        { osm: 60905520,                                    country: "cz", countryName: "Czechia",              circuit: "Autodrom Most",
+                 note: "Without the turn 1/2 chicane, which is how the league races it.\nOSM's way 60905520 with the bypass 139474740 spliced in — see mostRing()." },
   Bahrain:     { match: "Bahrain International Circuit",            country: "bh", countryName: "Bahrain",              circuit: "Sakhir" },
   Monza:       { match: "Autodromo Nazionale Monza",               country: "it", countryName: "Italy",                circuit: "Autodromo di Monza" },
   Jeddah:      { match: "Jeddah Corniche Circuit",                 country: "sa", countryName: "Saudi Arabia",         circuit: "Jeddah Corniche" },
@@ -177,38 +179,6 @@ const ALIASES = {
 
 // --- helpers ---------------------------------------------------------------
 
-// Project [lon,lat] degrees -> planar metres-ish (equirectangular, lat-corrected),
-// then normalize into a viewBox whose largest side is ~100 with padding.
-function toPath(coords) {
-  const meanLat = (coords.reduce((a, c) => a + c[1], 0) / coords.length) * (Math.PI / 180);
-  const k = Math.cos(meanLat);
-  const pts = coords.map(([lon, lat]) => [lon * k, lat]);
-
-  const xs = pts.map((p) => p[0]);
-  const ys = pts.map((p) => p[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
-  const spanX = maxX - minX || 1e-9;
-  const spanY = maxY - minY || 1e-9;
-
-  const D = 100, pad = 6;
-  const scale = (D - 2 * pad) / Math.max(spanX, spanY);
-  const W = +(spanX * scale + 2 * pad).toFixed(1);
-  const H = +(spanY * scale + 2 * pad).toFixed(1);
-
-  let d = "";
-  let prev = null;
-  for (const [x, y] of pts) {
-    const px = +(pad + (x - minX) * scale).toFixed(1);
-    const py = +(pad + (maxY - y) * scale).toFixed(1); // flip Y for SVG
-    if (prev && prev[0] === px && prev[1] === py) continue; // drop dupes
-    d += (d ? " L" : "M") + px + "," + py;
-    prev = [px, py];
-  }
-  d += " Z";
-  return { d, box: `0 0 ${W} ${H}` };
-}
-
 // Stitch OSM raceway segments into one ordered ring. A circuit is mapped as many
 // short ways (one per corner/straight) that share endpoint coordinates; we chain
 // them by matching those endpoints, flipping orientation as needed, and keep the
@@ -285,11 +255,41 @@ for (const f of f1.features) {
   if (name && f.geometry?.type === "LineString") byName.set(name, f.geometry.coordinates);
 }
 
+// Most, the way THIS LEAGUE drives it: without the turn 1/2 chicane.
+//
+// OSM maps the circuit as the named way 60905520, which takes the chicane, and
+// way 139474740 as the bypass beside it. The two share both endpoints exactly —
+// they are the same two points of the lap, reached a different way — so the
+// swap is a splice rather than a redraw: 222 m of chicane out, 156 m of bypass
+// in, everything else untouched.
+//
+// The endpoints are found rather than hard-coded as indices, because a later
+// re-fetch of the way can renumber its nodes and silently splice the wrong
+// corner. If either endpoint is missing the chicane is left in and the console
+// says so, which is better than a preview that is quietly the wrong circuit.
+const MOST_MAIN = 60905520;
+const MOST_BYPASS = 139474740; // the cut past the turn 1/2 chicane
+
+function mostRing(o) {
+  const main = o.elements.find((e) => e.type === "way" && e.id === MOST_MAIN);
+  if (!main) return null;
+  const ring = main.geometry.map((g) => [g.lon, g.lat]);
+  const bypass = o.elements.find((e) => e.type === "way" && e.id === MOST_BYPASS);
+  if (!bypass) return ring;
+
+  const from = main.nodes.indexOf(bypass.nodes[0]);
+  const to = main.nodes.indexOf(bypass.nodes[bypass.nodes.length - 1]);
+  if (from === -1 || to === -1 || to <= from) {
+    console.warn(`Most: bypass ${MOST_BYPASS} no longer meets the main way — keeping the chicane`);
+    return ring;
+  }
+  const cut = bypass.geometry.map((g) => [g.lon, g.lat]);
+  return [...ring.slice(0, from), ...cut, ...ring.slice(to + 1)];
+}
+
 let mostCoords = null;
 if (fs.existsSync(MOST_OVERPASS)) {
-  const o = JSON.parse(fs.readFileSync(MOST_OVERPASS, "utf8"));
-  const w = o.elements.find((e) => e.type === "way" && e.id === 60905520);
-  if (w) mostCoords = w.geometry.map((g) => [g.lon, g.lat]);
+  mostCoords = mostRing(JSON.parse(fs.readFileSync(MOST_OVERPASS, "utf8")));
 }
 
 // --- build -----------------------------------------------------------------
@@ -304,7 +304,7 @@ for (const [key, t] of Object.entries(TRACKS)) {
     continue;
   }
   const { d, box } = toPath(coords);
-  out[key] = { country: t.country, countryName: t.countryName, circuit: t.circuit, box, path: d };
+  out[key] = { country: t.country, countryName: t.countryName, circuit: t.circuit, box, path: d, note: t.note };
 }
 
 // stitched non-F1 circuits (vendored Overpass responses)
@@ -337,6 +337,9 @@ const header = `// REAL circuit outlines — DO NOT EDIT BY HAND.
 
 let body = "export const CIRCUITS = {\n";
 for (const [key, c] of Object.entries(out)) {
+  // A track whose outline is not simply "what OSM draws" says why, in the file
+  // somebody actually reads, rather than only in the script that made it.
+  if (c.note) for (const line of c.note.split("\n")) body += `  // ${line}\n`;
   body += `  ${/^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}: {\n`;
   body += `    country: ${JSON.stringify(c.country)},\n`;
   body += `    countryName: ${JSON.stringify(c.countryName)},\n`;
@@ -354,6 +357,15 @@ const resolver = `
 // canonical CIRCUITS key. Matched case-insensitively and after normalization.
 const TRACK_ALIASES = ${JSON.stringify(ALIASES, null, 2)};
 
+// Mod authors prefix their track folder with their own tag ("ks_" Kunos,
+// "fn_", "vhe_", "acu_" …), and that raw folder name is what an AC result file
+// carries — so an imported race can end up called "vhe_hockenheim", with no
+// outline, no flag and no track history, because nothing matches it. Anything
+// short followed by an underscore is treated as such a tag and dropped as a
+// LAST resort, after every exact rule below has already failed, and only when
+// what remains matches a circuit on its own. Explicit entries above still win.
+const MOD_PREFIX = /^[a-z0-9]{1,4}_/;
+
 // lowercase + strip everything that isn't a letter or digit, so "United States",
 // "united_states" and "UNITED STATES" all collapse to the same token.
 function normKey(s) {
@@ -369,15 +381,6 @@ for (const k in TRACK_ALIASES) NORM_ALIASES[normKey(k)] = TRACK_ALIASES[k];
 const NORM_KEYS = Object.keys(CIRCUITS)
   .map((key) => ({ key, nk: normKey(key), cnk: normKey(CIRCUITS[key].circuit) }))
   .sort((a, b) => b.nk.length - a.nk.length);
-
-// Mod authors prefix their track folder with their own tag ("ks_" Kunos,
-// "fn_", "vhe_", "acu_" …), and that raw folder name is what an AC result file
-// carries — so an imported race can end up called "vhe_hockenheim", with no
-// outline, no flag and no track history, because nothing matches it. Anything
-// short followed by an underscore is treated as such a tag and dropped as a
-// LAST resort, after every exact rule below has already failed, and only when
-// what remains matches a circuit on its own. Explicit entries above still win.
-const MOD_PREFIX = /^[a-z0-9]{1,4}_/;
 
 // The ONE resolver: a raw track string -> the CIRCUITS key it means, or null.
 // Both lookups below are this function; they only differ in what they hand back.
@@ -403,7 +406,9 @@ function resolveKey(track, stripped = false) {
     if (c.nk.length >= 5 && (n.startsWith(c.nk) || n.startsWith(c.cnk))) return c.key;
   }
 
-  // Last resort: drop a mod author's folder tag and try once more.
+  // Last resort: drop a mod author's folder tag ("vhe_hockenheim" -> the real
+  // Hockenheim) and try once more. Only reached when every rule above has
+  // failed, so a name that means something on its own is never touched.
   const raw = String(track).toLowerCase();
   if (!stripped && MOD_PREFIX.test(raw)) return resolveKey(raw.replace(MOD_PREFIX, ""), true);
   return null;
