@@ -156,3 +156,73 @@ describe("canonicalUrl", () => {
     ).toBe("https://nabsracing.com/s/fresh-league/drivers?season=3");
   });
 });
+
+// A series slug is not an id like a driver's. There are two of them, they are
+// frozen when the series is created, and until this check existed EVERY page
+// had unlimited spellings: /s/<anything>/drivers answered 200 with the real
+// driver table and a canonical tag naming the made-up address as official.
+describe("seriesSlugKnown", () => {
+  // Each test gets its own module instance: the slug set is cached for five
+  // minutes, and a cache shared across tests would answer with the wrong series.
+  const fresh = async () => {
+    vi.resetModules();
+    return (await import("./seo.js")).seriesSlugKnown;
+  };
+  const prismaWith = (slugs) => ({
+    $queryRawUnsafe: vi.fn(async (sql) =>
+      /FROM "Series"/.test(sql)
+        ? slugs.map((slug, i) => ({ id: `s${i}`, name: slug, slug, order: i, isActive: i === 0 ? 1 : 0, isPublic: 1 }))
+        : []
+    ),
+  });
+
+  it("accepts a series that exists", async () => {
+    const known = await fresh();
+    expect(await known(prismaWith(["friday-f1"]), "/s/friday-f1/drivers")).toBe(true);
+  });
+
+  it("rejects a slug no series has", async () => {
+    const known = await fresh();
+    expect(await known(prismaWith(["friday-f1"]), "/s/f1-friday/drivers")).toBe(false);
+  });
+
+  it("rejects it on the series home too, not only on a section", async () => {
+    const known = await fresh();
+    expect(await known(prismaWith(["friday-f1"]), "/s/typo")).toBe(false);
+  });
+
+  it("is case sensitive, because the slug is", async () => {
+    const known = await fresh();
+    expect(await known(prismaWith(["friday-f1"]), "/s/FRIDAY-F1/drivers")).toBe(false);
+  });
+
+  it("accepts a PRIVATE series: members see those pages, it is not a typo", async () => {
+    const known = await fresh();
+    const prisma = {
+      $queryRawUnsafe: vi.fn(async (sql) =>
+        /FROM "Series"/.test(sql)
+          ? [
+              { id: "a", name: "F1 Friday", slug: "friday-f1", order: 0, isActive: 1, isPublic: 1 },
+              { id: "b", name: "GT Sunday", slug: "gt-sunday", order: 1, isActive: 0, isPublic: 0 },
+            ]
+          : []
+      ),
+    };
+    expect(await known(prisma, "/s/gt-sunday/races")).toBe(true);
+  });
+
+  it("leaves addresses outside /s/ alone", async () => {
+    const known = await fresh();
+    const prisma = prismaWith(["friday-f1"]);
+    expect(await known(prisma, "/")).toBe(true);
+    expect(await known(prisma, "/downloads")).toBe(true);
+    expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+  });
+
+  // A database that cannot be reached must never turn the whole site into 404s.
+  it("says yes when the series list cannot be read", async () => {
+    const known = await fresh();
+    const prisma = { $queryRawUnsafe: vi.fn(async () => { throw new Error("no db"); }) };
+    expect(await known(prisma, "/s/friday-f1/drivers")).toBe(true);
+  });
+});
