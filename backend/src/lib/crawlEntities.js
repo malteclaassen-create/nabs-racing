@@ -182,6 +182,20 @@ async function raceBlock(prisma, base, raceId) {
 // links: three drivers, in order, under "Title race right now". Three, because
 // that is what the card holds — a top ten here would be a table the reader
 // never sees.
+// The home page, which had the thinnest block on the site and is the page the
+// league most wants found.
+//
+// It used to be three names and nothing else: "Standings · P1 · P2 · P3", with
+// an empty heading and an empty line. A crawler that does not run JavaScript
+// was handed a document whose only prose was the footer — the exact problem
+// this file was written to fix for driver pages, still sitting on the front
+// door. Google does render, but rendering is a second pass that a young site
+// waits its turn for, and the first pass is where the early impression is made.
+//
+// So it now says the two things the page leads with, both of which are on
+// screen: which season is running and what it is driven in, and which round is
+// next and when. Same rule as everywhere in this file — the reader gets these
+// facts at this address, so a crawler may have them too.
 async function homeBlock(prisma, base, seasonId) {
   if (!seasonId) return null;
   let top = [];
@@ -192,9 +206,45 @@ async function homeBlock(prisma, base, seasonId) {
     return null;
   }
   if (!top.length) return null;
+
+  // Both of these only ADD to a block that already stands on its own, so a
+  // failure here must leave the standings rather than take them down with it.
+  // try/catch and not .catch(): a missing model throws before there is a
+  // promise to attach to, and the whole block would vanish.
+  let season = null;
+  let next = null;
+  try {
+    season = await prisma.season.findUnique({
+      where: { id: seasonId },
+      select: { number: true, game: true },
+    });
+  } catch {
+    /* the standings group below is the block's real content */
+  }
+  try {
+    // The next round, the one the page counts down to: the first still to come.
+    next = await prisma.race.findFirst({
+      where: { seasonId, isCompleted: false, date: { not: null, gte: new Date() } },
+      orderBy: { date: "asc" },
+      select: { id: true, number: true, track: true, date: true },
+    });
+  } catch {
+    /* same */
+  }
+
+  const facts = [];
+  if (season?.game) facts.push(season.game);
+  if (next?.track) {
+    const when = next.date
+      ? new Date(next.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
+      : null;
+    const round = next.number ? `Round ${next.number}` : "Next race";
+    facts.push([round, next.track, when].filter(Boolean).join(" · "));
+  }
+
   return {
-    heading: "",
-    line: "",
+    heading: season?.number ? `NABS Racing League · Season ${season.number}` : "NABS Racing League",
+    line: facts.join(" · "),
     groups: [
       {
         title: "Standings",
@@ -202,7 +252,13 @@ async function homeBlock(prisma, base, seasonId) {
           .filter((d) => d.driverId && d.name)
           .map((d) => ({ href: `${base}/drivers/${d.driverId}`, label: `${ordinal(d.position)} ${d.name}` })),
       },
-    ],
+      // Deliberately no link to the next round. The page NAMES it, in the
+      // count-down, which is why it may be stated in the line above — but the
+      // only things it links there are the calendar and the sign-up, both of
+      // which the navigation group already carries. Checked in a browser, not
+      // assumed: a link a reader does not have is the cloaking this file's
+      // header refuses.
+    ].filter(Boolean),
   };
 }
 

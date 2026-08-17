@@ -63,10 +63,21 @@ const prisma = {
       where.id === "ferrari" ? { id: "ferrari", name: "Ferrari", seasonId: "s8" } : null
     ),
   },
+  season: {
+    findUnique: vi.fn(async ({ where }) =>
+      where.id === "s8" ? { number: 8, game: "F1 2010 \u00b7 Assetto Corsa" } : null
+    ),
+  },
   race: {
     findUnique: vi.fn(async ({ where }) =>
       where.id === "r2"
         ? { id: "r2", number: 2, track: "Watkins Glen", seasonId: "s8", season: { number: 8, isPublic: true } }
+        : null
+    ),
+    // The next round the home page counts down to.
+    findFirst: vi.fn(async ({ where }) =>
+      where.seasonId === "s8"
+        ? { id: "r3", number: 3, track: "Spielberg", date: new Date("2026-08-21T17:00:00Z") }
         : null
     ),
   },
@@ -139,8 +150,38 @@ describe("home", () => {
     expect(b.groups[0].links.map((l) => l.label)).toEqual(["P1 Takoda", "P2 Neesh", "P3 DRAS"]);
   });
 
+  // This page had an empty heading and an empty line, so a crawler that does
+  // not run JavaScript was handed the front door with no prose on it at all.
+  it("says which season is running and what it is driven in", async () => {
+    const b = await buildEntityBlock(prisma, { base: BASE, isHome: true, seasonId: "s8" });
+    expect(b.heading).toBe("NABS Racing League \u00b7 Season 8");
+    expect(b.line).toContain("F1 2010 \u00b7 Assetto Corsa");
+  });
+
+  // The count-down NAMES the round, so stating it is a mirror. It does not
+  // link the round's own page \u2014 the calendar and the sign-up are what a
+  // reader can click there \u2014 so neither does this. Checked in a browser.
+  it("names the round it counts down to, and does not link it", async () => {
+    const b = await buildEntityBlock(prisma, { base: BASE, isHome: true, seasonId: "s8" });
+    expect(b.line).toContain("Round 3 \u00b7 Spielberg \u00b7 21 Aug");
+    expect(linkHrefs(b)).not.toContain(`${BASE}/races?race=r3`);
+    expect(linkHrefs(b).every((h) => h.startsWith(`${BASE}/drivers/`))).toBe(true);
+  });
+
   it("says nothing when there are no standings yet", async () => {
     expect(await buildEntityBlock(prisma, { base: BASE, isHome: true, seasonId: "s7" })).toBeNull();
+  });
+
+  // The extras must never cost the block its real content.
+  it("still lists the standings when the season and race lookups fail", async () => {
+    const broken = {
+      ...prisma,
+      season: { findUnique: vi.fn(async () => { throw new Error("no season table"); }) },
+      race: { ...prisma.race, findFirst: vi.fn(async () => { throw new Error("no race table"); }) },
+    };
+    const b = await buildEntityBlock(broken, { base: BASE, isHome: true, seasonId: "s8" });
+    expect(b.groups[0].links.map((l) => l.label)).toEqual(["P1 Takoda", "P2 Neesh", "P3 DRAS"]);
+    expect(b.heading).toBe("NABS Racing League");
   });
 });
 
