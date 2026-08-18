@@ -1202,9 +1202,16 @@ export default function Home() {
                   is untouched. Left to themselves they wrapped one per line on
                   narrow phones, which turned three buttons into three ragged
                   rows. */}
+              {/* The round the hero card just showed, by id — NOT a bare
+                  /races. Left to itself the explorer opens on a fresh result
+                  once and on the round AHEAD every time after that, so the
+                  second visitor to press this button under a podium headed
+                  "Watkins Glen" landed on the next race's countdown instead of
+                  the result they had just read. The button promises the
+                  results of the race above it, so it names it. */}
               <Link
                 ref={ctaRef}
-                to="/races"
+                to={latestRace ? `/races?race=${latestRace.id}` : "/races"}
                 className="shine group inline-flex flex-auto items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-brand px-4 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105 sm:flex-none sm:justify-start sm:px-6"
               >
                 Full Results
