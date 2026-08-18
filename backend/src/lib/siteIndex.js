@@ -103,7 +103,7 @@ async function seasonEntities(prisma, season, base) {
     prisma.race
       .findMany({
         where: { seasonId: season.id },
-        select: { id: true, number: true, track: true, isCompleted: true },
+        select: { id: true, number: true, track: true, date: true, isCompleted: true },
         orderBy: { number: "asc" },
       })
       .catch(() => []),
@@ -155,6 +155,11 @@ async function seasonEntities(prisma, season, base) {
       .map((r) => ({
         label: r.track || (r.number != null ? `Round ${r.number}` : "Race"),
         href: `${base}/races?${prefix}race=${encodeURIComponent(r.id)}`,
+        // The two facts the round rail shows beside the circuit, carried so the
+        // calendar block can be the table the page is instead of a row of
+        // circuit names (lib/crawlTables.js). Not addresses — page content.
+        number: r.number,
+        date: r.date || null,
         // A round that never ran has a date and nothing else.
         strong: r.isCompleted,
       })),

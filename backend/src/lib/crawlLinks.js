@@ -29,6 +29,8 @@
 import { getSiteIndex } from "./siteIndex.js";
 import { isCrawlable } from "./sitemap.js";
 import { buildEntityBlock } from "./crawlEntities.js";
+import { driverTable, constructorTables } from "./crawlTables.js";
+import { raceKickoff } from "./raceKickoff.js";
 
 const esc = (s) =>
   String(s ?? "")
@@ -57,7 +59,11 @@ function exploreLinks(base, isPrimary) {
     { href: `${base}/attendance`, label: "Attendance" },
     { href: `${base}/live`, label: "Live Timing" },
     { href: "/join", label: "How it works" },
-    { href: "/downloads", label: "Race Info" },
+    // The footer's ninth link, Race Info, points at /downloads, and robots.txt
+    // turns crawlers away from it (member-only files). A link every page
+    // carries to an address nothing may fetch teaches Google one thing only:
+    // that this site links pages it is not allowed to have. The reader still
+    // gets it from the footer — this block simply does not spend a link on it.
   ];
 }
 
@@ -76,6 +82,92 @@ function renderGroup(title, links) {
     "</section>",
   ].join("");
 }
+
+// A cell is a string or a link. Both spellings appear in the same table: the
+// standings' Pos column is a number, its Driver column is an address.
+function renderCell(c) {
+  if (c && typeof c === "object" && c.href) {
+    return `<a class="text-medium underline-offset-2 hover:text-dark" href="${esc(c.href)}">${esc(c.label)}</a>`;
+  }
+  return esc(c ?? "");
+}
+
+// A real table, because the thing it mirrors is a real table. Scrollable on a
+// phone for the same reason the app's tables are: this is on screen for the
+// tenth of a second before React replaces it, and it should not be what makes
+// that tenth of a second scroll sideways.
+function renderTable(title, columns, rows) {
+  if (!rows?.length) return "";
+  const head = columns?.length
+    ? `<thead><tr>${columns.map((c) => `<th class="px-3 py-2 text-left font-semibold">${esc(c)}</th>`).join("")}</tr></thead>`
+    : "";
+  const body = rows
+    .map((r) => `<tr>${r.map((c) => `<td class="px-3 py-2">${renderCell(c)}</td>`).join("")}</tr>`)
+    .join("");
+  return [
+    "<section>",
+    `<h2 class="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">${esc(title)}</h2>`,
+    '<div class="mt-2 overflow-x-auto">',
+    // No <caption>: the h2 above already names the table, and repeating it
+    // would put the same line into the document twice.
+    '<table class="w-full text-sm">',
+    head,
+    `<tbody>${body}</tbody>`,
+    "</table></div></section>",
+  ].join("");
+}
+
+// The calendar, the way the round rail reads it: round number, circuit, date.
+// Built from the season index rather than from a query of its own, so the round
+// addresses here cannot drift from the ones the sitemap lists. Falls back to the
+// plain circuit list for a season whose rounds carry no numbers at all.
+function renderCalendar(season) {
+  const all = season.races || [];
+  // A special event is not a round and has no round number — on the page it
+  // lives behind its own tab, not in the calendar. Kept in a table of its own
+  // rather than as rows with an empty Rnd column.
+  const rounds = all.filter((r) => r.number != null);
+  const specials = all.filter((r) => r.number == null);
+  if (!rounds.length) return renderGroup(`${season.name} rounds`, all);
+  return [
+    renderTable(
+      `${season.name} rounds`,
+      ["Rnd", "Circuit", "Date"],
+      rounds.map((r) => [String(r.number), { href: r.href, label: r.label }, fmtDate(r.date)])
+    ),
+    specials.length
+      ? renderTable(
+          `${season.name} special events`,
+          ["Event", "Date"],
+          specials.map((r) => [{ href: r.href, label: r.label }, fmtDate(r.date)])
+        )
+      : "",
+  ].join("");
+}
+
+// The date the round rail prints: "Fri 14 Aug 2026" (frontend utils/format.js,
+// fmtRaceDateFull). Through raceKickoff first, for the reason that helper
+// exists: a date-only round is stored at UTC midnight and means 19:00 German
+// time, and formatting it raw prints the day before for half the world. Fixed
+// to the league's own zone so the delivered HTML does not depend on where the
+// server happens to be, and two requests for the same page cannot disagree.
+function fmtDate(d) {
+  const t = raceKickoff(d);
+  if (!t) return "";
+  return t
+    .toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      timeZone: "Europe/Berlin",
+    })
+    .replace(",", "");
+}
+
+// One entity group, in whichever of the two shapes it came in.
+const renderBlock = (g) =>
+  g?.rows ? renderTable(g.title, g.columns, g.rows) : renderGroup(g?.title, g?.links);
 
 // The block for one address, or "" when there is nothing worth writing.
 export async function buildCrawlLinks(prisma, path, query) {
@@ -121,9 +213,31 @@ export async function buildCrawlLinks(prisma, path, query) {
   // by lib/crawlEntities.js. Getting this wrong is the whole cloaking trap —
   // four hundred driver links on a page that renders one driver.
   if (season && !entityId && !query?.race) {
-    if (section === "drivers") groups.push(renderGroup(`${season.name} drivers`, season.drivers));
-    if (section === "constructors") groups.push(renderGroup(`${season.name} teams`, season.teams));
-    if (section === "races") groups.push(renderGroup(`${season.name} rounds`, season.races));
+    // The championship tables, as tables (lib/crawlTables.js). Each one falls
+    // back to the plain list of names it used to be if the scoring pass is
+    // unavailable — a page must never be worse off for this block failing.
+    if (section === "drivers") {
+      const t = await driverTable(prisma, season.id, series.base).catch(() => null);
+      if (t) {
+        groups.push(renderTable(`${season.name} drivers`, t.columns, t.rows));
+        // The table is the championship, which is the page's default view: the
+        // reserves who never got in a car are behind a click ("N reserves
+        // without a start"). They keep their links here, as a list, because
+        // they had them before this table existed and their pages have no
+        // other way in — the sitemap leaves them out on purpose.
+        const shown = new Set(t.rows.map((r) => r.find((c) => c?.href)?.href).filter(Boolean));
+        const rest = (season.drivers || []).filter((d) => !shown.has(d.href));
+        if (rest.length) groups.push(renderGroup(`${season.name} reserves`, rest));
+      } else {
+        groups.push(renderGroup(`${season.name} drivers`, season.drivers));
+      }
+    }
+    if (section === "constructors") {
+      const tables = await constructorTables(prisma, season.id, series.base, season.name).catch(() => null);
+      if (tables) for (const t of tables) groups.push(renderTable(t.title, t.columns, t.rows));
+      else groups.push(renderGroup(`${season.name} teams`, season.teams));
+    }
+    if (section === "races") groups.push(renderCalendar(season));
 
     // The season switcher is visible on exactly these three pages, and this is
     // the same set of seasons it offers. Elsewhere there is no switcher, so
@@ -157,7 +271,7 @@ export async function buildCrawlLinks(prisma, path, query) {
       entity.line ? `<p class="mt-1 text-sm text-medium">${esc(entity.line)}</p>` : "",
     ].join("");
     const blocks = head ? [`<section>${head}</section>`] : [];
-    for (const g of entity.groups || []) blocks.push(renderGroup(g.title, g.links));
+    for (const g of entity.groups || []) blocks.push(renderBlock(g));
     // In FRONT of the footer links: what the address is about leads, and the
     // eight links every page carries are not what it is about.
     groups.unshift(...blocks);
