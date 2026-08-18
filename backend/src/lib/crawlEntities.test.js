@@ -10,28 +10,38 @@
 // is cloaking, and it is the one mistake here that is worse than doing nothing.
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("../services/standingsService.js", () => ({
-  // (prisma, seasonId) — the season is the SECOND argument.
-  getDriverStandings: vi.fn(async (_prisma, seasonId) =>
-    seasonId === "s8"
-      ? {
-          // `team` is on every row: the head-to-head panel reads it to find
-          // who shares a garage, and so does the block under test.
-          standings: [
-            { driverId: "d1", name: "Takoda", position: 1, total: 210, team: { id: "mclaren" } },
-            { driverId: "d2", name: "Neesh", position: 2, total: 180, team: { id: "ferrari" } },
-            { driverId: "d3", name: "DRAS", position: 3, total: 150, team: { id: "mclaren" } },
-            { driverId: "d4", name: "Flo", position: 9, total: 24, team: { id: "ferrari" } },
-          ],
-        }
-      : { standings: [] }
-  ),
-}));
 vi.mock("../services/seasonService.js", () => ({
   getPrivateSeasonIds: vi.fn(async () => new Set(["secret"])),
+  getSeasonScoring: vi.fn(async () => ({ pointsTable: null })),
 }));
 vi.mock("../services/pointsCalculator.js", () => ({
   applyPenalties: (rows) => rows,
+  // Podium points, enough for the tables to have a Pts column with numbers in
+  // it. The real one reads the season's table (services/pointsCalculator).
+  getDriverResultPoints: (r) => [25, 18, 15][(r.position ?? 99) - 1] ?? 0,
+}));
+// The championship tables the blocks read (lib/crawlTables.js talks to these).
+vi.mock("./crawlTables.js", () => ({
+  seasonStandings: vi.fn(async (_p, seasonId) =>
+    seasonId === "s8"
+      ? {
+          standings: [
+            { driverId: "d1", name: "Takoda", position: 1, total: 210, team: { id: "mclaren" }, perRace: { 1: { points: 25, status: "FINISHED", position: 1 } } },
+            { driverId: "d2", name: "Neesh", position: 2, total: 180, team: { id: "ferrari" }, perRace: {} },
+            { driverId: "d3", name: "DRAS", position: 3, total: 150, team: { id: "mclaren" }, perRace: {} },
+            { driverId: "d4", name: "Flo", position: 9, total: 24, team: { id: "ferrari" }, perRace: { 1: { points: 15, status: "FINISHED", position: 3 }, 2: { points: 0, status: "DNF", position: null } } },
+          ],
+        }
+      : null
+  ),
+  seasonRounds: vi.fn(async (_p, seasonId) =>
+    seasonId === "s8" ? new Map([[1, "Hockenheim"], [2, "Watkins Glen"]]) : null
+  ),
+  constructorStandings: vi.fn(async (_p, seasonId, tier) =>
+    seasonId === "s8" && tier === 1
+      ? { standings: [{ teamId: "ferrari", name: "Ferrari", position: 3, total: 240 }] }
+      : null
+  ),
 }));
 vi.mock("./persons.js", () => ({ getNameOverrides: vi.fn(async () => new Map()) }));
 
@@ -60,26 +70,46 @@ const prisma = {
   },
   team: {
     findUnique: vi.fn(async ({ where }) =>
-      where.id === "ferrari" ? { id: "ferrari", name: "Ferrari", seasonId: "s8" } : null
+      where.id === "ferrari" ? { id: "ferrari", name: "Ferrari", tier: 1, seasonId: "s8" } : null
     ),
   },
   race: {
     findUnique: vi.fn(async ({ where }) =>
       where.id === "r2"
-        ? { id: "r2", number: 2, track: "Watkins Glen", seasonId: "s8", season: { number: 8, isPublic: true } }
+        ? {
+            id: "r2",
+            number: 2,
+            track: "Watkins Glen",
+            seasonId: "s8",
+            isSpecialEvent: false,
+            season: { number: 8, isPublic: true },
+          }
+        : null
+    ),
+    // The home page's hero: the latest completed round of the season.
+    findFirst: vi.fn(async ({ where }) =>
+      where.seasonId === "s8"
+        ? { id: "r2", number: 2, track: "Watkins Glen", seasonId: "s8", isSpecialEvent: false }
         : null
     ),
   },
   raceResult: {
     findMany: vi.fn(async () => [
-      { driverId: "d2", position: 2, status: "FINISHED", driver: { id: "d2", name: "Neesh" } },
-      { driverId: "d1", position: 1, status: "FINISHED", driver: { id: "d1", name: "Takoda" } },
-      { driverId: "d3", position: null, status: "DNF", driver: { id: "d3", name: "DRAS" } },
+      { driverId: "d2", position: 2, status: "FINISHED", driver: { id: "d2", name: "Neesh", team: { id: "ferrari", name: "Ferrari" } } },
+      { driverId: "d1", position: 1, status: "FINISHED", driver: { id: "d1", name: "Takoda", team: { id: "mclaren", name: "McLaren" } } },
+      { driverId: "d3", position: null, status: "DNF", driver: { id: "d3", name: "DRAS", team: null } },
     ]),
   },
 };
 
-const linkHrefs = (block) => (block?.groups || []).flatMap((g) => g.links.map((l) => l.href));
+// Every address a block points at, whichever shape the group came in: a list of
+// links, or a table whose cells may be links.
+const linkHrefs = (block) =>
+  (block?.groups || []).flatMap((g) =>
+    g.rows
+      ? g.rows.flatMap((row) => row.filter((c) => c?.href).map((c) => c.href))
+      : g.links.map((l) => l.href)
+  );
 
 describe("driver page", () => {
   it("states the standings line the page itself shows", async () => {
@@ -91,6 +121,17 @@ describe("driver page", () => {
   it("links the team and the team-mates, which is what the page links", async () => {
     const b = await buildEntityBlock(prisma, { base: BASE, section: "drivers", id: "d4" });
     expect(linkHrefs(b)).toEqual([`${BASE}/constructors/ferrari`, `${BASE}/drivers/d2`]);
+  });
+
+  it("prints the rounds the driver drove, and what each of them paid", async () => {
+    const b = await buildEntityBlock(prisma, { base: BASE, section: "drivers", id: "d4" });
+    const t = b.groups.find((g) => g.title === "Race by race");
+    expect(t.columns).toEqual(["Rnd", "Circuit", "Race", "Pts"]);
+    expect(t.rows).toEqual([
+      ["1", "Hockenheim", "P3", "15"],
+      // A retirement says so rather than inventing a finishing position.
+      ["2", "Watkins Glen", "DNF", "0"],
+    ]);
   });
 
   it("says nothing about a driver in an unpublished season", async () => {
@@ -109,6 +150,16 @@ describe("team page", () => {
     expect(linkHrefs(b)).toEqual([`${BASE}/drivers/d2`]);
   });
 
+  it("states the team's own championship line and its drivers' places", async () => {
+    const b = await buildEntityBlock(prisma, { base: BASE, section: "constructors", id: "ferrari" });
+    // The constructor table's row, not the sum of the drivers' points: the drop
+    // rule works per driver, so that sum is a number no page shows.
+    expect(b.line).toBe("P3 · 240 pts");
+    const t = b.groups[0];
+    expect(t.columns).toEqual(["Driver", "Pos", "Pts"]);
+    expect(t.rows).toEqual([[{ href: `${BASE}/drivers/d2`, label: "Neesh" }, "P2", "180"]]);
+  });
+
   it("answers to /teams/<id> as well, since both addresses render it", async () => {
     const b = await buildEntityBlock(prisma, { base: BASE, section: "teams", id: "ferrari" });
     expect(b.heading).toBe("Ferrari");
@@ -119,7 +170,18 @@ describe("one round", () => {
   it("prints the classification in finishing order", async () => {
     const b = await buildEntityBlock(prisma, { base: BASE, section: "races", raceId: "r2" });
     expect(b.heading).toBe("Round 2 · Watkins Glen");
-    expect(linkHrefs(b)).toEqual([`${BASE}/drivers/d1`, `${BASE}/drivers/d2`]);
+    // Winner first, and each finisher beside the team they scored for — the
+    // page's Pos | Driver | Team | Pts, in its order.
+    expect(linkHrefs(b)).toEqual([
+      `${BASE}/drivers/d1`,
+      `${BASE}/constructors/mclaren`,
+      `${BASE}/drivers/d2`,
+      `${BASE}/constructors/ferrari`,
+    ]);
+    const table = b.groups[0];
+    expect(table.columns).toEqual(["Pos", "Driver", "Team", "Pts"]);
+    expect(table.rows[0][0]).toBe("P1");
+    expect(table.rows[0][3]).toBe("25");
   });
 
   it("leaves out a car that did not finish, the way the table does", async () => {
@@ -136,7 +198,18 @@ describe("one round", () => {
 describe("home", () => {
   it("names the three the title card shows, and only three", async () => {
     const b = await buildEntityBlock(prisma, { base: BASE, isHome: true, seasonId: "s8" });
-    expect(b.groups[0].links.map((l) => l.label)).toEqual(["P1 Takoda", "P2 Neesh", "P3 DRAS"]);
+    const standings = b.groups.find((g) => g.title === "Standings");
+    expect(standings.links.map((l) => l.label)).toEqual(["P1 Takoda", "P2 Neesh", "P3 DRAS"]);
+  });
+
+  it("prints the podium of the round the hero card is about", async () => {
+    const b = await buildEntityBlock(prisma, { base: BASE, isHome: true, seasonId: "s8" });
+    const hero = b.groups[0];
+    expect(hero.title).toBe("Round 2 · Watkins Glen");
+    // Three, like the card. The round's own page carries the rest of the field.
+    expect(hero.rows).toHaveLength(2); // this round classified two
+    expect(hero.rows[0][1].label).toBe("Takoda");
+    expect(hero.rows[0][3]).toBe("25");
   });
 
   it("says nothing when there are no standings yet", async () => {
@@ -180,8 +253,8 @@ describe("a garage with a hundred drivers in it", () => {
         }),
       },
     };
-    const { getDriverStandings } = await import("../services/standingsService.js");
-    getDriverStandings.mockImplementationOnce(async () => crowd);
+    const { seasonStandings } = await import("./crawlTables.js");
+    seasonStandings.mockImplementationOnce(async () => crowd);
     const b = await buildEntityBlock(big, { base: BASE, section: "drivers", id: "r0" });
     const mates = b.groups.find((g) => g.title === "Team-mates");
     expect(mates.links).toHaveLength(9);
