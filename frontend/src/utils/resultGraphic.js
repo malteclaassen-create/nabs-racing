@@ -830,13 +830,43 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
   });
 
   // --- places 4 and down ----------------------------------------------------
+  // The rows fill the strip between the podium and the foot of the page, the
+  // same way the table poster's do, rather than marching down at a fixed pitch
+  // from the top of the strip. The fixed pitch was fine while a sheet was
+  // always the top ten — seven rows, and the seventh ends exactly on the
+  // bottom margin — but the moment a sheet can be longer, the eighth row is
+  // drawn past the bottom of the paper and simply is not on the poster. Which
+  // reads, correctly, as the setting doing nothing.
+  //
+  // At seven this lands on the file's own 80 and 25 to the pixel, so the top
+  // ten is drawn exactly as it always was. More rows close the gaps up first
+  // and then take it out of the bars; fewer let the gaps open a little and sit
+  // the block in the middle of the strip, because a short sheet is a poster
+  // with air in it rather than four banners under a podium.
+  const R = L.rows;
+  const strip = L.height - L.pad - R.top;
+  const n = data.rows.length;
+  let rowH = R.height;
+  let rowGap = R.gap;
+  if (n * rowH + (n - 1) * rowGap > strip) {
+    let pitch = strip / n;
+    rowGap = Math.min(R.gap, pitch * 0.24);
+    pitch = (strip + rowGap) / n;
+    rowH = Math.min(R.height, pitch - rowGap);
+  } else if (n > 1) {
+    // Never past the table poster's own limit: gaps taller than that and the
+    // spaces start reading as the subject rather than the bars.
+    rowGap = Math.min(rowH * STANDINGS.maxGapOfRow, (strip - n * rowH) / (n - 1));
+  }
+  const rowsTop = R.top + Math.max(0, (strip - (n * rowH + (n - 1) * rowGap)) / 2);
+
   // The team mark gives up the width the gap column needs, but only on a round
   // that has times to put in it.
   const timed = data.rows.some((r) => r.delta) && !!T.delta;
   data.rows.forEach((row, i) => {
     drawRow(ctx, T, row, {
-      y: L.rows.top + i * (L.rows.height + L.rows.gap),
-      h: L.rows.height,
+      y: rowsTop + i * (rowH + rowGap),
+      h: rowH,
       showDelta: timed,
       frame: frameW(T.row.frameWidth, F),
       pts: F.pts,
