@@ -7,7 +7,7 @@ import { countryFor } from "../data/driverCountries.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import {
   LAYOUT, THEMES, THEME_KEYS, renderStandingsTo, renderConstructorsTo, savedTheme, saveTheme,
-  STANDINGS_PER_PAGE, savedStandingsSetup, saveStandingsSetup, standingsPageCount,
+  STANDINGS_PER_PAGE, savedStandingsSetup, saveStandingsSetup, pageCount,
   standingsTitle, standingsSubtitle, constructorsTitle, upToRoundOf, filterStandings,
   standingsTiersPresent, CONSTRUCTOR_SPOTS, DEFAULT_FRAMING, FRAMING_LIMITS, cleanFraming,
 } from "../utils/resultGraphic.js";
@@ -126,7 +126,7 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
     () => filterStandings(all, activeTier, { withoutStarts }),
     [all, activeTier, withoutStarts]
   );
-  const pages = standingsPageCount(standings.length, perPage);
+  const pages = pageCount(standings.length, perPage);
   // How many the start rule is holding back, for the line that offers them.
   const idle = useMemo(() => filterStandings(all, activeTier, { withoutStarts: true }).length, [all, activeTier]);
 
