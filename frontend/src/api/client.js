@@ -329,6 +329,33 @@ async function request(path, { method = "GET", body, auth = false, userAuth = fa
   return data;
 }
 
+// Read a picked file ourselves before it is posted.
+//
+// A phone hands the browser a HANDLE, not the bytes: the picture may still be
+// in the cloud, on a card that has gone back to sleep, or behind a gallery app
+// that answers slowly. Attach that handle to a form and the browser streams
+// whatever it can get while the request is already open — and a short read
+// becomes a short body, which the server cannot tell from a small picture. That
+// is how a logo ends up on the poster with its bottom half missing.
+//
+// Reading it here first turns that into an error before anything is sent, and
+// what then goes up is the bytes we are actually holding.
+async function wholeFile(file) {
+  if (!file || typeof file.arrayBuffer !== "function") return file;
+  let bytes;
+  try {
+    bytes = await file.arrayBuffer();
+  } catch {
+    throw new Error("That file could not be read off this device. If it lives in a cloud album, save it to the phone first and try again.");
+  }
+  if (file.size && bytes.byteLength < file.size) {
+    throw new Error(
+      `Only ${bytes.byteLength.toLocaleString("en-GB")} of this file's ${file.size.toLocaleString("en-GB")} bytes could be read — it may still be syncing. Try again, or save it to this device first.`
+    );
+  }
+  return new File([bytes], file.name || "upload", { type: file.type || "application/octet-stream" });
+}
+
 export const api = {
   // public (season-scoped reads honour the selected season)
   // Season-scoped reads default to the selected season; pass an explicit season
@@ -856,9 +883,9 @@ export const api = {
   // the team's driver-market seat offers.
   deleteTeam: (id, force = false) =>
     request(`/admin/teams/${id}${force ? "?force=1" : ""}`, { method: "DELETE", auth: true }),
-  uploadTeamLogo: (id, file) => {
+  uploadTeamLogo: async (id, file) => {
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("file", await wholeFile(file));
     return request(`/admin/teams/${id}/logo`, { method: "POST", body: fd, auth: true, form: true });
   },
 
@@ -1052,9 +1079,9 @@ export const api = {
 
   // Cars and wide wordmarks for the shareable result graphic, per team.
   teamArt: () => request("/admin/team-art", { auth: true }),
-  uploadTeamArt: (teamId, kind, file) => {
+  uploadTeamArt: async (teamId, kind, file) => {
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("file", await wholeFile(file));
     return request(`/admin/team-art/${teamId}/${kind}`, { method: "POST", body: fd, auth: true, form: true });
   },
   // The flag a team flies on the constructors poster ("" clears it).

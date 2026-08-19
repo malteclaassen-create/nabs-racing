@@ -47,23 +47,23 @@ export function sniffImageType(buf) {
   return null;
 }
 
-function pngIsComplete(buf) {
+// `{ whole }`, and when it is not, `declared`: how far the chunk chain says the
+// file goes. That number is the useful half of the answer — a file that always
+// stops at the same byte is a broken file, and one that stops somewhere new
+// every time is a broken connection, and only the number can tell you which.
+function pngWalk(buf) {
   let pos = PNG_MAGIC.length;
-  let sawEnd = false;
   while (pos + 8 <= buf.length) {
     const len = buf.readUInt32BE(pos);
     const type = buf.subarray(pos + 4, pos + 8).toString("latin1");
     // Chunk = 4 length + 4 type + data + 4 CRC. A chunk claiming more than the
     // file holds is the truncation itself.
     pos += 12 + len;
-    if (pos > buf.length) return false;
-    if (type === "IEND") {
-      sawEnd = true;
-      break;
-    }
+    if (pos > buf.length) return { whole: false, declared: pos };
+    // Trailing bytes after IEND are junk but harmless; missing IEND is not.
+    if (type === "IEND") return { whole: true };
   }
-  // Trailing bytes after IEND are junk but harmless; missing IEND is not.
-  return sawEnd;
+  return { whole: false, declared: null };
 }
 
 function jpegIsComplete(buf) {
@@ -104,22 +104,30 @@ export function checkImageUpload(buf, declared = null) {
     };
   }
 
-  const whole =
+  const walk =
     kind === "image/png"
-      ? pngIsComplete(buf)
+      ? pngWalk(buf)
       : kind === "image/jpeg"
-        ? jpegIsComplete(buf)
+        ? { whole: jpegIsComplete(buf) }
         : kind === "image/webp"
-          ? webpIsComplete(buf)
+          ? { whole: webpIsComplete(buf), declared: buf.readUInt32LE(4) + 8 }
           : kind === "image/svg+xml"
-            ? svgIsComplete(buf)
-            : true;
+            ? { whole: svgIsComplete(buf) }
+            : { whole: true };
 
-  if (!whole) {
+  if (!walk.whole) {
+    // The sizes, in the sentence, because they are what somebody can act on.
+    // The same two numbers twice means the file on the phone is the broken
+    // thing; two different ones means the upload is being cut on the way.
+    const sizes = walk.declared
+      ? ` It arrived as ${buf.length.toLocaleString("en-GB")} bytes of the ${walk.declared.toLocaleString("en-GB")} it says it has.`
+      : ` It arrived as ${buf.length.toLocaleString("en-GB")} bytes and never reaches its own end.`;
     return {
       ok: false,
-      error:
-        "That picture only arrived in part — the upload was cut short, and half a file would be drawn with its bottom missing. Try it again.",
+      short: true,
+      received: buf.length,
+      declared: walk.declared || null,
+      error: `That picture only arrived in part — half a file would be drawn with its bottom missing.${sizes} Try it again, and if the same two numbers come back, the file itself is the incomplete one: open it, re-save it, and upload that.`,
     };
   }
   return { ok: true };
