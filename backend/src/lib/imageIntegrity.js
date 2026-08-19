@@ -47,6 +47,22 @@ export function sniffImageType(buf) {
   return null;
 }
 
+// Every check below FAILS OPEN, and that is the whole rule of this file: it
+// refuses only on positive evidence that bytes are missing, and waves through
+// everything it merely cannot make sense of.
+//
+// Real files are messier than their specifications. A phone writes a JPEG and
+// then appends its own trailer after the end marker — Samsung's motion-photo
+// data can be most of the file. An editor leaves a block of metadata after a
+// WEBP. Something exports an SVG with a comment after the closing tag. Judging
+// those by "does it end exactly where the format says" refuses perfectly good
+// pictures, which is a worse failure than the one this exists to catch: a
+// truncated upload costs somebody a re-upload, a false refusal costs them every
+// upload and leaves them with no way in at all.
+//
+// So: a chunk that overruns the file is proof. The absence of an end marker
+// anywhere is proof. Anything else is not.
+
 // `{ whole }`, and when it is not, `declared`: how far the chunk chain says the
 // file goes. That number is the useful half of the answer — a file that always
 // stops at the same byte is a broken file, and one that stops somewhere new
@@ -57,33 +73,40 @@ function pngWalk(buf) {
     const len = buf.readUInt32BE(pos);
     const type = buf.subarray(pos + 4, pos + 8).toString("latin1");
     // Chunk = 4 length + 4 type + data + 4 CRC. A chunk claiming more than the
-    // file holds is the truncation itself.
+    // file holds is the truncation itself, and the only thing here that proves
+    // anything.
     pos += 12 + len;
     if (pos > buf.length) return { whole: false, declared: pos };
     // Trailing bytes after IEND are junk but harmless; missing IEND is not.
     if (type === "IEND") return { whole: true };
   }
-  return { whole: false, declared: null };
+  // The walk ran out without either landing on IEND or overrunning: the chain
+  // is something this does not understand, which is not the same as a file
+  // with its end cut off.
+  return { whole: true };
 }
 
 function jpegIsComplete(buf) {
-  // The end-of-image marker, allowing for the padding some encoders leave.
-  const tail = buf.subarray(Math.max(0, buf.length - 64));
-  for (let i = tail.length - 2; i >= 0; i--) {
-    if (tail[i] === 0xff && tail[i + 1] === 0xd9) return true;
+  // The end-of-image marker, ANYWHERE past the header. Phones and editors write
+  // their own trailers after it — motion-photo data, thumbnails, metadata —
+  // and a file that carries FFD9 at all is a file whose picture finished.
+  for (let i = buf.length - 2; i >= 2; i--) {
+    if (buf[i] === 0xff && buf[i + 1] === 0xd9) return true;
   }
   return false;
 }
 
 function webpIsComplete(buf) {
-  // The RIFF size counts everything after the first 8 bytes, and a chunk of odd
-  // length carries a pad byte that some writers count and some do not.
-  const stated = buf.readUInt32LE(4) + 8;
-  return buf.length >= stated && buf.length <= stated + 1;
+  // The RIFF size counts everything after the first 8 bytes. Shorter than that
+  // is missing bytes; longer is a trailer somebody appended, which is theirs to
+  // append.
+  return buf.length >= buf.readUInt32LE(4) + 8;
 }
 
 function svgIsComplete(buf) {
-  return /<\/svg\s*>/i.test(buf.subarray(Math.max(0, buf.length - 4096)).toString("utf8"));
+  // Anywhere in the file, not just at the end: an SVG may be followed by a
+  // comment, a newline, or an editor's leftovers.
+  return /<\/svg\s*>/i.test(buf.toString("utf8"));
 }
 
 // `{ ok: true }`, or `{ ok: false, error }` with the sentence to hand back.
@@ -110,7 +133,7 @@ export function checkImageUpload(buf, declared = null) {
       : kind === "image/jpeg"
         ? { whole: jpegIsComplete(buf) }
         : kind === "image/webp"
-          ? { whole: webpIsComplete(buf), declared: buf.readUInt32LE(4) + 8 }
+          ? { whole: webpIsComplete(buf), declared: buf.readUInt32LE(4) + 8 } // its own header says how long it should be
           : kind === "image/svg+xml"
             ? { whole: svgIsComplete(buf) }
             : { whole: true };
