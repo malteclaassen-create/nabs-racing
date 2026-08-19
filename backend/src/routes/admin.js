@@ -45,6 +45,7 @@ import { invalidateCardRatingCache } from "../services/cardRatingService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
 import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
+import { checkImageUpload } from "../lib/imageIntegrity.js";
 import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
@@ -1385,6 +1386,8 @@ router.post("/social-feed/posts/:id/cover", upload.single("file"), async (req, r
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = LOGO_EXT[req.file.mimetype];
     if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
+    const whole = checkImageUpload(req.file.buffer, req.file.mimetype);
+    if (!whole.ok) return res.status(400).json({ error: whole.error });
     if (!isSafeId(post.id)) return res.status(400).json({ error: "Invalid post id" });
     mkdirSync(SOCIAL_DIR, { recursive: true });
     const filename = `${post.id}${ext}`;
@@ -4031,6 +4034,8 @@ router.post("/teams/:id/logo", upload.single("file"), async (req, res, next) => 
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = LOGO_EXT[req.file.mimetype];
     if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
+    const whole = checkImageUpload(req.file.buffer, req.file.mimetype);
+    if (!whole.ok) return res.status(400).json({ error: whole.error });
     const team = await prisma.team.findUnique({ where: { id: req.params.id } });
     if (!team) return res.status(404).json({ error: "Team not found" });
 
@@ -4071,6 +4076,10 @@ router.post("/team-art/:id/:kind", upload.single("file"), async (req, res, next)
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = LOGO_EXT[req.file.mimetype];
     if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
+    // A picture that only half arrived is stored happily by everything below
+    // and drawn with its bottom missing by everything above.
+    const whole = checkImageUpload(req.file.buffer, req.file.mimetype);
+    if (!whole.ok) return res.status(400).json({ error: whole.error });
     const team = await prisma.team.findUnique({ where: { id } });
     if (!team) return res.status(404).json({ error: "Team not found" });
 
