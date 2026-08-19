@@ -678,15 +678,18 @@ export const api = {
     request(`/admin/races/${raceId}/results-post?origin=${encodeURIComponent(window.location.origin)}`, {
       auth: true,
     }),
-  // `image` (optional) is the round's poster as a Blob. With one, the whole
-  // thing goes as multipart so Discord gets a real attachment; without one this
-  // is the plain JSON post it always was.
-  sendResultsPost: (raceId, content, image = null) => {
+  // `images` (optional) is the round's poster, as one Blob or as the sheets it
+  // was cut into: the podium and the top ten, then places eleven to twenty, the
+  // same way the standings post attaches a long table. With any of them the
+  // whole thing goes as multipart so Discord gets real attachments; with none
+  // it is the plain JSON post it always was.
+  sendResultsPost: (raceId, content, images = null) => {
     const path = `/admin/races/${raceId}/results-post`;
-    if (!image) return request(path, { method: "POST", body: { content }, auth: true });
+    const sheets = (Array.isArray(images) ? images : images ? [images] : []).filter(Boolean);
+    if (!sheets.length) return request(path, { method: "POST", body: { content }, auth: true });
     const fd = new FormData();
     fd.append("content", content);
-    fd.append("image", image, `${raceId}-result.png`);
+    sheets.forEach((b, i) => fd.append("images", b, `${raceId}-result-${i + 1}.png`));
     return request(path, { method: "POST", body: fd, auth: true, form: true });
   },
   // The championship table as a post: same channel, same two lengths. `upTo` is

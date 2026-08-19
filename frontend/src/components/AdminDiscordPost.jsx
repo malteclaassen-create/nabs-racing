@@ -7,10 +7,11 @@ import { countryFor } from "../data/driverCountries.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import DiscordPreview from "./DiscordPreview.jsx";
 import {
-  renderPosterBlob, renderPosterTo, renderStandingsTo, renderStandingsBlobs,
+  renderPosterTo, renderResultBlobs, renderStandingsTo, renderStandingsBlobs,
   renderConstructorsTo, renderConstructorsBlob,
   savedTheme, THEMES, THEME_KEYS,
-  savedStandingsSetup, standingsPageCount, standingsTitle, standingsSubtitle, constructorsTitle,
+  savedStandingsSetup, savedResultSetup, classifiedResults,
+  pageCount, standingsTitle, standingsSubtitle, constructorsTitle,
   upToRoundOf, filterStandings,
 } from "../utils/resultGraphic.js";
 
@@ -130,9 +131,9 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
     };
   }, [raceId, loadSource, artVersion]);
 
-  // What renderPosterTo / renderPosterBlob need. One object, used by the
-  // preview and by the post, so the picture in the preview and the picture in
-  // the channel cannot be drawn from different things.
+  // What renderPosterTo / renderResultBlobs need, minus which sheet: one
+  // object, used by the preview and by the post, so the pictures in the preview
+  // and the pictures in the channel cannot be drawn from different things.
   const posterFrom = useCallback(
     (src) =>
       graphic === "none" || !src
@@ -157,6 +158,15 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
   const [{ kind: tableKind, perPage, tier, withoutStarts, t1Rows, t2Rows }, setSetup] = useState(savedStandingsSetup);
   const teamsTable = tableKind === "constructors";
   useEffect(() => setSetup(savedStandingsSetup()), [artVersion]);
+
+  // And how long the RESULT poster is, from the Graphic half, for the same
+  // reason: the sheets attached here have to be cut the way the ones on screen
+  // over there were.
+  const [{ perPage: resultPerPage }, setResultSetup] = useState(savedResultSetup);
+  useEffect(() => setResultSetup(savedResultSetup()), [artVersion]);
+
+  // Everybody classified in the round, which is how many sheets it makes.
+  const resultRows = useMemo(() => classifiedResults(source?.results || []), [source]);
 
   // And the same for the table.
   const standingsRows = useMemo(
@@ -199,22 +209,37 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
     [graphic, upTo, tier, withoutStarts, teamsTable, t1Rows, t2Rows]
   );
 
-  const sheetCount = teamsTable ? 1 : standingsPageCount(standingsRows.length, perPage);
+  // How many sheets the thing being posted comes to. A result is cut the same
+  // way a table is now, so the count is the same sum on a different list; the
+  // constructors poster is one page by construction.
+  const sheetCount =
+    kind === "result"
+      ? pageCount(resultRows.length, resultPerPage)
+      : teamsTable
+        ? 1
+        : pageCount(standingsRows.length, perPage);
   // Which sheets go out. All of them to start with, because that is the whole
-  // table and the usual answer; unticking one is how you post only the top ten
-  // of a field of twenty.
+  // classification and the usual answer; unticking one is how you post only the
+  // top ten of a field of twenty.
   const [sheets, setSheets] = useState([]);
   useEffect(() => {
     setSheets(Array.from({ length: sheetCount }, (_, i) => i));
-  }, [sheetCount, tier, teamsTable]);
+  }, [sheetCount, kind, tier, teamsTable]);
   const chosen = useMemo(() => [...sheets].sort((a, b) => a - b), [sheets]);
+  // What the sheet buttons are counting: a round's finishers, or a table's rows.
+  const sheetSize = kind === "result" ? resultPerPage : perPage;
+  const sheetTotal = kind === "result" ? resultRows.length : standingsRows.length;
 
   // Exactly the files that will be attached, drawn by the functions that draw
   // them for real.
   const attachments = useMemo(() => {
     if (kind === "result") {
       const poster = posterFrom(source);
-      return poster ? [{ id: `result-${graphic}`, draw: (c) => renderPosterTo(c, poster) }] : [];
+      if (!poster) return [];
+      return chosen.map((p) => ({
+        id: `result-${graphic}-${p}`,
+        draw: (c) => renderPosterTo(c, { ...poster, perPage: resultPerPage, offset: p * resultPerPage }),
+      }));
     }
     const opts = standingsFrom(source);
     if (!opts) return [];
@@ -223,7 +248,7 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
       id: `standings-${graphic}-${p}`,
       draw: (c) => renderStandingsTo(c, { ...opts, rows: perPage, offset: p * perPage }),
     }));
-  }, [kind, source, posterFrom, standingsFrom, graphic, perPage, chosen, teamsTable]);
+  }, [kind, source, posterFrom, standingsFrom, graphic, perPage, resultPerPage, chosen, teamsTable]);
 
   async function run(fn, doneMsg) {
     setBusy(true);
@@ -278,7 +303,13 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
       setSource(fresh);
       const r =
         kind === "result"
-          ? await api.sendResultsPost(raceId, text, graphic === "none" ? null : await renderPosterBlob(posterFrom(fresh)))
+          ? await api.sendResultsPost(
+              raceId,
+              text,
+              graphic === "none"
+                ? []
+                : await renderResultBlobs(posterFrom(fresh), { perPage: resultPerPage, pages: chosen })
+            )
           : await api.sendStandingsPost(
               text,
               graphic === "none"
@@ -359,19 +390,19 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
               <SlidingTabs items={GRAPHICS} value={graphic} onChange={setGraphic} btnClassName="px-3.5 py-1.5 text-xs" />
             </label>
 
-            {/* Which sheets of a long table go out. Only where there is more
-                than one and a picture is going at all — otherwise this is a
-                control over nothing. Posting places 1 to 10 and keeping the
-                rest back is a normal week, so every sheet can be unticked
-                except that the button below stops you sending none of them
-                with nothing else attached either. */}
-            {kind === "standings" && graphic !== "none" && sheetCount > 1 && (
+            {/* Which sheets of a long classification or a long table go out.
+                Only where there is more than one and a picture is going at all
+                — otherwise this is a control over nothing. Posting places 1 to
+                10 and keeping the rest back is a normal week, so every sheet
+                can be unticked except that the button below stops you sending
+                none of them with nothing else attached either. */}
+            {graphic !== "none" && sheetCount > 1 && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Sheets</span>
                 {Array.from({ length: sheetCount }, (_, p) => {
                   const on = sheets.includes(p);
-                  const a = p * perPage + 1;
-                  const b = Math.min((p + 1) * perPage, standingsRows.length);
+                  const a = p * sheetSize + 1;
+                  const b = Math.min((p + 1) * sheetSize, sheetTotal);
                   return (
                     <button
                       key={p}

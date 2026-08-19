@@ -3005,30 +3005,43 @@ router.post("/standings-post", upload.array("images", 10), async (req, res, next
 
 // POST /api/admin/races/:id/results-post { content } -> send the (possibly
 // edited) message to the results-channel webhook.
-// Accepts JSON ({ content }) or multipart ({ content, image }). The image is
-// the round's poster, drawn in the BROWSER and sent along with the message.
+// Accepts JSON ({ content }) or multipart ({ content, images[] }). The images
+// are the round's poster, drawn in the BROWSER and sent along with the message
+// — one sheet for a normal top ten, or several once a long classification is
+// cut into "1-10" and "11-20". `image` is still taken singular, because an
+// older tab left open is not a reason to lose a post.
 //
 // Drawn there rather than here on purpose. Rendering it server-side would mean
 // a headless Chromium living next to the site for one picture a week. And
 // nothing is stored: each post draws the poster again from the current design
 // and the current artwork, so changing either changes what goes out next time,
 // including for a round that ran months ago.
-router.post("/races/:id/results-post", upload.single("image"), async (req, res, next) => {
+const resultPostImages = upload.fields([
+  { name: "images", maxCount: 10 },
+  { name: "image", maxCount: 1 },
+]);
+
+router.post("/races/:id/results-post", resultPostImages, async (req, res, next) => {
   try {
     const content = String(req.body?.content || "").trim();
-    const image = req.file
-      ? { buffer: req.file.buffer, filename: `${req.params.id}-result.png` }
-      : null;
-    if (!content && !image) return res.status(400).json({ error: "Message is empty" });
-    if (req.file && req.file.mimetype !== "image/png") {
-      return res.status(400).json({ error: "The graphic must be a PNG" });
+    const files = [...(req.files?.images || []), ...(req.files?.image || [])];
+    if (!content && !files.length) return res.status(400).json({ error: "Message is empty" });
+    if (files.some((f) => f.mimetype !== "image/png")) {
+      return res.status(400).json({ error: "The sheets must be PNGs" });
     }
+    const images = files.map((f, i) => ({
+      buffer: f.buffer,
+      filename: `${req.params.id}-result-${i + 1}.png`,
+    }));
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
     if (!race) return res.status(404).json({ error: "Race not found" });
-    const result = await postToResultsChannel(prisma, content, image);
+    const result = await postToResultsChannel(prisma, content, images);
     if (result.skipped) return res.status(400).json({ error: "No results webhook configured" });
     if (!result.ok) return res.status(502).json({ error: result.reason || "Discord rejected the message" });
-    res.json({ ok: true, messages: result.messages, attached: !!result.attached });
+    // A count rather than a yes/no, so the page can say "2 sheets attached" the
+    // way the standings post already does. Still falsy when nothing went with
+    // it, which is all the caller ever asked of it before.
+    res.json({ ok: true, messages: result.messages, attached: result.files });
   } catch (e) {
     next(e);
   }
