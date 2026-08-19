@@ -156,6 +156,19 @@ const LOGO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".we
 // A track key is a slug (letters/digits only) — validate before touching the FS.
 const safeTrackKey = (k) => (normKey(k) === String(k || "").toLowerCase() && k ? k : null);
 
+// "That picture is not whole." Three routes take the same kind of upload, and
+// this is also where the refusal gets LOGGED: a report of "the logo comes out
+// cut off" is answered with two numbers instead of a guess, and whether they
+// are the same two every time says whether the file or the connection is the
+// broken one. Returns true when it has already answered the request.
+function refusedBrokenImage(req, res, what) {
+  const check = checkImageUpload(req.file.buffer, req.file.mimetype);
+  if (check.ok) return false;
+  console.warn(`[upload] refused ${what} (${req.file.mimetype}, ${req.file.size} bytes): ${check.error}`);
+  res.status(400).json({ error: check.error });
+  return true;
+}
+
 // All routes below require admin auth.
 router.use(requireAdmin);
 
@@ -1386,8 +1399,7 @@ router.post("/social-feed/posts/:id/cover", upload.single("file"), async (req, r
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = LOGO_EXT[req.file.mimetype];
     if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
-    const whole = checkImageUpload(req.file.buffer, req.file.mimetype);
-    if (!whole.ok) return res.status(400).json({ error: whole.error });
+    if (refusedBrokenImage(req, res, `social cover ${post.id}`)) return;
     if (!isSafeId(post.id)) return res.status(400).json({ error: "Invalid post id" });
     mkdirSync(SOCIAL_DIR, { recursive: true });
     const filename = `${post.id}${ext}`;
@@ -4034,8 +4046,7 @@ router.post("/teams/:id/logo", upload.single("file"), async (req, res, next) => 
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = LOGO_EXT[req.file.mimetype];
     if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
-    const whole = checkImageUpload(req.file.buffer, req.file.mimetype);
-    if (!whole.ok) return res.status(400).json({ error: whole.error });
+    if (refusedBrokenImage(req, res, `team logo ${req.params.id}`)) return;
     const team = await prisma.team.findUnique({ where: { id: req.params.id } });
     if (!team) return res.status(404).json({ error: "Team not found" });
 
@@ -4078,8 +4089,7 @@ router.post("/team-art/:id/:kind", upload.single("file"), async (req, res, next)
     if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
     // A picture that only half arrived is stored happily by everything below
     // and drawn with its bottom missing by everything above.
-    const whole = checkImageUpload(req.file.buffer, req.file.mimetype);
-    if (!whole.ok) return res.status(400).json({ error: whole.error });
+    if (refusedBrokenImage(req, res, `team art ${id}/${kind}`)) return;
     const team = await prisma.team.findUnique({ where: { id } });
     if (!team) return res.status(404).json({ error: "Team not found" });
 

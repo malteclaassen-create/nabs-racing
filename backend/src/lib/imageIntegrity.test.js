@@ -71,11 +71,16 @@ describe("checkImageUpload", () => {
   // The one this exists for: the upload that stopped early. The header is
   // intact, so everything downstream treats it as a picture — and draws the
   // rows it has with the rest blank.
-  it("refuses a PNG that stops mid-file", () => {
+  it("refuses a PNG that stops mid-file, and says how short it came", () => {
     const half = png(40, 40).subarray(0, 60);
     const res = checkImageUpload(half, "image/png");
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/only arrived in part/i);
+    // The two numbers are the point: the same pair twice means the file itself
+    // is short, a different pair each time means the upload is being cut.
+    expect(res.received).toBe(60);
+    expect(res.declared).toBeGreaterThan(60);
+    expect(res.error).toContain("60 bytes of the");
   });
 
   it("refuses a PNG whose last chunk claims more than the file holds", () => {
