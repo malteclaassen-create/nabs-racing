@@ -95,7 +95,11 @@ export default function AdminContent() {
               it, and switching away must not throw away a message you have
               spent five minutes editing. */}
           <div className={view === "graphic" ? "" : "hidden"}>
-            <AdminResultGraphic raceId={raceId} onArtChange={() => setArtVersion((v) => v + 1)} />
+            <AdminResultGraphic
+              raceId={raceId}
+              artVersion={artVersion}
+              onArtChange={() => setArtVersion((v) => v + 1)}
+            />
           </div>
           {/* The standings poster is about the same round, read as "the table
               after this one". It takes the whole race rather than the id
