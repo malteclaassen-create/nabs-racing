@@ -89,19 +89,41 @@ describe("checkImageUpload", () => {
     expect(checkImageUpload(whole.subarray(0, whole.length - 4), "image/png").ok).toBe(false);
   });
 
-  it("refuses a JPEG with no end marker, and allows the padding phones leave", () => {
+  it("refuses a JPEG with no end marker", () => {
     expect(checkImageUpload(jpeg(Buffer.alloc(2)), "image/jpeg").ok).toBe(false);
+  });
+
+  // What phones actually write. A Samsung photo carries its motion-photo data
+  // AFTER the end marker, and a picture whose trailer is bigger than its
+  // picture is still a whole picture — judging one by "does it end exactly at
+  // FFD9" refuses every photo off the device.
+  it("takes a JPEG with a trailer after the end marker", () => {
+    const trailer = Buffer.concat([Buffer.from([0xff, 0xd9]), Buffer.from("SEFH"), Buffer.alloc(400_000, 7)]);
+    expect(checkImageUpload(jpeg(trailer), "image/jpeg").ok).toBe(true);
     expect(checkImageUpload(jpeg(Buffer.from([0xff, 0xd9, 0x00, 0x00])), "image/jpeg").ok).toBe(true);
   });
 
-  it("refuses a WEBP shorter than its own header says", () => {
+  it("refuses a WEBP shorter than its own header says, and takes one with a trailer", () => {
     expect(checkImageUpload(webp(20, 400), "image/webp").ok).toBe(false);
-    // One byte of RIFF padding is not a truncation.
     expect(checkImageUpload(webp(21, 20), "image/webp").ok).toBe(true);
+    expect(checkImageUpload(webp(4000, 20), "image/webp").ok).toBe(true);
   });
 
-  it("refuses an SVG that never closes", () => {
+  it("refuses an SVG that never closes, and takes one with anything after it", () => {
     expect(checkImageUpload(Buffer.from('<svg xmlns="x"><rect/>'), "image/svg+xml").ok).toBe(false);
+    expect(checkImageUpload(Buffer.from("<svg></svg>\n<!-- exported by something -->\n"), "image/svg+xml").ok).toBe(true);
+  });
+
+  // A PNG can carry anything after IEND, and a chain this cannot follow is not
+  // evidence of anything either: the only PNG refused is one whose own chunk
+  // table runs past the end of the file.
+  it("takes a PNG with bytes after IEND, and one whose chain it cannot follow", () => {
+    expect(checkImageUpload(Buffer.concat([png(), Buffer.alloc(5000, 3)]), "image/png").ok).toBe(true);
+    // A chain that ends on a chunk boundary without ever reaching IEND: not
+    // something this can call broken, so it is not called broken. Fail-open
+    // costs the odd truncation that lands exactly there; the alternative costs
+    // people uploads that were fine.
+    expect(checkImageUpload(png().subarray(0, 33), "image/png").ok).toBe(true);
   });
 
   it("refuses an empty upload", () => {
