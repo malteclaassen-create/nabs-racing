@@ -160,7 +160,7 @@ function TabStrip({ tab, onPick, badges }) {
                 onClick={() => onPick(t.id)}
                 className={`-mb-px rounded-t-lg border-b-2 px-3 py-2 text-sm font-semibold transition ${
                   tab === t.id
-                    ? "border-primary text-link"
+                    ? "border-link text-link"
                     : "border-transparent text-light hover:text-medium"
                 }`}
               >

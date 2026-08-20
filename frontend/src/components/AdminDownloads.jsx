@@ -334,7 +334,7 @@ export default function AdminDownloads() {
                   ) : (
                     <button
                       onClick={() => { startNew(); set("fileName", f.fileName); set("title", f.fileName.replace(/\.[^.]+$/, "")); jumpToForm(); }}
-                      className="rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-link transition hover:bg-link/20"
+                      className="rounded-lg bg-link/10 px-2.5 py-1 text-[11px] font-bold text-link transition hover:bg-link/20"
                     >
                       Register
                     </button>
@@ -370,7 +370,7 @@ export default function AdminDownloads() {
 
         {/* The not-yet-registered file the admin is working on right now. */}
         {!editingId && form.fileName && (
-          <div className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-dark">
+          <div className="rounded-lg bg-link/10 px-3 py-2 text-sm text-dark">
             You are registering <code className="rounded bg-card px-1.5 py-0.5 font-mono text-xs">{form.fileName}</code>.
             Pick a folder, give it a title, then hit <b>Add download</b>. Only then do members see it.
           </div>
@@ -477,7 +477,7 @@ export default function AdminDownloads() {
                       {folderName(d.folderId) || "More files"}
                     </span>
                     {d.raceId && (
-                      <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-link">
+                      <span className="rounded bg-link/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-link">
                         {raceName(d.raceId) || "Replay"}
                       </span>
                     )}

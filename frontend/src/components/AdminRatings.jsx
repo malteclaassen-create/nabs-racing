@@ -216,7 +216,7 @@ function TierTables({ label, rows, onChange, hint }) {
       <button
         type="button"
         onClick={() => onChange([...rows, { teams: "", values: "" }])}
-        className="mt-2 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-bold text-link transition hover:bg-link/20"
+        className="mt-2 rounded-lg bg-link/10 px-2.5 py-1 text-xs font-bold text-link transition hover:bg-link/20"
       >
         Add field size
       </button>

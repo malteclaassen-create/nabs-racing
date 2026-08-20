@@ -15,7 +15,12 @@ export default {
         light: "var(--c-text3)",
         faint: "var(--c-faint)",
         // Fixed brand/accent colours (work on both themes)
-        primary: { DEFAULT: "#4251A8", dark: "#36418A" },
+        // The filled-button colour. NABS pink, but NOT the pale brand pink:
+        // these buttons carry white text, and #f4afc6 under white sits at
+        // 1.9:1. This is the same deep pink the light-theme eyebrow/accent
+        // tokens use (pink-700), which clears 6:1 against white on either
+        // theme's background, with a darker step for hover.
+        primary: { DEFAULT: "#BE185D", dark: "#9D174D" },
         ink: "#0F172A", // intentional dark surface (hero, chips)
         gold: "#EAB308",
         silver: "#94A3B8",

@@ -54,7 +54,7 @@ function StatusPills({ m }) {
   return (
     <span className="flex flex-wrap items-center gap-1.5">
       {m.isAdmin && (
-        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-link" title="Has full admin access on Discord login">
+        <span className="rounded-full bg-link/15 px-2 py-0.5 text-[11px] font-semibold text-link" title="Has full admin access on Discord login">
           admin
         </span>
       )}

@@ -160,7 +160,7 @@ export default function AdminRaceInfo() {
           <button
             type="button"
             onClick={() => set("cards", [...form.cards, { icon: "info", title: "", text: "" }])}
-            className="rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-bold text-link transition hover:bg-link/20"
+            className="rounded-lg bg-link/10 px-3 py-1.5 text-xs font-bold text-link transition hover:bg-link/20"
           >
             Add card
           </button>
@@ -200,7 +200,7 @@ export default function AdminRaceInfo() {
           <button
             type="button"
             onClick={() => set("rulebook", [...form.rulebook, { icon: "info", subject: "", rulesText: "" }])}
-            className="rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-bold text-link transition hover:bg-link/20"
+            className="rounded-lg bg-link/10 px-3 py-1.5 text-xs font-bold text-link transition hover:bg-link/20"
           >
             Add section
           </button>

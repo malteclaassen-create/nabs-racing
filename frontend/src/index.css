@@ -51,13 +51,14 @@
      Same split the brand colour already makes: `primary`/`emerald-500`/… stay
      fixed for FILLS (a filled chip carries white text and must stay dark in
      both themes), while these are the tones those things are written IN.
-     A single fixed value cannot do both jobs: #4251A8 reads at 4.6:1 on a white
-     card and 2.25:1 on a dark one, and the small status pills (VIEW RESULTS,
-     FL, the position arrows) all sat between 3.0 and 3.8 where 4.5 is the mark
-     for text this size. Raw RGB triples so `text-link`, `bg-link/10` and
-     friends all work off one token. Every value below is measured against its
-     own theme's card colour. */
-  --c-link: 55 69 148;   /* deeper indigo than the fill: 5.9:1 on white */
+     A single fixed value cannot do both jobs: the indigo #4251A8 that `primary`
+     used to be reads at 4.6:1 on a white card and 2.25:1 on a dark one — and
+     `primary` is pink now, so a link cannot borrow it either. The small status
+     pills (VIEW RESULTS, FL, the position arrows) all sat between 3.0 and 3.8
+     where 4.5 is the mark for text this size. Raw RGB triples so `text-link`,
+     `bg-link/10` and friends all work off one token. Every value below is
+     measured against its own theme's card colour. */
+  --c-link: 55 69 148;   /* indigo, 5.9:1 on white */
   --c-ok: 4 108 78;      /* emerald, 5.1:1 on white */
   --c-bad: 185 28 28;    /* red, 5.9:1 on white */
   --c-warn: 146 64 14;   /* amber-800: 4.8 on plain white was not enough once
@@ -748,14 +749,14 @@ body::before {
 .tour-spot {
   pointer-events: none;
   border-radius: 12px;
-  box-shadow: 0 0 0 3px rgb(66 81 168 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55);
+  box-shadow: 0 0 0 3px rgb(190 24 93 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55);
   transition: left var(--t-base) var(--e-soft), top var(--t-base) var(--e-soft), width var(--t-base) var(--e-soft), height var(--t-base) var(--e-soft), opacity var(--t-base) var(--e-soft);
   animation: tour-pulse 1.6s ease-in-out infinite;
 }
 .tour-spot-idle { animation: none; }
 @keyframes tour-pulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgb(66 81 168 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55); }
-  50%      { box-shadow: 0 0 0 8px rgb(66 81 168 / 0.35), 0 0 0 9999px rgb(2 6 23 / 0.55); }
+  0%, 100% { box-shadow: 0 0 0 3px rgb(190 24 93 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55); }
+  50%      { box-shadow: 0 0 0 8px rgb(190 24 93 / 0.35), 0 0 0 9999px rgb(2 6 23 / 0.55); }
 }
 .tour-card { animation: nabs-pop var(--t-base) var(--e-out) both; }
 
