@@ -184,7 +184,7 @@ export default function AdminNotifications() {
             <label
               key={o.value}
               className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
-                form.seatOffers === o.value ? "border-primary/60 bg-primary/5" : "border-border hover:bg-surface2"
+                form.seatOffers === o.value ? "border-accent/60 bg-accent/10" : "border-border hover:bg-surface2"
               }`}
             >
               <input
@@ -216,7 +216,7 @@ export default function AdminNotifications() {
               key={h}
               className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
                 form.reminders.includes(h)
-                  ? "border-primary/60 bg-primary/10 text-dark"
+                  ? "border-accent/60 bg-accent/10 text-dark"
                   : "border-border text-medium hover:bg-surface2"
               }`}
             >
@@ -300,7 +300,7 @@ export default function AdminNotifications() {
                 <label
                   key={key}
                   className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
-                    on ? "border-primary/60 bg-primary/10 text-dark" : "border-border text-medium hover:bg-surface2"
+                    on ? "border-accent/60 bg-accent/10 text-dark" : "border-border text-medium hover:bg-surface2"
                   }`}
                 >
                   <input
@@ -331,7 +331,7 @@ export default function AdminNotifications() {
         <button
           onClick={save}
           disabled={busy}
-          className="rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-white transition hover:bg-primary/90 disabled:opacity-50"
+          className="rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-ink transition hover:bg-primary-dark disabled:opacity-50"
         >
           {busy ? "Saving…" : "Save"}
         </button>

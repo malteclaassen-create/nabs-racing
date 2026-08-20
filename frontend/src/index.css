@@ -214,13 +214,13 @@ body::before {
     box-shadow: var(--c-shadow-lift);
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-ink transition hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-50;
   }
   .btn-secondary {
     @apply inline-flex items-center justify-center rounded-lg bg-surface2 px-4 py-2 text-sm font-semibold text-medium transition hover:bg-border focus:outline-none focus:ring-2 focus:ring-border disabled:opacity-50;
   }
   .input {
-    @apply w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark placeholder:text-light focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20;
+    @apply w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark placeholder:text-light focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25;
   }
   .pill {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide;
@@ -749,14 +749,14 @@ body::before {
 .tour-spot {
   pointer-events: none;
   border-radius: 12px;
-  box-shadow: 0 0 0 3px rgb(190 24 93 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55);
+  box-shadow: 0 0 0 3px rgb(244 175 198 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55);
   transition: left var(--t-base) var(--e-soft), top var(--t-base) var(--e-soft), width var(--t-base) var(--e-soft), height var(--t-base) var(--e-soft), opacity var(--t-base) var(--e-soft);
   animation: tour-pulse 1.6s ease-in-out infinite;
 }
 .tour-spot-idle { animation: none; }
 @keyframes tour-pulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgb(190 24 93 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55); }
-  50%      { box-shadow: 0 0 0 8px rgb(190 24 93 / 0.35), 0 0 0 9999px rgb(2 6 23 / 0.55); }
+  0%, 100% { box-shadow: 0 0 0 3px rgb(244 175 198 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55); }
+  50%      { box-shadow: 0 0 0 8px rgb(244 175 198 / 0.35), 0 0 0 9999px rgb(2 6 23 / 0.55); }
 }
 .tour-card { animation: nabs-pop var(--t-base) var(--e-out) both; }
 

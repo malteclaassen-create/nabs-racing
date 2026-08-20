@@ -223,7 +223,7 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
           aria-controls="global-search-results"
           aria-autocomplete="list"
           aria-activedescendant={showPanel && active >= 0 ? `global-search-option-${active}` : undefined}
-          className="h-9 w-full min-w-0 rounded-lg border border-border bg-surface2 py-2 pl-9 pr-3 text-sm text-dark placeholder:text-light focus:border-primary focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/20"
+          className="h-9 w-full min-w-0 rounded-lg border border-border bg-surface2 py-2 pl-9 pr-3 text-sm text-dark placeholder:text-light focus:border-accent focus:bg-card focus:outline-none focus:ring-2 focus:ring-accent/25"
         />
       </div>
 

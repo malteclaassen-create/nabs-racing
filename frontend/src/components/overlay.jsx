@@ -275,7 +275,7 @@ export function Modal({
               type="button"
               onClick={onClose}
               aria-label={closeLabel}
-              className="transition -mr-1 -mt-1 shrink-0 rounded-lg p-1.5 text-light hover:bg-surface2 hover:text-dark focus:outline-none focus:ring-2 focus:ring-primary/40"
+              className="transition -mr-1 -mt-1 shrink-0 rounded-lg p-1.5 text-light hover:bg-surface2 hover:text-dark focus:outline-none focus:ring-2 focus:ring-accent/50"
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2"
                 strokeLinecap="round" aria-hidden="true">
