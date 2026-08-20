@@ -125,7 +125,7 @@ function DownloadCard({ item, highlight = false }) {
         <button
           onClick={go}
           disabled={busy || !item.available}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-white transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-ink transition hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icon name={item.external ? "external" : "download"} className="h-4 w-4" />
           {busy ? "Preparing…" : item.available ? (item.external ? "Open link" : "Download") : "Coming soon"}

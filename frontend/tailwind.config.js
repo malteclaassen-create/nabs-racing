@@ -15,7 +15,13 @@ export default {
         light: "var(--c-text3)",
         faint: "var(--c-faint)",
         // Fixed brand/accent colours (work on both themes)
-        primary: { DEFAULT: "#4251A8", dark: "#36418A" },
+        // The filled-button colour: the standard NABS pink, the same value
+        // --c-brand carries. It is a PALE pink, so these buttons are written in
+        // `ink`, not white — white on #f4afc6 is 1.9:1, ink is 9.4:1, and ink
+        // holds up on the hover step below too. Anything pink that must stay
+        // visible as a thin line on a white card (focus rings, selected
+        // borders) uses `accent` instead, which deepens itself in light mode.
+        primary: { DEFAULT: "#F4AFC6", dark: "#EE8BAC" },
         ink: "#0F172A", // intentional dark surface (hero, chips)
         gold: "#EAB308",
         silver: "#94A3B8",

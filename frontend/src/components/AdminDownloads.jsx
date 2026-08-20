@@ -90,7 +90,7 @@ function Folders({ folders, reload, onMsg }) {
                     onChange={(e) => setRenaming({ id: f.id, name: e.target.value })}
                     onKeyDown={(e) => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setRenaming(null); }}
                   />
-                  <button onClick={saveRename} disabled={busy} className="transition rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary/90">Save</button>
+                  <button onClick={saveRename} disabled={busy} className="transition rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-ink hover:bg-primary-dark">Save</button>
                   <button onClick={() => setRenaming(null)} className="transition text-xs font-semibold text-light hover:text-dark">Cancel</button>
                 </span>
               ) : (
@@ -120,7 +120,7 @@ function Folders({ folders, reload, onMsg }) {
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); create(); } }}
           placeholder="New folder name, e.g. Tracks"
         />
-        <button onClick={create} disabled={busy || !newName.trim()} className="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white transition hover:bg-primary/90 disabled:opacity-50">
+        <button onClick={create} disabled={busy || !newName.trim()} className="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-ink transition hover:bg-primary-dark disabled:opacity-50">
           Create folder
         </button>
       </div>
@@ -301,7 +301,7 @@ export default function AdminDownloads() {
       <div className="card p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Files on the server</h3>
-          <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white transition hover:bg-primary/90 ${upload ? "pointer-events-none opacity-50" : ""}`}>
+          <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-ink transition hover:bg-primary-dark ${upload ? "pointer-events-none opacity-50" : ""}`}>
             <Icon name="upload" className="h-4 w-4" />
             {upload ? "Uploading…" : "Upload file"}
             <input type="file" className="hidden" onChange={uploadFile} disabled={!!upload} />
@@ -334,7 +334,7 @@ export default function AdminDownloads() {
                   ) : (
                     <button
                       onClick={() => { startNew(); set("fileName", f.fileName); set("title", f.fileName.replace(/\.[^.]+$/, "")); jumpToForm(); }}
-                      className="rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-link transition hover:bg-link/20"
+                      className="rounded-lg bg-link/10 px-2.5 py-1 text-[11px] font-bold text-link transition hover:bg-link/20"
                     >
                       Register
                     </button>
@@ -354,7 +354,7 @@ export default function AdminDownloads() {
         ref={formRef}
         onSubmit={save}
         className={`card scroll-mt-24 space-y-4 p-5 transition-shadow duration-slow ${
-          flash ? "ring-2 ring-primary shadow-lg" : ""
+          flash ? "ring-2 ring-accent shadow-lg" : ""
         }`}
       >
         <div className="flex items-center justify-between">
@@ -370,7 +370,7 @@ export default function AdminDownloads() {
 
         {/* The not-yet-registered file the admin is working on right now. */}
         {!editingId && form.fileName && (
-          <div className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-dark">
+          <div className="rounded-lg bg-link/10 px-3 py-2 text-sm text-dark">
             You are registering <code className="rounded bg-card px-1.5 py-0.5 font-mono text-xs">{form.fileName}</code>.
             Pick a folder, give it a title, then hit <b>Add download</b>. Only then do members see it.
           </div>
@@ -451,7 +451,7 @@ export default function AdminDownloads() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button type="submit" disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white transition hover:bg-primary/90 disabled:opacity-50">
+          <button type="submit" disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-ink transition hover:bg-primary-dark disabled:opacity-50">
             {busy ? "Saving…" : editingId ? "Save changes" : "Add download"}
           </button>
           {msg && <span className={`text-sm font-medium ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</span>}
@@ -477,7 +477,7 @@ export default function AdminDownloads() {
                       {folderName(d.folderId) || "More files"}
                     </span>
                     {d.raceId && (
-                      <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-link">
+                      <span className="rounded bg-link/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-link">
                         {raceName(d.raceId) || "Replay"}
                       </span>
                     )}

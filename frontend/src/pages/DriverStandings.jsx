@@ -448,7 +448,7 @@ export default function DriverStandings() {
               type="checkbox"
               checked={onlyScoring}
               onChange={(e) => setOnlyScoring(e.target.checked)}
-              className="h-4 w-4 rounded border-border text-link focus:ring-primary/30"
+              className="h-4 w-4 rounded border-border text-link focus:ring-accent/40"
             />
             Only drivers with points
           </label>

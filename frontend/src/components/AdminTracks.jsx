@@ -227,7 +227,7 @@ export default function AdminTracks() {
               </div>
             ) : (
               <input aria-label="Custom map image" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={uploadMap} disabled={busy}
-                className="transition block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-primary-dark" />
+                className="transition block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-ink hover:file:bg-primary-dark" />
             )}
           </div>
 
