@@ -102,8 +102,8 @@ function Thread({ id, races, onBack, onChanged }) {
   const r = data?.report;
   // Asked only of the driver who filed it, only while nobody is named. Naming
   // somebody lets them into the thread and tells them, which is not a thing to
-  // do twice, so it is a one-way door — and it is the reporter's door, not the
-  // stewards'.
+  // do twice, so it is a one-way door: once it is answered — here, or at the
+  // stewards' desk after the race — nobody can re-point the report.
   const needsAccused =
     !!r && !r.accusedDriverId && !!myDiscordId() && r.reporterDiscordId === myDiscordId();
 
@@ -172,7 +172,8 @@ function Thread({ id, races, onBack, onChanged }) {
             </div>
             <p className="mt-1 text-sm leading-relaxed text-light">
               Nobody is named on this yet, so only the stewards can read it. Naming the driver lets them see it
-              and answer, and tells them it exists. You can only do this once, so take a moment.
+              and answer, and tells them it exists. You can only do this once, so take a moment. If you leave
+              it, the stewards work through the unnamed ones after the race against the race file.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -265,6 +266,13 @@ function NewReport({ races, presetRaceId, onFiled }) {
   // Nothing to pick from is not a dead end: the round may predate the archive,
   // or the moment may be one AC never counted as a contact.
   const handOnly = contacts != null && contactList.length === 0;
+  // Does this report say who it is about? Nothing goes to the stewards until it
+  // does. A report that names nobody used to be allowed and was the kind that
+  // went nowhere: the driver being complained about could not see the thread
+  // they were the subject of, could not answer it, and a steward reading it a
+  // fortnight later had an incident and no idea whose. A picked contact answers
+  // it from the race data; the dropdown is the way to answer it by hand.
+  const names = !!picked || !!form.accusedDriverId;
 
   async function submit() {
     setBusy(true);
@@ -281,9 +289,10 @@ function NewReport({ races, presetRaceId, onFiled }) {
         // contact is taken from here.
         contactId: contactId || null,
       });
-      // Three outcomes, and only one of them is "the other driver can see it".
-      setSent(!form.accusedDriverId ? "nobody" : res?.accusedReachable === false ? "unreachable" : "ok");
-      setUnreachable(res?.accusedReachable === false ? accused?.name || "That driver" : null);
+      // A report always names somebody now, so there are two outcomes left:
+      // the driver can read it, or they have no Discord account to be told on.
+      setSent(res?.accusedReachable === false ? "unreachable" : "ok");
+      setUnreachable(res?.accusedReachable === false ? accused?.name || picked?.other?.name || "That driver" : null);
       setForm({ raceId: "", lap: "", accusedDriverId: "", body: "" });
       onFiled?.();
     } catch (e) {
@@ -301,12 +310,6 @@ function NewReport({ races, presetRaceId, onFiled }) {
             ? "Sent. The stewards can see it now, and so can the driver you named."
             : "Sent. The stewards can see it now."}
         </p>
-        {sent === "nobody" && (
-          <p className="text-sm leading-relaxed text-light">
-            You did not name a driver, so for now only the stewards can read it. If they work out who it was
-            about, that driver joins the thread and can answer.
-          </p>
-        )}
         {sent === "unreachable" && (
           <p className="text-sm leading-relaxed text-light">
             {unreachable} has never signed in with Discord, so they cannot be told about this or answer it. The
@@ -358,6 +361,22 @@ function NewReport({ races, presetRaceId, onFiled }) {
           <p className="text-sm text-faint">
             Pick the round above and the contacts Assetto Corsa recorded for you appear here.
           </p>
+          {/* The dropdown is here as well as inside the round's own step,
+              because a report has to name a driver and a round that is not on
+              the calendar would otherwise leave nowhere to say who it was. */}
+          <select
+            aria-label="Which driver"
+            className={`input w-full ${form.accusedDriverId ? "" : "border-amber-500/60"}`}
+            value={form.accusedDriverId}
+            onChange={(e) => setForm({ ...form, accusedDriverId: e.target.value })}
+          >
+            <option value="">Which driver? (needed)</option>
+            {drivers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
         </section>
       ) : (
         <section className="space-y-1.5">
@@ -426,7 +445,8 @@ function NewReport({ races, presetRaceId, onFiled }) {
 
           {/* The hand-written route. Hidden while there is a list to pick from,
               because two ways of answering the same question side by side reads
-              as two things that both need filling in. */}
+              as two things that both need filling in. Either way one of the two
+              has to be answered: a report names a driver or it does not go. */}
           {!picked &&
             (byHand || handOnly ? (
               <div className="grid gap-2 pt-1 sm:grid-cols-[7rem,minmax(0,1fr)]">
@@ -441,11 +461,12 @@ function NewReport({ races, presetRaceId, onFiled }) {
                 />
                 <select
                   aria-label="Which driver"
-                  className="input"
+                  required
+                  className={`input ${form.accusedDriverId ? "" : "border-amber-500/60"}`}
                   value={form.accusedDriverId}
                   onChange={(e) => setForm({ ...form, accusedDriverId: e.target.value })}
                 >
-                  <option value="">Which driver?</option>
+                  <option value="">Which driver? (needed)</option>
                   {drivers.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.name}
@@ -459,7 +480,7 @@ function NewReport({ races, presetRaceId, onFiled }) {
                 className="text-xs font-semibold text-brand underline-offset-2 hover:underline"
                 onClick={() => setByHand(true)}
               >
-                Not one of these? Say it in your own words
+                Not one of these? Name the driver yourself
               </button>
             ) : null)}
 
@@ -485,9 +506,25 @@ function NewReport({ races, presetRaceId, onFiled }) {
 
       {error && <p className="text-sm text-bad">{error}</p>}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-4">
-        <button className="btn-primary" disabled={busy || form.body.trim().length < 5} onClick={submit}>
+        <button
+          className="btn-primary"
+          disabled={busy || form.body.trim().length < 5 || !names}
+          onClick={submit}
+        >
           {busy ? "Sending…" : "Send to the stewards"}
         </button>
+        {/* Why the button is off, when it is off. A disabled button that does
+            not say what it wants is a page that looks broken — and the thing it
+            wants here is the whole point of the change: a report is ABOUT
+            somebody, and until it says who, the driver it concerns cannot see
+            the thread or answer it. */}
+        {!names && (
+          <p className="text-sm text-medium">
+            {form.raceId
+              ? "Pick the contact, or name the driver yourself, before you send this."
+              : "Pick the round, then say which driver this is about."}
+          </p>
+        )}
         <p className="max-w-xs text-xs leading-relaxed text-light">
           Only you, the driver you name and the stewards can read this. You can add pictures once it is filed.
         </p>

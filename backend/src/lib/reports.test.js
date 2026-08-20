@@ -25,7 +25,7 @@ vi.mock("./persons.js", () => ({
 const {
   dbCreateReport, dbAddMessage, dbDecideReport, canRead, readersOf, dbSetAccused,
   dbAddAttachment, dbAttachments, dbDeleteReport, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES,
-  dbReportsFor, roleOn,
+  dbReportsFor, roleOn, dbPenaltiesForRace, dbMarkPenaltiesApplied,
 } = await import("./reports.js");
 
 // A report is a PRIVATE conversation, and everything below is about who is let
@@ -43,7 +43,8 @@ function makePrisma() {
         rows.Report.push({
           id: a[0], raceId: a[1], lap: a[2], reporterDiscordId: a[3], reporterName: a[4],
           accusedDriverId: a[5], accusedName: a[6], body: a[7], source: a[8], incidentAt: a[9],
-          status: "NEW", verdict: null, penaltySeconds: null, createdAt: "now", updatedAt: null,
+          status: "NEW", verdict: null, penaltySeconds: null, appliedSeconds: null, appliedAt: null,
+          createdAt: "now", updatedAt: null,
         });
       } else if (sql.includes('INSERT INTO "ReportMessage"')) {
         rows.ReportMessage.push({ id: a[0], reportId: a[1], author: a[2], authorDiscordId: a[3], authorName: a[4], body: a[5], createdAt: "now" });
@@ -62,11 +63,18 @@ function makePrisma() {
       } else if (sql.startsWith('UPDATE "Report" SET "accusedDriverId"')) {
         const r = rows.Report.find((x) => x.id === a[3]);
         Object.assign(r, { accusedDriverId: a[0], accusedName: a[1], updatedAt: a[2] });
+      } else if (sql.startsWith('UPDATE "Report" SET "appliedSeconds"')) {
+        const r = rows.Report.find((x) => x.id === a[2]);
+        Object.assign(r, { appliedSeconds: a[0], appliedAt: a[1] });
       }
       return 1;
     },
     $queryRawUnsafe: async (sql, ...a) => {
       if (sql.includes('FROM "Report" WHERE "id"')) return rows.Report.filter((r) => r.id === a[0]);
+      if (sql.includes('FROM "Report" WHERE "raceId"'))
+        return rows.Report.filter(
+          (r) => r.raceId === a[0] && ["PENALTY", "NO_PENALTY", "DISMISSED"].includes(r.status)
+        );
       if (sql.includes('FROM "Report" ORDER BY')) return [...rows.Report];
       if (sql.includes('FROM "ReportViewer" WHERE "reportId" = ? AND "discordId"'))
         return rows.ReportViewer.filter((v) => v.reportId === a[0] && v.discordId === a[1]);
@@ -329,5 +337,101 @@ describe("what a report will not accept", () => {
     const r = await dbCreateReport(p, base);
     expect((await dbDecideReport(p, r, { status: "PENALTY", penaltySeconds: -5 })).penaltySeconds).toBe(0);
     expect((await dbDecideReport(p, r, { status: "PENALTY", penaltySeconds: 9999 })).penaltySeconds).toBe(600);
+  });
+});
+
+// The seconds a steward decides do not write themselves into a classification —
+// the results editor types them, and a human saves them. What is pinned here is
+// the bookkeeping that lets the editor do the typing without ever doing it
+// twice: what is OUTSTANDING is what the reports decided minus what has already
+// been written.
+describe("penalties owed to a classification", () => {
+  const inRound = { ...base, raceId: "r1", accusedDriverId: "d2", accusedName: "mtimmis" };
+
+  async function decided(p, seconds, extra = {}) {
+    const r = await dbCreateReport(p, { ...inRound, ...extra });
+    await dbDecideReport(p, r, { status: "PENALTY", penaltySeconds: seconds, verdict: `${seconds}s` });
+    return r;
+  }
+
+  it("adds a round's incidents up per driver", async () => {
+    // The editor has ONE penalty cell per driver. Compared a report at a time,
+    // typing five would satisfy both and the second penalty would vanish.
+    const p = makePrisma();
+    await decided(p, 5);
+    await decided(p, 5);
+    const [g] = await dbPenaltiesForRace(p, "r1");
+    expect(g.driverId).toBe("d2");
+    expect(g.decided).toBe(10);
+    expect(g.outstanding).toBe(10);
+    expect(g.reports).toHaveLength(2);
+  });
+
+  it("stops asking once the seconds have been entered", async () => {
+    const p = makePrisma();
+    const r = await decided(p, 5);
+    await dbMarkPenaltiesApplied(p, [r.id]);
+    const [g] = await dbPenaltiesForRace(p, "r1");
+    expect(g.decided).toBe(5);
+    expect(g.applied).toBe(5);
+    expect(g.outstanding).toBe(0);
+  });
+
+  it("asks only for the DIFFERENCE when a verdict is corrected", async () => {
+    // Five were entered and the stewards then made it ten. Asking for ten again
+    // would put fifteen on the driver.
+    const p = makePrisma();
+    const r = await decided(p, 5);
+    await dbMarkPenaltiesApplied(p, [r.id]);
+    await dbDecideReport(p, await import("./reports.js").then((m) => m.dbGetReport(p, r.id)), {
+      status: "PENALTY",
+      penaltySeconds: 10,
+      verdict: "Ten after all.",
+    });
+    const [g] = await dbPenaltiesForRace(p, "r1");
+    expect(g.outstanding).toBe(5);
+  });
+
+  it("takes the seconds back off when a penalty is reversed after it was entered", async () => {
+    const p = makePrisma();
+    const r = await decided(p, 5);
+    await dbMarkPenaltiesApplied(p, [r.id]);
+    const { dbGetReport } = await import("./reports.js");
+    await dbDecideReport(p, await dbGetReport(p, r.id), { status: "NO_PENALTY", verdict: "On reflection, no." });
+    const [g] = await dbPenaltiesForRace(p, "r1");
+    expect(g.decided).toBe(0);
+    expect(g.outstanding).toBe(-5);
+    // And once the editor has taken them off, the round is square again and
+    // the reversal drops out of the list entirely: nothing decided, nothing
+    // entered, nothing left for the desk to do about it.
+    await dbMarkPenaltiesApplied(p, [r.id]);
+    expect(await dbPenaltiesForRace(p, "r1")).toHaveLength(0);
+  });
+
+  it("marking twice cannot make a penalty count twice", async () => {
+    const p = makePrisma();
+    const r = await decided(p, 5);
+    await dbMarkPenaltiesApplied(p, [r.id]);
+    await dbMarkPenaltiesApplied(p, [r.id]);
+    const [g] = await dbPenaltiesForRace(p, "r1");
+    expect(g.applied).toBe(5);
+    expect(g.outstanding).toBe(0);
+  });
+
+  it("says out loud when a penalty names nobody", async () => {
+    // It cannot be put on a row, and the fix is in the Reports tab: somebody
+    // has to say who it was about.
+    const p = makePrisma();
+    await decided(p, 5, { accusedDriverId: null, accusedName: null });
+    const [g] = await dbPenaltiesForRace(p, "r1");
+    expect(g.driverId).toBe(null);
+    expect(g.outstanding).toBe(5);
+  });
+
+  it("leaves decisions that are not penalties out of it", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, inRound);
+    await dbDecideReport(p, r, { status: "NO_PENALTY", verdict: "Racing incident." });
+    expect(await dbPenaltiesForRace(p, "r1")).toHaveLength(0);
   });
 });

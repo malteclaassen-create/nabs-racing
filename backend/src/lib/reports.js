@@ -8,10 +8,18 @@
 // without an audience.
 //
 // The verdict does NOT touch the classification. An admin writing "5 seconds"
-// here records what was decided; entering it in the result stays a separate,
-// deliberate act in the results editor, which is where the penalty column
-// already lives. Two places that both write the same number would eventually
-// disagree, and the one that decides points has to be the one a human typed.
+// here records what was decided; the seconds reach the driver in the results
+// editor, which is where the penalty column already lives. Two places that both
+// write the same number would eventually disagree, and the one that decides
+// points has to be the one that is saved deliberately.
+//
+// What the editor no longer needs is somebody's MEMORY. Opening a round fills
+// the decided penalties into its penalty column — typed in, exactly as a human
+// would, and stored only when that human presses save. `appliedSeconds` is the
+// bookkeeping that makes doing it twice harmless (see dbPenaltiesForRace): what
+// is still outstanding is what the reports decided minus what has already been
+// written, so a second visit adds nothing, a corrected verdict adds the
+// difference, and one reversed after the fact takes its seconds back off.
 //
 // `source` tells a report written on the site (SITE) from one the in-game
 // webPenalty app fired mid-race (INGAME). The in-game one carries a wall-clock
@@ -74,6 +82,8 @@ function shape(r) {
     status: r.status || "NEW",
     verdict: r.verdict || null,
     penaltySeconds: r.penaltySeconds ?? null,
+    appliedSeconds: r.appliedSeconds ?? null,
+    appliedAt: r.appliedAt || null,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt || null,
   };
@@ -520,20 +530,24 @@ export async function dbDecideReport(prisma, report, { status, verdict, penaltyS
 // midnight writes "the blue car" as often as a name. Until this is set, the
 // other driver cannot see the thread they are the subject of.
 //
-// Two rules, and they are the point of this function rather than decoration:
+// ONE rule, and it is the point of this function rather than decoration: only
+// ONCE, while it is still blank. Naming somebody lets them in and tells them;
+// changing it afterwards would leave a driver sitting in a thread that is no
+// longer about them, having already read it. So nobody — reporter or steward —
+// can ever re-point an accusation that has already been made.
 //
-//   Only the REPORTER may do it. An accusation belongs to the person making it.
-//   A steward who could re-point a report at somebody else would be able to
-//   manufacture a case against a driver nobody complained about, in a thread
-//   that then looks like the first driver wrote it.
+// WHO may fill in a blank one is the routes' business, and it is two people:
+// the driver who filed it, from their own page, and the stewards. A report
+// written on the site names somebody by construction (the form will not send
+// without it), so in practice the blank ones are the in-game presses, which
+// know who pressed the button and nothing else. Somebody has to say who it was
+// before that report can go anywhere, and the driver who pressed it is not
+// always the one who comes back to the site — see routes/admin.js, where the
+// stewards work through a round's unnamed presses in one pass after the race.
 //
-//   Only ONCE, while it is still blank. Naming somebody lets them in and tells
-//   them; changing it afterwards would leave a driver sitting in a thread that
-//   is no longer about them, having already read it.
-//
-// The routes enforce who is asking; this enforces that there is nothing there
-// yet, so no caller can get it wrong.
-export async function dbSetAccused(prisma, report, { accusedDriverId, accusedName }) {
+// `by` only changes what the driver is TOLD. Being named by the stewards and
+// being named by the person who filed it are different pieces of news.
+export async function dbSetAccused(prisma, report, { accusedDriverId, accusedName, by = "REPORTER" }) {
   if (report.accusedDriverId) {
     throw Object.assign(new Error("This report already names a driver"), { status: 409 });
   }
@@ -555,7 +569,10 @@ export async function dbSetAccused(prisma, report, { accusedDriverId, accusedNam
     await dbCreateNotification(prisma, {
       type: "REPORT",
       title: "An incident report names you",
-      body: "The stewards have linked an incident report to you. You can read it and reply.",
+      body:
+        by === "STEWARD"
+          ? "The stewards have linked an incident report to you. You can read it and reply."
+          : `${fresh.reporterName || "A driver"} has said an incident report is about you. You can read it and reply.`,
       link: `/reports?id=${fresh.id}`,
       recipientId: accused,
       dedupeKey: `report_new:${fresh.id}:${accused}`,
@@ -578,6 +595,98 @@ export async function dbDecidedForRace(prisma, raceId) {
     )
     .catch(() => []);
   return rows.map(shape);
+}
+
+// What a report is WORTH against a classification right now: the decided
+// seconds while it stands as a penalty, and nothing once it has been reversed.
+// A report that was applied and later turned into "no penalty" is worth 0, and
+// the seconds already in the table are then five too many — which is what makes
+// the arithmetic below able to take them back off again.
+const penaltyTarget = (r) => (r.status === "PENALTY" ? Math.max(0, r.penaltySeconds || 0) : 0);
+
+// The decided penalties of one round, per driver, with what still has to reach
+// the classification.
+//
+// This is what lets the results editor fill its own penalty column in. Deciding
+// "five seconds" in the Reports tab has never written five seconds onto the
+// driver, and that stays true — the editor types the number, the same as a
+// human would, and nothing is stored until somebody presses save. What changed
+// is that the editor no longer needs anybody to REMEMBER, and this is the
+// bookkeeping that makes doing it twice harmless:
+//
+//   outstanding = what the reports decide - what has already been written
+//
+// So a penalty that has been entered is worth nothing on the next visit, a
+// verdict corrected from 5s to 10s is worth the missing five, and one reversed
+// after it was entered is worth minus five: the editor takes them back off.
+//
+// Grouped BY DRIVER because the editor has one penalty cell per driver, and two
+// incidents in one race is an ordinary evening.
+export async function dbPenaltiesForRace(prisma, raceId) {
+  const decided = await dbDecidedForRace(prisma, raceId);
+  const byDriver = new Map();
+  for (const r of decided) {
+    // Nothing to write and nothing written: an untouched "no penalty" is a
+    // decision the classification has no business hearing about.
+    const target = penaltyTarget(r);
+    const applied = Math.max(0, r.appliedSeconds || 0);
+    if (!target && !applied) continue;
+    // A penalty against nobody cannot be added to a row. It is still shown at
+    // the desk — as "nobody named", which is the thing that needs fixing.
+    const key = r.accusedDriverId || `unnamed:${r.id}`;
+    const g = byDriver.get(key) || {
+      key,
+      driverId: r.accusedDriverId || null,
+      name: r.accusedName || null,
+      decided: 0,
+      applied: 0,
+      outstanding: 0,
+      reports: [],
+    };
+    g.name = g.name || r.accusedName || null;
+    g.decided += target;
+    g.applied += applied;
+    g.outstanding += target - applied;
+    g.reports.push({
+      id: r.id,
+      penaltySeconds: r.penaltySeconds ?? null,
+      status: r.status,
+      appliedSeconds: r.appliedSeconds ?? null,
+      appliedAt: r.appliedAt || null,
+      outstanding: target - applied,
+      verdict: r.verdict || null,
+    });
+    byDriver.set(key, g);
+  }
+  return [...byDriver.values()];
+}
+
+// "These seconds are in the table now." Called once the results editor has
+// SAVED, never before: what is stored on the report has to follow what is
+// stored on the race, or a save that failed would leave the penalty marked as
+// entered and it would never be typed again.
+//
+// Stamps the target rather than adding to it, so re-running it is harmless and
+// a reversed penalty lands on 0 instead of counting backwards for ever.
+export async function dbMarkPenaltiesApplied(prisma, reportIds) {
+  const ids = [...new Set((reportIds || []).map(String).filter(Boolean))];
+  if (!ids.length) return 0;
+  const now = new Date().toISOString();
+  let n = 0;
+  for (const id of ids) {
+    const r = await dbGetReport(prisma, id);
+    if (!r) continue;
+    await prisma
+      .$executeRawUnsafe(
+        `UPDATE "Report" SET "appliedSeconds" = ?, "appliedAt" = ? WHERE "id" = ?`,
+        penaltyTarget(r),
+        now,
+        id
+      )
+      .catch(() => {});
+    n += 1;
+  }
+  return n;
 }
 
 // --- housekeeping -----------------------------------------------------------

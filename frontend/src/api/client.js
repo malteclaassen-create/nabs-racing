@@ -1030,15 +1030,29 @@ export const api = {
   // endpoint on purpose: an accusation belongs to the person making it.
   setReportAccused: (id, accusedDriverId) =>
     request(`/reports/${id}/accused`, { method: "PUT", body: { accusedDriverId }, userAuth: true }),
+  // The same thing from the desk, for the in-game presses that name nobody: the
+  // app knows who pressed the button and not who they are complaining about,
+  // and the driver who pressed it is not always the one who comes back to the
+  // site. Neither route can ever RE-point a report that already names somebody.
+  setReportAccusedAdmin: (id, accusedDriverId) =>
+    request(`/admin/reports/${id}/accused`, { method: "PUT", body: { accusedDriverId }, auth: true }),
+  // A round's unnamed reports, named in one press, which is how stewarding
+  // actually happens: one race's replay, everything that happened in it, once.
+  assignReportAccused: (assignments) =>
+    request("/admin/reports/accused", { method: "POST", body: { assignments }, auth: true }),
   // By roster driver where possible; the raw Discord id stays for somebody who
   // is not on any roster.
   addReportViewer: (id, body) => request(`/admin/reports/${id}/viewers`, { method: "POST", body, auth: true }),
   removeReportViewer: (id, discordId) =>
     request(`/admin/reports/${id}/viewers/${discordId}`, { method: "DELETE", auth: true }),
   deleteReport: (id) => request(`/admin/reports/${id}`, { method: "DELETE", auth: true }),
-  // What the stewards decided for one round, for the results editor to check
-  // itself against.
+  // What the stewards decided for one round, and how much of it has already
+  // been written into the classification. The results editor fills the rest in.
   raceReportPenalties: (raceId) => request(`/admin/races/${raceId}/report-penalties`, { auth: true }),
+  // "Those seconds are in the table now." Sent after a save has gone through,
+  // never before — see routes/admin.js.
+  markReportPenaltiesApplied: (raceId, reportIds) =>
+    request(`/admin/races/${raceId}/report-penalties/applied`, { method: "POST", body: { reportIds }, auth: true }),
   // The in-game app's key. Saving one switches in-game reporting on.
   // How long a decided report keeps its pictures.
   reportRetention: () => request("/admin/reports-retention", { auth: true }),

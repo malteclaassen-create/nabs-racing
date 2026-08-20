@@ -39,6 +39,256 @@ const DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
 const uiOf = (s) => STATUS.find((x) => x.key === s) || STATUS[0];
 const when = (iso) => (iso ? fmtStamp(iso) : "");
 
+// Where the file's own guess at the accused came from, in the two words a
+// steward needs to weigh it. "Matched" is the contact an in-game press was
+// pinned to — the game recorded that these two cars touched a moment before the
+// button was pressed. "Suggested" is one of up to three contacts the file
+// offered for the lap the reporter gave, which is a thinner thing.
+const SUGGEST_NOTE = {
+  matched: "the contact the race file pinned this press to",
+  suggested: "a contact the race file has around that lap",
+};
+
+// Saying who ONE report is about, at the desk.
+//
+// Only while it says nobody. Once a driver is named this is a line of text and
+// nothing else: naming somebody lets them in and tells them, so re-pointing a
+// report would leave a driver sitting in a thread that is no longer about them,
+// having already read it. The rule lives in the backend (lib/reports.js), and
+// this is it drawn.
+//
+// The dropdown starts on what the result file says, where it says anything, and
+// a steward either agrees with it or picks somebody else. It is never saved by
+// itself — Assetto Corsa is good at "these two cars touched" and knows nothing
+// whatever about fault.
+function NameAccused({ report, drivers, busy, onName }) {
+  const hint = report.accusedSuggestion || null;
+  const [pick, setPick] = useState(hint?.driverId || "");
+  // A different report opened, or the file's answer arrived after the first
+  // render: follow it, but never overwrite a steward who has already chosen.
+  useEffect(() => {
+    setPick((cur) => cur || hint?.driverId || "");
+  }, [report.id, hint?.driverId]);
+
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
+        The report is about
+      </div>
+      {report.accusedName ? (
+        <p className="text-sm font-semibold text-dark">{report.accusedName}</p>
+      ) : (
+        <>
+          <p className="text-sm text-light">
+            Nobody yet, so the other driver cannot see this thread or answer it.
+            {report.source === "INGAME"
+              ? " An in-game press knows who pressed the button and not who they are complaining about."
+              : ""}
+          </p>
+          {hint?.name && (
+            <p className="mt-2 text-xs leading-relaxed text-light">
+              The race file says{" "}
+              <span className="font-semibold text-medium">{hint.name}</span> was the other car —{" "}
+              {SUGGEST_NOTE[hint.from] || "what the race file has"}.
+              {hint.driverId
+                ? " It is already picked below — check it against the replay before naming them."
+                : " Nobody on the roster races under that name, so pick who it was."}
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <select
+              aria-label="Which driver this report is about"
+              className="input w-auto max-w-64 py-1.5 text-sm"
+              value={pick}
+              disabled={busy}
+              onChange={(e) => setPick(e.target.value)}
+            >
+              <option value="">Pick a driver…</option>
+              {drivers.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+            <button className="btn-secondary py-1.5 text-sm" disabled={busy || !pick} onClick={() => onName(pick)}>
+              Name them
+            </button>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-light">
+            This lets them read the thread and tells them. It cannot be changed afterwards — a report aimed at
+            the wrong driver is deleted and filed again.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+// --- the after-the-race pass -------------------------------------------------
+//
+// Every report that names nobody, in one place, so a round's in-game presses
+// can be worked through together instead of one thread at a time.
+//
+// This is how stewarding actually happens: you sit down once, after the race,
+// with the replay and the result file, and you go through the evening. A dozen
+// presses arrive from inside a race with nothing but who pressed the button —
+// and every one of them is a driver who cannot yet see the thread they are the
+// subject of. Opening twelve threads to answer the same one-word question
+// twelve times is the job this removes.
+//
+// The file's own answer is prefilled in each row (see lib/reportSuggest.js) and
+// says where it came from, so agreeing with all twelve is one press and
+// disagreeing with one is one dropdown. Nothing is saved until the button, and
+// each row is answered for individually afterwards — a report somebody named in
+// another tab comes back as already named while the rest go through.
+function UnnamedReports({ reports, races, drivers, onDone }) {
+  const [picks, setPicks] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [msg, setMsg] = useState(null);
+
+  // The file's guess is the starting point for every row it has one for. Keyed
+  // on the report, and re-seeded whenever the list changes — a saved round
+  // leaves the rows that failed, and those keep whatever was picked for them.
+  useEffect(() => {
+    setPicks((cur) => {
+      const next = { ...cur };
+      for (const r of reports) if (!next[r.id]) next[r.id] = r.accusedSuggestion?.driverId || "";
+      return next;
+    });
+  }, [reports]);
+
+  const byRace = useMemo(() => {
+    const raceById = new Map((races || []).map((x) => [x.id, x]));
+    const out = new Map();
+    for (const r of reports) {
+      const key = r.raceId || "";
+      if (!out.has(key)) out.set(key, { race: raceById.get(r.raceId) || null, reports: [] });
+      out.get(key).reports.push(r);
+    }
+    return [...out.values()].sort((a, b) => {
+      if (!a.race) return 1;
+      if (!b.race) return -1;
+      return new Date(b.race.date || 0) - new Date(a.race.date || 0);
+    });
+  }, [reports, races]);
+
+  const ready = reports.filter((r) => picks[r.id]);
+
+  async function saveAll() {
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      const res = await api.assignReportAccused(ready.map((r) => ({ reportId: r.id, driverId: picks[r.id] })));
+      // Told per driver, because that is what the desk is deciding: a driver
+      // who has never signed in with Discord is named but cannot be reached,
+      // and somebody has to know to go and find them.
+      const unreachable = (res.results || []).filter((x) => x.ok && !x.reachable).length;
+      const failed = res.failed || 0;
+      setMsg(
+        [
+          `${res.named} named${res.named === 1 ? "" : ""}.`,
+          unreachable ? `${unreachable} of them has no Discord account and cannot be told.` : "",
+          failed ? `${failed} could not be saved.` : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+      if (failed) setError((res.results || []).find((x) => !x.ok)?.error || null);
+      onDone?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!reports.length) return null;
+
+  return (
+    <div className="card overflow-hidden border-amber-500/50">
+      <CardBar
+        title="Who were these about?"
+        right={
+          <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-bad">
+            {reports.length} name{reports.length === 1 ? "s" : ""} nobody
+          </span>
+        }
+      />
+      <p className="border-b border-border px-5 py-3 text-xs leading-relaxed text-light">
+        A report that names nobody is one the other driver cannot see or answer. These came in from inside the
+        race, where the app knows who pressed the button and not who they are complaining about. Where the
+        round&rsquo;s result file can say which car was on the other side of it, that driver is already picked
+        below — check it against the replay, change what is wrong, and save the round in one go. Naming a driver
+        lets them in and tells them, and cannot be undone.
+      </p>
+      {byRace.map((g) => (
+        <div key={g.race?.id || "none"}>
+          <div className="border-b border-border bg-surface2/40 px-5 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+            {g.race ? `${g.race.number != null ? `R${g.race.number} ` : ""}${g.race.track}` : "No round given"}
+          </div>
+          <ul className="divide-y divide-border">
+            {g.reports.map((r) => (
+              <li key={r.id} className="space-y-2 px-5 py-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {r.source === "INGAME" && <span className="pill bg-brand/15 text-brand">in-game</span>}
+                  <span className="text-sm font-semibold text-dark">{r.reporterName || "Someone"}</span>
+                  <ReplayAnchor
+                    readOnly
+                    second={r.sessionSecond}
+                    approx={r.sessionSecondApprox}
+                    matched={r.contactMatched}
+                    at={r.incidentAt}
+                    kph={r.contactKph}
+                    lap={r.lap}
+                    eventIndex={r.contactIndex}
+                  />
+                  <span className="hidden min-w-0 flex-1 truncate text-xs text-light sm:block">{r.body}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    aria-label={`Which driver the report by ${r.reporterName || "someone"} is about`}
+                    className="input w-auto max-w-64 py-1.5 text-sm"
+                    value={picks[r.id] || ""}
+                    disabled={busy}
+                    onChange={(e) => setPicks({ ...picks, [r.id]: e.target.value })}
+                  >
+                    <option value="">Leave it unnamed</option>
+                    {drivers.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                  {r.accusedSuggestion?.name && (
+                    <span className="text-xs text-light">
+                      race file:{" "}
+                      <span className="font-semibold text-medium">{r.accusedSuggestion.name}</span>
+                      {r.accusedSuggestion.from === "matched" ? " (matched contact)" : " (around that lap)"}
+                      {r.accusedSuggestion.driverId ? "" : " — not on any roster"}
+                    </span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-3">
+        <button className="btn-primary" disabled={busy || !ready.length} onClick={saveAll}>
+          {busy ? "Saving…" : `Name ${ready.length || "them"} and tell them`}
+        </button>
+        {error && <span className="text-sm text-bad">{error}</span>}
+        {msg && <span className="text-sm text-ok">{msg}</span>}
+        {!ready.length && !busy && (
+          <span className="text-xs text-light">Pick a driver on at least one report.</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Thread({ id, drivers, onChanged, onDeleted }) {
   const ask = useAsk();
   const [data, setData] = useState(null);
@@ -149,24 +399,24 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
         {/* RIGHT — everything you do about it. Sticks on a tall screen so a
             long thread scrolls past it rather than pushing it away. */}
         <div className="min-w-0 space-y-4 lg:sticky lg:top-4">
-          {/* Who it is about, and only that. Naming a driver is the
-              REPORTER's to do, from their own page: a steward who could
-              re-point a report would be able to manufacture a case against
-              somebody nobody complained about, in a thread that then reads as
-              if the first driver wrote it. An in-game report with nobody named
-              stays that way until the driver who sent it says. */}
-          <div className="rounded-lg border border-border p-4">
-            <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
-              The report is about
-            </div>
-            {r.accusedName ? (
-              <p className="text-sm font-semibold text-dark">{r.accusedName}</p>
-            ) : (
-              <p className="text-sm text-light">
-                Nobody yet. Only {r.reporterName || "the reporter"} can say, from their own page.
-              </p>
-            )}
-          </div>
+          {/* Who it is about. A report written on the site always names
+              somebody — the form will not send without it — so the blank ones
+              are the in-game presses: webPenalty knows who pressed the button
+              and nothing else. Either the driver who filed it says, from their
+              own page, or the desk does, which is what this is.
+
+              What NOBODY can do is re-point a report that already names
+              somebody: naming a driver lets them in and tells them, and
+              changing it afterwards leaves a driver sitting in a thread that is
+              no longer about them, having read it. So this turns into a plain
+              line the moment it is answered. A report aimed at the wrong driver
+              is deleted and filed again, which is visible. */}
+          <NameAccused
+            report={r}
+            drivers={drivers}
+            busy={busy}
+            onName={(driverId) => run(() => api.setReportAccusedAdmin(id, driverId), "Named, and told.")}
+          />
 
 
       {/* the decision */}
@@ -455,6 +705,15 @@ function ContactSuggestions({ report }) {
     };
   }, [data]);
 
+  // The ones with nobody on the other side of them, which is the first pass of
+  // an evening's stewarding. Only the ones still open: a report that was closed
+  // without ever naming anybody is history, and putting it in a list headed
+  // "these need answering" would be asking for work that is over.
+  const unnamed = useMemo(
+    () => (data?.reports || []).filter((r) => !r.accusedDriverId && !DECIDED.includes(r.status)),
+    [data]
+  );
+
   const openReportRow = (data?.reports || []).find((r) => r.id === openId) || null;
   const openRace = openReportRow
     ? (data?.races || []).find((x) => x.id === openReportRow.raceId) || null
@@ -550,6 +809,13 @@ function ContactSuggestions({ report }) {
         </div>
       )}
 
+      {/* Before the list, because it is the first thing to do with a round that
+          has just been raced, and because every row in it is a driver who
+          cannot yet see the thread they are the subject of. */}
+      {data && (
+        <UnnamedReports reports={unnamed} races={data.races} drivers={drivers} onDone={reload} />
+      )}
+
       {data && visible.length === 0 && (
         <Notice kind="info">
           {counts.all === 0
@@ -587,6 +853,12 @@ function ContactSuggestions({ report }) {
                     )}
                     {r.status === "PENALTY" && r.penaltySeconds > 0 && (
                       <span className="pill bg-red-500/15 text-bad">+{r.penaltySeconds}s</span>
+                    )}
+                    {/* Nobody on the other side of it, which is the one thing
+                        that has to be fixed before anything else can happen:
+                        that driver cannot read the thread or answer it. */}
+                    {!r.accusedDriverId && !DECIDED.includes(r.status) && (
+                      <span className="pill bg-amber-500/15 text-bad">names nobody</span>
                     )}
                     <span className="text-sm font-semibold text-dark">
                       {r.reporterName || "Someone"}

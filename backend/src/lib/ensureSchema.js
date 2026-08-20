@@ -422,6 +422,16 @@ export async function ensureAppSchema(prisma) {
   // that share nothing but the file. Counts every event in the file, so the
   // numbers a report carries are not consecutive.
   await addColumn(prisma, "Report", "contactIndex", "INTEGER");
+  // How much of a decided penalty has actually reached a classification, and
+  // when it did. Deciding "five seconds" in the Reports tab still does not put
+  // them on the driver by itself — the results editor owns the points — but
+  // that editor now fills the number in for you when you open the round, and
+  // these two columns are what let it tell a penalty it has already written
+  // from one it has not. Without them every visit would stack the same five
+  // seconds on again. A steward correcting 5s to 10s afterwards leaves the two
+  // differing by five, which is exactly what the editor still has to add.
+  await addColumn(prisma, "Report", "appliedSeconds", "INTEGER");
+  await addColumn(prisma, "Report", "appliedAt", "DATETIME");
   // Reports already filed by the in-game app carry a line quoting the app's own
   // wall clock, which was appended unconditionally. It is the same moment as
   // the report's timestamp seen from another timezone (the relaying machine

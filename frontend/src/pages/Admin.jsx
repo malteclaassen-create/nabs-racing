@@ -1084,6 +1084,21 @@ function EditResults() {
   // press cannot land on rows that belong to a different race.
   const [loadingRace, setLoadingRace] = useState(false);
 
+  // What the stewards decided for this round, per driver, and how much of it
+  // has already been written into the classification (see lib/reports.js).
+  //
+  // Deciding "five seconds" in the Reports tab has never put five seconds on
+  // the driver, and still does not: the penalty column below owns the points
+  // and nothing is stored until somebody presses save. What the editor no
+  // longer needs is anybody's MEMORY — opening a round types the outstanding
+  // seconds into the column, exactly as a human would, and the seconds are
+  // marked as entered only once the save has actually gone through.
+  const [penalties, setPenalties] = useState(null);
+  // Which rows the editor filled in when the round was opened, for the line
+  // that says so. A number typed into a table by something other than the
+  // person looking at it has to announce itself.
+  const [prefilled, setPrefilled] = useState([]);
+
   useEffect(() => {
     setError(null);
     setMsg(null);
@@ -1098,16 +1113,30 @@ function EditResults() {
     setDotd("");
     setDotdBy("");
     setHonours({ pole: "", poleTime: "", fl: "", flTime: "" });
+    setPenalties(null);
+    setPrefilled([]);
     if (!raceId) return;
     // Two quick changes of the picker race each other; without this guard the
     // slower FIRST response can land last and leave race B selected with race
     // A's rows on screen. Same `alive` pattern the public pages use.
     let alive = true;
     setLoadingRace(true);
-    api
-      .raceResults(raceId)
-      .then((d) => {
+    // Read together, because the table is built from both: the classification
+    // as it stands, and what the stewards decided that has not reached it yet.
+    // A failure to read the reports is not a failure to edit the round — the
+    // penalty column then behaves exactly as it did before any of this existed.
+    Promise.all([api.raceResults(raceId), api.raceReportPenalties(raceId).catch(() => ({ perDriver: [] }))])
+      .then(([d, pen]) => {
         if (!alive) return;
+        // Per driver, only where there is something still to write. Two
+        // incidents in one race add up here, because the table has one penalty
+        // cell per driver — compared one report at a time, typing five would
+        // have satisfied both and the second penalty would quietly vanish.
+        const owed = new Map(
+          (pen?.perDriver || []).filter((g) => g.driverId && g.outstanding).map((g) => [g.driverId, g])
+        );
+        setPenalties(pen || { perDriver: [] });
+        const filledIn = [];
         setMeta({
           track: d.race?.track || "",
           date: toLocalInput(d.race?.date),
@@ -1145,6 +1174,11 @@ function EditResults() {
         setRows(
           d.results.map((r) => {
             const raw = r.rawPosition ?? r.position ?? "";
+            // What this driver's reports still owe the classification. Noted as
+            // well as added, so the table can say out loud which cells it typed
+            // in by itself.
+            const owes = owed.get(r.driverId);
+            if (owes) filledIn.push({ driverId: r.driverId, name: r.name, seconds: owes.outstanding });
             return {
               driverId: r.driverId,
               // Who held this row when it was loaded — a driver swap sends this
@@ -1156,7 +1190,12 @@ function EditResults() {
               status: r.status,
               subForTeamId: r.subForTeam?.id || "",
               ownTeamName: r.team?.name || "", // so the sub dropdown can say which team "own team" is
-              penaltySeconds: r.penaltySeconds || 0,
+              // The stored penalty PLUS whatever the stewards decided and the
+              // classification has not heard about yet. Never below zero: a
+              // penalty taken back after it was entered subtracts, and a round
+              // whose cell was cleared by hand in the meantime must not go
+              // negative because of it.
+              penaltySeconds: Math.max(0, (r.penaltySeconds || 0) + (owes?.outstanding || 0)),
               grid: r.grid ?? "", // starting position (1 = pole)
               time:
                 r.totalTimeMs > 0
@@ -1191,6 +1230,7 @@ function EditResults() {
             };
           })
         );
+        setPrefilled(filledIn);
       })
       .catch((e) => {
         if (alive) setError(e.message);
@@ -1205,6 +1245,26 @@ function EditResults() {
 
   function setRow(i, patch) {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  }
+
+  // Type the decided penalties into the column, for a round where they are not
+  // in it. Opening the round does this by itself; the button exists for after
+  // somebody has cleared a cell, or for a decision taken while this screen was
+  // already open.
+  //
+  // Brings each driver UP to what their reports decided and never down: a
+  // penalty typed here for something no report was filed about (a cut chicane,
+  // a jumped start) is the steward's and is left exactly where it is.
+  function fillPenalties() {
+    const owed = new Map((penalties?.perDriver || []).filter((g) => g.driverId).map((g) => [g.driverId, g]));
+    setRows((rs) =>
+      rs.map((r) => {
+        const g = owed.get(r.driverId);
+        if (!g) return r;
+        const now = Number(r.penaltySeconds) || 0;
+        return now >= g.decided ? r : { ...r, penaltySeconds: g.decided };
+      })
+    );
   }
 
   // Season roster (from the teams payload) for the driver-swap dropdown, so a
@@ -1366,7 +1426,32 @@ function EditResults() {
           origLapsLed: String(r.lapsLed).trim(),
         }))
       );
-      setMsg("Results saved and standings recalculated.");
+      // The seconds are in the classification now, so the reports that decided
+      // them can stop asking for them. AFTER the save and never before: what is
+      // stored on a report has to follow what is stored on the race, or a save
+      // that failed would leave a penalty marked as entered and it would never
+      // be typed again.
+      //
+      // Only for the drivers whose row actually CARRIES what was decided. A
+      // steward who read the thread again and typed something else has not
+      // entered that penalty, and saying they had would hide the disagreement
+      // instead of showing it in the panel below.
+      const entered = (penalties?.perDriver || []).filter(
+        (g) =>
+          g.driverId &&
+          rows.some((row) => row.driverId === g.driverId && (Number(row.penaltySeconds) || 0) >= g.decided)
+      );
+      const settle = entered.flatMap((g) => g.reports.filter((x) => x.outstanding !== 0).map((x) => x.id));
+      if (settle.length) {
+        const res = await api.markReportPenaltiesApplied(raceId, settle).catch(() => null);
+        if (res?.perDriver) setPenalties((p) => ({ ...(p || {}), perDriver: res.perDriver }));
+      }
+      setPrefilled([]);
+      setMsg(
+        settle.length
+          ? `Results saved and standings recalculated. ${settle.length} decided penalt${settle.length === 1 ? "y is" : "ies are"} now marked as entered.`
+          : "Results saved and standings recalculated."
+      );
     } catch (e) {
       setError(e.message);
     } finally {
@@ -1824,10 +1909,11 @@ function EditResults() {
           </p>
 
           {/* What the stewards decided, against what is actually in the table
-              above. The decision deliberately does not write itself into the
-              classification, so this is the only thing between "we agreed five
-              seconds" and a championship that never heard about them. */}
-          <StewardPenalties raceId={raceId} rows={rows} />
+              above. The editor fills the outstanding seconds into the penalty
+              column when a round is opened; this is the receipt for that, and
+              the one thing between "we agreed five seconds" and a championship
+              that never heard about them. */}
+          <StewardPenalties data={penalties} rows={rows} prefilled={prefilled} onFill={fillPenalties} />
 
           <RacePreview request={{ raceId, results: toResults(rows) }} />
 

@@ -97,11 +97,47 @@ router.post("/", optionalUser, async (req, res, next) => {
           .catch(() => null)
       : null;
 
+    // A report has to be ABOUT somebody, and this is where that is enforced.
+    //
+    // It used to be optional, and the reports that came in without a name were
+    // the ones that went nowhere: the driver being complained about could not
+    // see the thread they were the subject of, could not answer it, and a
+    // steward reading "he brake-checked me into turn one" had a fortnight-old
+    // incident and no idea whose it was. The site's own form now cannot send
+    // without a driver — this is the same rule at the door, for anything that
+    // posts here directly.
+    //
+    // A pinned contact counts as naming somebody even when no roster row
+    // matches: Assetto Corsa recorded which car it was, which is a better
+    // answer than a dropdown, and it is on the league to work out who was
+    // driving it. The one thing that is refused is a report that names nobody
+    // at all. In-game presses are exempt by construction — they come in through
+    // /ingest below, where nobody has been accused yet and the stewards do the
+    // naming afterwards.
+    //
+    // Hand-picked from the dropdown: resolved against the roster rather than
+    // taken as sent. The id decides who is let into the thread and who is told
+    // about it, and the NAME that goes with it is the league's own, not a
+    // string the browser chose to put beside the id.
+    const accusedPicked =
+      !accusedFromContact && b.accusedDriverId
+        ? await prisma.driver
+            .findUnique({ where: { id: String(b.accusedDriverId) }, select: { id: true, name: true } })
+            .catch(() => null)
+        : null;
+    if (!accusedFromContact && b.accusedDriverId && !accusedPicked) {
+      return res.status(400).json({ error: "No such driver" });
+    }
+    const accused = accusedFromContact || accusedPicked;
+    if (!accused && !pinned?.other?.name) {
+      return res.status(400).json({ error: "Pick the driver this report is about" });
+    }
+
     const report = await dbCreateReport(prisma, {
       raceId: b.raceId || null,
       lap: pinned ? pinned.lap : b.lap,
-      accusedDriverId: accusedFromContact?.id || b.accusedDriverId || null,
-      accusedName: accusedFromContact?.name || pinned?.other.name || b.accusedName || null,
+      accusedDriverId: accused?.id || null,
+      accusedName: accused?.name || pinned?.other.name || null,
       body: b.body,
       reporterDiscordId: me.discordId,
       reporterName: me.name,
