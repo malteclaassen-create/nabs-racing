@@ -7,7 +7,7 @@ import { countryFor } from "../data/driverCountries.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import {
   LAYOUT, THEMES, THEME_KEYS, renderStandingsTo, renderConstructorsTo, savedTheme, saveTheme,
-  STANDINGS_PER_PAGE, savedStandingsSetup, saveStandingsSetup, standingsPageCount,
+  STANDINGS_PER_PAGE, savedStandingsSetup, saveStandingsSetup, pageCount,
   standingsTitle, standingsSubtitle, constructorsTitle, upToRoundOf, filterStandings,
   standingsTiersPresent, CONSTRUCTOR_SPOTS, DEFAULT_FRAMING, FRAMING_LIMITS, cleanFraming,
 } from "../utils/resultGraphic.js";
@@ -126,7 +126,7 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
     () => filterStandings(all, activeTier, { withoutStarts }),
     [all, activeTier, withoutStarts]
   );
-  const pages = standingsPageCount(standings.length, perPage);
+  const pages = pageCount(standings.length, perPage);
   // How many the start rule is holding back, for the line that offers them.
   const idle = useMemo(() => filterStandings(all, activeTier, { withoutStarts: true }).length, [all, activeTier]);
 
@@ -289,6 +289,26 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
 
   const first = (page - 1) * perPage + 1;
   const last = Math.min(page * perPage, standings.length);
+
+  // Which sheet everybody is on, for the two lists underneath: they cover the
+  // whole table, so a picture uploaded for somebody on the second sheet changes
+  // nothing on a poster showing the first — which looks like an upload that did
+  // not work. Only said where there is more than one sheet to be on.
+  const sheetNotes = useMemo(() => {
+    if (isTeams || pages < 2) return null;
+    const drivers = new Map();
+    const teams = new Map();
+    standings.forEach((r, i) => {
+      const sheet = Math.floor(i / perPage) + 1;
+      if (r.driverId && !drivers.has(r.driverId)) drivers.set(r.driverId, sheet);
+      if (r.team?.id && !teams.has(r.team.id)) teams.set(r.team.id, sheet);
+    });
+    return { drivers, teams };
+  }, [isTeams, pages, standings, perPage]);
+  const noteFor = (map, id) => {
+    const sheet = map?.get(id);
+    return sheet && sheet !== page ? `Sheet ${sheet}` : null;
+  };
 
   return (
     <div className="space-y-5">
@@ -536,7 +556,12 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
           onSet={setTeamCountry}
         />
       ) : (
-        <PosterFlags drivers={onPoster} busy={busy} onSet={setCountry} />
+        <PosterFlags
+          drivers={onPoster}
+          busy={busy}
+          onSet={setCountry}
+          noteOf={(d) => noteFor(sheetNotes?.drivers, d.driverId)}
+        />
       )}
 
       <PosterTeamArt
@@ -546,6 +571,7 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
         onUpload={upload}
         onClear={clearArt}
         kinds={["mark"]}
+        noteOf={(t) => noteFor(sheetNotes?.teams, t.id)}
       />
     </div>
   );

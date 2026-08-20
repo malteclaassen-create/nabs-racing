@@ -151,7 +151,7 @@ describe("the pre-rendered link block", () => {
   it("carries the footer's links on every page", async () => {
     const html = await buildCrawlLinks({}, "/", {});
     const out = hrefs(html);
-    // The same eight the footer shows (App.jsx footerLinks).
+    // The footer's links, minus the one address a crawler may not fetch.
     for (const h of [
       "/s/friday-f1/drivers",
       "/s/friday-f1/constructors",
@@ -159,10 +159,18 @@ describe("the pre-rendered link block", () => {
       "/s/friday-f1/attendance",
       "/s/friday-f1/live",
       "/join",
-      "/downloads",
     ]) {
       expect(out).toContain(h);
     }
+  });
+
+  it("does not link the one page robots.txt forbids", async () => {
+    // Race Info is member-only and Disallow'd (lib/sitemap.js). A link to it on
+    // every page of the site says only that this site links pages Google is not
+    // allowed to have; the reader still reaches it from the footer.
+    const out = hrefs(await buildCrawlLinks({}, "/", {}));
+    expect(out).not.toContain("/downloads");
+    expect(isCrawlable("/downloads")).toBe(false);
   });
 
   it("lists the drivers the drivers page lists — including the ones the sitemap skips", async () => {

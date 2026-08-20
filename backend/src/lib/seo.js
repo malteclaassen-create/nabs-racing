@@ -54,6 +54,15 @@ const SERIES_SEGMENTS = new Set([
 // Aliases the app maps onto a page of their own.
 const ALIASES = { signup: "/races", rennen: "/races" };
 
+// Addresses that are somebody ELSE's page, outside any series. The app has
+// always answered these with a client-side <Navigate> (App.jsx), which is a
+// redirect only once the JavaScript has run: the server answered 200 with a
+// canonical tag naming the address itself, so /rules and /info went into the
+// index as two more pages of this site whose entire content was "we are about
+// to send you somewhere else" — and the somewhere else is a page robots.txt
+// forbids. A real redirect settles it before anything renders.
+const GLOBAL_REDIRECTS = { "/rules": "/downloads", "/info": "/downloads" };
+
 // A path that ends in a file extension is a FILE, not a page: /teams/porsche.png
 // is the bundled team logo, not the Porsche team's page. Both live under the
 // same first segment, and this middleware runs before express.static so it also
@@ -74,6 +83,9 @@ export function legacyRedirects(prisma) {
     const path = req.path;
     if (path.startsWith("/api") || path.startsWith("/s/")) return next();
     if (FILE_LIKE.test(path)) return next(); // let express.static answer it
+    const query = req.originalUrl.slice(req.path.length); // keeps ?season=… etc.
+    const global = GLOBAL_REDIRECTS[path.replace(/\/+$/, "")];
+    if (global) return res.redirect(301, `${global}${query}`);
     const [, first] = path.split("/");
     if (!first) return next(); // the root renders itself now
     const alias = ALIASES[first];
@@ -81,7 +93,6 @@ export function legacyRedirects(prisma) {
     const slug = await primarySlug(prisma);
     if (!slug) return next(); // no series yet: leave the app to handle it
     const rest = alias || path;
-    const query = req.originalUrl.slice(req.path.length); // keeps ?season=… etc.
     // 301: these addresses are not coming back, and the point of the exercise
     // is to have search engines merge them into the prefixed ones.
     res.redirect(301, `/s/${slug}${rest}${query}`);

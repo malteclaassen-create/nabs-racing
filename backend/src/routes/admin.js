@@ -45,6 +45,7 @@ import { invalidateCardRatingCache } from "../services/cardRatingService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
 import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
+import { checkImageUpload } from "../lib/imageIntegrity.js";
 import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
@@ -154,6 +155,19 @@ const TEAM_ART_DIR = join(UPLOADS_DIR, "team-art");
 const LOGO_EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg" };
 // A track key is a slug (letters/digits only) — validate before touching the FS.
 const safeTrackKey = (k) => (normKey(k) === String(k || "").toLowerCase() && k ? k : null);
+
+// "That picture is not whole." Three routes take the same kind of upload, and
+// this is also where the refusal gets LOGGED: a report of "the logo comes out
+// cut off" is answered with two numbers instead of a guess, and whether they
+// are the same two every time says whether the file or the connection is the
+// broken one. Returns true when it has already answered the request.
+function refusedBrokenImage(req, res, what) {
+  const check = checkImageUpload(req.file.buffer, req.file.mimetype);
+  if (check.ok) return false;
+  console.warn(`[upload] refused ${what} (${req.file.mimetype}, ${req.file.size} bytes): ${check.error}`);
+  res.status(400).json({ error: check.error });
+  return true;
+}
 
 // All routes below require admin auth.
 router.use(requireAdmin);
@@ -1385,6 +1399,7 @@ router.post("/social-feed/posts/:id/cover", upload.single("file"), async (req, r
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = LOGO_EXT[req.file.mimetype];
     if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
+    if (refusedBrokenImage(req, res, `social cover ${post.id}`)) return;
     if (!isSafeId(post.id)) return res.status(400).json({ error: "Invalid post id" });
     mkdirSync(SOCIAL_DIR, { recursive: true });
     const filename = `${post.id}${ext}`;
@@ -3005,30 +3020,43 @@ router.post("/standings-post", upload.array("images", 10), async (req, res, next
 
 // POST /api/admin/races/:id/results-post { content } -> send the (possibly
 // edited) message to the results-channel webhook.
-// Accepts JSON ({ content }) or multipart ({ content, image }). The image is
-// the round's poster, drawn in the BROWSER and sent along with the message.
+// Accepts JSON ({ content }) or multipart ({ content, images[] }). The images
+// are the round's poster, drawn in the BROWSER and sent along with the message
+// — one sheet for a normal top ten, or several once a long classification is
+// cut into "1-10" and "11-20". `image` is still taken singular, because an
+// older tab left open is not a reason to lose a post.
 //
 // Drawn there rather than here on purpose. Rendering it server-side would mean
 // a headless Chromium living next to the site for one picture a week. And
 // nothing is stored: each post draws the poster again from the current design
 // and the current artwork, so changing either changes what goes out next time,
 // including for a round that ran months ago.
-router.post("/races/:id/results-post", upload.single("image"), async (req, res, next) => {
+const resultPostImages = upload.fields([
+  { name: "images", maxCount: 10 },
+  { name: "image", maxCount: 1 },
+]);
+
+router.post("/races/:id/results-post", resultPostImages, async (req, res, next) => {
   try {
     const content = String(req.body?.content || "").trim();
-    const image = req.file
-      ? { buffer: req.file.buffer, filename: `${req.params.id}-result.png` }
-      : null;
-    if (!content && !image) return res.status(400).json({ error: "Message is empty" });
-    if (req.file && req.file.mimetype !== "image/png") {
-      return res.status(400).json({ error: "The graphic must be a PNG" });
+    const files = [...(req.files?.images || []), ...(req.files?.image || [])];
+    if (!content && !files.length) return res.status(400).json({ error: "Message is empty" });
+    if (files.some((f) => f.mimetype !== "image/png")) {
+      return res.status(400).json({ error: "The sheets must be PNGs" });
     }
+    const images = files.map((f, i) => ({
+      buffer: f.buffer,
+      filename: `${req.params.id}-result-${i + 1}.png`,
+    }));
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
     if (!race) return res.status(404).json({ error: "Race not found" });
-    const result = await postToResultsChannel(prisma, content, image);
+    const result = await postToResultsChannel(prisma, content, images);
     if (result.skipped) return res.status(400).json({ error: "No results webhook configured" });
     if (!result.ok) return res.status(502).json({ error: result.reason || "Discord rejected the message" });
-    res.json({ ok: true, messages: result.messages, attached: !!result.attached });
+    // A count rather than a yes/no, so the page can say "2 sheets attached" the
+    // way the standings post already does. Still falsy when nothing went with
+    // it, which is all the caller ever asked of it before.
+    res.json({ ok: true, messages: result.messages, attached: result.files });
   } catch (e) {
     next(e);
   }
@@ -4018,6 +4046,7 @@ router.post("/teams/:id/logo", upload.single("file"), async (req, res, next) => 
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = LOGO_EXT[req.file.mimetype];
     if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
+    if (refusedBrokenImage(req, res, `team logo ${req.params.id}`)) return;
     const team = await prisma.team.findUnique({ where: { id: req.params.id } });
     if (!team) return res.status(404).json({ error: "Team not found" });
 
@@ -4058,6 +4087,9 @@ router.post("/team-art/:id/:kind", upload.single("file"), async (req, res, next)
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = LOGO_EXT[req.file.mimetype];
     if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
+    // A picture that only half arrived is stored happily by everything below
+    // and drawn with its bottom missing by everything above.
+    if (refusedBrokenImage(req, res, `team art ${id}/${kind}`)) return;
     const team = await prisma.team.findUnique({ where: { id } });
     if (!team) return res.status(404).json({ error: "Team not found" });
 

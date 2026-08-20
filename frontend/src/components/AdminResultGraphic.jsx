@@ -9,6 +9,7 @@ import SlidingTabs from "./SlidingTabs.jsx";
 import {
   LAYOUT, THEMES, THEME_KEYS, EXPORT_SCALE, renderPosterTo, savedTheme, saveTheme,
   DEFAULT_FRAMING, FRAMING_LIMITS, cleanFraming,
+  RESULT_PER_PAGE, savedResultSetup, saveResultSetup, pageCount, classifiedResults,
 } from "../utils/resultGraphic.js";
 
 // Admin → Graphics: the result poster for a finished round, drawn from the
@@ -77,7 +78,7 @@ function Slider({ label, value, format, limits, disabled, onChange }) {
 // `onArtChange` fires whenever the artwork or a driver's flag is edited here,
 // because the message next door draws its own copy of this poster and would
 // otherwise keep sending the version from before the fix.
-export default function AdminResultGraphic({ raceId, onArtChange = null }) {
+export default function AdminResultGraphic({ raceId, artVersion = 0, onArtChange = null }) {
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [art, setArt] = useState(null);
   const [result, setResult] = useState(null);
@@ -92,10 +93,29 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
   // list of framings rather than a form.
   const [naming, setNaming] = useState(null);
   const [previewW, setPreviewW] = useState(savedPreviewW);
+  // How long the poster is, and which sheet of it is on screen. The length is
+  // stored (the Discord post next door draws its own copies and has to cut them
+  // the same way); the sheet you happen to be looking at is not, because it is
+  // not a decision about the poster.
+  const [setup, setSetup] = useState(savedResultSetup);
+  const [page, setPage] = useState(1);
   const canvasRef = useRef(null);
   const saveTimer = useRef(null);
+  // Whether a framing of ours is still on its way to the server; see loadArt.
+  const pendingFraming = useRef(false);
+  const { perPage } = setup;
 
-  useEffect(() => {
+  // The artwork and the framing, re-read whenever anything about the poster
+  // changes anywhere in the Content area.
+  //
+  // Both halves of this tab stay mounted, so the standings poster next door is
+  // not a page you come back from — it is a panel beside this one with the SAME
+  // team pictures under it. Loading these once on mount meant a wide logo
+  // uploaded over there never reached the poster over here: the file was in the
+  // database, the other preview showed it, and this one kept drawing the
+  // picture from before until the round was changed. `artVersion` is the Content
+  // area's own count of those edits, and this is what makes them arrive.
+  const loadArt = useCallback(() => {
     api.teamArt().then(setArt).catch((e) => setError(e.message));
     // A framing that will not load is not a reason to show no poster: the
     // default draws every car whole, which is what it did before there was a
@@ -103,12 +123,16 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
     api
       .posterFraming()
       .then((f) => {
-        setFraming(cleanFraming(f));
         setPresets(Array.isArray(f?.presets) ? f.presets : []);
+        // Never over a drag of your own. Our save is what bumps the count that
+        // brings us back here, and answering it with the value the server had a
+        // moment ago would snap the slider back under the hand holding it.
+        if (!pendingFraming.current) setFraming(cleanFraming(f));
       })
       .catch(() => {});
-    return () => clearTimeout(saveTimer.current);
   }, []);
+  useEffect(loadArt, [loadArt, artVersion]);
+  useEffect(() => () => clearTimeout(saveTimer.current), []);
 
   // Dragging a slider redraws on every step and saves once you stop. Saving on
   // each step would be a hundred writes for one decision; not saving until a
@@ -117,12 +141,19 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
   function nudge(patch) {
     const next = cleanFraming({ ...framing, ...patch });
     setFraming(next);
+    pendingFraming.current = true;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       api
         .setPosterFraming(next)
-        .then(() => onArtChange?.()) // the Discord half draws its own copy
-        .catch((e) => setError(e.message));
+        .then(() => {
+          pendingFraming.current = false;
+          onArtChange?.(); // the Discord half draws its own copy
+        })
+        .catch((e) => {
+          pendingFraming.current = false;
+          setError(e.message);
+        });
     }, 400);
   }
 
@@ -146,6 +177,8 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
     setNaming(null);
   }
 
+  // The round itself, re-read on the same signal: a driver's flag fixed on the
+  // standings side is written to the DRIVER, and this poster carries it too.
   useEffect(() => {
     if (!raceId) return;
     setLoading(true);
@@ -155,11 +188,23 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
       .then(setResult)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [raceId]);
+  }, [raceId, artVersion]);
 
-  // Redraw whenever the round, the artwork or the design changes. Exactly the
-  // same call the Discord post makes, so the preview cannot drift away from
-  // what gets sent.
+  // Everybody classified, by the poster's own rule. How many sheets the round
+  // makes is this list cut into lengths, and it is also who the flag and
+  // artwork panels underneath are about.
+  const classified = useMemo(() => classifiedResults(result?.results || []), [result]);
+  const pages = pageCount(classified.length, perPage);
+
+  // A longer sheet (or a round with fewer finishers) can leave you standing on
+  // a sheet that no longer exists.
+  useEffect(() => {
+    setPage((p) => Math.min(p, pages));
+  }, [pages]);
+
+  // Redraw whenever the round, the artwork, the design or the sheet changes.
+  // Exactly the same call the Discord post makes, so the preview cannot drift
+  // away from what gets sent.
   useEffect(() => {
     if (!result || !art || !canvasRef.current) return;
     let alive = true;
@@ -171,13 +216,24 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
       logoSrc: "/logo-light.png",
       theme,
       framing,
+      perPage,
+      offset: (page - 1) * perPage,
     }).catch((e) => {
       if (alive) setError(e.message);
     });
     return () => {
       alive = false;
     };
-  }, [result, art, theme, framing]);
+  }, [result, art, theme, framing, perPage, page]);
+
+  // The length is saved the moment it changes, and the Discord half is told:
+  // it renders its own sheets from this and would otherwise attach the old cut.
+  function changeSetup(patch) {
+    const next = { ...setup, ...patch };
+    setSetup(next);
+    saveResultSetup(next);
+    onArtChange?.();
+  }
 
   async function upload(teamId, kind, file) {
     setBusy(true);
@@ -213,9 +269,10 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
       const race = result.race;
       const round = race.number != null ? `r${race.number}` : "session";
       const track = String(race.track || "race").toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      // The design is in the file name: two versions of the same round in a
-      // downloads folder are otherwise the same name twice.
-      const name = `${round}-${track}-result-${theme}.png`;
+      // The design and the sheet are in the file name: two versions of the same
+      // round in a downloads folder are otherwise the same name twice.
+      const sheet = pages > 1 ? `-p${page}` : "";
+      const name = `${round}-${track}-result${sheet}-${theme}.png`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -235,14 +292,14 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
   //
   // This writes the same field their profile would, so a correction here turns
   // up across the whole site rather than only on the poster.
-  const onPoster = useMemo(() => {
-    if (!result) return [];
-    return result.results
-      .slice(0, 10)
-      .filter((r) => r.driverId)
-      .map((r) => ({ driverId: r.driverId, name: r.name, country: countryFor(r.driverId, r.country) || "" }))
-      .sort((a, b) => (a.country ? 1 : 0) - (b.country ? 1 : 0));
-  }, [result]);
+  const onPoster = useMemo(
+    () =>
+      classified
+        .filter((r) => r.driverId)
+        .map((r) => ({ driverId: r.driverId, name: r.name, country: countryFor(r.driverId, r.country) || "" }))
+        .sort((a, b) => (a.country ? 1 : 0) - (b.country ? 1 : 0)),
+    [classified]
+  );
 
   async function setCountry(driverId, code) {
     setBusy(true);
@@ -258,18 +315,48 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
     }
   }
 
-  // The teams actually in this round's top ten — the only ones whose artwork
-  // this poster can use. A full roster of upload slots would bury them.
+  // The teams actually on the poster — the only ones whose artwork it can use.
+  // A full roster of upload slots would bury them. Every SHEET of the round,
+  // not just the one on screen: the others are the same poster and go out in
+  // the same message.
   const teamsInGraphic = useMemo(() => {
-    if (!result || !teams) return [];
+    if (!teams) return [];
     const byId = new Map(teams.map((t) => [t.id, t]));
     const seen = new Map();
-    for (const r of result.results.slice(0, 10)) {
+    for (const r of classified) {
       const t = r.effectiveTeam || r.team;
       if (t && !seen.has(t.id)) seen.set(t.id, byId.get(t.id) || t);
     }
     return [...seen.values()];
-  }, [result, teams]);
+  }, [classified, teams]);
+
+  // What the sheet on screen is showing, for the line that says so.
+  const first = classified.length ? (page - 1) * perPage + 1 : 0;
+  const last = Math.min(page * perPage, classified.length);
+
+  // Which sheet everybody is on, for the two lists underneath. They cover the
+  // WHOLE round now — every sheet of it — so a picture uploaded for somebody
+  // fifteenth is a picture that changes nothing on a poster showing the top ten,
+  // which looks exactly like an upload that failed. Only said where it can
+  // surprise: one sheet, and everyone on the list is on it.
+  const sheetNotes = useMemo(() => {
+    if (pages < 2) return null;
+    const drivers = new Map();
+    const teams = new Map();
+    classified.forEach((r, i) => {
+      const sheet = Math.floor(i / perPage) + 1;
+      if (r.driverId && !drivers.has(r.driverId)) drivers.set(r.driverId, sheet);
+      const t = r.effectiveTeam || r.team;
+      if (t && !teams.has(t.id)) teams.set(t.id, sheet);
+    });
+    return { drivers, teams };
+  }, [classified, perPage, pages]);
+
+  // "Sheet 2", and nothing at all for the sheet you are already looking at.
+  const noteFor = (map, id) => {
+    const sheet = map?.get(id);
+    return sheet && sheet !== page ? `Sheet ${sheet}` : null;
+  };
 
   return (
     <div className="space-y-5">
@@ -375,6 +462,61 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
                 />
                 <span>Flags</span>
               </label>
+            </div>
+
+            {/* How much of the classification is on a sheet, and which sheet
+                you are looking at.
+
+                Ten was the whole poster until now: a podium and seven rows,
+                with everybody from eleventh down simply not on it. Longer packs
+                more in and shorter gives fatter bars, and past the length the
+                round carries on onto a second sheet — places eleven to twenty,
+                drawn as a table, because a race has one podium and it belongs
+                on the sheet the winner is on. */}
+            <div className="space-y-3 border-t border-border pt-4">
+              <Slider
+                label="Drivers per sheet"
+                value={perPage}
+                limits={RESULT_PER_PAGE}
+                disabled={!result}
+                format={(v) => `${Math.round(v)}`}
+                onChange={(n) => {
+                  setPage(1);
+                  changeSetup({ perPage: n });
+                }}
+              />
+
+              {/* The sheets. Only where there is more than one, because a
+                  single button labelled "1" is a control that decides
+                  nothing. */}
+              {pages > 1 && (
+                <div className="space-y-1.5">
+                  <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Sheet</span>
+                  <div className="flex flex-wrap gap-2">
+                    {Array.from({ length: pages }, (_, i) => i + 1).map((n) => {
+                      const a = (n - 1) * perPage + 1;
+                      const b = Math.min(n * perPage, classified.length);
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setPage(n)}
+                          className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                            n === page ? "border-link text-dark" : "border-border text-medium hover:border-link"
+                          }`}
+                        >
+                          {a}&ndash;{b}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-light">
+                {classified.length > 0 && `Showing ${first} to ${last} of ${classified.length}. `}
+                Which sheets actually go out is chosen under Discord post.
+              </p>
             </div>
 
             <div className="flex items-start justify-between gap-3 text-xs">
@@ -508,7 +650,12 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
         </div>
       </div>
 
-      <PosterFlags drivers={onPoster} busy={busy} onSet={setCountry} />
+      <PosterFlags
+        drivers={onPoster}
+        busy={busy}
+        onSet={setCountry}
+        noteOf={(d) => noteFor(sheetNotes?.drivers, d.driverId)}
+      />
 
       <PosterTeamArt
         teams={teamsInGraphic}
@@ -516,6 +663,7 @@ export default function AdminResultGraphic({ raceId, onArtChange = null }) {
         busy={busy}
         onUpload={upload}
         onClear={clearArt}
+        noteOf={(t) => noteFor(sheetNotes?.teams, t.id)}
       />
     </div>
   );

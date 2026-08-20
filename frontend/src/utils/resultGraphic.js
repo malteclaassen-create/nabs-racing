@@ -3,9 +3,14 @@
 //
 // This is Steve's Photoshop layout rebuilt as code: pink page, round and track
 // across the top, a podium of three car tiles with gold/silver/bronze name
-// bars, then the rest of the top ten as rows of number, name, team mark and
+// bars, then the rest of the sheet as rows of number, name, team mark and
 // points. Everything on it already lives in the database after a result import,
 // so the whole post is a button instead of an evening.
+//
+// How many drivers a sheet holds is a setting, and a classification longer than
+// one sheet carries on onto the next: the podium and the top ten, then places
+// eleven to twenty as a table, which is the same thing the championship poster
+// does with a long season.
 //
 // Canvas rather than HTML-to-image: the layout is rectangles, text and pictures,
 // which the 2D context draws exactly and identically every time. The DOM
@@ -575,6 +580,16 @@ function fitText(ctx, text, maxW, weight, startSize, minSize = 18) {
 // Images in `data` are already-loaded HTMLImageElements (or null) — see
 // loadGraphicAssets below, which is what turns a race into this shape.
 export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
+  // A sheet with no podium on it is places eleven and down: the same round,
+  // continued. A race has ONE podium and it is on the first sheet, so the rest
+  // are drawn as a table — the standings layout, which is this poster's own row
+  // solved to fill the page. It keeps the gap column and the "+" on the points,
+  // because a continuation sheet is still a classification of an afternoon
+  // rather than a championship after it.
+  if (!data.podium?.length) {
+    drawStandingsGraphic(ctx, { ...data, pointsPlain: false }, scale, themeKey);
+    return;
+  }
   const L = LAYOUT;
   const T = THEMES[themeKey] || THEMES.pink;
   const F = cleanFraming(data.framing); // how the cars are cropped in their tiles
@@ -815,13 +830,43 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
   });
 
   // --- places 4 and down ----------------------------------------------------
+  // The rows fill the strip between the podium and the foot of the page, the
+  // same way the table poster's do, rather than marching down at a fixed pitch
+  // from the top of the strip. The fixed pitch was fine while a sheet was
+  // always the top ten — seven rows, and the seventh ends exactly on the
+  // bottom margin — but the moment a sheet can be longer, the eighth row is
+  // drawn past the bottom of the paper and simply is not on the poster. Which
+  // reads, correctly, as the setting doing nothing.
+  //
+  // At seven this lands on the file's own 80 and 25 to the pixel, so the top
+  // ten is drawn exactly as it always was. More rows close the gaps up first
+  // and then take it out of the bars; fewer let the gaps open a little and sit
+  // the block in the middle of the strip, because a short sheet is a poster
+  // with air in it rather than four banners under a podium.
+  const R = L.rows;
+  const strip = L.height - L.pad - R.top;
+  const n = data.rows.length;
+  let rowH = R.height;
+  let rowGap = R.gap;
+  if (n * rowH + (n - 1) * rowGap > strip) {
+    let pitch = strip / n;
+    rowGap = Math.min(R.gap, pitch * 0.24);
+    pitch = (strip + rowGap) / n;
+    rowH = Math.min(R.height, pitch - rowGap);
+  } else if (n > 1) {
+    // Never past the table poster's own limit: gaps taller than that and the
+    // spaces start reading as the subject rather than the bars.
+    rowGap = Math.min(rowH * STANDINGS.maxGapOfRow, (strip - n * rowH) / (n - 1));
+  }
+  const rowsTop = R.top + Math.max(0, (strip - (n * rowH + (n - 1) * rowGap)) / 2);
+
   // The team mark gives up the width the gap column needs, but only on a round
   // that has times to put in it.
   const timed = data.rows.some((r) => r.delta) && !!T.delta;
   data.rows.forEach((row, i) => {
     drawRow(ctx, T, row, {
-      y: L.rows.top + i * (L.rows.height + L.rows.gap),
-      h: L.rows.height,
+      y: rowsTop + i * (rowH + rowGap),
+      h: rowH,
       showDelta: timed,
       frame: frameW(T.row.frameWidth, F),
       pts: F.pts,
@@ -1063,6 +1108,12 @@ export function drawStandingsGraphic(ctx, data, scale = 1, themeKey = "black") {
   ctx.textAlign = "left";
 
   const frame = frameW(T.row.frameWidth, F);
+  // A championship table has no gap to the winner in it and its points are
+  // season totals nobody won today. A continuation sheet of a race result has
+  // both, and asks for them. Off unless asked, so every standings poster draws
+  // exactly what it drew before.
+  const showDelta = !!data.showDelta && !!T.delta;
+  const pointsPlain = data.pointsPlain !== false;
   let y = top;
   for (const section of sections) {
     if (section.heading) {
@@ -1077,7 +1128,7 @@ export function drawStandingsGraphic(ctx, data, scale = 1, themeKey = "black") {
       y += S.section.h + S.section.gapAfter;
     }
     for (const row of section.rows) {
-      drawRow(ctx, T, row, { y, h, pointsPlain: true, frame, pts: F.pts, flags: F.flags });
+      drawRow(ctx, T, row, { y, h, showDelta, pointsPlain, frame, pts: F.pts, flags: F.flags });
       y += h + gap;
     }
   }
@@ -1103,6 +1154,42 @@ export function savedTheme() {
 export function saveTheme(key) {
   try {
     if (THEME_KEYS.includes(key)) localStorage.setItem(THEME_STORE, key);
+  } catch {
+    /* private mode: the choice just does not survive the tab */
+  }
+}
+
+// How the RESULT poster is cut into sheets, and how many drivers a sheet holds.
+//
+// Ten was the whole poster until now: a podium and seven rows, and everybody
+// from eleventh down simply not on it. A field of twenty is two sheets in one
+// message — the podium and the top ten, then places eleven to twenty — which is
+// the same answer the standings table came to, for the same reason: twenty rows
+// on one poster is twenty lines nobody can read on a phone.
+//
+// Stored the way the design and the standings setup are, and for the same
+// reason: the Graphic tab is where it is set, by looking at the picture, and the
+// Discord post next door renders its OWN copies to attach. Two places to set it
+// would be two answers and the channel would get whichever was touched last.
+const RESULT_STORE = "nabs_result_setup";
+// Never below four: three of them are the podium, and a sheet with nothing under
+// the tiles is a podium with the classification cut off it.
+export const RESULT_PER_PAGE = { min: 4, max: 20, step: 1, def: 10 };
+
+export function savedResultSetup() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RESULT_STORE) || "{}");
+    const n = Number(raw.perPage);
+    const ok = Number.isFinite(n) && n >= RESULT_PER_PAGE.min && n <= RESULT_PER_PAGE.max;
+    return { perPage: ok ? Math.round(n) : RESULT_PER_PAGE.def };
+  } catch {
+    return { perPage: RESULT_PER_PAGE.def };
+  }
+}
+
+export function saveResultSetup(setup) {
+  try {
+    localStorage.setItem(RESULT_STORE, JSON.stringify({ perPage: setup.perPage }));
   } catch {
     /* private mode: the choice just does not survive the tab */
   }
@@ -1214,10 +1301,10 @@ export function standingsTiersPresent(rows) {
   return STANDINGS_TIERS.filter((t) => t.key === "all" || present.has(Number(t.key)));
 }
 
-// How many sheets a table of `total` drivers makes at `perPage` a page. One
-// place, because the preview, the page buttons and the post all have to agree
-// about how many there are.
-export function standingsPageCount(total, perPage) {
+// How many sheets a list of `total` drivers makes at `perPage` a sheet. One
+// place, and one for both posters, because the preview, the sheet buttons and
+// the post all have to agree about how many there are.
+export function pageCount(total, perPage) {
   return Math.max(1, Math.ceil(total / Math.max(1, perPage)));
 }
 
@@ -1356,6 +1443,16 @@ export async function loadConstructorsAssets({
   };
 }
 
+// Every sheet of a RESULT, as PNG blobs in reading order — the same job the
+// next one does for a table, and for the same caller: the Discord post attaches
+// them all to one message. `pages` is 0-based, so posting the podium sheet
+// alone is `[0]`.
+export async function renderResultBlobs(opts, { perPage, pages }) {
+  const out = [];
+  for (const p of pages) out.push(await renderPosterBlob({ ...opts, perPage, offset: p * perPage }));
+  return out.filter(Boolean);
+}
+
 // Every sheet of a table, as PNG blobs in reading order. For the Discord post,
 // which attaches them all to one message. Drawn one after another rather than
 // at once: each one is a 2160x2700 canvas, and a dozen of those in flight is a
@@ -1413,11 +1510,24 @@ export async function loadStandingsAssets({
   };
 }
 
+// Who is actually ON the poster, in finishing order: everybody classified, DNFs
+// and non-starters left off. Exported because the admin page needs the same
+// list the poster is drawn from — to know how many sheets a round makes, and
+// whose flags and team pictures are worth offering underneath.
+export function classifiedResults(results = []) {
+  return results
+    .filter((r) => r.position != null && (!r.status || r.status === "FINISHED"))
+    .sort((a, b) => a.position - b.position);
+}
+
 // Turn one race (as /api/races/:id/results hands it over) into the shape above,
 // with every picture already loaded. `teamArt` is the admin's uploaded cars and
 // wordmarks, keyed by team id; `countryOf` resolves a driver's flag the same
 // way the rest of the site does.
-export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf, logoSrc, rows = 7, framing = null }) {
+export async function loadGraphicAssets({
+  race, results, teamArt = {}, countryOf, logoSrc,
+  perPage = RESULT_PER_PAGE.def, offset = 0, framing = null,
+}) {
   // The gap column, worked out exactly the way the race page's own time column
   // is (RaceResults.jsx), because the poster and the page must not disagree
   // about how far behind somebody finished:
@@ -1437,13 +1547,18 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
   // export doubles that, so the 40px file the site uses would show its pixels.
   const flagSrc = (code) => (code ? `/flags/w80/${String(code).toLowerCase()}.png` : null);
 
-  const classified = results
-    .filter((r) => r.position != null && (!r.status || r.status === "FINISHED"))
-    .sort((a, b) => a.position - b.position);
+  const classified = classifiedResults(results);
 
-  const top3 = classified.slice(0, 3);
-  const rest = classified.slice(3, 3 + rows);
+  // The sheet this call is drawing. The first one carries the podium and the
+  // rows under it; every one after that is rows alone, because the podium
+  // belongs to the race and not to whichever ten drivers are on the paper.
+  const shown = classified.slice(offset, offset + Math.max(1, perPage));
+  const top3 = offset === 0 ? shown.slice(0, 3) : [];
+  const rest = offset === 0 ? shown.slice(3) : shown;
 
+  // Always the winner, whatever sheet this is: a gap on the second sheet is
+  // still a gap to the person who won, not to whoever happens to be top of the
+  // page.
   const leader = classified[0] || null;
   const leaderMs = leader ? adjMs(leader) : null;
   const leaderLaps = leader?.laps ?? null;
@@ -1506,17 +1621,26 @@ export async function loadGraphicAssets({ race, results, teamArt = {}, countryOf
         ? "Special event"
         : "Training";
 
+  const rows = rest.map((r, i) => ({
+    position: r.position, name: r.name, points: r.points ?? 0, delta: deltaOf(r),
+    mark: marks[i], flag: rowFlags[i], tier: tierOf(rest[i]),
+  }));
+
   return {
     title: `${roundLabel} / ${race.track}`,
+    // Which sheet this is, said on the sheets that need it. The first one is
+    // the podium and the top of the classification, and captioning that "places
+    // 1 to 10" tells a reader nothing they cannot see.
+    subtitle: offset > 0 && shown.length ? `Places ${offset + 1} to ${offset + shown.length}` : null,
     logo,
     framing: cleanFraming(framing),
+    // Only the sheets drawn as a table read this; the podium sheet works the
+    // same question out for itself, from the same rows.
+    showDelta: rows.some((r) => r.delta),
     podium: top3.map((r, i) => ({
       position: r.position, name: r.name, points: r.points ?? 0, delta: deltaOf(r),
       car: cars[i], flag: flags[i], badge: badges[i], tier: tierOf(top3[i]),
     })),
-    rows: rest.map((r, i) => ({
-      position: r.position, name: r.name, points: r.points ?? 0, delta: deltaOf(r),
-      mark: marks[i], flag: rowFlags[i], tier: tierOf(rest[i]),
-    })),
+    rows,
   };
 }

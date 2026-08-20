@@ -102,6 +102,20 @@ function ArtSlot({ team, kind, url, busy, onUpload, onClear, fallback = null }) 
   );
 }
 
+// Where on the poster this row actually is, on the ones that have more than one
+// sheet. Without it, uploading a picture for somebody who is on sheet three
+// while sheet one is on screen looks exactly like an upload that did not work:
+// the file lands, the poster is redrawn, and nothing about the picture in front
+// of you changes — because that driver is not on it.
+function Note({ text }) {
+  if (!text) return null;
+  return (
+    <span className="shrink-0 rounded-full border border-border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
+      {text}
+    </span>
+  );
+}
+
 // Every driver ON the poster, with the flag they have now.
 //
 // Nationality is normally the driver's own to set, on their profile after a
@@ -110,7 +124,7 @@ function ArtSlot({ team, kind, url, busy, onUpload, onClear, fallback = null }) 
 // longer race under, and without this the only way to fix that was to be them.
 // The ones without a flag are listed first, because they are the ones the
 // poster shows a hole for.
-export function PosterFlags({ drivers, busy, onSet, title = "Flags", idKey = "driverId" }) {
+export function PosterFlags({ drivers, busy, onSet, title = "Flags", idKey = "driverId", noteOf = null }) {
   if (!drivers.length) return null;
   const flagless = drivers.filter((d) => !d.country).length;
   return (
@@ -132,6 +146,7 @@ export function PosterFlags({ drivers, busy, onSet, title = "Flags", idKey = "dr
               <Flag code={d.country} />
             </span>
             <span className="min-w-0 flex-1 truncate text-sm font-semibold text-dark">{d.name}</span>
+            <Note text={noteOf?.(d)} />
             <select
               aria-label={`Country for ${d.name}`}
               className="input w-auto max-w-[15rem] py-1.5 text-sm"
@@ -155,7 +170,7 @@ export function PosterFlags({ drivers, busy, onSet, title = "Flags", idKey = "dr
 
 // The teams actually on the poster — the only ones whose artwork it can use. A
 // full roster of upload slots would bury them.
-export function PosterTeamArt({ teams, art, busy, onUpload, onClear, kinds = ["car", "mark", "badge"] }) {
+export function PosterTeamArt({ teams, art, busy, onUpload, onClear, kinds = ["car", "mark", "badge"], noteOf = null }) {
   if (!teams.length) return null;
   // The one status worth stating in words, and it is a count, not a sentence.
   // Counted on the FIRST slot the caller draws with, which is the one that
@@ -178,6 +193,7 @@ export function PosterTeamArt({ teams, art, busy, onUpload, onClear, kinds = ["c
             <span className="flex min-w-0 flex-1 items-center gap-2.5">
               <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={22} />
               <span className="truncate text-sm font-semibold text-dark">{t.name}</span>
+              <Note text={noteOf?.(t)} />
             </span>
             {kinds.map((kind) => (
               <ArtSlot

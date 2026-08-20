@@ -8,7 +8,7 @@
 // multiplies into endless near-duplicates; keep too little and a hundred race
 // results share one address. Hence the tests.
 import { describe, it, expect, vi } from "vitest";
-import { canonicalUrl, applyCanonical } from "./seo.js";
+import { canonicalUrl, applyCanonical, legacyRedirects } from "./seo.js";
 
 // Just enough Prisma for the two lookups canonicalUrl makes: the primary series
 // (to fold its home onto "/") and the active season number (to drop a parameter
@@ -224,5 +224,44 @@ describe("seriesSlugKnown", () => {
     const known = await fresh();
     const prisma = { $queryRawUnsafe: vi.fn(async () => { throw new Error("no db"); }) };
     expect(await known(prisma, "/s/friday-f1/drivers")).toBe(true);
+  });
+});
+
+// The redirects, which decide which addresses EXIST as far as a crawler is
+// concerned. Both cases here were pages the server answered with a perfectly
+// good 200 and a canonical tag naming themselves, so both went into the index:
+// the flat /drivers competing with the series page it renders, and /rules,
+// whose whole content is a client-side jump to a page robots.txt forbids.
+describe("legacyRedirects", () => {
+  const run = async (url, opts) => {
+    const [path, search = ""] = url.split("?");
+    const res = { redirect: vi.fn() };
+    let passed = false;
+    await legacyRedirects(fakePrisma(opts))(
+      { method: "GET", path, originalUrl: url, query: {} },
+      res,
+      () => {
+        passed = true;
+      }
+    );
+    return { to: res.redirect.mock.calls[0], passed, search };
+  };
+
+  it("sends the app's own client-side jumps as real redirects", async () => {
+    expect((await run("/rules")).to).toEqual([301, "/downloads"]);
+    expect((await run("/info")).to).toEqual([301, "/downloads"]);
+  });
+
+  it("keeps whatever was on the end of the address", async () => {
+    expect((await run("/rules?tab=cars")).to).toEqual([301, "/downloads?tab=cars"]);
+  });
+
+  it("still folds a flat page onto the series that renders it", async () => {
+    expect((await run("/drivers")).to).toEqual([301, "/s/friday-f1/drivers"]);
+  });
+
+  it("leaves everything else alone", async () => {
+    expect((await run("/join")).passed).toBe(true);
+    expect((await run("/teams/porsche.png")).passed).toBe(true);
   });
 });
