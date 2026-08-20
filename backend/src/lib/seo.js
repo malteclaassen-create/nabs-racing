@@ -17,7 +17,7 @@
 //    one fold: the primary series' home IS the root, since the root now renders
 //    it rather than redirecting.
 // ---------------------------------------------------------------------------
-import { resolveSeries } from "./series.js";
+import { resolveSeries, dbListSeries } from "./series.js";
 import { getActiveSeason } from "../services/seasonService.js";
 
 // The series a flat path belongs to: the primary one, same choice the app makes
@@ -141,6 +141,47 @@ export function isKnownRoute(path) {
   if (GLOBAL_SEGMENTS.has(first)) return true; // these have their own sub-paths
   if (first === "signup" || first === "rennen") return parts.length === 1;
   return false;
+}
+
+// Is the /s/<slug>/… in this address a series that exists?
+//
+// isKnownRoute above deliberately does not check the ids INSIDE a route, and
+// for a driver or a race that is the right call: the app's own "not found" copy
+// covers it and checking would cost a query per request. The series slug is not
+// an id of that kind. There are two of them, they are frozen at creation, and
+// leaving them unchecked meant every page had unlimited spellings:
+//
+//     /s/friday-f1/drivers    200, canonical .../s/friday-f1/drivers
+//     /s/anything-here/drivers 200, canonical .../s/anything-here/drivers
+//
+// The same driver table under both, each declaring itself the official address.
+// One mistyped link shared anywhere is then a duplicate of the real page for a
+// search engine to weigh up, and the canonical tag — the one thing meant to
+// prevent exactly this — was arguing FOR the typo.
+//
+// Private series count as existing: their pages are served to the members who
+// may see them (the API does that gating), and a private slug must not be
+// treated as a typo. The list is cached like the primary slug, for the same
+// reason: needed on every render, changes about once a year.
+const SERIES_TTL_MS = 5 * 60 * 1000;
+let seriesCache = { slugs: null, at: 0 };
+
+export async function seriesSlugKnown(prisma, path) {
+  const parts = String(path || "").replace(/^\/+|\/+$/g, "").split("/");
+  if (parts[0] !== "s" || !parts[1]) return true; // not a series address
+
+  const now = Date.now();
+  if (!seriesCache.slugs || now - seriesCache.at >= SERIES_TTL_MS) {
+    try {
+      const all = await dbListSeries(prisma, { includePrivate: true });
+      if (all.length) seriesCache = { slugs: new Set(all.map((s) => s.slug)), at: now };
+    } catch {
+      /* stale is better than none, and none is better than a wrong 404 */
+    }
+  }
+  // Never turn a real page into a 404 because the database was unreachable.
+  if (!seriesCache.slugs) return true;
+  return seriesCache.slugs.has(parts[1]);
 }
 
 // Tell a crawler not to keep an address the app answers with its 404 page.

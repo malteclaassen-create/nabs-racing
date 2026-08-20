@@ -40,7 +40,7 @@ import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
 import { buildPageMeta, applyPageMeta, buildOrganizationJsonLd, applyJsonLd } from "./lib/pageMeta.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
 import { buildCrawlLinks, applyCrawlLinks } from "./lib/crawlLinks.js";
-import { legacyRedirects, canonicalUrl, applyCanonical, isKnownRoute, applyNoindex } from "./lib/seo.js";
+import { legacyRedirects, canonicalUrl, applyCanonical, isKnownRoute, seriesSlugKnown, applyNoindex } from "./lib/seo.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
@@ -429,7 +429,7 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
     // renders its own 404 screen, which is friendlier than a server error page),
     // but with the honest status and without a canonical tag telling a crawler
     // this nonsense URL is a real page worth keeping.
-    const known = isKnownRoute(req.path);
+    const known = isKnownRoute(req.path) && (await seriesSlugKnown(prisma, req.path));
     if (!known) {
       html = applyNoindex(html);
       res.status(404);
