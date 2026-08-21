@@ -10,10 +10,8 @@
 // or deletes with it.
 // ---------------------------------------------------------------------------
 import { Router } from "express";
-import { readFileSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
+import { telemetryScript } from "../lib/telemetryScript.js";
 import { telemetryReadGate } from "../lib/telemetryAccess.js";
 import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId, isLapId, pruneSeasonsBefore } from "../lib/telemetryLaps.js";
 import { recordTelemetryEvent } from "../lib/telemetryIngestLog.js";
@@ -22,7 +20,6 @@ import { ensureTrackMap } from "../lib/trackMaps.js";
 import { resolveSeason } from "../services/seasonService.js";
 
 const router = Router();
-const __dir = dirname(fileURLToPath(import.meta.url));
 
 // A ceiling against a stuck loop, and nothing else — which is why it is high.
 //
@@ -52,8 +49,18 @@ function flooded() {
 // been a joining car or an admin's browser refreshing the URL — the card had
 // no way to say which. The raw User-Agent settles it: browsers announce
 // themselves as Mozilla/..., the game's HTTP stack does not.
+//
+// Two more facts ride along because each once cost an evening: which script
+// VERSION the config asked for (the &v= the race server's snippet carries —
+// an old v on a fresh fetch means the server config is stale), and whether
+// the client was revalidating a cached copy rather than downloading (CSP
+// caches downloaded scripts on disk by URL, and a revalidation answered with
+// 304 would keep the old script in the car while looking like a serve here).
 function fetcher(req) {
-  return String(req.get("user-agent") || "no user-agent");
+  const bits = [String(req.get("user-agent") || "no user-agent")];
+  if (req.query.v) bits.push(`v=${String(req.query.v).slice(0, 16)}`);
+  if (req.get("if-none-match") || req.get("if-modified-since")) bits.push("revalidating");
+  return bits.join(" · ");
 }
 
 async function ingestKey() {
@@ -248,24 +255,31 @@ router.get("/app.lua", async (req, res, next) => {
       return res.status(404).end();
     }
     const base = `${req.protocol}://${req.get("host")}`;
+    const { src, version } = telemetryScript();
     // replaceAll, learned the embarrassing way: the placeholder appears in the
     // template's own header comment too, and .replace() swapped only that one —
     // the served script compiled fine and would have posted to the literal
     // string "__INGEST_URL__" for ever.
-    const src = readFileSync(join(__dir, "../lib/telemetryOnlineScript.lua"), "utf8").replaceAll(
-      "__INGEST_URL__",
-      `${base}/api/telemetry-laps/ingest?key=${secret}`
-    );
+    const body = src
+      .replaceAll("__INGEST_URL__", `${base}/api/telemetry-laps/ingest?key=${secret}`)
+      .replaceAll("__SCRIPT_VERSION__", version);
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    // No caching: a re-minted key must reach the server's next fetch, not a
-    // stale copy of the old script with the dead key inside.
-    res.setHeader("Cache-Control", "no-store");
+    // No caching, said every way HTTP can say it: a re-minted key or a fixed
+    // recorder must reach the next fetch, not a stale copy. CSP's downloader
+    // honors HTTP caching rules, and the real cache-buster is the &v= in the
+    // URL (lib/telemetryScript.js) — but these headers are the belt to that
+    // suspender.
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
     // Counted AFTER the key check, so this number means "a car was handed the
     // recorder" and nothing else. It is the first half of the chain, and the
     // half a race server's config can break on its own — see
     // lib/telemetryIngestLog.js for why it is worth a counter at all.
     recordTelemetryEvent("script-served", { detail: fetcher(req) });
-    res.send(src);
+    // res.end, not res.send: send() stamps an ETag, and a client revalidating
+    // against it would get an empty 304 — which a caching client reads as
+    // "keep the copy you have", the exact opposite of everything above.
+    res.end(body);
   } catch (e) {
     next(e);
   }

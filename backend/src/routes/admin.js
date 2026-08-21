@@ -28,6 +28,7 @@ import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.j
 import { writeRaceHero } from "../lib/raceHero.js";
 import { deleteLap as deleteTelemetryLap, storedSummary as telemetryStoredSummary } from "../lib/telemetryLaps.js";
 import { readTelemetryActivity } from "../lib/telemetryIngestLog.js";
+import { telemetryScript } from "../lib/telemetryScript.js";
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
 import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
@@ -5335,7 +5336,10 @@ router.get("/telemetry-ingest", async (req, res, next) => {
   try {
     const row = await prisma.setting.findUnique({ where: { key: "telemetry_ingest_key" } }).catch(() => null);
     const key = row?.value || "";
-    res.json({ configured: !!key, key: key || null });
+    // scriptVersion rides along so the snippet the card prints carries the
+    // current &v= — the drivers' game caches the script by URL, so a changed
+    // recorder is only reachable through a changed line (lib/telemetryScript.js).
+    res.json({ configured: !!key, key: key || null, scriptVersion: telemetryScript().version });
   } catch (e) {
     next(e);
   }
