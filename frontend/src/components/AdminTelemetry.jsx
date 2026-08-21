@@ -277,13 +277,19 @@ export default function AdminTelemetry() {
                 className="input w-full font-mono text-xs"
                 rows={2}
                 value={`[SCRIPT_NABS_TELEMETRY]
-SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.key}"`}
+SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.key}&v=${telIngest.scriptVersion || "1"}"`}
                 onFocus={(e) => e.target.select()}
               />
               <p className="text-xs text-light">
                 Into <span className="font-mono">csp_extra_options.ini</span>, where the penalty script
                 lives. Drivers install nothing. The script shows nothing in the game either, so announce
                 the recording in Discord.
+              </p>
+              <p className="text-xs text-light">
+                The <span className="font-mono">&amp;v={telIngest.scriptVersion || "1"}</span> at the end
+                names the recorder version. A driver&rsquo;s game keeps the script it once downloaded for as
+                long as the address stays the same — so whenever this line changes, it needs pasting into
+                the server config again to reach the cars.
               </p>
               <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
                 Hand-install URL (testing, or drivers without the server script)

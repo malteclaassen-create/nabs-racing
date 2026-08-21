@@ -82,7 +82,7 @@ afterAll(() => server?.close());
 beforeEach(() => resetTelemetryActivity());
 
 describe("handing the script to a car", () => {
-  it("serves it with the ingest address baked in, and counts it", async () => {
+  it("serves it with the ingest address and version baked in, and counts it", async () => {
     const res = await fetch(`${base}/api/telemetry-laps/app.lua?key=${KEY}`);
     const src = await res.text();
     expect(res.status).toBe(200);
@@ -90,12 +90,30 @@ describe("handing the script to a car", () => {
     // The placeholder appears in the template's own header comment too; a
     // .replace() instead of .replaceAll() once left that one behind.
     expect(src).not.toContain("__INGEST_URL__");
+    expect(src).not.toContain("__SCRIPT_VERSION__");
+    // The script must never be cacheable: CSP keeps a downloaded script on
+    // the driver's disk by URL, and an ETag would let a revalidation answer
+    // 304 — "keep the old copy" — while looking like a serve here.
+    expect(res.headers.get("etag")).toBeNull();
+    expect(res.headers.get("cache-control")).toContain("no-store");
     const a = readTelemetryActivity();
     expect(a.scriptsServed).toBe(1);
     // WHO fetched rides along as the detail — the row "Script sent" once had
     // to carry a diagnosis alone, and a browser refresh and a joining car
     // looked identical.
     expect(a.events[0].detail).toBeTruthy();
+  });
+
+  it("marks a fetch that asked for a version, and one that was revalidating", async () => {
+    const res = await fetch(`${base}/api/telemetry-laps/app.lua?key=${KEY}&v=abc123`, {
+      headers: { "If-None-Match": 'W/"stale"' },
+    });
+    // A conditional request still gets the full script, never a 304.
+    expect(res.status).toBe(200);
+    expect((await res.text()).length).toBeGreaterThan(1000);
+    const [event] = readTelemetryActivity().events;
+    expect(event.detail).toContain("v=abc123");
+    expect(event.detail).toContain("revalidating");
   });
 
   it("refuses a wrong key with a 404 that says nothing — and records the refusal", async () => {

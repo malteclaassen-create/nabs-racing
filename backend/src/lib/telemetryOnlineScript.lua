@@ -38,7 +38,13 @@
 --------------------------------------------------------------------------------
 
 local INGEST_URL = "__INGEST_URL__"
+local VERSION = "__SCRIPT_VERSION__"
 local N = 800
+
+-- Proof of life before anything else can go wrong, visible in the Lua Debug
+-- app the moment the script loads. pcall-guarded like every engine call: a
+-- liveness check that can kill the chunk would be a bad joke.
+pcall(function() ac.debug("nabsTelemetry", "loaded v" .. VERSION) end)
 
 local sim = ac.getSim()
 local rec = nil
@@ -86,7 +92,8 @@ local function sayHello(car)
   if said then return end
   said = true
   local id = identity()
-  local info = "steam " .. (id.steamId ~= "" and "yes" or "NO")
+  local info = "v" .. VERSION
+    .. ", steam " .. (id.steamId ~= "" and "yes" or "NO")
     .. ", json " .. ((JSON ~= nil and JSON.stringify ~= nil) and "yes" or "NO")
     .. ", spline " .. string.format("%.3f", car.splinePosition or -1)
     .. ", csp " .. tostring(safeCall(function() return ac.getPatchVersionCode() end, "?"))
