@@ -5177,43 +5177,6 @@ router.put("/reports/:id/accused", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/reports/accused  { assignments: [{ reportId, driverId }] }
-//
-// The whole round in one press. Stewarding happens by sitting down with one
-// race's replay and working through everything that happened in it, and the
-// naming is the first pass of exactly that job: a dozen presses, the file's own
-// suggestion prefilled beside each one, corrected where it is wrong, saved
-// once.
-//
-// Every assignment is answered for individually and one failure never stops the
-// rest: a report somebody else has just named in another tab comes back as
-// "already named" while the other eleven land. Answering with a single error
-// would leave the desk unable to tell which of the twelve went through.
-router.post("/reports/accused", async (req, res, next) => {
-  try {
-    const list = Array.isArray(req.body?.assignments) ? req.body.assignments.slice(0, 100) : [];
-    if (!list.length) return res.status(400).json({ error: "Nothing to save" });
-    const results = [];
-    for (const a of list) {
-      const reportId = String(a?.reportId || "");
-      try {
-        const report = await nameAccused(reportId, a?.driverId);
-        results.push({ reportId, ok: true, accusedName: report.accusedName, reachable: report.accusedReachable !== false });
-      } catch (e) {
-        results.push({ reportId, ok: false, error: e.message });
-      }
-    }
-    res.json({
-      ok: true,
-      results,
-      named: results.filter((r) => r.ok).length,
-      failed: results.filter((r) => !r.ok).length,
-    });
-  } catch (e) {
-    next(e);
-  }
-});
-
 // GET /api/admin/races/:id/report-penalties -> what the stewards decided for
 // this round, and how much of it has actually reached the classification.
 //

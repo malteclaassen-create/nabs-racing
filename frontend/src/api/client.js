@@ -1036,10 +1036,6 @@ export const api = {
   // site. Neither route can ever RE-point a report that already names somebody.
   setReportAccusedAdmin: (id, accusedDriverId) =>
     request(`/admin/reports/${id}/accused`, { method: "PUT", body: { accusedDriverId }, auth: true }),
-  // A round's unnamed reports, named in one press, which is how stewarding
-  // actually happens: one race's replay, everything that happened in it, once.
-  assignReportAccused: (assignments) =>
-    request("/admin/reports/accused", { method: "POST", body: { assignments }, auth: true }),
   // By roster driver where possible; the raw Discord id stays for somebody who
   // is not on any roster.
   addReportViewer: (id, body) => request(`/admin/reports/${id}/viewers`, { method: "POST", body, auth: true }),
