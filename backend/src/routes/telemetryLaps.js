@@ -47,6 +47,15 @@ function flooded() {
   return hits.length >= INGEST_MAX;
 }
 
+// Who is on the other end of a fetch, verbatim. On the night this was added,
+// the whole diagnosis hinged on one "Script sent" row that could equally have
+// been a joining car or an admin's browser refreshing the URL — the card had
+// no way to say which. The raw User-Agent settles it: browsers announce
+// themselves as Mozilla/..., the game's HTTP stack does not.
+function fetcher(req) {
+  return String(req.get("user-agent") || "no user-agent");
+}
+
 async function ingestKey() {
   return prisma.setting
     .findUnique({ where: { key: "telemetry_ingest_key" } })
@@ -68,7 +77,7 @@ router.post("/ingest", async (req, res, next) => {
     }
     // The app's Test button: proves URL + key without inventing a fake lap.
     if (req.query.ping) {
-      recordTelemetryEvent("ping");
+      recordTelemetryEvent("ping", { detail: fetcher(req) });
       return res.json({ ok: true, pong: true });
     }
     // The recorder's own voice, added the night a driver put 23 laps on the
@@ -255,7 +264,7 @@ router.get("/app.lua", async (req, res, next) => {
     // recorder" and nothing else. It is the first half of the chain, and the
     // half a race server's config can break on its own — see
     // lib/telemetryIngestLog.js for why it is worth a counter at all.
-    recordTelemetryEvent("script-served");
+    recordTelemetryEvent("script-served", { detail: fetcher(req) });
     res.send(src);
   } catch (e) {
     next(e);

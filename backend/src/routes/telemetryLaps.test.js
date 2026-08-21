@@ -90,7 +90,12 @@ describe("handing the script to a car", () => {
     // The placeholder appears in the template's own header comment too; a
     // .replace() instead of .replaceAll() once left that one behind.
     expect(src).not.toContain("__INGEST_URL__");
-    expect(readTelemetryActivity().scriptsServed).toBe(1);
+    const a = readTelemetryActivity();
+    expect(a.scriptsServed).toBe(1);
+    // WHO fetched rides along as the detail — the row "Script sent" once had
+    // to carry a diagnosis alone, and a browser refresh and a joining car
+    // looked identical.
+    expect(a.events[0].detail).toBeTruthy();
   });
 
   it("refuses a wrong key with a 404 that says nothing — and records the refusal", async () => {
