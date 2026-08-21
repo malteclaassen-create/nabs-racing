@@ -831,7 +831,10 @@ export default function MyRating({ me }) {
   // their own visual language instead of the tile component.
   const hl = [
     best && { key: "s", icon: "trophy", eyebrow: "Biggest strength", tone: "good", main: best.label, subPrefix: best.stat, subValue: `top ${Math.max(1, 100 - Math.round(best.v * 100))}% of the field` },
-    worst && { key: "w", icon: "alert", eyebrow: "Costing you most", tone: "bad", main: worst.label, subPrefix: worst.stat, subValue: `bottom ${Math.max(1, Math.round(worst.v * 100))}% of the field` },
+    // The weakest ingredient can still sit in the upper half of the field
+    // (nothing is really costing points then) — phrase it as top X%, never
+    // as a nonsense "bottom 55%".
+    worst && { key: "w", icon: "alert", eyebrow: "Costing you most", tone: "bad", main: worst.label, subPrefix: worst.stat, subValue: worst.v >= 0.5 ? `top ${Math.max(1, 100 - Math.round(worst.v * 100))}% of the field` : `bottom ${Math.max(1, Math.round(worst.v * 100))}% of the field` },
     up && { key: "u", icon: "up", eyebrow: "Best weekend", tone: "good", main: up.p.track, subPrefix: `R${up.p.number}`, subValue: `overall ${fmtDelta(up.d)}` },
     down && { key: "d", icon: "down", eyebrow: "Toughest weekend", tone: "bad", main: down.p.track, subPrefix: `R${down.p.number}`, subValue: `overall ${fmtDelta(down.d)}` },
   ].filter(Boolean);
