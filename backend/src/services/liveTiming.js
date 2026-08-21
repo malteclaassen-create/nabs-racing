@@ -72,6 +72,21 @@ function publicDriverId(guid) {
   return id;
 }
 
+// The pseudonym walked BACKWARDS, for backend-internal callers only (the live
+// championship projection matches board entries to season drivers by their
+// stored Steam id, the same certain identity the result import prefers over
+// any name). The hash is one-way by design, so this scans the cache — every
+// id on a board came through publicDriverId, so the guid is in there unless
+// the process restarted since that board was built (a frozen result held
+// across a restart), in which case the caller falls back to name matching.
+// The real guid must never leave the building: it feeds a database lookup,
+// not a response.
+export function realGuidForPublicId(publicId) {
+  if (!publicId) return null;
+  for (const [guid, id] of publicIdCache) if (id === publicId) return guid;
+  return null;
+}
+
 const BROADCAST_MS = 700; // how often we push a fresh board to frontend clients
 // …but only when the board actually says something new (see the broadcast
 // loop). A board that has not moved is still WORTH sending now and then, both
