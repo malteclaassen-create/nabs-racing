@@ -124,171 +124,6 @@ function NameAccused({ report, drivers, busy, onName }) {
   );
 }
 
-// --- the after-the-race pass -------------------------------------------------
-//
-// Every report that names nobody, in one place, so a round's in-game presses
-// can be worked through together instead of one thread at a time.
-//
-// This is how stewarding actually happens: you sit down once, after the race,
-// with the replay and the result file, and you go through the evening. A dozen
-// presses arrive from inside a race with nothing but who pressed the button —
-// and every one of them is a driver who cannot yet see the thread they are the
-// subject of. Opening twelve threads to answer the same one-word question
-// twelve times is the job this removes.
-//
-// The file's own answer is prefilled in each row (see lib/reportSuggest.js) and
-// says where it came from, so agreeing with all twelve is one press and
-// disagreeing with one is one dropdown. Nothing is saved until the button, and
-// each row is answered for individually afterwards — a report somebody named in
-// another tab comes back as already named while the rest go through.
-function UnnamedReports({ reports, races, drivers, onDone }) {
-  const [picks, setPicks] = useState({});
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const [msg, setMsg] = useState(null);
-
-  // The file's guess is the starting point for every row it has one for. Keyed
-  // on the report, and re-seeded whenever the list changes — a saved round
-  // leaves the rows that failed, and those keep whatever was picked for them.
-  useEffect(() => {
-    setPicks((cur) => {
-      const next = { ...cur };
-      for (const r of reports) if (!next[r.id]) next[r.id] = r.accusedSuggestion?.driverId || "";
-      return next;
-    });
-  }, [reports]);
-
-  const byRace = useMemo(() => {
-    const raceById = new Map((races || []).map((x) => [x.id, x]));
-    const out = new Map();
-    for (const r of reports) {
-      const key = r.raceId || "";
-      if (!out.has(key)) out.set(key, { race: raceById.get(r.raceId) || null, reports: [] });
-      out.get(key).reports.push(r);
-    }
-    return [...out.values()].sort((a, b) => {
-      if (!a.race) return 1;
-      if (!b.race) return -1;
-      return new Date(b.race.date || 0) - new Date(a.race.date || 0);
-    });
-  }, [reports, races]);
-
-  const ready = reports.filter((r) => picks[r.id]);
-
-  async function saveAll() {
-    setBusy(true);
-    setError(null);
-    setMsg(null);
-    try {
-      const res = await api.assignReportAccused(ready.map((r) => ({ reportId: r.id, driverId: picks[r.id] })));
-      // Told per driver, because that is what the desk is deciding: a driver
-      // who has never signed in with Discord is named but cannot be reached,
-      // and somebody has to know to go and find them.
-      const unreachable = (res.results || []).filter((x) => x.ok && !x.reachable).length;
-      const failed = res.failed || 0;
-      setMsg(
-        [
-          `${res.named} named${res.named === 1 ? "" : ""}.`,
-          unreachable ? `${unreachable} of them has no Discord account and cannot be told.` : "",
-          failed ? `${failed} could not be saved.` : "",
-        ]
-          .filter(Boolean)
-          .join(" ")
-      );
-      if (failed) setError((res.results || []).find((x) => !x.ok)?.error || null);
-      onDone?.();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!reports.length) return null;
-
-  return (
-    <div className="card overflow-hidden border-amber-500/50">
-      <CardBar
-        title="Who were these about?"
-        right={
-          <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-bad">
-            {reports.length} name{reports.length === 1 ? "s" : ""} nobody
-          </span>
-        }
-      />
-      <p className="border-b border-border px-5 py-3 text-xs leading-relaxed text-light">
-        A report that names nobody is one the other driver cannot see or answer. These came in from inside the
-        race, where the app knows who pressed the button and not who they are complaining about. Where the
-        round&rsquo;s result file can say which car was on the other side of it, that driver is already picked
-        below — check it against the replay, change what is wrong, and save the round in one go. Naming a driver
-        lets them in and tells them, and cannot be undone.
-      </p>
-      {byRace.map((g) => (
-        <div key={g.race?.id || "none"}>
-          <div className="border-b border-border bg-surface2/40 px-5 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-            {g.race ? `${g.race.number != null ? `R${g.race.number} ` : ""}${g.race.track}` : "No round given"}
-          </div>
-          <ul className="divide-y divide-border">
-            {g.reports.map((r) => (
-              <li key={r.id} className="space-y-2 px-5 py-3">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  {r.source === "INGAME" && <span className="pill bg-brand/15 text-brand">in-game</span>}
-                  <span className="text-sm font-semibold text-dark">{r.reporterName || "Someone"}</span>
-                  <ReplayAnchor
-                    readOnly
-                    second={r.sessionSecond}
-                    approx={r.sessionSecondApprox}
-                    matched={r.contactMatched}
-                    at={r.incidentAt}
-                    kph={r.contactKph}
-                    lap={r.lap}
-                    eventIndex={r.contactIndex}
-                  />
-                  <span className="hidden min-w-0 flex-1 truncate text-xs text-light sm:block">{r.body}</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    aria-label={`Which driver the report by ${r.reporterName || "someone"} is about`}
-                    className="input w-auto max-w-64 py-1.5 text-sm"
-                    value={picks[r.id] || ""}
-                    disabled={busy}
-                    onChange={(e) => setPicks({ ...picks, [r.id]: e.target.value })}
-                  >
-                    <option value="">Leave it unnamed</option>
-                    {drivers.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                  {r.accusedSuggestion?.name && (
-                    <span className="text-xs text-light">
-                      race file:{" "}
-                      <span className="font-semibold text-medium">{r.accusedSuggestion.name}</span>
-                      {r.accusedSuggestion.from === "matched" ? " (matched contact)" : " (around that lap)"}
-                      {r.accusedSuggestion.driverId ? "" : " — not on any roster"}
-                    </span>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-      <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-3">
-        <button className="btn-primary" disabled={busy || !ready.length} onClick={saveAll}>
-          {busy ? "Saving…" : `Name ${ready.length || "them"} and tell them`}
-        </button>
-        {error && <span className="text-sm text-bad">{error}</span>}
-        {msg && <span className="text-sm text-ok">{msg}</span>}
-        {!ready.length && !busy && (
-          <span className="text-xs text-light">Pick a driver on at least one report.</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function Thread({ id, drivers, onChanged, onDeleted }) {
   const ask = useAsk();
   const [data, setData] = useState(null);
@@ -705,15 +540,6 @@ function ContactSuggestions({ report }) {
     };
   }, [data]);
 
-  // The ones with nobody on the other side of them, which is the first pass of
-  // an evening's stewarding. Only the ones still open: a report that was closed
-  // without ever naming anybody is history, and putting it in a list headed
-  // "these need answering" would be asking for work that is over.
-  const unnamed = useMemo(
-    () => (data?.reports || []).filter((r) => !r.accusedDriverId && !DECIDED.includes(r.status)),
-    [data]
-  );
-
   const openReportRow = (data?.reports || []).find((r) => r.id === openId) || null;
   const openRace = openReportRow
     ? (data?.races || []).find((x) => x.id === openReportRow.raceId) || null
@@ -807,13 +633,6 @@ function ContactSuggestions({ report }) {
             </button>
           ))}
         </div>
-      )}
-
-      {/* Before the list, because it is the first thing to do with a round that
-          has just been raced, and because every row in it is a driver who
-          cannot yet see the thread they are the subject of. */}
-      {data && (
-        <UnnamedReports reports={unnamed} races={data.races} drivers={drivers} onDone={reload} />
       )}
 
       {data && visible.length === 0 && (
