@@ -85,6 +85,13 @@ export function withSessionSecond(reports, races) {
 // The accused deliberately does NOT: the file knows which car it was, but a
 // driver pressing that button has not accused anybody, and turning a match into
 // an accusation is the stewards' call to make, not this function's.
+//
+// `withOther` is that call being made. It carries the OTHER car out of the
+// match — as `contactOther`, never as the accused — for the one caller that is
+// entitled to see it: the stewards' desk, where somebody works through a
+// round's unnamed presses after the race and says who each one was about. It is
+// off by default, so the member API cannot hand a driver a name the file
+// guessed and the league has not stood behind.
 
 // How long before the press to look for the contact. Long enough for a spin, a
 // recovery and a hand off the wheel; short enough that a tap the driver did not
@@ -192,7 +199,7 @@ function contactBehind(seasonNumber, raceNumber, guid, second) {
 // the map in — the stewards' desk needs the same map for its contact
 // suggestions (lib/reportSuggest.js), and resolving it twice per request would
 // read the whole roster twice to reach the same answer.
-export async function anchorReports(prisma, reports, races, knownGuids = null) {
+export async function anchorReports(prisma, reports, races, knownGuids = null, { withOther = false } = {}) {
   const anchored = withSessionSecond(reports, races);
   const byId = new Map(races.map((x) => [x.id, x]));
   const candidates = anchored.filter(
@@ -222,6 +229,9 @@ export async function anchorReports(prisma, reports, races, knownGuids = null) {
       contactKph: r.contactKph ?? hit.kph,
       contactIndex: r.contactIndex ?? hit.eventIndex,
       lap: r.lap ?? hit.lap,
+      // Who the file says was on the other side of it. A fact about a
+      // collision, not a verdict about it — see the note above.
+      contactOther: withOther && hit.other ? { name: hit.other.name || null, guid: hit.other.guid || null } : undefined,
     };
   });
 }

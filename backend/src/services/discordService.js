@@ -7,6 +7,8 @@
 import { raceKickoff } from "../lib/raceKickoff.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
+import { getPersonGroups } from "../lib/persons.js";
+import { collapseByPerson, byNewestAnswer } from "../lib/onePerPerson.js";
 
 const WEBHOOK_KEY = "discord_webhook_url";
 // Results posts go to their OWN channel/webhook (#results), separate from the
@@ -220,7 +222,14 @@ export async function syncRaceToDiscord(prisma, raceId) {
     const format = (await readRaceFormat(prisma, [race.id])).get(race.id) || {};
     const type = (await readRaceTypes(prisma, [race.id])).get(race.id) || null;
 
-    const payload = { embeds: [buildEmbed({ ...race, ...format, type }, race.rsvps)] };
+    // One person, one line — the same rule the site's entry list follows
+    // (lib/onePerPerson.js). A member with two roster rows in one season had an
+    // answer on each, and the Discord post listed both handles under Accepted
+    // as if two cars were coming.
+    const people = await getPersonGroups(prisma).catch(() => ({ byDriver: new Map() }));
+    const rsvps = collapseByPerson(race.rsvps, people.byDriver, byNewestAnswer).kept;
+
+    const payload = { embeds: [buildEmbed({ ...race, ...format, type }, rsvps)] };
 
     // Try to edit the existing message first.
     if (race.discordMessageId) {

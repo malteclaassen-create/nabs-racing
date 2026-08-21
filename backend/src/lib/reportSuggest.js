@@ -129,3 +129,85 @@ export async function withContactSuggestions(prisma, reports, races, guidOf) {
   if (!suggestions.size) return reports;
   return reports.map((r) => (suggestions.has(r.id) ? { ...r, contactSuggestions: suggestions.get(r.id) } : r));
 }
+
+// --- who the file says it was ------------------------------------------------
+//
+// The stewards' half of the same idea, for the reports that name NOBODY.
+//
+// A report written on the site names a driver by construction — the form will
+// not send without one. The blank ones are the in-game presses: the app knows
+// who pressed the button and nothing else, so until somebody says who it was
+// about, the other driver cannot see the thread they are the subject of and a
+// steward has an incident with one name on it.
+//
+// The result file usually knows. An in-game press is matched to the contact
+// behind it (lib/reportAnchor.js), and that contact has two cars in it; where
+// there is no match, the lap-and-name suggestions above often have one. So this
+// works out which driver that is and offers it — as a SUGGESTION, prefilled in
+// a dropdown a steward confirms, never as an accusation made by itself. The
+// file is good at "these two cars touched" and knows nothing whatever about
+// fault, and the whole point of the desk is that a person decides.
+//
+// `from` says which of the two it came from, because they are not equally
+// strong: "matched" is the contact the press was pinned to, "suggested" is one
+// of up to three the file offered for a lap.
+
+// Steam GUID -> the roster row racing under it. The season that is running
+// wins, and among archived rows the newest — the same tense the rest of the
+// reports code reads names in: who this is NOW.
+async function driversByGuid(prisma, guids) {
+  const ids = [...new Set((guids || []).filter(Boolean).map(String))];
+  if (!ids.length) return new Map();
+  const rows = await prisma.driver
+    .findMany({
+      where: { steamId: { in: ids } },
+      select: { id: true, name: true, steamId: true, season: { select: { isActive: true, number: true } } },
+    })
+    .catch(() => []);
+  const rank = (d) => (d.season?.isActive ? 1_000_000 : 0) + (d.season?.number ?? 0);
+  const best = new Map();
+  for (const d of rows) {
+    const prev = best.get(String(d.steamId));
+    if (!prev || rank(d) > rank(prev)) best.set(String(d.steamId), d);
+  }
+  return best;
+}
+
+export async function withAccusedSuggestions(prisma, reports) {
+  const candidates = reports.filter((r) => !r.accusedDriverId);
+  if (!candidates.length) return reports;
+
+  // The matched contact first: it is the one the report was actually pinned to.
+  const pick = (r) => {
+    const matched = r.contactOther?.guid || r.contactOther?.name ? { ...r.contactOther, from: "matched" } : null;
+    if (matched) return matched;
+    const hit = (r.contactSuggestions || [])[0]?.other;
+    return hit ? { name: hit.name || null, guid: hit.guid || null, from: "suggested" } : null;
+  };
+
+  const picked = new Map();
+  for (const r of candidates) {
+    const hit = pick(r);
+    if (hit) picked.set(r.id, hit);
+  }
+  if (!picked.size) return reports;
+  const byGuid = await driversByGuid(prisma, [...picked.values()].map((h) => h.guid));
+
+  return reports.map((r) => {
+    const hit = picked.get(r.id);
+    if (!hit) return r;
+    const driver = hit.guid ? byGuid.get(String(hit.guid)) : null;
+    // No roster row behind the GUID is still worth showing: the file has a name
+    // and the steward can go and find whose it is. What it must not do is name
+    // a driverId nobody stands behind, so that stays null and the dropdown
+    // stays empty.
+    return {
+      ...r,
+      accusedSuggestion: {
+        driverId: driver?.id || null,
+        name: driver?.name || hit.name || null,
+        from: hit.from,
+      },
+    };
+  });
+}

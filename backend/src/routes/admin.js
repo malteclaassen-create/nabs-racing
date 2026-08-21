@@ -50,6 +50,7 @@ import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
   dbThreadVoices, readFileRetentionDays, writeFileRetentionDays, RETENTION_CHOICES,
+  dbSetAccused, dbPenaltiesForRace, dbMarkPenaltiesApplied,
 } from "../lib/reports.js";
 import { sweepReportFiles } from "../services/reportHousekeeping.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
@@ -72,6 +73,7 @@ import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import {
   dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups,
+  dbMergeDuplicateAnswers,
   getNameOverrides, discordIdsForDrivers,
 } from "../lib/persons.js";
 import {
@@ -94,7 +96,8 @@ import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride } f
 import { writeHiddenRace } from "../lib/attendanceHidden.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
 import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
-import { withContactSuggestions } from "../lib/reportSuggest.js";
+import { withContactSuggestions, withAccusedSuggestions } from "../lib/reportSuggest.js";
+import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson.js";
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
@@ -2743,7 +2746,12 @@ router.post("/persons/link", async (req, res, next) => {
     const found = await prisma.driver.findMany({ where: { id: { in: ids } }, select: { id: true } });
     if (found.length !== ids.length) return res.status(400).json({ error: "One or more driver ids don't exist" });
     const personId = await dbLinkDrivers(prisma, ids);
-    res.json({ ok: true, personId });
+    // Now that these rows are one person, their duplicated sign-ups are one
+    // answer. Linking used to leave them behind, which is why an entry list
+    // could still show the same driver twice under two handles after the admin
+    // had said they were the same human (see lib/persons.js).
+    const mergedAnswers = await dbMergeDuplicateAnswers(prisma, ids);
+    res.json({ ok: true, personId, mergedAnswers });
   } catch (e) {
     next(e);
   }
@@ -2761,10 +2769,13 @@ router.post("/persons/link-auto", async (req, res, next) => {
       prisma.driver.findMany({ select: { id: true, name: true, discordName: true, seasonId: true } }),
     ]);
     const { linkable, ambiguous } = buildPersonClusters(drivers, groups);
+    let mergedAnswers = 0;
     for (const rows of linkable) {
-      await dbLinkDrivers(prisma, rows.map((r) => r.id));
+      const ids = rows.map((r) => r.id);
+      await dbLinkDrivers(prisma, ids);
+      mergedAnswers += await dbMergeDuplicateAnswers(prisma, ids);
     }
-    res.json({ ok: true, linked: linkable.length, skippedAmbiguous: ambiguous.length });
+    res.json({ ok: true, linked: linkable.length, skippedAmbiguous: ambiguous.length, mergedAnswers });
   } catch (e) {
     next(e);
   }
@@ -4518,6 +4529,12 @@ router.get("/attendance-history", async (req, res, next) => {
       },
     });
     const types = await readRaceTypes(prisma, races.map((r) => r.id));
+    // People, not rows (lib/onePerPerson.js). Somebody with two roster rows in
+    // one season answered on one and raced on the other, which put them in the
+    // counts twice and then accused them of both no-showing and racing
+    // unannounced — for the same evening, in the same table.
+    const people = await getPersonGroups(prisma);
+    const who = (driverId) => personKey(driverId, people.byDriver);
 
     const out = races
       // A race nobody ever answered has nothing to show; listing it would bury
@@ -4525,12 +4542,12 @@ router.get("/attendance-history", async (req, res, next) => {
       .filter((race) => race.rsvps.length > 0)
       .map((race) => {
         const grouped = { ACCEPTED: [], DECLINED: [], TENTATIVE: [] };
-        for (const r of race.rsvps) {
+        for (const r of collapseByPerson(race.rsvps, people.byDriver, byNewestAnswer).kept) {
           (grouped[r.status] || (grouped[r.status] = [])).push({ driverId: r.driverId, name: r.driver.name });
         }
         // "Raced" means classified in any way — a DNF still turned up.
-        const started = new Set(race.results.filter((r) => r.status !== "DNS").map((r) => r.driverId));
-        const answered = new Set(race.rsvps.map((r) => r.driverId));
+        const started = new Set(race.results.filter((r) => r.status !== "DNS").map((r) => who(r.driverId)));
+        const answered = new Set(race.rsvps.map((r) => who(r.driverId)));
         return {
           id: race.id,
           number: race.number,
@@ -4544,10 +4561,10 @@ router.get("/attendance-history", async (req, res, next) => {
           },
           rsvps: grouped,
           // Said yes, never started.
-          noShows: grouped.ACCEPTED.filter((d) => !started.has(d.driverId)).map((d) => d.name),
+          noShows: grouped.ACCEPTED.filter((d) => !started.has(who(d.driverId))).map((d) => d.name),
           // Started without ever answering.
           unannounced: race.results
-            .filter((r) => r.status !== "DNS" && !answered.has(r.driverId))
+            .filter((r) => r.status !== "DNS" && !answered.has(who(r.driverId)))
             .map((r) => r.driver?.name)
             .filter(Boolean),
           starters: started.size,
@@ -4580,7 +4597,7 @@ router.get("/attendance-missing", async (req, res, next) => {
     const race = await prisma.race.findUnique({ where: { id: raceId } });
     if (!race) return res.status(404).json({ error: "Race not found" });
 
-    const [roster, rsvps, nameOverrides] = await Promise.all([
+    const [allRows, rsvps, nameOverrides, people] = await Promise.all([
       prisma.driver.findMany({
         where: { seasonId: race.seasonId, isActive: true },
         include: { team: { select: { name: true, tier: true, color: true } } },
@@ -4588,10 +4605,22 @@ router.get("/attendance-missing", async (req, res, next) => {
       }),
       prisma.raceRsvp.findMany({ where: { raceId: race.id }, select: { driverId: true, status: true } }),
       getNameOverrides(prisma),
+      getPersonGroups(prisma),
     ]);
 
-    const answered = new Set(rsvps.map((r) => r.driverId));
-    const silent = roster.filter((d) => !answered.has(d.id));
+    // People, not rows — the same rule the entry list follows
+    // (lib/onePerPerson.js). Somebody with two roster rows in one season used
+    // to be chased for an answer their other row had already given, and
+    // counted twice in the roster they were being chased against. A row parked
+    // in the Reserve pool loses to one in a real team: the chase list is read
+    // per team, and the person is racing for one of them.
+    const roster = collapseByPerson(
+      allRows.map((d) => ({ ...d, driverId: d.id })),
+      people.byDriver,
+      (d) => ((d.team?.tier ?? d.tier) === 0 ? 0 : 1)
+    ).kept;
+    const answered = new Set(rsvps.map((r) => personKey(r.driverId, people.byDriver)));
+    const silent = roster.filter((d) => !answered.has(personKey(d.id, people.byDriver)));
     const discordIds = await discordIdsForDrivers(prisma, silent.map((d) => d.id)).catch(() => new Map());
 
     const shape = (d) => ({
@@ -4964,8 +4993,15 @@ router.put("/welcome-faq", async (req, res, next) => {
 // report says a lap and usually a name.
 async function stewardView(reports, races) {
   const guids = await reporterGuids(prisma, reports).catch(() => new Map());
-  const anchored = await anchorReports(prisma, reports, races, guids);
-  return withContactSuggestions(prisma, anchored, races, guids).catch(() => anchored);
+  // `withOther` only here: the matched contact's other car is what the desk
+  // offers as "who this was probably about", and the member API deliberately
+  // never carries it (lib/reportAnchor.js).
+  const anchored = await anchorReports(prisma, reports, races, guids, { withOther: true });
+  const suggested = await withContactSuggestions(prisma, anchored, races, guids).catch(() => anchored);
+  // And who the file says was on the other side of the ones that name nobody,
+  // so a round's in-game presses can be worked through in one pass after the
+  // race instead of one thread at a time.
+  return withAccusedSuggestions(prisma, suggested).catch(() => suggested);
 }
 
 router.get("/reports", async (req, res, next) => {
@@ -4990,8 +5026,14 @@ router.get("/reports", async (req, res, next) => {
       open: reports.filter((r) => !REPORT_DECIDED.includes(r.status)).length,
       // Which of the decided ones still have to be entered in a classification.
       // Counted here rather than in the browser so the tab badge and the panel
-      // in the results editor cannot disagree about it.
-      pendingPenalties: reports.filter((r) => r.status === "PENALTY" && r.penaltySeconds > 0).length,
+      // in the results editor cannot disagree about it. A penalty the editor
+      // has already written is done with, however it was typed.
+      pendingPenalties: reports.filter(
+        (r) => r.status === "PENALTY" && r.penaltySeconds > 0 && (r.appliedSeconds ?? null) !== r.penaltySeconds
+      ).length,
+      // And how many still have nobody on the other side of them. Every one of
+      // those is a driver who cannot see the thread they are the subject of.
+      unnamed: reports.filter((r) => !r.accusedDriverId && !REPORT_DECIDED.includes(r.status)).length,
     });
   } catch (e) {
     next(e);
@@ -5090,15 +5132,129 @@ router.get("/reports/:id/files/:attId", async (req, res, next) => {
   }
 });
 
+// --- saying who a report is about -------------------------------------------
+//
+// The reports that arrive with nobody named are the in-game presses: webPenalty
+// tells the site who pressed the button and nothing else. Until somebody says
+// who it was about, that report is a dead end — the other driver cannot see the
+// thread they are the subject of, cannot answer it, and a steward has half an
+// incident.
+//
+// The driver who filed it can name them, from their own page (routes/reports.js
+// PUT /:id/accused). The stewards can too, and this is that: an evening's
+// presses are worked through here, after the race, against the round's own
+// result file. Nobody waits for a driver who has gone to bed.
+//
+// The one thing NOBODY can do is re-point a report that already names somebody.
+// That rule lives in dbSetAccused rather than here, so no route can get it
+// wrong: naming a driver lets them in and tells them, and changing it
+// afterwards would leave somebody sitting in a thread that is no longer about
+// them, having already read it. A report pointed at the wrong driver is deleted
+// and filed again, which is visible, rather than quietly re-aimed.
+
+// One report, one driver. Returns the report as it now stands.
+async function nameAccused(reportId, driverId) {
+  const report = await dbGetReport(prisma, reportId);
+  if (!report) throw Object.assign(new Error("Report not found"), { status: 404 });
+  const driver = await prisma.driver
+    .findUnique({ where: { id: String(driverId || "") }, select: { id: true, name: true } })
+    .catch(() => null);
+  if (!driver) throw Object.assign(new Error("No such driver"), { status: 400 });
+  // The NAME comes from the roster row, never from the request: it is the
+  // byline the thread is read under for the rest of its life.
+  return dbSetAccused(prisma, report, { accusedDriverId: driver.id, accusedName: driver.name, by: "STEWARD" });
+}
+
+// PUT /api/admin/reports/:id/accused  { accusedDriverId }
+router.put("/reports/:id/accused", async (req, res, next) => {
+  try {
+    const report = await nameAccused(req.params.id, req.body?.accusedDriverId);
+    res.json({ ok: true, report });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// POST /api/admin/reports/accused  { assignments: [{ reportId, driverId }] }
+//
+// The whole round in one press. Stewarding happens by sitting down with one
+// race's replay and working through everything that happened in it, and the
+// naming is the first pass of exactly that job: a dozen presses, the file's own
+// suggestion prefilled beside each one, corrected where it is wrong, saved
+// once.
+//
+// Every assignment is answered for individually and one failure never stops the
+// rest: a report somebody else has just named in another tab comes back as
+// "already named" while the other eleven land. Answering with a single error
+// would leave the desk unable to tell which of the twelve went through.
+router.post("/reports/accused", async (req, res, next) => {
+  try {
+    const list = Array.isArray(req.body?.assignments) ? req.body.assignments.slice(0, 100) : [];
+    if (!list.length) return res.status(400).json({ error: "Nothing to save" });
+    const results = [];
+    for (const a of list) {
+      const reportId = String(a?.reportId || "");
+      try {
+        const report = await nameAccused(reportId, a?.driverId);
+        results.push({ reportId, ok: true, accusedName: report.accusedName, reachable: report.accusedReachable !== false });
+      } catch (e) {
+        results.push({ reportId, ok: false, error: e.message });
+      }
+    }
+    res.json({
+      ok: true,
+      results,
+      named: results.filter((r) => r.ok).length,
+      failed: results.filter((r) => !r.ok).length,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // GET /api/admin/races/:id/report-penalties -> what the stewards decided for
-// this round. The results editor shows it beside its own penalty column: the
-// decision here never writes into the classification (on purpose), so this is
-// the only thing standing between "we agreed five seconds" and a championship
-// that never heard about them.
+// this round, and how much of it has actually reached the classification.
+//
+// `decided` is the reports themselves, unchanged, and `perDriver` is the same
+// thing grouped the way the results editor is shaped — one penalty cell per
+// driver, two incidents in an evening adding up in it — with what is still
+// OUTSTANDING against what has already been written.
+//
+// That last figure is what the editor fills in with. Deciding a penalty in the
+// Reports tab still never writes into a classification by itself; the editor
+// types the seconds and a human saves them, the same as always. It just no
+// longer depends on anybody remembering that they agreed to five.
 router.get("/races/:id/report-penalties", async (req, res, next) => {
   try {
-    const decided = await dbDecidedForRace(prisma, req.params.id);
-    res.json({ decided });
+    const [decided, perDriver] = await Promise.all([
+      dbDecidedForRace(prisma, req.params.id),
+      dbPenaltiesForRace(prisma, req.params.id),
+    ]);
+    res.json({ decided, perDriver });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/races/:id/report-penalties/applied  { reportIds }
+//
+// "Those seconds are in the classification now." Sent by the results editor
+// AFTER a save has gone through, never before — what is stored on the report
+// has to follow what is stored on the race, or a save that failed would leave
+// the penalty marked as entered and it would never be typed again.
+//
+// Idempotent by construction (lib/reports.js stamps the decided figure rather
+// than adding to it), so an editor that saves twice, or two admins saving the
+// same round, cannot make a penalty count twice.
+router.post("/races/:id/report-penalties/applied", async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.reportIds) ? req.body.reportIds : [];
+    // Only reports of THIS round. The editor sends back what it filled in, and
+    // that list has no business reaching another race's reports.
+    const mine = new Set((await dbDecidedForRace(prisma, req.params.id)).map((r) => r.id));
+    const marked = await dbMarkPenaltiesApplied(prisma, ids.filter((id) => mine.has(String(id))));
+    res.json({ ok: true, marked, perDriver: await dbPenaltiesForRace(prisma, req.params.id) });
   } catch (e) {
     next(e);
   }

@@ -245,20 +245,43 @@ something, then set the outcome, the seconds and a sentence of reasoning and
 press **Save decision**. Both drivers get told once, with what you wrote.
 Nothing is sent until you press save.
 
-**You cannot change who a report is about.** That is the reporter's to say,
-from their own page, and only while nobody is named yet. An accusation
-belongs to the person making it: a steward who could re-point one would be
-able to make a case against a driver nobody complained about, in a thread
-that then reads as if the first driver wrote it. A report with nobody named
-(one from the in-game app, or somebody who wrote "the blue car") shows
-"Nobody named yet" and stays private to the stewards until the driver who
-filed it says who it was.
+**Every report names a driver.** The form a driver files from will not send
+without one: they pick the contact the race recorded, or they pick the driver
+from the list. A report about nobody is one the other driver cannot see or
+answer, and one a steward reads a fortnight later with no idea whose incident
+it was.
 
-**Deciding a penalty does not put it on the driver.** That is deliberate: the
-points come from the results editor and only from there, so two screens can
-never disagree about a championship. Under the table in **Edit Results** there
-is a list of every penalty the stewards decided for that round and whether the
-seconds are actually in the table, so nothing gets agreed and then forgotten.
+The exception is the in-game app, which knows who pressed the button and not
+who they are complaining about. Those arrive naming nobody, and the first
+panel in **Admin -> Reports** — **Who were these about?** — is where a round's
+worth of them is answered in one pass after the race. Every unnamed report is
+listed under its round with a driver dropdown, and where the round's result
+file can say which car was on the other side of the contact, that driver is
+already picked for you. Check it against the replay, change what is wrong,
+press the button once. Everyone named is let into their thread and told.
+
+**Naming a driver cannot be undone.** It lets them in and tells them, so
+changing it afterwards would leave somebody sitting in a thread that is no
+longer about them, having already read it. Nobody can re-point a report that
+already names somebody — not the reporter, not a steward. A report aimed at
+the wrong driver is deleted and filed again.
+
+**Deciding a penalty still does not store it. Opening the round types it in.**
+The points come from the results editor and only from there, so two screens can
+never disagree about a championship. What the editor no longer needs is your
+memory: open a round in **Edit Results** and every penalty the stewards decided
+for it is already in the Penalty column, with a line above the table saying
+which cells were filled in for you. Nothing is stored until you press **Save
+results** — change a number first if you disagree with it, and the one you
+saved is the one that counts.
+
+Saving is also what marks those seconds as entered, so opening the round again
+leaves them alone instead of adding another five. Correct a verdict from 5s to
+10s afterwards and the next visit adds the missing five; reverse a penalty that
+was already entered and the next visit takes its seconds back off. The panel
+under the table shows every decided penalty against what is actually in the
+table — including a penalty that names nobody, which cannot go on a row until
+somebody says who it was about.
 
 A report reads as a conversation: what was reported is the first message, and
 everyone on the thread writes underneath it. Pictures, clips and PDFs can be

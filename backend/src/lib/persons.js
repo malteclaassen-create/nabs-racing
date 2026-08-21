@@ -81,6 +81,54 @@ export async function dbLinkDrivers(prisma, driverIds) {
   return personId;
 }
 
+// Merge what the duplicate rows of one person left lying about, now that the
+// league knows they are one person.
+//
+// Only their ANSWERS, and only where two rows of the same person answered the
+// same race. That is the thing linking was supposed to fix and did not: the
+// admin links "urma" to "urmagaeddon", and the entry list still shows both,
+// because each row carries its own sign-up. The newest answer is the one the
+// person meant (they changed their mind, or simply answered again from the row
+// their login had moved to), so it stays and the older ones go.
+//
+// It deliberately does NOT merge the driver ROWS. Those are per-season on
+// purpose — a season's results, team and standings all hang off them, and
+// deleting one to tidy an entry list would take a career with it. The rows stay
+// exactly where they are; what disappears is the second answer.
+//
+// Returns how many were cleared, so the admin is told rather than left to
+// notice. Never throws: linking must succeed even if the cleanup cannot.
+export async function dbMergeDuplicateAnswers(prisma, driverIds) {
+  const ids = [...new Set((driverIds || []).filter(Boolean))];
+  if (ids.length < 2) return 0;
+  try {
+    const rsvps = await prisma.raceRsvp.findMany({
+      where: { driverId: { in: ids } },
+      select: { id: true, raceId: true, driverId: true, updatedAt: true },
+    });
+    // Per race: keep the newest answer, drop the rest. Answers on races where
+    // only one of the rows spoke are left completely alone.
+    const byRace = new Map();
+    for (const r of rsvps) {
+      if (!byRace.has(r.raceId)) byRace.set(r.raceId, []);
+      byRace.get(r.raceId).push(r);
+    }
+    const stale = [];
+    for (const answers of byRace.values()) {
+      if (answers.length < 2) continue;
+      const newest = answers.reduce((a, b) =>
+        (new Date(b.updatedAt || 0).getTime() || 0) > (new Date(a.updatedAt || 0).getTime() || 0) ? b : a
+      );
+      for (const a of answers) if (a.id !== newest.id) stale.push(a.id);
+    }
+    if (!stale.length) return 0;
+    const { count } = await prisma.raceRsvp.deleteMany({ where: { id: { in: stale } } });
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
 export async function dbUnlinkDriver(prisma, driverId) {
   await prisma.$executeRaw`DELETE FROM "PersonLink" WHERE "driverId" = ${driverId}`;
 }

@@ -597,6 +597,13 @@ model Report {
   incidentAt        DateTime?
   verdict           String?
   penaltySeconds    Int?
+  // How much of `penaltySeconds` has actually been written into a
+  // classification, and when. The results editor fills a decided penalty into
+  // its penalty column by itself, and these are what stop a second visit
+  // stacking the same seconds on again — a corrected verdict leaves the two
+  // numbers differing, and the difference is what still has to be added.
+  appliedSeconds    Int?
+  appliedAt         DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime?
 

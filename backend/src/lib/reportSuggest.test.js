@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rankContacts } from "./reportSuggest.js";
+import { rankContacts, withAccusedSuggestions } from "./reportSuggest.js";
 
 // One driver's own contacts for a round, in the shape contactsForDriver hands
 // out: `lap` is already theirs, `other` is the car on the far side.
@@ -87,5 +87,66 @@ describe("rankContacts", () => {
     expect(rankContacts([], { lap: 5 })).toEqual([]);
     expect(rankContacts(null, { lap: 5 })).toEqual([]);
     expect(rankContacts([{ ...c(1, null, 20, "Flo") }], { lap: 5 })).toEqual([]);
+  });
+});
+
+// Who the file says was on the other side of a report that names nobody.
+//
+// A suggestion, never an accusation: it is prefilled into a dropdown a steward
+// confirms. Assetto Corsa is good at "these two cars touched" and knows nothing
+// whatever about fault.
+describe("withAccusedSuggestions", () => {
+  // The roster, by the Steam id each driver races under. urmagaeddon has rows
+  // in two seasons, and the one that is RUNNING is who they are now.
+  const prisma = {
+    driver: {
+      findMany: async ({ where }) =>
+        [
+          { id: "d-old", name: "urma", steamId: "g-urmagaeddon", season: { isActive: false, number: 6 } },
+          { id: "d-new", name: "urmagaeddon", steamId: "g-urmagaeddon", season: { isActive: true, number: 7 } },
+          { id: "d-steve", name: "Steve", steamId: "g-Steve", season: { isActive: true, number: 7 } },
+        ].filter((d) => where.steamId.in.includes(d.steamId)),
+    },
+  };
+
+  it("offers the car the press was matched to, and says so", async () => {
+    const [out] = await withAccusedSuggestions(prisma, [
+      { id: "r1", accusedDriverId: null, contactOther: { name: "urmagaeddon", guid: "g-urmagaeddon" } },
+    ]);
+    expect(out.accusedSuggestion).toEqual({ driverId: "d-new", name: "urmagaeddon", from: "matched" });
+  });
+
+  it("falls back to the best contact the file offered for the lap", async () => {
+    const [out] = await withAccusedSuggestions(prisma, [
+      {
+        id: "r1",
+        accusedDriverId: null,
+        contactSuggestions: [{ other: { name: "Steve", guid: "g-Steve" } }, { other: { name: "x", guid: "g-x" } }],
+      },
+    ]);
+    expect(out.accusedSuggestion).toEqual({ driverId: "d-steve", name: "Steve", from: "suggested" });
+  });
+
+  it("says the name without a driver when nobody on the roster races under it", async () => {
+    // Worth showing anyway: the steward can go and find whose it is. What it
+    // must not do is hand back an id nobody stands behind.
+    const [out] = await withAccusedSuggestions(prisma, [
+      { id: "r1", accusedDriverId: null, contactOther: { name: "A Stranger", guid: "g-nobody" } },
+    ]);
+    expect(out.accusedSuggestion).toEqual({ driverId: null, name: "A Stranger", from: "matched" });
+  });
+
+  it("never suggests anything for a report that already names somebody", async () => {
+    // Naming a driver lets them in and tells them, so a report that has one is
+    // settled — offering a second name would be offering to re-point it.
+    const [out] = await withAccusedSuggestions(prisma, [
+      { id: "r1", accusedDriverId: "d-steve", contactOther: { name: "urmagaeddon", guid: "g-urmagaeddon" } },
+    ]);
+    expect(out.accusedSuggestion).toBeUndefined();
+  });
+
+  it("leaves a report the file has nothing on exactly as it was", async () => {
+    const input = [{ id: "r1", accusedDriverId: null }];
+    expect(await withAccusedSuggestions(prisma, input)).toEqual(input);
   });
 });
