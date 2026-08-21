@@ -1075,10 +1075,13 @@ function ChampionshipProjection({ data }) {
   // Rows glide to their new slot when the running order changes mid-race.
   const bodyRef = useRef(null);
   useFlipList(bodyRef, data.updatedAt);
-  const rowsIn = useOneShotCascade(rows.length > 0);
   // Keep the table to competitors who matter for the title picture: everyone
   // in the running race plus anyone who already has points on the board.
+  // (Declared BEFORE its first use: reading `rows` a line above its `const`
+  // threw on every render, and the whole Standings view fell into the error
+  // boundary the one day a year it is actually on screen.)
   const rows = data.drivers.filter((d) => d.livePosition != null || d.dnf || d.total > 0 || d.currentTotal > 0);
+  const rowsIn = useOneShotCascade(rows.length > 0);
   const shown = showAll ? rows : rows.slice(0, LIMIT);
   return (
     <section className="reveal space-y-4">

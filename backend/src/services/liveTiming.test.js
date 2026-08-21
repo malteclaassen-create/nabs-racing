@@ -76,6 +76,79 @@ describe("liveTiming stint accumulation", () => {
     expect(stintsFor("g1")).toEqual([{ tyre: "M", laps: 9 }]);
   });
 
+  it("Race start: the stale quali compound settling is a relabel, not a ghost stint", () => {
+    // The first snapshot of a race names the compound left over from quali;
+    // the correction lands while the field is still on the opening lap. This
+    // painted a one-lap supersoft stint nobody ever raced (2026-08-21).
+    accumulateStints(snap({ type: 3, laps: 1, tyre: "SS" }));
+    accumulateStints(snap({ type: 3, laps: 1, tyre: "M" }));
+    accumulateStints(snap({ type: 3, laps: 18, tyre: "M" }));
+    expect(stintsFor("g1")).toEqual([{ tyre: "M", laps: 18 }]);
+  });
+
+  it("Race start: the correction still relabels when it only lands on lap 2", () => {
+    accumulateStints(snap({ type: 3, laps: 1, tyre: "SS" }));
+    accumulateStints(snap({ type: 3, laps: 2, tyre: "SS" }));
+    accumulateStints(snap({ type: 3, laps: 2, tyre: "M" }));
+    accumulateStints(snap({ type: 3, laps: 18, tyre: "M" }));
+    expect(stintsFor("g1")).toEqual([{ tyre: "M", laps: 18 }]);
+  });
+
+  it("Race start: a genuine opening-lap stop is NOT swallowed by the settle rule", () => {
+    // Pit counter and compound change arrive together: that is a real stop,
+    // however early — both stints stay.
+    accumulateStints(snap({ type: 3, laps: 1, tyre: "SS" }));
+    accumulateStints(snap({ type: 3, laps: 2, tyre: "M", pits: 1, inPits: true }));
+    accumulateStints(snap({ type: 3, laps: 18, tyre: "M", pits: 1 }));
+    const stints = stintsFor("g1");
+    expect(stints.length).toBe(2);
+    expect(stints[0].tyre).toBe("SS");
+    expect(stints[1].tyre).toBe("M");
+  });
+
+  it("Race: pit counter lagging the compound change is ONE stop, not a doubled stint", () => {
+    // The stop's new compound shows a snapshot before NumPits rises (the
+    // counter lags; pitRecorder documents the same). This opened two stints —
+    // the doubled M-M discs on the strategy graphic (2026-08-21).
+    accumulateStints(snap({ type: 3, laps: 1, tyre: "S" }));
+    accumulateStints(snap({ type: 3, laps: 10, tyre: "S" }));
+    accumulateStints(snap({ type: 3, laps: 10, tyre: "M" })); // compound first…
+    accumulateStints(snap({ type: 3, laps: 11, tyre: "M", pits: 1 })); // …counter catches up
+    accumulateStints(snap({ type: 3, laps: 18, tyre: "M", pits: 1 }));
+    expect(stintsFor("g1")).toEqual([
+      { tyre: "S", laps: 10 },
+      { tyre: "M", laps: 9 },
+    ]);
+  });
+
+  it("Race: the stop's new compound landing a snapshot late relabels the pit stint", () => {
+    // The mirror order: NumPits rises while the feed still names the old
+    // rubber, the new compound arrives next snapshot. Relabel, don't split.
+    accumulateStints(snap({ type: 3, laps: 1, tyre: "S" }));
+    accumulateStints(snap({ type: 3, laps: 10, tyre: "S" }));
+    accumulateStints(snap({ type: 3, laps: 10, tyre: "S", pits: 1, inPits: true })); // counter first…
+    accumulateStints(snap({ type: 3, laps: 10, tyre: "M", pits: 1 })); // …compound catches up
+    accumulateStints(snap({ type: 3, laps: 18, tyre: "M", pits: 1 }));
+    expect(stintsFor("g1")).toEqual([
+      { tyre: "S", laps: 10 },
+      { tyre: "M", laps: 9 },
+    ]);
+  });
+
+  it("Race: a compound change deep into a stint still splits (counter never rises)", () => {
+    // The settle rule must not relabel a stint someone actually raced: the
+    // change comes at lap 9 of a lap-1 stint, so it breaks the stint even
+    // though the counter never confirms (the importer sorts out the truth).
+    accumulateStints(snap({ type: 3, laps: 1, tyre: "S" }));
+    accumulateStints(snap({ type: 3, laps: 9, tyre: "S" }));
+    accumulateStints(snap({ type: 3, laps: 9, tyre: "M" }));
+    accumulateStints(snap({ type: 3, laps: 12, tyre: "M" }));
+    const stints = stintsFor("g1");
+    expect(stints.length).toBe(2);
+    expect(stints[0]).toEqual({ tyre: "S", laps: 9 });
+    expect(stints[1].tyre).toBe("M");
+  });
+
   it("Sitting in the pits at session start opens no stint until the driver heads out", () => {
     accumulateStints(snap({ type: 1, laps: 0, inPits: true }));
     expect(stintsFor("g1")).toEqual([]); // no spurious reset, no phantom stint
