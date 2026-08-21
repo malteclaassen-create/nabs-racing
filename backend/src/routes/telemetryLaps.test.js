@@ -135,6 +135,47 @@ describe("a lap arriving", () => {
   });
 });
 
+describe("the recorder's own voice", () => {
+  // Both beacons ride the query string alone — the script sends them without
+  // JSON on purpose, so the site must not need a body to understand them.
+  it("records the recorder saying hello from a car, facts included", async () => {
+    const info = "steam yes, json yes, spline 0.312, csp 3898";
+    const res = await post(
+      `?key=${KEY}&hello=1&name=TheFakeTB&track=most&info=${encodeURIComponent(info)}`,
+      {}
+    );
+    expect(await res.json()).toMatchObject({ ok: true });
+    const a = readTelemetryActivity();
+    const [event] = a.events;
+    expect(event.outcome).toBe("car-alive");
+    expect(event.name).toBe("TheFakeTB");
+    expect(event.track).toBe("most");
+    expect(event.detail).toBe(info);
+    // A hello is not a lap: the split the card is built on stays honest.
+    expect(a.lapsArrived).toBe(0);
+  });
+
+  it("records a lap the car held back, with the reason and the time", async () => {
+    const res = await post(
+      `?key=${KEY}&diag=${encodeURIComponent("pit lane")}&name=TheFakeTB&track=most&lapms=59800`,
+      {}
+    );
+    expect(await res.json()).toMatchObject({ ok: true });
+    const a = readTelemetryActivity();
+    const [event] = a.events;
+    expect(event.outcome).toBe("car-skipped");
+    expect(event.detail).toBe("pit lane");
+    expect(event.lapTimeMs).toBe(59800);
+    expect(a.lapsArrived).toBe(0);
+  });
+
+  it("turns a beacon with a wrong key away like anything else", async () => {
+    const res = await post("?key=deadbeefdeadbeefdeadbeefdeadbeef&hello=1", {});
+    expect(res.status).toBe(401);
+    expect(readTelemetryActivity().outcomes["car-alive"].count).toBe(0);
+  });
+});
+
 describe("the ways in that are not laps", () => {
   it("answers the connection test without inventing a lap", async () => {
     const res = await post(`?key=${KEY}&ping=1`, {});

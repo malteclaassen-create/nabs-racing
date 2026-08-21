@@ -38,6 +38,12 @@ export const OUTCOMES = {
   "lap-kept": "Lap stored",
   "lap-slower": "Lap arrived, not stored (slower than the three kept)",
   "lap-refused": "Lap refused",
+  // The recorder speaking from inside a car: proof of life on its first tick,
+  // and the fate of every finished lap it chose not to send. These two are
+  // what split "no clean lap yet" from "the recorder is broken" — the one
+  // split the counters above cannot make.
+  "car-alive": "Recorder started in a car",
+  "car-skipped": "Lap finished in the car, not sent",
   ping: "Connection test",
   "bad-key": "Post refused — wrong key",
   off: "Post refused — recording is switched off",

@@ -61,6 +61,8 @@ const EVENT_LABEL = {
   "lap-kept": "Lap stored",
   "lap-slower": "Lap arrived (slower)",
   "lap-refused": "Lap refused",
+  "car-alive": "Recorder alive in a car",
+  "car-skipped": "Lap held back in the car",
   ping: "Connection test",
   "bad-key": "Wrong key",
   off: "Recording off",
@@ -98,16 +100,27 @@ function IngestActivity({ configured }) {
       .sort()
       .pop() || null;
 
+  // The recorder speaking from inside a car (lib/telemetryIngestLog.js): the
+  // split "scripts, no laps" could not make on its own. Alive means the script
+  // runs and reaches the site; skipped means laps are finishing and the rows
+  // below carry the reason each one was held back.
+  const carAlive = data.outcomes?.["car-alive"]?.count || 0;
+  const carSkipped = data.outcomes?.["car-skipped"]?.count || 0;
+
   // One sentence saying what the numbers mean, because the numbers alone still
   // need somebody who knows the chain to read them.
   const verdict =
     laps > 0
       ? "Laps are arriving. If the comparison below is still empty, it is a season or track question, not a recording one."
-      : scripts > 0
-        ? "Cars are being handed the script, so the race server and the key are right. Nothing has posted a lap yet — either nobody has set a clean one (four wheels off or the pit lane and it is never sent), or the recorder is failing in the car. That is the Lua debug console's answer, filter nabsTelemetry."
-        : refused > 0
-          ? "Something is knocking and being turned away. The reasons are listed below — a wrong key means the race server's config and this card have drifted apart."
-          : "Nothing has asked for the script and nothing has posted. That points at the race server rather than at the site: the snippet missing, a restart it has not had, or it sitting on the server nobody was driving on.";
+      : carSkipped > 0
+        ? "The recorder is running and laps are being finished, but every one was held back — the rows below say why each time. Pit-lane and off-track laps are never sent, and “slower than sent” is the recorder working; “incomplete” or “no steam id” on every lap is a bug to report."
+        : carAlive > 0
+          ? "The recorder is running in the car and can reach the site — nobody has finished a lap since it started. One full lap, and its fate appears here either way."
+          : scripts > 0
+            ? "Cars are being handed the script, but it has never spoken from inside a car — no hello, no lap. Either nobody has driven since, or the script cannot run or reach the site from the game. That is the Lua debug console's answer, filter nabsTelemetry."
+            : refused > 0
+              ? "Something is knocking and being turned away. The reasons are listed below — a wrong key means the race server's config and this card have drifted apart."
+              : "Nothing has asked for the script and nothing has posted. That points at the race server rather than at the site: the snippet missing, a restart it has not had, or it sitting on the server nobody was driving on.";
 
   return (
     <div className="card overflow-hidden">
