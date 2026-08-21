@@ -260,6 +260,22 @@ export function shrink(v, n, fieldMean) {
   return (n * v + SHRINK_K * fieldMean) / (n + SHRINK_K);
 }
 
+// Percentile for the season's per-start rates (finish rate, DNFs, podiums,
+// contacts, overtakes, env hits, in-game penalties, cuts). These are
+// zero-inflated — most of the field shares the same raw value, usually 0 — so
+// the career-signal recipe (shrink the value, then rank it) backfires here:
+// after shrinkage the only difference left between two clean drivers is their
+// sample size, and the strict ranking then calls a clean part-timer "bottom
+// 3% of the field" on penalties while every clean regular's untouched 0
+// counts as strictly better. Rank the RAW rate instead (ties share the middle
+// of their block), then pull the percentile itself toward neutral for small
+// samples — so uncertainty reads as mid-field, never as worse than drivers
+// with a genuinely worse record.
+export function ratePercentile(v, n, arr, higherBetter) {
+  if (v == null) return 0.5;
+  return shrink(percentile(v, arr, higherBetter), n, 0.5);
+}
+
 // Round a 0..1 component share to three decimals for the API payload.
 function r3(x) {
   return Math.round((Number(x) || 0) * 1000) / 1000;
@@ -469,18 +485,12 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     poleGap: mean(refField.map((m) => m.careerPoleGap).filter((x) => x != null)),
     finishNorm: mean(refField.map((m) => m.avgFinishNorm).filter((x) => x != null)),
     gained: mean(refField.map((m) => m.avgGained).filter((x) => x != null)),
-    finishRate: mean(refField.map((m) => m.finishRate).filter((x) => x != null)),
-    dnfRate: mean(refField.map((m) => m.dnfRate).filter((x) => x != null)),
-    podiumRate: mean(refField.map((m) => m.podiumRate).filter((x) => x != null)),
-    contactsRate: mean(refField.map((m) => m.contactsRate).filter((x) => x != null)),
-    overtakesRate: mean(refField.map((m) => m.overtakesRate).filter((x) => x != null)),
-    envRate: mean(refField.map((m) => m.envRate).filter((x) => x != null)),
-    penaltyRate: mean(refField.map((m) => m.penaltyRate).filter((x) => x != null)),
-    cutsRate: mean(refField.map((m) => m.cutsRate).filter((x) => x != null)),
   };
 
-  // Reference distributions (after the same shrinkage we apply per driver), so a
-  // driver is compared like-for-like against the regulars.
+  // Reference distributions. The continuous signals (pace, finish position,
+  // places gained) get the same shrinkage we apply per driver, so a driver is
+  // compared like-for-like against the regulars. The per-start rates stay RAW
+  // — they are ranked unshrunk by ratePercentile (see there for why).
   const refDist = {
     lapGap: refField.map((m) => shrink(m.careerLapGap, m.nCareerLap, refMean.lapGap)),
     gridNorm: refField.map((m) => shrink(m.careerGridNorm, m.nCareerGrid, refMean.gridNorm)),
@@ -492,14 +502,14 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
       .filter((x) => x != null),
     finishNorm: refField.map((m) => shrink(m.avgFinishNorm, m.nFinish, refMean.finishNorm)),
     gained: refField.map((m) => shrink(m.avgGained, m.nGained, refMean.gained)),
-    finishRate: refField.map((m) => shrink(m.finishRate, m.starts, refMean.finishRate)),
-    dnfRate: refField.map((m) => shrink(m.dnfRate, m.starts, refMean.dnfRate)),
-    podiumRate: refField.map((m) => shrink(m.podiumRate, m.starts, refMean.podiumRate)),
-    contactsRate: refField.map((m) => shrink(m.contactsRate, m.starts, refMean.contactsRate)),
-    overtakesRate: refField.map((m) => shrink(m.overtakesRate, m.starts, refMean.overtakesRate)),
-    envRate: refField.map((m) => shrink(m.envRate, m.starts, refMean.envRate)),
-    penaltyRate: refField.map((m) => shrink(m.penaltyRate, m.starts, refMean.penaltyRate)),
-    cutsRate: refField.map((m) => shrink(m.cutsRate, m.starts, refMean.cutsRate)),
+    finishRate: refField.map((m) => m.finishRate).filter((x) => x != null),
+    dnfRate: refField.map((m) => m.dnfRate).filter((x) => x != null),
+    podiumRate: refField.map((m) => m.podiumRate).filter((x) => x != null),
+    contactsRate: refField.map((m) => m.contactsRate).filter((x) => x != null),
+    overtakesRate: refField.map((m) => m.overtakesRate).filter((x) => x != null),
+    envRate: refField.map((m) => m.envRate).filter((x) => x != null),
+    penaltyRate: refField.map((m) => m.penaltyRate).filter((x) => x != null),
+    cutsRate: refField.map((m) => m.cutsRate).filter((x) => x != null),
     spread: refField.map((m) => m.finishSpread).filter((x) => x != null),
     consistencyMs: refField.map((m) => m.lapConsistencyMs).filter((x) => x != null),
   };
@@ -521,9 +531,9 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
         : 0.5;
     const pFinish = percentile(shrink(m.avgFinishNorm, m.nFinish, refMean.finishNorm), refDist.finishNorm, false);
     const pGained = percentile(shrink(m.avgGained, m.nGained, refMean.gained), refDist.gained, true);
-    const pPodium = percentile(shrink(m.podiumRate, m.starts, refMean.podiumRate), refDist.podiumRate, true);
-    const pFinishRate = percentile(shrink(m.finishRate, m.starts, refMean.finishRate), refDist.finishRate, true);
-    const pDnf = percentile(shrink(m.dnfRate, m.starts, refMean.dnfRate), refDist.dnfRate, false);
+    const pPodium = ratePercentile(m.podiumRate, m.starts, refDist.podiumRate, true);
+    const pFinishRate = ratePercentile(m.finishRate, m.starts, refDist.finishRate, true);
+    const pDnf = ratePercentile(m.dnfRate, m.starts, refDist.dnfRate, false);
     // Consistency: lap-time spread of clean laps (lower better) when telemetry
     // exists, else fall back to finishing-position spread so old seasons still
     // get a signal, else neutral.
@@ -533,19 +543,11 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
         : m.finishSpread != null
           ? percentile(m.finishSpread, refDist.spread, false)
           : 0.5;
-    const pContacts = percentile(shrink(m.contactsRate, m.starts, refMean.contactsRate), refDist.contactsRate, false);
-    const pOvertakes = m.overtakesRate != null
-      ? percentile(shrink(m.overtakesRate, m.starts, refMean.overtakesRate), refDist.overtakesRate, true)
-      : 0.5;
-    const pEnv = m.envRate != null
-      ? percentile(shrink(m.envRate, m.starts, refMean.envRate), refDist.envRate, false)
-      : 0.5;
-    const pPenalties = m.penaltyRate != null
-      ? percentile(shrink(m.penaltyRate, m.starts, refMean.penaltyRate), refDist.penaltyRate, false)
-      : 0.5;
-    const pCuts = m.cutsRate != null
-      ? percentile(shrink(m.cutsRate, m.starts, refMean.cutsRate), refDist.cutsRate, false)
-      : 0.5;
+    const pContacts = ratePercentile(m.contactsRate, m.starts, refDist.contactsRate, false);
+    const pOvertakes = ratePercentile(m.overtakesRate, m.starts, refDist.overtakesRate, true);
+    const pEnv = ratePercentile(m.envRate, m.starts, refDist.envRate, false);
+    const pPenalties = ratePercentile(m.penaltyRate, m.starts, refDist.penaltyRate, false);
+    const pCuts = ratePercentile(m.cutsRate, m.starts, refDist.cutsRate, false);
     // EXPERIENCE — the admin's career formula, absolute (no percentile):
     // starts toward 60, recency-weighted championship record, all-or-nothing
     // finishing block, and share of window seasons raced. The 35..99 scale
