@@ -545,13 +545,42 @@ function createRelay(server) {
       } else if (!cur) {
         st.stints.push({ tyre: tyre || "?", fromLap: lap, toLap: lap });
         if (st.stints.length > MAX_STINTS) st.stints.shift();
+      } else if (
+        tyreChanged &&
+        !pitted &&
+        // The compound READING settling, not the compound changing. Two shapes,
+        // both born from the ~30s snapshot cadence and both seen as ghost discs
+        // on race night (2026-08-21):
+        //   - a stint so young the driver hasn't completed a lap on it — the
+        //     upstream named the OLD compound when the stint opened (a fresh
+        //     stop's new tyre lands a snapshot late);
+        //   - the FIRST stint of a session while the field is still on its
+        //     opening laps — the first snapshot carries the compound left over
+        //     from qualifying, and splitting on the correction painted a
+        //     one-lap stint of rubber that was never raced.
+        // A car cannot change compound without pitting, so with the pit counter
+        // still flat this is a correction: relabel the stint, don't split it.
+        ((lap === cur.fromLap && cur.toLap === cur.fromLap) ||
+          (st.stints.length === 1 && !cur.pitted && cur.fromLap === 1 && lap <= 2))
+      ) {
+        cur.tyre = tyre;
+        if (lap > cur.toLap) cur.toLap = lap;
+      } else if (pitted && !tyreChanged && cur.tc && lap - cur.fromLap <= 1) {
+        // The server's pit counter catching up with a compound change that
+        // already opened this stint (the counter lags the snapshot; the
+        // recorder documents the same). One stop, not two: promote the guess
+        // to a counted fact instead of opening a doubled same-compound stint.
+        cur.pitted = true;
+        cur.tc = false;
+        if (lap > cur.toLap) cur.toLap = lap;
       } else if (pitted || tyreChanged) {
         cur.toLap = lap;
         // Remember WHY the stint broke. The server's own pit counter rising is
         // a fact; a compound that merely looks different is a guess, and the
         // repair pass in stintsFor is allowed to undo the guess but not the
-        // fact (see the note there).
-        st.stints.push({ tyre: tyre || cur.tyre, fromLap: lap, toLap: lap, pitted });
+        // fact (see the note there). `tc` marks the guess so a counter rising
+        // one snapshot later can claim this stint instead of opening another.
+        st.stints.push({ tyre: tyre || cur.tyre, fromLap: lap, toLap: lap, pitted, tc: tyreChanged && !pitted });
         if (st.stints.length > MAX_STINTS) st.stints.shift();
       } else {
         if (lap > cur.toLap) cur.toLap = lap;
