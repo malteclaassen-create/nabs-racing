@@ -16,6 +16,7 @@ import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
 import { telemetryReadGate } from "../lib/telemetryAccess.js";
 import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId, isLapId, pruneSeasonsBefore } from "../lib/telemetryLaps.js";
+import { recordTelemetryEvent } from "../lib/telemetryIngestLog.js";
 import { getNameOverrides } from "../lib/persons.js";
 import { ensureTrackMap } from "../lib/trackMaps.js";
 import { resolveSeason } from "../services/seasonService.js";
@@ -57,21 +58,46 @@ async function ingestKey() {
 router.post("/ingest", async (req, res, next) => {
   try {
     const secret = await ingestKey();
-    if (!secret) return res.status(503).json({ error: "Telemetry recording is switched off" });
-    if (String(req.query.key || "") !== secret) return res.status(401).json({ error: "Bad key" });
+    if (!secret) {
+      recordTelemetryEvent("off");
+      return res.status(503).json({ error: "Telemetry recording is switched off" });
+    }
+    if (String(req.query.key || "") !== secret) {
+      recordTelemetryEvent("bad-key");
+      return res.status(401).json({ error: "Bad key" });
+    }
     // The app's Test button: proves URL + key without inventing a fake lap.
-    if (req.query.ping) return res.json({ ok: true, pong: true });
-    if (flooded()) return res.status(429).json({ error: "Too many laps at once" });
+    if (req.query.ping) {
+      recordTelemetryEvent("ping");
+      return res.json({ ok: true, pong: true });
+    }
+    if (flooded()) {
+      recordTelemetryEvent("flooded");
+      return res.status(429).json({ error: "Too many laps at once" });
+    }
     hits.push(Date.now());
 
     const parsed = parseLapPayload(req.body);
-    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    if (!parsed.ok) {
+      // The reason, verbatim: "Bad steamId" and "Implausible lap time" send
+      // somebody to two different places, and the script cannot report either.
+      recordTelemetryEvent("lap-refused", { detail: parsed.error });
+      return res.status(400).json({ error: parsed.error });
+    }
     // WHICH SEASON this lap belongs to is the site's to say, not the game's:
     // the car knows the track and nothing about the league's calendar. Stamped
     // on arrival, because the league runs different cars each season and a lap
     // is only comparable within one.
     parsed.lap.season = await activeSeasonNumber();
     const result = keepIfFaster(parsed.lap);
+    // A lap that was too slow to keep is still a lap that ARRIVED, and the two
+    // are counted apart for that reason: "not stored" is the recorder working,
+    // not failing.
+    recordTelemetryEvent(result.kept ? "lap-kept" : "lap-slower", {
+      name: parsed.lap.name,
+      track: parsed.lap.trackKey,
+      lapTimeMs: parsed.lap.lapTimeMs,
+    });
     dropOldSeasons(parsed.lap.season);
     grabTrackMap(parsed.lap.track, parsed.lap.layout);
     // `kept` tells the app whether the lap made this driver's stored three, so
@@ -183,7 +209,10 @@ router.get("/app.lua", async (req, res, next) => {
     const secret = await ingestKey();
     // 404, not 401/503: an unauthenticated probe learns nothing, not even
     // whether the feature exists.
-    if (!secret || String(req.query.key || "") !== secret) return res.status(404).end();
+    if (!secret || String(req.query.key || "") !== secret) {
+      recordTelemetryEvent("script-refused");
+      return res.status(404).end();
+    }
     const base = `${req.protocol}://${req.get("host")}`;
     // replaceAll, learned the embarrassing way: the placeholder appears in the
     // template's own header comment too, and .replace() swapped only that one —
@@ -197,6 +226,11 @@ router.get("/app.lua", async (req, res, next) => {
     // No caching: a re-minted key must reach the server's next fetch, not a
     // stale copy of the old script with the dead key inside.
     res.setHeader("Cache-Control", "no-store");
+    // Counted AFTER the key check, so this number means "a car was handed the
+    // recorder" and nothing else. It is the first half of the chain, and the
+    // half a race server's config can break on its own — see
+    // lib/telemetryIngestLog.js for why it is worth a counter at all.
+    recordTelemetryEvent("script-served");
     res.send(src);
   } catch (e) {
     next(e);

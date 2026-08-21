@@ -26,7 +26,8 @@ import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from 
 import { parseFormatNumber } from "../lib/raceFormat.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { writeRaceHero } from "../lib/raceHero.js";
-import { deleteLap as deleteTelemetryLap } from "../lib/telemetryLaps.js";
+import { deleteLap as deleteTelemetryLap, storedSummary as telemetryStoredSummary } from "../lib/telemetryLaps.js";
+import { readTelemetryActivity } from "../lib/telemetryIngestLog.js";
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
 import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
@@ -5399,6 +5400,30 @@ router.put("/telemetry-ingest", async (req, res, next) => {
       update: { value },
     });
     res.json({ ok: true, configured: !!value, key: value || null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/telemetry-activity — is anything actually arriving.
+//
+// The recording half of this feature is silent by design: the in-game script
+// draws nothing, and a refused post is a status code nobody sees. So an empty
+// comparison looked identical whether the race server never handed the script
+// out, the key had been re-minted underneath it, or the cars were posting and
+// nobody had set a clean lap yet. This is what tells those apart — counters
+// since the process started (lib/telemetryIngestLog.js), plus what is on disk,
+// which is the part that survives a restart.
+router.get("/telemetry-activity", async (req, res, next) => {
+  try {
+    const season = await activeSeasonForTelemetry();
+    res.json({
+      season,
+      ...readTelemetryActivity(),
+      // `legacy` for the same reason the read endpoints pass it: laps recorded
+      // before the store had seasons can only belong to the one running now.
+      stored: telemetryStoredSummary(season, true),
+    });
   } catch (e) {
     next(e);
   }
