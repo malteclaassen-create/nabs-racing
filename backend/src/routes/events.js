@@ -6,7 +6,10 @@ import { resolveSeasonId, getPrivateSeasonIds } from "../services/seasonService.
 import { resolveSeries, seasonIdsOfSeries } from "../lib/series.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
-import { seasonRowForDriver, dbLinkDrivers, getIdentityOverrides } from "../lib/persons.js";
+import {
+  seasonRowForDriver, dbLinkDrivers, getIdentityOverrides, getPersonGroups,
+} from "../lib/persons.js";
+import { collapseByPerson, byNewestAnswer, duplicateRsvps } from "../lib/onePerPerson.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import { applyMemberSteamId } from "../lib/members.js";
 import { readNotifySettings } from "../lib/notifications.js";
@@ -124,10 +127,25 @@ router.get("/", async (req, res, next) => {
     const format = await readRaceFormat(prisma, races.map((r) => r.id));
 
     // Sign-up gating + which answer columns the page shows (admin-configured).
-    const [notify, overrides, identity] = await Promise.all([
+    //
+    // `people` is what keeps one human to one line. A person with two roster
+    // rows in this season — signed up, renamed, logged in again — had an answer
+    // on each, so the entry list showed them twice and the grid counted them
+    // twice. The links say the two rows are one person; this is that knowledge
+    // applied (see lib/onePerPerson.js).
+    //
+    // The name is the surviving ROW's own, deliberately, and NOT the person's
+    // "current" one from getNameOverrides. That resolves to the name on the
+    // highest-numbered season, which cannot tell two rows of the SAME season
+    // apart and keeps whichever the database returned first — so on the very
+    // case this fixes it relabelled the answer somebody had just given with the
+    // handle they had stopped using. The row they answered from is the row they
+    // are using, and its name is the one they go by.
+    const [notify, overrides, identity, people] = await Promise.all([
       readNotifySettings(prisma),
       readAttendanceOverrides(prisma),
       getIdentityOverrides(prisma),
+      getPersonGroups(prisma),
     ]);
 
     const events = races.map((race) => {
@@ -144,7 +162,9 @@ router.get("/", async (req, res, next) => {
         swaps.set(o.filledById, { direction: "IN", team, forName: o.driver?.name || null });
         swaps.set(o.driverId, { direction: "OUT", team, forName: o.filledBy?.name || null });
       }
-      for (const r of race.rsvps) {
+      // One answer per person, newest first — see lib/onePerPerson.js.
+      const answers = collapseByPerson(race.rsvps, people.byDriver, byNewestAnswer).kept;
+      for (const r of answers) {
         const swap = swaps.get(r.driverId) || null;
         (grouped[r.status] || (grouped[r.status] = [])).push({
           driverId: r.driverId,
@@ -270,6 +290,17 @@ async function standingSeatOffer(raceId, driverId) {
   });
 }
 
+// Delete the answers this person left on their OTHER rows for one race, having
+// just answered on `driverId`. Best-effort by design: an answer that was
+// recorded must never be lost because the tidying up behind it failed.
+async function clearOtherAnswers(raceId, driverId) {
+  const { byDriver, byPerson } = await getPersonGroups(prisma);
+  const siblings = (byPerson.get(byDriver.get(driverId)) || []).filter((id) => id !== driverId);
+  if (!siblings.length) return 0;
+  const { count } = await prisma.raceRsvp.deleteMany({ where: { raceId, driverId: { in: siblings } } });
+  return count;
+}
+
 // POST /api/events/:id/rsvp  { driverId, status }
 // Upserts the driver's status for the race and syncs the Discord message.
 router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
@@ -343,6 +374,17 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
       update: { status },
       create: { raceId: race.id, driverId: driver.id, status },
     });
+
+    // And take back any answer this PERSON left on another of their rows for
+    // this race. That is how the duplicates got made: sign up, change your
+    // handle, log in again, and the login lands on a second roster row of the
+    // same season — the new answer goes there and the old one sits on the row
+    // nobody is using any more. The entry list already reads people rather
+    // than rows (lib/onePerPerson.js), so this is not what makes the page
+    // right; it is what stops the table quietly filling up with answers that
+    // contradict each other. The one just written is the one they meant, so
+    // it is the one that stays.
+    await clearOtherAnswers(race.id, driver.id).catch(() => {});
 
     // Fire-and-await Discord sync, but don't fail the request if Discord errors.
     const discord = await syncRaceToDiscord(prisma, race.id);

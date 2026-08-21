@@ -73,6 +73,7 @@ import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import {
   dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups,
+  dbMergeDuplicateAnswers,
   getNameOverrides, discordIdsForDrivers,
 } from "../lib/persons.js";
 import {
@@ -96,6 +97,7 @@ import { writeHiddenRace } from "../lib/attendanceHidden.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
 import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
 import { withContactSuggestions, withAccusedSuggestions } from "../lib/reportSuggest.js";
+import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson.js";
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
@@ -2744,7 +2746,12 @@ router.post("/persons/link", async (req, res, next) => {
     const found = await prisma.driver.findMany({ where: { id: { in: ids } }, select: { id: true } });
     if (found.length !== ids.length) return res.status(400).json({ error: "One or more driver ids don't exist" });
     const personId = await dbLinkDrivers(prisma, ids);
-    res.json({ ok: true, personId });
+    // Now that these rows are one person, their duplicated sign-ups are one
+    // answer. Linking used to leave them behind, which is why an entry list
+    // could still show the same driver twice under two handles after the admin
+    // had said they were the same human (see lib/persons.js).
+    const mergedAnswers = await dbMergeDuplicateAnswers(prisma, ids);
+    res.json({ ok: true, personId, mergedAnswers });
   } catch (e) {
     next(e);
   }
@@ -2762,10 +2769,13 @@ router.post("/persons/link-auto", async (req, res, next) => {
       prisma.driver.findMany({ select: { id: true, name: true, discordName: true, seasonId: true } }),
     ]);
     const { linkable, ambiguous } = buildPersonClusters(drivers, groups);
+    let mergedAnswers = 0;
     for (const rows of linkable) {
-      await dbLinkDrivers(prisma, rows.map((r) => r.id));
+      const ids = rows.map((r) => r.id);
+      await dbLinkDrivers(prisma, ids);
+      mergedAnswers += await dbMergeDuplicateAnswers(prisma, ids);
     }
-    res.json({ ok: true, linked: linkable.length, skippedAmbiguous: ambiguous.length });
+    res.json({ ok: true, linked: linkable.length, skippedAmbiguous: ambiguous.length, mergedAnswers });
   } catch (e) {
     next(e);
   }
@@ -4519,6 +4529,12 @@ router.get("/attendance-history", async (req, res, next) => {
       },
     });
     const types = await readRaceTypes(prisma, races.map((r) => r.id));
+    // People, not rows (lib/onePerPerson.js). Somebody with two roster rows in
+    // one season answered on one and raced on the other, which put them in the
+    // counts twice and then accused them of both no-showing and racing
+    // unannounced — for the same evening, in the same table.
+    const people = await getPersonGroups(prisma);
+    const who = (driverId) => personKey(driverId, people.byDriver);
 
     const out = races
       // A race nobody ever answered has nothing to show; listing it would bury
@@ -4526,12 +4542,12 @@ router.get("/attendance-history", async (req, res, next) => {
       .filter((race) => race.rsvps.length > 0)
       .map((race) => {
         const grouped = { ACCEPTED: [], DECLINED: [], TENTATIVE: [] };
-        for (const r of race.rsvps) {
+        for (const r of collapseByPerson(race.rsvps, people.byDriver, byNewestAnswer).kept) {
           (grouped[r.status] || (grouped[r.status] = [])).push({ driverId: r.driverId, name: r.driver.name });
         }
         // "Raced" means classified in any way — a DNF still turned up.
-        const started = new Set(race.results.filter((r) => r.status !== "DNS").map((r) => r.driverId));
-        const answered = new Set(race.rsvps.map((r) => r.driverId));
+        const started = new Set(race.results.filter((r) => r.status !== "DNS").map((r) => who(r.driverId)));
+        const answered = new Set(race.rsvps.map((r) => who(r.driverId)));
         return {
           id: race.id,
           number: race.number,
@@ -4545,10 +4561,10 @@ router.get("/attendance-history", async (req, res, next) => {
           },
           rsvps: grouped,
           // Said yes, never started.
-          noShows: grouped.ACCEPTED.filter((d) => !started.has(d.driverId)).map((d) => d.name),
+          noShows: grouped.ACCEPTED.filter((d) => !started.has(who(d.driverId))).map((d) => d.name),
           // Started without ever answering.
           unannounced: race.results
-            .filter((r) => r.status !== "DNS" && !answered.has(r.driverId))
+            .filter((r) => r.status !== "DNS" && !answered.has(who(r.driverId)))
             .map((r) => r.driver?.name)
             .filter(Boolean),
           starters: started.size,
@@ -4581,7 +4597,7 @@ router.get("/attendance-missing", async (req, res, next) => {
     const race = await prisma.race.findUnique({ where: { id: raceId } });
     if (!race) return res.status(404).json({ error: "Race not found" });
 
-    const [roster, rsvps, nameOverrides] = await Promise.all([
+    const [allRows, rsvps, nameOverrides, people] = await Promise.all([
       prisma.driver.findMany({
         where: { seasonId: race.seasonId, isActive: true },
         include: { team: { select: { name: true, tier: true, color: true } } },
@@ -4589,10 +4605,22 @@ router.get("/attendance-missing", async (req, res, next) => {
       }),
       prisma.raceRsvp.findMany({ where: { raceId: race.id }, select: { driverId: true, status: true } }),
       getNameOverrides(prisma),
+      getPersonGroups(prisma),
     ]);
 
-    const answered = new Set(rsvps.map((r) => r.driverId));
-    const silent = roster.filter((d) => !answered.has(d.id));
+    // People, not rows — the same rule the entry list follows
+    // (lib/onePerPerson.js). Somebody with two roster rows in one season used
+    // to be chased for an answer their other row had already given, and
+    // counted twice in the roster they were being chased against. A row parked
+    // in the Reserve pool loses to one in a real team: the chase list is read
+    // per team, and the person is racing for one of them.
+    const roster = collapseByPerson(
+      allRows.map((d) => ({ ...d, driverId: d.id })),
+      people.byDriver,
+      (d) => ((d.team?.tier ?? d.tier) === 0 ? 0 : 1)
+    ).kept;
+    const answered = new Set(rsvps.map((r) => personKey(r.driverId, people.byDriver)));
+    const silent = roster.filter((d) => !answered.has(personKey(d.id, people.byDriver)));
     const discordIds = await discordIdsForDrivers(prisma, silent.map((d) => d.id)).catch(() => new Map());
 
     const shape = (d) => ({

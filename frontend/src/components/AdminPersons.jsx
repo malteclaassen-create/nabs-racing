@@ -85,6 +85,9 @@ export default function AdminPersons() {
   async function run(fn) {
     setBusy(true);
     setMsg(null);
+    // The last run's summary too: a green line about what the PREVIOUS press
+    // did, still sitting there after the next one, reads as this one's answer.
+    setNote(null);
     try {
       await fn();
       await reload();
@@ -95,7 +98,19 @@ export default function AdminPersons() {
     }
   }
 
-  const linkGroup = (ids) => run(() => api.linkPersons(ids));
+  // What linking cleaned up behind itself. Two entries of one person could each
+  // carry their own sign-up for the same race — which is how an entry list came
+  // to show the same driver twice under two handles. Linking now merges those
+  // into the answer they gave last, and says so: an answer disappearing from a
+  // race is not something to do silently.
+  const mergedNote = (n) =>
+    n ? ` ${n} duplicate sign-up${n === 1 ? "" : "s"} merged into the answer they gave last.` : "";
+
+  const linkGroup = (ids) =>
+    run(async () => {
+      const r = await api.linkPersons(ids);
+      setNote(`Linked.${mergedNote(r?.mergedAnswers)}`);
+    });
   const unlink = (driverId) => run(() => api.unlinkPerson(driverId));
 
   function togglePick(id) {
@@ -118,7 +133,8 @@ export default function AdminPersons() {
             Matching names or Discord handles are linked automatically with the button below, which also catches most
             renames; only someone whose name <em>and</em> handle both changed needs the manual search. Two entries from
             the <em>same</em> season (say, a stint as a reserve and a later seat under a new handle) can be linked too
-            and count as one season in the career.
+            and count as one season in the career — and where both of them signed up for the same race, linking
+            merges those into the answer the person gave last, so the entry list stops showing them twice.
           </p>
 
           {msg && <ErrorBox message={msg} />}
@@ -142,6 +158,7 @@ export default function AdminPersons() {
                       const r = await api.autoLinkPersons();
                       setNote(
                         `Linked ${r.linked} ${r.linked === 1 ? "person" : "people"} automatically.` +
+                          mergedNote(r.mergedAnswers) +
                           (r.skippedAmbiguous
                             ? ` ${r.skippedAmbiguous} group${r.skippedAmbiguous === 1 ? "" : "s"} need${r.skippedAmbiguous === 1 ? "s" : ""} a manual decision (a duplicate entry within one season, or two existing links that would merge).`
                             : "")
@@ -242,7 +259,14 @@ export default function AdminPersons() {
                   <button
                     className="btn-primary py-1 text-sm disabled:opacity-50"
                     disabled={busy}
-                    onClick={() => run(async () => { await api.linkPersons(picks); setPicks([]); setQuery(""); })}
+                    onClick={() =>
+                      run(async () => {
+                        const r = await api.linkPersons(picks);
+                        setPicks([]);
+                        setQuery("");
+                        setNote(`Linked.${mergedNote(r?.mergedAnswers)}`);
+                      })
+                    }
                   >
                     Link {picks.length} entries
                   </button>
