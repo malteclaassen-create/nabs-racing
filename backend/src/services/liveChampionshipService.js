@@ -31,8 +31,85 @@ import {
 import { getActiveSeason, getSeasonScoring } from "./seasonService.js";
 import { getIdentityOverrides } from "../lib/persons.js";
 import { DEFAULT_POINTS_TABLE, getPointsForPosition } from "./pointsCalculator.js";
+import { similarity } from "./acJsonParser.js";
+import { realGuidForPublicId } from "./liveTiming.js";
 
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// Fuzzy-name thresholds, deliberately the LIVE BOARD's strict bar (see
+// frontend data/liveTiming.js) rather than the import's 0.55: an import guess
+// is reviewed by an admin before it is saved, while this goes straight onto a
+// points table with nobody checking. A name must be a clear winner, not the
+// least bad of a crowded field.
+const FUZZY_MIN = 0.8;
+const FUZZY_LEAD = 0.15;
+
+// Map the live field to this season's drivers, most certain evidence first —
+// the same ladder the result import climbs (acJsonParser):
+//   1. the driver's STORED STEAM ID (captured by past imports) against the
+//      car's real guid — identity, immune to any rename or alias;
+//   2. an exact match on roster name / Discord handle;
+//   3. a strict fuzzy name match, for the drift that exact-only matching
+//      silently dropped ("Steven P6. Cheese" for "Steven H. Cheese"): the
+//      driver raced all evening while the projection paid their points to
+//      nobody (2026-08-21, race night).
+// Claims run ladder-rung by ladder-rung across the WHOLE field, so a fuzzy
+// guess can never take a driver whose row stronger evidence already owns.
+// `realGuidFor` is injectable for tests; entries keep their list order.
+export function matchFieldToDrivers({ running, retired, drivers, realGuidFor = realGuidForPublicId }) {
+  const index = new Map();
+  for (const d of drivers) {
+    for (const key of [d.name, d.discordName]) {
+      const k = norm(key);
+      if (k && !index.has(k)) index.set(k, d.id);
+    }
+  }
+  const field = [...running, ...retired];
+  const seen = new Set();
+  const idFor = new Map(); // entry -> driver id
+  const claim = (e, id) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    idFor.set(e, id);
+  };
+  for (const e of field) {
+    const guid = realGuidFor(e.guid);
+    const d = guid ? drivers.find((x) => x.steamId && String(x.steamId) === String(guid)) : null;
+    claim(e, d?.id);
+  }
+  for (const e of field) {
+    if (!idFor.has(e)) claim(e, index.get(norm(e.name)));
+  }
+  for (const e of field) {
+    if (idFor.has(e)) continue;
+    let best = null;
+    let second = 0;
+    for (const d of drivers) {
+      if (seen.has(d.id)) continue; // already claimed by stronger evidence
+      const score = similarity(e.name, d);
+      if (!best || score > best.score) {
+        second = best ? best.score : second;
+        best = { id: d.id, score };
+      } else if (score > second) {
+        second = score;
+      }
+    }
+    if (best && best.score >= FUZZY_MIN && best.score - second >= FUZZY_LEAD) claim(e, best.id);
+  }
+  const split = (list) => {
+    const ids = [];
+    const misses = [];
+    for (const e of list) {
+      const id = idFor.get(e);
+      if (id) ids.push(id);
+      else misses.push(e.name);
+    }
+    return { ids, misses };
+  };
+  const r = split(running);
+  const x = split(retired);
+  return { runningIds: r.ids, retiredIds: x.ids, unmatched: [...r.misses, ...x.misses] };
+}
 
 // The league runs on German time: "a race today" means today's date in Berlin.
 function dayKey(date) {
@@ -113,6 +190,9 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
       id: true,
       name: true,
       discordName: true,
+      // The certain identity for the field matcher (matchFieldToDrivers) —
+      // captured by past result imports, never shipped to the frontend.
+      steamId: true,
       country: true,
       photoUrl: true,
       discordAvatar: true,
@@ -169,31 +249,12 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
       return (b.lapCount || 0) - (a.lapCount || 0) || (b.spline || 0) - (a.spline || 0);
     });
 
-    // Map in-sim names to season drivers (name or Discord handle, normalised).
-    const index = new Map();
-    for (const d of drivers) {
-      for (const key of [d.name, d.discordName]) {
-        const k = norm(key);
-        if (k && !index.has(k)) index.set(k, d.id);
-      }
-    }
-    const seen = new Set();
-    const resolve = (e) => {
-      const id = index.get(norm(e.name));
-      if (!id || seen.has(id)) return null;
-      seen.add(id);
-      return id;
-    };
-    for (const e of running) {
-      const id = resolve(e);
-      if (id) runningIds.push(id);
-      else unmatched.push(e.name);
-    }
-    for (const e of retired) {
-      const id = resolve(e);
-      if (id) retiredIds.push(id);
-      else unmatched.push(e.name);
-    }
+    // Map cars to season drivers: Steam id, exact name, then strict fuzzy —
+    // see matchFieldToDrivers.
+    const matched = matchFieldToDrivers({ running, retired, drivers });
+    runningIds = matched.runningIds;
+    retiredIds = matched.retiredIds;
+    unmatched = matched.unmatched;
 
     // Roster check: a league race is full of league drivers. Too few matches
     // means this is NOT our race — show nothing rather than nonsense.
