@@ -1067,6 +1067,10 @@ export const api = {
   // race server's config was written before the site had one.
   setTelemetryIngest: (enabled, key) =>
     request("/admin/telemetry-ingest", { method: "PUT", body: { enabled, key }, auth: true }),
+  // Is anything actually arriving: script downloads, laps, refusals with their
+  // reasons. Polled by the admin card while it is open, so it stays cheap on
+  // the server side (counters in memory, file names on disk, nothing parsed).
+  telemetryActivity: () => request("/admin/telemetry-activity", { auth: true }),
   // Recorded telemetry laps (public reads; the /tools comparison).
   // Who may read a lap is a switch, not a deploy: admins only until the league
   // flips it, everyone after (backend: lib/telemetryAccess.js). The token rides

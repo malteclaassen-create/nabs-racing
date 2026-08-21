@@ -41,7 +41,7 @@
 // rather than accumulate.
 // ---------------------------------------------------------------------------
 import { join } from "path";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, rmSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, rmSync, statSync } from "fs";
 import { DATA_ROOT } from "./dataDirs.js";
 
 export const TELEMETRY_LAPS_DIR = join(DATA_ROOT, "telemetry-laps");
@@ -410,4 +410,51 @@ export function listLaps(season, trackKey, legacy = false) {
     for (const f of lapFilesOf(season, trackKey, steamId, legacy)) read(f.path, f.lapTimeMs);
   }
   return out.sort((a, b) => a.lapTimeMs - b.lapTimeMs);
+}
+
+// How much is on disk, and when the newest of it landed — the half of the
+// ingest diagnostic that survives a restart (lib/telemetryIngestLog.js holds
+// the other half, and only for as long as the process lives).
+//
+// Deliberately does NOT read the files. A lap is tens of KB of channel arrays
+// and none of it is needed to answer "how many, and how recent": the count is
+// the number of file names and the arrival time is the file's own mtime, which
+// is exactly when the ingest wrote it. listLaps parses every lap it touches,
+// which is the right trade for a comparison and the wrong one for a panel that
+// polls.
+export function storedSummary(season, legacy = false) {
+  let laps = 0;
+  let newest = 0;
+  const walkTrack = (trackDir) => {
+    if (!existsSync(trackDir)) return;
+    for (const entry of readdirSync(trackDir, { withFileTypes: true })) {
+      // A driver folder of laps, or — in the shape that predates seasons — one
+      // lap sitting directly under the track.
+      const paths = entry.isDirectory()
+        ? readdirSync(join(trackDir, entry.name))
+            .filter((f) => f.endsWith(".json"))
+            .map((f) => join(trackDir, entry.name, f))
+        : entry.name.endsWith(".json")
+          ? [join(trackDir, entry.name)]
+          : [];
+      for (const p of paths) {
+        try {
+          newest = Math.max(newest, statSync(p).mtimeMs);
+          laps += 1;
+        } catch {
+          /* a file that vanished between the listing and the stat is not a lap */
+        }
+      }
+    }
+  };
+  const roots = [seasonDir(season), ...(legacy ? [TELEMETRY_LAPS_DIR] : [])];
+  for (const root of roots) {
+    if (!existsSync(root)) continue;
+    for (const name of readdirSync(root)) {
+      // Season folders sit at the root next to the pre-season track folders.
+      if (!isTrackKey(name) || /^s\d+$/.test(name)) continue;
+      walkTrack(join(root, name));
+    }
+  }
+  return { laps, newestAt: newest ? new Date(newest).toISOString() : null };
 }
