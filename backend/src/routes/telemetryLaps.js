@@ -71,6 +71,31 @@ router.post("/ingest", async (req, res, next) => {
       recordTelemetryEvent("ping");
       return res.json({ ok: true, pong: true });
     }
+    // The recorder's own voice, added the night a driver put 23 laps on the
+    // timing screen and this file recorded nothing — with no way to say why
+    // from outside the car. `hello` is the script's proof of life on its first
+    // update tick (with the facts the silent failures hide behind: Steam id,
+    // JSON, CSP build); `diag` is what became of a finished lap it did not
+    // send. Both ride the query string alone, no body, so they survive a game
+    // where JSON is exactly what is broken. Ahead of the flood gate on
+    // purpose: when posts flood, these are what explains the flood.
+    if (req.query.hello) {
+      recordTelemetryEvent("car-alive", {
+        detail: req.query.info,
+        name: req.query.name,
+        track: req.query.track,
+      });
+      return res.json({ ok: true });
+    }
+    if (req.query.diag) {
+      recordTelemetryEvent("car-skipped", {
+        detail: req.query.diag,
+        name: req.query.name,
+        track: req.query.track,
+        lapTimeMs: req.query.lapms,
+      });
+      return res.json({ ok: true });
+    }
     if (flooded()) {
       recordTelemetryEvent("flooded");
       return res.status(429).json({ error: "Too many laps at once" });

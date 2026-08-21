@@ -23,6 +23,16 @@
 -- silent, and a driver who has not read them has no way to know from the game
 -- that a lap was sent. Say it somewhere the drivers actually read.
 --
+-- Silent to the DRIVER, but no longer to the site. The first real evening put
+-- 23 laps on the timing screen and nothing on the card, and every way that can
+-- happen was invisible from outside the car. So the recorder now says hello
+-- once when it starts (with the facts the silent failures hide behind: is
+-- there a Steam id, is there a JSON, does web reach the site at all), and it
+-- reports what became of every finished lap it did NOT send — pit, off track,
+-- incomplete, slower. Both ride in the query string of the same ingest URL,
+-- deliberately without JSON.stringify, so they still arrive from a game where
+-- exactly that is broken. The admin card prints them as rows.
+--
 -- Every engine call is pcall-guarded — an API this build doesn't have must
 -- degrade to "no recording", never to a broken session.
 --------------------------------------------------------------------------------
@@ -38,6 +48,15 @@ local function safeCall(fn, fallback)
   local ok, v = pcall(fn)
   if ok and v ~= nil and v ~= "" then return v end
   return fallback
+end
+
+-- Percent-encoding, one byte at a time (gsub walks bytes, which is exactly
+-- right for UTF-8 in a URL). The diagnostics below ride entirely in the query
+-- string so that they work even where the lap payload cannot.
+local function urlenc(s)
+  return (string.gsub(tostring(s or ""), "[^%w%-%._~]", function(c)
+    return string.format("%%%02X", string.byte(c))
+  end))
 end
 
 local IDENT = nil
@@ -56,6 +75,38 @@ local function identity()
     layout = tostring(layout),
   }
   return IDENT
+end
+
+-- Hello, once per session: proof that the script RUNS in this car and that
+-- web reaches the site — plus the two absences that end recording without an
+-- error anywhere (no Steam id, no JSON). Sent from the first update tick, not
+-- top level, so a car that is slow to exist cannot kill the chunk.
+local said = false
+local function sayHello(car)
+  if said then return end
+  said = true
+  local id = identity()
+  local info = "steam " .. (id.steamId ~= "" and "yes" or "NO")
+    .. ", json " .. ((JSON ~= nil and JSON.stringify ~= nil) and "yes" or "NO")
+    .. ", spline " .. string.format("%.3f", car.splinePosition or -1)
+    .. ", csp " .. tostring(safeCall(function() return ac.getPatchVersionCode() end, "?"))
+  web.post(INGEST_URL .. "&hello=1&name=" .. urlenc(id.name) .. "&track=" .. urlenc(id.track) .. "&info=" .. urlenc(info),
+    { ['Content-Type'] = "text/plain" }, "", function (err, response)
+    ac.debug("nabsTelemetry hello", err and tostring(err) or ("HTTP " .. tostring(response and response.status or 0)))
+  end)
+end
+
+-- What became of a finished lap that was not sent, told to the site as well
+-- as to the debug console. An evening of 23 laps once produced nothing, and
+-- the reason lived only in this function's head; a verdict per finished lap
+-- is the difference between reading the answer off the admin card and needing
+-- a driver on a voice call with the debug console open.
+local function verdict(reason, lapMs)
+  local id = identity()
+  local q = "&diag=" .. urlenc(reason) .. "&name=" .. urlenc(id.name) .. "&track=" .. urlenc(id.track)
+  if (lapMs or 0) > 0 then q = q .. "&lapms=" .. tostring(lapMs) end
+  web.post(INGEST_URL .. q, { ['Content-Type'] = "text/plain" }, "", function () end)
+  ac.debug("nabsTelemetry lap", reason)
 end
 
 local function newRec(lapCount)
@@ -103,10 +154,10 @@ end
 
 local function postLap(r, lapMs)
   local id = identity()
-  if id.steamId == "" then return end
+  if id.steamId == "" then return verdict("no steam id", lapMs) end
   local lastIdx = 0
   for i = N, 1, -1 do if r.t[i] ~= nil then lastIdx = i break end end
-  if lastIdx == 0 then return end
+  if lastIdx == 0 then return verdict("empty recording", lapMs) end
   for i = 1, N do
     if r.t[i] == nil then
       local src = (i > lastIdx) and lastIdx or nil
@@ -136,12 +187,17 @@ local function postLap(r, lapMs)
   end)
 end
 
+-- One outcome per finished lap, always: either it is posted, or the site is
+-- told why not. The first reason in this order is the one reported, which is
+-- also the order a human would give them in.
 local function finishLap(r, lapMs)
-  local clean = (lapMs or 0) > 0 and not r.dirty and not r.pit and r.filled >= N * 0.9
-  if clean and (bestSentMs == nil or lapMs < bestSentMs) then
-    postLap(r, lapMs)
-    bestSentMs = lapMs
-  end
+  if (lapMs or 0) <= 0 then return verdict("no lap time", lapMs) end
+  if r.pit then return verdict("pit lane", lapMs) end
+  if r.dirty then return verdict("off track", lapMs) end
+  if r.filled < N * 0.9 then return verdict("incomplete " .. r.filled .. "/" .. N, lapMs) end
+  if bestSentMs ~= nil and lapMs >= bestSentMs then return verdict("slower than sent " .. bestSentMs, lapMs) end
+  postLap(r, lapMs)
+  bestSentMs = lapMs
 end
 
 function script.update(dt)
@@ -149,6 +205,8 @@ function script.update(dt)
     if sim.isReplayActive then return end
     local car = ac.getCar(0)
     if car == nil then return end
+
+    sayHello(car)
 
     local lc = car.lapCount or 0
     if rec == nil then
