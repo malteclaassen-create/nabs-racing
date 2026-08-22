@@ -51,7 +51,10 @@ const PAC_WEIGHTS = { quali: 1, bestLap: 1, consistency: 1, poleGap: 0 };
 // Racecraft: finishing position, places gained, on-track overtakes and podiums.
 const RAC_WEIGHTS = { finish: 0.45, gained: 0.2, overtakes: 0.15, podium: 0.2 };
 // Awareness/discipline: reliability (finishing, few DNFs), lap consistency, and
-// staying out of trouble (car contacts, off-track/env hits, in-game penalties).
+// staying out of trouble (car contacts, off-track/env hits, steward penalties).
+// `penalties` runs on the seconds the stewards hand out, not the game's own
+// cut warnings — steward rulings exist for every round, while the in-game feed
+// depends on the server having recorded it.
 // `cuts` is available as a tunable but defaults to 0 (old seasons log no cuts).
 const AHA_WEIGHTS = { finishRate: 0.25, dnf: 0.15, consistency: 0.25, contacts: 0.15, env: 0.1, penalties: 0.1, cuts: 0 };
 
@@ -303,6 +306,11 @@ function rawMetrics(driver, results, raceMeta) {
   const starts = started.length;
   const podiums = finishes.filter((r) => r.position <= 3).length;
 
+  // AWARENESS — seconds of time penalty the stewards handed out, summed over
+  // the season. Unlike the in-game telemetry feed this exists for every round
+  // (stewards rule on every race), so a 0 really is a clean sheet.
+  const stewardSeconds = started.reduce((a, r) => a + (Number(r.penaltySeconds) || 0), 0);
+
   // PACE — best-lap gap to the fastest lap set in that same race (track-neutral),
   // and grid slot normalised to the size of that race's field. Lower = faster.
   const lapGaps = [];
@@ -342,6 +350,7 @@ function rawMetrics(driver, results, raceMeta) {
     finishRate: starts ? finishes.length / starts : null,
     dnfRate: starts ? dnfs.length / starts : null,
     podiumRate: starts ? podiums / starts : null,
+    stewardRate: starts ? stewardSeconds / starts : null,
     // consistency = spread of finishing positions (needs >= 2 finishes)
     finishSpread: finishNorms.length >= 2 ? stddev(finishNorms) : null,
   };
@@ -402,6 +411,26 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     contactRows.map((x) => [x.driverId, { total: Number(x.total) || 0, rated: Number(x.rated) || 0 }])
   );
 
+  // Which rounds actually RECORDED cuts / in-game penalties. Older imports
+  // stored 0 (not null) when the session file carried no penalty array or no
+  // working cut detection, so a whole round can sit at a field-wide 0 for
+  // both signals — a collection gap, not thirty drivers surviving a full race
+  // distance without a single cut. Such a round must not count as clean: it
+  // is excluded from the penalty/cut rates entirely. The cost is that a
+  // genuinely spotless round is excluded too, but that round carries no
+  // ranking information anyway (everyone ties at 0).
+  const penCovered = new Set();
+  const cutCovered = new Set();
+  for (const race of races) {
+    for (const r of liveResults) {
+      if (r.raceId !== race.id) continue;
+      const t = telemetry.get(`${r.raceId}|${r.driverId}`);
+      if (!t) continue;
+      if (t.gamePenalties > 0) penCovered.add(race.id);
+      if (t.cuts > 0) cutCovered.add(race.id);
+    }
+  }
+
   // Extra telemetry per driver, summed over completed rounds (overtakes, env
   // hits, cuts, in-game penalties, and a clean-lap-weighted consistency). Read
   // from the raw telemetry map; missing for un-backfilled seasons -> the
@@ -414,13 +443,13 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
       if (!t) continue;
       let cur = telById.get(r.driverId);
       if (!cur) {
-        cur = { overtakes: 0, env: 0, cuts: 0, gamePen: 0, consNum: 0, consDen: 0, ratedOt: 0, ratedEnv: 0, ratedPen: 0 };
+        cur = { overtakes: 0, env: 0, cuts: 0, gamePen: 0, consNum: 0, consDen: 0, ratedOt: 0, ratedEnv: 0, ratedPen: 0, ratedCuts: 0 };
         telById.set(r.driverId, cur);
       }
       if (t.overtakes != null) { cur.overtakes += t.overtakes; cur.ratedOt++; }
       if (t.envContacts != null) { cur.env += t.envContacts; cur.ratedEnv++; }
-      if (t.cuts != null) cur.cuts += t.cuts;
-      if (t.gamePenalties != null) { cur.gamePen += t.gamePenalties; cur.ratedPen++; }
+      if (t.cuts != null && cutCovered.has(race.id)) { cur.cuts += t.cuts; cur.ratedCuts++; }
+      if (t.gamePenalties != null && penCovered.has(race.id)) { cur.gamePen += t.gamePenalties; cur.ratedPen++; }
       if (t.consistencyMs != null && t.cleanLaps) { cur.consNum += t.consistencyMs * t.cleanLaps; cur.consDen += t.cleanLaps; }
     }
   }
@@ -457,8 +486,14 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     const t = telById.get(driver.id);
     m.overtakesRate = t && t.ratedOt > 0 ? t.overtakes / t.ratedOt : null;
     m.envRate = t && t.ratedEnv > 0 && m.starts ? t.env / m.starts : null;
-    m.penaltyRate = t && t.ratedPen > 0 && m.starts ? t.gamePen / m.starts : null;
-    m.cutsRate = t && t.consDen > 0 && m.starts ? t.cuts / m.starts : null;
+    // Penalties and cuts are averaged over the rounds that RECORDED the
+    // signal, not over all starts — with partial coverage, dividing by every
+    // start would reward simply having raced rounds where nothing was
+    // collected. The same counts feed the percentile as the sample size.
+    m.penaltyRate = t && t.ratedPen > 0 ? t.gamePen / t.ratedPen : null;
+    m.nPen = t ? t.ratedPen : 0;
+    m.cutsRate = t && t.ratedCuts > 0 ? t.cuts / t.ratedCuts : null;
+    m.nCuts = t ? t.ratedCuts : 0;
     m.lapConsistencyMs = t && t.consDen > 0 ? t.consNum / t.consDen : null;
     const cw = career.get(driver.id);
     m.careerGridNorm = cw?.pace.avgGridNorm ?? null;
@@ -508,7 +543,7 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     contactsRate: refField.map((m) => m.contactsRate).filter((x) => x != null),
     overtakesRate: refField.map((m) => m.overtakesRate).filter((x) => x != null),
     envRate: refField.map((m) => m.envRate).filter((x) => x != null),
-    penaltyRate: refField.map((m) => m.penaltyRate).filter((x) => x != null),
+    stewardRate: refField.map((m) => m.stewardRate).filter((x) => x != null),
     cutsRate: refField.map((m) => m.cutsRate).filter((x) => x != null),
     spread: refField.map((m) => m.finishSpread).filter((x) => x != null),
     consistencyMs: refField.map((m) => m.lapConsistencyMs).filter((x) => x != null),
@@ -546,8 +581,13 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     const pContacts = ratePercentile(m.contactsRate, m.starts, refDist.contactsRate, false);
     const pOvertakes = ratePercentile(m.overtakesRate, m.starts, refDist.overtakesRate, true);
     const pEnv = ratePercentile(m.envRate, m.starts, refDist.envRate, false);
-    const pPenalties = ratePercentile(m.penaltyRate, m.starts, refDist.penaltyRate, false);
-    const pCuts = ratePercentile(m.cutsRate, m.starts, refDist.cutsRate, false);
+    // The "penalties" ingredient runs on STEWARD-issued time penalties: the
+    // per-start seconds the stewards added, ranked lower-is-better. The
+    // in-game penalty telemetry stays out of the score (its coverage depends
+    // on the server's recording — see penCovered above) and is only reported
+    // in the raw payload.
+    const pPenalties = ratePercentile(m.stewardRate, m.starts, refDist.stewardRate, false);
+    const pCuts = ratePercentile(m.cutsRate, m.nCuts, refDist.cutsRate, false);
     // EXPERIENCE — the admin's career formula, absolute (no percentile):
     // starts toward 60, recency-weighted championship record, all-or-nothing
     // finishing block, and share of window seasons raced. The 35..99 scale
@@ -661,6 +701,7 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
                 contactsPerRace: r3n(m.contactsRate),
                 envPerRace: r3n(m.envRate),
                 penaltiesPerRace: r3n(m.penaltyRate),
+                stewardSecondsPerRace: r3n(m.stewardRate),
               },
               pac: {
                 avgGridNorm: r3n(m.careerGridNorm),
