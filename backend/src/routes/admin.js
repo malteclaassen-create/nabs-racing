@@ -4994,7 +4994,7 @@ router.put("/welcome-faq", async (req, res, next) => {
 // he hit me in the esses" instead. The file can still be asked, because the
 // report says a lap and usually a name.
 async function stewardView(reports, races) {
-  const guids = await reporterGuids(prisma, reports).catch(() => new Map());
+  const guids = await reporterGuids(prisma, reports, races).catch(() => new Map());
   // `withOther` only here: the matched contact's other car is what the desk
   // offers as "who this was probably about", and the member API deliberately
   // never carries it (lib/reportAnchor.js).

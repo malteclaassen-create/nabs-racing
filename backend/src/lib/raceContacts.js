@@ -17,11 +17,15 @@
 // and shows the original wall-clock time of whatever frame is being watched.
 // So "21:04:11" is not trivia, it is the number a steward scrubs to.
 //
-// Filtering mirrors the contact STAT the site already publishes
-// (services/telemetryExtractor.js): light taps are dropped, repeated hits
-// between the same pair inside the merge window count once, and anything after
-// the flag is ignored. Two different numbers for the same word would be worse
-// than either.
+// Filtering follows the contact STAT the site already publishes
+// (services/telemetryExtractor.js) — repeated hits between the same pair
+// inside the merge window count once, and anything after the flag is ignored —
+// with one deliberate difference: light taps are KEPT here. The stat counts
+// incidents and a 6 km/h brush should not cost anybody a rating point, but
+// this list exists to find the moment a report is about, and the tap that
+// barely registered on the file is often exactly the shove the driver pressed
+// the button over. A contact missing from this list cannot be matched,
+// suggested or pinned at all, which proved worse than a longer list.
 // ---------------------------------------------------------------------------
 import { findArchiveFor } from "./cockpitArchive.js";
 import { CONTACT_DEFAULTS } from "../services/telemetryExtractor.js";
@@ -31,6 +35,10 @@ const tsOf = (x) => {
   const n = Number(x?.Timestamp);
   return Number.isFinite(n) && n > 0 ? n : null;
 };
+
+// The way names are compared everywhere reports touch them (reportAnchor.js,
+// reportSuggest.js, the ingest): case and punctuation dropped.
+const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 // Where the REPLAY starts, which is what "N seconds into the race" has to be
 // measured from if a steward is going to drag a timeline to it.
@@ -112,16 +120,64 @@ export function sessionStartForRound(seasonNumber, raceNumber) {
   return contactsForRound(seasonNumber, raceNumber).start;
 }
 
+// Every participant's name in the file -> their Steam GUID, exactly as the
+// game wrote both. This is what lets a report be matched to a person whose
+// ROSTER spelling differs from their in-game name: the report's name came off
+// the game server, and so did the file's, so for the same person in the same
+// round the two are the same string.
+//
+// Collected from every place the file writes the pair (results, car list,
+// laps, events) because no single one is guaranteed present in every file.
+// Each name is indexed whole and, for anyone racing under a clan tag, as the
+// part after the last pipe too. A name two different GUIDs raced under is
+// dropped rather than guessed at, same rule as the roster matching — within
+// one round that is nearly impossible, which is exactly why this map can be
+// trusted further than a roster-wide one.
+function nameGuids(data) {
+  const pairs = [];
+  for (const r of data.Result || []) if (r?.DriverGuid && r?.DriverName) pairs.push([r.DriverName, r.DriverGuid]);
+  for (const c of data.Cars || []) if (c?.Driver?.Guid && c?.Driver?.Name) pairs.push([c.Driver.Name, c.Driver.Guid]);
+  for (const l of data.Laps || []) if (l?.DriverGuid && l?.DriverName) pairs.push([l.DriverName, l.DriverGuid]);
+  for (const e of data.Events || []) {
+    if (e?.Driver?.Guid && e?.Driver?.Name) pairs.push([e.Driver.Name, e.Driver.Guid]);
+    if (e?.OtherDriver?.Guid && e?.OtherDriver?.Name) pairs.push([e.OtherDriver.Name, e.OtherDriver.Guid]);
+  }
+
+  const byName = new Map();
+  const ambiguous = new Set();
+  const put = (raw, guid) => {
+    const key = norm(raw);
+    if (!key) return;
+    const seen = byName.get(key);
+    if (seen && seen !== String(guid)) ambiguous.add(key);
+    else byName.set(key, String(guid));
+  };
+  for (const [name, guid] of pairs) {
+    put(name, guid);
+    const cut = String(name).lastIndexOf("|");
+    if (cut !== -1) put(String(name).slice(cut + 1), guid);
+  }
+  for (const key of ambiguous) byName.delete(key);
+  return byName;
+}
+
+// The round's name -> GUID map, or an empty one when the round has no archived
+// file. Cached with the round's contacts, so asking costs nothing extra.
+export function guidsByNameForRound(seasonNumber, raceNumber) {
+  return contactsForRound(seasonNumber, raceNumber).names || new Map();
+}
+
 function buildRound(seasonNumber, raceNumber) {
   let data;
   try {
     data = findArchiveFor(seasonNumber, raceNumber);
   } catch {
-    return { archived: false, start: null, contacts: [] };
+    return { archived: false, start: null, contacts: [], names: new Map() };
   }
-  if (!data) return { archived: false, start: null, contacts: [] };
+  if (!data) return { archived: false, start: null, contacts: [], names: new Map() };
 
   const start = sessionStart(data);
+  const names = nameGuids(data);
 
   // Laps per driver, sorted, for the lap lookup.
   const lapsByGuid = new Map();
@@ -144,7 +200,6 @@ function buildRound(seasonNumber, raceNumber) {
       ({ e }) =>
         e?.Type === "COLLISION_WITH_CAR" &&
         !e.AfterSessionEnd &&
-        (e.ImpactSpeed || 0) >= CONTACT_DEFAULTS.impactThreshold &&
         e.Driver?.Guid &&
         e.OtherDriver?.Guid &&
         tsOf(e)
@@ -177,8 +232,8 @@ function buildRound(seasonNumber, raceNumber) {
       // downloads from the server are the same bytes, same order.
       //
       // Expect gaps. Its list numbers every event in the file, ours keeps only
-      // real car-to-car hits above the threshold, so a jump from 4 to 6 is
-      // correct, not a missing contact.
+      // car-to-car hits, so a jump from 4 to 6 is correct, not a missing
+      // contact — the missing numbers are walls and post-flag events.
       eventIndex: n,
       // The lap is per SIDE. Two cars in the same contact are not always on the
       // same lap — a backmarker being lapped is exactly the case a steward
@@ -191,7 +246,7 @@ function buildRound(seasonNumber, raceNumber) {
       b: { guid: String(e.OtherDriver.Guid), name: e.OtherDriver.Name || "", lap: lapAt(lapsByGuid.get(e.OtherDriver.Guid) || [], at) },
     });
   }
-  return { archived: true, start, contacts: out };
+  return { archived: true, start, contacts: out, names };
 }
 
 // Whether the round's result file is on disk at all. An empty contact list means
