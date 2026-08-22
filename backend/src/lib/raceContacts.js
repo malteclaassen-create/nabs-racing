@@ -17,11 +17,15 @@
 // and shows the original wall-clock time of whatever frame is being watched.
 // So "21:04:11" is not trivia, it is the number a steward scrubs to.
 //
-// Filtering mirrors the contact STAT the site already publishes
-// (services/telemetryExtractor.js): light taps are dropped, repeated hits
-// between the same pair inside the merge window count once, and anything after
-// the flag is ignored. Two different numbers for the same word would be worse
-// than either.
+// Filtering follows the contact STAT the site already publishes
+// (services/telemetryExtractor.js) — repeated hits between the same pair
+// inside the merge window count once, and anything after the flag is ignored —
+// with one deliberate difference: light taps are KEPT here. The stat counts
+// incidents and a 6 km/h brush should not cost anybody a rating point, but
+// this list exists to find the moment a report is about, and the tap that
+// barely registered on the file is often exactly the shove the driver pressed
+// the button over. A contact missing from this list cannot be matched,
+// suggested or pinned at all, which proved worse than a longer list.
 // ---------------------------------------------------------------------------
 import { findArchiveFor } from "./cockpitArchive.js";
 import { CONTACT_DEFAULTS } from "../services/telemetryExtractor.js";
@@ -144,7 +148,6 @@ function buildRound(seasonNumber, raceNumber) {
       ({ e }) =>
         e?.Type === "COLLISION_WITH_CAR" &&
         !e.AfterSessionEnd &&
-        (e.ImpactSpeed || 0) >= CONTACT_DEFAULTS.impactThreshold &&
         e.Driver?.Guid &&
         e.OtherDriver?.Guid &&
         tsOf(e)
@@ -177,8 +180,8 @@ function buildRound(seasonNumber, raceNumber) {
       // downloads from the server are the same bytes, same order.
       //
       // Expect gaps. Its list numbers every event in the file, ours keeps only
-      // real car-to-car hits above the threshold, so a jump from 4 to 6 is
-      // correct, not a missing contact.
+      // car-to-car hits, so a jump from 4 to 6 is correct, not a missing
+      // contact — the missing numbers are walls and post-flag events.
       eventIndex: n,
       // The lap is per SIDE. Two cars in the same contact are not always on the
       // same lap — a backmarker being lapped is exactly the case a steward
