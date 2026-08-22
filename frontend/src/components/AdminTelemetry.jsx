@@ -306,6 +306,11 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
                 every driver: the key only ever adds their own laps, nothing else.
               </p>
             </>
+          ) : telIngest?.keyKept ? (
+            <p className="text-sm text-light">
+              Telemetry recording is paused. The key is kept — switching back on brings it back
+              unchanged, and the race server&rsquo;s config line keeps working.
+            </p>
           ) : (
             <p className="text-sm text-light">Telemetry recording is off.</p>
           )}
@@ -320,8 +325,10 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
                 already carry a key — settled up front, or surviving a database
                 restore — this is how the site is told to honour it instead of
                 minting a new one and breaking a config nobody wants to redo.
-                Only on the way ON: switching off needs no key. */}
-            {!telIngest?.configured && (
+                Shown only while NO key has ever existed: the league's key is
+                permanent, so once one is held, switching off and on only ever
+                pauses and resumes it — there is no way to make another. */}
+            {!telIngest?.configured && !telIngest?.keyKept && (
               <>
                 <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">
                   Key to use (optional, leave blank to make a fresh one)
@@ -350,7 +357,7 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
                     !(await ask({
                       title: "Switch off telemetry recording?",
                       body:
-                        "The URL stops working immediately, in every driver's game at once. Switching back on can reuse the same key by typing it into the field. Without it, the race server's config has to be pasted again.",
+                        "The URL stops answering immediately, in every driver's game at once. The key is kept: switching back on brings it back unchanged, and the race server's config keeps working as it is.",
                       danger: true,
                       confirmLabel: "Switch off",
                     }))
@@ -369,9 +376,11 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
               >
                 {telIngest?.configured
                   ? "Switch off"
-                  : telGivenKey.trim()
-                    ? "Switch on with this key"
-                    : "Switch on and make a key"}
+                  : telIngest?.keyKept
+                    ? "Switch back on — same key"
+                    : telGivenKey.trim()
+                      ? "Switch on with this key"
+                      : "Switch on and make a key"}
               </button>
               {telIngest?.configured && (
                 <button

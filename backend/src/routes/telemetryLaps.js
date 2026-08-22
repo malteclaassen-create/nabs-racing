@@ -63,11 +63,20 @@ function fetcher(req) {
   return bits.join(" · ");
 }
 
+// The key is permanent; "off" is a separate flag (routes/admin.js explains
+// why). An empty answer here still means the same thing to every caller —
+// nothing is served and nothing is accepted — the key just survives it.
 async function ingestKey() {
-  return prisma.setting
-    .findUnique({ where: { key: "telemetry_ingest_key" } })
-    .then((s) => s?.value || "")
-    .catch(() => "");
+  try {
+    const [key, off] = await Promise.all([
+      prisma.setting.findUnique({ where: { key: "telemetry_ingest_key" } }),
+      prisma.setting.findUnique({ where: { key: "telemetry_ingest_off" } }),
+    ]);
+    if (off?.value === "1") return "";
+    return key?.value || "";
+  } catch {
+    return "";
+  }
 }
 
 // POST /api/telemetry-laps/ingest?key=...  (&ping=1 to test the URL alone)
