@@ -280,6 +280,9 @@ async function computeDriverRatingHistory(prisma, driverId) {
         overtakes: started && tel?.overtakes != null ? tel.overtakes : null,
         envContacts: started && tel?.envContacts != null ? tel.envContacts : null,
         gamePenalties: started && tel?.gamePenalties != null ? tel.gamePenalties : null,
+        // Steward-issued time penalty (seconds) — the signal the AWA
+        // "penalties" ingredient actually runs on.
+        penaltySeconds: started ? Number(res.penaltySeconds) || 0 : null,
       },
     });
   }

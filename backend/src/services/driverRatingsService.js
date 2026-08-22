@@ -51,7 +51,10 @@ const PAC_WEIGHTS = { quali: 1, bestLap: 1, consistency: 1, poleGap: 0 };
 // Racecraft: finishing position, places gained, on-track overtakes and podiums.
 const RAC_WEIGHTS = { finish: 0.45, gained: 0.2, overtakes: 0.15, podium: 0.2 };
 // Awareness/discipline: reliability (finishing, few DNFs), lap consistency, and
-// staying out of trouble (car contacts, off-track/env hits, in-game penalties).
+// staying out of trouble (car contacts, off-track/env hits, steward penalties).
+// `penalties` runs on the seconds the stewards hand out, not the game's own
+// cut warnings — steward rulings exist for every round, while the in-game feed
+// depends on the server having recorded it.
 // `cuts` is available as a tunable but defaults to 0 (old seasons log no cuts).
 const AHA_WEIGHTS = { finishRate: 0.25, dnf: 0.15, consistency: 0.25, contacts: 0.15, env: 0.1, penalties: 0.1, cuts: 0 };
 
@@ -303,6 +306,11 @@ function rawMetrics(driver, results, raceMeta) {
   const starts = started.length;
   const podiums = finishes.filter((r) => r.position <= 3).length;
 
+  // AWARENESS — seconds of time penalty the stewards handed out, summed over
+  // the season. Unlike the in-game telemetry feed this exists for every round
+  // (stewards rule on every race), so a 0 really is a clean sheet.
+  const stewardSeconds = started.reduce((a, r) => a + (Number(r.penaltySeconds) || 0), 0);
+
   // PACE — best-lap gap to the fastest lap set in that same race (track-neutral),
   // and grid slot normalised to the size of that race's field. Lower = faster.
   const lapGaps = [];
@@ -342,6 +350,7 @@ function rawMetrics(driver, results, raceMeta) {
     finishRate: starts ? finishes.length / starts : null,
     dnfRate: starts ? dnfs.length / starts : null,
     podiumRate: starts ? podiums / starts : null,
+    stewardRate: starts ? stewardSeconds / starts : null,
     // consistency = spread of finishing positions (needs >= 2 finishes)
     finishSpread: finishNorms.length >= 2 ? stddev(finishNorms) : null,
   };
@@ -534,7 +543,7 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     contactsRate: refField.map((m) => m.contactsRate).filter((x) => x != null),
     overtakesRate: refField.map((m) => m.overtakesRate).filter((x) => x != null),
     envRate: refField.map((m) => m.envRate).filter((x) => x != null),
-    penaltyRate: refField.map((m) => m.penaltyRate).filter((x) => x != null),
+    stewardRate: refField.map((m) => m.stewardRate).filter((x) => x != null),
     cutsRate: refField.map((m) => m.cutsRate).filter((x) => x != null),
     spread: refField.map((m) => m.finishSpread).filter((x) => x != null),
     consistencyMs: refField.map((m) => m.lapConsistencyMs).filter((x) => x != null),
@@ -572,7 +581,12 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     const pContacts = ratePercentile(m.contactsRate, m.starts, refDist.contactsRate, false);
     const pOvertakes = ratePercentile(m.overtakesRate, m.starts, refDist.overtakesRate, true);
     const pEnv = ratePercentile(m.envRate, m.starts, refDist.envRate, false);
-    const pPenalties = ratePercentile(m.penaltyRate, m.nPen, refDist.penaltyRate, false);
+    // The "penalties" ingredient runs on STEWARD-issued time penalties: the
+    // per-start seconds the stewards added, ranked lower-is-better. The
+    // in-game penalty telemetry stays out of the score (its coverage depends
+    // on the server's recording — see penCovered above) and is only reported
+    // in the raw payload.
+    const pPenalties = ratePercentile(m.stewardRate, m.starts, refDist.stewardRate, false);
     const pCuts = ratePercentile(m.cutsRate, m.nCuts, refDist.cutsRate, false);
     // EXPERIENCE — the admin's career formula, absolute (no percentile):
     // starts toward 60, recency-weighted championship record, all-or-nothing
@@ -687,6 +701,7 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
                 contactsPerRace: r3n(m.contactsRate),
                 envPerRace: r3n(m.envRate),
                 penaltiesPerRace: r3n(m.penaltyRate),
+                stewardSecondsPerRace: r3n(m.stewardRate),
               },
               pac: {
                 avgGridNorm: r3n(m.careerGridNorm),
