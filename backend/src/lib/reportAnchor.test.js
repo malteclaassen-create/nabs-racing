@@ -6,9 +6,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // the numbers, not how they are parsed.
 const SESSION_START = 1000;
 let contacts = [];
+// The file's own name -> GUID map (normalized keys), the fallback for a
+// reporter the roster cannot place.
+let fileNames = new Map();
 vi.mock("./raceContacts.js", () => ({
   sessionStartForRound: () => SESSION_START,
   contactsForDriver: (_s, _r, guid) => contacts.filter((c) => c.guid === guid),
+  guidsByNameForRound: () => fileNames,
 }));
 
 const { anchorReports, withSessionSecond } = await import("./reportAnchor.js");
@@ -54,6 +58,7 @@ const contact = (guid, second, over = {}) => ({
 beforeEach(() => {
   contacts = [];
   accounts = [];
+  fileNames = new Map();
 });
 
 // An in-game report knows when the button was pressed, and that is the incident
@@ -162,6 +167,26 @@ describe("matching an in-game report to the contact it is about", () => {
     contacts = [contact("STEAM_A", 1200)];
     const [r] = await anchorReports(twins, [pressedAt(1208, { reporterName: "Alex" })], [RACE]);
     expect(r.sessionSecond).toBe(1208);
+  });
+
+  // The name on an in-game report came off the game server, and so did every
+  // name in the result file — for the same person they are the same string,
+  // however the roster spells them.
+  it("resolves a name the roster does not know from the round's own file", async () => {
+    fileNames = new Map([["ferrox", "STEAM_F"]]);
+    contacts = [contact("STEAM_F", 1200)];
+    const [r] = await anchorReports(prisma, [pressedAt(1208, { reporterName: "ferrox" })], [RACE]);
+    expect(r.sessionSecond).toBe(1200);
+    expect(r.contactMatched).toBe(true);
+  });
+
+  // The roster is the league's own record and survives a rename; the file only
+  // knows what somebody was called that evening.
+  it("lets the roster's answer outrank the file's", async () => {
+    fileNames = new Map([["maltegoat", "STEAM_OTHER"]]);
+    contacts = [contact("STEAM1", 1200), contact("STEAM_OTHER", 1100)];
+    const [r] = await anchorReports(prisma, [pressedAt(1208)], [RACE]);
+    expect(r.sessionSecond).toBe(1200);
   });
 
   it("leaves a report the driver pinned themselves exactly as they pinned it", async () => {

@@ -7,7 +7,7 @@
 // result file name the exact contact it is about. See routes/admin.js, which
 // serves what comes out of here, and components/ReplayAnchor.jsx, which draws it.
 // ---------------------------------------------------------------------------
-import { sessionStartForRound, contactsForDriver } from "./raceContacts.js";
+import { sessionStartForRound, contactsForDriver, guidsByNameForRound } from "./raceContacts.js";
 
 // How far into its round each report happened, in seconds — the figure a
 // steward drags the replay's timeline to.
@@ -123,7 +123,14 @@ async function accountSteamIds(prisma) {
   }
 }
 
-export async function reporterGuids(prisma, reports) {
+// `races` (optional) unlocks a second source for the reports the roster cannot
+// place: the round's own result file. The name on an in-game report came off
+// the game server, and so did every name in the file, so for the same person
+// they are the same string even when the roster spells them differently — or
+// has no Steam id for them at all. The roster is still asked first: it is the
+// league's own record and survives a rename, where a file only knows what
+// somebody was called that evening.
+export async function reporterGuids(prisma, reports, races = []) {
   const out = new Map();
   const drivers = await prisma.driver
     .findMany({
@@ -163,6 +170,26 @@ export async function reporterGuids(prisma, reports) {
     const tagCut = name.lastIndexOf("|");
     const guid = [name, tagCut === -1 ? "" : name.slice(tagCut + 1)]
       .map((c) => byName.get(norm(c)))
+      .find(Boolean);
+    if (guid) out.set(r.id, guid);
+  }
+
+  // The archive fallback, for whoever the roster left unplaced.
+  const raceById = new Map((races || []).map((x) => [x.id, x]));
+  for (const r of reports) {
+    if (out.has(r.id)) continue;
+    const race = r.raceId ? raceById.get(r.raceId) : null;
+    if (!race || race.number == null || race.season?.number == null) continue;
+    let fileNames;
+    try {
+      fileNames = guidsByNameForRound(race.season.number, race.number);
+    } catch {
+      continue;
+    }
+    const name = String(r.reporterName || "");
+    const tagCut = name.lastIndexOf("|");
+    const guid = [name, tagCut === -1 ? "" : name.slice(tagCut + 1)]
+      .map((c) => fileNames.get(norm(c)))
       .find(Boolean);
     if (guid) out.set(r.id, guid);
   }
@@ -206,7 +233,7 @@ export async function anchorReports(prisma, reports, races, knownGuids = null, {
     (r) => r.source === "INGAME" && r.sessionSecond != null && byId.get(r.raceId)?.season?.number != null
   );
   if (!candidates.length) return anchored;
-  const guids = knownGuids || (await reporterGuids(prisma, candidates).catch(() => new Map()));
+  const guids = knownGuids || (await reporterGuids(prisma, candidates, races).catch(() => new Map()));
   if (!guids.size) return anchored;
 
   const wanted = new Set(candidates.map((r) => r.id));

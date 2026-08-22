@@ -18,7 +18,7 @@ const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const reports = await prisma.report.findMany({
   where: { source: "INGAME" },
-  select: { id: true, reporterName: true, reporterDiscordId: true, incidentAt: true },
+  select: { id: true, raceId: true, reporterName: true, reporterDiscordId: true, incidentAt: true },
   orderBy: { incidentAt: "desc" },
 });
 if (!reports.length) {
@@ -26,7 +26,13 @@ if (!reports.length) {
   process.exit(0);
 }
 
-const resolved = await reporterGuids(prisma, reports);
+// With the races the resolver can also fall back to each round's result file,
+// which is what production does — so this prints what the matcher truly sees.
+const races = await prisma.race.findMany({
+  where: { id: { in: [...new Set(reports.map((r) => r.raceId).filter(Boolean))] } },
+  select: { id: true, number: true, season: { select: { number: true } } },
+});
+const resolved = await reporterGuids(prisma, reports, races);
 
 // The same candidates the resolver tries: the full name, and the part after
 // the last pipe for anyone racing under a clan tag.
@@ -56,7 +62,7 @@ const diagnose = (name) => {
     if (!real.length) return "roster driver exists but has no Steam id (no imported result, no Steam sign-in)";
     return "matches the roster — resolver should have found it (re-check reportAnchor.js)";
   }
-  return "no roster driver under this name (AC name differs from roster spelling?)";
+  return "no roster driver under this name, and the round's result file could not place it either (no archive for the round, or the name is not in it)";
 };
 
 const ok = reports.filter((r) => resolved.has(r.id));
