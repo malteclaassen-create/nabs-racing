@@ -5329,44 +5329,82 @@ router.put("/reports-ingest", async (req, res, next) => {
 });
 
 // GET/PUT /api/admin/telemetry-ingest — the in-game telemetry recorder's key.
-// Same contract as the report ingest right above: no key = the feature is off,
-// and the key is minted here, never typed. DELETE /telemetry-laps/... removes
-// one stored lap (a modded-car time, a wrong person) without touching the rest.
+//
+// THE KEY IS PERMANENT. It rides inside a config line that lives in the race
+// server's hosting panel, written by whoever runs that server — usually not
+// the person clicking here. The first design cleared the key on "switch off"
+// and minted a fresh one on "switch on", which silently invalidated that
+// config line; the league asked for the opposite guarantee: one key, forever.
+// So off/on is now a separate flag (Setting telemetry_ingest_off) and the key,
+// once minted, is never replaced from this UI. If a leaked key ever forces a
+// rotation, that is a deliberate database edit, not a button.
 router.get("/telemetry-ingest", async (req, res, next) => {
   try {
-    const row = await prisma.setting.findUnique({ where: { key: "telemetry_ingest_key" } }).catch(() => null);
+    const [row, off] = await Promise.all([
+      prisma.setting.findUnique({ where: { key: "telemetry_ingest_key" } }).catch(() => null),
+      prisma.setting.findUnique({ where: { key: "telemetry_ingest_off" } }).catch(() => null),
+    ]);
     const key = row?.value || "";
-    // scriptVersion rides along so the snippet the card prints carries the
-    // current &v= — the drivers' game caches the script by URL, so a changed
-    // recorder is only reachable through a changed line (lib/telemetryScript.js).
-    res.json({ configured: !!key, key: key || null, scriptVersion: telemetryScript().version });
+    const paused = off?.value === "1";
+    res.json({
+      configured: !!key && !paused,
+      key: key || null,
+      // The card needs to know "off but the key survives" apart from "never
+      // had one": the first switches back on with the same key, the second
+      // mints the one key this league will ever have.
+      keyKept: !!key,
+      // scriptVersion rides along so the snippet the card prints carries the
+      // current &v= — the drivers' game caches the script by URL, so a changed
+      // recorder is only reachable through a changed line (lib/telemetryScript.js).
+      scriptVersion: telemetryScript().version,
+    });
   } catch (e) {
     next(e);
   }
 });
 
-// A key may also be GIVEN rather than minted. The server config that carries
-// it lives in the hosting panel, pasted there by whoever runs the race server —
-// somebody who is often not the person clicking this button. Being able to say
-// "use this one" means that config is written once and keeps working: when the
-// key is settled up front, after a database restore, or when the site moves.
-// Same shape as a minted key is enforced, so a guessable one can't be set.
+// A key may be GIVEN once — only while none exists yet (settled up front, or
+// re-entered after a database loss). Same shape as a minted key is enforced,
+// so a guessable one can't be set.
 const TELEMETRY_KEY_RE = /^[a-f0-9]{32}$/;
 
 router.put("/telemetry-ingest", async (req, res, next) => {
   try {
     const on = req.body?.enabled !== false;
     const given = typeof req.body?.key === "string" ? req.body.key.trim().toLowerCase() : "";
-    if (on && given && !TELEMETRY_KEY_RE.test(given)) {
+    const existing = (await prisma.setting.findUnique({ where: { key: "telemetry_ingest_key" } }).catch(() => null))?.value || "";
+
+    if (!on) {
+      // Pause, never forget: the key stays put so the race server's config
+      // line stays valid for the day recording is switched back on.
+      await prisma.setting.upsert({
+        where: { key: "telemetry_ingest_off" },
+        create: { key: "telemetry_ingest_off", value: "1" },
+        update: { value: "1" },
+      });
+      return res.json({ ok: true, configured: false, key: null, keyKept: !!existing });
+    }
+
+    if (given && !TELEMETRY_KEY_RE.test(given)) {
       return res.status(400).json({ error: "A key must be 32 characters, 0-9 and a-f" });
     }
-    const value = on ? given || randomUUID().replace(/-/g, "") : "";
+    // The permanence guarantee, enforced rather than assumed: a different key
+    // for an existing one is refused, whatever the UI sent.
+    if (existing && given && given !== existing) {
+      return res.status(409).json({ error: "The key is permanent and cannot be replaced. Switching on brings back the existing key." });
+    }
+    const value = existing || given || randomUUID().replace(/-/g, "");
     await prisma.setting.upsert({
       where: { key: "telemetry_ingest_key" },
       create: { key: "telemetry_ingest_key", value },
       update: { value },
     });
-    res.json({ ok: true, configured: !!value, key: value || null });
+    await prisma.setting.upsert({
+      where: { key: "telemetry_ingest_off" },
+      create: { key: "telemetry_ingest_off", value: "" },
+      update: { value: "" },
+    });
+    res.json({ ok: true, configured: true, key: value, keyKept: true });
   } catch (e) {
     next(e);
   }

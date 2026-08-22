@@ -11,9 +11,19 @@ import { rmSync } from "fs";
 
 const KEY = "f00dcafef00dcafef00dcafef00dcafe";
 
+// The pause flag rides on globalThis because vi.mock factories are hoisted
+// above any local variable this file could share with them.
 vi.mock("../lib/prisma.js", () => ({
   default: {
-    setting: { findUnique: vi.fn(async ({ where }) => (where.key === "telemetry_ingest_key" ? { value: KEY } : null)) },
+    setting: {
+      findUnique: vi.fn(async ({ where }) =>
+        where.key === "telemetry_ingest_key"
+          ? { value: KEY }
+          : where.key === "telemetry_ingest_off" && globalThis.__telemetryPaused
+            ? { value: "1" }
+            : null
+      ),
+    },
     driver: { findMany: vi.fn(async () => []) },
   },
 }));
@@ -212,5 +222,26 @@ describe("the ways in that are not laps", () => {
     const res = await post("?key=deadbeefdeadbeefdeadbeefdeadbeef", lapPayload());
     expect(res.status).toBe(401);
     expect(readTelemetryActivity().outcomes["bad-key"].count).toBe(1);
+  });
+
+  // The league's key is permanent (routes/admin.js): "off" is a flag beside
+  // it, not its deletion. While the flag is set the recorder must go fully
+  // dark — no script, no laps — with the key itself untouched underneath.
+  it("goes dark while paused, without the key having changed", async () => {
+    globalThis.__telemetryPaused = true;
+    try {
+      const lap = await post(`?key=${KEY}`, lapPayload());
+      expect(lap.status).toBe(503);
+      const script = await fetch(`${base}/api/telemetry-laps/app.lua?key=${KEY}`);
+      expect(script.status).toBe(404);
+      const a = readTelemetryActivity();
+      expect(a.outcomes.off.count).toBe(1);
+      expect(a.outcomes["script-refused"].count).toBe(1);
+    } finally {
+      globalThis.__telemetryPaused = false;
+    }
+    // The same key answers again the moment the pause lifts.
+    const res = await post(`?key=${KEY}&ping=1`, {});
+    expect(await res.json()).toMatchObject({ ok: true, pong: true });
   });
 });
