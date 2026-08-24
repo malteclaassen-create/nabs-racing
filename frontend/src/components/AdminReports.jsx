@@ -135,7 +135,7 @@ function NameAccused({ report, drivers, busy, onName, onSplit }) {
           <p className="text-sm text-light">
             {mode === "change"
               ? "Named the wrong driver? Both are told: the one named by mistake that the report no longer names them, the right one that it does."
-              : "The same incident, about one more driver: this files a linked report — same round, same moment, the reporter's own words — so each driver gets their own thread and their own decision."}
+              : "The same incident, about one more driver: they get their own linked report and thread, and their own decision box appears below this one — so a two-penalty crash is decided on this screen."}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {picker}
@@ -181,6 +181,89 @@ function NameAccused({ report, drivers, busy, onName, onSplit }) {
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+// The decision box for one of the OTHER drivers in the same incident.
+//
+// A crash the stewards split into one report per driver still gets decided on
+// one screen: the open report's own box above, and one of these for each
+// driver split off it. Each saves through its own report's decide — so telling
+// the drivers, the decided/applied bookkeeping and Edit Results all see plain
+// single-driver reports — but the steward never has to leave the incident to
+// give the second driver their seconds.
+function LinkedDecision({ linked, busy, onSave }) {
+  const [draft, setDraft] = useState({
+    status: linked.status,
+    penaltySeconds: linked.penaltySeconds ?? "",
+    verdict: linked.verdict || "",
+  });
+  useEffect(() => {
+    setDraft({ status: linked.status, penaltySeconds: linked.penaltySeconds ?? "", verdict: linked.verdict || "" });
+  }, [linked.id, linked.status, linked.penaltySeconds, linked.verdict]);
+  const dirty =
+    draft.status !== linked.status ||
+    String(draft.penaltySeconds) !== String(linked.penaltySeconds ?? "") ||
+    draft.verdict !== (linked.verdict || "");
+
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
+        Decision · {linked.accusedName || "second driver"}
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="Outcome" tone="plain">
+          <select
+            className="input py-1.5 text-sm"
+            value={draft.status}
+            disabled={busy}
+            onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+          >
+            {STATUS.map((s) => (
+              <option key={s.key} value={s.key}>{s.label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Seconds" tone="plain">
+          <input
+            type="number"
+            min="0"
+            className="input w-24 py-1.5 text-sm"
+            value={draft.penaltySeconds}
+            disabled={busy}
+            onChange={(e) => setDraft({ ...draft, penaltySeconds: e.target.value })}
+          />
+        </Field>
+      </div>
+      <textarea
+        aria-label={`What the stewards decided about ${linked.accusedName || "the second driver"}`}
+        className="input mt-2 h-16 resize-none"
+        placeholder="What you decided, in the drivers' words rather than yours…"
+        value={draft.verdict}
+        disabled={busy}
+        onChange={(e) => setDraft({ ...draft, verdict: e.target.value })}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <button
+          className="btn-primary"
+          disabled={busy || !dirty}
+          onClick={() =>
+            onSave({
+              status: draft.status,
+              penaltySeconds: draft.penaltySeconds === "" ? null : Number(draft.penaltySeconds),
+              verdict: draft.verdict,
+            })
+          }
+        >
+          {busy ? "Saving…" : "Save decision"}
+        </button>
+        <p className="min-w-40 flex-1 text-xs text-light">
+          {DECIDED.includes(draft.status)
+            ? `Saving tells ${linked.accusedName || "them"} in their own thread. Enter the penalty in Edit Results too.`
+            : "Nothing is sent yet."}
+        </p>
+      </div>
     </div>
   );
 }
@@ -315,7 +398,8 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
             onSplit={(driverId) =>
               run(
                 () => api.splitReport(id, driverId),
-                (res) => `Filed a linked report about ${res?.report?.accusedName || "them"} — it is in the list.`
+                (res) =>
+                  `Added ${res?.report?.accusedName || "them"} — their own decision box is below, next to this one.`
               )
             }
           />
@@ -395,6 +479,29 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
           </p>
         </div>
       </div>
+
+      {/* The rest of the same incident: one decision box per driver the
+          stewards split off. Each is its own report with its own thread —
+          this screen just decides them all in one place. */}
+      {(data.linked || []).map((l) => (
+        <LinkedDecision
+          key={l.id}
+          linked={l}
+          busy={busy}
+          onSave={(body) =>
+            run(
+              () => api.decideReport(l.id, body),
+              (res) => {
+                const n = res?.report?.told ?? 0;
+                if (!DECIDED.includes(body.status)) return "Saved.";
+                return n > 0
+                  ? `Saved. ${l.accusedName || "The driver"} has been told in their own thread.`
+                  : "Saved. Nobody could be told: there is no Discord account on that thread.";
+              }
+            )
+          }
+        />
+      ))}
 
       {/* who else may read it */}
       <div className="rounded-lg border border-border p-4">

@@ -52,7 +52,8 @@ import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
   dbThreadVoices, readFileRetentionDays, writeFileRetentionDays, RETENTION_CHOICES,
-  dbSetAccused, dbRepointAccused, dbCreateReport, dbPenaltiesForRace, dbMarkPenaltiesApplied,
+  dbSetAccused, dbRepointAccused, dbCreateReport, dbLinkedReports, dbEnsureIncidentGroup,
+  dbPenaltiesForRace, dbMarkPenaltiesApplied,
 } from "../lib/reports.js";
 import { sweepReportFiles } from "../services/reportHousekeeping.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
@@ -5067,6 +5068,17 @@ router.get("/reports/:id", async (req, res, next) => {
       ).map((m) => ({ ...m, mine: m.mine || m.author === "ADMIN" })),
       viewers: await dbViewers(prisma, report.id),
       attachments: await dbAttachments(prisma, report.id),
+      // The same incident's OTHER reports — the ones split off so each driver
+      // involved has their own thread. The desk draws a decision box for each,
+      // so a two-penalty crash is decided on one screen.
+      linked: (await dbLinkedReports(prisma, report).catch(() => [])).map((l) => ({
+        id: l.id,
+        accusedDriverId: l.accusedDriverId,
+        accusedName: l.accusedName,
+        status: l.status,
+        verdict: l.verdict,
+        penaltySeconds: l.penaltySeconds,
+      })),
     });
   } catch (e) {
     next(e);
@@ -5202,7 +5214,11 @@ router.post("/reports/:id/split", async (req, res, next) => {
     if (String(driver.id) === String(src.accusedDriverId || "")) {
       return res.status(400).json({ error: "This report is already about them" });
     }
+    // The two reports stay one incident at the desk: the group id is what lets
+    // the open report show a decision box for every driver involved.
+    const groupId = await dbEnsureIncidentGroup(prisma, src);
     const report = await dbCreateReport(prisma, {
+      incidentGroupId: groupId,
       raceId: src.raceId,
       lap: src.lap,
       reporterDiscordId: src.reporterDiscordId,
