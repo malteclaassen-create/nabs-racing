@@ -53,6 +53,10 @@ const MyFeedback = lazy(() => import("./pages/MyFeedback.jsx"));
 // Your own incident-report threads. Every report notification links here
 // (/reports?id=…), and on a phone it is the way in.
 const MyReports = lazy(() => import("./pages/MyReports.jsx"));
+// "Add NABS to your home screen". Opened from the announcement in the bell and
+// from the footer, i.e. once per member ever — no reason for it to sit in the
+// bundle everybody downloads.
+const InstallApp = lazy(() => import("./pages/InstallApp.jsx"));
 // Development only. The ternary is what keeps it out of a built site:
 // import.meta.env.DEV is replaced with a literal false at build time, so the
 // dynamic import below it is dead code and the chunk is never emitted. Written
@@ -224,6 +228,10 @@ function AppRoutes() {
             page, always, whoever is looking. */}
         <Route path="/join" element={<Welcome />} />
         <Route path="/downloads" element={<Downloads />} />
+        {/* How to put the site on a phone's home screen (Android, iOS and
+            desktop). Linked from the footer and from the one-off announcement
+            in the notification bell. */}
+        <Route path="/app" element={<InstallApp />} />
         {/* Race-prep calculators. Not in the nav on purpose: linked from the
             upcoming-race panel and the private profile. */}
         <Route path="/tools" element={<Tools />} />
@@ -294,6 +302,9 @@ function footerLinks(p) {
     // which is what lets a search engine find it at all.
     { to: "/join", label: "How it works" },
     { to: "/downloads", label: "Race Info" },
+    // The install walkthrough. Its own announcement in the bell fires once and
+    // is then read; this is the standing way back to it.
+    { to: "/app", label: "Add to phone" },
   ];
 }
 

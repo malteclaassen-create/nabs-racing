@@ -750,6 +750,13 @@ const FEATURE_ANNOUNCEMENTS = [
     // the page (see the notification bell / Tour.jsx on the frontend).
     link: "tour:my-rating",
   },
+  {
+    dedupeKey: "feature:install-app",
+    type: "NEWS",
+    title: "Put NABS on your phone",
+    body: "The site can sit on your home screen like a normal app: full screen, no address bar, and still signed in. Tap here for the steps — there's a set for Android and a set for iPhone and iPad.",
+    link: "/app",
+  },
 ];
 
 export async function announceFeatures(prisma) {

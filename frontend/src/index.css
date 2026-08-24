@@ -929,6 +929,42 @@ body::before {
   animation: notif-pop-in var(--t-quick) ease-out;
 }
 
+/* Notification bell with something unread: the bell swings, then holds still.
+   A short ring every few seconds rather than a permanent wobble — a badge alone
+   is easy to walk past on a phone, and continuous motion in a fixed header is
+   the kind of thing people leave a site over. The rest of the cycle is the
+   pause, which is why the keyframes only move in the last third.
+
+   transform-origin sits at the top of the bell so it pivots from where it would
+   hang, not around its middle. Both switches that mean "hold still" — lite
+   graphics and the OS reduced-motion setting — stop it; the badge still says
+   the same thing without a single frame of movement. */
+@keyframes bell-ring {
+  0%, 62% { transform: rotate(0deg); }
+  66% { transform: rotate(13deg); }
+  70% { transform: rotate(-11deg); }
+  74% { transform: rotate(8deg); }
+  78% { transform: rotate(-6deg); }
+  82% { transform: rotate(3deg); }
+  86%, 100% { transform: rotate(0deg); }
+}
+.bell-ring {
+  transform-origin: 50% 18%;
+  animation: bell-ring 4.5s var(--e-soft) infinite;
+}
+/* The unread count itself breathes on the same beat, so the two read as one
+   thing drawing attention rather than two competing ones. */
+@keyframes bell-badge-pulse {
+  0%, 62%, 86%, 100% { transform: scale(1); }
+  70% { transform: scale(1.18); }
+  78% { transform: scale(1.06); }
+}
+.bell-badge-pulse { animation: bell-badge-pulse 4.5s var(--e-soft) infinite; }
+.fx-lite .bell-ring, .fx-lite .bell-badge-pulse { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .bell-ring, .bell-badge-pulse { animation: none !important; }
+}
+
 /* Live projection reorder (Live page, Standings view): while a row FLIP-glides
    to its new slot after an on-track overtake, it flashes green (gained places)
    or red (lost places) and fades back out. The .cascade > * variants outrank
