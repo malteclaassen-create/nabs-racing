@@ -79,6 +79,7 @@ function shape(r) {
     contactKph: r.contactKph ?? null,
     contactSecond: r.contactSecond ?? null,
     contactIndex: r.contactIndex ?? null,
+    incidentGroupId: r.incidentGroupId || null,
     status: r.status || "NEW",
     verdict: r.verdict || null,
     penaltySeconds: r.penaltySeconds ?? null,
@@ -404,6 +405,13 @@ export async function dbCreateReport(prisma, input) {
       .$executeRawUnsafe(`UPDATE "Report" SET "contactIndex" = ? WHERE "id" = ?`, Math.round(input.contactIndex), id)
       .catch(() => {});
   }
+  // Split from another report: both halves carry the incident's group id, so
+  // the desk can show the whole crash on one screen (dbLinkedReports).
+  if (input.incidentGroupId) {
+    await prisma
+      .$executeRawUnsafe(`UPDATE "Report" SET "incidentGroupId" = ? WHERE "id" = ?`, String(input.incidentGroupId), id)
+      .catch(() => {});
+  }
   const report = await dbGetReport(prisma, id);
   await notifyAdmins(prisma, report, "A new incident report is waiting");
 
@@ -636,6 +644,32 @@ export async function dbRepointAccused(prisma, report, { accusedDriverId, accuse
     }).catch(() => {});
   }
   return { ...fresh, accusedReachable: !!accused };
+}
+
+// The other reports of the same incident — the ones the stewards split off so
+// each driver involved has their own thread and their own decision. The desk
+// shows these beside the open report as one crash with a decision box per
+// driver; each box saves through that report's own decide, so nothing about
+// deciding, telling or the penalties arithmetic changes shape.
+export async function dbLinkedReports(prisma, report) {
+  if (!report?.incidentGroupId) return [];
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT * FROM "Report" WHERE "incidentGroupId" = ? AND "id" != ? ORDER BY datetime("createdAt") ASC`,
+      String(report.incidentGroupId),
+      report.id
+    )
+    .catch(() => []);
+  return rows.map(shape);
+}
+
+// Stamp an incident group id onto a report that does not carry one yet — the
+// moment its first split happens, its own id becomes the group's. Returns the
+// id either way.
+export async function dbEnsureIncidentGroup(prisma, report) {
+  if (report.incidentGroupId) return report.incidentGroupId;
+  await prisma.$executeRawUnsafe(`UPDATE "Report" SET "incidentGroupId" = ? WHERE "id" = ?`, report.id, report.id);
+  return report.id;
 }
 
 // The decided penalties for one round, for the results editor to check itself

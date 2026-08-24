@@ -422,6 +422,13 @@ export async function ensureAppSchema(prisma) {
   // that share nothing but the file. Counts every event in the file, so the
   // numbers a report carries are not consecutive.
   await addColumn(prisma, "Report", "contactIndex", "INTEGER");
+  // Which INCIDENT a report belongs to, for the ones the stewards split into
+  // one report per driver involved (routes/admin.js POST /reports/:id/split).
+  // Reports sharing this id are the same crash seen from the desk: the steward
+  // view shows them together, one decision box per driver, while each driver
+  // still has a thread and a decision of their own. The first report's own id
+  // doubles as the group id, so a lone report needs nothing written to it.
+  await addColumn(prisma, "Report", "incidentGroupId", "TEXT");
   // How much of a decided penalty has actually reached a classification, and
   // when it did. Deciding "five seconds" in the Reports tab still does not put
   // them on the driver by itself — the results editor owns the points — but
