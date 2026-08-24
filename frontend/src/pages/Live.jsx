@@ -593,9 +593,19 @@ const TIMING_COLUMNS = [
     align: "right",
     sortValue: (e) => e.bestLapMs || null,
     sortDir: "asc",
+    // The quickest lap of the session is written in the fastest-lap purple —
+    // the shared --c-fl token the sector chips and the FL badge already use, so
+    // the convention reads the same everywhere. It used to be brand pink on
+    // whoever sat P1, which is the same driver in practice and qualifying (the
+    // board is ranked by best lap there) but NOT in a race, where P1 is the
+    // leader and the purple lap can be six rows down.
     cell: (e, ctx) => (
       <>
-        <span className={`font-mono text-base font-bold tabular-nums ${e.position === 1 ? "text-eyebrow" : "text-dark"}`}>
+        <span
+          className={`font-mono text-base font-bold tabular-nums ${
+            e.bestLapMs && e.bestLapMs === ctx.fastestLapMs ? "text-fl" : "text-dark"
+          }`}
+        >
           {formatLap(e.bestLapMs)}
         </span>
         {/* When the gap has no column of its own it sits directly under the lap
@@ -1860,6 +1870,12 @@ export default function Live() {
       auto,
       isRace: session?.type === "Race",
       intervals: intervalMap(entries),
+      // The quickest lap on the board, so the Best column can put the
+      // fastest-lap purple on the lap that actually earned it (see the "best"
+      // column). Taken from the entries rather than session.bestLapMs: the two
+      // arrive from different places and only the entries can be matched
+      // against a row.
+      fastestLapMs: entries.reduce((m, e) => (e.bestLapMs && (!m || e.bestLapMs < m) ? e.bestLapMs : m), null),
       badges: auto ? "mobile" : tablePrefs.enabled.has("flags") ? "none" : "always",
       inlineGap: auto ? "mobile" : tablePrefs.enabled.has("gap") ? "never" : "always",
     }),
