@@ -52,7 +52,7 @@ import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
   dbThreadVoices, readFileRetentionDays, writeFileRetentionDays, RETENTION_CHOICES,
-  dbSetAccused, dbPenaltiesForRace, dbMarkPenaltiesApplied,
+  dbSetAccused, dbRepointAccused, dbPenaltiesForRace, dbMarkPenaltiesApplied,
 } from "../lib/reports.js";
 import { sweepReportFiles } from "../services/reportHousekeeping.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
@@ -5147,12 +5147,11 @@ router.get("/reports/:id/files/:attId", async (req, res, next) => {
 // presses are worked through here, after the race, against the round's own
 // result file. Nobody waits for a driver who has gone to bed.
 //
-// The one thing NOBODY can do is re-point a report that already names somebody.
-// That rule lives in dbSetAccused rather than here, so no route can get it
-// wrong: naming a driver lets them in and tells them, and changing it
-// afterwards would leave somebody sitting in a thread that is no longer about
-// them, having already read it. A report pointed at the wrong driver is deleted
-// and filed again, which is visible, rather than quietly re-aimed.
+// The desk can also CORRECT a name that is already there — a dropdown worked
+// through after a long evening will sometimes have the wrong row clicked. The
+// reporter's own naming stays once-only (lib/reports.js dbSetAccused); a
+// steward's correction goes through dbRepointAccused, which tells the driver
+// named by mistake as well as the right one, so nothing is quietly re-aimed.
 
 // One report, one driver. Returns the report as it now stands.
 async function nameAccused(reportId, driverId) {
@@ -5164,7 +5163,10 @@ async function nameAccused(reportId, driverId) {
   if (!driver) throw Object.assign(new Error("No such driver"), { status: 400 });
   // The NAME comes from the roster row, never from the request: it is the
   // byline the thread is read under for the rest of its life.
-  return dbSetAccused(prisma, report, { accusedDriverId: driver.id, accusedName: driver.name, by: "STEWARD" });
+  const named = { accusedDriverId: driver.id, accusedName: driver.name };
+  return report.accusedDriverId
+    ? dbRepointAccused(prisma, report, named)
+    : dbSetAccused(prisma, report, { ...named, by: "STEWARD" });
 }
 
 // PUT /api/admin/reports/:id/accused  { accusedDriverId }
