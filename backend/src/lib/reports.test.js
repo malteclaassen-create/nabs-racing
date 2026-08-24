@@ -23,7 +23,7 @@ vi.mock("./persons.js", () => ({
 }));
 
 const {
-  dbCreateReport, dbAddMessage, dbDecideReport, canRead, readersOf, dbSetAccused,
+  dbCreateReport, dbAddMessage, dbDecideReport, canRead, readersOf, dbSetAccused, dbRepointAccused,
   dbAddAttachment, dbAttachments, dbDeleteReport, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES,
   dbReportsFor, roleOn, dbPenaltiesForRace, dbMarkPenaltiesApplied,
 } = await import("./reports.js");
@@ -229,6 +229,47 @@ describe("naming the driver afterwards", () => {
     expect(fresh.accusedReachable).toBe(true);
     expect(await canRead(p, fresh, "222", false)).toBe(true);
     expect(notes.filter((n) => n.recipientId === "222" && n.title.match(/names you/i))).toHaveLength(1);
+  });
+});
+
+// A misclick in the desk's dropdown used to mean deleting the report and
+// filing it again, losing the thread and the decision. Correcting is allowed
+// now — for the stewards only — and the reason re-pointing was forbidden is
+// answered by telling people rather than by refusing: the wrongly named driver
+// hears the report no longer names them, the right one that it does.
+describe("a steward correcting who a report is about", () => {
+  // A reporter nobody on the roster maps to, so the two named drivers' own
+  // notifications stand out alone.
+  const filed = { body: "hit at T3", reporterDiscordId: "999", reporterName: "outsider" };
+
+  it("re-points the report, moves the seat in the thread, and tells both drivers", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...filed, accusedDriverId: "d1", accusedName: "wrong guy" });
+    notes.length = 0;
+    const fresh = await dbRepointAccused(p, r, { accusedDriverId: "d2", accusedName: "right guy" });
+    expect(fresh.accusedDriverId).toBe("d2");
+    expect(fresh.accusedName).toBe("right guy");
+    expect(await canRead(p, fresh, "111", false)).toBe(false);
+    expect(await canRead(p, fresh, "222", false)).toBe(true);
+    expect(notes.filter((n) => n.recipientId === "111" && n.title.match(/no longer names you/i))).toHaveLength(1);
+    expect(notes.filter((n) => n.recipientId === "222" && n.title.match(/names you/i))).toHaveLength(1);
+  });
+
+  it("refuses on a report that names nobody yet — that is naming, not correcting", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...filed, accusedDriverId: null });
+    await expect(dbRepointAccused(p, r, { accusedDriverId: "d2", accusedName: "x" })).rejects.toThrow(
+      /names nobody yet/i
+    );
+  });
+
+  it("says nothing to anybody when the same driver is picked again", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...filed, accusedDriverId: "d2", accusedName: "same" });
+    notes.length = 0;
+    const fresh = await dbRepointAccused(p, r, { accusedDriverId: "d2", accusedName: "same" });
+    expect(fresh.accusedDriverId).toBe("d2");
+    expect(notes).toHaveLength(0);
   });
 });
 

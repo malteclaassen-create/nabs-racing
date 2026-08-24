@@ -51,11 +51,13 @@ const SUGGEST_NOTE = {
 
 // Saying who ONE report is about, at the desk.
 //
-// Only while it says nobody. Once a driver is named this is a line of text and
-// nothing else: naming somebody lets them in and tells them, so re-pointing a
-// report would leave a driver sitting in a thread that is no longer about them,
-// having already read it. The rule lives in the backend (lib/reports.js), and
-// this is it drawn.
+// Naming and correcting, both. A named report shows a line of text and a
+// Change button: a dropdown worked through after a long evening sometimes has
+// the wrong row clicked, and deleting the report to re-file it lost the thread
+// and the decision with it. Changing is not quiet — the backend tells the
+// driver named by mistake as well as the right one (lib/reports.js
+// dbRepointAccused) — and it is the desk's alone; the reporter's own naming
+// stays once-only.
 //
 // The dropdown starts on what the result file says, where it says anything, and
 // a steward either agrees with it or picks somebody else. It is never saved by
@@ -64,19 +66,69 @@ const SUGGEST_NOTE = {
 function NameAccused({ report, drivers, busy, onName }) {
   const hint = report.accusedSuggestion || null;
   const [pick, setPick] = useState(hint?.driverId || "");
+  // Correcting an already-named report: the picker stays closed until asked.
+  const [changing, setChanging] = useState(false);
   // A different report opened, or the file's answer arrived after the first
   // render: follow it, but never overwrite a steward who has already chosen.
   useEffect(() => {
     setPick((cur) => cur || hint?.driverId || "");
   }, [report.id, hint?.driverId]);
+  useEffect(() => {
+    setChanging(false);
+  }, [report.id, report.accusedDriverId]);
 
   return (
     <div className="rounded-lg border border-border p-4">
       <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
         The report is about
       </div>
-      {report.accusedName ? (
-        <p className="text-sm font-semibold text-dark">{report.accusedName}</p>
+      {report.accusedName && !changing ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm font-semibold text-dark">{report.accusedName}</p>
+          <button
+            className="btn-secondary py-1 text-xs"
+            disabled={busy}
+            onClick={() => {
+              setPick(report.accusedDriverId || "");
+              setChanging(true);
+            }}
+          >
+            Change
+          </button>
+        </div>
+      ) : report.accusedName ? (
+        <>
+          <p className="text-sm text-light">
+            Named the wrong driver? Both are told: the one named by mistake that the report no longer names
+            them, the right one that it does.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <select
+              aria-label="Which driver this report is about"
+              className="input w-auto max-w-64 py-1.5 text-sm"
+              value={pick}
+              disabled={busy}
+              onChange={(e) => setPick(e.target.value)}
+            >
+              <option value="">Pick a driver…</option>
+              {drivers.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn-secondary py-1.5 text-sm"
+              disabled={busy || !pick || pick === report.accusedDriverId}
+              onClick={() => onName(pick)}
+            >
+              Change to them
+            </button>
+            <button className="btn-secondary py-1.5 text-sm" disabled={busy} onClick={() => setChanging(false)}>
+              Cancel
+            </button>
+          </div>
+        </>
       ) : (
         <>
           <p className="text-sm text-light">
@@ -115,8 +167,8 @@ function NameAccused({ report, drivers, busy, onName }) {
             </button>
           </div>
           <p className="mt-2 text-xs leading-relaxed text-light">
-            This lets them read the thread and tells them. It cannot be changed afterwards — a report aimed at
-            the wrong driver is deleted and filed again.
+            This lets them read the thread and tells them. Named the wrong driver? It can be changed here
+            afterwards, and both drivers are told.
           </p>
         </>
       )}
@@ -240,12 +292,12 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
               and nothing else. Either the driver who filed it says, from their
               own page, or the desk does, which is what this is.
 
-              What NOBODY can do is re-point a report that already names
-              somebody: naming a driver lets them in and tells them, and
-              changing it afterwards leaves a driver sitting in a thread that is
-              no longer about them, having read it. So this turns into a plain
-              line the moment it is answered. A report aimed at the wrong driver
-              is deleted and filed again, which is visible. */}
+              The desk can also change a name that is already there — a
+              misclick in the dropdown used to mean deleting the report and
+              filing it again, losing the thread and the decision with it.
+              Changing is never quiet: the backend tells the driver named by
+              mistake as well as the right one. The reporter's own naming
+              stays once-only. */}
           <NameAccused
             report={r}
             drivers={drivers}
