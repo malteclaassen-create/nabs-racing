@@ -193,7 +193,11 @@ function NameAccused({ report, drivers, busy, onName, onSplit }) {
 // the drivers, the decided/applied bookkeeping and Edit Results all see plain
 // single-driver reports — but the steward never has to leave the incident to
 // give the second driver their seconds.
-function LinkedDecision({ linked, busy, onSave }) {
+// `onRemove` takes the driver back OUT of the incident — the steward added the
+// wrong person, or one car turned out blameless enough not to need a report at
+// all. It deletes their linked report, thread and decision included, after a
+// confirm; the report the steward has open stays exactly as it is.
+function LinkedDecision({ linked, busy, onSave, onRemove }) {
   const [draft, setDraft] = useState({
     status: linked.status,
     penaltySeconds: linked.penaltySeconds ?? "",
@@ -209,8 +213,17 @@ function LinkedDecision({ linked, busy, onSave }) {
 
   return (
     <div className="rounded-lg border border-border p-4">
-      <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
-        Decision · {linked.accusedName || "second driver"}
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">
+          Decision · {linked.accusedName || "second driver"}
+        </div>
+        <button
+          className="transition text-xs font-semibold text-light hover:text-bad"
+          disabled={busy}
+          onClick={onRemove}
+        >
+          Remove from this incident
+        </button>
       </div>
       <div className="flex flex-wrap items-end gap-3">
         <Field label="Outcome" tone="plain">
@@ -500,6 +513,18 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
               }
             )
           }
+          onRemove={async () => {
+            if (
+              !(await ask({
+                title: `Remove ${l.accusedName || "this driver"} from the incident?`,
+                body: "Their linked report is deleted — the thread with them and any decision in it go with it. The report you have open stays as it is. A driver whose part in the crash was judged and cleared is better kept with 'No penalty', so they can still see what was decided.",
+                danger: true,
+                confirmLabel: "Remove driver",
+              }))
+            )
+              return;
+            run(() => api.deleteReport(l.id), `Removed ${l.accusedName || "them"} from this incident.`);
+          }}
         />
       ))}
 
