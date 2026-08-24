@@ -892,9 +892,15 @@ export function drawResultGraphic(ctx, data, scale = 1, themeKey = "pink") {
 // is what the driver won that afternoon, and on a standings table the same
 // number is a season total, which nobody gained.
 // ---------------------------------------------------------------------------
-function drawRow(ctx, T, row, { y, h, showDelta = false, pointsPlain = false, frame = null, pts = "design", flags = "design" }) {
+// `nameX` lets a caller move the whole name column: the constructors poster
+// passes a tighter one when no team on the page has a flag, so the names sit
+// against the number blocks instead of leaving an empty flag column down the
+// page. Per PAGE, never per row — a mixed table keeps the design's x so its
+// names line up whether or not each row has a flag.
+function drawRow(ctx, T, row, { y, h, showDelta = false, pointsPlain = false, frame = null, pts = "design", flags = "design", nameX = null }) {
   const L = LAYOUT;
   const R = L.rows;
+  const nX = nameX ?? R.nameX;
   // Never ABOVE 1: a short table is allowed taller bars so it fills the page,
   // but the type in them stays the size it was measured at. Scaled up too, a
   // six-row poster would be six banners with 60px names on it, which is a
@@ -981,7 +987,7 @@ function drawRow(ctx, T, row, { y, h, showDelta = false, pointsPlain = false, fr
   const showFlag = flags === "on" || (flags === "design" && T.row.flags);
   if (showFlag && row.flag) {
     const flagW = R.flagW * s;
-    drawFlag(ctx, row.flag, barX + (R.nameX - barX - flagW) / 2, midY, flagW);
+    drawFlag(ctx, row.flag, barX + (nX - barX - flagW) / 2, midY, flagW);
   }
   const markLeft = markCx - markMaxW / 2;
   // The "T2" after a second-tier driver's name. The name gets the room left
@@ -989,13 +995,13 @@ function drawRow(ctx, T, row, { y, h, showDelta = false, pointsPlain = false, fr
   const pillW = tierPillWidth(ctx, T, row.tier === 2, s);
   const pillGap = pillW ? L.tierPill.gap * s : 0;
   const nameSize = fitText(
-    ctx, row.name, Math.max(120, markLeft - 24 - R.nameX - pillW - pillGap), 900, R.nameSize * s, 16
+    ctx, row.name, Math.max(120, markLeft - 24 - nX - pillW - pillGap), 900, R.nameSize * s, 16
   );
   ctx.font = FONT(900, nameSize);
   ctx.fillStyle = T.row.nameInk;
   ctx.textAlign = "left";
-  ctx.fillText(row.name, R.nameX, midY + nameSize * 0.36);
-  if (pillW) drawTierPill(ctx, T, R.nameX + ctx.measureText(row.name).width + pillGap, midY, s);
+  ctx.fillText(row.name, nX, midY + nameSize * 0.36);
+  if (pillW) drawTierPill(ctx, T, nX + ctx.measureText(row.name).width + pillGap, midY, s);
 
   // Team mark, centred in its own column so the marks line up down the page
   // however wide each one is.
@@ -1114,6 +1120,14 @@ export function drawStandingsGraphic(ctx, data, scale = 1, themeKey = "black") {
   // exactly what it drew before.
   const showDelta = !!data.showDelta && !!T.delta;
   const pointsPlain = data.pointsPlain !== false;
+  // When not a single row on the page will draw a flag — the constructors
+  // poster, mostly, since teams have no nationality unless one is set by hand —
+  // the whole name column moves left into the empty flag slot. The page-level
+  // check keeps a mixed table aligned: one driver without a country on file
+  // must not indent differently from the rest.
+  const flagsOn = F.flags === "on" || (F.flags === "design" && T.row.flags);
+  const anyFlag = flagsOn && sections.some((s) => s.rows.some((r) => r.flag));
+  const nameX = anyFlag ? null : L.pad + L.rows.numW + 26;
   let y = top;
   for (const section of sections) {
     if (section.heading) {
@@ -1128,7 +1142,7 @@ export function drawStandingsGraphic(ctx, data, scale = 1, themeKey = "black") {
       y += S.section.h + S.section.gapAfter;
     }
     for (const row of section.rows) {
-      drawRow(ctx, T, row, { y, h, showDelta, pointsPlain, frame, pts: F.pts, flags: F.flags });
+      drawRow(ctx, T, row, { y, h, showDelta, pointsPlain, frame, pts: F.pts, flags: F.flags, nameX });
       y += h + gap;
     }
   }
