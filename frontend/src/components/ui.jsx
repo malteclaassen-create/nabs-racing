@@ -539,22 +539,42 @@ export function CheckField({ checked, onChange, label, hint, disabled = false, c
   );
 }
 
+// The ▲/▼ movement chip next to a position: how many places this driver or team
+// gained or lost in the most recent round.
+//
+// A driver who held station gets a dash rather than nothing, and it occupies the
+// SAME box as an arrow — `w-5 sm:w-7`, always rendered. The dash used to be
+// `hidden sm:block` and a different width from the arrow, so on a phone every
+// row that hadn't moved lost the chip entirely and its name started a chip's
+// width further left than the rows around it. The column read as ragged, which
+// on a standings list looks like a rendering fault rather than a fact about the
+// racing.
+//
+// `null` still renders nothing at all, and that stays aligned because it is
+// all-or-nothing: prevPosition is attached to every row or to none (there is no
+// previous table until round two — see attachPrevPositions in the backend's
+// standingsService), so a table never mixes null rows with numbered ones.
 export function PosDelta({ delta }) {
   if (delta == null) return null;
-  if (delta === 0)
-    return <span className="hidden w-7 shrink-0 text-center font-mono text-[11px] font-bold text-light/60 sm:block">–</span>;
+  const moved = delta !== 0;
   const up = delta > 0;
   return (
     <span
       className={`flex w-5 shrink-0 items-center justify-center gap-0.5 font-mono text-[10px] font-bold tabular-nums sm:w-7 sm:text-[11px] ${
-        up ? "text-ok" : "text-bad"
+        moved ? (up ? "text-ok" : "text-bad") : "text-light/60"
       }`}
-      title={`${up ? "Up" : "Down"} ${Math.abs(delta)} since the last round`}
+      title={moved ? `${up ? "Up" : "Down"} ${Math.abs(delta)} since the last round` : "Same position as the last round"}
     >
-      <svg viewBox="0 0 10 10" className="h-2 w-2" fill="currentColor" aria-hidden="true">
-        {up ? <path d="M5 1l4 7H1z" /> : <path d="M5 9L1 2h8z" />}
-      </svg>
-      {Math.abs(delta)}
+      {moved ? (
+        <>
+          <svg viewBox="0 0 10 10" className="h-2 w-2" fill="currentColor" aria-hidden="true">
+            {up ? <path d="M5 1l4 7H1z" /> : <path d="M5 9L1 2h8z" />}
+          </svg>
+          {Math.abs(delta)}
+        </>
+      ) : (
+        "–"
+      )}
     </span>
   );
 }

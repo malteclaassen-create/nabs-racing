@@ -103,6 +103,10 @@ export function legacyRedirects(prisma) {
 const GLOBAL_SEGMENTS = new Set([
   "join",
   "downloads",
+  // The "add NABS to your home screen" walkthrough. Without it here the SPA
+  // fallback still renders the page, but the server answers it 404 + noindex —
+  // and it is the address the install announcement in everyone's bell links to.
+  "app",
   "tools",
   "profile",
   "cockpit",
