@@ -18,8 +18,7 @@ import { circuitFor, flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
 import { heroFor, heroOnError, carFor } from "../utils/heroImage.js";
-import { seasonGameLabel, seasonGameParts } from "../utils/seasonGame.js";
-import { disciplineOf } from "../utils/pageTitle.js";
+import { seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
@@ -29,29 +28,6 @@ import { fmtRaceDate, fmtDateLong, fmtWeekday, isLapTime, NO_VALUE} from "../uti
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
-
-// What the league races and where, in the words somebody looking for a league
-// would type. Read off the season's own `game` field ("F1 2010 · Assetto
-// Corsa") rather than written here, because the era changes every season and
-// the sim is free to change too; a season that is not recognisably Formula 1
-// says so, since a GT season must never advertise itself as an F1 one.
-//
-// Kept in step with the server, deliberately and by hand: the same two
-// sentences are pre-rendered for crawlers in backend/src/lib/crawlEntities.js
-// (homeBlock) and the same Formula 1 test decides the meta description in
-// backend/src/lib/pageMeta.js (disciplineOf). If the wording changes here it
-// changes there — a crawler reading a claim this page does not make is the one
-// thing that whole side of the codebase refuses to do.
-function leagueStrapline(season) {
-  const { era, platform } = seasonGameParts(season);
-  const f1 = disciplineOf(era) === "Formula 1";
-  return {
-    heading: `${f1 ? "Formula 1" : "Online"} sim racing on ${platform}`,
-    blurb: `NABS Racing is an online sim racing league on ${platform}. ${
-      f1 ? "Formula 1 championships" : "Championship racing"
-    } with driver and team standings, race results, live timing and open sign-ups — new drivers welcome.`,
-  };
-}
 
 // Line-icon paths (stroke = currentColor) for the "by the numbers" tiles.
 const TILE_ICONS = {
@@ -902,14 +878,9 @@ export default function Home() {
     }
   }
 
-  // The league's own line, not the browsed season's: switching to the 2013
-  // archive does not turn this into a 2013 league. Falls back to whatever
-  // season is on screen while the active one is still loading.
-  const strap = leagueStrapline(active || season);
-
   return (
     <div className="content-in space-y-10 sm:space-y-16">
-      {/* ===================== MASTHEAD ===================== */}
+      {/* ===================== SEASON TICKER ===================== */}
       <div className="-mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">
           <SeasonPicker finished={seasonOver} />
@@ -926,26 +897,6 @@ export default function Home() {
             <span className="text-medium">
               Round {pad2(roundNo)} <span className="text-faint">/ {totalRounds || NO_VALUE}</span>
             </span>
-          )}
-        </div>
-        {/* The page's H1, and the one line on this site that says what the
-            league IS rather than how its current season is going.
-            It earns its place: the biggest words on the home page used to be
-            the name of last Friday's circuit, which tells a search engine
-            nothing about a sim racing league, and Google writes a result's
-            title off the H1 as readily as off <title>. The ticker above stays
-            in the eyebrow role the rest of the site's headers use, so the
-            order here is the familiar one — small line, then heading.
-            The sentence under it is for people who arrived from a search and
-            have never heard of the league; a signed-in member has, so they get
-            the heading alone. A crawler is signed out and sees exactly what
-            any other signed-out visitor sees. */}
-        <div>
-          <h1 className="font-display text-2xl font-black uppercase tracking-tight text-dark sm:text-3xl">
-            {strap.heading}
-          </h1>
-          {!isLoggedIn && (
-            <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-light">{strap.blurb}</p>
           )}
         </div>
       </div>
@@ -1062,9 +1013,9 @@ export default function Home() {
                   <span className="live-dot inline-block h-2 w-2 rounded-full bg-brand" />
                   {comingSoonCopy.eyebrow}
                 </div>
-                <h2 className="hero-anim font-display text-4xl font-black uppercase leading-[0.95] tracking-tight text-ink dark:text-white sm:text-6xl" style={{ animationDelay: "0.12s" }}>
+                <h1 className="hero-anim font-display text-4xl font-black uppercase leading-[0.95] tracking-tight text-ink dark:text-white sm:text-6xl" style={{ animationDelay: "0.12s" }}>
                   {season?.name}
-                </h2>
+                </h1>
                 {season?.game && (
                   <div className="hero-anim font-mono text-[13px] font-bold uppercase tracking-wider text-ink/60 dark:text-white/60" style={{ animationDelay: "0.16s" }}>
                     {seasonGameLabel(season)}
@@ -1139,9 +1090,9 @@ export default function Home() {
                 stops it shrinking on a narrow one or growing past the old size
                 on a wide one. break-words stays as the last resort for a name
                 nobody has raced yet. */}
-            <h2 className="hero-anim mt-4 max-w-3xl break-words font-display text-[clamp(1.75rem,9.5vw,3rem)] font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
+            <h1 className="hero-anim mt-4 max-w-3xl break-words font-display text-[clamp(1.75rem,9.5vw,3rem)] font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
               {lastRace?.track || "Season opener"}
-            </h2>
+            </h1>
             <p className="hero-anim mt-3 font-mono text-[13px] uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
               {`${lastCircuit && lastCircuit.circuit?.toLowerCase() !== lastRace?.track?.toLowerCase() ? `${lastCircuit.circuit} · ` : ""}${fmtFull(lastRace?.date)}`}
             </p>

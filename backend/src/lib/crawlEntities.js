@@ -283,32 +283,46 @@ function classificationTable(base, rows, scores) {
   };
 }
 
-// The home page's own heading and opening sentence: what the league is, rather
-// than how its current season is going.
+// The landing page's strapline and its opening pitch: what the league IS,
+// rather than how its current season is going.
 //
-// This is the one place the site says it out loud, and it is the reason it
-// exists: Google had the league's name and its round number and no idea what
-// sort of thing it was looking at, because the biggest words on the page were
-// the name of last Friday's circuit and the only prose in the document was the
-// footer's.
+// The address this block is built for is "/", and a signed-out visitor there —
+// which is every visitor a crawler can be — gets the WELCOME page, not the
+// members' home (frontend/src/App.jsx, HomeRoute). So both strings below mirror
+// frontend/src/pages/Welcome.jsx: the strapline is the h2 under its headline,
+// the pitch is the paragraph under that. Change one and change the other.
 //
-// Both strings MIRROR what the page itself renders — frontend/src/pages/Home.jsx
-// (leagueStrapline), where the heading is the H1 and the sentence sits under it
-// for signed-out visitors, which is every visitor a crawler can be. Change one
-// and change the other. What is raced is read off the season's `game` field
-// ("F1 2010 · Assetto Corsa") and not written here, because the era changes
-// every season and a season that is not recognisably Formula 1 must not be
-// advertised as one.
+// It matters because that page's headline is a promise rather than a
+// description — "Race wheel-to-wheel on the NABS grid" — and until the
+// strapline existed nothing above the fold said "Assetto Corsa" or "sim racing
+// league" at all. Google had the league's name and its round number and no idea
+// what sort of thing it was looking at.
+//
+// What is raced is read off the season's `game` field ("F1 2010 · Assetto
+// Corsa"), never written here: the era changes every season, and a season that
+// is not recognisably Formula 1 must not be advertised as one.
 function leagueStrapline(game) {
-  const [era, platformRaw] = String(game || "").split(/[·/|]/).map((x) => x.trim());
+  const [eraRaw, platformRaw] = String(game || "").split(/[·/|]/).map((x) => x.trim());
+  const era = eraRaw || null;
   const platform = platformRaw || "Assetto Corsa";
-  const f1 = /\bf1\b|formula/i.test(era || "");
+  // "Formula 1 sim racing league on Assetto Corsa" — the same opening the meta
+  // description has always used (lib/pageMeta.js, seasonDescription), so the
+  // snippet and the page's own subtitle say one thing rather than two.
+  const discipline = /\bf1\b|formula/i.test(era || "") ? "Formula 1 sim" : "Sim";
+  // A season whose game names only the sim collapses era and platform onto the
+  // same word, and "Assetto Corsa cars on Assetto Corsa" reads badly — the same
+  // guard the page itself applies (Welcome.jsx, showPlatform).
+  const gnorm = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const cars = era ? `${era} cars` : null;
+  const on = era && gnorm(platform) !== gnorm(era) ? ` on ${platform}` : "";
   return {
-    heading: `${f1 ? "Formula 1" : "Online"} sim racing on ${platform}`,
+    heading: `${discipline} racing league on ${platform}`,
     blurb:
-      `NABS Racing is an online sim racing league on ${platform}. ` +
-      `${f1 ? "Formula 1 championships" : "Championship racing"} with driver and team standings, ` +
-      "race results, live timing and open sign-ups — new drivers welcome.",
+      "NABS Racing is a community-run sim racing league on Discord. " +
+      (cars
+        ? `Every season we race a new era of motorsport; right now the grid runs ${cars}${on}. `
+        : `Every season we race a new era of motorsport on ${platform}. `) +
+      "A full championship, and new drivers are welcome every season.",
   };
 }
 

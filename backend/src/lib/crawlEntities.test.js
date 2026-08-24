@@ -232,12 +232,14 @@ describe("home", () => {
   // The heading is the league's strapline, not its scoreboard: it has to answer
   // "what is this site" for somebody who has never heard the name, and it is
   // read off the season's game so a non-F1 season cannot advertise itself as an
-  // F1 one. Same two strings the page itself renders (Home.jsx leagueStrapline).
+  // F1 one. Both strings mirror the page a signed-out visitor actually gets at
+  // "/" — the welcome landing (Welcome.jsx), not the members' home.
   it("leads with what the league races, and says so in a sentence", async () => {
     const b = await buildEntityBlock(prisma, { base: BASE, isHome: true, seasonId: "s8" });
-    expect(b.heading).toBe("Formula 1 sim racing on Assetto Corsa");
-    expect(b.blurb).toContain("online sim racing league on Assetto Corsa");
-    expect(b.blurb).toContain("Formula 1 championships");
+    expect(b.heading).toBe("Formula 1 sim racing league on Assetto Corsa");
+    expect(b.blurb).toContain("community-run sim racing league on Discord");
+    expect(b.blurb).toContain("F1 2010 cars on Assetto Corsa");
+    expect(b.blurb).toContain("new drivers are welcome");
   });
 
   // The count-down NAMES the round, so stating it is a mirror. It does not
@@ -264,7 +266,7 @@ describe("home", () => {
     expect(b.groups[0].links.map((l) => l.label)).toEqual(["P1 Takoda", "P2 Neesh", "P3 DRAS"]);
     // No season row means no game either, so the strapline falls back to the
     // claim that holds without one: the sim, and no discipline.
-    expect(b.heading).toBe("Online sim racing on Assetto Corsa");
+    expect(b.heading).toBe("Sim racing league on Assetto Corsa");
   });
 });
 
