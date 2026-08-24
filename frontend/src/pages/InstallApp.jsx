@@ -135,12 +135,12 @@ const STEPS = {
     {
       icon: <AddSquareIcon />,
       title: 'Tap "Install app" or "Add to Home screen"',
-      body: "Both wordings are in the wild depending on your Chrome version — they do the same thing. In Samsung Internet it's under \"Add page to\".",
+      body: "Both wordings are in the wild depending on your Chrome version, and they do the same thing. In Samsung Internet it's under \"Add page to\".",
     },
     {
       icon: <PhoneIcon />,
       title: "Confirm with Install",
-      body: "You can rename it first if you like. Android may then ask whether to place the icon automatically — either answer is fine.",
+      body: "You can rename it first if you like. Android may then ask whether to place the icon automatically. Either answer is fine.",
     },
     {
       icon: <GridIcon />,
@@ -152,7 +152,7 @@ const STEPS = {
     {
       icon: <ShareIcon />,
       title: "Tap the Share button",
-      body: "The square with the arrow pointing out of it — at the bottom of the screen in Safari on an iPhone, top right on an iPad.",
+      body: "The square with the arrow pointing out of it. In Safari it sits at the bottom of the screen on an iPhone, and top right on an iPad.",
     },
     {
       icon: <AddSquareIcon />,
@@ -265,7 +265,7 @@ export default function InstallApp() {
       {installed ? (
         <div className="mb-6">
           <Notice kind="success">
-            You're already running NABS as an app — this page is the instructions for a device that isn't.
+            You're already running NABS as an app. This page is the instructions for a device that isn't.
           </Notice>
         </div>
       ) : null}
@@ -279,7 +279,7 @@ export default function InstallApp() {
               Your browser can do this in one tap
             </h2>
             <p className="mt-1 text-sm text-light">
-              No menu-hunting needed — install it straight from here.
+              No menu-hunting needed. Install it straight from here.
             </p>
           </div>
           <button
@@ -383,14 +383,14 @@ export default function InstallApp() {
           <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
           <span>
             <span className="font-semibold text-medium">Nothing to uninstall.</span> It's the website with
-            an icon, not a download — no store account, and removing it is a long-press away.
+            an icon, not a download. No store account, and removing it is a long-press away.
           </span>
         </li>
       </ul>
 
       <p className="mt-6 text-sm leading-relaxed text-light">
         Notifications about results, race days and sign-ups keep arriving in the bell at the top of the
-        page — the app icon doesn't change where they land.
+        page. The app icon doesn't change where they land.
       </p>
     </div>
   );
