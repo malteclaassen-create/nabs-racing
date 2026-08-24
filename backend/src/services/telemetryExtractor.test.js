@@ -219,6 +219,56 @@ describe("in-game penalties", () => {
     expect(t.gamePenalties).toBe(2);
     expect(t.gamePenaltySeconds).toBe(8);
   });
+
+  it("stores null when the session recorded no penalty data at all", () => {
+    // ACSM writes Penalties: null when its penalty system was off — that is
+    // "not recorded", not "everyone drove clean", and must not become a 0.
+    for (const Penalties of [null, undefined]) {
+      const json = {
+        Result: [res("a", 1)],
+        Laps: [lap("a", 90000, 100, 1)],
+        ...(Penalties === undefined ? {} : { Penalties }),
+      };
+      const t = extractTelemetry(json).byGuid.get("a");
+      expect(t.gamePenalties).toBe(null);
+      expect(t.gamePenaltySeconds).toBe(null);
+    }
+  });
+
+  it("keeps a real 0 when the penalty array is present but empty", () => {
+    const json = {
+      Result: [res("a", 1)],
+      Laps: [lap("a", 90000, 100, 1)],
+      Penalties: [],
+    };
+    const t = extractTelemetry(json).byGuid.get("a");
+    expect(t.gamePenalties).toBe(0);
+    expect(t.gamePenaltySeconds).toBe(0);
+  });
+});
+
+describe("dead cut detection", () => {
+  it("stores null cuts when no lap in the whole file carries a cut", () => {
+    // A track mod without working cut detection logs Cuts: 0 on every lap for
+    // the entire field — a dead sensor, not a spotless grid.
+    const json = {
+      Result: [res("a", 1), res("b", 2)],
+      Laps: [lap("a", 90000, 100, 0), lap("b", 91000, 101, 0), lap("a", 90000, 200, 0), lap("b", 91000, 201, 0)],
+    };
+    const out = extractTelemetry(json).byGuid;
+    expect(out.get("a").cuts).toBe(null);
+    expect(out.get("b").cuts).toBe(null);
+  });
+
+  it("keeps a clean driver's real 0 when the session did record cuts", () => {
+    const json = {
+      Result: [res("a", 1), res("b", 2)],
+      Laps: [lap("a", 90000, 100, 2), lap("b", 91000, 101, 0)],
+    };
+    const out = extractTelemetry(json).byGuid;
+    expect(out.get("a").cuts).toBe(2);
+    expect(out.get("b").cuts).toBe(0);
+  });
 });
 
 describe("tyre stints", () => {

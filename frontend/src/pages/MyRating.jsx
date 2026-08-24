@@ -48,7 +48,7 @@ const COMPONENT_INFO = {
       { k: "dnf", label: "Few DNFs", hint: "retirements and DSQs · fewer = better" },
       { k: "contacts", label: "Car contacts", hint: "car-to-car touches · fewer = better" },
       { k: "env", label: "Off-track hits", hint: "walls, barriers, scenery · fewer = better" },
-      { k: "penalties", label: "In-game penalties", hint: "cuts and speeding · fewer = better" },
+      { k: "penalties", label: "Steward penalties", hint: "time the stewards added · fewer = better" },
     ],
   },
   pac: {
@@ -129,7 +129,9 @@ function causesFor(r) {
   if (r.contacts != null && r.contacts > 0) out.push({ tone: "bad", text: `${r.contacts} contact${r.contacts === 1 ? "" : "s"}`, hits: "AWA" });
   if (r.contacts === 0) out.push({ tone: "good", text: "Contact-free", hits: "AWA" });
   if (r.envContacts != null && r.envContacts > 2) out.push({ tone: "bad", text: `${r.envContacts} off-track hits`, hits: "AWA" });
-  if (r.gamePenalties != null && r.gamePenalties > 0) out.push({ tone: "bad", text: `${r.gamePenalties} penalt${r.gamePenalties === 1 ? "y" : "ies"}`, hits: "AWA" });
+  // Steward penalties feed the rating; the game's own cut warnings don't, so
+  // they get no chip here.
+  if (r.penaltySeconds != null && r.penaltySeconds > 0) out.push({ tone: "bad", text: `+${r.penaltySeconds}s steward penalty`, hits: "AWA" });
   // 0% gap to the race's best lap means it WAS the race's best lap.
   if (r.bestLapGapPct != null && r.bestLapGapPct <= 1)
     out.push({

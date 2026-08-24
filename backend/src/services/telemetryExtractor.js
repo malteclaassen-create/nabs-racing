@@ -232,7 +232,12 @@ export function extractTelemetry(json, opts = {}) {
   const results = Array.isArray(json?.Result) ? json.Result : [];
   const laps = Array.isArray(json?.Laps) ? json.Laps : [];
   const events = Array.isArray(json?.Events) ? json.Events : [];
-  const penalties = Array.isArray(json?.Penalties) ? json.Penalties : [];
+  // ACSM writes `Penalties: null` when its automatic penalty system was not
+  // active for the session. Keep that distinct from an empty array: null here
+  // means "not recorded" and must come out as null per driver, never as 0 —
+  // otherwise a round without penalty collection reads as everyone driving
+  // penalty-free (which then skews the rating's penalty rate).
+  const penalties = Array.isArray(json?.Penalties) ? json.Penalties : null;
 
   // --- Safety car (guid-based, robust to the SC appearing in Result[] as a
   // normal entrant). Two strengths of evidence, and they are NOT the same:
@@ -648,7 +653,7 @@ export function extractTelemetry(json, opts = {}) {
   const { overtakes: overtakesByGuid, lapsLed: lapsLedByGuid } = computeOvertakes(lapsByGuid, results, safetyCarGuids);
 
   const penByGuid = new Map();
-  for (const p of penalties) {
+  for (const p of penalties || []) {
     const guid = p.DriverGUID;
     if (!guid || safetyCarGuids.has(guid)) continue;
     const cur = penByGuid.get(guid) || { count: 0, seconds: 0 };
@@ -662,6 +667,14 @@ export function extractTelemetry(json, opts = {}) {
   for (const r of results) if (r.DriverGuid && !safetyCarGuids.has(r.DriverGuid)) allGuids.add(r.DriverGuid);
   for (const g of lapsByGuid.keys()) allGuids.add(g);
 
+  // Whether the session recorded cuts at all. Some track mods have no working
+  // cut detection, so every lap carries Cuts: 0 for the entire field — over a
+  // full race distance that is a dead sensor, not clean driving (a session
+  // with live detection always logs some cuts somewhere). In that case store
+  // null for everyone rather than crediting the whole grid with a clean race.
+  let anyCuts = false;
+  for (const guid of allGuids) if ((metrics.get(guid)?.cuts || 0) > 0) { anyCuts = true; break; }
+
   const byGuid = new Map();
   for (const guid of allGuids) {
     const m = metrics.get(guid);
@@ -669,7 +682,7 @@ export function extractTelemetry(json, opts = {}) {
     byGuid.set(guid, {
       contacts: contactsByGuid.get(guid) ?? 0,
       envContacts: envByGuid.get(guid) ?? 0,
-      cuts: m ? m.cuts : null,
+      cuts: m && anyCuts ? m.cuts : null,
       overtakes: overtakesByGuid.get(guid) ?? 0,
       // Laps led this race (null when the driver has no lap data — same
       // convention as the other lap-derived metrics).
@@ -679,8 +692,8 @@ export function extractTelemetry(json, opts = {}) {
       consistencyMs: m ? m.consistencyMs : null,
       consistencyPct: m ? m.consistencyPct : null,
       stints: m && m.stints?.length ? m.stints : null,
-      gamePenalties: pen.count,
-      gamePenaltySeconds: Math.round(pen.seconds * 1000) / 1000,
+      gamePenalties: penalties ? pen.count : null,
+      gamePenaltySeconds: penalties ? Math.round(pen.seconds * 1000) / 1000 : null,
     });
   }
 
