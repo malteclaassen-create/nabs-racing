@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { api } from "../api/client.js";
 
 const TOKEN_KEY = "nabs_user_token";
 const USER_KEY = "nabs_user";
@@ -49,11 +50,38 @@ function readUser() {
   }
 }
 
+// The stored profile is a snapshot from the moment of LOGIN, and the driver
+// link is not: an admin links a new member's account in the Members tab AFTER
+// they first signed in, and until now the snapshot's empty driverId hid every
+// member control (the attendance buttons, above all) until they signed out and
+// back in. The backend has resolved the link fresh on every request all along
+// (middleware/auth.js resolveDriverId) — it was only this snapshot that was
+// stale. So once per page load, ask /api/me who this session is NOW and fold
+// the answer back into the snapshot. Silent when nothing changed; a failed
+// fetch (offline, expired token) leaves the snapshot as it was.
+let checkedLink = false;
+async function refreshDriverLink() {
+  if (checkedLink) return;
+  checkedLink = true;
+  const user = readUser();
+  if (!user) return;
+  try {
+    const me = await api.me();
+    const freshId = me?.isLinked ? me.driverId : null;
+    if ((user.driverId || null) !== freshId) {
+      saveUser(localStorage.getItem(TOKEN_KEY), { ...user, driverId: freshId });
+    }
+  } catch {
+    /* the snapshot stands; the next page load asks again */
+  }
+}
+
 // Reactive view of the logged-in driver (via Discord).
 export function useAuth() {
   const [user, setUser] = useState(readUser);
 
   useEffect(() => {
+    refreshDriverLink();
     const sync = () => setUser(readUser());
     window.addEventListener("nabs-auth", sync);
     window.addEventListener("storage", sync);

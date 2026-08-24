@@ -52,7 +52,7 @@ import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
   dbThreadVoices, readFileRetentionDays, writeFileRetentionDays, RETENTION_CHOICES,
-  dbSetAccused, dbRepointAccused, dbPenaltiesForRace, dbMarkPenaltiesApplied,
+  dbSetAccused, dbRepointAccused, dbCreateReport, dbPenaltiesForRace, dbMarkPenaltiesApplied,
 } from "../lib/reports.js";
 import { sweepReportFiles } from "../services/reportHousekeeping.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
@@ -5173,6 +5173,51 @@ async function nameAccused(reportId, driverId) {
 router.put("/reports/:id/accused", async (req, res, next) => {
   try {
     const report = await nameAccused(req.params.id, req.body?.accusedDriverId);
+    res.json({ ok: true, report });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// POST /api/admin/reports/:id/split  { accusedDriverId }
+//
+// The same incident, about ONE MORE driver. A first-corner mess regularly ends
+// with two penalties, and a report can only ever name one driver — a report is
+// a private thread between the reporter, ONE accused and the stewards, and its
+// decision is one verdict about one driver. Widening either would break both.
+// So the second penalty gets a report of its own: this copies the incident —
+// round, lap, moment, matched contact, the reporter's own words — into a new
+// report naming the second driver, who is let in and told exactly as a fresh
+// report tells them. Each driver keeps their own thread and their own decision,
+// and the penalties arithmetic (one row per report) never learns anything new.
+router.post("/reports/:id/split", async (req, res, next) => {
+  try {
+    const src = await dbGetReport(prisma, req.params.id);
+    if (!src) return res.status(404).json({ error: "Report not found" });
+    const driver = await prisma.driver
+      .findUnique({ where: { id: String(req.body?.accusedDriverId || "") }, select: { id: true, name: true } })
+      .catch(() => null);
+    if (!driver) return res.status(400).json({ error: "No such driver" });
+    if (String(driver.id) === String(src.accusedDriverId || "")) {
+      return res.status(400).json({ error: "This report is already about them" });
+    }
+    const report = await dbCreateReport(prisma, {
+      raceId: src.raceId,
+      lap: src.lap,
+      reporterDiscordId: src.reporterDiscordId,
+      reporterName: src.reporterName,
+      accusedDriverId: driver.id,
+      accusedName: driver.name,
+      // The reporter's own words, with one line under them saying why this
+      // thread reads like it was written about the incident as a whole: it was.
+      body: `${src.body}\n\n— The stewards split this incident into one report per driver involved; this thread is about ${driver.name}.`,
+      source: src.source,
+      incidentAt: src.incidentAt,
+      contactKph: src.contactKph,
+      contactSecond: src.contactSecond,
+      contactIndex: src.contactIndex,
+    });
     res.json({ ok: true, report });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });

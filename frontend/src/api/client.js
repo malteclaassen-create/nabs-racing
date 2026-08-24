@@ -1033,9 +1033,14 @@ export const api = {
   // The same thing from the desk, for the in-game presses that name nobody: the
   // app knows who pressed the button and not who they are complaining about,
   // and the driver who pressed it is not always the one who comes back to the
-  // site. Neither route can ever RE-point a report that already names somebody.
+  // site. The desk can also CORRECT a name that is already there (both drivers
+  // are told); the member route above stays once-only.
   setReportAccusedAdmin: (id, accusedDriverId) =>
     request(`/admin/reports/${id}/accused`, { method: "PUT", body: { accusedDriverId }, auth: true }),
+  // The same incident, about one more driver: files a linked sibling report so
+  // each driver keeps their own private thread and their own decision.
+  splitReport: (id, accusedDriverId) =>
+    request(`/admin/reports/${id}/split`, { method: "POST", body: { accusedDriverId }, auth: true }),
   // By roster driver where possible; the raw Discord id stays for somebody who
   // is not on any roster.
   addReportViewer: (id, body) => request(`/admin/reports/${id}/viewers`, { method: "POST", body, auth: true }),

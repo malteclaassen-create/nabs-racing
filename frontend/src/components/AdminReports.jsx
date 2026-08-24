@@ -63,26 +63,50 @@ const SUGGEST_NOTE = {
 // a steward either agrees with it or picks somebody else. It is never saved by
 // itself — Assetto Corsa is good at "these two cars touched" and knows nothing
 // whatever about fault.
-function NameAccused({ report, drivers, busy, onName }) {
+//
+// "Add another driver" is the third act here: an incident that ends with two
+// penalties needs two reports, because a report is one private thread and one
+// decision about ONE driver. The button files a linked sibling — same round,
+// same moment, same words — about the second driver (`onSplit`), instead of the
+// stewards entering the second penalty by hand with no thread behind it.
+function NameAccused({ report, drivers, busy, onName, onSplit }) {
   const hint = report.accusedSuggestion || null;
   const [pick, setPick] = useState(hint?.driverId || "");
-  // Correcting an already-named report: the picker stays closed until asked.
-  const [changing, setChanging] = useState(false);
+  // What the picker on a NAMED report is being used for: correcting the name,
+  // or filing the same incident against one more driver. Closed until asked.
+  const [mode, setMode] = useState(null); // null | "change" | "add"
   // A different report opened, or the file's answer arrived after the first
   // render: follow it, but never overwrite a steward who has already chosen.
   useEffect(() => {
     setPick((cur) => cur || hint?.driverId || "");
   }, [report.id, hint?.driverId]);
   useEffect(() => {
-    setChanging(false);
+    setMode(null);
   }, [report.id, report.accusedDriverId]);
+
+  const picker = (
+    <select
+      aria-label="Which driver this report is about"
+      className="input w-auto max-w-64 py-1.5 text-sm"
+      value={pick}
+      disabled={busy}
+      onChange={(e) => setPick(e.target.value)}
+    >
+      <option value="">Pick a driver…</option>
+      {drivers.map((d) => (
+        <option key={d.id} value={d.id}>
+          {d.name}
+        </option>
+      ))}
+    </select>
+  );
 
   return (
     <div className="rounded-lg border border-border p-4">
       <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
         The report is about
       </div>
-      {report.accusedName && !changing ? (
+      {report.accusedName && !mode ? (
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-sm font-semibold text-dark">{report.accusedName}</p>
           <button
@@ -90,41 +114,39 @@ function NameAccused({ report, drivers, busy, onName }) {
             disabled={busy}
             onClick={() => {
               setPick(report.accusedDriverId || "");
-              setChanging(true);
+              setMode("change");
             }}
           >
             Change
+          </button>
+          <button
+            className="btn-secondary py-1 text-xs"
+            disabled={busy}
+            onClick={() => {
+              setPick("");
+              setMode("add");
+            }}
+          >
+            Add another driver
           </button>
         </div>
       ) : report.accusedName ? (
         <>
           <p className="text-sm text-light">
-            Named the wrong driver? Both are told: the one named by mistake that the report no longer names
-            them, the right one that it does.
+            {mode === "change"
+              ? "Named the wrong driver? Both are told: the one named by mistake that the report no longer names them, the right one that it does."
+              : "The same incident, about one more driver: this files a linked report — same round, same moment, the reporter's own words — so each driver gets their own thread and their own decision."}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <select
-              aria-label="Which driver this report is about"
-              className="input w-auto max-w-64 py-1.5 text-sm"
-              value={pick}
-              disabled={busy}
-              onChange={(e) => setPick(e.target.value)}
-            >
-              <option value="">Pick a driver…</option>
-              {drivers.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+            {picker}
             <button
               className="btn-secondary py-1.5 text-sm"
               disabled={busy || !pick || pick === report.accusedDriverId}
-              onClick={() => onName(pick)}
+              onClick={() => (mode === "change" ? onName(pick) : onSplit(pick))}
             >
-              Change to them
+              {mode === "change" ? "Change to them" : "File it about them"}
             </button>
-            <button className="btn-secondary py-1.5 text-sm" disabled={busy} onClick={() => setChanging(false)}>
+            <button className="btn-secondary py-1.5 text-sm" disabled={busy} onClick={() => setMode(null)}>
               Cancel
             </button>
           </div>
@@ -148,20 +170,7 @@ function NameAccused({ report, drivers, busy, onName }) {
             </p>
           )}
           <div className="mt-2 flex flex-wrap gap-2">
-            <select
-              aria-label="Which driver this report is about"
-              className="input w-auto max-w-64 py-1.5 text-sm"
-              value={pick}
-              disabled={busy}
-              onChange={(e) => setPick(e.target.value)}
-            >
-              <option value="">Pick a driver…</option>
-              {drivers.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+            {picker}
             <button className="btn-secondary py-1.5 text-sm" disabled={busy || !pick} onClick={() => onName(pick)}>
               Name them
             </button>
@@ -303,6 +312,12 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
             drivers={drivers}
             busy={busy}
             onName={(driverId) => run(() => api.setReportAccusedAdmin(id, driverId), "Named, and told.")}
+            onSplit={(driverId) =>
+              run(
+                () => api.splitReport(id, driverId),
+                (res) => `Filed a linked report about ${res?.report?.accusedName || "them"} — it is in the list.`
+              )
+            }
           />
 
 
