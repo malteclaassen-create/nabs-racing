@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { seasonLabelOf } from "../utils/pageTitle.js";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar, CountUp, EmptyState, PosDelta } from "../components/ui.jsx";
 import { playStandingsReplay } from "../utils/standingsReplay.js";
@@ -210,6 +211,13 @@ export default function DriverStandings() {
   const { data, loading, error, reload } = useApi(useCallback(() => api.driverStandings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const { current: season, active } = useSeason();
+  // The season belongs in the heading, not only in the switcher above it.
+  // Eight seasons of this page otherwise share one H1, so neither a reader
+  // landing from a search nor the search engine itself can tell them apart —
+  // and the tab title has named the season all along. Same label as there
+  // (utils/pageTitle.js), so the two never disagree.
+  const seasonName = seasonLabelOf(season);
+  const seasonHeading = seasonName ? `${seasonName} Driver Standings` : "Driver Standings";
   // Default OFF on purpose: the full field, reserves included, is what the
   // standings are meant to show. Defaulting this to ON was tried and taken back
   // out — the crowded table is the intended one. The count line under the table
@@ -259,7 +267,7 @@ export default function DriverStandings() {
   if (error)
     return (
       <div>
-        <PageHeader eyebrow="Championship" title="Driver Standings" />
+        <PageHeader eyebrow="Championship" title={seasonHeading} />
         <ErrorBox message={error} onRetry={reload} />
       </div>
     );
@@ -397,7 +405,7 @@ export default function DriverStandings() {
 
   return (
     <div className="content-in">
-      <PageHeader eyebrow="Championship" title="Driver Standings" />
+      <PageHeader eyebrow="Championship" title={seasonHeading} />
 
       {top3.length > 0 && (
         // Phones skip the leader cards entirely — the same three drivers head

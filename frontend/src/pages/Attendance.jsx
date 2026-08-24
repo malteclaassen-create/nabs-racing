@@ -5,6 +5,8 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { useReserveSeats } from "../hooks/useReserveSeats.js";
+import { useSeason } from "../context/SeasonContext.jsx";
+import { seasonLabelOf } from "../utils/pageTitle.js";
 import SeatCue from "../components/SeatCue.jsx";
 import { ErrorBox, PageHeader, TableSkeleton, EmptyState, Notice } from "../components/ui.jsx";
 import RaceSignupCard from "../components/RaceSignupCard.jsx";
@@ -150,6 +152,14 @@ export default function Attendance() {
   const [params, setParams] = useSearchParams();
   const wantRace = params.get("race");
   const { user, isLoggedIn } = useAuth();
+  const { current: season } = useSeason();
+  // The season belongs in the heading, not only in the switcher above it. Eight
+  // seasons of this page otherwise share one H1, so neither a reader landing
+  // from a search nor the search engine itself can tell them apart — and the
+  // tab title has named the season all along. Same label as there
+  // (utils/pageTitle.js), so the two never disagree.
+  const seasonName = seasonLabelOf(season);
+  const seasonHeading = seasonName ? `${seasonName} Attendance` : "Attendance";
   const driverId = isLoggedIn ? user?.driverId : null;
   const canSignUp = isLoggedIn && !!driverId;
 
@@ -274,7 +284,7 @@ export default function Attendance() {
 
   return (
     <div className="content-in space-y-6">
-      <PageHeader eyebrow="Race Attendance" title="Attendance" />
+      <PageHeader eyebrow="Race Attendance" title={seasonHeading} />
 
       {!isLoggedIn && <SignInBanner />}
 

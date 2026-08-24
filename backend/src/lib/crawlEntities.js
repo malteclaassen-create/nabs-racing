@@ -27,6 +27,7 @@ import { getPrivateSeasonIds, getSeasonScoring } from "../services/seasonService
 import { applyPenalties, getDriverResultPoints } from "../services/pointsCalculator.js";
 import { getNameOverrides } from "./persons.js";
 import { seasonStandings, seasonRounds, constructorStandings } from "./crawlTables.js";
+import { seasonLabel } from "./seo.js";
 
 // How many finishers of a round are worth listing. The results table shows the
 // whole field, so listing the whole field is the honest mirror; the cap is only
@@ -282,6 +283,35 @@ function classificationTable(base, rows, scores) {
   };
 }
 
+// The home page's own heading and opening sentence: what the league is, rather
+// than how its current season is going.
+//
+// This is the one place the site says it out loud, and it is the reason it
+// exists: Google had the league's name and its round number and no idea what
+// sort of thing it was looking at, because the biggest words on the page were
+// the name of last Friday's circuit and the only prose in the document was the
+// footer's.
+//
+// Both strings MIRROR what the page itself renders — frontend/src/pages/Home.jsx
+// (leagueStrapline), where the heading is the H1 and the sentence sits under it
+// for signed-out visitors, which is every visitor a crawler can be. Change one
+// and change the other. What is raced is read off the season's `game` field
+// ("F1 2010 · Assetto Corsa") and not written here, because the era changes
+// every season and a season that is not recognisably Formula 1 must not be
+// advertised as one.
+function leagueStrapline(game) {
+  const [era, platformRaw] = String(game || "").split(/[·/|]/).map((x) => x.trim());
+  const platform = platformRaw || "Assetto Corsa";
+  const f1 = /\bf1\b|formula/i.test(era || "");
+  return {
+    heading: `${f1 ? "Formula 1" : "Online"} sim racing on ${platform}`,
+    blurb:
+      `NABS Racing is an online sim racing league on ${platform}. ` +
+      `${f1 ? "Formula 1 championships" : "Championship racing"} with driver and team standings, ` +
+      "race results, live timing and open sign-ups — new drivers welcome.",
+  };
+}
+
 // The season's leaders, which is the one table the home page puts on screen and
 // links: three drivers, in order, under "Title race right now". Three, because
 // that is what the card holds — a top ten here would be a table the reader
@@ -296,10 +326,11 @@ function classificationTable(base, rows, scores) {
 // door. Google does render, but rendering is a second pass that a young site
 // waits its turn for, and the first pass is where the early impression is made.
 //
-// So it now says the two things the page leads with, both of which are on
-// screen: which season is running and what it is driven in, and which round is
-// next and when. Same rule as everywhere in this file — the reader gets these
-// facts at this address, so a crawler may have them too.
+// So it now leads with what the page leads with: the strapline above, the
+// sentence under it, and then the things the ticker states — which season is
+// running and what it is driven in, and which round is next and when. Same rule
+// as everywhere in this file: the reader gets all of it at this address, so a
+// crawler may have it too.
 async function homeBlock(prisma, base, seasonId) {
   if (!seasonId) return null;
   let top = [];
@@ -320,7 +351,7 @@ async function homeBlock(prisma, base, seasonId) {
   try {
     season = await prisma.season.findUnique({
       where: { id: seasonId },
-      select: { number: true, game: true },
+      select: { number: true, name: true, game: true },
     });
   } catch {
     /* the standings group below is the block's real content */
@@ -337,6 +368,11 @@ async function homeBlock(prisma, base, seasonId) {
   }
 
   const facts = [];
+  // The season moved out of the heading and into this line when the heading
+  // became the league's strapline; the ticker at the top of the page names it
+  // in exactly this spot, so the block still mirrors what is on screen.
+  const label = seasonLabel(season);
+  if (label) facts.push(label);
   if (season?.game) facts.push(season.game);
   if (next?.track) {
     const when = next.date
@@ -349,8 +385,10 @@ async function homeBlock(prisma, base, seasonId) {
   // it paid. Three, because the card holds three — the round's own page has the
   // rest, and this block links straight to it.
   const latest = await latestRound(prisma, base, seasonId);
+  const strap = leagueStrapline(season?.game);
   return {
-    heading: season?.number ? `NABS Racing League · Season ${season.number}` : "NABS Racing League",
+    heading: strap.heading,
+    blurb: strap.blurb,
     line: facts.join(" · "),
     groups: [
       latest,

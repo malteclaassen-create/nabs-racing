@@ -38,6 +38,24 @@ export async function primarySlug(prisma) {
   }
 }
 
+// What to call a season wherever a reader (or a search engine) sees the name.
+//
+// The name is free text an admin types, and seasons are routinely stored with
+// nothing but their number in it ("8"). That reads fine inside the season
+// switcher's own list and nowhere else: the page title came out as "8 driver
+// standings" and the crawler's link block called the calendar "8 rounds". A
+// name that is only digits therefore gets the word in front of it; a season the
+// admin actually named ("Winter Series") is left exactly as typed.
+//
+// frontend/src/utils/pageTitle.js has the same function, for the title the app
+// sets after it boots. The two must agree.
+export function seasonLabel(season) {
+  if (!season) return null;
+  const name = String(season.name || "").trim();
+  if (name && !/^\d+$/.test(name)) return name;
+  return season.number != null ? `Season ${season.number}` : name || null;
+}
+
 // First path segments that belong INSIDE a series. Everything else (downloads,
 // profile, tools, admin, the auth callbacks) is site-wide and stays flat.
 const SERIES_SEGMENTS = new Set([

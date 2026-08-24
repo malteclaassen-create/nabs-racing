@@ -1,16 +1,16 @@
 import { useCallback, useRef, useState } from "react";
 import { useDismiss } from "./overlay.jsx";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { seasonLabelOf } from "../utils/pageTitle.js";
 
 // The season switcher, built straight into the Home ticker line ("SEASON 7 · LIVE
 // | F1 2007 …"). The season name IS the control: click it to open a tidy menu of
 // every season and jump between them. Replaces the old NavBar <select>.
 
 // Some seasons are stored with just a number as their name (e.g. a future "8");
-// show "Season 8" rather than a bare "8".
-function nameOf(s) {
-  return /^\d+$/.test((s.name || "").trim()) ? `Season ${s.number}` : s.name || `Season ${s.number}`;
-}
+// show "Season 8" rather than a bare "8". The same rule now names the season in
+// page titles and headings, so it lives in one place.
+const nameOf = (s) => seasonLabelOf(s) || "";
 
 function LiveDot({ className = "" }) {
   return (
