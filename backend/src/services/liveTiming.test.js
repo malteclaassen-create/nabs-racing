@@ -524,3 +524,94 @@ describe("liveTiming live session second", () => {
     expect(raceSecond()).toBe(null);
   });
 });
+
+// Sector colours on the qualifying/practice board. The trap the live board fell
+// into: the session's top-level BestSplits arrives as an ARRAY in whatever order
+// the records were written (S3, S1, S2 is a real payload), so reading it by
+// position compared sector 1's time against sector 3's and nothing ever matched.
+describe("liveTiming sector colours", () => {
+  beforeEach(() => reset());
+
+  const ms = (n) => n * 1e6;
+  // A car's splits: object keyed "0"/"1"/"2", the shape the upstream sends.
+  const lapSplits = (times, driversBest = [false, false, false]) =>
+    Object.fromEntries(
+      times.map((t, i) => [
+        String(i),
+        { SplitIndex: i, SplitTime: ms(t), Cuts: 0, IsDriversBest: driversBest[i], IsBest: false },
+      ])
+    );
+
+  function quali({ bestSplits, drivers }) {
+    const Drivers = {};
+    for (const [guid, d] of Object.entries(drivers)) {
+      Drivers[guid] = {
+        CarInfo: { DriverName: d.name, CarModel: "f", Tyres: "SS", CarID: d.carId ?? 1, IsSpectator: false },
+        Cars: {
+          f: {
+            NumLaps: 10,
+            BestLap: ms(d.best),
+            BestLapSplits: lapSplits(d.lap, d.driversBest),
+            BestSplits: lapSplits(d.ideal ?? d.lap),
+          },
+        },
+        TotalNumLaps: 10,
+      };
+    }
+    return {
+      SessionInfo: { Type: 2, Track: "monza", CurrentSessionIndex: 0, Name: "Qualifying" },
+      TrackInfo: { name: "NABS Monza" },
+      ConnectedDrivers: { Drivers },
+      DisconnectedDrivers: { Drivers: {} },
+      BestSplits: bestSplits,
+    };
+  }
+
+  it("marks the session's fastest sector purple even though BestSplits arrives out of order", () => {
+    ingest(
+      quali({
+        // Exactly the upstream's ordering: S3 first, then S1, then S2.
+        bestSplits: [
+          { SplitIndex: 2, SplitTime: ms(15300), Cuts: 0 },
+          { SplitIndex: 0, SplitTime: ms(29346), Cuts: 0 },
+          { SplitIndex: 1, SplitTime: ms(14275), Cuts: 0 },
+        ],
+        drivers: {
+          g1: { name: "Timmis", carId: 1, best: 58982, lap: [29346, 14336, 15300] },
+          g2: { name: "Rashford", carId: 2, best: 59027, lap: [29372, 14338, 15317] },
+        },
+      })
+    );
+    const [timmis, rashford] = getBoard().entries;
+    // S1 and S3 of the pole lap ARE the session's best; S2 is not (14.275 was
+    // set on another lap), so it stays green/amber like the source timing page.
+    expect(timmis.sectors.map((s) => s.best)).toEqual([true, false, true]);
+    expect(rashford.sectors.map((s) => s.best)).toEqual([false, false, false]);
+  });
+
+  it("keeps the driver's own best sector green", () => {
+    ingest(
+      quali({
+        bestSplits: [{ SplitIndex: 0, SplitTime: ms(29346), Cuts: 0 }],
+        drivers: {
+          g1: { name: "Pizd", carId: 1, best: 59176, lap: [29489, 14346, 15341], driversBest: [false, true, false] },
+        },
+      })
+    );
+    const [pizd] = getBoard().entries;
+    expect(pizd.sectors.map((s) => s.best)).toEqual([false, false, false]);
+    expect(pizd.sectors.map((s) => s.driversBest)).toEqual([false, true, false]);
+  });
+
+  it("sums the ideal lap from the driver's best sectors whatever order they come in", () => {
+    ingest(
+      quali({
+        bestSplits: [],
+        drivers: {
+          g1: { name: "Timmis", carId: 1, best: 58982, lap: [29346, 14336, 15300], ideal: [29346, 14275, 15300] },
+        },
+      })
+    );
+    expect(getBoard().entries[0].potentialMs).toBe(29346 + 14275 + 15300);
+  });
+});
