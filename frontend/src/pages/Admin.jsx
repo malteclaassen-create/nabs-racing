@@ -1064,11 +1064,15 @@ function parseRaceTimeInput(text) {
 
 function EditResults() {
   const ask = useAsk();
-  const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
+  // Sprints included: a sprint classification is edited (penalties, driver
+  // swaps, deletion) exactly like any stored result, and this picker is the
+  // one place in the admin that has to reach it.
+  const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(undefined, { includeSprints: true }), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [raceId, setRaceId] = useState("");
   const [rows, setRows] = useState([]);
-  const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceLaps: "", info: "" }); // race details editor
+  // race details editor (raceFormat: SINGLE | SPRINT_FEATURE, see lib/raceFormat.js)
+  const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "" });
   const [dotd, setDotd] = useState(""); // Driver of the Day pick
   const [dotdBy, setDotdBy] = useState(""); // who made the pick (streamer)
   // Manually recorded honours (pole / fastest lap, each with an optional lap
@@ -1109,7 +1113,7 @@ function EditResults() {
     // and one race's classification was written onto another. Everything reset
     // here is per-race and reloaded below.
     setRows([]);
-    setMeta({ track: "", date: "", qualiMinutes: "", raceLaps: "", info: "" });
+    setMeta({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "" });
     setDotd("");
     setDotdBy("");
     setHonours({ pole: "", poleTime: "", fl: "", flTime: "" });
@@ -1141,6 +1145,8 @@ function EditResults() {
           track: d.race?.track || "",
           date: toLocalInput(d.race?.date),
           qualiMinutes: d.race?.qualiMinutes ?? "",
+          raceFormat: d.race?.raceFormat || "SINGLE",
+          sprintLaps: d.race?.sprintLaps ?? "",
           raceLaps: d.race?.raceLaps ?? "",
           info: d.race?.info || "",
         });
@@ -1469,6 +1475,8 @@ function EditResults() {
         track: meta.track,
         date: fromLocalInput(meta.date),
         qualiMinutes: meta.qualiMinutes === "" ? null : meta.qualiMinutes,
+        raceFormat: meta.raceFormat,
+        sprintLaps: meta.raceFormat === "SPRINT_FEATURE" && meta.sprintLaps !== "" ? meta.sprintLaps : null,
         raceLaps: meta.raceLaps === "" ? null : meta.raceLaps,
         // NOT the highlights link: that is edited in Photos & Videos, and an
         // omitted key leaves it alone. Sending it from here would mean saving a
@@ -1612,8 +1620,9 @@ function EditResults() {
             })
             .map((r) => {
               const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-              const label =
-                kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${r.number}`;
+              const label = r.sprintOf
+                ? "Sprint"
+                : kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${r.number}`;
               return (
                 <option key={r.id} value={r.id}>
                   {label} · {r.track}
@@ -1637,11 +1646,25 @@ function EditResults() {
             <input className="input" type="datetime-local" value={meta.date}
               onChange={(e) => setMeta({ ...meta, date: e.target.value })} />
           </Field>
+          <Field label="Race day" tone="plain">
+            <select className="input w-56" value={meta.raceFormat}
+              onChange={(e) =>
+                setMeta({ ...meta, raceFormat: e.target.value, sprintLaps: e.target.value === "SINGLE" ? "" : meta.sprintLaps })}>
+              <option value="SINGLE">One race</option>
+              <option value="SPRINT_FEATURE">Sprint + feature race</option>
+            </select>
+          </Field>
           <Field label="Qualifying (min)" tone="plain">
             <input className="input w-32" type="number" min="1" value={meta.qualiMinutes}
               onChange={(e) => setMeta({ ...meta, qualiMinutes: e.target.value })} />
           </Field>
-          <Field label="Race laps" tone="plain">
+          {meta.raceFormat === "SPRINT_FEATURE" && (
+            <Field label="Sprint laps" tone="plain">
+              <input className="input w-32" type="number" min="1" value={meta.sprintLaps}
+                onChange={(e) => setMeta({ ...meta, sprintLaps: e.target.value })} />
+            </Field>
+          )}
+          <Field label={meta.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
             <input className="input w-32" type="number" min="1" value={meta.raceLaps}
               onChange={(e) => setMeta({ ...meta, raceLaps: e.target.value })} />
           </Field>
@@ -2708,7 +2731,7 @@ function DiscordEvents() {
   const [busy, setBusy] = useState(false);
   const [event, setEvent] = useState({
     number: "", track: "", date: "", type: "CHAMPIONSHIP",
-    qualiMinutes: "", raceLaps: "", info: "",
+    qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "",
   });
 
   async function saveWebhook(e) {
@@ -2762,6 +2785,8 @@ function DiscordEvents() {
         type: event.type,
         seasonId: current?.id,
         qualiMinutes: event.qualiMinutes || null,
+        raceFormat: event.raceFormat,
+        sprintLaps: event.raceFormat === "SPRINT_FEATURE" ? event.sprintLaps || null : null,
         raceLaps: event.raceLaps || null,
         info: event.info || null,
       });
@@ -2772,7 +2797,10 @@ function DiscordEvents() {
             ? `Training session "${event.track}" created.`
             : `Round ${event.number} created.`
       );
-      setEvent({ number: "", track: "", date: "", type: "CHAMPIONSHIP", qualiMinutes: "", raceLaps: "", info: "" });
+      setEvent({
+        number: "", track: "", date: "", type: "CHAMPIONSHIP",
+        qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "",
+      });
       reloadRaces();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -2807,6 +2835,8 @@ function DiscordEvents() {
       number: r.number ?? "",
       hasResults: (r.resultCount || 0) > 0,
       qualiMinutes: r.qualiMinutes ?? "",
+      raceFormat: r.raceFormat || "SINGLE",
+      sprintLaps: r.sprintLaps ?? "",
       raceLaps: r.raceLaps ?? "",
       info: r.info || "",
     });
@@ -2821,6 +2851,8 @@ function DiscordEvents() {
         type: edit.type,
         number: edit.type === "CHAMPIONSHIP" && edit.number !== "" ? Number(edit.number) : undefined,
         qualiMinutes: edit.qualiMinutes === "" ? null : edit.qualiMinutes,
+        raceFormat: edit.raceFormat,
+        sprintLaps: edit.raceFormat === "SPRINT_FEATURE" && edit.sprintLaps !== "" ? edit.sprintLaps : null,
         raceLaps: edit.raceLaps === "" ? null : edit.raceLaps,
         info: edit.info || null,
       });
@@ -2902,11 +2934,34 @@ function DiscordEvents() {
             onChange={(e) => setEvent({ ...event, date: e.target.value })} />
           {/* session format + free text: all optional, shown in the Discord
               announcement and on the site's upcoming-race panels */}
-          <div className="grid grid-cols-2 gap-3">
-            <input aria-label="Qualifying (min)" className="input" type="number" min="1" placeholder="Qualifying (min)" value={event.qualiMinutes}
-              onChange={(e) => setEvent({ ...event, qualiMinutes: e.target.value })} />
-            <input aria-label="Race laps" className="input" type="number" min="1" placeholder="Race laps" value={event.raceLaps}
-              onChange={(e) => setEvent({ ...event, raceLaps: e.target.value })} />
+          <Field label="Race day" tone="plain">
+            <select className="input" value={event.raceFormat}
+              onChange={(e) =>
+                setEvent({ ...event, raceFormat: e.target.value, sprintLaps: e.target.value === "SINGLE" ? "" : event.sprintLaps })}>
+              <option value="SINGLE">One race</option>
+              <option value="SPRINT_FEATURE">Sprint + feature race (F2 style)</option>
+            </select>
+          </Field>
+          {/* Labelled rather than placeholder-only: a sprint day puts three bare
+              numbers in a row, and "15 12 20" says nothing once they're typed. */}
+          <div className={`grid gap-3 ${event.raceFormat === "SPRINT_FEATURE" ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
+            <Field label="Qualifying (min)" tone="plain">
+              <input aria-label="Qualifying (min)" className="input" type="number" min="1" placeholder="e.g. 15" value={event.qualiMinutes}
+                onChange={(e) => setEvent({ ...event, qualiMinutes: e.target.value })} />
+            </Field>
+            {event.raceFormat === "SPRINT_FEATURE" && (
+              <Field label="Sprint laps" tone="plain">
+                <input aria-label="Sprint laps" className="input" type="number" min="1" placeholder="e.g. 12" value={event.sprintLaps}
+                  onChange={(e) => setEvent({ ...event, sprintLaps: e.target.value })} />
+              </Field>
+            )}
+            <Field label={event.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
+              <input
+                aria-label={event.raceFormat === "SPRINT_FEATURE" ? "Feature race laps" : "Race laps"}
+                className="input" type="number" min="1" placeholder="e.g. 20"
+                value={event.raceLaps}
+                onChange={(e) => setEvent({ ...event, raceLaps: e.target.value })} />
+            </Field>
           </div>
           <textarea aria-label="Details for the announcement & website: rules, mods, links… (optional)" className="input min-h-20" placeholder="Details for the announcement & website: rules, mods, links… (optional)"
             value={event.info} onChange={(e) => setEvent({ ...event, info: e.target.value })} />
@@ -2977,11 +3032,25 @@ function DiscordEvents() {
                         <input className="input" type="datetime-local" value={edit.date}
                           onChange={(e) => setEdit({ ...edit, date: e.target.value })} />
                       </Field>
+                      <Field label="Race day" tone="plain">
+                        <select className="input" value={edit.raceFormat}
+                          onChange={(e) =>
+                            setEdit({ ...edit, raceFormat: e.target.value, sprintLaps: e.target.value === "SINGLE" ? "" : edit.sprintLaps })}>
+                          <option value="SINGLE">One race</option>
+                          <option value="SPRINT_FEATURE">Sprint + feature race</option>
+                        </select>
+                      </Field>
                       <Field label="Qualifying (min)" tone="plain">
                         <input className="input" type="number" min="1" value={edit.qualiMinutes}
                           onChange={(e) => setEdit({ ...edit, qualiMinutes: e.target.value })} />
                       </Field>
-                      <Field label="Race laps" tone="plain">
+                      {edit.raceFormat === "SPRINT_FEATURE" && (
+                        <Field label="Sprint laps" tone="plain">
+                          <input className="input" type="number" min="1" value={edit.sprintLaps}
+                            onChange={(e) => setEdit({ ...edit, sprintLaps: e.target.value })} />
+                        </Field>
+                      )}
+                      <Field label={edit.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
                         <input className="input" type="number" min="1" value={edit.raceLaps}
                           onChange={(e) => setEdit({ ...edit, raceLaps: e.target.value })} />
                       </Field>

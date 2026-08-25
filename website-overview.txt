@@ -69,6 +69,11 @@ This sits behind a PIN (top right, "Admin"). From there I can:
     logos.
   - Manage seasons.
   - Set the Discord webhook and create or announce upcoming races and events.
+    A race day can be one race or, for an F2 style event, a sprint plus a
+    feature race - each with its own lap count. Both are named in the Discord
+    announcement and on the sign-up page, and after the event both
+    classifications are stored: the import asks which race the file is, and
+    the results view gets a Feature/Sprint switch. Sprints never score.
   - Change the admin PIN.
 
 

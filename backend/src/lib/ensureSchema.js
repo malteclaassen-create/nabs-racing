@@ -79,6 +79,16 @@ export async function ensureAppSchema(prisma) {
   await addColumn(prisma, "Race", "qualiMinutes", "INTEGER");
   await addColumn(prisma, "Race", "raceLaps", "INTEGER");
 
+  // --- Sprint + feature weekends (migration race_sprint_format): an F2-style
+  // event runs a short sprint before the main race. SINGLE is what every round
+  // was before this existed, so the default backfills the whole calendar
+  // correctly; raceLaps above keeps meaning the main race (the feature).
+  await addColumn(prisma, "Race", "raceFormat", "TEXT NOT NULL DEFAULT 'SINGLE'");
+  await addColumn(prisma, "Race", "sprintLaps", "INTEGER");
+  // The hidden child row carrying a sprint weekend's SPRINT classification
+  // points back at its event here (migration race_parent, lib/sprintRaces.js).
+  await addColumn(prisma, "Race", "parentRaceId", "TEXT");
+
   // --- Highlights video of a finished round (migration race_highlights): one
   // pasted link, shown as the Highlights button on the race results. Any
   // http(s) address; see lib/raceHighlights.js.

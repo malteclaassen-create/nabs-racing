@@ -387,7 +387,13 @@ export const api = {
     request(`/standings/constructors/t1${seasonParam(season)}${upToQ(season, upTo)}`, { auth: true }),
   t2Standings: (season, upTo = null) =>
     request(`/standings/constructors/t2${seasonParam(season)}${upToQ(season, upTo)}`, { auth: true }),
-  races: (season) => request(`/races${seasonParam(season)}`, { auth: true }),
+  races: (season, { includeSprints } = {}) =>
+    request(
+      // includeSprints: also list the hidden sprint-classification rows of
+      // sprint weekends (results editor only — calendars never want them).
+      `/races${seasonParam(season)}${includeSprints ? `${seasonParam(season) ? "&" : "?"}includeSprints=1` : ""}`,
+      { auth: true }
+    ),
   raceResults: (id) => request(`/races/${id}/results`, { auth: true }),
   // The round's running order lap by lap, whole field — the "Lap by lap" view
   // of a classification. Only asked for when that view is opened: it is a

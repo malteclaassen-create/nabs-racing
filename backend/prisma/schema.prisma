@@ -274,6 +274,21 @@ model Race {
   // Managed via raw SQL (ensureAppSchema) like driverOfTheDay* below.
   qualiMinutes Int?
   raceLaps     Int?
+  // Shape of the race day (migration race_sprint_format): SINGLE (one race, the
+  // default every round had before this existed) or SPRINT_FEATURE — an F2-style
+  // weekend that runs a shorter sprint before the main race. `sprintLaps` is the
+  // sprint distance; `raceLaps` above stays the main race (the feature), so
+  // every existing reader of it keeps working. Managed via raw SQL
+  // (ensureAppSchema + lib/raceFormat.js).
+  raceFormat   String       @default("SINGLE")
+  sprintLaps   Int?
+  // The event this row is the SPRINT CLASSIFICATION of (migration race_parent):
+  // a sprint+feature weekend stores its sprint result on a hidden child row —
+  // RaceResult is unique per (race, driver), so the second classification of
+  // one evening needs its own race row. null for every ordinary race. Children
+  // are SPECIAL-typed (never scored, no RSVP) and filtered out of calendars.
+  // Managed via raw SQL (ensureAppSchema + lib/sprintRaces.js).
+  parentRaceId String?
   // Highlights video of the finished round — one pasted http(s) link, shown as
   // the Highlights button on the race results (migration race_highlights).
   // Managed via raw SQL (ensureAppSchema + lib/raceHighlights.js).

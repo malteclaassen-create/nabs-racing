@@ -8,14 +8,16 @@ import { useReserveSeats } from "../hooks/useReserveSeats.js";
 import SeatCue from "../components/SeatCue.jsx";
 import { ErrorBox, PageHeader, TableSkeleton, EmptyState, Notice } from "../components/ui.jsx";
 import RaceSignupCard from "../components/RaceSignupCard.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
 import { SocialIcon } from "../components/SocialLinks.jsx";
 import Flag from "../components/Flag.jsx";
 import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
-import { currentSignupRace } from "../utils/signupQueue.js";
+import { currentSignupRace, signupRaceIds } from "../utils/signupQueue.js";
 import { fmtRaceDate } from "../utils/format.js";
+import { sessionSummary } from "../utils/raceFormat.js";
 
 // Which answer a ?rsvp= link stands for. Deliberately a fixed map, so an
 // arbitrary value in the URL can never be forwarded to the API as a status.
@@ -201,6 +203,22 @@ export default function Attendance() {
   // still wins, so a one-tap answer out of a notification or a Discord post
   // lands on the round it was sent for even when that isn't the next one.
   const ev = useMemo(() => currentSignupRace(list, wantRace), [list, wantRace]);
+  // More than one event can be taking answers at once: a one-off night (an F2
+  // sprint + feature evening, say) sits in front of the round that an admin has
+  // already forced open. The page still shows ONE of them — but it must not be
+  // a dead end, so when there is a second, both get a tab. The race on screen
+  // is always in the strip, even when its own sign-up has closed, so switching
+  // away and back is possible.
+  const openEvents = useMemo(() => {
+    const ids = signupRaceIds(list);
+    if (ev) ids.add(ev.id);
+    return list.filter((e) => ids.has(e.id));
+  }, [list, ev]);
+  function showRace(id) {
+    const next = new URLSearchParams(params);
+    next.set("race", id);
+    setParams(next, { replace: true });
+  }
 
   // RSVP actions (identity from the Discord login; forgery-proof server-side).
   const [busy, setBusy] = useState(null);
@@ -308,6 +326,26 @@ export default function Attendance() {
         </EmptyState>
       )}
 
+      {ev && openEvents.length > 1 && (
+        <SlidingTabs
+          items={openEvents.map((e) => ({
+            key: e.id,
+            label: (
+              <span className="flex items-center gap-2">
+                <span className="font-semibold">{e.track}</span>
+                <span className="font-mono text-[11px] uppercase tracking-wider opacity-70">
+                  {e.date ? fmtRaceDate(e.date) : "TBA"}
+                </span>
+              </span>
+            ),
+            title: e.type === "TRAINING" ? "Training session" : `Round ${e.number}`,
+          }))}
+          value={ev.id}
+          onChange={showRace}
+          className="reveal"
+        />
+      )}
+
       {ev && (
         <>
           {/* From here on the page is composed rather than written out: with a
@@ -340,14 +378,9 @@ export default function Attendance() {
                     "Date to be confirmed"
                   )}
                 </div>
-                {(ev.qualiMinutes || ev.raceLaps) && (
+                {sessionSummary(ev).length > 0 && (
                   <div className="mt-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-                    {[
-                      ev.qualiMinutes && `Qualifying ${ev.qualiMinutes} min`,
-                      ev.raceLaps && `Race ${ev.raceLaps} laps`,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                    {sessionSummary(ev).join(" · ")}
                   </div>
                 )}
               </div>
