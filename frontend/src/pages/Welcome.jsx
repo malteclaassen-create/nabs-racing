@@ -14,6 +14,7 @@ import SocialFeed from "../components/SocialFeed.jsx";
 import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { heroFor, heroOnError } from "../utils/heroImage.js";
+import { nextUpcomingRace } from "../utils/raceFormat.js";
 import { seasonGameParts, seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import { useTour } from "../components/Tour.jsx";
@@ -305,7 +306,8 @@ export default function Welcome() {
   const heroImgRef = useParallax(0.08);
 
   const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
-  const nextRace = champRaces.find((r) => !r.isCompleted);
+  // Same rule as Home: trainings count as the next race (utils/raceFormat.js).
+  const nextRace = nextUpcomingRace(races.data);
   // The most recent round that actually ran, for the "Last time out" card.
   const lastRace = [...champRaces].reverse().find((r) => r.isCompleted && r.winner) || null;
   const totalRounds = champRaces.length;
