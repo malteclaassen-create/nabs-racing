@@ -277,22 +277,53 @@ function SessionHeader({ session, receivedAt }) {
   );
 }
 
-// One best-lap sector chip, coloured purple (overall best) / green (personal
-// best) / amber (other), matching sim-racing timing convention. The purple is
-// the shared fastest-lap token rather than a fixed violet-500, which sat at
-// 2.9:1 on the dark board — the same tone the FL badge uses elsewhere, so the
-// convention reads the same across the site and stays legible in both themes.
-function Sector({ s }) {
-  if (!s) return <NoData className="inline-block w-[52px] text-center font-mono text-xs" />;
-  const cls = s.best
+// One sector chip, coloured purple (session's fastest) / green (the driver's own
+// best) / amber (anything else) / red (a sector with a cut in it — the time is
+// there but it wasn't earned), matching sim-racing timing convention and the
+// race server's own timing page. The purple is the shared fastest-lap token
+// rather than a fixed violet-500, which sat at 2.9:1 on the dark board — the
+// same tone the FL badge uses elsewhere, so the convention reads the same across
+// the site and stays legible in both themes.
+//
+// `compact` is the narrower chip the Driving-now table uses for the lap in
+// progress: that card shares a row with the track map, so its column has to
+// stay slim. A null sector still takes its width, so chips don't jump sideways
+// as the lap fills in.
+function Sector({ s, compact = false }) {
+  const size = compact ? "w-[46px] text-[10px]" : "w-[52px] text-xs";
+  if (!s) return <NoData className={`inline-block ${size} text-center font-mono`} />;
+  const cls = s.cuts
+    ? "bg-red-500/10 text-bad"
+    : s.best
     ? "bg-fl/20 text-fl"
     : s.driversBest
     ? "bg-ok/15 text-ok"
     : "bg-warn/10 text-warn";
   return (
-    <span className={`inline-block w-[52px] rounded text-center font-mono text-xs font-semibold tabular-nums ${cls}`}>
+    <span
+      className={`inline-block ${size} rounded text-center font-mono font-semibold tabular-nums ${cls}`}
+      title={s.cuts ? `${s.cuts} cut${s.cuts > 1 ? "s" : ""} in this sector` : undefined}
+    >
       {formatSector(s.ms)}
     </span>
+  );
+}
+
+// The lap a driver is on RIGHT NOW, filling in sector by sector as they cross
+// each split — the same build-up the race server's own timing page shows, from
+// the same source (the snapshot's CurrentLapSplits). Practice and qualifying
+// only: in a race the interesting question is the gap to the car ahead, not
+// which tenth of sector two someone is having, and the column has no room for
+// both. Nothing to show until the first split of the lap lands, so a driver who
+// has just left the pits doesn't get an empty second line.
+function BuildingSectors({ sectors }) {
+  if (!sectors?.some(Boolean)) return null;
+  return (
+    <div className="mt-1 flex justify-end gap-1">
+      {sectors.map((s, i) => (
+        <Sector key={i} s={s} compact />
+      ))}
+    </div>
   );
 }
 
@@ -424,11 +455,16 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
       </td>
       <td className="py-3 pr-4 text-right text-base">
         {e.onTrack ? (
-          <CurrentLap
-            lastLapAt={e.lastLapAt}
-            inPits={e.inPits}
-            startedAt={isRace && !e.lapCount ? raceStartedAt : null}
-          />
+          <>
+            <CurrentLap
+              lastLapAt={e.lastLapAt}
+              inPits={e.inPits}
+              startedAt={isRace && !e.lapCount ? raceStartedAt : null}
+            />
+            {/* A car in the pits isn't building a lap, and the clock says so
+                instead — leftover splits under "In pit" would read as progress. */}
+            {!isRace && !e.inPits && <BuildingSectors sectors={e.currentSectors} />}
+          </>
         ) : (
           <span className="pill bg-surface2 font-mono text-light">Left</span>
         )}
@@ -2005,6 +2041,9 @@ export default function Live() {
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-3 w-3 rounded bg-emerald-500/30" /> Personal best
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded bg-red-500/25" /> Cut
             </span>
           </>
         )}
