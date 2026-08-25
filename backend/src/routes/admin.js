@@ -75,6 +75,7 @@ import {
 } from "../lib/members.js";
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
+import { applyTransfer, removeTransfer, readTransfers } from "../services/driverTransfers.js";
 import {
   dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups,
   dbMergeDuplicateAnswers,
@@ -2142,76 +2143,62 @@ router.put("/drivers/:id", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/drivers/:id/transfer -> move a driver to another team, or
-// into (or out of) the season's Reserve pool. Body: { teamId } where teamId is
-// a team of the driver's own season, or the literal "reserve".
+// Driver transfers, recorded against a ROUND (services/driverTransfers.js).
 //
-// The Team and Tier dropdowns next to each driver could always do this, but
-// they are two separate saves that have to agree: a driver put in a Tier-2 team
-// while their own tier still says 1 scores for nobody, and finding out why is a
-// bad evening. One call sets both, from the target team itself.
+// POST /api/admin/drivers/:id/transfer   { teamId, fromRound, preview? }
+//   "From round 5 they drive for Ferrari." teamId is a team of the driver's own
+//   season or the literal "reserve"; fromRound is a round number that season
+//   actually has. With preview: true nothing is written and the answer lists
+//   every round that would be re-attributed and every constructor total that
+//   would move, which is what the confirm dialog reads out.
 //
-// Rounds already driven are NOT touched, and cannot be: each result carries the
-// team it was driven for, stamped when the round was saved (lib/resultTeam.js).
-// Result tables, the race hero, the poster and every constructor total stay
-// exactly as they were. Only the rounds still to come follow the driver.
+//   A round still ahead changes nothing today: the transfer waits, and applies
+//   itself when that round is saved. A round already driven is corrected, which
+//   DOES move constructor points, because the old attribution was wrong.
+//
+// GET    /api/admin/drivers/:id/transfers          what is on record
+// DELETE /api/admin/drivers/:id/transfers/:changeId  take one back (?preview=1)
 router.post("/drivers/:id/transfer", async (req, res, next) => {
   try {
-    const driver = await prisma.driver.findUnique({
-      where: { id: req.params.id },
-      include: {
-        team: { select: { id: true, name: true, tier: true } },
-        season: { select: { id: true, name: true } },
-        _count: { select: { results: true } },
-      },
+    const out = await applyTransfer(prisma, {
+      driverId: req.params.id,
+      teamId: req.body?.teamId,
+      fromRound: req.body?.fromRound,
+      dryRun: req.body?.preview === true,
     });
-    if (!driver) return res.status(404).json({ error: "Driver not found" });
+    res.json(out);
+  } catch (e) {
+    next(e);
+  }
+});
 
-    const wanted = String(req.body?.teamId || "").trim();
-    if (!wanted) return res.status(400).json({ error: "Pick a team to move them to" });
+router.get("/drivers/:id/transfers", async (req, res, next) => {
+  try {
+    const rows = await readTransfers(prisma, { driverId: req.params.id });
+    const teams = await prisma.team.findMany({ where: { id: { in: rows.map((r) => r.teamId) } } });
+    const byId = new Map(teams.map((t) => [t.id, t]));
+    res.json(
+      rows.map((r) => ({
+        id: r.id,
+        fromRound: r.fromRound,
+        teamId: r.teamId,
+        teamName: byId.get(r.teamId)?.name || r.teamId,
+        tier: byId.get(r.teamId)?.tier ?? null,
+      }))
+    );
+  } catch (e) {
+    next(e);
+  }
+});
 
-    // "reserve" is a destination, not an id: a season that never had a pool
-    // (hand-built rather than cloned) gets one made here, same as the
-    // attendance sign-up and the driver-removal demotion do.
-    let target;
-    if (wanted === "reserve") {
-      if (!driver.seasonId) return res.status(400).json({ error: "This driver has no season, so they have no Reserve pool to move to" });
-      target = await ensureReservePool(prisma, driver.seasonId);
-      if (!target) return res.status(404).json({ error: "Season not found" });
-    } else {
-      target = await prisma.team.findUnique({ where: { id: wanted }, select: { id: true, name: true, tier: true, seasonId: true } });
-      if (!target) return res.status(404).json({ error: "Team not found" });
-      // A team of another season would take the driver out of their own
-      // championship without ever saying so.
-      if (driver.seasonId && target.seasonId && target.seasonId !== driver.seasonId) {
-        return res.status(400).json({
-          error: `${target.name} belongs to a different season. A driver can only move between the teams of ${driver.season?.name || "their own season"}.`,
-        });
-      }
-    }
-
-    if (target.id === driver.teamId) {
-      return res.status(400).json({ error: `${driver.name} is already in ${target.name}.` });
-    }
-
-    // The tier follows the team, always. A move out of the Reserve pool also
-    // reactivates the row: somebody being given a seat is racing again.
-    const moved = await prisma.driver.update({
-      where: { id: driver.id },
-      data: {
-        teamId: target.id,
-        tier: target.tier,
-        isActive: target.tier === 0 ? driver.isActive : true,
-      },
+router.delete("/drivers/:id/transfers/:changeId", async (req, res, next) => {
+  try {
+    const out = await removeTransfer(prisma, {
+      driverId: req.params.id,
+      changeId: req.params.changeId,
+      dryRun: req.query.preview === "1",
     });
-
-    res.json({
-      ...moved,
-      from: driver.team ? { id: driver.team.id, name: driver.team.name, tier: driver.team.tier } : null,
-      to: { id: target.id, name: target.name, tier: target.tier },
-      // What the admin most wants confirmed: the past did not move with them.
-      resultsKept: driver._count.results,
-    });
+    res.json(out);
   } catch (e) {
     next(e);
   }

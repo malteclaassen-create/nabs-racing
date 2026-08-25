@@ -683,8 +683,14 @@ export const api = {
   // end up disagreeing. `teamId` is a team of the driver's own season, or the
   // literal "reserve". Rounds already driven keep the team they were driven
   // for and are not touched.
-  transferDriver: (id, teamId) =>
-    request(`/admin/drivers/${id}/transfer`, { method: "POST", body: { teamId }, auth: true }),
+  // Record "this driver drives for this team from this round on". `preview`
+  // writes nothing and answers with the rounds that would be re-attributed and
+  // the constructor totals that would move, which the confirm dialog reads out.
+  transferDriver: (id, teamId, fromRound, preview = false) =>
+    request(`/admin/drivers/${id}/transfer`, { method: "POST", body: { teamId, fromRound, preview }, auth: true }),
+  driverTransfers: (id) => request(`/admin/drivers/${id}/transfers`, { auth: true }),
+  removeDriverTransfer: (id, changeId, preview = false) =>
+    request(`/admin/drivers/${id}/transfers/${changeId}${preview ? "?preview=1" : ""}`, { method: "DELETE", auth: true }),
   // Remove one driver row from its season. Without force the backend answers
   // 409 needsConfirm listing what would be deleted with it (attendance answers,
   // market entries); the UI confirms, then retries with force.

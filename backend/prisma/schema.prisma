@@ -695,3 +695,25 @@ model PersonLink {
 
   @@index([personId])
 }
+
+// "From round 5 they drive for Ferrari": one row per statement, which is what
+// makes a transfer something other than "move them now". Saving a round asks
+// this list which team to stamp its results with, so a change entered weeks in
+// advance applies itself on the night; entering one for a round already driven
+// re-attributes those rounds and rescores them. See services/driverTransfers.js.
+//
+// No relations, like PersonLink above: the table is created and read in raw SQL
+// (ensureAppSchema + migration driver_team_change) so it stays writable while
+// the dev server holds the generated client. Declared here all the same, so
+// `prisma migrate` sees the same schema the database actually has.
+model DriverTeamChange {
+  id        String   @id
+  driverId  String
+  seasonId  String?
+  fromRound Int
+  teamId    String
+  createdAt DateTime @default(now())
+
+  @@unique([driverId, fromRound])
+  @@index([seasonId])
+}

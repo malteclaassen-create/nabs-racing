@@ -282,6 +282,26 @@ export async function ensureAppSchema(prisma) {
     PRIMARY KEY ("day", "hash")
   )`);
 
+  // --- Driver transfers recorded against a round (migration driver_team_change).
+  // "From round 5 they drive for Ferrari": one row per statement, consulted when
+  // a round is saved and when a past round has to be re-attributed. See
+  // services/driverTransfers.js — the table lives there in raw SQL for the same
+  // reason as the tables below it.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "DriverTeamChange" (
+    "id"        TEXT NOT NULL PRIMARY KEY,
+    "driverId"  TEXT NOT NULL,
+    "seasonId"  TEXT,
+    "fromRound" INTEGER NOT NULL,
+    "teamId"    TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "DriverTeamChange_driverId_fromRound_key" ON "DriverTeamChange"("driverId", "fromRound")`
+  );
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "DriverTeamChange_seasonId_idx" ON "DriverTeamChange"("seasonId")`
+  );
+
   // --- Multi-series support (migration series_model): Series table + the
   // Season.seriesId column, with an idempotent backfill so every existing
   // season lives in one default series and the site behaves exactly as before.

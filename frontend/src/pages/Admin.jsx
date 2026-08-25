@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge } from "../components/ui.jsx";
-import { useAsk } from "../components/overlay.jsx";
+import { useAsk, Modal } from "../components/overlay.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
 import AdminRatings from "../components/AdminRatings.jsx";
@@ -2127,42 +2127,12 @@ function Drivers() {
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
-  // Move a driver to another team, or into / out of the Reserve pool. The team
-  // dropdown in each row goes through here rather than saving teamId on its
-  // own, because a team change is really two: the tier has to follow, or the
-  // driver scores for nobody. The backend takes the tier from the target team.
-  //
-  // The confirm is worth the extra click: this is the one change in the tab
-  // that an admin fears will rewrite the season. It cannot (each result carries
-  // the team it was driven for), and the dialog is where that gets said.
-  async function transferDriver(d, targetId) {
-    const target = (teams || []).find((t) => t.id === targetId);
-    const toReserve = targetId === "reserve" || target?.tier === 0;
-    const fromName = (teams || []).find((t) => t.id === d.teamId)?.name || "their team";
-    const toName = targetId === "reserve" ? "the Reserve pool" : target?.name || "the new team";
-    const ok = await ask({
-      title: toReserve ? `Move ${d.name} to the reserves?` : `Move ${d.name} to ${toName}?`,
-      body: toReserve
-        ? `${d.name} leaves ${fromName} and joins ${toName}. Their season entry, their sign-ups and their results all stay. ` +
-          `Rounds they have already driven keep ${fromName}, so the results and the constructor points of those races do not change.`
-        : `${d.name} moves from ${fromName} to ${toName}, and their tier follows the team. ` +
-          `Rounds they have already driven stay with ${fromName}: the result tables, the winner's card, the posters and every ` +
-          `constructor total keep the team of that day. Only the rounds still to come count for ${toName}.`,
-      confirmLabel: toReserve ? "Move to reserves" : "Move driver",
-    });
-    if (!ok) return;
-    setBusy(true); setError(null); setMsg(null);
-    try {
-      const out = await api.transferDriver(d.id, targetId);
-      setMsg(
-        `${d.name} now drives for ${out.to?.name || toName}.` +
-          (out.resultsKept > 0
-            ? ` ${out.resultsKept} race result${out.resultsKept === 1 ? "" : "s"} stayed with ${out.from?.name || fromName}.`
-            : "")
-      );
-      reload(); driverDb.reload();
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
-  }
+  // A team change is a transfer with a ROUND on it, so the dropdown does not
+  // save anything by itself: it opens the dialog with that team preselected.
+  // The dialog is where the round is chosen and where the consequences are
+  // shown, because a transfer backdated into rounds already driven moves real
+  // championship points and must never happen on a stray click.
+  const [transfer, setTransfer] = useState(null);
 
   // Remove a driver row from THIS season. The backend refuses outright when the
   // row has race results, and otherwise answers with a summary of what hangs on
@@ -2394,8 +2364,8 @@ function Drivers() {
                         the season's own pool, or a plain destination for a
                         season that has never needed one. */}
                     <select aria-label={`Team of ${d.name}`} className="input py-1 text-xs" value={d.teamId} disabled={busy}
-                      title="Moves this driver to another team, tier included. Races they have already driven keep the team they drove them for."
-                      onChange={(e) => transferDriver(d, e.target.value)}>
+                      title="Opens the transfer dialog: pick the round the change takes effect from. Rounds already driven keep their team unless you deliberately backdate the move."
+                      onChange={(e) => setTransfer({ driver: d, teamId: e.target.value })}>
                       {teamGroups.map((o) => (
                         <option key={o.id} value={o.id}>{o.name}</option>
                       ))}
@@ -2472,6 +2442,16 @@ function Drivers() {
     </div>
 
     <SafetyCarDrivers drivers={allDrivers} busy={busy} onSet={patchDriver} />
+
+    {transfer && (
+      <TransferDialog
+        driver={transfer.driver}
+        initialTeamId={transfer.teamId}
+        teams={teamGroups}
+        onClose={() => setTransfer(null)}
+        onDone={(text) => { setTransfer(null); setMsg(text); reload(); driverDb.reload(); }}
+      />
+    )}
     </div>
   );
 }
@@ -2485,6 +2465,222 @@ function Drivers() {
 // source of truth. The mark rides on the SEASON row, so it follows whichever
 // season the admin bar is editing, and it shows up on that driver's profile, in
 // a race classification and on the live board.
+// ---------------------------------------------------------------------------
+// Transfer dialog: "<driver> drives for <team> from round <n>".
+//
+// The round is the whole point. Pick one still ahead and nothing happens today,
+// the move simply waits for that round to be saved. Pick one already driven and
+// the rounds since are re-attributed, which moves constructor points. So the
+// dialog asks the server what it WOULD do and prints the answer before the
+// button means anything. Nothing here writes until Confirm.
+// ---------------------------------------------------------------------------
+function TransferDialog({ driver, initialTeamId, teams, onClose, onDone }) {
+  const { data: races } = useApi(useCallback(() => api.races(), []));
+  const [teamId, setTeamId] = useState(initialTeamId);
+  const [fromRound, setFromRound] = useState(null);
+  const [plan, setPlan] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [recorded, setRecorded] = useState([]);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Only scored rounds can carry a transfer: a training night has no number and
+  // nothing to attribute.
+  const rounds = (races || []).filter((r) => r.number != null).sort((a, b) => a.number - b.number);
+  const nextRound = rounds.find((r) => !r.isCompleted)?.number ?? rounds[rounds.length - 1]?.number ?? 1;
+
+  useEffect(() => {
+    if (fromRound == null && rounds.length) setFromRound(nextRound);
+  }, [rounds.length]);
+
+  const loadRecorded = useCallback(async () => {
+    try {
+      setRecorded(await api.driverTransfers(driver.id));
+    } catch {
+      /* nothing on record yet */
+    }
+  }, [driver.id]);
+  useEffect(() => {
+    loadRecorded();
+  }, [loadRecorded]);
+
+  // Ask the server what this combination would do. Re-runs on every change of
+  // team or round, because both change the answer.
+  useEffect(() => {
+    let alive = true;
+    if (!teamId || fromRound == null) return undefined;
+    setLoading(true);
+    setError(null);
+    api
+      .transferDriver(driver.id, teamId, fromRound, true)
+      .then((p) => alive && setPlan(p))
+      .catch((e) => {
+        if (!alive) return;
+        setPlan(null);
+        setError(e.message);
+      })
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [driver.id, teamId, fromRound, reloadKey]);
+
+  async function confirm() {
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await api.transferDriver(driver.id, teamId, fromRound, false);
+      const to = out.to?.name || "the new team";
+      onDone(
+        out.appliesLater
+          ? `Recorded: ${driver.name} drives for ${to} from round ${out.fromRound}. Nothing has changed yet, the move applies when that round is saved.`
+          : `${driver.name} drives for ${to} from round ${out.fromRound}.` +
+              (out.rounds?.length ? ` ${out.rounds.length} round${out.rounds.length === 1 ? "" : "s"} re-attributed.` : "")
+      );
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
+  async function undo(change) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.removeDriverTransfer(driver.id, change.id, false);
+      await loadRecorded();
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const moved = plan?.rounds || [];
+  const teamName = teams.find((t) => t.id === teamId)?.name || (teamId === "reserve" ? "Reserve" : "");
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Transfer ${driver.name}`}
+      size="lg"
+      description="Pick the team and the round the change takes effect from."
+    >
+      <div className="space-y-4 text-sm">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-eyebrow">To team</span>
+            <select className="input mt-1 w-full" value={teamId} disabled={busy} onChange={(e) => setTeamId(e.target.value)}>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+              {!teams.some((t) => t.tier === 0) && <option value="reserve">Reserve</option>}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-eyebrow">From round</span>
+            <select
+              className="input mt-1 w-full"
+              value={fromRound ?? ""}
+              disabled={busy}
+              onChange={(e) => setFromRound(Number(e.target.value))}
+            >
+              {rounds.map((r) => (
+                <option key={r.id} value={r.number}>
+                  {`R${r.number} ${r.track}${r.isCompleted ? " (driven)" : ""}${r.number === nextRound ? " · next" : ""}`}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {/* What this would do, in the league's own terms, before it happens. */}
+        <div className="rounded-xl border border-border bg-surface2 p-3">
+          {loading && <p className="text-light">Working out what that would change...</p>}
+          {!loading && plan?.appliesLater && (
+            <p className="text-medium">
+              Round {plan.fromRound} has not been driven yet, so nothing changes today. {driver.name} stays with{" "}
+              {plan.from?.name || "their team"} until then, and the move applies by itself when round {plan.fromRound} is
+              saved.
+            </p>
+          )}
+          {!loading && plan && !plan.appliesLater && moved.length === 0 && (
+            <p className="text-medium">
+              {driver.name} drives for {teamName} from round {plan.fromRound} on. No round already driven is affected.
+            </p>
+          )}
+          {!loading && moved.length > 0 && (
+            <div className="space-y-3">
+              <p className="font-semibold text-dark">
+                This corrects {moved.length} round{moved.length === 1 ? "" : "s"} {driver.name} has already driven, so the
+                constructor points of those rounds move too:
+              </p>
+              {moved.map((r) => (
+                <div key={r.raceId} className="border-t border-border pt-2 first:border-0 first:pt-0">
+                  <p className="font-semibold text-dark">
+                    R{r.number} {r.track}: {r.from} to {r.to}
+                  </p>
+                  <ul className="mt-1 space-y-0.5 text-xs text-medium">
+                    {r.delta.map((d) => (
+                      <li key={`${d.teamId}-${d.tier}`}>
+                        {d.name} (Tier {d.tier}): {d.from} to {d.to}
+                        <span className={d.to > d.from ? "ml-1 font-semibold text-emerald-500" : "ml-1 font-semibold text-rose-500"}>
+                          {d.to > d.from ? `+${d.to - d.from}` : d.to - d.from}
+                        </span>
+                      </li>
+                    ))}
+                    {r.delta.length === 0 && <li>No constructor points change.</li>}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {recorded.length > 0 && (
+          <div>
+            <span className="text-eyebrow">Already on record</span>
+            <ul className="mt-1 divide-y divide-border">
+              {recorded.map((c) => (
+                <li key={c.id} className="flex items-center justify-between gap-3 py-1.5">
+                  <span className="text-medium">
+                    From round {c.fromRound}: {c.teamName}
+                  </span>
+                  <button
+                    className="transition text-xs font-semibold text-rose-500 hover:underline"
+                    disabled={busy}
+                    onClick={() => undo(c)}
+                  >
+                    Take back
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {error && <p className="text-sm font-semibold text-rose-500">{error}</p>}
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button className="btn-primary" disabled={busy || loading || !plan} onClick={confirm}>
+            {moved.length > 0 ? `Move and correct ${moved.length} round${moved.length === 1 ? "" : "s"}` : "Record transfer"}
+          </button>
+          <button
+            className="transition text-sm font-semibold text-light hover:text-medium"
+            disabled={busy}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function SafetyCarDrivers({ drivers, busy, onSet }) {
   const [pick, setPick] = useState("");
   const marked = drivers.filter((d) => d.role === "safety");
