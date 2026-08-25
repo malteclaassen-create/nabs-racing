@@ -16,6 +16,7 @@ import { countryFor } from "../data/driverCountries.js";
 import { heroFor, heroOnError } from "../utils/heroImage.js";
 import { nextUpcomingRace } from "../utils/raceFormat.js";
 import { seasonGameParts, seasonGameLabel } from "../utils/seasonGame.js";
+import { disciplineOf } from "../utils/pageTitle.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import { useTour } from "../components/Tour.jsx";
 import { fmtDateShort } from "../utils/format.js";
@@ -337,6 +338,20 @@ export default function Welcome() {
   // out whenever it would just echo the car label.
   const gnorm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const showPlatform = !!platform && gnorm(platform) !== gnorm(carsLabel);
+  // The line under the headline, and the one place on this page that names what
+  // the league is in the words somebody looking for a league would type.
+  //
+  // This is the page a signed-out visitor gets at "/" (App.jsx HomeRoute), so it
+  // is also the page a search engine gets, and its headline — "Race
+  // wheel-to-wheel on the NABS grid" — is a promise, not a description: nothing
+  // above the fold said "Assetto Corsa" or "sim racing league" except the tiny
+  // ticker. The server pre-renders this same string for crawlers, so the two
+  // must agree (backend/src/lib/crawlEntities.js, leagueStrapline).
+  //
+  // Read off the season's own game rather than written here: the era changes
+  // every season, and a season that is not recognisably Formula 1 must not
+  // advertise itself as one.
+  const strapline = `${disciplineOf(era) ? "Formula 1 sim" : "Sim"} racing league on ${platform}`;
   // League-wide facts. Seasons are numbered from 1, so the highest PUBLIC
   // season number is how many seasons NABS spans — once the next season is
   // published (visible in the switcher, races scheduled), the landing page
@@ -474,6 +489,13 @@ export default function Welcome() {
             Race wheel&#8209;to&#8209;wheel<br />
             <span className="text-brand">on the NABS grid</span>
           </h1>
+
+          {/* Sits between the headline and the pitch, in the gap the hero's own
+              spacing already leaves. Small on purpose: it is the subtitle to a
+              promise, not a second headline. */}
+          <h2 className="hero-anim -mt-2 font-display text-lg font-extrabold uppercase tracking-tight text-ink/65 dark:text-white/65 sm:text-2xl" style={{ animationDelay: "0.16s" }}>
+            {strapline}
+          </h2>
 
           {/* Short on phones, full paragraph from sm up (the long copy reads as a
               wall of text on a narrow screen). */}

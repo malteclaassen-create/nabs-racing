@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { seasonLabelOf } from "../utils/pageTitle.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -516,6 +517,13 @@ export default function Races() {
   const wantRaceId = searchParams.get("race");
   const wantSeason = searchParams.get("season");
   const { season, setSeason, current } = useSeason();
+  // The season belongs in the heading, not only in the switcher above it.
+  // Eight seasons of this page otherwise share one H1, so neither a reader
+  // landing from a search nor the search engine itself can tell them apart —
+  // and the tab title has named the season all along. Same label as there
+  // (utils/pageTitle.js), so the two never disagree.
+  const seasonName = seasonLabelOf(current);
+  const seasonHeading = seasonName ? `${seasonName} Races` : "Races";
   // Which series' "already seen" list to consult (each series runs its own
   // calendar, so each keeps its own memory).
   const { slug } = useSeriesPath();
@@ -784,7 +792,7 @@ export default function Races() {
   if (error)
     return (
       <div>
-        <PageHeader eyebrow="Schedule & Results" title="Races" />
+        <PageHeader eyebrow="Schedule & Results" title={seasonHeading} />
         <ErrorBox message={error} onRetry={reload} />
       </div>
     );
@@ -853,7 +861,7 @@ export default function Races() {
           down, so picking a type shows every view of it. */}
       <PageHeader
         eyebrow="Schedule & Results"
-        title="Races"
+        title={seasonHeading}
         right={
           // On phones the bar spans the full width and the buttons split it
           // evenly (one tidy row of equal targets) instead of wrapping into a
