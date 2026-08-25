@@ -16,6 +16,7 @@ import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 import { currentSignupRace } from "../utils/signupQueue.js";
 import { fmtRaceDate } from "../utils/format.js";
+import { sessionSummary } from "../utils/raceFormat.js";
 
 // Which answer a ?rsvp= link stands for. Deliberately a fixed map, so an
 // arbitrary value in the URL can never be forwarded to the API as a status.
@@ -340,14 +341,9 @@ export default function Attendance() {
                     "Date to be confirmed"
                   )}
                 </div>
-                {(ev.qualiMinutes || ev.raceLaps) && (
+                {sessionSummary(ev).length > 0 && (
                   <div className="mt-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-                    {[
-                      ev.qualiMinutes && `Qualifying ${ev.qualiMinutes} min`,
-                      ev.raceLaps && `Race ${ev.raceLaps} laps`,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                    {sessionSummary(ev).join(" · ")}
                   </div>
                 )}
               </div>

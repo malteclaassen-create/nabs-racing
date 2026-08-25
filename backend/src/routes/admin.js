@@ -23,7 +23,7 @@ import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, streamFullBackupZip, deleteBackup, pruneBackupsTo } from "../services/backupService.js";
 import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnostics.js";
 import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
-import { parseFormatNumber } from "../lib/raceFormat.js";
+import { parseFormatNumber, parseRaceFormat } from "../lib/raceFormat.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { writeRaceHero } from "../lib/raceHero.js";
 import { deleteLap as deleteTelemetryLap, storedSummary as telemetryStoredSummary } from "../lib/telemetryLaps.js";
@@ -3077,8 +3077,10 @@ router.post("/races/:id/results-post", resultPostImages, async (req, res, next) 
 });
 
 // Validate the optional announcement fields shared by create & edit below:
-// info (free text for rules/mods), qualiMinutes, raceLaps. Returns { error }
-// or { info?, qualiMinutes?, raceLaps? } with only the supplied keys set.
+// info (free text for rules/mods), qualiMinutes, raceLaps, and the race-day
+// shape (raceFormat + sprintLaps). Returns { error } or
+// { info?, qualiMinutes?, raceLaps?, raceFormat?, sprintLaps? } with only the
+// supplied keys set.
 function parseEventExtras(body) {
   const out = {};
   if (body.info !== undefined) {
@@ -3092,13 +3094,20 @@ function parseEventExtras(body) {
   const laps = parseFormatNumber(body.raceLaps, "Race laps", 999);
   if (laps.error) return { error: laps.error };
   if (laps.ok) out.raceLaps = laps.value;
+  const shape = parseRaceFormat(body.raceFormat);
+  if (shape.error) return { error: shape.error };
+  if (shape.ok) out.raceFormat = shape.value;
+  const sprint = parseFormatNumber(body.sprintLaps, "Sprint laps", 999);
+  if (sprint.error) return { error: sprint.error };
+  if (sprint.ok) out.sprintLaps = sprint.value;
   const highlights = parseHighlightsUrl(body.highlightsUrl);
   if (highlights.error) return { error: highlights.error };
   if (highlights.ok) out.highlightsUrl = highlights.value;
   return out;
 }
 
-// qualiMinutes/raceLaps live outside the generated client -> raw write.
+// qualiMinutes/raceLaps/raceFormat/sprintLaps live outside the generated
+// client -> raw write.
 async function writeRaceFormat(raceId, extras) {
   if (extras.qualiMinutes !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Race" SET "qualiMinutes" = ? WHERE "id" = ?`, extras.qualiMinutes, raceId);
@@ -3106,13 +3115,25 @@ async function writeRaceFormat(raceId, extras) {
   if (extras.raceLaps !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Race" SET "raceLaps" = ? WHERE "id" = ?`, extras.raceLaps, raceId);
   }
+  if (extras.raceFormat !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "raceFormat" = ? WHERE "id" = ?`, extras.raceFormat, raceId);
+  }
+  // Turning the sprint back off takes its distance with it, so a weekend that
+  // ran the format once cannot come back as "one race" still carrying a sprint
+  // distance nobody can see or clear.
+  if (extras.raceFormat === "SINGLE") {
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "sprintLaps" = NULL WHERE "id" = ?`, raceId);
+  } else if (extras.sprintLaps !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "sprintLaps" = ? WHERE "id" = ?`, extras.sprintLaps, raceId);
+  }
   if (extras.highlightsUrl !== undefined) {
     await writeRaceHighlights(prisma, raceId, extras.highlightsUrl);
   }
 }
 
 // POST /api/admin/events  { number?, track, date?, seasonId?, type?,
-//                           isSpecialEvent?, info?, qualiMinutes?, raceLaps? }
+//                           isSpecialEvent?, info?, qualiMinutes?, raceLaps?,
+//                           raceFormat?, sprintLaps? }
 // Creates an upcoming race. `type` picks what it is: CHAMPIONSHIP (scored
 // round, needs a number), TRAINING (practice session — no number, not scored,
 // RSVP works) or SPECIAL (special event). The legacy isSpecialEvent flag still
@@ -3156,7 +3177,8 @@ router.post("/events", async (req, res, next) => {
 });
 
 // PUT /api/admin/events/:id  { track?, date?, type?, number?, info?,
-//                              qualiMinutes?, raceLaps? }
+//                              qualiMinutes?, raceLaps?, raceFormat?,
+//                              sprintLaps? }
 // Edit a race's details AFTER the fact — e.g. rename the raw AC track id
 // ("acu_cota_2021") to a display name ("COTA") once the round is imported.
 // Works for completed rounds too; results and scoring are untouched. Changing

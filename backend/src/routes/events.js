@@ -203,6 +203,8 @@ router.get("/", async (req, res, next) => {
         info: race.info,
         qualiMinutes: format.get(race.id)?.qualiMinutes ?? null,
         raceLaps: format.get(race.id)?.raceLaps ?? null,
+        raceFormat: format.get(race.id)?.raceFormat ?? "SINGLE",
+        sprintLaps: format.get(race.id)?.sprintLaps ?? null,
         attendanceOpensAt: gate.opensAt?.toISOString() ?? null,
         // Shut, with no opening to count down to: an admin closed it, or the
         // race started over an hour ago (the entry list is the final grid

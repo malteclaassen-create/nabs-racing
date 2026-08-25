@@ -132,6 +132,8 @@ router.get("/", async (req, res, next) => {
         info: r.info || null,
         qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
         raceLaps: format.get(r.id)?.raceLaps ?? null,
+        raceFormat: format.get(r.id)?.raceFormat ?? "SINGLE",
+        sprintLaps: format.get(r.id)?.sprintLaps ?? null,
         replayDownloadId: replays.get(r.id) || null,
         highlightsUrl: highlights.get(r.id) || null,
         heroImageUrl: heroes.get(r.id) || null,
@@ -441,6 +443,8 @@ router.get("/:id/results", async (req, res, next) => {
         info: race.info || null,
         qualiMinutes: format.qualiMinutes ?? null,
         raceLaps: format.raceLaps ?? null,
+        raceFormat: format.raceFormat ?? "SINGLE",
+        sprintLaps: format.sprintLaps ?? null,
         replayDownloadId: replays.get(race.id) || null,
         // The round's highlights video, if the admin pasted one.
         highlightsUrl: (await readRaceHighlights(prisma, [race.id])).get(race.id) || null,
