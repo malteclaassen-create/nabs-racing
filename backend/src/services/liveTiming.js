@@ -909,6 +909,13 @@ function createRelay(server) {
       // to print.
       topSpeed: car && car.TopSpeedBestLap ? Math.round(car.TopSpeedBestLap * 100) / 100 : null,
       sectors: sectorsOf(car?.BestLapSplits),
+      // The lap being driven RIGHT NOW, sector by sector: the upstream fills
+      // CurrentLapSplits as each split is crossed, so this is partial by nature
+      // (S3 stays null until they cross the line) and that is the point — the
+      // live page builds the lap up the way the race server's own timing page
+      // does. Only for a car actually out there; a stored entry's leftover
+      // splits belong to a lap that ended long ago.
+      currentSectors: onTrack ? sectorsOf(car?.CurrentLapSplits) : [null, null, null],
       potentialMs: potentialOf(car?.BestSplits),
       inPits: live.IsInPits ?? d.IsInPits ?? false,
       numPits: live.NumPits ?? d.NumPits ?? 0,
@@ -1053,9 +1060,11 @@ function createRelay(server) {
       sp ? nsToMs(sp.SplitTime) : null
     );
     for (const e of entries) {
-      e.sectors.forEach((s, i) => {
-        if (s) s.best = sessionBestSectors[i] != null && s.ms === sessionBestSectors[i];
-      });
+      for (const row of [e.sectors, e.currentSectors]) {
+        row.forEach((s, i) => {
+          if (s) s.best = sessionBestSectors[i] != null && s.ms === sessionBestSectors[i];
+        });
+      }
     }
 
     // Gap is measured against the current leader's best lap (P1 = 0.000).
