@@ -8,6 +8,7 @@ import { readDriverRoles } from "../lib/driverRoles.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
 import { readManualFastestLaps } from "../lib/raceHonours.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
+import { readParentIds, readSprintChildren } from "../lib/sprintRaces.js";
 import { readRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHeroes } from "../lib/raceHero.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
@@ -92,11 +93,19 @@ router.get("/", async (req, res, next) => {
       includePrivate: isAdminRequest(req),
       series: req.query.series,
     });
-    const races = await prisma.race.findMany({
+    const allRaces = await prisma.race.findMany({
       where: { seasonId },
       orderBy: { number: "asc" },
       include: { _count: { select: { results: true } } },
     });
+    // Sprint classifications are attached to their event, not to the calendar:
+    // by default the list hides them (Home, Races, every admin calendar), and
+    // ?includeSprints=1 (the results editor) gets them back, labelled by the
+    // sprintOf link so the picker can say whose sprint each one is.
+    const parentOf = await readParentIds(prisma, allRaces.map((r) => r.id));
+    const includeSprints = req.query.includeSprints === "1" || req.query.includeSprints === "true";
+    const races = includeSprints ? allRaces : allRaces.filter((r) => !parentOf.has(r.id));
+    const sprintChildren = await readSprintChildren(prisma, races.map((r) => r.id));
     // Session format + race type (raw-SQL columns) for the upcoming-race panel
     // and the calendar's grouping, and any published replay downloads so the
     // calendar can offer a Replay button.
@@ -134,6 +143,11 @@ router.get("/", async (req, res, next) => {
         raceLaps: format.get(r.id)?.raceLaps ?? null,
         raceFormat: format.get(r.id)?.raceFormat ?? "SINGLE",
         sprintLaps: format.get(r.id)?.sprintLaps ?? null,
+        // The event this row is the sprint classification of (only with
+        // includeSprints), and the sprint child hanging off this event (so the
+        // import page knows a sprint result is already in).
+        sprintOf: parentOf.get(r.id) ?? null,
+        sprintRaceId: sprintChildren.get(r.id) ?? null,
         replayDownloadId: replays.get(r.id) || null,
         highlightsUrl: highlights.get(r.id) || null,
         heroImageUrl: heroes.get(r.id) || null,
@@ -445,6 +459,11 @@ router.get("/:id/results", async (req, res, next) => {
         raceLaps: format.raceLaps ?? null,
         raceFormat: format.raceFormat ?? "SINGLE",
         sprintLaps: format.sprintLaps ?? null,
+        // Both directions of the sprint link: an event says where its sprint
+        // classification lives (the Races page adds a Sprint tab and fetches
+        // it through this same endpoint), a sprint row says whose it is.
+        sprintRaceId: (await readSprintChildren(prisma, [race.id])).get(race.id) ?? null,
+        sprintOf: (await readParentIds(prisma, [race.id])).get(race.id) ?? null,
         replayDownloadId: replays.get(race.id) || null,
         // The round's highlights video, if the admin pasted one.
         highlightsUrl: (await readRaceHighlights(prisma, [race.id])).get(race.id) || null,

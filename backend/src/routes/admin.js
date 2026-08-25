@@ -24,6 +24,7 @@ import { createBackup, tryCreateBackup, listBackups, streamFullBackupZip, delete
 import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnostics.js";
 import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
 import { parseFormatNumber, parseRaceFormat } from "../lib/raceFormat.js";
+import { ensureSprintChild, readSprintChildren } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { writeRaceHero } from "../lib/raceHero.js";
 import { deleteLap as deleteTelemetryLap, storedSummary as telemetryStoredSummary } from "../lib/telemetryLaps.js";
@@ -579,6 +580,20 @@ router.post("/races/commit", async (req, res, next) => {
         });
     if (raceId && !race) return res.status(404).json({ error: "Race not found" });
 
+    // session:"SPRINT" — this file is the SPRINT of a sprint+feature weekend.
+    // The classification goes onto the event's hidden child row (find-or-create,
+    // lib/sprintRaces.js), so the event's own results stay the feature race and
+    // one evening can hold both. Only meaningful against an existing race.
+    const isSprint = req.body.session === "SPRINT";
+    if (isSprint) {
+      if (!race) return res.status(400).json({ error: "A sprint result needs an existing race (raceId)" });
+      const child = await ensureSprintChild(prisma, race);
+      race = await prisma.race.findFirst({
+        where: { id: child.id },
+        include: { _count: { select: { results: true } } },
+      });
+    }
+
     // Overwrite guard: committing over a round that already has stored results
     // replaces them entirely. Require an explicit confirmation from the UI.
     if (race && race._count.results > 0 && !req.body.overwrite) {
@@ -598,7 +613,7 @@ router.post("/races/commit", async (req, res, next) => {
         },
       });
       await seedRaceCountry(prisma, race.id, race.track);
-    } else {
+    } else if (!isSprint) {
       const renamed = track && track !== race.track;
       race = await prisma.race.update({
         where: { id: race.id },
@@ -610,11 +625,12 @@ router.post("/races/commit", async (req, res, next) => {
     // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
     await tryCreateBackup(prisma, `before-import-${race.number != null ? `r${race.number}` : "training"}`);
     const saveSummary = await saveRaceResults(prisma, race.id, results);
-    // Bell notification (deduped per race, so re-imports stay silent).
-    if (results.length) notifyResultsSaved(prisma, race);
+    // Bell notification (deduped per race, so re-imports stay silent). A sprint
+    // child stays quiet — the evening's bell rings once, with the feature.
+    if (results.length && !isSprint) notifyResultsSaved(prisma, race);
     // New results can tip a driver over a card-unlock threshold (and the finale
     // seals titles) — reconcile the season's linked drivers' bells.
-    if (results.length) notifyCardUnlocksForSeason(prisma, race.seasonId);
+    if (results.length && !isSprint) notifyCardUnlocksForSeason(prisma, race.seasonId);
     // Move the raw JSON into its season folder so this round's telemetry can be
     // recomputed later. Best-effort: never fails the commit.
     if (archiveKey) {
@@ -622,7 +638,7 @@ router.post("/races/commit", async (req, res, next) => {
       archiveCommitted(archiveKey, {
         seasonNumber: season?.number ?? null,
         raceNumber: race.number,
-        track: race.track,
+        track: isSprint ? `${race.track} Sprint` : race.track,
       });
     }
     // Steam GUID capture is best-effort; any confirmed mapping that would have
@@ -3293,18 +3309,26 @@ router.delete("/events/:id", async (req, res, next) => {
       include: { _count: { select: { results: true } } },
     });
     if (!race) return res.status(404).json({ error: "Race not found" });
+    // A sprint weekend's hidden child goes wherever its event goes — and its
+    // stored sprint results count against the delete guard exactly like the
+    // event's own, so "no results" really means the whole evening is empty.
+    const childId = (await readSprintChildren(prisma, [race.id])).get(race.id) || null;
+    const childResults = childId ? await prisma.raceResult.count({ where: { raceId: childId } }) : 0;
     const force = req.query.force === "1" || req.query.force === "true";
-    if (race._count.results > 0 && !force) {
+    if (race._count.results + childResults > 0 && !force) {
       return res.status(409).json({ error: "Race has results; edit them instead of deleting." });
     }
-    if (race._count.results > 0) {
+    if (race._count.results + childResults > 0) {
       await tryCreateBackup(prisma, `before-delete-r${race.number ?? "x"}`);
     }
     // Raw column without a foreign key (see lib/downloads.js) — unlink by hand.
     // .catch: the Download table is created lazily and may not exist yet.
-    await prisma
-      .$executeRawUnsafe(`UPDATE "Download" SET "raceId" = NULL WHERE "raceId" = ?`, race.id)
-      .catch(() => {});
+    for (const id of [race.id, childId].filter(Boolean)) {
+      await prisma
+        .$executeRawUnsafe(`UPDATE "Download" SET "raceId" = NULL WHERE "raceId" = ?`, id)
+        .catch(() => {});
+    }
+    if (childId) await prisma.race.delete({ where: { id: childId } });
     await prisma.race.delete({ where: { id: race.id } });
     res.json({ ok: true });
   } catch (e) {

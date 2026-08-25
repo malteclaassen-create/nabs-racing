@@ -85,6 +85,9 @@ export async function ensureAppSchema(prisma) {
   // correctly; raceLaps above keeps meaning the main race (the feature).
   await addColumn(prisma, "Race", "raceFormat", "TEXT NOT NULL DEFAULT 'SINGLE'");
   await addColumn(prisma, "Race", "sprintLaps", "INTEGER");
+  // The hidden child row carrying a sprint weekend's SPRINT classification
+  // points back at its event here (migration race_parent, lib/sprintRaces.js).
+  await addColumn(prisma, "Race", "parentRaceId", "TEXT");
 
   // --- Highlights video of a finished round (migration race_highlights): one
   // pasted link, shown as the Highlights button on the race results. Any

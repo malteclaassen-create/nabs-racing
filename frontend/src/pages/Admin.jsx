@@ -1064,7 +1064,10 @@ function parseRaceTimeInput(text) {
 
 function EditResults() {
   const ask = useAsk();
-  const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
+  // Sprints included: a sprint classification is edited (penalties, driver
+  // swaps, deletion) exactly like any stored result, and this picker is the
+  // one place in the admin that has to reach it.
+  const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(undefined, { includeSprints: true }), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [raceId, setRaceId] = useState("");
   const [rows, setRows] = useState([]);
@@ -1617,8 +1620,9 @@ function EditResults() {
             })
             .map((r) => {
               const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-              const label =
-                kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${r.number}`;
+              const label = r.sprintOf
+                ? "Sprint"
+                : kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${r.number}`;
               return (
                 <option key={r.id} value={r.id}>
                   {label} · {r.track}
