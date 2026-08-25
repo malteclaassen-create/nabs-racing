@@ -2938,19 +2938,26 @@ function DiscordEvents() {
               <option value="SPRINT_FEATURE">Sprint + feature race (F2 style)</option>
             </select>
           </Field>
+          {/* Labelled rather than placeholder-only: a sprint day puts three bare
+              numbers in a row, and "15 12 20" says nothing once they're typed. */}
           <div className={`grid gap-3 ${event.raceFormat === "SPRINT_FEATURE" ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
-            <input aria-label="Qualifying (min)" className="input" type="number" min="1" placeholder="Qualifying (min)" value={event.qualiMinutes}
-              onChange={(e) => setEvent({ ...event, qualiMinutes: e.target.value })} />
+            <Field label="Qualifying (min)" tone="plain">
+              <input aria-label="Qualifying (min)" className="input" type="number" min="1" placeholder="e.g. 15" value={event.qualiMinutes}
+                onChange={(e) => setEvent({ ...event, qualiMinutes: e.target.value })} />
+            </Field>
             {event.raceFormat === "SPRINT_FEATURE" && (
-              <input aria-label="Sprint laps" className="input" type="number" min="1" placeholder="Sprint laps" value={event.sprintLaps}
-                onChange={(e) => setEvent({ ...event, sprintLaps: e.target.value })} />
+              <Field label="Sprint laps" tone="plain">
+                <input aria-label="Sprint laps" className="input" type="number" min="1" placeholder="e.g. 12" value={event.sprintLaps}
+                  onChange={(e) => setEvent({ ...event, sprintLaps: e.target.value })} />
+              </Field>
             )}
-            <input
-              aria-label={event.raceFormat === "SPRINT_FEATURE" ? "Feature race laps" : "Race laps"}
-              className="input" type="number" min="1"
-              placeholder={event.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"}
-              value={event.raceLaps}
-              onChange={(e) => setEvent({ ...event, raceLaps: e.target.value })} />
+            <Field label={event.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
+              <input
+                aria-label={event.raceFormat === "SPRINT_FEATURE" ? "Feature race laps" : "Race laps"}
+                className="input" type="number" min="1" placeholder="e.g. 20"
+                value={event.raceLaps}
+                onChange={(e) => setEvent({ ...event, raceLaps: e.target.value })} />
+            </Field>
           </div>
           <textarea aria-label="Details for the announcement & website: rules, mods, links… (optional)" className="input min-h-20" placeholder="Details for the announcement & website: rules, mods, links… (optional)"
             value={event.info} onChange={(e) => setEvent({ ...event, info: e.target.value })} />
