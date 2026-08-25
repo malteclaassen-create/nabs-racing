@@ -25,6 +25,7 @@ import SeasonPicker from "../components/SeasonPicker.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
 import SocialFeed from "../components/SocialFeed.jsx";
 import { fmtRaceDate, fmtDateLong, fmtWeekday, isLapTime, NO_VALUE} from "../utils/format.js";
+import { nextUpcomingRace } from "../utils/raceFormat.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
@@ -544,7 +545,10 @@ export default function Home() {
   const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
   const completedRaces = champRaces.filter((r) => r.isCompleted);
   const lastRace = completedRaces[completedRaces.length - 1];
-  const nextRace = champRaces.find((r) => !r.isCompleted);
+  // Trainings count: an F2 sprint night is the next race even though it never
+  // scores (utils/raceFormat.js) — before this, the card skipped straight past
+  // it to the next championship round.
+  const nextRace = nextUpcomingRace(races.data);
 
   // The round the report button belongs to: the most recent one that has
   // STARTED, completed or not, special event or not.
@@ -1032,7 +1036,7 @@ export default function Home() {
                 {nextRace?.date && !openerAwaited && (
                   <div className="hero-anim max-w-md" style={{ animationDelay: "0.26s" }}>
                     <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-ink/55 dark:text-white/55">
-                      Season opener · Round {nextRace.number}{nextRace.track ? ` · ${nextRace.track}` : ""}
+                      Season opener · {nextRace.number != null ? `Round ${nextRace.number}` : "Training"}{nextRace.track ? ` · ${nextRace.track}` : ""}
                     </div>
                     <RaceCountdown date={nextRace.date} className="mt-3" />
                     <div className="mt-3 flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-wider text-ink/60 dark:text-white/60">

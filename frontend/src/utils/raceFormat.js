@@ -15,3 +15,24 @@ export function sessionSummary(race = {}) {
   }
   return out;
 }
+
+// The race the home/welcome "Next Race" card counts down to: the earliest
+// upcoming championship round OR training session, by date. Trainings belong
+// here — an F2 sprint night IS the league's next race even though it isn't
+// scored — while specials stay announcement-only, exactly like the sign-up
+// page. A sprint weekend's hidden sprint row never reaches this list (the API
+// filters it out of the calendar). Dateless races sort last, by round number,
+// which is what "first uncompleted round" used to give.
+export function nextUpcomingRace(races) {
+  const kind = (r) => r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+  return (
+    [...(races || [])]
+      .filter((r) => !r.isCompleted && kind(r) !== "SPECIAL")
+      .sort((a, b) => {
+        const ad = a.date ? new Date(a.date).getTime() : Infinity;
+        const bd = b.date ? new Date(b.date).getTime() : Infinity;
+        if (ad !== bd) return ad - bd;
+        return (a.number ?? 999) - (b.number ?? 999);
+      })[0] || null
+  );
+}
