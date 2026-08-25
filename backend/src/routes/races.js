@@ -16,6 +16,7 @@ import { dbReplaysByRace } from "../lib/downloads.js";
 import { readRaceCountries, staticCountryFor } from "../lib/raceCountries.js";
 import { readRacePhotos, readPhotoCounts, withUrls } from "../lib/racePhotos.js";
 import { findArchiveFor, lapChartFrom, hasArchiveFor } from "../lib/cockpitArchive.js";
+import { resultTeamId } from "../lib/resultTeam.js";
 
 const router = Router();
 
@@ -40,6 +41,15 @@ async function raceWinners(races) {
     if (!byRace.has(r.raceId)) byRace.set(r.raceId, []);
     byRace.get(r.raceId).push(r);
   }
+  // The team each result was stamped with when it was saved, which is what the
+  // winner should be shown in even if they have since moved elsewhere. Only the
+  // teams actually named here, so this stays a small lookup on a big calendar.
+  const stampedIds = [...new Set(results.map((r) => r.teamId).filter(Boolean))];
+  const teamById = new Map(
+    stampedIds.length
+      ? (await prisma.team.findMany({ where: { id: { in: stampedIds } } })).map((t) => [t.id, t])
+      : []
+  );
   const winners = new Map();
   for (const [raceId, rows] of byRace) {
     const applied = applyPenalties(rows);
@@ -51,7 +61,7 @@ async function raceWinners(races) {
       if ((win?.points ?? 0) <= 0) win = null;
     }
     if (!win) continue;
-    const team = win.subForTeam || win.driver.team;
+    const team = win.subForTeam || teamById.get(win.teamId) || win.driver.team;
     const ov = nameOverrides.get(win.driverId);
     winners.set(raceId, {
       driverId: win.driverId,
@@ -286,8 +296,7 @@ router.get("/:id/results", async (req, res, next) => {
     const t2ReRank = {};
     if (hasPositions) {
       const driverById = new Map(drivers.map((d) => [d.id, d]));
-      const effTeam = (r) =>
-        teamById.get(r.subForTeamId || driverById.get(r.driverId)?.teamId);
+      const effTeam = (r) => teamById.get(resultTeamId(r, driverById));
       // Only Tier-2-team results are classified; Tier-1 drivers and team-less
       // reserves are excluded entirely (they don't occupy a slot).
       // FINISHED only, matching the scoring: a DNF/DSQ holds no slot in the
@@ -308,9 +317,11 @@ router.get("/:id/results", async (req, res, next) => {
 
     const rows = applied
       .map((r) => {
-        const effectiveTeam = r.subForTeam
-          ? teamById.get(r.subForTeam.id)
-          : r.driver.team;
+        // The team of THIS drive, not of this driver today: a round stamped its
+        // team when it was saved, so a later move to another team leaves the
+        // round where it happened (lib/resultTeam.js).
+        const ownTeam = teamById.get(r.teamId) || r.driver.team;
+        const effectiveTeam = r.subForTeam ? teamById.get(r.subForTeam.id) : ownTeam;
         const ov = nameOverrides.get(r.driverId);
         // AC telemetry read via raw SQL (columns may not be in the generated
         // client yet) — feeds race facts + profiles. null when not imported.
@@ -348,11 +359,11 @@ router.get("/:id/results", async (req, res, next) => {
           gamePenalties: tel.gamePenalties ?? null,
           gamePenaltySeconds: tel.gamePenaltySeconds ?? null,
           team: {
-            id: r.driver.team.id,
-            name: r.driver.team.name,
-            color: r.driver.team.color,
-            tier: r.driver.team.tier,
-            logoUrl: r.driver.team.logoUrl,
+            id: ownTeam.id,
+            name: ownTeam.name,
+            color: ownTeam.color,
+            tier: ownTeam.tier,
+            logoUrl: ownTeam.logoUrl,
           },
           isSub: !!r.subForTeamId,
           subForTeam: r.subForTeam

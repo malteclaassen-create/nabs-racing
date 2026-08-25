@@ -678,6 +678,13 @@ export const api = {
   addDriverFromDb: (sourceDriverId, teamId) =>
     request("/admin/drivers/from-db", { method: "POST", body: { sourceDriverId, teamId }, auth: true }),
   updateDriver: (id, body) => request(`/admin/drivers/${id}`, { method: "PUT", body, auth: true }),
+  // Move a driver to another team, or into/out of the Reserve pool, in one
+  // call: team and tier are set together from the target team, so they cannot
+  // end up disagreeing. `teamId` is a team of the driver's own season, or the
+  // literal "reserve". Rounds already driven keep the team they were driven
+  // for and are not touched.
+  transferDriver: (id, teamId) =>
+    request(`/admin/drivers/${id}/transfer`, { method: "POST", body: { teamId }, auth: true }),
   // Remove one driver row from its season. Without force the backend answers
   // 409 needsConfirm listing what would be deleted with it (attendance answers,
   // market entries); the UI confirms, then retries with force.

@@ -5,6 +5,7 @@
 // This module is pure / side-effect free so it can be unit-tested and reused
 // both at seed time and during AC race import.
 // ---------------------------------------------------------------------------
+import { resultTeamId } from "../lib/resultTeam.js";
 
 // The league DEFAULT points table — P1..P18 -> points, P19+ = 0 (index 0 ==
 // position 1). A season can override it (Season.pointsTable, admin-editable);
@@ -135,11 +136,11 @@ export function getDriverResultPoints(result, table = DEFAULT_POINTS_TABLE) {
 }
 
 // Resolve the team a result counts towards: a reserve substituting for a team
-// counts for that team, otherwise the driver's own team.
-function effectiveTeamId(result, driverById) {
-  if (result.subForTeamId) return result.subForTeamId;
-  return driverById.get(result.driverId)?.teamId ?? null;
-}
+// counts for that team, otherwise the team the round was stamped with, and only
+// failing both the driver's team today. See lib/resultTeam.js — the same order
+// decides what the race pages show, and the two must not drift apart or a round
+// would be displayed under one team and scored under another.
+const effectiveTeamId = resultTeamId;
 
 // ---------------------------------------------------------------------------
 // TIER 1 CONSTRUCTORS

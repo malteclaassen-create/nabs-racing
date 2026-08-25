@@ -379,6 +379,15 @@ model RaceResult {
   status           String  @default("FINISHED") // FINISHED/DNS/DNF/DSQ
   subForTeamId     String? // Reserve drives for this team
   subForTeam       Team?   @relation(fields: [subForTeamId], references: [id])
+  // The team the driver was in when this round was saved, stamped by raceWriter
+  // and never touched again. Without it, a driver moving to another team
+  // mid-season rewrote every round they had already driven (see lib/resultTeam.js
+  // for the full order of precedence). A plain column rather than a relation:
+  // Team already holds the back-relation for subForTeam above, and this one is
+  // added by ensureAppSchema in raw SQL like the telemetry columns below, so it
+  // must look the same in both places. Null only for rounds saved before the
+  // column existed; ensureAppSchema backfills those once from the driver's team.
+  teamId           String?
   // DEPRECATED: the old "penalty in places" model. Replaced by penaltySeconds
   // (time penalties). Kept as an unused column so the migration stays additive;
   // nothing reads or writes it any more.

@@ -2127,6 +2127,43 @@ function Drivers() {
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // Move a driver to another team, or into / out of the Reserve pool. The team
+  // dropdown in each row goes through here rather than saving teamId on its
+  // own, because a team change is really two: the tier has to follow, or the
+  // driver scores for nobody. The backend takes the tier from the target team.
+  //
+  // The confirm is worth the extra click: this is the one change in the tab
+  // that an admin fears will rewrite the season. It cannot (each result carries
+  // the team it was driven for), and the dialog is where that gets said.
+  async function transferDriver(d, targetId) {
+    const target = (teams || []).find((t) => t.id === targetId);
+    const toReserve = targetId === "reserve" || target?.tier === 0;
+    const fromName = (teams || []).find((t) => t.id === d.teamId)?.name || "their team";
+    const toName = targetId === "reserve" ? "the Reserve pool" : target?.name || "the new team";
+    const ok = await ask({
+      title: toReserve ? `Move ${d.name} to the reserves?` : `Move ${d.name} to ${toName}?`,
+      body: toReserve
+        ? `${d.name} leaves ${fromName} and joins ${toName}. Their season entry, their sign-ups and their results all stay. ` +
+          `Rounds they have already driven keep ${fromName}, so the results and the constructor points of those races do not change.`
+        : `${d.name} moves from ${fromName} to ${toName}, and their tier follows the team. ` +
+          `Rounds they have already driven stay with ${fromName}: the result tables, the winner's card, the posters and every ` +
+          `constructor total keep the team of that day. Only the rounds still to come count for ${toName}.`,
+      confirmLabel: toReserve ? "Move to reserves" : "Move driver",
+    });
+    if (!ok) return;
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      const out = await api.transferDriver(d.id, targetId);
+      setMsg(
+        `${d.name} now drives for ${out.to?.name || toName}.` +
+          (out.resultsKept > 0
+            ? ` ${out.resultsKept} race result${out.resultsKept === 1 ? "" : "s"} stayed with ${out.from?.name || fromName}.`
+            : "")
+      );
+      reload(); driverDb.reload();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
   // Remove a driver row from THIS season. The backend refuses outright when the
   // row has race results, and otherwise answers with a summary of what hangs on
   // it (attendance answers, market entries) — that summary IS the confirm text,
@@ -2352,13 +2389,20 @@ function Drivers() {
                     <span className={`min-w-0 flex-1 truncate font-semibold ${d.isActive ? "text-dark" : "text-light line-through"}`}>
                       {d.name}
                     </span>
+                    {/* A team change is a transfer, not a field edit: it takes
+                        the tier with it and asks first. The Reserve entry is
+                        the season's own pool, or a plain destination for a
+                        season that has never needed one. */}
                     <select aria-label={`Team of ${d.name}`} className="input py-1 text-xs" value={d.teamId} disabled={busy}
-                      onChange={(e) => patchDriver(d, { teamId: e.target.value })}>
+                      title="Moves this driver to another team, tier included. Races they have already driven keep the team they drove them for."
+                      onChange={(e) => transferDriver(d, e.target.value)}>
                       {teamGroups.map((o) => (
                         <option key={o.id} value={o.id}>{o.name}</option>
                       ))}
+                      {!teamGroups.some((o) => o.tier === 0) && <option value="reserve">Reserve</option>}
                     </select>
                     <select aria-label={`Tier of ${d.name}`} className="input py-1 text-xs" value={d.tier} disabled={busy}
+                      title="Normally set by the team: moving a driver takes their tier with it. Only change it here to correct a mismatch."
                       onChange={(e) => patchDriver(d, { tier: Number(e.target.value) })}>
                       <option value={1}>T1</option>
                       <option value={2}>T2</option>

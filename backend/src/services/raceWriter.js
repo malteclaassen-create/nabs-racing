@@ -107,7 +107,7 @@ export async function saveRaceResults(prisma, raceId, results) {
     "qualiTimeMs",
   ];
   const existing = await prisma.$queryRawUnsafe(
-    `SELECT "driverId", "grid", "bestLapMs", "totalTimeMs", ${TELEMETRY_COLS.map((c) => `"${c}"`).join(", ")} FROM "RaceResult" WHERE "raceId" = ?`,
+    `SELECT "driverId", "teamId", "grid", "bestLapMs", "totalTimeMs", ${TELEMETRY_COLS.map((c) => `"${c}"`).join(", ")} FROM "RaceResult" WHERE "raceId" = ?`,
     raceId
   );
   const prevGrid = new Map(existing.map((r) => [r.driverId, r.grid]));
@@ -115,17 +115,34 @@ export async function saveRaceResults(prisma, raceId, results) {
   const prevTotalTime = new Map(existing.map((r) => [r.driverId, r.totalTimeMs]));
   // driverId -> { col: prevValue } for the telemetry columns.
   const prevTelemetry = new Map(existing.map((r) => [r.driverId, r]));
+  const prevTeam = new Map(existing.map((r) => [r.driverId, r.teamId]));
 
   // A field the caller left off entirely (undefined) keeps whatever the round
   // already had; an explicit value (including null) from the AC import wins.
   const keep = (incoming, prev) => (incoming === undefined ? prev ?? null : incoming ?? null);
+
+  // Stamp each result with the team it was driven for, once, up front — the
+  // written rows and the constructor scores below must agree on it.
+  //
+  // Keyed on the driver rather than on the row (unlike the preserved telemetry
+  // above): a round that ALREADY has a team for this driver keeps it, so
+  // re-saving an old round after somebody changed teams does not drag their old
+  // results along. A driver who is new to the round is stamped with the team
+  // they are in now, which for a freshly imported race is simply the truth.
+  // A driver swapped into a row therefore brings their OWN team, because the
+  // team belongs to the person, not to the captured lap times.
+  const driverById = new Map(drivers.map((d) => [d.id, d]));
+  const stamped = results.map((r) => ({
+    ...r,
+    teamId: prevTeam.get(r.driverId) ?? driverById.get(r.driverId)?.teamId ?? null,
+  }));
 
   await prisma.$transaction(async (tx) => {
     // Replace this race's results.
     await tx.raceResult.deleteMany({ where: { raceId } });
     await tx.constructorRaceScore.deleteMany({ where: { raceId } });
 
-    for (const r of results) {
+    for (const r of stamped) {
       // A driver swap in the editor sends prevDriverId = who USED to hold this
       // result row. The captured race data (time, grid, best lap, telemetry)
       // belongs to the row, not the person, so the preserved values follow the
@@ -166,6 +183,13 @@ export async function saveRaceResults(prisma, raceId, results) {
           vals.push(val);
         }
       }
+      // The team this result was driven for, written raw for the same reason as
+      // the columns above: it is added by ensureAppSchema at boot, so the
+      // generated client may not know about it yet.
+      if (r.teamId) {
+        sets.push(`"teamId" = ?`);
+        vals.push(r.teamId);
+      }
       if (sets.length) {
         await tx.$executeRawUnsafe(
           `UPDATE "RaceResult" SET ${sets.join(", ")} WHERE "raceId" = ? AND "driverId" = ?`,
@@ -178,7 +202,7 @@ export async function saveRaceResults(prisma, raceId, results) {
 
     // Recompute constructor scores from the penalty-adjusted classification,
     // using this season's points table.
-    const applied = applyPenalties(results);
+    const applied = applyPenalties(stamped);
     const t1 = calculateT1ConstructorPoints(applied, drivers, teams, table);
     const t2 = calculateT2ConstructorPoints(applied, drivers, teams, table);
 

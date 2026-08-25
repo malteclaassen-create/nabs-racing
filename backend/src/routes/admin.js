@@ -2142,6 +2142,81 @@ router.put("/drivers/:id", async (req, res, next) => {
   }
 });
 
+// POST /api/admin/drivers/:id/transfer -> move a driver to another team, or
+// into (or out of) the season's Reserve pool. Body: { teamId } where teamId is
+// a team of the driver's own season, or the literal "reserve".
+//
+// The Team and Tier dropdowns next to each driver could always do this, but
+// they are two separate saves that have to agree: a driver put in a Tier-2 team
+// while their own tier still says 1 scores for nobody, and finding out why is a
+// bad evening. One call sets both, from the target team itself.
+//
+// Rounds already driven are NOT touched, and cannot be: each result carries the
+// team it was driven for, stamped when the round was saved (lib/resultTeam.js).
+// Result tables, the race hero, the poster and every constructor total stay
+// exactly as they were. Only the rounds still to come follow the driver.
+router.post("/drivers/:id/transfer", async (req, res, next) => {
+  try {
+    const driver = await prisma.driver.findUnique({
+      where: { id: req.params.id },
+      include: {
+        team: { select: { id: true, name: true, tier: true } },
+        season: { select: { id: true, name: true } },
+        _count: { select: { results: true } },
+      },
+    });
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
+
+    const wanted = String(req.body?.teamId || "").trim();
+    if (!wanted) return res.status(400).json({ error: "Pick a team to move them to" });
+
+    // "reserve" is a destination, not an id: a season that never had a pool
+    // (hand-built rather than cloned) gets one made here, same as the
+    // attendance sign-up and the driver-removal demotion do.
+    let target;
+    if (wanted === "reserve") {
+      if (!driver.seasonId) return res.status(400).json({ error: "This driver has no season, so they have no Reserve pool to move to" });
+      target = await ensureReservePool(prisma, driver.seasonId);
+      if (!target) return res.status(404).json({ error: "Season not found" });
+    } else {
+      target = await prisma.team.findUnique({ where: { id: wanted }, select: { id: true, name: true, tier: true, seasonId: true } });
+      if (!target) return res.status(404).json({ error: "Team not found" });
+      // A team of another season would take the driver out of their own
+      // championship without ever saying so.
+      if (driver.seasonId && target.seasonId && target.seasonId !== driver.seasonId) {
+        return res.status(400).json({
+          error: `${target.name} belongs to a different season. A driver can only move between the teams of ${driver.season?.name || "their own season"}.`,
+        });
+      }
+    }
+
+    if (target.id === driver.teamId) {
+      return res.status(400).json({ error: `${driver.name} is already in ${target.name}.` });
+    }
+
+    // The tier follows the team, always. A move out of the Reserve pool also
+    // reactivates the row: somebody being given a seat is racing again.
+    const moved = await prisma.driver.update({
+      where: { id: driver.id },
+      data: {
+        teamId: target.id,
+        tier: target.tier,
+        isActive: target.tier === 0 ? driver.isActive : true,
+      },
+    });
+
+    res.json({
+      ...moved,
+      from: driver.team ? { id: driver.team.id, name: driver.team.name, tier: driver.team.tier } : null,
+      to: { id: target.id, name: target.name, tier: target.tier },
+      // What the admin most wants confirmed: the past did not move with them.
+      resultsKept: driver._count.results,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // DELETE /api/admin/drivers/:id -> remove ONE driver row from ITS season (the
 // other seasons' rows of the same person stay). Guard rails:
 //   - a row with race results can never be deleted (fix the results first, or

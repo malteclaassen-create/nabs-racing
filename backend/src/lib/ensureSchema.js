@@ -69,6 +69,31 @@ export async function ensureAppSchema(prisma) {
   // writes grid = 1, which every consumer already counts.
   await addColumn(prisma, "RaceResult", "fastestLap", "BOOLEAN NOT NULL DEFAULT 0");
 
+  // --- The team a result was driven for (migration result_team). A Driver row
+  // holds one team for the whole season, so a mid-season move to another team
+  // used to rewrite every round that driver had already driven. Now the round
+  // records its own team when it is saved (raceWriter) and keeps it (see
+  // lib/resultTeam.js for the order of precedence).
+  //
+  // The backfill copies the state as it is right now: every result gets the
+  // team its driver is in today, which is precisely what the site already
+  // shows. So nothing changes visually. It only stops the NEXT transfer from
+  // reaching backwards.
+  //
+  // Deliberately NOT tied to "the boot that created the column", the way the
+  // one-time backfills elsewhere in this file are. An unstamped result is not a
+  // neutral state: it falls back to the driver's team today, which is the exact
+  // behaviour this column exists to end. So every boot fills in whatever is
+  // still null — a column added by the migration on one side and by addColumn on
+  // the other, a row restored from an older backup, a result written while an
+  // older build was running. All of those heal themselves on the next start.
+  await addColumn(prisma, "RaceResult", "teamId", "TEXT");
+  await prisma.$executeRawUnsafe(
+    `UPDATE "RaceResult"
+        SET "teamId" = (SELECT "teamId" FROM "Driver" WHERE "Driver"."id" = "RaceResult"."driverId")
+      WHERE "teamId" IS NULL`
+  );
+
   // --- Phase 6: admin-picked Driver of the Day for a completed race.
   await addColumn(prisma, "Race", "driverOfTheDayId", "TEXT");
   // Who made the pick (the league's streamer decides each round). Free text.
