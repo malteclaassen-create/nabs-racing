@@ -53,6 +53,22 @@ export async function writeLiveServerMap(prisma, map) {
   return clean;
 }
 
+// The server a request is about: the one the viewer explicitly asked for, or
+// otherwise the series' own.
+//
+// The explicit key is the Live page's server switch. It only ever OVERRIDES,
+// never persists: the admin assignment below stays the default every viewer
+// arrives on, so a member opening the page on race night lands on the board
+// the league is actually racing on, whatever anyone clicked last week.
+//
+// An unknown or malformed key falls through to the series rather than erroring.
+// This is decoration on a public page; a stale link with a server that no
+// longer exists should show the normal board, not a failure.
+export async function resolveServerKey(prisma, { series, server } = {}) {
+  if (isValidServerKey(server)) return server;
+  return serverKeyForSeries(prisma, series);
+}
+
 // Which server a series' live page follows (by series SLUG). Unknown series
 // or unassigned -> the first server, exactly the pre-multi-server behaviour.
 export async function serverKeyForSeries(prisma, seriesSlug) {

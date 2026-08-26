@@ -26,7 +26,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { createHash, randomBytes } from "node:crypto";
 import prisma from "../lib/prisma.js";
-import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries } from "../lib/liveServers.js";
+import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries, isValidServerKey } from "../lib/liveServers.js";
 import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
 
@@ -1279,8 +1279,16 @@ function relayFor(key) {
 
 // Public board read. `serverKey` optional — default: the first server (the old
 // single-server behaviour).
+//
+// The board names the server it came from. That is not decoration: with a
+// switch on the page, the difference between "the button says Server 2" and
+// "this data IS Server 2" is the whole failure mode, and without the key on the
+// payload neither the page nor anyone debugging it can tell the two apart. It
+// also lets the frontend show the switch's true position after a reconnect,
+// rather than trusting what it last clicked.
 export function getBoard(serverKey) {
-  return relayFor(serverKey).getBoard();
+  const relay = relayFor(serverKey);
+  return { ...relay.getBoard(), serverKey: relay.key };
 }
 
 export function getTrackMapPng(serverKey) {
@@ -1587,6 +1595,15 @@ function wantsDemo(req) {
   return DEMO_ENABLED && /[?&]demo=1/.test(req?.url || "");
 }
 
+// The race server a client asked for on the WS URL (?server=<key>), if any.
+// This is the Live page's switch arriving on a fresh connection; an unknown key
+// is ignored so the series assignment still decides.
+function serverOf(req) {
+  const m = /[?&]server=([a-z0-9-]+)/i.exec(req?.url || "");
+  const key = m ? m[1].toLowerCase() : null;
+  return isValidServerKey(key) ? key : null;
+}
+
 // The series slug a client asked for on the WS URL (?series=<slug>), if any.
 function seriesOf(req) {
   const m = /[?&]series=([a-z0-9-]+)/i.exec(req?.url || "");
@@ -1617,6 +1634,10 @@ export function initLiveTiming(server) {
     ws.on("pong", () => {
       ws.isAlive = true;
     });
+    // Read straight off the URL, before anything is awaited: the message
+    // handler below needs it to put the server switch back, and a message can
+    // arrive while the setup further down is still waiting on the database.
+    ws.seriesSlug = seriesOf(req);
     // The one thing a client may say to us: which car it follows (the map's
     // focus mode). Anything else on the socket is ignored.
     ws.on("message", (buf) => {
@@ -1624,6 +1645,39 @@ export function initLiveTiming(server) {
         const m = JSON.parse(buf.toString());
         if ("follow" in m) {
           ws.followGuid = typeof m.follow === "string" && m.follow.length <= 64 ? m.follow : null;
+        }
+        // The Live page's server switch, mid-connection. Sending it rather than
+        // reconnecting matters on race night: a reconnect drops the socket,
+        // re-runs the backoff and repaints the page from empty, where this
+        // simply hands over the other board on the next line.
+        //
+        // null is not "ignore this", it is the switch being put BACK: the
+        // viewer chose their series' own server again. Treating it as invalid
+        // left the button showing one server while the socket kept feeding the
+        // other, which is worse than not having the switch at all.
+        if ("server" in m) {
+          const wanted = m.server;
+          const apply = (key) => {
+            ws.serverKey = key;
+            // Answer at once instead of leaving the viewer on the old board
+            // until the next broadcast: the switch is a click, and a click that
+            // does nothing for most of a second reads as broken.
+            try {
+              ws.send(JSON.stringify(getBoard(key)));
+            } catch {
+              /* dead socket — ws will clean it up */
+            }
+          };
+          if (isValidServerKey(wanted)) apply(wanted);
+          else if (wanted == null) {
+            // Back to the admin's assignment for this viewer's series, read
+            // fresh so a change made in the meantime is picked up here too.
+            serverKeyForSeries(prisma, ws.seriesSlug)
+              .then(apply)
+              .catch(() => apply(DEFAULT_SERVER_KEY));
+          }
+          // Anything else (a typo, a server that has been retired) is left
+          // alone: the viewer keeps the board they were on.
         }
       } catch {
         /* not a follow message — ignore */
@@ -1635,7 +1689,10 @@ export function initLiveTiming(server) {
     // passes on the URL (admin-managed assignment; default = first server).
     ws.serverKey = DEFAULT_SERVER_KEY;
     try {
-      ws.serverKey = await serverKeyForSeries(prisma, seriesOf(req));
+      // An explicit ?server= wins, so a reconnect keeps the viewer on the board
+      // they switched to instead of snapping back to their series' default
+      // mid-session.
+      ws.serverKey = serverOf(req) || (await serverKeyForSeries(prisma, ws.seriesSlug));
     } catch {
       /* settings unreadable — stay on the default server */
     }

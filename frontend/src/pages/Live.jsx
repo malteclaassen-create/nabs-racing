@@ -11,6 +11,7 @@ import { PageHeader, SectionHeading, SafetyCarBadge, NoData} from "../components
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
+import LiveServerSwitch from "../components/LiveServerSwitch.jsx";
 import TyreStrategy, { TyreBadge } from "../components/TyreStrategy.jsx";
 import { circuitForLive } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
@@ -1613,6 +1614,7 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
               map={realMap}
               follow={follow}
               onCarTelemetry={onCarTelemetry}
+              server={serverKey}
               className={realMap ? "" : "mx-auto h-auto max-h-[440px] w-full text-medium"}
             />
             {/* The caveat only applies to the stylised outline; real map is exact. */}
@@ -1927,7 +1929,7 @@ function useHeldBoard(board) {
 }
 
 export default function Live() {
-  const { board: feed, socketState, follow, onCarTelemetry } = useLiveTiming();
+  const { board: feed, socketState, follow, onCarTelemetry, setServer, serverKey } = useLiveTiming();
   const { shown: board, gap } = useHeldBoard(feed);
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const match = useMemo(() => makeDriverMatcher(teams), [teams]);
@@ -2036,13 +2038,18 @@ export default function Live() {
   useVisiblePoll((alive) => {
     const demo = new URLSearchParams(window.location.search).has("demo");
     api
-      .liveChampionship(demo)
+      // The projection has to be about the board on screen. Without the server
+      // key a viewer who switched would be shown one server's running order
+      // projected onto the standings, next to the other server's timing.
+      .liveChampionship(demo, serverKey)
       .then((d) => alive() && setChamp(d))
       // A failed poll (server restart, hiccup) keeps the last table on
       // screen instead of tearing the whole section down and rebuilding it
       // on the next success; a real deactivation arrives as active:false.
       .catch(() => {});
-  }, 12000); // matches the server-side 10s cache
+    // serverKey in the dependency: switching servers has to refetch, or the
+    // projection keeps describing the board that is no longer shown.
+  }, 12000, true, serverKey); // matches the server-side 10s cache
 
   // The Standings view only exists while the projection is active (race day);
   // if it deactivates mid-visit the switch falls back to Timing.
@@ -2247,6 +2254,18 @@ export default function Live() {
           </div>
         }
       />
+      </div>
+
+      {/* Under the header rather than in it: the header's right side already
+          carries the external buttons, and on a phone a third thing there wraps
+          into a ragged stack. */}
+      <div className="mb-4">
+        {/* The board names its own server, so the switch shows where the data
+            actually comes from rather than what was last clicked. The two only
+            diverge briefly — a click before the answer lands, a reconnect — but
+            those are exactly the moments a wrong button would mislead. Falls
+            back to the requested key until the first board arrives. */}
+        <LiveServerSwitch current={board?.serverKey || serverKey} onSwitch={setServer} />
       </div>
 
       {!heardFromRelay && !board ? (
