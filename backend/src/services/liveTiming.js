@@ -961,15 +961,6 @@ function createRelay(server) {
     const spline = live.NormalisedSplinePos ?? d.NormalisedSplinePos ?? 0;
     const outLap = trackOutLap(guid, { inPits, lapCount, spline, onTrack });
 
-    // The lap in progress, sector by sector. Three filled splits is not a lap
-    // in progress: S3 lands as the driver crosses the line, and the upstream
-    // leaves all three sitting there until the next lap's first split arrives.
-    // Shown as they came, that meant the whole first sector of every lap was
-    // spent looking at the PREVIOUS lap's times, with no running number
-    // anywhere — the one moment a driver on a flying lap most wants one.
-    const curSplits = onTrack ? sectorsOf(car?.CurrentLapSplits) : [null, null, null];
-    const lapIsOver = curSplits.every(Boolean);
-
     return {
       // The real GUID stays server-side (it keys the stint and race-position
       // maps above); what leaves the building is the pseudonymous stand-in.
@@ -1008,7 +999,15 @@ function createRelay(server) {
       // live page builds the lap up the way the race server's own timing page
       // does. Only for a car actually out there; a stored entry's leftover
       // splits belong to a lap that ended long ago.
-      currentSectors: lapIsOver ? [null, null, null] : curSplits,
+      //
+      // All three filled means the lap ENDED: the upstream leaves them sitting
+      // there until the next lap's first split lands. They are passed on as
+      // they came rather than blanked here, because how long to keep showing
+      // them is a display question and the answer needs the viewer's clock: the
+      // page holds them for ten seconds after the crossing, then starts sector
+      // one counting. Blanking them here took that choice away and left the
+      // whole first sector empty.
+      currentSectors: onTrack ? sectorsOf(car?.CurrentLapSplits) : [null, null, null],
       potentialMs: potentialOf(car?.BestSplits),
       inPits,
       // Out of the pit lane and not yet across the line. Their lap clock counts

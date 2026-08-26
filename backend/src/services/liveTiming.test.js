@@ -695,12 +695,14 @@ describe("liveTiming: the lap in progress, and out laps", () => {
     DisconnectedDrivers: { Drivers: {} },
   });
 
-  it("clears the splits of a lap that has already finished", () => {
-    // All three present means the driver crossed the line: the upstream leaves
-    // that lap's splits in CurrentLapSplits until the next one's S1 lands, and
-    // shown as they came they read as the lap being driven now.
+  it("passes on the splits of a lap that has already finished", () => {
+    // All three present means the driver crossed the line, and the board says
+    // so rather than blanking them: the page keeps them up for ten seconds
+    // before starting sector one, and it needs the times to do that.
     ingest(snapshot({ current: [31234, 16880, 20282] }));
-    expect(getBoard().entries[0].currentSectors).toEqual([null, null, null]);
+    expect(getBoard().entries[0].currentSectors.map((s) => s?.ms ?? null)).toEqual([
+      31234, 16880, 20282,
+    ]);
   });
 
   it("keeps a lap that is genuinely part way through", () => {

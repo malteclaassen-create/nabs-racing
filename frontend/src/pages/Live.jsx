@@ -465,6 +465,12 @@ function Sector({ s, compact = false, runningMs = null }) {
 // enough that a wrong number does not sit there all session.
 const MAX_RUNNING_SECTOR_MS = 3 * 60 * 1000;
 
+// How long the finished lap's three splits stay on the line after the driver
+// crosses it, before sector one takes over and starts counting. Long enough to
+// read the lap you just did, short enough that the new one is still young when
+// the number starts moving.
+const FINISHED_LAP_HOLD_MS = 10_000;
+
 // Every badge in the flags column sits in the same box. They are all three
 // letters, but not the same three letters: OUT is six pixels wider than PIT,
 // and with the column sized to its content that was six pixels of table sliding
@@ -472,20 +478,34 @@ const MAX_RUNNING_SECTOR_MS = 3 * 60 * 1000;
 const BADGE_BOX = "w-[42px] justify-center";
 
 function BuildingSectors({ sectors, lastLapAt, outLap = false }) {
+  // The clock runs whenever there is a lap to measure: either to count a sector
+  // or to expire the hold below.
+  const now = useNow(lastLapAt != null && !outLap);
+  const elapsed = lastLapAt != null ? Math.max(0, now - lastLapAt) : null;
+
+  // Three filled splits are the lap that just ENDED. They stay up for a moment
+  // after the line, because they are the thing everyone wants to read right
+  // then, and only then does sector one take the line over. Blanking them the
+  // instant the lap ticked over left the entire first sector empty, which is
+  // the same complaint from the other side: on a second flying lap you saw
+  // nothing at all until the first split landed half a minute later.
+  const lapDone = !!sectors && sectors.every(Boolean);
+  const holding = lapDone && (elapsed == null || elapsed < FINISHED_LAP_HOLD_MS);
+  const shown = lapDone && !holding ? [null, null, null] : sectors;
+
   // The sector being driven is the first empty box, and how long they have been
   // in it is the lap clock minus the splits already banked. Both halves come
   // from the board itself (lastLapAt is when this lap started, the filled boxes
   // are its splits), so nothing is estimated.
-  const nextIdx = sectors ? sectors.findIndex((x) => !x) : -1;
-  const hasSplit = !!sectors?.some(Boolean);
+  const nextIdx = shown ? shown.findIndex((x) => !x) : -1;
+  const hasSplit = !!shown?.some(Boolean);
   // Sector ONE counts too, which it did not use to. Two things had to be true
-  // first: the board no longer serves the finished lap's three splits as a lap
-  // in progress (so there IS an empty first box to count in), and it says when
-  // a driver is on an out lap (so the clock is not started from a crossing that
-  // happened before a pit stop). Without the second, a driver leaving the pits
-  // would have got a first sector counting their time in the garage.
+  // first: the finished lap's splits have to give the line up (the hold above),
+  // and the board has to say when a driver is on an out lap, so the clock is
+  // not started from a crossing that happened before a pit stop. Without the
+  // second, a driver leaving the pits would have got a first sector counting
+  // their time in the garage.
   const running = nextIdx >= 0 && lastLapAt != null && !outLap;
-  const now = useNow(running);
 
   // Same three boxes, same gap, same margin: only the ink is missing, so the row
   // is exactly as tall as it will be a moment later when the first split lands.
@@ -501,20 +521,19 @@ function BuildingSectors({ sectors, lastLapAt, outLap = false }) {
 
   let runningMs = null;
   if (running) {
-    const banked = sectors.slice(0, nextIdx).reduce((a, x) => a + (x?.ms || 0), 0);
+    const banked = shown.slice(0, nextIdx).reduce((a, x) => a + (x?.ms || 0), 0);
     // The splits are FACTS: the server has already timed them. So the lap is at
     // least as old as their sum, whatever the clock says, and the running
     // sector starts from zero the moment a split lands rather than waiting for
     // the clock to catch up with it. (The clock is on the board's own time now,
     // see useNow.js, which is what left it a second or two behind before.)
-    const elapsed = Math.max(now - lastLapAt, banked);
-    const ms = elapsed - banked;
+    const ms = Math.max(elapsed, banked) - banked;
     if (ms >= 0 && ms < MAX_RUNNING_SECTOR_MS) runningMs = ms;
   }
 
   return (
     <div className="mt-1 flex justify-end gap-1">
-      {(sectors || [null, null, null]).map((s, i) => (
+      {(shown || [null, null, null]).map((s, i) => (
         <Sector key={i} s={s} compact runningMs={i === nextIdx ? runningMs : null} />
       ))}
     </div>
