@@ -28,6 +28,7 @@ import {
   formatGap,
   formatRaceGap,
   formatSector,
+  formatRunningSector,
   formatCountdown,
   formatRunning,
   formatDelta,
@@ -396,7 +397,11 @@ function useSectorBeat(s) {
 //   NOTHING       no time, no chip.
 function Sector({ s, compact = false, runningMs = null }) {
   const size = compact ? "w-[46px] text-[10px]" : "w-[52px] text-xs";
-  const base = `inline-block ${size} rounded text-center font-mono font-semibold tabular-nums`;
+  // The transparent border is not decoration: the running chip wears a real one
+  // (dashed, to say the number is not a result yet), and without a matching
+  // invisible one on the other two shapes a row grew two pixels the moment a
+  // driver started a sector and shrank again when it landed.
+  const base = `inline-block ${size} rounded border border-transparent text-center font-mono font-semibold tabular-nums`;
 
   const beat = useSectorBeat(s);
   const rolled = useRolledMs(s ? s.ms : null);
@@ -404,15 +409,15 @@ function Sector({ s, compact = false, runningMs = null }) {
   if (runningMs != null) {
     return (
       <span
-        className={`${base} sector-live border border-dashed border-light/40 text-light`}
+        className={`${base} sector-live border-dashed border-light/40 text-light`}
         title="This sector is still being driven"
       >
-        {formatSector(runningMs)}
+        {formatRunningSector(runningMs)}
       </span>
     );
   }
 
-  if (!s) return <NoData className={`inline-block ${size} text-center font-mono`} />;
+  if (!s) return <NoData className={base} />;
 
   const cls = s.cuts
     ? "bg-red-500/10 text-bad"
@@ -460,24 +465,31 @@ function Sector({ s, compact = false, runningMs = null }) {
 // enough that a wrong number does not sit there all session.
 const MAX_RUNNING_SECTOR_MS = 3 * 60 * 1000;
 
-function BuildingSectors({ sectors, lastLapAt }) {
+// Every badge in the flags column sits in the same box. They are all three
+// letters, but not the same three letters: OUT is six pixels wider than PIT,
+// and with the column sized to its content that was six pixels of table sliding
+// sideways the moment a driver left the pit lane.
+const BADGE_BOX = "w-[42px] justify-center";
+
+function BuildingSectors({ sectors, lastLapAt, outLap = false }) {
   // The sector being driven is the first empty box, and how long they have been
   // in it is the lap clock minus the splits already banked. Both halves come
   // from the board itself (lastLapAt is when this lap started, the filled boxes
   // are its splits), so nothing is estimated.
   const nextIdx = sectors ? sectors.findIndex((x) => !x) : -1;
   const hasSplit = !!sectors?.some(Boolean);
-  // Deliberately only once a split has landed. Before that there is no lap to
-  // count against: a driver who has just left the pits is on an out-lap, and
-  // lastLapAt is the end of a lap they finished minutes ago, so a clock started
-  // from it would count their time in the garage. This is also why the running
-  // chip can never be sector one.
-  const running = hasSplit && nextIdx > 0 && lastLapAt != null;
+  // Sector ONE counts too, which it did not use to. Two things had to be true
+  // first: the board no longer serves the finished lap's three splits as a lap
+  // in progress (so there IS an empty first box to count in), and it says when
+  // a driver is on an out lap (so the clock is not started from a crossing that
+  // happened before a pit stop). Without the second, a driver leaving the pits
+  // would have got a first sector counting their time in the garage.
+  const running = nextIdx >= 0 && lastLapAt != null && !outLap;
   const now = useNow(running);
 
   // Same three boxes, same gap, same margin: only the ink is missing, so the row
   // is exactly as tall as it will be a moment later when the first split lands.
-  if (!hasSplit) {
+  if (!hasSplit && !running) {
     return (
       <div aria-hidden className="mt-1 flex justify-end gap-1 invisible">
         {[0, 1, 2].map((i) => (
@@ -490,13 +502,19 @@ function BuildingSectors({ sectors, lastLapAt }) {
   let runningMs = null;
   if (running) {
     const banked = sectors.slice(0, nextIdx).reduce((a, x) => a + (x?.ms || 0), 0);
-    const ms = now - lastLapAt - banked;
-    if (ms > 0 && ms < MAX_RUNNING_SECTOR_MS) runningMs = ms;
+    // The splits are FACTS: the server has already timed them. So the lap is at
+    // least as old as their sum, whatever the clock says, and the running
+    // sector starts from zero the moment a split lands rather than waiting for
+    // the clock to catch up with it. (The clock is on the board's own time now,
+    // see useNow.js, which is what left it a second or two behind before.)
+    const elapsed = Math.max(now - lastLapAt, banked);
+    const ms = elapsed - banked;
+    if (ms >= 0 && ms < MAX_RUNNING_SECTOR_MS) runningMs = ms;
   }
 
   return (
     <div className="mt-1 flex justify-end gap-1">
-      {sectors.map((s, i) => (
+      {(sectors || [null, null, null]).map((s, i) => (
         <Sector key={i} s={s} compact runningMs={i === nextIdx ? runningMs : null} />
       ))}
     </div>
@@ -509,13 +527,16 @@ function BuildingSectors({ sectors, lastLapAt }) {
 // at the green light, and the board now says when that was. Only passed for a
 // driver with no completed lap in a race; in practice a first lap starts
 // whenever the driver left the pits, which nothing knows, so it stays blank.
-function CurrentLap({ lastLapAt, inPits, startedAt = null }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 100);
-    return () => clearInterval(t);
-  }, []);
+function CurrentLap({ lastLapAt, inPits, outLap = false, startedAt = null }) {
+  // The shared board clock, so this and the sector chips underneath it are
+  // measuring from the same instant. Its own interval used to run on the
+  // browser's clock, which is what put the two out of step.
+  const now = useNow(!inPits && !outLap);
   if (inPits) return <span className="font-mono text-[11px] font-bold uppercase text-warn">In pit</span>;
+  // Out of the pits, not yet across the line: the last crossing on file is from
+  // before the stop, so counting from it would print the stop as lap time. The
+  // lap has no start anybody knows, and saying so beats an invented number.
+  if (outLap) return <span className="font-mono text-[11px] font-bold uppercase text-light">Out lap</span>;
   const from = lastLapAt || startedAt;
   if (!from) return <NoData className="font-mono tabular-nums" />;
   const ms = now - from;
@@ -575,10 +596,11 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
           {match?.role === "safety" && <SafetyCarBadge compact />}
           {/* DRS/PIT sit in their own column from sm up; on phones that column
               is 55px of mostly-empty width, so the badges ride with the name. */}
-          {(mobileBadges || badgesAlways) && (e.drs || e.inPits) && (
+          {(mobileBadges || badgesAlways) && (e.drs || e.inPits || e.outLap) && (
             <span className={`flex shrink-0 gap-1 ${badgesAlways ? "" : "sm:hidden"}`}>
               {e.drs && <span className="pill bg-sky-500/15 text-sky-600">DRS</span>}
               {e.inPits && <span className="pill bg-amber-500/15 text-warn">PIT</span>}
+              {e.outLap && !e.inPits && <span className="pill bg-surface2 text-medium">OUT</span>}
             </span>
           )}
         </span>
@@ -639,6 +661,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
             <CurrentLap
               lastLapAt={e.lastLapAt}
               inPits={e.inPits}
+              outLap={e.outLap}
               startedAt={isRace && !e.lapCount ? raceStartedAt : null}
             />
           ) : (
@@ -654,6 +677,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
           <BuildingSectors
             sectors={e.onTrack && !e.inPits ? e.currentSectors : null}
             lastLapAt={e.lastLapAt}
+            outLap={!e.onTrack || e.inPits || e.outLap}
           />
         )}
       </td>
@@ -689,8 +713,16 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
           neither grows the row nor widens this column into its neighbours. */}
       <td className="py-3 pr-5 text-right">
         <div className="flex justify-end gap-1.5">
-          <span className={`pill bg-sky-500/15 text-sky-600 ${e.drs ? "" : "invisible"}`}>DRS</span>
-          <span className={`pill bg-amber-500/15 text-warn ${e.inPits ? "" : "invisible"}`}>PIT</span>
+          <span className={`pill ${BADGE_BOX} bg-sky-500/15 text-sky-600 ${e.drs ? "" : "invisible"}`}>DRS</span>
+          {/* PIT and OUT share the slot: a car is either in the pit lane or
+              out of it, never both, and the two words are the same width. */}
+          {e.outLap && !e.inPits ? (
+            <span className={`pill ${BADGE_BOX} bg-surface2 text-medium`} title="Out lap: not a timed lap">
+              OUT
+            </span>
+          ) : (
+            <span className={`pill ${BADGE_BOX} bg-amber-500/15 text-warn ${e.inPits ? "" : "invisible"}`}>PIT</span>
+          )}
         </div>
       </td>
     </tr>
@@ -1057,8 +1089,16 @@ const TIMING_COLUMNS = [
     // which squeezed every other column and slid the numbers sideways.
     cell: (e) => (
       <div className="flex justify-end gap-1.5">
-        <span className={`pill bg-sky-500/15 text-sky-600 ${e.drs ? "" : "invisible"}`}>DRS</span>
-        <span className={`pill bg-amber-500/15 text-warn ${e.inPits ? "" : "invisible"}`}>PIT</span>
+        <span className={`pill ${BADGE_BOX} bg-sky-500/15 text-sky-600 ${e.drs ? "" : "invisible"}`}>DRS</span>
+        {/* PIT and OUT share the slot: a car is either in the pit lane or
+            out of it, never both, and the two words are the same width. */}
+        {e.outLap && !e.inPits ? (
+          <span className={`pill ${BADGE_BOX} bg-surface2 text-medium`} title="Out lap: not a timed lap">
+            OUT
+          </span>
+        ) : (
+          <span className={`pill ${BADGE_BOX} bg-amber-500/15 text-warn ${e.inPits ? "" : "invisible"}`}>PIT</span>
+        )}
       </div>
     ),
   },
