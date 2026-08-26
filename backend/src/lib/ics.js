@@ -112,6 +112,13 @@ function descriptionFor(race, link) {
 // one. They reappear in the feed by themselves once a date is set, because the
 // subscription re-reads.
 function eventFor(race, { origin, stamp, linkFor, alarmMinutes }) {
+  // The sprint half of a sprint+feature weekend is a hidden CHILD row sharing
+  // the event's date (lib/sprintRaces.js). Both halves are the same evening, so
+  // emitting the child would put that night in a subscriber's calendar twice.
+  // The route filters them out already; this is the second lock, because the
+  // cost of the filter being dropped in a later refactor is a duplicate that
+  // has already been synced into other people's calendars.
+  if (race.parentRaceId) return null;
   const kick = raceKickoff(race.date);
   if (!kick) return null;
   const start = icsStamp(kick);

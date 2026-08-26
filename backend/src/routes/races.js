@@ -193,11 +193,18 @@ router.get("/calendar.ics", async (req, res, next) => {
     const season = await resolveSeason(prisma, req.query.season, { series: req.query.series });
     if (!season) return res.status(404).type("text/plain").send("No such season");
 
-    const races = await prisma.race.findMany({
+    const allRaces = await prisma.race.findMany({
       where: { seasonId: season.id },
       orderBy: { number: "asc" },
       select: { id: true, number: true, track: true, date: true, isCompleted: true, isSpecialEvent: true, info: true },
     });
+    // A sprint weekend stores its sprint as a hidden CHILD row of the event
+    // (lib/sprintRaces.js), sharing the event's date. Both halves run on the
+    // one evening, so letting the child through would put the same night in
+    // everybody's calendar twice. Same filter the list endpoint applies, and
+    // for the same reason.
+    const parentOf = await readParentIds(prisma, allRaces.map((r) => r.id));
+    const races = allRaces.filter((r) => !parentOf.has(r.id));
     const ids = races.map((r) => r.id);
     const [format, types, seriesRow] = await Promise.all([
       readRaceFormat(prisma, ids),
@@ -217,6 +224,9 @@ router.get("/calendar.ics", async (req, res, next) => {
         date: r.date,
         isCompleted: r.isCompleted,
         info: r.info,
+        // Already filtered above; passed through so lib/ics.js can refuse a
+        // sprint child on its own too.
+        parentRaceId: parentOf.get(r.id) ?? null,
         type: types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
         qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
         raceLaps: format.get(r.id)?.raceLaps ?? null,

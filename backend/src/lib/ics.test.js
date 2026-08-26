@@ -156,6 +156,18 @@ describe("buildRaceCalendar", () => {
     expect(out.endsWith("END:VCALENDAR\r\n")).toBe(true);
   });
 
+  it("never emits the sprint half of a sprint+feature weekend", () => {
+    // The child shares the event's date, so letting it through puts one
+    // evening in the subscriber's calendar twice.
+    const out = buildRaceCalendar(
+      [race(), race({ id: "r1-sprint", number: null, type: "SPECIAL", parentRaceId: "r1" })],
+      OPTS
+    );
+    expect(unfold(out).filter((l) => l === "BEGIN:VEVENT")).toHaveLength(1);
+    expect(out).toContain("UID:race-r1@nabsracing.com");
+    expect(out).not.toContain("r1-sprint");
+  });
+
   it("escapes a comma in the admin's race info instead of ending the value", () => {
     const out = buildRaceCalendar([race({ info: "Mandatory pit stop, mediums only" })], OPTS);
     expect(out).toContain("Mandatory pit stop\\, mediums only");
