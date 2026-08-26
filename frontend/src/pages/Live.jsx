@@ -1560,7 +1560,7 @@ function StreamLink({ url, stream }) {
 // Shares a row with the session card on lg+ (the map used to be its own
 // full-width section, which was mostly empty margin), so the heading moved
 // inside the card as a compact header strip.
-function TrackMapSection({ session, entries, match, follow, onCarTelemetry, streamUrl, className = "" }) {
+function TrackMapSection({ session, entries, match, follow, onCarTelemetry, streamUrl, server, className = "" }) {
   const realMap = session.map || null;
   // Live sessions carry the mod's display name ("NABS Monza F1 2025") which the
   // tidy resolver can't place, so try the AC id (session.track) too.
@@ -1614,7 +1614,7 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
               map={realMap}
               follow={follow}
               onCarTelemetry={onCarTelemetry}
-              server={serverKey}
+              server={server}
               className={realMap ? "" : "mx-auto h-auto max-h-[440px] w-full text-medium"}
             />
             {/* The caveat only applies to the stylised outline; real map is exact. */}
@@ -2308,6 +2308,10 @@ export default function Live() {
                 follow={follow}
                 onCarTelemetry={onCarTelemetry}
                 streamUrl={extLinks?.streamUrl}
+                // The map image is fetched per server, so this has to travel
+                // down with the rest: a map of the other circuit would be a
+                // confident lie.
+                server={board?.serverKey || serverKey}
               />
               {/* Phones skip the pit-lane card: the same drivers already show
                   as dimmed dots on the map above and carry a PIT badge in the

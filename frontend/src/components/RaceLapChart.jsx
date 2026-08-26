@@ -40,6 +40,22 @@ export default function RaceLapChart({ data, className = "" }) {
     return { drivers: ds, maxLap: data?.maxLap || 0, maxPos };
   }, [data]);
 
+  // Team mates share a team colour, so on a full grid half the lines have a
+  // twin. The second car of a colour is dashed and the third dotted, which
+  // separates them without inventing colours the rest of the site doesn't use.
+  const dashes = useMemo(() => {
+    const seen = new Map();
+    return (data?.drivers || []).map((d, i) => {
+      const c = d.color || NEUTRAL[i % NEUTRAL.length];
+      const n = (seen.get(c) || 0) + 1;
+      seen.set(c, n);
+      return n === 1 ? undefined : n === 2 ? "7 4" : "2 3";
+    });
+  }, [data]);
+
+  // Every hook above this line, because the guard below returns early: a round
+  // whose laps arrive a moment later would otherwise render a different number
+  // of hooks the second time and take the page down.
   if (!drivers.length || maxLap < 2) {
     return <div className="card px-5 py-8 text-center text-sm text-light">No lap data for this round.</div>;
   }
@@ -74,19 +90,6 @@ export default function RaceLapChart({ data, className = "" }) {
   // id, and their place in the field for anyone the league couldn't match.
   const idOf = (d, i) => d.driverId || `row-${i}`;
   const shownDrivers = allNames ? drivers : drivers.slice(0, LEGEND_CAP);
-
-  // Team mates share a team colour, so on a full grid half the lines have a
-  // twin. The second car of a colour is dashed and the third dotted, which
-  // separates them without inventing colours the rest of the site doesn't use.
-  const dashes = useMemo(() => {
-    const seen = new Map();
-    return (data?.drivers || []).map((d, i) => {
-      const c = d.color || NEUTRAL[i % NEUTRAL.length];
-      const n = (seen.get(c) || 0) + 1;
-      seen.set(c, n);
-      return n === 1 ? undefined : n === 2 ? "7 4" : "2 3";
-    });
-  }, [data]);
 
   return (
     // Its own card, like the results table it stands in for — and the reason
