@@ -61,6 +61,8 @@ import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFile
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
 import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
+import { readPrivacyInfo, writePrivacyInfo } from "../lib/privacyInfo.js";
+import { readAndroidApp, writeAndroidApp } from "../lib/androidApp.js";
 import { readWelcomeFaq, writeWelcomeFaq } from "../lib/welcomeFaq.js";
 import {
   dbListFeedback,
@@ -5079,6 +5081,44 @@ router.put("/welcome-faq", async (req, res, next) => {
   try {
     const content = await writeWelcomeFaq(prisma, req.body?.content ?? null);
     res.json({ ok: true, content });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Privacy page contact + app name -----------------------------------------
+// The four fields on /privacy that are a league decision rather than a
+// description of the software (see lib/privacyInfo.js).
+
+router.get("/privacy-info", async (req, res, next) => {
+  try {
+    res.json(await readPrivacyInfo(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/privacy-info", async (req, res, next) => {
+  try {
+    res.json({ ok: true, info: await writePrivacyInfo(prisma, req.body?.info ?? null) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// The Android app's package name and signing fingerprints, which is what
+// /.well-known/assetlinks.json is built from (see lib/androidApp.js).
+router.get("/android-app", async (req, res, next) => {
+  try {
+    res.json(await readAndroidApp(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/android-app", async (req, res, next) => {
+  try {
+    res.json({ ok: true, info: await writeAndroidApp(prisma, req.body?.info ?? null) });
   } catch (e) {
     next(e);
   }

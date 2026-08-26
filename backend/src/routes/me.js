@@ -23,6 +23,7 @@ import { notifyCardUnlocks, notifyAdminsRaceRequest } from "../lib/notifications
 import { dbGetMember, dbSetRaceRequest } from "../lib/members.js";
 import { getDriverRatingHistory, getDriverCareerRatings } from "../services/ratingHistoryService.js";
 import { getCardRating } from "../services/cardRatingService.js";
+import { previewAccountDeletion, deleteMemberAccount } from "../services/accountDeletionService.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const router = Router();
@@ -589,6 +590,37 @@ router.post("/race-request", async (req, res, next) => {
     // point of the button lost.
     notifyAdminsRaceRequest(prisma, updated || acct, text).catch(() => {});
     res.json({ ok: true, pending: true, text });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Deleting your own account ------------------------------------------------
+// Both endpoints work for a login that was never linked to a driver, which is
+// most of the accounts here, so they check for the LOGIN rather than going
+// through requireDriver.
+
+// GET /api/me/delete-account -> what a deletion would touch, in countable
+// numbers, for the confirmation screen.
+router.get("/delete-account", async (req, res, next) => {
+  try {
+    if (!req.user?.discordId) return res.status(401).json({ error: "Sign in with Discord first" });
+    res.json(await previewAccountDeletion(prisma, req.user.discordId));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/me/delete-account { confirm: true } -> do it.
+//
+// The flag is not security (the session already is), it is a guard against a
+// stray POST from a retried request or an over-eager client deleting somebody's
+// league history by accident.
+router.post("/delete-account", async (req, res, next) => {
+  try {
+    if (!req.user?.discordId) return res.status(401).json({ error: "Sign in with Discord first" });
+    if (req.body?.confirm !== true) return res.status(400).json({ error: "Not confirmed" });
+    res.json({ ok: true, ...(await deleteMemberAccount(prisma, req.user.discordId)) });
   } catch (e) {
     next(e);
   }

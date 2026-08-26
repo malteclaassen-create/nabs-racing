@@ -15,6 +15,7 @@ import AdminContent from "../components/AdminContent.jsx";
 import AdminDownloads from "../components/AdminDownloads.jsx";
 import AdminRaceInfo from "../components/AdminRaceInfo.jsx";
 import AdminWelcomeFaq from "../components/AdminWelcomeFaq.jsx";
+import AdminPrivacy from "../components/AdminPrivacy.jsx";
 import AdminTracks from "../components/AdminTracks.jsx";
 import AdminAttendance from "../components/AdminAttendance.jsx";
 import AdminSocialFeed from "../components/AdminSocialFeed.jsx";
@@ -282,6 +283,7 @@ export default function Admin() {
           {tab === "tracks" && <AdminTracks />}
           {tab === "raceinfo" && <AdminRaceInfo />}
           {tab === "faq" && <AdminWelcomeFaq />}
+          {tab === "privacy" && <AdminPrivacy />}
           {tab === "downloads" && <AdminDownloads />}
           {tab === "traffic" && <TrafficAdmin />}
           {tab === "health" && <AdminHealth />}

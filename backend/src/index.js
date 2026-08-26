@@ -39,6 +39,7 @@ import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
 import { buildPageMeta, applyPageMeta, buildOrganizationJsonLd, applyJsonLd } from "./lib/pageMeta.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
+import { readAndroidApp, buildAssetLinks } from "./lib/androidApp.js";
 import { buildCrawlLinks, applyCrawlLinks } from "./lib/crawlLinks.js";
 import { legacyRedirects, canonicalUrl, applyCanonical, isKnownRoute, seriesSlugKnown, applyNoindex } from "./lib/seo.js";
 import prisma from "./lib/prisma.js";
@@ -306,6 +307,31 @@ app.use("/api/admin", adminRoutes); // everything else (auth-guarded)
 // a sitemap naming the wrong host is worse than none. `trust proxy` is set
 // above, so the protocol is the one the visitor actually used.
 const publicOrigin = (req) => `${req.protocol}://${req.get("host")}`;
+
+// Digital Asset Links: the domain vouching for the Android app, which is what
+// lets the Play Store version run without a browser bar across the top (see
+// lib/androidApp.js). Chrome and Google's verifier fetch this exact path.
+//
+// It sits HERE, above the static handler and the SPA fallback, for two reasons:
+// a dot-folder is not something express.static reliably serves, and the
+// catch-all below would hand out index.html for it — a verifier reading HTML
+// where it expects JSON simply reports the app as unverified, with no clue why.
+//
+// 404 while the league has not published an app yet: honest, and easy to tell
+// apart from a file that exists but disagrees with the app.
+app.get("/.well-known/assetlinks.json", async (req, res, next) => {
+  try {
+    const links = buildAssetLinks(await readAndroidApp(prisma));
+    if (!links) return res.status(404).json({ error: "No Android app is configured for this site" });
+    res.type("application/json");
+    // Short, not immutable: a re-signed app needs its new fingerprint to take
+    // effect the same day, not next week.
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.send(JSON.stringify(links, null, 2));
+  } catch (e) {
+    next(e);
+  }
+});
 
 app.get("/robots.txt", (req, res) => {
   res.type("text/plain");

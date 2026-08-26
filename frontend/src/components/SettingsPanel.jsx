@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useTheme } from "../hooks/useTheme.js";
 import { useGraphics } from "../hooks/useGraphics.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -128,6 +129,17 @@ export function SettingsDrawer({ open, onClose }) {
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
               </svg>
             </button>
+            {/* Leaving for good. Quiet, underneath, and a link rather than a
+                button: it opens a page that explains what goes and what stays
+                before anything happens. Members must be able to find this
+                without asking an admin (and an app store looks for it). */}
+            <Link
+              to="/delete-account"
+              onClick={closePanel}
+              className="mt-2 inline-block text-xs font-semibold text-light transition hover:text-bad hover:underline"
+            >
+              Delete my account
+            </Link>
           </section>
         )}
       </div>

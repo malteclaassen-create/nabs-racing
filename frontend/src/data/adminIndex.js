@@ -56,6 +56,7 @@ export const TAB_GROUPS = [
       { id: "tracks", label: "Tracks" },
       { id: "raceinfo", label: "Race Info" },
       { id: "faq", label: "Home FAQ" },
+      { id: "privacy", label: "Privacy & app" },
     ],
   },
   {
@@ -445,6 +446,26 @@ export const ADMIN_INDEX = [
     title: "Home page FAQ",
     hint: "The questions and answers newcomers see on the front page.",
     keywords: "faq questions answers welcome home newcomer help",
+  },
+  {
+    tab: "privacy",
+    title: "Privacy contact",
+    hint: "Who is legally responsible for the site, and the email privacy requests go to.",
+    keywords:
+      "privacy policy data protection gdpr dsgvo datenschutz contact responsible controller imprint legal email address who is responsible",
+  },
+  {
+    tab: "privacy",
+    title: "App name in the privacy policy",
+    hint: "Google Play requires the policy to name the app. Set the store name here.",
+    keywords: "app name google play store android privacy policy listing publish twa",
+  },
+  {
+    tab: "privacy",
+    title: "Link the Android app to this domain",
+    hint: "Package name and signing fingerprints, which produce the assetlinks.json the app is verified against.",
+    keywords:
+      "assetlinks digital asset links package name fingerprint sha256 signing key twa trusted web activity address bar url bar verification play console app integrity android",
   },
 
   // --- System ---------------------------------------------------------------

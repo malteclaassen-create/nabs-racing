@@ -5,6 +5,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { readRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq } from "../lib/welcomeFaq.js";
+import { readPrivacyInfo } from "../lib/privacyInfo.js";
 import { discordMemberCount, leagueSince, yearsOfRacing } from "../lib/leagueStats.js";
 import { buildFeed } from "../lib/socialFeed.js";
 import { isTelemetryPublic } from "../lib/telemetryAccess.js";
@@ -66,6 +67,17 @@ router.get("/telemetry", async (req, res, next) => {
 router.get("/social", async (req, res, next) => {
   try {
     res.json(await readSocialLinks(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/settings/privacy -> who is responsible for the site, and what the
+// Android app is called. Public and login-free, because the page that reads it
+// has to be readable by anyone, an app store reviewer included.
+router.get("/privacy", async (req, res, next) => {
+  try {
+    res.json(await readPrivacyInfo(prisma));
   } catch (e) {
     next(e);
   }

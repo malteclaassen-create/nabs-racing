@@ -57,6 +57,14 @@ const MyReports = lazy(() => import("./pages/MyReports.jsx"));
 // from the footer, i.e. once per member ever — no reason for it to sit in the
 // bundle everybody downloads.
 const InstallApp = lazy(() => import("./pages/InstallApp.jsx"));
+// The privacy page. Read rarely, but it has to exist at a fixed public address
+// (an app store listing cannot be published without one), so it lives in its
+// own chunk rather than in everybody's first download.
+const Privacy = lazy(() => import("./pages/Privacy.jsx"));
+// Leaving the league. Its own address rather than a panel inside the profile,
+// because it has to be readable while signed OUT too: it is the page that
+// explains what deletion does, and an app store expects to find one.
+const DeleteAccount = lazy(() => import("./pages/DeleteAccount.jsx"));
 // Development only. The ternary is what keeps it out of a built site:
 // import.meta.env.DEV is replaced with a literal false at build time, so the
 // dynamic import below it is dead code and the chunk is never emitted. Written
@@ -232,6 +240,10 @@ function AppRoutes() {
             desktop). Linked from the footer and from the one-off announcement
             in the notification bell. */}
         <Route path="/app" element={<InstallApp />} />
+        {/* Public and login-free on purpose: members are not the only readers,
+            an app store reviewer has to be able to open it too. */}
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/delete-account" element={<DeleteAccount />} />
         {/* Race-prep calculators. Not in the nav on purpose: linked from the
             upcoming-race panel and the private profile. */}
         <Route path="/tools" element={<Tools />} />
@@ -384,6 +396,11 @@ function Footer() {
           </span>
           <span className="flex items-center gap-1.5">
             Circuit outlines © OpenStreetMap contributors
+            <span className="text-border">·</span>
+            {/* On every page, in the place people look for it. Not in the
+                Explore column above: that one is where to go next, this is the
+                small print. */}
+            <Link to="/privacy" className="transition hover:text-light">Privacy</Link>
             <span className="text-border">·</span>
             <Link to="/admin" className="transition hover:text-light">Admin</Link>
           </span>

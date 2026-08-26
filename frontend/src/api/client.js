@@ -521,6 +521,12 @@ export const api = {
     return request("/me/photo", { method: "POST", body: fd, userAuth: true, form: true });
   },
   clearMyPhoto: () => request("/me/photo", { method: "DELETE", userAuth: true }),
+  // Deleting your own account (the /delete-account page). The preview counts
+  // what would go; the delete itself is irreversible and says so everywhere it
+  // is offered.
+  deleteAccountPreview: () => request("/me/delete-account", { userAuth: true }),
+  deleteAccount: () =>
+    request("/me/delete-account", { method: "POST", body: { confirm: true }, userAuth: true }),
   // Which headline stat tiles the public profile shows (null = all six).
   setMyTiles: (tiles) => request("/me/tiles", { method: "PUT", body: { tiles }, userAuth: true }),
   // How the picture sits on the rating card ({x,y,z,s} or null = default).
@@ -1163,6 +1169,15 @@ export const api = {
   raceInfo: () => request("/settings/race-info"),
   adminRaceInfo: () => request("/admin/race-info", { auth: true }),
   saveRaceInfo: (content) => request("/admin/race-info", { method: "PUT", body: { content }, auth: true }),
+
+  // Privacy page: who is responsible, and the app's name (public read + admin edit)
+  privacyInfo: () => request("/settings/privacy"),
+  adminPrivacyInfo: () => request("/admin/privacy-info", { auth: true }),
+  savePrivacyInfo: (info) => request("/admin/privacy-info", { method: "PUT", body: { info }, auth: true }),
+  // Package name + signing fingerprints, which /.well-known/assetlinks.json is
+  // built from (admin only: the file itself is public).
+  adminAndroidApp: () => request("/admin/android-app", { auth: true }),
+  saveAndroidApp: (info) => request("/admin/android-app", { method: "PUT", body: { info }, auth: true }),
 
   // Welcome-page FAQ (public read + admin edit)
   welcomeFaq: () => request("/settings/welcome-faq"),
