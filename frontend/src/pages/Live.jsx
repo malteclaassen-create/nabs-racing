@@ -11,7 +11,7 @@ import { PageHeader, SectionHeading, SafetyCarBadge, NoData} from "../components
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
-import LiveServerSwitch from "../components/LiveServerSwitch.jsx";
+import { useLiveServers, LiveServerSwitch, LiveServerElsewhere } from "../components/LiveServerSwitch.jsx";
 import TyreStrategy, { TyreBadge } from "../components/TyreStrategy.jsx";
 import { circuitForLive } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
@@ -1930,6 +1930,9 @@ function useHeldBoard(board) {
 
 export default function Live() {
   const { board: feed, socketState, follow, onCarTelemetry, setServer, serverKey } = useLiveTiming();
+  // Polled once here and handed to both pieces of the server switch: the
+  // control in the header and the "cars are out over there" line under it.
+  const liveServers = useLiveServers();
   const { shown: board, gap } = useHeldBoard(feed);
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const match = useMemo(() => makeDriverMatcher(teams), [teams]);
@@ -2248,25 +2251,24 @@ export default function Live() {
         // The external buttons share the title's row (right-aligned), so the
         // session card moves up to just under the header.
         right={
-          <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
             {board?.demo && <span className="pill bg-amber-500/15 text-warn">Demo</span>}
+            {/* The board names its own server, so the switch shows where the
+                data actually comes from rather than what was last clicked. The
+                two only diverge briefly — a click before the answer lands, a
+                reconnect — but those are exactly the moments a wrong button
+                would mislead. */}
+            <LiveServerSwitch servers={liveServers} current={board?.serverKey || serverKey} onSwitch={setServer} />
             <ExternalButtons links={extLinks} patreonUrl={social.data?.patreon} />
           </div>
         }
       />
       </div>
 
-      {/* Under the header rather than in it: the header's right side already
-          carries the external buttons, and on a phone a third thing there wraps
-          into a ragged stack. */}
-      <div className="mb-4">
-        {/* The board names its own server, so the switch shows where the data
-            actually comes from rather than what was last clicked. The two only
-            diverge briefly — a click before the answer lands, a reconnect — but
-            those are exactly the moments a wrong button would mislead. Falls
-            back to the requested key until the first board arrives. */}
-        <LiveServerSwitch current={board?.serverKey || serverKey} onSwitch={setServer} />
-      </div>
+      {/* Only appears when cars are out on the server you are NOT watching, so
+          it earns a line of its own rather than sitting in the header row with
+          the permanent controls. */}
+      <LiveServerElsewhere servers={liveServers} current={board?.serverKey || serverKey} onSwitch={setServer} />
 
       {!heardFromRelay && !board ? (
         // Still asking. This is the only case that gets a spinner, and it lasts

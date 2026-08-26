@@ -8,18 +8,21 @@ import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 // The league runs two, and until now a viewer only ever saw the one their
 // series is assigned to (admin Live tab). A session on the other one was
 // invisible — on the page whose entire job is to say whether anything is
-// happening. So the switch does two things, and the second is the point:
+// happening. So this does two things, and the second is the point:
 //
 //   * it moves the board to the other server, and
-//   * it says, on the button itself, whether anybody is out there.
+//   * it says whether anybody is out there on the one you are not watching.
 //
-// The assignment stays the DEFAULT. Switching is for this visit only and is
-// deliberately not remembered: a member opening the page on race night must
+// Those two land in different places, which is why the file exports a hook and
+// two small pieces rather than one block. The SWITCH is permanent furniture and
+// belongs up in the header row with the other controls; the sentence about the
+// other server is rare and urgent and earns its own line under it. One poll
+// feeds both — the page calls the hook once and hands the answer down.
+//
+// The admin assignment stays the DEFAULT. Switching is for this visit only and
+// is deliberately not remembered: a member opening the page on race night must
 // land on the board the league is actually racing on, not on whatever they
 // clicked a fortnight ago.
-//
-// It hides itself when there is only one server, or when the poll cannot
-// answer. A switch with one option is furniture.
 // ---------------------------------------------------------------------------
 
 const POLL_MS = 15_000;
@@ -37,6 +40,34 @@ const POLL_MS = 15_000;
 // showing, not worth a green light.
 const driving = (s) => (s?.onTrack || 0) > 0;
 const hasSession = (s) => !!s?.session;
+
+// "NABS Server 2" -> "Server 2". The page is already the NABS live page, and
+// the prefix is most of the label's width in a header row that is short of it.
+// The full name stays in the tooltip.
+const shortName = (name) => String(name || "").replace(/^NABS\s+/i, "");
+
+export function useLiveServers() {
+  const [servers, setServers] = useState(null);
+
+  useVisiblePoll(
+    useCallback((alive) => {
+      api
+        .liveServers()
+        .then((d) => alive() && setServers(d?.servers?.length ? d : null))
+        .catch(() => {});
+    }, []),
+    POLL_MS,
+    true
+  );
+
+  // Below two servers there is nothing to switch between, and a switch with one
+  // option is furniture. Same answer when the poll cannot reach the endpoint.
+  return servers && servers.servers.length >= 2 ? servers : null;
+}
+
+// `current` is the server the board on screen actually came from; before the
+// first board arrives it can be null, and then the series' own is what is shown.
+const activeKeyOf = (servers, current) => current || servers.defaultKey;
 
 // A ring rather than a plain circle: this mark has to survive being 8px wide on
 // a phone, next to a name, in both themes. Only the driving one animates, and
@@ -62,81 +93,77 @@ function stateLabel(s) {
   return "quiet";
 }
 
-export default function LiveServerSwitch({ current, onSwitch }) {
-  const [servers, setServers] = useState(null);
-
-  useVisiblePoll(
-    useCallback((alive) => {
-      api
-        .liveServers()
-        .then((d) => alive() && setServers(d?.servers?.length ? d : null))
-        .catch(() => {});
-    }, []),
-    POLL_MS,
-    true
-  );
-
-  if (!servers || servers.servers.length < 2) return null;
-
-  // `current` is null until the viewer switches: that is the series' own server,
-  // which the backend named for us.
-  const activeKey = current || servers.defaultKey;
-  // Worth interrupting someone for: cars are out on the board they are NOT
-  // looking at. A merely loaded session on the other server is on its own dot
-  // already and does not earn a sentence.
-  const elsewhere = servers.servers.find((s) => s.key !== activeKey && driving(s));
+// The switch itself, sized to sit in the page header beside the external
+// buttons: full width on a phone like its neighbours there, shrink-to-content
+// from sm up so it stops stretching across the whole page.
+export function LiveServerSwitch({ servers, current, onSwitch }) {
+  if (!servers) return null;
+  const activeKey = activeKeyOf(servers, current);
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <div
-        role="group"
-        aria-label="Race server"
-        className="flex flex-wrap items-center gap-1 rounded-xl border border-border bg-card p-1"
-      >
-        {servers.servers.map((s) => {
-          const active = s.key === activeKey;
-          return (
-            <button
-              key={s.key}
-              type="button"
-              aria-pressed={active}
-              // Switching back to the series' own server clears the override
-              // rather than pinning it, so a later change in the admin tab
-              // still reaches this viewer.
-              onClick={() => onSwitch(s.isDefault ? null : s.key)}
-              title={`${s.name}${s.track ? ` · ${s.track}` : ""} · ${stateLabel(s)}`}
-              className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                active ? "bg-brand text-ink" : "text-medium hover:bg-surface2 hover:text-dark"
-              }`}
-            >
-              <LiveDot server={s} />
-              <span className="whitespace-nowrap">{s.name}</span>
-              {driving(s) && (
-                <span
-                  className={`rounded px-1 font-mono text-[10px] tabular-nums ${
-                    active ? "bg-ink/15 text-ink" : "bg-ok/15 text-ok"
-                  }`}
-                >
-                  {s.onTrack}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      {/* Said in words as well as in a dot, because the dot is small and the
-          fact is the whole point: there is a session on the board you are not
-          looking at. One tap away, and the sentence says which tap. */}
-      {elsewhere && (
-        <button
-          type="button"
-          onClick={() => onSwitch(elsewhere.isDefault ? null : elsewhere.key)}
-          className="self-start text-left text-xs font-semibold text-ok underline decoration-dotted underline-offset-2 transition hover:text-dark"
-        >
-          {elsewhere.onTrack} out on track on {elsewhere.name}
-          {elsewhere.track ? ` (${elsewhere.track})` : ""}. Switch over.
-        </button>
-      )}
+    <div
+      role="group"
+      aria-label="Race server"
+      className="flex w-full items-center gap-1 rounded-xl border border-border bg-card p-1 sm:w-auto"
+    >
+      {servers.servers.map((s) => {
+        const active = s.key === activeKey;
+        return (
+          <button
+            key={s.key}
+            type="button"
+            aria-pressed={active}
+            // Switching back to the series' own server clears the override
+            // rather than pinning it, so a later change in the admin tab still
+            // reaches this viewer.
+            onClick={() => onSwitch(s.isDefault ? null : s.key)}
+            title={`${s.name}${s.track ? ` · ${s.track}` : ""} · ${stateLabel(s)}`}
+            className={`flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold transition sm:flex-none ${
+              active ? "bg-brand text-ink" : "text-medium hover:bg-surface2 hover:text-dark"
+            }`}
+          >
+            <LiveDot server={s} />
+            {shortName(s.name)}
+            {driving(s) && (
+              <span
+                className={`rounded px-1 font-mono text-[10px] tabular-nums ${
+                  active ? "bg-ink/15 text-ink" : "bg-ok/15 text-ok"
+                }`}
+              >
+                {s.onTrack}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
+  );
+}
+
+// Cars are out on the board you are NOT looking at. Said in words as well as in
+// a dot, because the dot is small and this is the whole reason the switch
+// exists — and said only then: a merely loaded session on the other server is
+// on its own dot already and does not earn a sentence.
+export function LiveServerElsewhere({ servers, current, onSwitch }) {
+  if (!servers) return null;
+  const activeKey = activeKeyOf(servers, current);
+  const elsewhere = servers.servers.find((s) => s.key !== activeKey && driving(s));
+  if (!elsewhere) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSwitch(elsewhere.isDefault ? null : elsewhere.key)}
+      className="mb-4 flex items-center gap-2 rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-left text-xs font-semibold text-ok transition hover:bg-ok/15"
+    >
+      <span aria-hidden className="relative flex h-2 w-2 shrink-0">
+        <span className="live-dot absolute inline-flex h-full w-full rounded-full bg-ok opacity-70" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-ok" />
+      </span>
+      <span>
+        {elsewhere.onTrack} out on track on {elsewhere.name}
+        {elsewhere.track ? ` (${elsewhere.track})` : ""}. Switch over.
+      </span>
+    </button>
   );
 }
