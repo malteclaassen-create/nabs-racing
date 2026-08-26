@@ -965,6 +965,71 @@ body::before {
   .bell-ring, .bell-badge-pulse { animation: none !important; }
 }
 
+/* --- Live board: the sector chips ----------------------------------------
+   Three states worth telling apart at a glance on race night, on a phone, from
+   across a room.
+
+   PURPLE ARRIVES. Taking the fastest sector of the session is the one moment on
+   this board worth interrupting someone for, so it gets a real beat: the chip
+   pops, an expanding ring leaves it, and a sliver of light crosses it once.
+   Once, on the TRANSITION — a chip that merely IS purple sits still, or the
+   board would strobe for as long as somebody holds the record.
+
+   The ring is drawn with box-shadow rather than a real element so it can expand
+   outside the chip without the row reserving space for it, and the sweep rides
+   an ::after inside the chip's own overflow.
+
+   Both switches that mean "hold still" stop all of it (rules at the foot of
+   this file and in the reduced-motion block): the colour alone still carries
+   the fact, which is the part that matters. */
+@keyframes sector-purple-pop {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgb(var(--c-fl) / 0.55); }
+  35%  { transform: scale(1.16); box-shadow: 0 0 0 6px rgb(var(--c-fl) / 0); }
+  70%  { transform: scale(0.98); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgb(var(--c-fl) / 0); }
+}
+@keyframes sector-sweep {
+  from { transform: translateX(-130%); }
+  to   { transform: translateX(230%); }
+}
+.sector-purple {
+  position: relative;
+  overflow: hidden;
+  animation: sector-purple-pop var(--t-tell) var(--e-pop);
+}
+.sector-purple::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgb(var(--c-fl) / 0.55) 50%, transparent 70%);
+  animation: sector-sweep var(--t-tell) var(--e-soft);
+  pointer-events: none;
+}
+
+/* A DRIVER'S OWN best gets the same shape at a fraction of the volume: a nudge,
+   no ring, no sweep. It happens many times a session and must not compete with
+   the purple. */
+@keyframes sector-green-pop {
+  0%, 100% { transform: scale(1); }
+  40%      { transform: scale(1.07); }
+}
+.sector-green { animation: sector-green-pop var(--t-base) var(--e-pop); }
+
+/* THE SECTOR BEING DRIVEN. Not a result yet, so it deliberately does not wear
+   one of the result colours: a dashed outline and a slow breath say "this number
+   is still moving", and it freezes into its real colour the instant the split
+   lands. */
+@keyframes sector-live-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.62; }
+}
+.sector-live { animation: sector-live-breathe 1.4s ease-in-out infinite; }
+
+.fx-lite .sector-purple,
+.fx-lite .sector-green,
+.fx-lite .sector-live { animation: none !important; }
+.fx-lite .sector-purple::after { display: none !important; }
+
 /* Live projection reorder (Live page, Standings view): while a row FLIP-glides
    to its new slot after an on-track overtake, it flashes green (gained places)
    or red (lost places) and fades back out. The .cascade > * variants outrank
@@ -1034,6 +1099,10 @@ body::before {
   .scroll-cue, .page-in, .content-in { animation: none !important; opacity: 1; transform: none; }
   .podium-floor, .podium-ped, .podium-driver, .champ-chip { animation: none !important; opacity: 1; transform: none; clip-path: none; }
   .nav-drop, .nav-scrim { animation: none !important; opacity: 1; transform: none; }
+  /* The sector chips keep their colour, which is the fact; only the movement
+     that announces it goes away. */
+  .sector-purple, .sector-green, .sector-live { animation: none !important; transform: none; }
+  .sector-purple::after { display: none; }
   /* The closing pair must still vanish instantly rather than sit there opaque. */
   .nav-drop.is-closing, .nav-scrim.is-closing { opacity: 0; }
   .nav-season-dock { animation: none !important; transition: none !important; }
