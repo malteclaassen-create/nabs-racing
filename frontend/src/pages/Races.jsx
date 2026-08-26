@@ -15,6 +15,7 @@ import RaceFacts from "../components/RaceFacts.jsx";
 import RaceGallery from "../components/RaceGallery.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
 import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
+import CalendarSubscribe from "../components/CalendarSubscribe.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
@@ -1213,6 +1214,9 @@ export default function Races() {
       <div className="reveal space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="section-title">Calendar · {tabLabel}</h3>
+          {/* The feed carries the whole season, every session type, so it sits
+              with the calendar grid rather than inside one tab's group. */}
+          <CalendarSubscribe season={season} slug={slug} />
         </div>
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((r, i) => (
