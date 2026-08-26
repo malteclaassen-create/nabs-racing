@@ -4,6 +4,8 @@ import { api } from "../api/client.js";
 import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { useApi } from "../hooks/useApi.js";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
+import { useNow } from "../hooks/useNow.js";
+import { motionOff } from "../hooks/motion.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { PageHeader, SectionHeading, SafetyCarBadge, NoData} from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
@@ -289,9 +291,128 @@ function SessionHeader({ session, receivedAt }) {
 // progress: that card shares a row with the track map, so its column has to
 // stay slim. A null sector still takes its width, so chips don't jump sideways
 // as the lap fills in.
-function Sector({ s, compact = false }) {
+// How long the digits take to run up to a sector time that just landed, and the
+// curve they run on: fast out of the blocks, long settle, so the last few
+// thousandths are readable rather than a blur that stops.
+const ROLL_MS = 420;
+const rollEase = (t) => 1 - Math.pow(1 - t, 3);
+
+// The number a chip is showing right now: normally just the value it was given,
+// but for the first frames after a NEW value arrives it runs up to it.
+//
+// Only on a change, never on mount. The board arrives every 700ms and a full
+// grid is 114 of these; animating whatever the first frame happened to contain
+// would set the entire page running at once on load, every load, and animating
+// on each board would mean it never stopped. A sector time changes when a
+// driver improves it, which is exactly the moment worth showing.
+//
+// The count starts from the previous value rather than from zero, because these
+// are lap times: rolling 31.402 -> 31.198 through the tenths that separate them
+// shows the improvement, where a run up from zero would just be a slot machine.
+function useRolledMs(target) {
+  const [shown, setShown] = useState(target);
+  const fromRef = useRef(target);
+  const rafRef = useRef(0);
+
+  useEffect(() => {
+    const from = fromRef.current;
+    fromRef.current = target;
+    // Nothing to animate: the first value, a cleared chip, or no real change.
+    if (from == null || target == null || from === target || motionOff()) {
+      setShown(target);
+      return undefined;
+    }
+    const startedAt = performance.now();
+    const step = (t) => {
+      const p = Math.min(1, (t - startedAt) / ROLL_MS);
+      setShown(Math.round(from + (target - from) * rollEase(p)));
+      if (p < 1) rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target]);
+
+  return shown;
+}
+
+// How long the purple beat runs. Must match .sector-purple in index.css, which
+// is on the --t-tell step of the motion scale.
+const BEAT_MS = 700;
+
+// "" normally; "sector-purple" or "sector-green" for one beat after the chip
+// ENTERS that state. Taking the fastest sector is the moment worth showing, and
+// holding it is not, so a chip that keeps the record goes still again.
+//
+// Held in state with a timer rather than derived from a ref each render, and
+// that is not a style preference. These chips re-render at wildly different
+// rates: a row in the main table redraws when the board lands, every 700ms,
+// while the strip under a driver's clock redraws ten times a second with the
+// running sector. Deriving the class from "was it best last render" gives the
+// first a full beat and the second about a tenth of one, so the same event
+// would flash properly in one place and blink in the other. A timer gives both
+// the whole animation.
+function useSectorBeat(s) {
+  const [beat, setBeat] = useState("");
+  const prev = useRef(null); // null = first sight of this chip: no beat
+  const timer = useRef(0);
+
+  const best = !!s?.best;
+  const driversBest = !!s?.driversBest;
+
+  useEffect(() => {
+    const was = prev.current;
+    prev.current = { best, driversBest };
+    if (!was || motionOff()) return undefined;
+    const next = best && !was.best ? "sector-purple" : driversBest && !best && !was.driversBest ? "sector-green" : "";
+    if (!next) return undefined;
+    setBeat(next);
+    clearTimeout(timer.current);
+    // Cleared again afterwards so the class is gone before the chip could earn
+    // the same beat a second time; left on, the browser would not replay it.
+    timer.current = setTimeout(() => setBeat(""), BEAT_MS);
+    return undefined;
+  }, [best, driversBest]);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  return beat;
+}
+
+// One sector chip.
+//
+// Three things it can be, and they are deliberately different shapes:
+//
+//   a RESULT      the sector of the driver's best lap. Purple for the fastest
+//                 in the session, green for the driver's own best, amber
+//                 otherwise, red if they cut. The digits run up when the time
+//                 improves, and taking the purple plays once (see .sector-purple
+//                 in index.css).
+//   RUNNING       the sector the driver is in at this moment: `runningMs` is a
+//                 live number climbing on the shared clock. It wears none of the
+//                 result colours, because it is not a result yet; a dashed
+//                 outline and a slow breath say so, and it hardens into its real
+//                 colour the instant the split lands.
+//   NOTHING       no time, no chip.
+function Sector({ s, compact = false, runningMs = null }) {
   const size = compact ? "w-[46px] text-[10px]" : "w-[52px] text-xs";
+  const base = `inline-block ${size} rounded text-center font-mono font-semibold tabular-nums`;
+
+  const beat = useSectorBeat(s);
+  const rolled = useRolledMs(s ? s.ms : null);
+
+  if (runningMs != null) {
+    return (
+      <span
+        className={`${base} sector-live border border-dashed border-light/40 text-light`}
+        title="This sector is still being driven"
+      >
+        {formatSector(runningMs)}
+      </span>
+    );
+  }
+
   if (!s) return <NoData className={`inline-block ${size} text-center font-mono`} />;
+
   const cls = s.cuts
     ? "bg-red-500/10 text-bad"
     : s.best
@@ -301,10 +422,18 @@ function Sector({ s, compact = false }) {
     : "bg-warn/10 text-warn";
   return (
     <span
-      className={`inline-block ${size} rounded text-center font-mono font-semibold tabular-nums ${cls}`}
-      title={s.cuts ? `${s.cuts} cut${s.cuts > 1 ? "s" : ""} in this sector` : undefined}
+      className={`${base} ${cls}${beat ? ` ${beat}` : ""}`}
+      title={
+        s.cuts
+          ? `${s.cuts} cut${s.cuts > 1 ? "s" : ""} in this sector`
+          : s.best
+          ? "Fastest sector of the session"
+          : s.driversBest
+          ? "This driver's best sector"
+          : undefined
+      }
     >
-      {formatSector(s.ms)}
+      {formatSector(rolled ?? s.ms)}
     </span>
   );
 }
@@ -316,12 +445,41 @@ function Sector({ s, compact = false }) {
 // which tenth of sector two someone is having, and the column has no room for
 // both. Nothing to show until the first split of the lap lands, so a driver who
 // has just left the pits doesn't get an empty second line.
-function BuildingSectors({ sectors }) {
-  if (!sectors?.some(Boolean)) return null;
+// A sector that has been running longer than this is not a sector, it is a
+// stale row: someone parked, went to the garage without the board noticing, or
+// the lap start we are counting from belongs to a lap they abandoned. Three
+// minutes is longer than any sector on any circuit the league runs and short
+// enough that a wrong number does not sit there all session.
+const MAX_RUNNING_SECTOR_MS = 3 * 60 * 1000;
+
+function BuildingSectors({ sectors, lastLapAt }) {
+  // The sector being driven is the first empty box, and how long they have been
+  // in it is the lap clock minus the splits already banked. Both halves come
+  // from the board itself (lastLapAt is when this lap started, the filled boxes
+  // are its splits), so nothing is estimated.
+  const nextIdx = sectors ? sectors.findIndex((x) => !x) : -1;
+  const hasSplit = !!sectors?.some(Boolean);
+  // Deliberately only once a split has landed. Before that there is no lap to
+  // count against: a driver who has just left the pits is on an out-lap, and
+  // lastLapAt is the end of a lap they finished minutes ago, so a clock started
+  // from it would count their time in the garage. This is also why the running
+  // chip can never be sector one.
+  const running = hasSplit && nextIdx > 0 && lastLapAt != null;
+  const now = useNow(running);
+
+  if (!hasSplit) return null;
+
+  let runningMs = null;
+  if (running) {
+    const banked = sectors.slice(0, nextIdx).reduce((a, x) => a + (x?.ms || 0), 0);
+    const ms = now - lastLapAt - banked;
+    if (ms > 0 && ms < MAX_RUNNING_SECTOR_MS) runningMs = ms;
+  }
+
   return (
     <div className="mt-1 flex justify-end gap-1">
       {sectors.map((s, i) => (
-        <Sector key={i} s={s} compact />
+        <Sector key={i} s={s} compact runningMs={i === nextIdx ? runningMs : null} />
       ))}
     </div>
   );
@@ -463,7 +621,9 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
             />
             {/* A car in the pits isn't building a lap, and the clock says so
                 instead — leftover splits under "In pit" would read as progress. */}
-            {!isRace && !e.inPits && <BuildingSectors sectors={e.currentSectors} />}
+            {!isRace && !e.inPits && (
+              <BuildingSectors sectors={e.currentSectors} lastLapAt={e.lastLapAt} />
+            )}
           </>
         ) : (
           <span className="pill bg-surface2 font-mono text-light">Left</span>

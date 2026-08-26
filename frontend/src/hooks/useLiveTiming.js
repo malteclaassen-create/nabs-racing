@@ -34,7 +34,11 @@ export function useLiveTiming() {
       // relays the race server ASSIGNED to this series (admin Live tab); no
       // slug = the default series on the first server.
       const params = new URLSearchParams();
-      if (new URLSearchParams(window.location.search).has("demo")) params.set("demo", "1");
+      // Forward the VALUE, not a hardcoded 1: ?demo=practice asks the backend
+      // for a practice board, which is the only way to see the half of the page
+      // that shows a lap being built (see DEMO_MODES in the backend relay).
+      const demo = new URLSearchParams(window.location.search).get("demo");
+      if (demo != null) params.set("demo", demo || "1");
       const slug = /^\/s\/([^/]+)/.exec(window.location.pathname)?.[1];
       if (slug) params.set("series", slug);
       const qs = params.toString();
