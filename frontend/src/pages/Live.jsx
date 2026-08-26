@@ -658,7 +658,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
           {e.isSafetyCar ? "SC" : e.position}
         </span>
       </td>
-      <td className="py-3 pl-1 pr-3">
+      <td className="w-full py-3 pl-1 pr-3">
         <DriverCell e={e} match={match} />
       </td>
       <td className="hidden py-3 pr-4 text-center sm:table-cell">
@@ -670,35 +670,34 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
           </span>
         )}
       </td>
-      <td className="py-3 pr-4 text-right text-base">
-        {/* One fixed line, whatever the driver is doing. A running clock, "In
-            pit" at 11px and the "Left" pill are three different type sizes, and
-            left to themselves they settle into boxes a pixel apart, which is a
-            pixel the whole row moves every time somebody pits. */}
-        <span className="flex h-6 items-center justify-end">
-          {e.onTrack ? (
-            <CurrentLap
-              lastLapAt={e.lastLapAt}
-              inPits={e.inPits}
-              outLap={e.outLap}
-              startedAt={isRace && !e.lapCount ? raceStartedAt : null}
-            />
-          ) : (
-            <span className="pill bg-surface2 font-mono text-light">Left</span>
+      {/* The cell keeps ONE height whatever the driver is doing, and centres
+          whatever it has in it. A car building a lap fills it with a clock over
+          three split boxes; a car in the pits has one short word, and that word
+          sat pinned to the top with the reserved split line as empty space
+          under it, which read as a mistake. Centred, it sits where the eye
+          expects it and the row still never changes height. */}
+      <td className="py-3 pr-4 text-right text-base align-middle">
+        <div className={`flex flex-col justify-center ${isRace ? "" : "min-h-[54px]"}`}>
+          <span className="flex h-6 items-center justify-end">
+            {e.onTrack ? (
+              <CurrentLap
+                lastLapAt={e.lastLapAt}
+                inPits={e.inPits}
+                outLap={e.outLap}
+                startedAt={isRace && !e.lapCount ? raceStartedAt : null}
+              />
+            ) : (
+              <span className="pill bg-surface2 font-mono text-light">Left</span>
+            )}
+          </span>
+          {/* Outside a race the split line belongs to the row's shape, but only
+              while there is a lap to build. In the pits, on an out lap or gone
+              to the garage there is nothing to put in it, and the box above is
+              centred into the space instead of leaving it blank underneath. */}
+          {!isRace && e.onTrack && !e.inPits && !e.outLap && (
+            <BuildingSectors sectors={e.currentSectors} lastLapAt={e.lastLapAt} />
           )}
-        </span>
-        {/* Outside a race this line is part of the row's shape, in all four
-            states a driver can be in. A car in the pits or gone to the garage
-            has nothing to show there and shows nothing, but it keeps the space:
-            leftover splits under "In pit" would read as progress, and a line
-            that disappears with them resizes the row. */}
-        {!isRace && (
-          <BuildingSectors
-            sectors={e.onTrack && !e.inPits ? e.currentSectors : null}
-            lastLapAt={e.lastLapAt}
-            outLap={!e.onTrack || e.inPits || e.outLap}
-          />
-        )}
+        </div>
       </td>
       <td className="hidden py-3 pr-4 text-right sm:table-cell">
         {isRace ? (
@@ -731,17 +730,16 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
           badge is invisible rather than absent, so a driver hitting the pit lane
           neither grows the row nor widens this column into its neighbours. */}
       <td className="py-3 pr-5 text-right">
+        {/* No PIT badge here, deliberately: the pit lane card under the map
+            already lists who is in there, with how long for, and this row says
+            "In pit" in the CURRENT column as well. Three copies of one fact.
+            OUT stays, because nothing else on the page says it. The empty slot
+            is still reserved so the column cannot resize under a badge. */}
         <div className="flex justify-end gap-1.5">
           <span className={`pill ${BADGE_BOX} bg-sky-500/15 text-sky-600 ${e.drs ? "" : "invisible"}`}>DRS</span>
-          {/* PIT and OUT share the slot: a car is either in the pit lane or
-              out of it, never both, and the two words are the same width. */}
-          {e.outLap && !e.inPits ? (
-            <span className={`pill ${BADGE_BOX} bg-surface2 text-medium`} title="Out lap: not a timed lap">
-              OUT
-            </span>
-          ) : (
-            <span className={`pill ${BADGE_BOX} bg-amber-500/15 text-warn ${e.inPits ? "" : "invisible"}`}>PIT</span>
-          )}
+          <span className={`pill ${BADGE_BOX} bg-surface2 text-medium ${e.outLap && !e.inPits ? "" : "invisible"}`}>
+            OUT
+          </span>
         </div>
       </td>
     </tr>
@@ -756,7 +754,10 @@ const ontrackCols = (isRace) => [
   // when it centres the 32px chip, that lands the chip ~17px from the card's
   // left edge — matching the ~16.5px it sits below the row's top edge.
   { label: "Pos", cls: "w-14 py-3 pl-3.5 text-center sm:pl-5" },
-  { label: "Driver", cls: "py-3 pl-1" },
+  // w-full: this column absorbs whatever the row has spare, the way the other
+  // table's does. Without it the surplus was shared out among the number
+  // columns and the name truncated with obvious empty space beside it.
+  { label: "Driver", cls: "w-full py-3 pl-1" },
   { label: "Tyre", cls: "hidden py-3 pr-4 text-center sm:table-cell" },
   { label: "Current", cls: "py-3 pr-4 text-right" },
   { label: isRace ? "Gap" : "Δ PB", cls: "hidden py-3 pr-4 text-right sm:table-cell" },
@@ -1811,6 +1812,41 @@ function DrivingNowSection({ onTrack, match, flip = false, isRace = false, raceS
 // The caller supplies the display utility (the Live page hides this on phones),
 // so `flex` is deliberately NOT baked in here — two competing display classes
 // would resolve by Tailwind's output order rather than by intent.
+// The two clocks a stop is judged on, ticking on the board's own time.
+//
+// They are different numbers and both matter: the LANE is everything from the
+// white line in to the white line out, most of it spent under the limiter, and
+// the STOP is the part the crew is responsible for. A stop that looks slow in
+// the lane and quick in the box is a long pit lane, not a slow crew.
+//
+// Stationary is decided on the server (the telemetry it sees is what knows the
+// car has actually stopped), so this only counts from the instants it is given.
+function PitClocks({ pitSince, stoppedSince }) {
+  const now = useNow(pitSince != null);
+  if (pitSince == null) return null;
+  const lane = Math.max(0, now - pitSince);
+  const stop = stoppedSince != null ? Math.max(0, now - stoppedSince) : null;
+  return (
+    <span className="shrink-0 text-right font-mono text-[11px] leading-tight tabular-nums">
+      <span className="block text-medium">
+        <span className="text-light">lane </span>
+        {formatRunning(lane)}
+      </span>
+      <span className="block text-light">
+        {stop != null ? (
+          <>
+            stop {formatRunning(stop)}
+          </>
+        ) : (
+          // Rolling down the lane, or pulling away again: there is no stop to
+          // time yet, and a zero would claim there was.
+          "moving"
+        )}
+      </span>
+    </span>
+  );
+}
+
 function PitLaneSection({ entries, match, className = "" }) {
   const inPits = entries.filter((e) => e.onTrack && e.inPits);
   return (
@@ -1835,6 +1871,7 @@ function PitLaneSection({ entries, match, className = "" }) {
                   </span>
                   <span className="block truncate text-[11px] text-light">{m?.teamName || NO_VALUE}</span>
                 </span>
+                <PitClocks pitSince={e.pitSince} stoppedSince={e.stoppedSince} />
                 {/* The same badge as everywhere else a compound is named — the
                     two timing tables, the strategy bars and their key. This one
                     used to draw its own square chip, so the one panel that says

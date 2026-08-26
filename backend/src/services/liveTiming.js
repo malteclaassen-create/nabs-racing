@@ -510,6 +510,17 @@ function createRelay(server) {
   const outLapByGuid = new Map(); // guid -> { lap, spline }
   const lastSplineByGuid = new Map();
 
+  // When a car in the pit lane came to a STOP, as opposed to when it entered
+  // the lane. Two different numbers and both matter in a race: the lane time
+  // includes the drive in and out under the limiter, the stop time is the crew.
+  // Cleared the moment the car moves again, so a car crawling to its box does
+  // not bank the crawl as service time.
+  const stoppedSinceByGuid = new Map(); // guid -> epoch ms
+
+  // Below this a car is standing still. Not zero: the telemetry jitters around
+  // it, and a hard zero made the clock start and stop while the car sat there.
+  const STOPPED_KMH = 3;
+
   // When the session on air started, in our own clock. Worked out once per
   // session from the snapshot's ElapsedMilliseconds and then left alone, so it
   // does not jitter by a snapshot's worth every tick.
@@ -601,6 +612,7 @@ function createRelay(server) {
       pitFilter.clear();
       outLapByGuid.clear();
       lastSplineByGuid.clear();
+      stoppedSinceByGuid.clear();
       stintSessionKey = key;
     }
     // In Practice/Qualifying a driver teleports back to the pits to end a run and
@@ -837,25 +849,7 @@ function createRelay(server) {
           ingestSnapshot(msg.Message);
           break;
         case 53: // per-car telemetry
-          if (msg.Message && typeof msg.Message.CarID === "number") {
-            liveByCar.set(msg.Message.CarID, msg.Message);
-            // Pit-lane edges (IsInPits flipping) are only visible here, at
-            // telemetry frequency — the recorder needs them the moment they
-            // happen, not at the next 30s snapshot. It gets the CLEANED flag:
-            // a flicker on a car at racing speed used to mark a pit entry, and
-            // the stop that followed then reported a pit-lane time counted from
-            // whenever that flicker happened.
-            {
-              const guid = carIdToGuid.get(msg.Message.CarID);
-              const inPits = guid
-                ? pitFilter.read(guid, msg.Message.IsInPits, speedKmhOf(msg.Message))
-                : undefined;
-              pitRecorder.onTelemetry(server.key, guid, msg.Message, inPits);
-            }
-            // Fast lane: followers of THIS car get its cockpit numbers now,
-            // not at the next 700ms board tick.
-            relayFollowedTelemetry(server.key, carIdToGuid.get(msg.Message.CarID), msg.Message);
-          }
+          ingestTelemetry(msg.Message);
           break;
         default:
           break;
@@ -943,6 +937,24 @@ function createRelay(server) {
     }, reconnectDelay);
   }
 
+  // One ET53 frame: a single car's live telemetry.
+  //
+  // Pit-lane edges (IsInPits flipping) are only visible here, at telemetry
+  // frequency — the recorder needs them the moment they happen, not at the next
+  // ~30s snapshot. It gets the CLEANED flag: a flicker on a car at racing speed
+  // used to mark a pit entry, and the stop that followed then reported a
+  // pit-lane time counted from whenever that flicker happened.
+  function ingestTelemetry(live) {
+    if (!live || typeof live.CarID !== "number") return;
+    liveByCar.set(live.CarID, live);
+    const guid = carIdToGuid.get(live.CarID);
+    const inPits = guid ? pitFilter.read(guid, live.IsInPits, speedKmhOf(live)) : undefined;
+    pitRecorder.onTelemetry(server.key, guid, live, inPits);
+    // Fast lane: followers of THIS car get its cockpit numbers now, not at the
+    // next 700ms board tick.
+    relayFollowedTelemetry(server.key, guid, live);
+  }
+
   function buildEntry(guid, d, onTrack) {
     const ci = d.CarInfo || {};
     const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
@@ -956,6 +968,23 @@ function createRelay(server) {
     // telemetry to argue with, so the snapshot's word stands.
     const rawInPits = live.IsInPits ?? d.IsInPits ?? false;
     const inPits = onTrack ? pitFilter.read(guid, rawInPits, speedKmh) : !!rawInPits;
+
+    // How long they have been in the lane, and how long they have been standing
+    // in it. Both as instants rather than durations, so a board that has not
+    // otherwise changed still compares equal and is not re-sent every tick.
+    let pitSince = null;
+    let stoppedSince = null;
+    if (inPits) {
+      pitSince = pitFilter.since(guid);
+      if (speedKmh != null && speedKmh <= STOPPED_KMH) {
+        if (!stoppedSinceByGuid.has(guid)) stoppedSinceByGuid.set(guid, Date.now());
+      } else if (speedKmh != null) {
+        stoppedSinceByGuid.delete(guid);
+      }
+      stoppedSince = stoppedSinceByGuid.get(guid) ?? null;
+    } else {
+      stoppedSinceByGuid.delete(guid);
+    }
 
     const lapCount = car?.NumLaps ?? d.TotalNumLaps ?? 0;
     const spline = live.NormalisedSplinePos ?? d.NormalisedSplinePos ?? 0;
@@ -1010,6 +1039,11 @@ function createRelay(server) {
       currentSectors: onTrack ? sectorsOf(car?.CurrentLapSplits) : [null, null, null],
       potentialMs: potentialOf(car?.BestSplits),
       inPits,
+      // Epoch ms, this server's clock: when they entered the pit lane, and when
+      // they stopped moving in it. The page ticks both (on the board clock, see
+      // the frontend's useNow) rather than the board resending a countdown.
+      pitSince,
+      stoppedSince,
       // Out of the pit lane and not yet across the line. Their lap clock counts
       // from a crossing that happened before the stop, so it is not a lap time
       // and the frontend says so rather than printing it.
@@ -1345,6 +1379,7 @@ function createRelay(server) {
     __accumulateStints: accumulateStints,
     __stintsFor: stintsFor,
     __ingest: ingestSnapshot,
+    __telemetry: ingestTelemetry,
     __getBoard: getBoard,
     __reset() {
       stintsByGuid.clear();
@@ -1354,6 +1389,7 @@ function createRelay(server) {
       pitFilter.clear();
       outLapByGuid.clear();
       lastSplineByGuid.clear();
+      stoppedSinceByGuid.clear();
       liveByCar.clear();
       finishedRace = null;
       stintSessionKey = null;
@@ -1483,6 +1519,7 @@ export const __testing = {
   accumulateStints: testRelay.__accumulateStints,
   stintsFor: testRelay.__stintsFor,
   ingest: testRelay.__ingest,
+  telemetry: testRelay.__telemetry,
   getBoard: testRelay.__getBoard,
   raceSecond: testRelay.raceSecond,
   reset: testRelay.__reset,

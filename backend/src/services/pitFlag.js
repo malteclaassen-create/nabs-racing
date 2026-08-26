@@ -91,6 +91,15 @@ export function createPitFilter() {
       return byKey.get(key)?.shown ?? false;
     },
 
+    // When the flag itself last changed, which for a car in the pits is when it
+    // crossed onto pit road. Deliberately the RAW transition rather than the
+    // moment the board repeated it: the confirm delay above exists to filter
+    // flicker, not to knock two and a half seconds off the clock that times the
+    // stop.
+    since(key) {
+      return byKey.get(key)?.since ?? null;
+    },
+
     // A new session is a new set of cars.
     clear() {
       byKey.clear();

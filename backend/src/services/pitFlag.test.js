@@ -102,6 +102,18 @@ describe("the pit filter", () => {
     expect(f.read("a", false, 70, at(61000 + PIT_RELEASE_MS))).toBe(false);
   });
 
+  it("dates a stop from the flag coming on, not from confirming it", () => {
+    // The confirm delay is there to filter flicker. Timing the stop from the
+    // moment the board repeated the flag would knock those seconds off the
+    // pit-lane clock, which is the one number a stop is judged on.
+    const f = createPitFilter();
+    f.read("a", false, 200, at(0));
+    f.read("a", true, 60, at(4000)); // onto pit road
+    f.read("a", true, 0, at(4000 + PIT_CONFIRM_MS)); // published here...
+    expect(f.peek("a")).toBe(true);
+    expect(f.since("a")).toBe(at(4000)); // ...dated here
+  });
+
   it("keeps cars apart and forgets them all on a new session", () => {
     const f = createPitFilter();
     f.read("a", true, 0, at(0));
