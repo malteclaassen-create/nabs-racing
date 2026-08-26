@@ -11,7 +11,7 @@ import { PageHeader, SectionHeading, SafetyCarBadge, NoData} from "../components
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
-import { useLiveServers, LiveServerSwitch, LiveServerElsewhere } from "../components/LiveServerSwitch.jsx";
+import { useLiveServers, LiveServerSwitch } from "../components/LiveServerSwitch.jsx";
 import TyreStrategy, { TyreBadge } from "../components/TyreStrategy.jsx";
 import { circuitForLive } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
@@ -2264,11 +2264,6 @@ export default function Live() {
         }
       />
       </div>
-
-      {/* Only appears when cars are out on the server you are NOT watching, so
-          it earns a line of its own rather than sitting in the header row with
-          the permanent controls. */}
-      <LiveServerElsewhere servers={liveServers} current={board?.serverKey || serverKey} onSwitch={setServer} />
 
       {!heardFromRelay && !board ? (
         // Still asking. This is the only case that gets a spinner, and it lasts

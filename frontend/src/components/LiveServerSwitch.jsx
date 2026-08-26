@@ -7,17 +7,16 @@ import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 //
 // The league runs two, and until now a viewer only ever saw the one their
 // series is assigned to (admin Live tab). A session on the other one was
-// invisible — on the page whose entire job is to say whether anything is
+// invisible, on the page whose entire job is to say whether anything is
 // happening. So this does two things, and the second is the point:
 //
 //   * it moves the board to the other server, and
 //   * it says whether anybody is out there on the one you are not watching.
 //
-// Those two land in different places, which is why the file exports a hook and
-// two small pieces rather than one block. The SWITCH is permanent furniture and
-// belongs up in the header row with the other controls; the sentence about the
-// other server is rare and urgent and earns its own line under it. One poll
-// feeds both — the page calls the hook once and hands the answer down.
+// Both live on the buttons themselves: each one carries its own dot and, when
+// cars are out, the count. That keeps the answer where the action is instead of
+// spending a banner on it, and it sits in the header row with the other
+// controls rather than taking a strip of the page.
 //
 // The admin assignment stays the DEFAULT. Switching is for this visit only and
 // is deliberately not remembered: a member opening the page on race night must
@@ -137,33 +136,5 @@ export function LiveServerSwitch({ servers, current, onSwitch }) {
         );
       })}
     </div>
-  );
-}
-
-// Cars are out on the board you are NOT looking at. Said in words as well as in
-// a dot, because the dot is small and this is the whole reason the switch
-// exists — and said only then: a merely loaded session on the other server is
-// on its own dot already and does not earn a sentence.
-export function LiveServerElsewhere({ servers, current, onSwitch }) {
-  if (!servers) return null;
-  const activeKey = activeKeyOf(servers, current);
-  const elsewhere = servers.servers.find((s) => s.key !== activeKey && driving(s));
-  if (!elsewhere) return null;
-
-  return (
-    <button
-      type="button"
-      onClick={() => onSwitch(elsewhere.isDefault ? null : elsewhere.key)}
-      className="mb-4 flex items-center gap-2 rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-left text-xs font-semibold text-ok transition hover:bg-ok/15"
-    >
-      <span aria-hidden className="relative flex h-2 w-2 shrink-0">
-        <span className="live-dot absolute inline-flex h-full w-full rounded-full bg-ok opacity-70" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-ok" />
-      </span>
-      <span>
-        {elsewhere.onTrack} out on track on {elsewhere.name}
-        {elsewhere.track ? ` (${elsewhere.track})` : ""}. Switch over.
-      </span>
-    </button>
   );
 }
