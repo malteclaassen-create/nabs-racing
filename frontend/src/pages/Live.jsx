@@ -630,14 +630,19 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
               {e.outLap && !e.inPits && <span className="pill bg-surface2 text-medium">OUT</span>}
             </span>
           )}
+          {/* Right against the name rather than out at the edge of the block:
+              the block has a width floor (below), so parked at the end of it a
+              short name and its number sat a hundred pixels apart. */}
+          {e.raceNumber != null && (
+            <span className="hidden shrink-0 font-mono text-xs font-bold text-faint xl:inline">
+              #{e.raceNumber}
+            </span>
+          )}
         </span>
         <span className="block truncate text-xs text-light">
           {match?.teamName || carLabel(e.carName) || NO_VALUE}
         </span>
       </span>
-      {e.raceNumber != null && (
-        <span className="ml-1 hidden font-mono text-xs font-bold text-faint xl:inline">#{e.raceNumber}</span>
-      )}
     </div>
   );
 }
@@ -666,17 +671,13 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
           {e.isSafetyCar ? "SC" : e.position}
         </span>
       </td>
-      <td className="w-full py-3 pl-1 pr-3">
+      {/* Full width on a phone only. There the badges ride beside the name and
+          this column has to be the one that gives, or a PIT badge appearing
+          shoves every number in the row sideways. From sm up the surplus is
+          shared out normally, because taking all of it left the name 400px from
+          its neighbour and the delta column squeezed into 32. */}
+      <td className="w-full py-3 pl-1 pr-3 sm:w-auto">
         <DriverCell e={e} match={match} />
-      </td>
-      <td className="hidden py-3 pr-4 text-center sm:table-cell">
-        {/* Same compound chips as the strategy view — the raw server strings
-            were a mix of "Medium", "Soft" and bare letter codes. */}
-        {e.tyre && (
-          <span className="inline-grid place-items-center align-middle" title={tyreCompound(e.tyre).name}>
-            <TyreBadge t={tyreCompound(e.tyre)} size={22} />
-          </span>
-        )}
       </td>
       {/* The cell keeps ONE height whatever the driver is doing, and centres
           whatever it has in it. A car building a lap fills it with a clock over
@@ -684,7 +685,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
           sat pinned to the top with the reserved split line as empty space
           under it, which read as a mistake. Centred, it sits where the eye
           expects it and the row still never changes height. */}
-      <td className="py-3 pr-4 text-right text-base align-middle">
+      <td className="w-[168px] py-3 pr-4 text-right align-middle text-base">
         <div className={`flex flex-col justify-center ${isRace ? "" : "min-h-[54px]"}`}>
           <span className="flex h-6 items-center justify-end">
             {e.onTrack ? (
@@ -728,8 +729,18 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
       <td className="hidden py-3 pr-4 text-center tabular-nums md:table-cell">
         <span className="font-mono text-sm text-medium">{e.lapCount}</span>
       </td>
-      <td className="hidden py-3 pr-5 text-right tabular-nums 2xl:table-cell">
+      <td className="hidden py-3 pr-4 text-right tabular-nums 2xl:table-cell">
         <span className="font-mono text-sm text-light">{e.ping ?? NO_VALUE}</span>
+      </td>
+      {/* Last, matching the header: the compound is a marker rather than a
+          number to read down the column, and in the middle of the row it broke
+          the times into two groups. */}
+      <td className="hidden py-3 pr-5 text-center sm:table-cell">
+        {e.tyre && (
+          <span className="inline-grid place-items-center align-middle" title={tyreCompound(e.tyre).name}>
+            <TyreBadge t={tyreCompound(e.tyre)} size={22} />
+          </span>
+        )}
       </td>
     </tr>
   );
@@ -743,12 +754,17 @@ const ontrackCols = (isRace) => [
   // when it centres the 32px chip, that lands the chip ~17px from the card's
   // left edge — matching the ~16.5px it sits below the row's top edge.
   { label: "Pos", cls: "w-14 py-3 pl-3.5 text-center sm:pl-5" },
-  // w-full: this column absorbs whatever the row has spare, the way the other
-  // table's does. Without it the surplus was shared out among the number
-  // columns and the name truncated with obvious empty space beside it.
-  { label: "Driver", cls: "w-full py-3 pl-1" },
-  { label: "Tyre", cls: "hidden py-3 pr-4 text-center sm:table-cell" },
-  { label: "Current", cls: "py-3 pr-4 text-right" },
+  // NOT w-full. That made this column swallow every spare pixel in the row: on
+  // a wide window the name sat 400px from the next column while the delta was
+  // squeezed into 32 and wrapped its own header. The name has a floor of its
+  // own (see DriverCell), so with the surplus shared out normally it still has
+  // what it needs and the rest of the row gets the rest.
+  { label: "Driver", cls: "py-3 pl-1" },
+  // Wide enough for the three sector boxes that sit under the lap clock,
+  // reserved whether or not a driver is in a lap right now: this column is the
+  // only one whose content is two rows deep, and sized to the clock alone the
+  // splits were the thing that had to squeeze.
+  { label: "Current", cls: "w-[168px] py-3 pr-4 text-right" },
   { label: isRace ? "Gap" : "Δ PB", cls: "hidden py-3 pr-4 text-right sm:table-cell" },
   { label: "Last", cls: "hidden py-3 pr-4 text-right md:table-cell" },
   { label: "Best", cls: "py-3 pr-4 text-right" },
@@ -761,7 +777,10 @@ const ontrackCols = (isRace) => [
   // Ping is the least useful column on the board and the first to go: it now
   // waits for a window with room to spare (2xl) instead of appearing at lg and
   // pushing the table wider than its card.
-  { label: "Ping", cls: "hidden py-3 pr-5 text-right 2xl:table-cell" },
+  { label: "Ping", cls: "hidden py-3 pr-4 text-right 2xl:table-cell" },
+  // Last column: a compound badge is a marker, not a number to compare down a
+  // list, and in the middle of the row it split the times into two groups.
+  { label: "Tyre", cls: "hidden py-3 pr-5 text-center sm:table-cell" },
 ];
 
 /* ===== Session Best Times: the columns ==================================== */
@@ -822,12 +841,12 @@ const TIMING_COLUMNS = [
     bp: "",
     align: "left",
     padCls: "pl-1 pr-3",
-    // The column that absorbs the slack. Everything else is numbers and sizes
-    // itself to its digits; this one takes what is left, so a PIT badge popping
-    // in beside a name on a phone (where the badges have no column of their
-    // own) eats into the name's own width instead of shoving every number in
-    // the row sideways. The name already truncates, so it has room to give.
-    extraCls: "w-full",
+    // On a PHONE this column absorbs the slack, so a badge popping in beside a
+    // name (where the badges have no column of their own) eats into the name's
+    // own width instead of shoving every number in the row sideways. From sm up
+    // it stops: taking every spare pixel left the name marooned on the left of
+    // a wide empty column with the times crowded against the right edge.
+    extraCls: "w-full sm:w-auto",
     cell: (e, ctx) => (
       <DriverCell
         e={e}
