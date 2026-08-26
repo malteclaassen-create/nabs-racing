@@ -11,5 +11,28 @@
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Live Timing",
+      "short_name": "Live",
+      "description": "Positions, gaps and tyres while a session is running",
+      "url": "/live",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Driver Standings",
+      "short_name": "Standings",
+      "description": "The championship as it stands",
+      "url": "/drivers",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Sign-up",
+      "short_name": "Sign-up",
+      "description": "Say whether you are in for the next round",
+      "url": "/attendance",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
   ]
 }

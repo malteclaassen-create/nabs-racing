@@ -1,0 +1,62 @@
+# Every pull request, and every push to main, gets the checks a contributor
+# would run locally. This exists because Railway deploys main automatically:
+# without a gate, a merge that breaks the backend tests or the frontend build
+# goes straight to nabsracing.com, and the first person to find out is a
+# member opening the site.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A second push to the same branch makes the first run pointless. Cancel it
+# rather than queueing both, so a branch that is being iterated on does not sit
+# behind its own stale runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    env:
+      # `npm ci` runs prisma generate through the postinstall hook, and that
+      # reads the datasource URL out of the environment even though it only
+      # generates a client. No database is created and no test touches one
+      # (all 35 suites are pure unit tests), so any well-formed sqlite URL will
+      # do; without it the install step prints a validation error.
+      DATABASE_URL: file:./ci.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      # `ci`, not `install`: it installs exactly the lockfile, so a run cannot
+      # quietly pass against a dependency version nobody has.
+      - run: npm ci
+        working-directory: backend
+      - run: npm test
+        working-directory: backend
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      # There are no frontend tests yet, so the build IS the check. It is not a
+      # weak one: Vite fails on a missing import, a bad path or a syntax error
+      # anywhere in the module graph, which covers the way a React change
+      # usually breaks.
+      - run: npm run build
+        working-directory: frontend

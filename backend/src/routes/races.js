@@ -1,7 +1,9 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { getDriverResultPoints, getPointsForPosition, applyPenalties, DEFAULT_POINTS_TABLE } from "../services/pointsCalculator.js";
-import { resolveSeasonId, getSeasonScoring, getPrivateSeasonIds } from "../services/seasonService.js";
+import { resolveSeasonId, resolveSeason, getSeasonScoring, getPrivateSeasonIds } from "../services/seasonService.js";
+import { getSeriesById } from "../lib/series.js";
+import { buildRaceCalendar } from "../lib/ics.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
@@ -139,6 +141,80 @@ router.get("/", async (req, res, next) => {
         winner: winners.get(r.id) || null,
       }))
     );
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/races/calendar.ics -> the season's rounds as a calendar feed.
+//
+// Meant to be SUBSCRIBED to, not downloaded once: a calendar app re-reads this
+// URL on its own schedule, so a round that moves or gains a date reaches every
+// subscriber without anyone lifting a finger (lib/ics.js explains what that
+// costs the format). Which is also why this endpoint stays deliberately cheap:
+// it is polled by machines, forever. One race query plus the two raw-SQL side
+// tables the format needs, and nothing that touches a results table.
+//
+// Registered ahead of the /:id/… routes below. They are two segments deep so
+// there is no real ambiguity, but a single-segment sibling is the kind of thing
+// a later /:id route would quietly swallow.
+router.get("/calendar.ics", async (req, res, next) => {
+  try {
+    // Private seasons never leave the building through here. Unlike the JSON
+    // endpoints there is no admin case to make: a calendar URL is pasted into
+    // Google or Apple and fetched by THEIR servers, with no session of ours
+    // attached, so an admin-only feed could not work even if we wanted one.
+    const season = await resolveSeason(prisma, req.query.season, { series: req.query.series });
+    if (!season) return res.status(404).type("text/plain").send("No such season");
+
+    const races = await prisma.race.findMany({
+      where: { seasonId: season.id },
+      orderBy: { number: "asc" },
+      select: { id: true, number: true, track: true, date: true, isCompleted: true, isSpecialEvent: true, info: true },
+    });
+    const ids = races.map((r) => r.id);
+    const [format, types, seriesRow] = await Promise.all([
+      readRaceFormat(prisma, ids),
+      readRaceTypes(prisma, ids),
+      season.seriesId ? getSeriesById(prisma, season.seriesId).catch(() => null) : null,
+    ]);
+
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const prefix = seriesRow?.slug ? `/s/${seriesRow.slug}` : "";
+    const seasonLabel = season.name || `Season ${season.number}`;
+
+    const body = buildRaceCalendar(
+      races.map((r) => ({
+        id: r.id,
+        number: r.number,
+        track: r.track,
+        date: r.date,
+        isCompleted: r.isCompleted,
+        info: r.info,
+        type: types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
+        qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
+        raceLaps: format.get(r.id)?.raceLaps ?? null,
+      })),
+      {
+        origin,
+        calName: seriesRow?.name ? `${seriesRow.name} · ${seasonLabel}` : `NABS Racing · ${seasonLabel}`,
+        calDesc: `Race calendar for ${seasonLabel}.`,
+        // Deep link to the round on the calendar page, the same shape the
+        // notification bell uses.
+        linkFor: (race) => `${prefix}/races?season=${season.number}&race=${race.id}`,
+      }
+    );
+
+    res.type("text/calendar; charset=utf-8");
+    // Named so a browser download lands as something recognisable, `inline` so
+    // a calendar app fetching it is not pushed into a save dialog.
+    res.setHeader("Content-Disposition", 'inline; filename="nabs-races.ics"');
+    // Half an hour is short enough that a date entered this evening reaches
+    // subscribers before the race, and long enough that the pollers do not
+    // become traffic. REFRESH-INTERVAL inside the file asks for 12 hours; this
+    // is the floor under whatever the client actually decides to do.
+    res.setHeader("Cache-Control", "public, max-age=1800");
+    res.send(body);
   } catch (e) {
     next(e);
   }
