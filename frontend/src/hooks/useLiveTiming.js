@@ -19,6 +19,11 @@ export function useLiveTiming() {
   const timerRef = useRef(null);
   const aliveRef = useRef(true);
   const followRef = useRef(null); // survives reconnects: re-announced on open
+  // The race server this viewer switched to, or null for their series' own.
+  // Like followRef it outlives a reconnect, and for the same reason: a dropped
+  // socket must not quietly move somebody back to a different board.
+  const serverRef = useRef(null);
+  const [serverKey, setServerKey] = useState(null);
   const telListeners = useRef(new Set());
 
   useEffect(() => {
@@ -37,6 +42,10 @@ export function useLiveTiming() {
       if (new URLSearchParams(window.location.search).has("demo")) params.set("demo", "1");
       const slug = /^\/s\/([^/]+)/.exec(window.location.pathname)?.[1];
       if (slug) params.set("series", slug);
+      // Carried on the URL as well as re-sent on open, so the very first board
+      // of a reconnect is already the right one rather than the series default
+      // for a beat.
+      if (serverRef.current) params.set("server", serverRef.current);
       const qs = params.toString();
       const url = base.replace(/^http/, "ws") + "/api/live/ws" + (qs ? `?${qs}` : "");
 
@@ -54,6 +63,13 @@ export function useLiveTiming() {
         retryRef.current = 1000;
         setSocketState("open");
         // A reconnect must not silently drop the follow — re-announce it.
+        if (serverRef.current) {
+          try {
+            ws.send(JSON.stringify({ server: serverRef.current }));
+          } catch {
+            /* the URL parameter above already carried it */
+          }
+        }
         if (followRef.current) {
           try {
             ws.send(JSON.stringify({ follow: followRef.current }));
@@ -125,11 +141,29 @@ export function useLiveTiming() {
     }
   }, []);
 
+  // Switch which race server this viewer is watching. null hands them back to
+  // the server their series is assigned to.
+  const setServer = useCallback((key) => {
+    serverRef.current = key || null;
+    setServerKey(serverRef.current);
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ server: serverRef.current }));
+        return;
+      } catch {
+        /* fall through to the reconnect below */
+      }
+    }
+    // Socket down: the next connect carries the key on its URL, so nothing is
+    // lost by simply waiting for the backoff to come round.
+  }, []);
+
   // Subscribe to fast-lane car telemetry; returns the unsubscribe.
   const onCarTelemetry = useCallback((cb) => {
     telListeners.current.add(cb);
     return () => telListeners.current.delete(cb);
   }, []);
 
-  return { board, socketState, follow, onCarTelemetry };
+  return { board, socketState, follow, onCarTelemetry, setServer, serverKey };
 }

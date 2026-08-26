@@ -922,8 +922,10 @@ function LiveServersAdmin() {
     <div className="card space-y-5 p-5">
       <CardHead eyebrow="Live Timing" title="Race server per series" />
       <p className="text-sm text-light">
-        Which race server each series&rsquo; Live page follows. Open live pages pick a change up on their next
-        reload.
+        Which race server each series&rsquo; Live page opens on. Open live pages pick a change up on their next
+        reload. Visitors can switch to the other server themselves from the Live page, and the switch shows
+        them where cars are actually out on track &mdash; but this stays the default everyone arrives on, and
+        it is not remembered between visits.
       </p>
       {err && <Notice kind="error">{err}</Notice>}
       {saved && <Notice kind="success">Saved.</Notice>}

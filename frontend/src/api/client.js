@@ -432,10 +432,21 @@ export const api = {
   // Tiny "is anything happening" poll for the nav bar's live dot. Deliberately
   // not the timing board, which is the whole grid.
   liveStatus: () => request(`/live/status${seriesQ()}`),
+  // Every race server with its own "is anything happening" answer, so the Live
+  // page's switch can say which board is worth looking at. `server` is only
+  // used to keep the reply about the same series; the list is always all of them.
+  liveServers: () => request(`/live/servers${seriesQ()}`),
   // Live championship projection (only { active: true } while a league race is
   // running). auth:true so an admin's ?simulate demo request is recognised.
-  liveChampionship: (simulate = false) =>
-    request(`/live/championship${seriesQ()}${simulate ? (seriesQ() ? "&" : "?") + "simulate=1" : ""}`, { auth: true }),
+  // `server` is the Live page's switch: the projection has to be about the board
+  // on screen, not the one the series is assigned to.
+  liveChampionship: (simulate = false, server = null) => {
+    const parts = [];
+    if (SELECTED_SERIES) parts.push(`series=${encodeURIComponent(SELECTED_SERIES)}`);
+    if (server) parts.push(`server=${encodeURIComponent(server)}`);
+    if (simulate) parts.push("simulate=1");
+    return request(`/live/championship${parts.length ? `?${parts.join("&")}` : ""}`, { auth: true });
+  },
 
   // events / RSVP (public; scoped to the viewed season, default active)
   // Attendance is about UPCOMING races, so these deliberately ignore the

@@ -304,11 +304,17 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, className 
         <g transform={rotated ? `translate(${H} 0) rotate(90)` : undefined}>
           {/* The camera group, driven per-frame by useSmoothCars. */}
           <g ref={camRef}>
-            {/* series param → the map of the race server THIS series follows */}
+            {/* Which server's circuit to draw. `server` is the Live page's
+                switch and wins; without it the series' own assignment decides,
+                exactly as before. Getting this wrong is not subtle: the cars
+                would run around a different track from the one they are on. */}
             <image
               href={`/api/live/map.png?v=${map.ver || 0}${(() => {
                 const slug = /^\/s\/([^/]+)/.exec(window.location.pathname)?.[1];
-                return slug ? `&series=${encodeURIComponent(slug)}` : "";
+                const parts = [];
+                if (slug) parts.push(`series=${encodeURIComponent(slug)}`);
+                if (server) parts.push(`server=${encodeURIComponent(server)}`);
+                return parts.length ? `&${parts.join("&")}` : "";
               })()}`}
               width={W}
               height={H}
@@ -467,7 +473,7 @@ function CockpitReadout({ car, onCarTelemetry }) {
 
 // Picks the real map when calibration is present, else the stylised outline.
 // Owns the focus + zoom state so they survive a map-mode change mid-session.
-export default function LiveTrackMap({ track, cars, matchFn, map, follow, onCarTelemetry, className = "" }) {
+export default function LiveTrackMap({ track, cars, matchFn, map, follow, onCarTelemetry, server = null, className = "" }) {
   const [focusGuid, setFocusGuid] = useState(null);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
   // The followed car left the server -> drop the focus rather than staring at

@@ -28,7 +28,14 @@ import { useEffect, useRef } from "react";
 // enough that it never feels like a delay and long enough to swallow that.
 const MIN_GAP_MS = 2000;
 
-export function useVisiblePoll(load, intervalMs, enabled = true) {
+// `resetKey` restarts the poll when what it is polling FOR changes, not just
+// how often. The live page's server switch is the case: the projection has to
+// be refetched the moment the viewer moves to the other board, and waiting out
+// the interval would leave the old server's standings sitting under the new
+// server's timing for up to twelve seconds. Anything stable (a string, a
+// number, null) works; leave it out and nothing changes for the callers that
+// were here first.
+export function useVisiblePoll(load, intervalMs, enabled = true, resetKey = null) {
   // The callback is a fresh closure on every render. Keeping it in a ref means
   // the timer is never restarted for that reason — restarting it on each render
   // would mean the interval never gets to run out on a busy page.
@@ -83,5 +90,5 @@ export function useVisiblePoll(load, intervalMs, enabled = true) {
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [enabled, intervalMs]);
+  }, [enabled, intervalMs, resetKey]);
 }

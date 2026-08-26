@@ -33,7 +33,7 @@ import searchRoutes from "./routes/search.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
-import { serverKeyForSeries } from "./lib/liveServers.js";
+import { serverKeyForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
@@ -174,7 +174,7 @@ app.use("/api", (req, res, next) => {
 // Every live read resolves WHICH race server through the series it's for
 // (?series=<slug>, admin-assigned; none = the first server).
 app.get("/api/live/timing", async (req, res) =>
-  res.json(getBoard(await serverKeyForSeries(prisma, req.query.series)))
+  res.json(getBoard(await resolveServerKey(prisma, { series: req.query.series, server: req.query.server })))
 );
 
 // Is anything actually happening right now? Two numbers and a word, so the nav
@@ -189,7 +189,7 @@ app.get("/api/live/timing", async (req, res) =>
 // a quiet server still reports every ~30s, so this only says live when it is.
 app.get("/api/live/status", async (req, res) => {
   try {
-    const board = getBoard(await serverKeyForSeries(prisma, req.query.series));
+    const board = getBoard(await resolveServerKey(prisma, { series: req.query.series, server: req.query.server }));
     const onTrack = (board.entries || []).filter((e) => e.onTrack).length;
     res.json({
       live: !!board.ok && !board.stale && !!board.session,
@@ -203,12 +203,50 @@ app.get("/api/live/status", async (req, res) => {
   }
 });
 
+// Every race server at once, so the Live page's switch can say which of them
+// has somebody out on track. Two servers means two boards, and until now a
+// viewer could only ever see the one their series is assigned to: a session
+// running on the other was invisible, on the very page whose job is to say
+// whether anything is happening.
+//
+// Cheap on purpose, because the page polls it: both boards are already in
+// memory (the relays hold them open regardless of who is watching), so this
+// reads them and counts. No upstream call is made here.
+app.get("/api/live/servers", async (req, res) => {
+  try {
+    // The series' assignment is the default the switch opens on, and stays the
+    // one a fresh visitor gets.
+    const defaultKey = await serverKeyForSeries(prisma, req.query.series);
+    res.json({
+      defaultKey,
+      servers: LIVE_SERVERS.map((srv) => {
+        const board = getBoard(srv.key);
+        return {
+          key: srv.key,
+          name: srv.name,
+          isDefault: srv.key === defaultKey,
+          // Same test the nav bar's dot uses: connected, not stale, and a
+          // session actually loaded. A quiet server still reports in, so this
+          // says live only when it is.
+          live: !!board.ok && !board.stale && !!board.session,
+          onTrack: (board.entries || []).filter((e) => e.onTrack).length,
+          session: board.session?.type || null,
+          track: board.session?.trackName || board.session?.track || null,
+        };
+      }),
+    });
+  } catch {
+    // A switch that cannot answer should disappear, not break the page.
+    res.json({ defaultKey: null, servers: [] });
+  }
+});
+
 // The real overhead track map (proxied + cached from the server manager's public
 // content), drawn under the live car dots. 404 until a track with a usable map is
 // loaded; the frontend then falls back to the stylised outline. The ?v= token in
 // the board's session.map busts the browser cache when the track changes.
 app.get("/api/live/map.png", async (req, res) => {
-  const png = getTrackMapPng(await serverKeyForSeries(prisma, req.query.series));
+  const png = getTrackMapPng(await resolveServerKey(prisma, { series: req.query.series, server: req.query.server }));
   if (!png) return res.status(404).json({ error: "No track map" });
   res.setHeader("Content-Type", "image/png");
   res.setHeader("Cache-Control", "public, max-age=300");
@@ -222,7 +260,7 @@ app.get("/api/live/map.png", async (req, res) => {
 app.get("/api/live/championship", async (req, res, next) => {
   try {
     const simulate = req.query.simulate === "1" && isAdminRequest(req);
-    const board = getBoard(await serverKeyForSeries(prisma, req.query.series));
+    const board = getBoard(await resolveServerKey(prisma, { series: req.query.series, server: req.query.server }));
     res.json(await buildLiveChampionship(prisma, board, { simulate }));
   } catch (e) {
     next(e);
