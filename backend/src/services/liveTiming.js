@@ -1465,55 +1465,7 @@ async function ensureDemoState() {
   demoBuilding = false;
 }
 
-// --- demo sector times ------------------------------------------------------
-// The demo exists so the board can be shown with no race server attached, and
-// for a long time it had no sector times at all, which left the sector chips
-// (and everything they do: the purple, the running clock) impossible to look at
-// without a live session. These fabricate a plausible set.
-//
-// A lap is split 35/33/32, which is roughly how a real one falls, and each car
-// is a little slower than the one in front, matching the fake best laps above.
-const DEMO_SECTOR_SHARE = [0.35, 0.33, 0.32];
-const demoLapMs = (idx) => 80000 + idx * 180;
-const demoSectorMs = (idx, i) => Math.round(demoLapMs(idx) * DEMO_SECTOR_SHARE[i]);
-
-// Who holds the fastest sector, rotated every 15 seconds of demo time. A purple
-// that never moves cannot demonstrate the thing that happens when it does, and
-// this is a demo: the point is to see the board behave. Each sector rotates
-// through a different slice of the field so the three do not flip at once.
-function demoPurpleHolder(i, secs) {
-  return (Math.floor(secs / 15) + i * 4) % 12;
-}
-
-function demoBestSectors(idx, secs) {
-  return [0, 1, 2].map((i) => ({
-    ms: demoSectorMs(idx, i),
-    best: demoPurpleHolder(i, secs) === idx,
-    // Their best lap's sectors are usually their own bests too, but not all of
-    // them; a board of solid green tells the reader nothing.
-    driversBest: (idx + i) % 3 !== 0,
-    cuts: 0,
-  }));
-}
-
-// The splits banked so far on the lap in progress. Nothing until the car is a
-// third of the way round, then one, then two; the third never appears, because
-// crossing that line ends the lap.
-function demoCurrentSectors(idx, spline) {
-  const done = spline >= 2 / 3 ? 2 : spline >= 1 / 3 ? 1 : 0;
-  return [0, 1, 2].map((i) =>
-    i < done ? { ms: demoSectorMs(idx, i), best: false, driversBest: false, cuts: 0 } : null
-  );
-}
-
-// The demo can pose as either kind of session, because the board is not one
-// board: a race shows gaps up the road, while practice and qualifying show the
-// lap being built sector by sector. Only "Race" existed here, so half of what
-// the live page does had no way of being looked at without a real session on
-// the server. ?demo=1 stays a race, ?demo=practice is the other half.
-const DEMO_MODES = { "1": "Race", race: "Race", practice: "Practice", quali: "Qualifying" };
-
-function getDemoBoard(mode = "Race") {
+function getDemoBoard() {
   if (!demoState) {
     return { ok: false, connected: false, demo: true, stale: false, session: null, entries: [], updatedAt: Date.now() };
   }
@@ -1557,13 +1509,9 @@ function getDemoBoard(mode = "Race") {
       // Fractional, like the real thing (see buildEntry), so the demo exercises
       // the two decimals the timing table prints.
       topSpeed: Math.round((330.4 - idx * 1.37) * 100) / 100,
-      sectors: demoBestSectors(idx, secs),
-      // The lap in progress: a split lands as the car passes each third of the
-      // circuit, so the board fills up sector by sector and the box the car is
-      // actually in stays empty — which is what the live chip counts into.
-      currentSectors: demoCurrentSectors(idx, spline),
-      // An ideal lap the table can sort by: a few tenths under each car's best,
-      // as a real one always is.
+      sectors: [null, null, null],
+      // No sector times in the demo, but an ideal lap the table can sort by:
+      // a few tenths under each car's best, as a real one always is.
       potentialMs: 80000 + idx * 180 - (140 + idx * 9),
       numPits: Math.max(0, c.stints.length - 1),
       ping: 30 + idx,
@@ -1607,8 +1555,8 @@ function getDemoBoard(mode = "Race") {
     demo: true,
     stale: false,
     session: {
-      type: mode,
-      name: `Demo ${mode}`,
+      type: "Race",
+      name: "Demo Race",
       serverName: "NABS demo session (not a real race)",
       track: demoState.track,
       trackName: demoState.trackName,
@@ -1635,12 +1583,8 @@ function getDemoBoard(mode = "Race") {
   };
 }
 
-// null when this client is not asking for the demo (or this server refuses it);
-// otherwise the session type it should be posed as.
 function wantsDemo(req) {
-  if (!DEMO_ENABLED) return null;
-  const m = /[?&]demo=([a-z0-9]+)/i.exec(req?.url || "");
-  return m ? DEMO_MODES[m[1].toLowerCase()] ?? null : null;
+  return DEMO_ENABLED && /[?&]demo=1/.test(req?.url || "");
 }
 
 // The series slug a client asked for on the WS URL (?series=<slug>), if any.
@@ -1685,9 +1629,7 @@ export function initLiveTiming(server) {
         /* not a follow message — ignore */
       }
     });
-    // The mode doubles as the "is this a demo client" flag: null means no.
-    ws.demoMode = wantsDemo(req);
-    ws.isDemo = !!ws.demoMode;
+    ws.isDemo = wantsDemo(req);
     if (ws.isDemo) await ensureDemoState();
     // Which race server this client follows: resolved once, from the series it
     // passes on the URL (admin-managed assignment; default = first server).
@@ -1699,7 +1641,7 @@ export function initLiveTiming(server) {
     }
     // send a snapshot immediately so the board paints without waiting a tick
     try {
-      ws.send(JSON.stringify(ws.isDemo ? getDemoBoard(ws.demoMode) : getBoard(ws.serverKey)));
+      ws.send(JSON.stringify(ws.isDemo ? getDemoBoard() : getBoard(ws.serverKey)));
     } catch {
       /* noop */
     }
@@ -1753,7 +1695,7 @@ export function initLiveTiming(server) {
     // finished race's frozen result (see the hold in the relay), and it must
     // keep being asked at the old cadence.
     const frameByKey = new Map(); // key -> json to send, or null when unchanged
-    const demoFrames = new Map(); // session type -> frame, built at most once per tick
+    let demoFrame; // undefined = not built this tick
     let viewers = 0;
     let totalBuffered = 0;
     let maxBuffered = 0;
@@ -1785,13 +1727,8 @@ export function initLiveTiming(server) {
       }
       try {
         if (c.isDemo) {
-          // Keyed by mode so the two demo boards each build once per tick and
-          // are still shared by everyone watching that one, rather than being
-          // rebuilt per viewer.
-          const mode = c.demoMode || "Race";
-          if (!demoFrames.has(mode)) demoFrames.set(mode, frameFor(`demo:${mode}`, getDemoBoard(mode), now));
-          const frame = demoFrames.get(mode);
-          if (frame) c.send(frame);
+          if (demoFrame === undefined) demoFrame = frameFor("demo", getDemoBoard(), now);
+          if (demoFrame) c.send(demoFrame);
         } else {
           const key = c.serverKey || DEFAULT_SERVER_KEY;
           if (!frameByKey.has(key)) frameByKey.set(key, frameFor(key, getBoard(key), now));
