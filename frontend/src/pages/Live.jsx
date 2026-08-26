@@ -601,7 +601,15 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
           <span className="block h-[15px] w-5 shrink-0" />
         )}
       </span>
-      <span className="min-w-0">
+      {/* A floor under the name, from sm up. `min-w-0` alone lets this block
+          shrink to nothing, and in the Driving-now table it did: that table is
+          wider than its card at most desktop widths, so every column falls back
+          to its minimum, and the name's minimum was zero. Names came out as
+          "13B…" beside a column of numbers that all had room. 9.5rem fits the
+          longest name on the roster; the table scrolls the extra, which it was
+          doing anyway. Phones keep the old behaviour, where the column is the
+          one that has to give. */}
+      <span className="min-w-0 sm:min-w-[9.5rem]">
         <span className="flex items-center gap-1.5">
           <span className="truncate font-display text-base font-bold uppercase tracking-tight text-dark" title={e.name}>
             {name}
@@ -720,27 +728,8 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
       <td className="hidden py-3 pr-4 text-center tabular-nums md:table-cell">
         <span className="font-mono text-sm text-medium">{e.lapCount}</span>
       </td>
-      <td className="hidden py-3 pr-4 text-center tabular-nums lg:table-cell">
-        <span className="font-mono text-sm text-light">{e.numPits}</span>
-      </td>
-      <td className="hidden py-3 pr-4 text-right tabular-nums lg:table-cell">
+      <td className="hidden py-3 pr-5 text-right tabular-nums 2xl:table-cell">
         <span className="font-mono text-sm text-light">{e.ping ?? NO_VALUE}</span>
-      </td>
-      {/* Reserved, exactly like the same column in the other table: an inactive
-          badge is invisible rather than absent, so a driver hitting the pit lane
-          neither grows the row nor widens this column into its neighbours. */}
-      <td className="py-3 pr-5 text-right">
-        {/* No PIT badge here, deliberately: the pit lane card under the map
-            already lists who is in there, with how long for, and this row says
-            "In pit" in the CURRENT column as well. Three copies of one fact.
-            OUT stays, because nothing else on the page says it. The empty slot
-            is still reserved so the column cannot resize under a badge. */}
-        <div className="flex justify-end gap-1.5">
-          <span className={`pill ${BADGE_BOX} bg-sky-500/15 text-sky-600 ${e.drs ? "" : "invisible"}`}>DRS</span>
-          <span className={`pill ${BADGE_BOX} bg-surface2 text-medium ${e.outLap && !e.inPits ? "" : "invisible"}`}>
-            OUT
-          </span>
-        </div>
       </td>
     </tr>
   );
@@ -764,9 +753,15 @@ const ontrackCols = (isRace) => [
   { label: "Last", cls: "hidden py-3 pr-4 text-right md:table-cell" },
   { label: "Best", cls: "py-3 pr-4 text-right" },
   { label: "Laps", cls: "hidden py-3 pr-4 text-center md:table-cell" },
-  { label: "Pits", cls: "hidden py-3 pr-4 text-center lg:table-cell" },
-  { label: "Ping", cls: "hidden py-3 pr-4 text-right lg:table-cell" },
-  { label: "", cls: "py-3 pr-5" },
+  // No pit COUNT here and no DRS/OUT badges. The pit lane card beside this one
+  // names who is in there and times them, the row itself says "In pit" or "Out
+  // lap" in the CURRENT column, and in practice everybody has DRS. That was
+  // three columns of width spent on facts the page already carried, on the one
+  // table that was short of it — which is why the names were being cut.
+  // Ping is the least useful column on the board and the first to go: it now
+  // waits for a window with room to spare (2xl) instead of appearing at lg and
+  // pushing the table wider than its card.
+  { label: "Ping", cls: "hidden py-3 pr-5 text-right 2xl:table-cell" },
 ];
 
 /* ===== Session Best Times: the columns ==================================== */
@@ -2440,8 +2435,8 @@ export default function Live() {
                  first in the DOM so it leads on phones; explicit column starts
                  put it right on lg, and the pit-lane card stretches so both
                  columns close flush. ===== */}
-          <div className="grid gap-4 sm:gap-6 lg:grid-cols-5 lg:items-stretch">
-            <div className="flex flex-col gap-4 sm:gap-6 lg:col-span-2 lg:col-start-4 lg:row-start-1">
+          <div className="grid gap-4 sm:gap-6 lg:grid-cols-3 lg:items-stretch">
+            <div className="flex flex-col gap-4 sm:gap-6 lg:col-span-1 lg:col-start-3 lg:row-start-1">
               <TrackMapSection
                 session={session}
                 entries={entries}
@@ -2472,7 +2467,10 @@ export default function Live() {
               flip={session.type === "Race"}
               isRace={session.type === "Race"}
               raceStartedAt={session.startedAt ?? null}
-              className="lg:col-span-3 lg:col-start-1 lg:row-start-1"
+              // Two thirds of the row rather than three fifths: this is the
+              // table with ten columns in it, the map next door is a picture
+              // that scales to whatever it is given.
+              className="lg:col-span-2 lg:col-start-1 lg:row-start-1"
             />
           </div>
 
