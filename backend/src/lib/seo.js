@@ -126,6 +126,18 @@ const GLOBAL_SEGMENTS = new Set([
   // and it is the address the install announcement in everyone's bell links to.
   "app",
   "tools",
+  // The privacy page and the account deletion page. Both have to answer 200 to
+  // a stranger: an app store review fetches the privacy URL before it will
+  // publish anything, and a 404 there reads as "no policy". Nothing else on
+  // this list is checked by a third party quite so literally.
+  "privacy",
+  "delete-account",
+  // A member's own feedback and report threads. The notification that tells
+  // somebody the admins have answered links straight to /feedback?id=… and
+  // /reports?id=…, and the server was answering both 404 (the app rendered the
+  // page underneath anyway, which is why it went unnoticed).
+  "feedback",
+  "reports",
   "profile",
   "cockpit",
   "cards",
