@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Offline · NABS Racing League</title>
+    <meta name="robots" content="noindex" />
+    <!--
+      Shown by the service worker when a page is asked for and there is no
+      connection. Everything is inline and nothing is fetched: no stylesheet, no
+      font file, no script, not even the logo. This page has to render when the
+      cache holds nothing else, which is exactly the moment a missing asset
+      would leave a blank screen.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f7f7f8;
+        --card: #ffffff;
+        --ink: #14161a;
+        --muted: #5b6270;
+        --line: #e3e5ea;
+        --brand: #d81e5b;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #080d18;
+          --card: #0e1523;
+          --ink: #f2f4f8;
+          --muted: #97a0b3;
+          --line: #1d2739;
+          --brand: #f4afc6;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+        line-height: 1.6;
+      }
+      .card {
+        width: 100%;
+        max-width: 30rem;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 32px 28px;
+      }
+      .eyebrow {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--brand);
+        margin: 0 0 6px;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 28px;
+        line-height: 1.15;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        text-transform: uppercase;
+      }
+      p { margin: 0 0 14px; color: var(--muted); font-size: 15px; }
+      p:last-of-type { margin-bottom: 22px; }
+      a.retry {
+        display: inline-block;
+        padding: 11px 20px;
+        border-radius: 10px;
+        background: var(--brand);
+        color: #14161a;
+        font-weight: 700;
+        font-size: 14px;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        text-decoration: none;
+      }
+      .foot {
+        margin: 22px 0 0;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <p class="eyebrow">No connection</p>
+      <h1>You are offline</h1>
+      <p>
+        NABS could not reach the internet, so there is nothing new to show. Nothing is broken and
+        nothing was lost.
+      </p>
+      <p>Find some signal and try again. Pages you already opened may still work.</p>
+      <a class="retry" href="/">Try again</a>
+      <p class="foot">NABS Racing League</p>
+    </main>
+  </body>
+</html>

@@ -19,6 +19,22 @@ window.addEventListener("beforeinstallprompt", (e) => {
   window.__nabsInstallPrompt = e;
 });
 
+// The service worker (public/sw.js: offline page + asset cache, never data).
+//
+// Production builds only. In dev, Vite serves modules the worker knows nothing
+// about and a cached bundle fights hot reload for the rest of the afternoon;
+// the worker is about the deployed site, so that is where it runs.
+//
+// Registered after `load` so it never competes with the first paint for
+// bandwidth, and a failure is swallowed: a site that works is worth more than a
+// site that caches, and every browser without service worker support (and every
+// page opened over plain http) simply carries on as before.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     {/* Outermost crash guard. App.jsx has one per route, but it sits BELOW the
