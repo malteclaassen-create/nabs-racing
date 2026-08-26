@@ -23,7 +23,8 @@ vi.mock("./persons.js", () => ({
 }));
 
 const {
-  dbCreateReport, dbAddMessage, dbDecideReport, canRead, readersOf, dbSetAccused,
+  dbCreateReport, dbAddMessage, dbDecideReport, canRead, readersOf, dbSetAccused, dbRepointAccused,
+  dbLinkedReports, dbEnsureIncidentGroup,
   dbAddAttachment, dbAttachments, dbDeleteReport, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES,
   dbReportsFor, roleOn, dbPenaltiesForRace, dbMarkPenaltiesApplied,
 } = await import("./reports.js");
@@ -63,6 +64,9 @@ function makePrisma() {
       } else if (sql.startsWith('UPDATE "Report" SET "accusedDriverId"')) {
         const r = rows.Report.find((x) => x.id === a[3]);
         Object.assign(r, { accusedDriverId: a[0], accusedName: a[1], updatedAt: a[2] });
+      } else if (sql.startsWith('UPDATE "Report" SET "incidentGroupId"')) {
+        const r = rows.Report.find((x) => x.id === a[1]);
+        if (r) r.incidentGroupId = a[0];
       } else if (sql.startsWith('UPDATE "Report" SET "appliedSeconds"')) {
         const r = rows.Report.find((x) => x.id === a[2]);
         Object.assign(r, { appliedSeconds: a[0], appliedAt: a[1] });
@@ -71,6 +75,8 @@ function makePrisma() {
     },
     $queryRawUnsafe: async (sql, ...a) => {
       if (sql.includes('FROM "Report" WHERE "id"')) return rows.Report.filter((r) => r.id === a[0]);
+      if (sql.includes('FROM "Report" WHERE "incidentGroupId"'))
+        return rows.Report.filter((r) => r.incidentGroupId === a[0] && r.id !== a[1]);
       if (sql.includes('FROM "Report" WHERE "raceId"'))
         return rows.Report.filter(
           (r) => r.raceId === a[0] && ["PENALTY", "NO_PENALTY", "DISMISSED"].includes(r.status)
@@ -229,6 +235,70 @@ describe("naming the driver afterwards", () => {
     expect(fresh.accusedReachable).toBe(true);
     expect(await canRead(p, fresh, "222", false)).toBe(true);
     expect(notes.filter((n) => n.recipientId === "222" && n.title.match(/names you/i))).toHaveLength(1);
+  });
+});
+
+// A misclick in the desk's dropdown used to mean deleting the report and
+// filing it again, losing the thread and the decision. Correcting is allowed
+// now — for the stewards only — and the reason re-pointing was forbidden is
+// answered by telling people rather than by refusing: the wrongly named driver
+// hears the report no longer names them, the right one that it does.
+describe("a steward correcting who a report is about", () => {
+  // A reporter nobody on the roster maps to, so the two named drivers' own
+  // notifications stand out alone.
+  const filed = { body: "hit at T3", reporterDiscordId: "999", reporterName: "outsider" };
+
+  it("re-points the report, moves the seat in the thread, and tells both drivers", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...filed, accusedDriverId: "d1", accusedName: "wrong guy" });
+    notes.length = 0;
+    const fresh = await dbRepointAccused(p, r, { accusedDriverId: "d2", accusedName: "right guy" });
+    expect(fresh.accusedDriverId).toBe("d2");
+    expect(fresh.accusedName).toBe("right guy");
+    expect(await canRead(p, fresh, "111", false)).toBe(false);
+    expect(await canRead(p, fresh, "222", false)).toBe(true);
+    expect(notes.filter((n) => n.recipientId === "111" && n.title.match(/no longer names you/i))).toHaveLength(1);
+    expect(notes.filter((n) => n.recipientId === "222" && n.title.match(/names you/i))).toHaveLength(1);
+  });
+
+  it("refuses on a report that names nobody yet — that is naming, not correcting", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...filed, accusedDriverId: null });
+    await expect(dbRepointAccused(p, r, { accusedDriverId: "d2", accusedName: "x" })).rejects.toThrow(
+      /names nobody yet/i
+    );
+  });
+
+  it("says nothing to anybody when the same driver is picked again", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...filed, accusedDriverId: "d2", accusedName: "same" });
+    notes.length = 0;
+    const fresh = await dbRepointAccused(p, r, { accusedDriverId: "d2", accusedName: "same" });
+    expect(fresh.accusedDriverId).toBe("d2");
+    expect(notes).toHaveLength(0);
+  });
+});
+
+// A crash with two penalties in it is ONE incident at the desk and TWO reports
+// underneath: split halves share a group id, and each report lists the others
+// so the steward screen can draw a decision box per driver.
+describe("one incident, one report per driver", () => {
+  it("groups the halves and each one lists its siblings", async () => {
+    const p = makePrisma();
+    const first = await dbCreateReport(p, { ...base, accusedDriverId: "d1" });
+    const groupId = await dbEnsureIncidentGroup(p, first);
+    // The first report's own id doubles as the group id — a lone report needs
+    // nothing written to it until its first split.
+    expect(groupId).toBe(first.id);
+    const second = await dbCreateReport(p, { ...base, accusedDriverId: "d2", incidentGroupId: groupId });
+    expect((await dbLinkedReports(p, { ...first, incidentGroupId: groupId })).map((r) => r.id)).toEqual([second.id]);
+    expect((await dbLinkedReports(p, second)).map((r) => r.id)).toEqual([first.id]);
+  });
+
+  it("lists nothing for a report that was never split", async () => {
+    const p = makePrisma();
+    const lone = await dbCreateReport(p, { ...base, accusedDriverId: "d1" });
+    expect(await dbLinkedReports(p, lone)).toEqual([]);
   });
 });
 

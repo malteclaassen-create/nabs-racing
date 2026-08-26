@@ -269,6 +269,10 @@ export async function buildCrawlLinks(prisma, path, query) {
         ? `<h1 class="font-display text-2xl font-black uppercase tracking-tight">${esc(entity.heading)}</h1>`
         : "",
       entity.line ? `<p class="mt-1 text-sm text-medium">${esc(entity.line)}</p>` : "",
+      // The home page's opening sentence — the one place the document says what
+      // the league IS. Only that block sets it; the driver, team and round
+      // blocks say what their own page says and nothing more.
+      entity.blurb ? `<p class="mt-2 max-w-2xl text-sm leading-relaxed">${esc(entity.blurb)}</p>` : "",
     ].join("");
     const blocks = head ? [`<section>${head}</section>`] : [];
     for (const g of entity.groups || []) blocks.push(renderBlock(g));

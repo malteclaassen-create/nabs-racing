@@ -17,7 +17,7 @@ import { applyPenalties } from "../services/pointsCalculator.js";
 import { resolveSeries } from "../lib/series.js";
 import { getNameOverrides } from "./persons.js";
 import { readSocialLinks } from "./leagueSocials.js";
-import { primarySlug } from "./seo.js";
+import { primarySlug, seasonLabel } from "./seo.js";
 import { raceKickoff } from "./raceKickoff.js";
 
 const esc = (s) =>
@@ -297,7 +297,7 @@ async function sectionMeta(prisma, seriesSlug, rawSection, query) {
   // crafted ?season=<n> cannot reveal an unpublished season through the title.
   const season = await resolveSeason(prisma, query?.season, { series: seriesSlug }).catch(() => null);
   if (!season) return null;
-  const label = season.name || `Season ${season.number}`;
+  const label = seasonLabel(season);
 
   // A single round, when the page was asked for one. Only the races page can be.
   if (section === "races" && query?.race) {
@@ -335,7 +335,7 @@ async function raceMeta(prisma, season, raceId) {
   if (!found) return null; // not this season's round: leave the page's own meta
   const race = { ...found, track: prettyTrack(found.track) };
 
-  const label = season.name || `Season ${season.number}`;
+  const label = seasonLabel(season);
   // A championship round is "Round 5"; a one-off has no round number, so it is
   // named for what it is instead. Both need a form that reads in a title and one
   // that reads mid-sentence.

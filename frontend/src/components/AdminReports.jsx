@@ -51,32 +51,106 @@ const SUGGEST_NOTE = {
 
 // Saying who ONE report is about, at the desk.
 //
-// Only while it says nobody. Once a driver is named this is a line of text and
-// nothing else: naming somebody lets them in and tells them, so re-pointing a
-// report would leave a driver sitting in a thread that is no longer about them,
-// having already read it. The rule lives in the backend (lib/reports.js), and
-// this is it drawn.
+// Naming and correcting, both. A named report shows a line of text and a
+// Change button: a dropdown worked through after a long evening sometimes has
+// the wrong row clicked, and deleting the report to re-file it lost the thread
+// and the decision with it. Changing is not quiet — the backend tells the
+// driver named by mistake as well as the right one (lib/reports.js
+// dbRepointAccused) — and it is the desk's alone; the reporter's own naming
+// stays once-only.
 //
 // The dropdown starts on what the result file says, where it says anything, and
 // a steward either agrees with it or picks somebody else. It is never saved by
 // itself — Assetto Corsa is good at "these two cars touched" and knows nothing
 // whatever about fault.
-function NameAccused({ report, drivers, busy, onName }) {
+//
+// "Add another driver" is the third act here: an incident that ends with two
+// penalties needs two reports, because a report is one private thread and one
+// decision about ONE driver. The button files a linked sibling — same round,
+// same moment, same words — about the second driver (`onSplit`), instead of the
+// stewards entering the second penalty by hand with no thread behind it.
+function NameAccused({ report, drivers, busy, onName, onSplit }) {
   const hint = report.accusedSuggestion || null;
   const [pick, setPick] = useState(hint?.driverId || "");
+  // What the picker on a NAMED report is being used for: correcting the name,
+  // or filing the same incident against one more driver. Closed until asked.
+  const [mode, setMode] = useState(null); // null | "change" | "add"
   // A different report opened, or the file's answer arrived after the first
   // render: follow it, but never overwrite a steward who has already chosen.
   useEffect(() => {
     setPick((cur) => cur || hint?.driverId || "");
   }, [report.id, hint?.driverId]);
+  useEffect(() => {
+    setMode(null);
+  }, [report.id, report.accusedDriverId]);
+
+  const picker = (
+    <select
+      aria-label="Which driver this report is about"
+      className="input w-auto max-w-64 py-1.5 text-sm"
+      value={pick}
+      disabled={busy}
+      onChange={(e) => setPick(e.target.value)}
+    >
+      <option value="">Pick a driver…</option>
+      {drivers.map((d) => (
+        <option key={d.id} value={d.id}>
+          {d.name}
+        </option>
+      ))}
+    </select>
+  );
 
   return (
     <div className="rounded-lg border border-border p-4">
       <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
         The report is about
       </div>
-      {report.accusedName ? (
-        <p className="text-sm font-semibold text-dark">{report.accusedName}</p>
+      {report.accusedName && !mode ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm font-semibold text-dark">{report.accusedName}</p>
+          <button
+            className="btn-secondary py-1 text-xs"
+            disabled={busy}
+            onClick={() => {
+              setPick(report.accusedDriverId || "");
+              setMode("change");
+            }}
+          >
+            Change
+          </button>
+          <button
+            className="btn-secondary py-1 text-xs"
+            disabled={busy}
+            onClick={() => {
+              setPick("");
+              setMode("add");
+            }}
+          >
+            Add another driver
+          </button>
+        </div>
+      ) : report.accusedName ? (
+        <>
+          <p className="text-sm text-light">
+            {mode === "change"
+              ? "Named the wrong driver? Both are told: the one named by mistake that the report no longer names them, the right one that it does."
+              : "The same incident, about one more driver: they get their own linked report and thread, and their own decision box appears below this one — so a two-penalty crash is decided on this screen."}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {picker}
+            <button
+              className="btn-secondary py-1.5 text-sm"
+              disabled={busy || !pick || pick === report.accusedDriverId}
+              onClick={() => (mode === "change" ? onName(pick) : onSplit(pick))}
+            >
+              {mode === "change" ? "Change to them" : "File it about them"}
+            </button>
+            <button className="btn-secondary py-1.5 text-sm" disabled={busy} onClick={() => setMode(null)}>
+              Cancel
+            </button>
+          </div>
+        </>
       ) : (
         <>
           <p className="text-sm text-light">
@@ -96,30 +170,113 @@ function NameAccused({ report, drivers, busy, onName }) {
             </p>
           )}
           <div className="mt-2 flex flex-wrap gap-2">
-            <select
-              aria-label="Which driver this report is about"
-              className="input w-auto max-w-64 py-1.5 text-sm"
-              value={pick}
-              disabled={busy}
-              onChange={(e) => setPick(e.target.value)}
-            >
-              <option value="">Pick a driver…</option>
-              {drivers.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+            {picker}
             <button className="btn-secondary py-1.5 text-sm" disabled={busy || !pick} onClick={() => onName(pick)}>
               Name them
             </button>
           </div>
           <p className="mt-2 text-xs leading-relaxed text-light">
-            This lets them read the thread and tells them. It cannot be changed afterwards — a report aimed at
-            the wrong driver is deleted and filed again.
+            This lets them read the thread and tells them. Named the wrong driver? It can be changed here
+            afterwards, and both drivers are told.
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+// The decision box for one of the OTHER drivers in the same incident.
+//
+// A crash the stewards split into one report per driver still gets decided on
+// one screen: the open report's own box above, and one of these for each
+// driver split off it. Each saves through its own report's decide — so telling
+// the drivers, the decided/applied bookkeeping and Edit Results all see plain
+// single-driver reports — but the steward never has to leave the incident to
+// give the second driver their seconds.
+// `onRemove` takes the driver back OUT of the incident — the steward added the
+// wrong person, or one car turned out blameless enough not to need a report at
+// all. It deletes their linked report, thread and decision included, after a
+// confirm; the report the steward has open stays exactly as it is.
+function LinkedDecision({ linked, busy, onSave, onRemove }) {
+  const [draft, setDraft] = useState({
+    status: linked.status,
+    penaltySeconds: linked.penaltySeconds ?? "",
+    verdict: linked.verdict || "",
+  });
+  useEffect(() => {
+    setDraft({ status: linked.status, penaltySeconds: linked.penaltySeconds ?? "", verdict: linked.verdict || "" });
+  }, [linked.id, linked.status, linked.penaltySeconds, linked.verdict]);
+  const dirty =
+    draft.status !== linked.status ||
+    String(draft.penaltySeconds) !== String(linked.penaltySeconds ?? "") ||
+    draft.verdict !== (linked.verdict || "");
+
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">
+          Decision · {linked.accusedName || "second driver"}
+        </div>
+        <button
+          className="transition text-xs font-semibold text-light hover:text-bad"
+          disabled={busy}
+          onClick={onRemove}
+        >
+          Remove from this incident
+        </button>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="Outcome" tone="plain">
+          <select
+            className="input py-1.5 text-sm"
+            value={draft.status}
+            disabled={busy}
+            onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+          >
+            {STATUS.map((s) => (
+              <option key={s.key} value={s.key}>{s.label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Seconds" tone="plain">
+          <input
+            type="number"
+            min="0"
+            className="input w-24 py-1.5 text-sm"
+            value={draft.penaltySeconds}
+            disabled={busy}
+            onChange={(e) => setDraft({ ...draft, penaltySeconds: e.target.value })}
+          />
+        </Field>
+      </div>
+      <textarea
+        aria-label={`What the stewards decided about ${linked.accusedName || "the second driver"}`}
+        className="input mt-2 h-16 resize-none"
+        placeholder="What you decided, in the drivers' words rather than yours…"
+        value={draft.verdict}
+        disabled={busy}
+        onChange={(e) => setDraft({ ...draft, verdict: e.target.value })}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <button
+          className="btn-primary"
+          disabled={busy || !dirty}
+          onClick={() =>
+            onSave({
+              status: draft.status,
+              penaltySeconds: draft.penaltySeconds === "" ? null : Number(draft.penaltySeconds),
+              verdict: draft.verdict,
+            })
+          }
+        >
+          {busy ? "Saving…" : "Save decision"}
+        </button>
+        <p className="min-w-40 flex-1 text-xs text-light">
+          {DECIDED.includes(draft.status)
+            ? `Saving tells ${linked.accusedName || "them"} in their own thread. Enter the penalty in Edit Results too.`
+            : "Nothing is sent yet."}
+        </p>
+      </div>
     </div>
   );
 }
@@ -240,17 +397,24 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
               and nothing else. Either the driver who filed it says, from their
               own page, or the desk does, which is what this is.
 
-              What NOBODY can do is re-point a report that already names
-              somebody: naming a driver lets them in and tells them, and
-              changing it afterwards leaves a driver sitting in a thread that is
-              no longer about them, having read it. So this turns into a plain
-              line the moment it is answered. A report aimed at the wrong driver
-              is deleted and filed again, which is visible. */}
+              The desk can also change a name that is already there — a
+              misclick in the dropdown used to mean deleting the report and
+              filing it again, losing the thread and the decision with it.
+              Changing is never quiet: the backend tells the driver named by
+              mistake as well as the right one. The reporter's own naming
+              stays once-only. */}
           <NameAccused
             report={r}
             drivers={drivers}
             busy={busy}
             onName={(driverId) => run(() => api.setReportAccusedAdmin(id, driverId), "Named, and told.")}
+            onSplit={(driverId) =>
+              run(
+                () => api.splitReport(id, driverId),
+                (res) =>
+                  `Added ${res?.report?.accusedName || "them"} — their own decision box is below, next to this one.`
+              )
+            }
           />
 
 
@@ -328,6 +492,41 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
           </p>
         </div>
       </div>
+
+      {/* The rest of the same incident: one decision box per driver the
+          stewards split off. Each is its own report with its own thread —
+          this screen just decides them all in one place. */}
+      {(data.linked || []).map((l) => (
+        <LinkedDecision
+          key={l.id}
+          linked={l}
+          busy={busy}
+          onSave={(body) =>
+            run(
+              () => api.decideReport(l.id, body),
+              (res) => {
+                const n = res?.report?.told ?? 0;
+                if (!DECIDED.includes(body.status)) return "Saved.";
+                return n > 0
+                  ? `Saved. ${l.accusedName || "The driver"} has been told in their own thread.`
+                  : "Saved. Nobody could be told: there is no Discord account on that thread.";
+              }
+            )
+          }
+          onRemove={async () => {
+            if (
+              !(await ask({
+                title: `Remove ${l.accusedName || "this driver"} from the incident?`,
+                body: "Their linked report is deleted — the thread with them and any decision in it go with it. The report you have open stays as it is. A driver whose part in the crash was judged and cleared is better kept with 'No penalty', so they can still see what was decided.",
+                danger: true,
+                confirmLabel: "Remove driver",
+              }))
+            )
+              return;
+            run(() => api.deleteReport(l.id), `Removed ${l.accusedName || "them"} from this incident.`);
+          }}
+        />
+      ))}
 
       {/* who else may read it */}
       <div className="rounded-lg border border-border p-4">

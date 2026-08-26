@@ -2,12 +2,9 @@
 // Persists a race's results and (re)computes its constructor scores.
 // Used by both the AC import and the manual results editor.
 // ---------------------------------------------------------------------------
-import {
-  applyPenalties,
-  calculateT1ConstructorPoints,
-  calculateT2ConstructorPoints,
-  DEFAULT_POINTS_TABLE,
-} from "./pointsCalculator.js";
+import { DEFAULT_POINTS_TABLE } from "./pointsCalculator.js";
+import { writeConstructorScores } from "./constructorScores.js";
+import { readTransfers, byDriver, teamForRound } from "./driverTransfers.js";
 import { getSeasonScoring } from "./seasonService.js";
 import { invalidateRecordsCache } from "./recordsService.js";
 import { invalidateRatingHistoryCache } from "./ratingHistoryService.js";
@@ -107,7 +104,7 @@ export async function saveRaceResults(prisma, raceId, results) {
     "qualiTimeMs",
   ];
   const existing = await prisma.$queryRawUnsafe(
-    `SELECT "driverId", "grid", "bestLapMs", "totalTimeMs", ${TELEMETRY_COLS.map((c) => `"${c}"`).join(", ")} FROM "RaceResult" WHERE "raceId" = ?`,
+    `SELECT "driverId", "teamId", "grid", "bestLapMs", "totalTimeMs", ${TELEMETRY_COLS.map((c) => `"${c}"`).join(", ")} FROM "RaceResult" WHERE "raceId" = ?`,
     raceId
   );
   const prevGrid = new Map(existing.map((r) => [r.driverId, r.grid]));
@@ -115,17 +112,44 @@ export async function saveRaceResults(prisma, raceId, results) {
   const prevTotalTime = new Map(existing.map((r) => [r.driverId, r.totalTimeMs]));
   // driverId -> { col: prevValue } for the telemetry columns.
   const prevTelemetry = new Map(existing.map((r) => [r.driverId, r]));
+  const prevTeam = new Map(existing.map((r) => [r.driverId, r.teamId]));
 
   // A field the caller left off entirely (undefined) keeps whatever the round
   // already had; an explicit value (including null) from the AC import wins.
   const keep = (incoming, prev) => (incoming === undefined ? prev ?? null : incoming ?? null);
+
+  // Stamp each result with the team it was driven for, once, up front — the
+  // written rows and the constructor scores below must agree on it.
+  //
+  // Keyed on the driver rather than on the row (unlike the preserved telemetry
+  // above): a round that ALREADY has a team for this driver keeps it, so
+  // re-saving an old round after somebody changed teams does not drag their old
+  // results along. A driver who is new to the round is stamped with the team
+  // they are in now, which for a freshly imported race is simply the truth.
+  // A driver swapped into a row therefore brings their OWN team, because the
+  // team belongs to the person, not to the captured lap times.
+  // A recorded transfer beats all of it. "From round 5 they drive for Ferrari"
+  // may have been entered weeks ago, before this round existed as anything but
+  // a date; the round applies it the moment it is saved, so nobody has to
+  // remember to go and change the roster on the night (driverTransfers.js).
+  const driverById = new Map(drivers.map((d) => [d.id, d]));
+  const transfers = byDriver(await readTransfers(prisma, { seasonId: race?.seasonId ?? undefined }));
+  const roundNo = race?.number ?? null;
+  const stamped = results.map((r) => ({
+    ...r,
+    teamId:
+      teamForRound(transfers.get(r.driverId), roundNo, null) ??
+      prevTeam.get(r.driverId) ??
+      driverById.get(r.driverId)?.teamId ??
+      null,
+  }));
 
   await prisma.$transaction(async (tx) => {
     // Replace this race's results.
     await tx.raceResult.deleteMany({ where: { raceId } });
     await tx.constructorRaceScore.deleteMany({ where: { raceId } });
 
-    for (const r of results) {
+    for (const r of stamped) {
       // A driver swap in the editor sends prevDriverId = who USED to hold this
       // result row. The captured race data (time, grid, best lap, telemetry)
       // belongs to the row, not the person, so the preserved values follow the
@@ -166,6 +190,13 @@ export async function saveRaceResults(prisma, raceId, results) {
           vals.push(val);
         }
       }
+      // The team this result was driven for, written raw for the same reason as
+      // the columns above: it is added by ensureAppSchema at boot, so the
+      // generated client may not know about it yet.
+      if (r.teamId) {
+        sets.push(`"teamId" = ?`);
+        vals.push(r.teamId);
+      }
       if (sets.length) {
         await tx.$executeRawUnsafe(
           `UPDATE "RaceResult" SET ${sets.join(", ")} WHERE "raceId" = ? AND "driverId" = ?`,
@@ -177,36 +208,33 @@ export async function saveRaceResults(prisma, raceId, results) {
     }
 
     // Recompute constructor scores from the penalty-adjusted classification,
-    // using this season's points table.
-    const applied = applyPenalties(results);
-    const t1 = calculateT1ConstructorPoints(applied, drivers, teams, table);
-    const t2 = calculateT2ConstructorPoints(applied, drivers, teams, table);
-
-    const teamById = new Map(teams.map((t) => [t.id, t]));
-    const rows = [];
-    for (const [teamId, points] of Object.entries(t1)) {
-      rows.push({ raceId, teamId, tier: 1, points });
-    }
-    for (const [teamId, points] of Object.entries(t2)) {
-      rows.push({ raceId, teamId, tier: 2, points });
-    }
-    // Ensure every tier team has a row (0 if absent) so per-race columns align.
-    for (const team of teams) {
-      if (team.tier !== 1 && team.tier !== 2) continue;
-      const exists = rows.some((x) => x.teamId === team.id && x.tier === team.tier);
-      if (!exists) rows.push({ raceId, teamId: team.id, tier: team.tier, points: 0 });
-    }
-
-    for (const row of rows) {
-      // guard against teams not present (shouldn't happen)
-      if (!teamById.has(row.teamId)) continue;
-      await tx.constructorRaceScore.create({ data: row });
-    }
+    // using this season's points table. Shared with the transfer service so a
+    // re-attributed round is scored by exactly the same rules (constructorScores).
+    await writeConstructorScores(tx, raceId, stamped, drivers, teams, table);
 
     await tx.race.update({
       where: { id: raceId },
       data: { isCompleted: true },
     });
+
+    // A transfer entered in advance has now actually happened, so the roster
+    // catches up on its own: from this round on, the standings and the entry
+    // list say the new team without anybody going back to the Drivers tab.
+    // Only when the round really is the transfer's round or later.
+    if (roundNo != null) {
+      const teamById = new Map(teams.map((t) => [t.id, t]));
+      for (const [driverId, rows] of transfers) {
+        const want = teamForRound(rows, roundNo, null);
+        const driver = driverById.get(driverId);
+        if (!want || !driver || driver.teamId === want) continue;
+        const team = teamById.get(want);
+        if (!team) continue;
+        await tx.driver.update({
+          where: { id: driverId },
+          data: { teamId: team.id, tier: team.tier, isActive: team.tier === 0 ? driver.isActive : true },
+        });
+      }
+    }
   });
 
   // Persist the Steam GUID from a confirmed AC import onto Driver.steamId. The

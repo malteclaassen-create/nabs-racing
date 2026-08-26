@@ -4,6 +4,7 @@ import CircuitMap from "./CircuitMap.jsx";
 import RaceCountdown from "./RaceCountdown.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
+import { sessionSummary } from "../utils/raceFormat.js";
 
 // ---------------------------------------------------------------------------
 // The next round, as a card: country, round number, the circuit's outline, the
@@ -63,7 +64,11 @@ export default function NextRaceCard({ race, className = "", style = null }) {
       <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-sky-600 dark:text-sky-300">
         {circuit && <Flag code={circuit.country} title={circuit.countryName} w={22} h={16} />}
         <span>Next Race</span>
-        {race.number != null && <span className="ml-auto text-ink/40 dark:text-white/50">Round {race.number}</span>}
+        {/* Trainings have no round number but still are the next race —
+            an unlabeled corner would read like a missing number. */}
+        <span className="ml-auto text-ink/40 dark:text-white/50">
+          {race.number != null ? `Round ${race.number}` : race.type === "TRAINING" ? "Training" : "Event"}
+        </span>
       </div>
 
       {/* The circuit gets a band of its own between the label and the name: the
@@ -97,6 +102,13 @@ export default function NextRaceCard({ race, className = "", style = null }) {
       {circuit && circuit.circuit?.toLowerCase() !== race.track?.toLowerCase() && (
         <div className="mt-2 font-mono text-[11px] uppercase tracking-wider text-ink/60 dark:text-white/65">
           {circuit.circuit}
+        </div>
+      )}
+      {/* The session line — on a sprint weekend "there is a sprint" is exactly
+          what this card exists to announce. Same wording as the sign-up page. */}
+      {sessionSummary(race).length > 0 && (
+        <div className="mt-2 font-mono text-[11px] font-bold uppercase tracking-wider text-ink/60 dark:text-white/65">
+          {sessionSummary(race).join(" · ")}
         </div>
       )}
 

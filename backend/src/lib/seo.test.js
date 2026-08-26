@@ -8,7 +8,7 @@
 // multiplies into endless near-duplicates; keep too little and a hundred race
 // results share one address. Hence the tests.
 import { describe, it, expect, vi } from "vitest";
-import { canonicalUrl, applyCanonical, legacyRedirects } from "./seo.js";
+import { canonicalUrl, applyCanonical, legacyRedirects, seasonLabel } from "./seo.js";
 
 // Just enough Prisma for the two lookups canonicalUrl makes: the primary series
 // (to fold its home onto "/") and the active season number (to drop a parameter
@@ -38,6 +38,28 @@ const req = (url, host = "nabsracing.com") => {
 };
 
 const canonical = (url, opts) => canonicalUrl(req(url), fakePrisma(opts));
+
+describe("seasonLabel", () => {
+  // The name is free text, and seasons routinely arrive with nothing but their
+  // number in it. That reads fine in the switcher and nowhere else: the page
+  // title came out as "8 driver standings".
+  it("puts the word in front of a name that is only digits", () => {
+    expect(seasonLabel({ name: "8", number: 8 })).toBe("Season 8");
+    expect(seasonLabel({ name: " 8 ", number: 8 })).toBe("Season 8");
+  });
+
+  it("leaves a name the admin actually typed alone", () => {
+    expect(seasonLabel({ name: "Winter Series", number: 9 })).toBe("Winter Series");
+    expect(seasonLabel({ name: "Season 3", number: 3 })).toBe("Season 3");
+    expect(seasonLabel({ name: "F1 2010", number: 8 })).toBe("F1 2010");
+  });
+
+  it("falls back to the number, and says nothing without one", () => {
+    expect(seasonLabel({ name: "", number: 4 })).toBe("Season 4");
+    expect(seasonLabel({ name: null, number: null })).toBeNull();
+    expect(seasonLabel(null)).toBeNull();
+  });
+});
 
 describe("canonicalUrl", () => {
   it("keeps a plain page as it is", async () => {

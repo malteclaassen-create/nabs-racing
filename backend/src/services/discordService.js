@@ -5,7 +5,7 @@
 // (the message id is stored on the Race).
 // ---------------------------------------------------------------------------
 import { raceKickoff } from "../lib/raceKickoff.js";
-import { readRaceFormat } from "../lib/raceFormat.js";
+import { readRaceFormat, sessionLines } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
 import { getPersonGroups } from "../lib/persons.js";
 import { collapseByPerson, byNewestAnswer } from "../lib/onePerPerson.js";
@@ -176,9 +176,8 @@ function buildEmbed(race, rsvps) {
 
   const desc = [`**${fmtDate(race.date)}**`];
   // Session format line (Apollo-style), only the parts that are actually set.
-  const sessions = [];
-  if (race.qualiMinutes) sessions.push(`${race.qualiMinutes} min qualifying`);
-  if (race.raceLaps) sessions.push(`${race.raceLaps} lap race`);
+  // A sprint weekend names both races here — that is the whole announcement.
+  const sessions = sessionLines(race);
   if (sessions.length) desc.push("", "**SESSIONS**", sessions.join(" · "));
   // Free text (rules, mods, links…) exactly as the admin wrote it.
   if (race.info) desc.push("", race.info);

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { seasonLabelOf } from "../utils/pageTitle.js";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton, Skeleton } from "../components/ui.jsx";
 import { useTilt } from "../hooks/motion.js";
@@ -128,6 +129,13 @@ export default function Constructors() {
   const teams = useApi(useCallback(() => api.teams(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const { current: season, active } = useSeason();
+  // The season belongs in the heading, not only in the switcher above it.
+  // Eight seasons of this page otherwise share one H1, so neither a reader
+  // landing from a search nor the search engine itself can tell them apart —
+  // and the tab title has named the season all along. Same label as there
+  // (utils/pageTitle.js), so the two never disagree.
+  const seasonName = seasonLabelOf(season);
+  const seasonHeading = seasonName ? `${seasonName} Constructors` : "Constructors";
 
   if (t1.loading || t2.loading || teams.loading)
     return (
@@ -144,7 +152,7 @@ export default function Constructors() {
   if (t1.error || t2.error || teams.error)
     return (
       <div>
-        <PageHeader eyebrow="Championship" title="Constructors" />
+        <PageHeader eyebrow="Championship" title={seasonHeading} />
         <ErrorBox
           message={t1.error || t2.error || teams.error}
           onRetry={() => { t1.reload(); t2.reload(); teams.reload(); }}
@@ -176,7 +184,7 @@ export default function Constructors() {
           the viewport, and the content starts a row earlier on phones. */}
       <PageHeader
         eyebrow="Championship"
-        title="Constructors"
+        title={seasonHeading}
         rightInline
         right={hasT2 ? <TierJump className="flex shrink-0" /> : null}
       />

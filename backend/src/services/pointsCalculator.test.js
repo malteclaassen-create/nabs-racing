@@ -284,6 +284,21 @@ describe("calculateT1ConstructorPoints", () => {
     const pts = calculateT1ConstructorPoints(results, drivers, teams);
     expect(pts).toEqual({ alpha: 35 });
   });
+
+  it("scores a stamped round for the team it was driven for, not the driver's team today", () => {
+    // a1 is in alpha now, but this round was saved while they were at bravo.
+    // Re-saving the round (a penalty, a fixed position) must not move those
+    // points across with them.
+    const results = [fin("a1", 1, { teamId: "bravo" }), fin("b1", 2)];
+    const pts = calculateT1ConstructorPoints(results, drivers, teams);
+    expect(pts).toEqual({ bravo: 65 });
+  });
+
+  it("still lets an explicit sub team beat the stamp", () => {
+    const results = [fin("r1", 1, { teamId: "reserve", subForTeamId: "alpha" })];
+    const pts = calculateT1ConstructorPoints(results, drivers, teams);
+    expect(pts).toEqual({ alpha: 35 });
+  });
 });
 
 describe("calculateT2ConstructorPoints (re-ranking)", () => {

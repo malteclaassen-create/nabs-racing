@@ -24,6 +24,7 @@ import {
   DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
 import { getSeasonScoring } from "./seasonService.js";
+import { resultTeamId } from "../lib/resultTeam.js";
 
 // severity: "error" (wrong data, fix it) | "warning" (probably wrong) |
 // "info" (worth a look, may well be intentional)
@@ -122,7 +123,7 @@ export function analyzeSeason({ season, teams, drivers, races, results, scores, 
       // Points that count for nobody. Only when NO explicit "drove for" team is
       // set — an admin who deliberately marked a drive as teamless (sub team =
       // reserve) has already answered the question.
-      const effTeam = teamById.get(r.subForTeamId || d?.teamId);
+      const effTeam = teamById.get(resultTeamId(r, driverById));
       const effTier = effTeam?.tier ?? 0;
       if (!r.subForTeamId && (r.points || 0) > 0 && effTier !== 1 && effTier !== 2) {
         issues.push(issue(

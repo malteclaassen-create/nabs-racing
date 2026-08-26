@@ -286,11 +286,32 @@ function looksLikeSafetyCar(carSkin, carModel) {
   );
 }
 
+// The upstream hands split collections out in two different shapes: a car's
+// BestLapSplits/BestSplits is an object keyed "0"/"1"/"2", while the session's
+// top-level BestSplits is an ARRAY in the order the records happened to be
+// written — [S3, S1, S2] is a perfectly normal payload. Positional indexing was
+// therefore comparing sector 1 against sector 3, which is why no sector on the
+// board ever went purple. Key everything off the record's own SplitIndex, and
+// fall back to the position only when a record doesn't carry one.
+function splitsByIndex(splits) {
+  const out = [null, null, null];
+  if (!splits) return out;
+  const records = Array.isArray(splits)
+    ? splits
+    : [0, 1, 2].map((i) => splits[i] ?? splits[String(i)]);
+  records.forEach((sp, pos) => {
+    if (!sp) return;
+    const i = typeof sp.SplitIndex === "number" ? sp.SplitIndex : pos;
+    if (i >= 0 && i < 3) out[i] = sp;
+  });
+  return out;
+}
+
 // Pull the three best-lap sector boxes (with colour flags) off a car record.
 function sectorsOf(splitObj) {
-  if (!splitObj) return [null, null, null];
+  const arranged = splitsByIndex(splitObj);
   return [0, 1, 2].map((i) => {
-    const sp = splitObj[i] ?? splitObj[String(i)];
+    const sp = arranged[i];
     if (!sp) return null;
     return {
       ms: nsToMs(sp.SplitTime),
@@ -304,7 +325,7 @@ function sectorsOf(splitObj) {
 // "Potential" = sum of a driver's three best sectors (the ideal lap).
 function potentialOf(bestSplits) {
   if (!bestSplits) return null;
-  const arr = [0, 1, 2].map((i) => bestSplits[i] ?? bestSplits[String(i)]);
+  const arr = splitsByIndex(bestSplits);
   if (!arr.every((x) => x && x.SplitTime > 0)) return null;
   return Math.round(arr.reduce((a, x) => a + x.SplitTime, 0) / 1e6);
 }
@@ -888,6 +909,13 @@ function createRelay(server) {
       // to print.
       topSpeed: car && car.TopSpeedBestLap ? Math.round(car.TopSpeedBestLap * 100) / 100 : null,
       sectors: sectorsOf(car?.BestLapSplits),
+      // The lap being driven RIGHT NOW, sector by sector: the upstream fills
+      // CurrentLapSplits as each split is crossed, so this is partial by nature
+      // (S3 stays null until they cross the line) and that is the point — the
+      // live page builds the lap up the way the race server's own timing page
+      // does. Only for a car actually out there; a stored entry's leftover
+      // splits belong to a lap that ended long ago.
+      currentSectors: onTrack ? sectorsOf(car?.CurrentLapSplits) : [null, null, null],
       potentialMs: potentialOf(car?.BestSplits),
       inPits: live.IsInPits ?? d.IsInPits ?? false,
       numPits: live.NumPits ?? d.NumPits ?? 0,
@@ -1026,14 +1054,17 @@ function createRelay(server) {
     // Sector colours: the upstream per-lap "IsBest" flag is unreliable (it can
     // mark a sector best that's since been beaten on another lap). Recompute
     // "purple" against the session's actual best sector times (top-level
-    // BestSplits); "green" (driver's own best sector) keeps the IsDriversBest flag.
-    const sessionBestSectors = Array.isArray(status.BestSplits)
-      ? [0, 1, 2].map((i) => (status.BestSplits[i] ? nsToMs(status.BestSplits[i].SplitTime) : null))
-      : [null, null, null];
+    // BestSplits, ordered by SplitIndex — see splitsByIndex); "green" (driver's
+    // own best sector) keeps the IsDriversBest flag.
+    const sessionBestSectors = splitsByIndex(status.BestSplits).map((sp) =>
+      sp ? nsToMs(sp.SplitTime) : null
+    );
     for (const e of entries) {
-      e.sectors.forEach((s, i) => {
-        if (s) s.best = sessionBestSectors[i] != null && s.ms === sessionBestSectors[i];
-      });
+      for (const row of [e.sectors, e.currentSectors]) {
+        row.forEach((s, i) => {
+          if (s) s.best = sessionBestSectors[i] != null && s.ms === sessionBestSectors[i];
+        });
+      }
     }
 
     // Gap is measured against the current leader's best lap (P1 = 0.000).

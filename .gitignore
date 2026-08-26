@@ -34,6 +34,12 @@ backend/results-archive/
 backend/telemetry-laps/
 backend/track-maps/
 
+# Pit stops written down while a race runs (services/pitRecorder.js). Runtime
+# data under DATA_DIR like the folders above, and unlike them NOT regeneratable
+# — which is exactly why it belongs on the server's volume and not in here,
+# where a local test recording could overwrite the real one.
+backend/live-pits/
+
 # Logs
 *.log
 npm-debug.log*

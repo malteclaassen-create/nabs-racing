@@ -22,7 +22,7 @@
 // (it mirrors the page, and the page shows everyone); the sitemap honours it.
 // ---------------------------------------------------------------------------
 import { getPrivateSeasonIds } from "../services/seasonService.js";
-import { primarySlug } from "./seo.js";
+import { primarySlug, seasonLabel } from "./seo.js";
 import { readRaceTypes } from "./raceTypes.js";
 
 const TTL_MS = 10 * 60 * 1000;
@@ -130,7 +130,7 @@ async function seasonEntities(prisma, season, base) {
     // leading). Not an address, never rendered — an internal key.
     id: season.id,
     number: season.number,
-    name: season.name || `Season ${season.number}`,
+    name: seasonLabel(season),
     isActive: season.isActive,
     listing: {
       drivers: listing("drivers"),

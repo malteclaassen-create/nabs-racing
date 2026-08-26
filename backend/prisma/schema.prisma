@@ -274,6 +274,21 @@ model Race {
   // Managed via raw SQL (ensureAppSchema) like driverOfTheDay* below.
   qualiMinutes Int?
   raceLaps     Int?
+  // Shape of the race day (migration race_sprint_format): SINGLE (one race, the
+  // default every round had before this existed) or SPRINT_FEATURE — an F2-style
+  // weekend that runs a shorter sprint before the main race. `sprintLaps` is the
+  // sprint distance; `raceLaps` above stays the main race (the feature), so
+  // every existing reader of it keeps working. Managed via raw SQL
+  // (ensureAppSchema + lib/raceFormat.js).
+  raceFormat   String       @default("SINGLE")
+  sprintLaps   Int?
+  // The event this row is the SPRINT CLASSIFICATION of (migration race_parent):
+  // a sprint+feature weekend stores its sprint result on a hidden child row —
+  // RaceResult is unique per (race, driver), so the second classification of
+  // one evening needs its own race row. null for every ordinary race. Children
+  // are SPECIAL-typed (never scored, no RSVP) and filtered out of calendars.
+  // Managed via raw SQL (ensureAppSchema + lib/sprintRaces.js).
+  parentRaceId String?
   // Highlights video of the finished round — one pasted http(s) link, shown as
   // the Highlights button on the race results (migration race_highlights).
   // Managed via raw SQL (ensureAppSchema + lib/raceHighlights.js).
@@ -364,6 +379,15 @@ model RaceResult {
   status           String  @default("FINISHED") // FINISHED/DNS/DNF/DSQ
   subForTeamId     String? // Reserve drives for this team
   subForTeam       Team?   @relation(fields: [subForTeamId], references: [id])
+  // The team the driver was in when this round was saved, stamped by raceWriter
+  // and never touched again. Without it, a driver moving to another team
+  // mid-season rewrote every round they had already driven (see lib/resultTeam.js
+  // for the full order of precedence). A plain column rather than a relation:
+  // Team already holds the back-relation for subForTeam above, and this one is
+  // added by ensureAppSchema in raw SQL like the telemetry columns below, so it
+  // must look the same in both places. Null only for rounds saved before the
+  // column existed; ensureAppSchema backfills those once from the driver's team.
+  teamId           String?
   // DEPRECATED: the old "penalty in places" model. Replaced by penaltySeconds
   // (time penalties). Kept as an unused column so the migration stays additive;
   // nothing reads or writes it any more.
@@ -670,4 +694,26 @@ model PersonLink {
   createdAt DateTime @default(now())
 
   @@index([personId])
+}
+
+// "From round 5 they drive for Ferrari": one row per statement, which is what
+// makes a transfer something other than "move them now". Saving a round asks
+// this list which team to stamp its results with, so a change entered weeks in
+// advance applies itself on the night; entering one for a round already driven
+// re-attributes those rounds and rescores them. See services/driverTransfers.js.
+//
+// No relations, like PersonLink above: the table is created and read in raw SQL
+// (ensureAppSchema + migration driver_team_change) so it stays writable while
+// the dev server holds the generated client. Declared here all the same, so
+// `prisma migrate` sees the same schema the database actually has.
+model DriverTeamChange {
+  id        String   @id
+  driverId  String
+  seasonId  String?
+  fromRound Int
+  teamId    String
+  createdAt DateTime @default(now())
+
+  @@unique([driverId, fromRound])
+  @@index([seasonId])
 }

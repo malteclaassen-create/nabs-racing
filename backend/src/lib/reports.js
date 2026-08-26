@@ -79,6 +79,7 @@ function shape(r) {
     contactKph: r.contactKph ?? null,
     contactSecond: r.contactSecond ?? null,
     contactIndex: r.contactIndex ?? null,
+    incidentGroupId: r.incidentGroupId || null,
     status: r.status || "NEW",
     verdict: r.verdict || null,
     penaltySeconds: r.penaltySeconds ?? null,
@@ -404,6 +405,13 @@ export async function dbCreateReport(prisma, input) {
       .$executeRawUnsafe(`UPDATE "Report" SET "contactIndex" = ? WHERE "id" = ?`, Math.round(input.contactIndex), id)
       .catch(() => {});
   }
+  // Split from another report: both halves carry the incident's group id, so
+  // the desk can show the whole crash on one screen (dbLinkedReports).
+  if (input.incidentGroupId) {
+    await prisma
+      .$executeRawUnsafe(`UPDATE "Report" SET "incidentGroupId" = ? WHERE "id" = ?`, String(input.incidentGroupId), id)
+      .catch(() => {});
+  }
   const report = await dbGetReport(prisma, id);
   await notifyAdmins(prisma, report, "A new incident report is waiting");
 
@@ -533,8 +541,11 @@ export async function dbDecideReport(prisma, report, { status, verdict, penaltyS
 // ONE rule, and it is the point of this function rather than decoration: only
 // ONCE, while it is still blank. Naming somebody lets them in and tells them;
 // changing it afterwards would leave a driver sitting in a thread that is no
-// longer about them, having already read it. So nobody — reporter or steward —
-// can ever re-point an accusation that has already been made.
+// longer about them, having already read it. So a REPORTER can never re-point
+// an accusation they have already made. The stewards can — a desk working an
+// evening's presses through a dropdown will sometimes click the wrong row —
+// but that is a correction with its own duty of telling both drivers, and it
+// lives in dbRepointAccused below, not here.
 //
 // WHO may fill in a blank one is the routes' business, and it is two people:
 // the driver who filed it, from their own page, and the stewards. A report
@@ -579,6 +590,86 @@ export async function dbSetAccused(prisma, report, { accusedDriverId, accusedNam
     }).catch(() => {});
   }
   return { ...fresh, accusedReachable: !id || !!accused };
+}
+
+// A steward correcting WHO a report is about, after it already names somebody.
+//
+// The reason re-pointing was forbidden outright — a driver left sitting in a
+// thread that is no longer about them, having read it — is real, so this does
+// not quietly re-aim: the wrongly named driver is TOLD the report no longer
+// names them (they lose their seat in the thread the same moment), and the
+// right one is told they have been named, exactly as a first naming tells
+// them. Stewards only; the reporter's own naming stays once-only above.
+//
+// The decision on the report, if one was already saved, deliberately stays:
+// re-pointing is "wrong row clicked in the dropdown", and the verdict about
+// the incident is about the incident. A steward who re-points after deciding
+// re-reads their decision anyway — it is on the same screen.
+export async function dbRepointAccused(prisma, report, { accusedDriverId, accusedName }) {
+  if (!report.accusedDriverId) {
+    throw Object.assign(new Error("This report names nobody yet"), { status: 409 });
+  }
+  const id = accusedDriverId || null;
+  if (!id) throw Object.assign(new Error("Pick a driver"), { status: 400 });
+
+  // Who is being un-named, worked out BEFORE the row changes.
+  const before = await accusedDiscordId(prisma, report);
+  const changed = String(id) !== String(report.accusedDriverId);
+  await prisma.$executeRawUnsafe(
+    `UPDATE "Report" SET "accusedDriverId" = ?, "accusedName" = ?, "updatedAt" = ? WHERE "id" = ?`,
+    id,
+    clamp(accusedName, 120) || null,
+    new Date().toISOString(),
+    report.id
+  );
+  const fresh = await dbGetReport(prisma, report.id);
+  const accused = await accusedDiscordId(prisma, fresh);
+  if (changed && before && before !== accused && before !== String(fresh.reporterDiscordId || "")) {
+    await dbCreateNotification(prisma, {
+      type: "REPORT",
+      title: "An incident report no longer names you",
+      body: "The stewards have corrected who an incident report is about — it no longer names you.",
+      recipientId: before,
+      dedupeKey: `report_unnamed:${fresh.id}:${before}`,
+    }).catch(() => {});
+  }
+  if (changed && accused && accused !== String(fresh.reporterDiscordId || "")) {
+    await dbCreateNotification(prisma, {
+      type: "REPORT",
+      title: "An incident report names you",
+      body: "The stewards have linked an incident report to you. You can read it and reply.",
+      link: `/reports?id=${fresh.id}`,
+      recipientId: accused,
+      dedupeKey: `report_new:${fresh.id}:${accused}`,
+    }).catch(() => {});
+  }
+  return { ...fresh, accusedReachable: !!accused };
+}
+
+// The other reports of the same incident — the ones the stewards split off so
+// each driver involved has their own thread and their own decision. The desk
+// shows these beside the open report as one crash with a decision box per
+// driver; each box saves through that report's own decide, so nothing about
+// deciding, telling or the penalties arithmetic changes shape.
+export async function dbLinkedReports(prisma, report) {
+  if (!report?.incidentGroupId) return [];
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT * FROM "Report" WHERE "incidentGroupId" = ? AND "id" != ? ORDER BY datetime("createdAt") ASC`,
+      String(report.incidentGroupId),
+      report.id
+    )
+    .catch(() => []);
+  return rows.map(shape);
+}
+
+// Stamp an incident group id onto a report that does not carry one yet — the
+// moment its first split happens, its own id becomes the group's. Returns the
+// id either way.
+export async function dbEnsureIncidentGroup(prisma, report) {
+  if (report.incidentGroupId) return report.incidentGroupId;
+  await prisma.$executeRawUnsafe(`UPDATE "Report" SET "incidentGroupId" = ? WHERE "id" = ?`, report.id, report.id);
+  return report.id;
 }
 
 // The decided penalties for one round, for the results editor to check itself

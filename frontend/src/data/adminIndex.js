@@ -100,6 +100,12 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "discord",
+    title: "Sprint + feature race day",
+    hint: "Give an event two races: a short sprint and the feature, each with its own lap count.",
+    keywords: "sprint feature two races f2 formula 2 double header race day format laps second race",
+  },
+  {
+    tab: "discord",
     title: "The season's calendar",
     hint: "Rename a round, move its date, set its country flag, or delete it.",
     keywords: "season races edit rename move date time country flag round number delete reorder calendar",

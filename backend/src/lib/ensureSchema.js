@@ -69,6 +69,31 @@ export async function ensureAppSchema(prisma) {
   // writes grid = 1, which every consumer already counts.
   await addColumn(prisma, "RaceResult", "fastestLap", "BOOLEAN NOT NULL DEFAULT 0");
 
+  // --- The team a result was driven for (migration result_team). A Driver row
+  // holds one team for the whole season, so a mid-season move to another team
+  // used to rewrite every round that driver had already driven. Now the round
+  // records its own team when it is saved (raceWriter) and keeps it (see
+  // lib/resultTeam.js for the order of precedence).
+  //
+  // The backfill copies the state as it is right now: every result gets the
+  // team its driver is in today, which is precisely what the site already
+  // shows. So nothing changes visually. It only stops the NEXT transfer from
+  // reaching backwards.
+  //
+  // Deliberately NOT tied to "the boot that created the column", the way the
+  // one-time backfills elsewhere in this file are. An unstamped result is not a
+  // neutral state: it falls back to the driver's team today, which is the exact
+  // behaviour this column exists to end. So every boot fills in whatever is
+  // still null — a column added by the migration on one side and by addColumn on
+  // the other, a row restored from an older backup, a result written while an
+  // older build was running. All of those heal themselves on the next start.
+  await addColumn(prisma, "RaceResult", "teamId", "TEXT");
+  await prisma.$executeRawUnsafe(
+    `UPDATE "RaceResult"
+        SET "teamId" = (SELECT "teamId" FROM "Driver" WHERE "Driver"."id" = "RaceResult"."driverId")
+      WHERE "teamId" IS NULL`
+  );
+
   // --- Phase 6: admin-picked Driver of the Day for a completed race.
   await addColumn(prisma, "Race", "driverOfTheDayId", "TEXT");
   // Who made the pick (the league's streamer decides each round). Free text.
@@ -78,6 +103,16 @@ export async function ensureAppSchema(prisma) {
   // panels): qualifying length in minutes, race distance in laps. Optional.
   await addColumn(prisma, "Race", "qualiMinutes", "INTEGER");
   await addColumn(prisma, "Race", "raceLaps", "INTEGER");
+
+  // --- Sprint + feature weekends (migration race_sprint_format): an F2-style
+  // event runs a short sprint before the main race. SINGLE is what every round
+  // was before this existed, so the default backfills the whole calendar
+  // correctly; raceLaps above keeps meaning the main race (the feature).
+  await addColumn(prisma, "Race", "raceFormat", "TEXT NOT NULL DEFAULT 'SINGLE'");
+  await addColumn(prisma, "Race", "sprintLaps", "INTEGER");
+  // The hidden child row carrying a sprint weekend's SPRINT classification
+  // points back at its event here (migration race_parent, lib/sprintRaces.js).
+  await addColumn(prisma, "Race", "parentRaceId", "TEXT");
 
   // --- Highlights video of a finished round (migration race_highlights): one
   // pasted link, shown as the Highlights button on the race results. Any
@@ -246,6 +281,26 @@ export async function ensureAppSchema(prisma) {
     "hash" TEXT NOT NULL,
     PRIMARY KEY ("day", "hash")
   )`);
+
+  // --- Driver transfers recorded against a round (migration driver_team_change).
+  // "From round 5 they drive for Ferrari": one row per statement, consulted when
+  // a round is saved and when a past round has to be re-attributed. See
+  // services/driverTransfers.js — the table lives there in raw SQL for the same
+  // reason as the tables below it.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "DriverTeamChange" (
+    "id"        TEXT NOT NULL PRIMARY KEY,
+    "driverId"  TEXT NOT NULL,
+    "seasonId"  TEXT,
+    "fromRound" INTEGER NOT NULL,
+    "teamId"    TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "DriverTeamChange_driverId_fromRound_key" ON "DriverTeamChange"("driverId", "fromRound")`
+  );
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "DriverTeamChange_seasonId_idx" ON "DriverTeamChange"("seasonId")`
+  );
 
   // --- Multi-series support (migration series_model): Series table + the
   // Season.seriesId column, with an idempotent backfill so every existing
@@ -422,6 +477,13 @@ export async function ensureAppSchema(prisma) {
   // that share nothing but the file. Counts every event in the file, so the
   // numbers a report carries are not consecutive.
   await addColumn(prisma, "Report", "contactIndex", "INTEGER");
+  // Which INCIDENT a report belongs to, for the ones the stewards split into
+  // one report per driver involved (routes/admin.js POST /reports/:id/split).
+  // Reports sharing this id are the same crash seen from the desk: the steward
+  // view shows them together, one decision box per driver, while each driver
+  // still has a thread and a decision of their own. The first report's own id
+  // doubles as the group id, so a lone report needs nothing written to it.
+  await addColumn(prisma, "Report", "incidentGroupId", "TEXT");
   // How much of a decided penalty has actually reached a classification, and
   // when it did. Deciding "five seconds" in the Reports tab still does not put
   // them on the driver by itself — the results editor owns the points — but

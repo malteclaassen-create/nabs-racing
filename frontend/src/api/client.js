@@ -387,7 +387,13 @@ export const api = {
     request(`/standings/constructors/t1${seasonParam(season)}${upToQ(season, upTo)}`, { auth: true }),
   t2Standings: (season, upTo = null) =>
     request(`/standings/constructors/t2${seasonParam(season)}${upToQ(season, upTo)}`, { auth: true }),
-  races: (season) => request(`/races${seasonParam(season)}`, { auth: true }),
+  races: (season, { includeSprints } = {}) =>
+    request(
+      // includeSprints: also list the hidden sprint-classification rows of
+      // sprint weekends (results editor only — calendars never want them).
+      `/races${seasonParam(season)}${includeSprints ? `${seasonParam(season) ? "&" : "?"}includeSprints=1` : ""}`,
+      { auth: true }
+    ),
   raceResults: (id) => request(`/races/${id}/results`, { auth: true }),
   // The round's running order lap by lap, whole field — the "Lap by lap" view
   // of a classification. Only asked for when that view is opened: it is a
@@ -672,6 +678,19 @@ export const api = {
   addDriverFromDb: (sourceDriverId, teamId) =>
     request("/admin/drivers/from-db", { method: "POST", body: { sourceDriverId, teamId }, auth: true }),
   updateDriver: (id, body) => request(`/admin/drivers/${id}`, { method: "PUT", body, auth: true }),
+  // Move a driver to another team, or into/out of the Reserve pool, in one
+  // call: team and tier are set together from the target team, so they cannot
+  // end up disagreeing. `teamId` is a team of the driver's own season, or the
+  // literal "reserve". Rounds already driven keep the team they were driven
+  // for and are not touched.
+  // Record "this driver drives for this team from this round on". `preview`
+  // writes nothing and answers with the rounds that would be re-attributed and
+  // the constructor totals that would move, which the confirm dialog reads out.
+  transferDriver: (id, teamId, fromRound, preview = false) =>
+    request(`/admin/drivers/${id}/transfer`, { method: "POST", body: { teamId, fromRound, preview }, auth: true }),
+  driverTransfers: (id) => request(`/admin/drivers/${id}/transfers`, { auth: true }),
+  removeDriverTransfer: (id, changeId, preview = false) =>
+    request(`/admin/drivers/${id}/transfers/${changeId}${preview ? "?preview=1" : ""}`, { method: "DELETE", auth: true }),
   // Remove one driver row from its season. Without force the backend answers
   // 409 needsConfirm listing what would be deleted with it (attendance answers,
   // market entries); the UI confirms, then retries with force.
@@ -1033,9 +1052,14 @@ export const api = {
   // The same thing from the desk, for the in-game presses that name nobody: the
   // app knows who pressed the button and not who they are complaining about,
   // and the driver who pressed it is not always the one who comes back to the
-  // site. Neither route can ever RE-point a report that already names somebody.
+  // site. The desk can also CORRECT a name that is already there (both drivers
+  // are told); the member route above stays once-only.
   setReportAccusedAdmin: (id, accusedDriverId) =>
     request(`/admin/reports/${id}/accused`, { method: "PUT", body: { accusedDriverId }, auth: true }),
+  // The same incident, about one more driver: files a linked sibling report so
+  // each driver keeps their own private thread and their own decision.
+  splitReport: (id, accusedDriverId) =>
+    request(`/admin/reports/${id}/split`, { method: "POST", body: { accusedDriverId }, auth: true }),
   // By roster driver where possible; the raw Discord id stays for somebody who
   // is not on any roster.
   addReportViewer: (id, body) => request(`/admin/reports/${id}/viewers`, { method: "POST", body, auth: true }),

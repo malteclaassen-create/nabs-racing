@@ -142,6 +142,9 @@ export default function AdminImport({ onCommitted }) {
   // a second time, after the work.
   const [targetRaceId, setTargetRaceId] = useState("");
   const [newRoundNumber, setNewRoundNumber] = useState("");
+  // Which race of a sprint+feature weekend this file is. Only asked when the
+  // chosen event actually runs the format; everyone else never sees it.
+  const [targetSession, setTargetSession] = useState("RACE");
   const targetRace = useMemo(
     () => (seasonRaces.data || []).find((r) => r.id === targetRaceId) || null,
     [seasonRaces.data, targetRaceId]
@@ -153,8 +156,14 @@ export default function AdminImport({ onCommitted }) {
   const otherRaces = (seasonRaces.data || []).filter(
     (r) => (r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP")) !== "CHAMPIONSHIP"
   );
-  // Where the result goes on save, in the shape the commit endpoint wants.
-  const targetBody = targetRace ? { raceId: targetRace.id } : { number: Number(newRoundNumber) };
+  const isSprintWeekend = targetRace?.raceFormat === "SPRINT_FEATURE";
+  const asSprint = isSprintWeekend && targetSession === "SPRINT";
+  // Where the result goes on save, in the shape the commit endpoint wants. On
+  // a sprint weekend the session rides along: SPRINT lands on the event's
+  // hidden sprint row (the backend creates it), RACE is the feature as ever.
+  const targetBody = targetRace
+    ? { raceId: targetRace.id, ...(asSprint ? { session: "SPRINT" } : {}) }
+    : { number: Number(newRoundNumber) };
 
   const [remoteId, setRemoteId] = useState("");
   const [remoteAuto, setRemoteAuto] = useState(false);
@@ -486,7 +495,9 @@ export default function AdminImport({ onCommitted }) {
       // committed — an uploaded file wins over the remote pick. Its failure
       // must never read as a failed race import.
       let qualiMsg = "";
-      if ((qualiFile || qualiRemoteId) && res.raceId) {
+      // A sprint commit answers with the CHILD row's id; the qualifying belongs
+      // to the event, so the ride-along only runs with the feature import.
+      if (!asSprint && (qualiFile || qualiRemoteId) && res.raceId) {
         try {
           const qres = qualiFile
             ? await api.importQuali(res.raceId, qualiFile)
@@ -561,6 +572,7 @@ export default function AdminImport({ onCommitted }) {
             onChange={(e) => {
               setTargetRaceId(e.target.value);
               setNewRoundNumber("");
+              setTargetSession("RACE");
               setQualiNote(null);
               setDone(null);
             }}
@@ -601,13 +613,35 @@ export default function AdminImport({ onCommitted }) {
             />
           )}
         </div>
+        {isSprintWeekend && (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-semibold text-medium">This result file is the</span>
+            <select
+              aria-label="Which race of the sprint weekend"
+              className="input max-w-xs"
+              value={targetSession}
+              onChange={(e) => { setTargetSession(e.target.value); setDone(null); }}
+              disabled={busy}
+            >
+              <option value="RACE">Feature race (the main result)</option>
+              <option value="SPRINT">Sprint race</option>
+            </select>
+            {targetRace.sprintRaceId && (
+              <span className="pill bg-surface2 text-light">sprint result already stored</span>
+            )}
+          </div>
+        )}
         {targetRace && (
           <p className="text-sm text-medium">
-            {targetRace.resultCount > 0
-              ? `${targetRace.resultCount} results are stored for this race${
-                  targetRace.hasQuali ? ", qualifying included" : ", but no qualifying"
-                }. Importing the race again replaces the stored classification.`
-              : "Nothing is stored for this race yet."}
+            {asSprint
+              ? targetRace.sprintRaceId
+                ? "Importing the sprint again replaces the stored sprint classification. The feature result is untouched."
+                : "The sprint classification is stored alongside the event — the feature race import stays separate."
+              : targetRace.resultCount > 0
+                ? `${targetRace.resultCount} results are stored for this race${
+                    targetRace.hasQuali ? ", qualifying included" : ", but no qualifying"
+                  }. Importing the race again replaces the stored classification.`
+                : "Nothing is stored for this race yet."}
             {targetRace.number == null &&
               " Training and event results are viewable on the Races page but never count towards any standings."}
           </p>

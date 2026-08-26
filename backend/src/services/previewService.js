@@ -12,6 +12,7 @@ import {
   DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
 import { applyDropScores, buildConstructorRows } from "./standingsService.js";
+import { resultTeamId } from "../lib/resultTeam.js";
 import { getSeasonScoring } from "./seasonService.js";
 
 // The classified, points-bearing view of one proposed round (for the result
@@ -22,7 +23,10 @@ function buildRoundPreview(proposed, drivers, teams, table = DEFAULT_POINTS_TABL
   const applied = applyPenalties(proposed);
   const rawById = new Map(proposed.map((r) => [r.driverId, r.position]));
 
-  const effTeam = (r) => teamById.get(r.subForTeamId || driverById.get(r.driverId)?.teamId);
+  // Nothing is stamped yet at preview time (the round is not saved), so this
+  // falls through to the drivers' teams as they stand — which is exactly what
+  // saving would write. Same resolver as everywhere else (lib/resultTeam.js).
+  const effTeam = (r) => teamById.get(resultTeamId(r, driverById));
 
   // Tier-2 re-rank over the penalty-adjusted field.
   const t2 = {};

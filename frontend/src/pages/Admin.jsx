@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge } from "../components/ui.jsx";
-import { useAsk } from "../components/overlay.jsx";
+import { useAsk, Modal } from "../components/overlay.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import AdminImport from "../components/AdminImport.jsx";
 import AdminRatings from "../components/AdminRatings.jsx";
@@ -1064,11 +1064,15 @@ function parseRaceTimeInput(text) {
 
 function EditResults() {
   const ask = useAsk();
-  const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
+  // Sprints included: a sprint classification is edited (penalties, driver
+  // swaps, deletion) exactly like any stored result, and this picker is the
+  // one place in the admin that has to reach it.
+  const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(undefined, { includeSprints: true }), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [raceId, setRaceId] = useState("");
   const [rows, setRows] = useState([]);
-  const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceLaps: "", info: "" }); // race details editor
+  // race details editor (raceFormat: SINGLE | SPRINT_FEATURE, see lib/raceFormat.js)
+  const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "" });
   const [dotd, setDotd] = useState(""); // Driver of the Day pick
   const [dotdBy, setDotdBy] = useState(""); // who made the pick (streamer)
   // Manually recorded honours (pole / fastest lap, each with an optional lap
@@ -1109,7 +1113,7 @@ function EditResults() {
     // and one race's classification was written onto another. Everything reset
     // here is per-race and reloaded below.
     setRows([]);
-    setMeta({ track: "", date: "", qualiMinutes: "", raceLaps: "", info: "" });
+    setMeta({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "" });
     setDotd("");
     setDotdBy("");
     setHonours({ pole: "", poleTime: "", fl: "", flTime: "" });
@@ -1141,6 +1145,8 @@ function EditResults() {
           track: d.race?.track || "",
           date: toLocalInput(d.race?.date),
           qualiMinutes: d.race?.qualiMinutes ?? "",
+          raceFormat: d.race?.raceFormat || "SINGLE",
+          sprintLaps: d.race?.sprintLaps ?? "",
           raceLaps: d.race?.raceLaps ?? "",
           info: d.race?.info || "",
         });
@@ -1469,6 +1475,8 @@ function EditResults() {
         track: meta.track,
         date: fromLocalInput(meta.date),
         qualiMinutes: meta.qualiMinutes === "" ? null : meta.qualiMinutes,
+        raceFormat: meta.raceFormat,
+        sprintLaps: meta.raceFormat === "SPRINT_FEATURE" && meta.sprintLaps !== "" ? meta.sprintLaps : null,
         raceLaps: meta.raceLaps === "" ? null : meta.raceLaps,
         // NOT the highlights link: that is edited in Photos & Videos, and an
         // omitted key leaves it alone. Sending it from here would mean saving a
@@ -1612,8 +1620,9 @@ function EditResults() {
             })
             .map((r) => {
               const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-              const label =
-                kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${r.number}`;
+              const label = r.sprintOf
+                ? "Sprint"
+                : kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${r.number}`;
               return (
                 <option key={r.id} value={r.id}>
                   {label} · {r.track}
@@ -1637,11 +1646,25 @@ function EditResults() {
             <input className="input" type="datetime-local" value={meta.date}
               onChange={(e) => setMeta({ ...meta, date: e.target.value })} />
           </Field>
+          <Field label="Race day" tone="plain">
+            <select className="input w-56" value={meta.raceFormat}
+              onChange={(e) =>
+                setMeta({ ...meta, raceFormat: e.target.value, sprintLaps: e.target.value === "SINGLE" ? "" : meta.sprintLaps })}>
+              <option value="SINGLE">One race</option>
+              <option value="SPRINT_FEATURE">Sprint + feature race</option>
+            </select>
+          </Field>
           <Field label="Qualifying (min)" tone="plain">
             <input className="input w-32" type="number" min="1" value={meta.qualiMinutes}
               onChange={(e) => setMeta({ ...meta, qualiMinutes: e.target.value })} />
           </Field>
-          <Field label="Race laps" tone="plain">
+          {meta.raceFormat === "SPRINT_FEATURE" && (
+            <Field label="Sprint laps" tone="plain">
+              <input className="input w-32" type="number" min="1" value={meta.sprintLaps}
+                onChange={(e) => setMeta({ ...meta, sprintLaps: e.target.value })} />
+            </Field>
+          )}
+          <Field label={meta.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
             <input className="input w-32" type="number" min="1" value={meta.raceLaps}
               onChange={(e) => setMeta({ ...meta, raceLaps: e.target.value })} />
           </Field>
@@ -2104,6 +2127,13 @@ function Drivers() {
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // A team change is a transfer with a ROUND on it, so the dropdown does not
+  // save anything by itself: it opens the dialog with that team preselected.
+  // The dialog is where the round is chosen and where the consequences are
+  // shown, because a transfer backdated into rounds already driven moves real
+  // championship points and must never happen on a stray click.
+  const [transfer, setTransfer] = useState(null);
+
   // Remove a driver row from THIS season. The backend refuses outright when the
   // row has race results, and otherwise answers with a summary of what hangs on
   // it (attendance answers, market entries) — that summary IS the confirm text,
@@ -2329,13 +2359,20 @@ function Drivers() {
                     <span className={`min-w-0 flex-1 truncate font-semibold ${d.isActive ? "text-dark" : "text-light line-through"}`}>
                       {d.name}
                     </span>
+                    {/* A team change is a transfer, not a field edit: it takes
+                        the tier with it and asks first. The Reserve entry is
+                        the season's own pool, or a plain destination for a
+                        season that has never needed one. */}
                     <select aria-label={`Team of ${d.name}`} className="input py-1 text-xs" value={d.teamId} disabled={busy}
-                      onChange={(e) => patchDriver(d, { teamId: e.target.value })}>
+                      title="Opens the transfer dialog: pick the round the change takes effect from. Rounds already driven keep their team unless you deliberately backdate the move."
+                      onChange={(e) => setTransfer({ driver: d, teamId: e.target.value })}>
                       {teamGroups.map((o) => (
                         <option key={o.id} value={o.id}>{o.name}</option>
                       ))}
+                      {!teamGroups.some((o) => o.tier === 0) && <option value="reserve">Reserve</option>}
                     </select>
                     <select aria-label={`Tier of ${d.name}`} className="input py-1 text-xs" value={d.tier} disabled={busy}
+                      title="Normally set by the team: moving a driver takes their tier with it. Only change it here to correct a mismatch."
                       onChange={(e) => patchDriver(d, { tier: Number(e.target.value) })}>
                       <option value={1}>T1</option>
                       <option value={2}>T2</option>
@@ -2405,6 +2442,16 @@ function Drivers() {
     </div>
 
     <SafetyCarDrivers drivers={allDrivers} busy={busy} onSet={patchDriver} />
+
+    {transfer && (
+      <TransferDialog
+        driver={transfer.driver}
+        initialTeamId={transfer.teamId}
+        teams={teamGroups}
+        onClose={() => setTransfer(null)}
+        onDone={(text) => { setTransfer(null); setMsg(text); reload(); driverDb.reload(); }}
+      />
+    )}
     </div>
   );
 }
@@ -2418,6 +2465,222 @@ function Drivers() {
 // source of truth. The mark rides on the SEASON row, so it follows whichever
 // season the admin bar is editing, and it shows up on that driver's profile, in
 // a race classification and on the live board.
+// ---------------------------------------------------------------------------
+// Transfer dialog: "<driver> drives for <team> from round <n>".
+//
+// The round is the whole point. Pick one still ahead and nothing happens today,
+// the move simply waits for that round to be saved. Pick one already driven and
+// the rounds since are re-attributed, which moves constructor points. So the
+// dialog asks the server what it WOULD do and prints the answer before the
+// button means anything. Nothing here writes until Confirm.
+// ---------------------------------------------------------------------------
+function TransferDialog({ driver, initialTeamId, teams, onClose, onDone }) {
+  const { data: races } = useApi(useCallback(() => api.races(), []));
+  const [teamId, setTeamId] = useState(initialTeamId);
+  const [fromRound, setFromRound] = useState(null);
+  const [plan, setPlan] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [recorded, setRecorded] = useState([]);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Only scored rounds can carry a transfer: a training night has no number and
+  // nothing to attribute.
+  const rounds = (races || []).filter((r) => r.number != null).sort((a, b) => a.number - b.number);
+  const nextRound = rounds.find((r) => !r.isCompleted)?.number ?? rounds[rounds.length - 1]?.number ?? 1;
+
+  useEffect(() => {
+    if (fromRound == null && rounds.length) setFromRound(nextRound);
+  }, [rounds.length]);
+
+  const loadRecorded = useCallback(async () => {
+    try {
+      setRecorded(await api.driverTransfers(driver.id));
+    } catch {
+      /* nothing on record yet */
+    }
+  }, [driver.id]);
+  useEffect(() => {
+    loadRecorded();
+  }, [loadRecorded]);
+
+  // Ask the server what this combination would do. Re-runs on every change of
+  // team or round, because both change the answer.
+  useEffect(() => {
+    let alive = true;
+    if (!teamId || fromRound == null) return undefined;
+    setLoading(true);
+    setError(null);
+    api
+      .transferDriver(driver.id, teamId, fromRound, true)
+      .then((p) => alive && setPlan(p))
+      .catch((e) => {
+        if (!alive) return;
+        setPlan(null);
+        setError(e.message);
+      })
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [driver.id, teamId, fromRound, reloadKey]);
+
+  async function confirm() {
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await api.transferDriver(driver.id, teamId, fromRound, false);
+      const to = out.to?.name || "the new team";
+      onDone(
+        out.appliesLater
+          ? `Recorded: ${driver.name} drives for ${to} from round ${out.fromRound}. Nothing has changed yet, the move applies when that round is saved.`
+          : `${driver.name} drives for ${to} from round ${out.fromRound}.` +
+              (out.rounds?.length ? ` ${out.rounds.length} round${out.rounds.length === 1 ? "" : "s"} re-attributed.` : "")
+      );
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
+  async function undo(change) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.removeDriverTransfer(driver.id, change.id, false);
+      await loadRecorded();
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const moved = plan?.rounds || [];
+  const teamName = teams.find((t) => t.id === teamId)?.name || (teamId === "reserve" ? "Reserve" : "");
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Transfer ${driver.name}`}
+      size="lg"
+      description="Pick the team and the round the change takes effect from."
+    >
+      <div className="space-y-4 text-sm">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-eyebrow">To team</span>
+            <select className="input mt-1 w-full" value={teamId} disabled={busy} onChange={(e) => setTeamId(e.target.value)}>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+              {!teams.some((t) => t.tier === 0) && <option value="reserve">Reserve</option>}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-eyebrow">From round</span>
+            <select
+              className="input mt-1 w-full"
+              value={fromRound ?? ""}
+              disabled={busy}
+              onChange={(e) => setFromRound(Number(e.target.value))}
+            >
+              {rounds.map((r) => (
+                <option key={r.id} value={r.number}>
+                  {`R${r.number} ${r.track}${r.isCompleted ? " (driven)" : ""}${r.number === nextRound ? " · next" : ""}`}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {/* What this would do, in the league's own terms, before it happens. */}
+        <div className="rounded-xl border border-border bg-surface2 p-3">
+          {loading && <p className="text-light">Working out what that would change...</p>}
+          {!loading && plan?.appliesLater && (
+            <p className="text-medium">
+              Round {plan.fromRound} has not been driven yet, so nothing changes today. {driver.name} stays with{" "}
+              {plan.from?.name || "their team"} until then, and the move applies by itself when round {plan.fromRound} is
+              saved.
+            </p>
+          )}
+          {!loading && plan && !plan.appliesLater && moved.length === 0 && (
+            <p className="text-medium">
+              {driver.name} drives for {teamName} from round {plan.fromRound} on. No round already driven is affected.
+            </p>
+          )}
+          {!loading && moved.length > 0 && (
+            <div className="space-y-3">
+              <p className="font-semibold text-dark">
+                This corrects {moved.length} round{moved.length === 1 ? "" : "s"} {driver.name} has already driven, so the
+                constructor points of those rounds move too:
+              </p>
+              {moved.map((r) => (
+                <div key={r.raceId} className="border-t border-border pt-2 first:border-0 first:pt-0">
+                  <p className="font-semibold text-dark">
+                    R{r.number} {r.track}: {r.from} to {r.to}
+                  </p>
+                  <ul className="mt-1 space-y-0.5 text-xs text-medium">
+                    {r.delta.map((d) => (
+                      <li key={`${d.teamId}-${d.tier}`}>
+                        {d.name} (Tier {d.tier}): {d.from} to {d.to}
+                        <span className={d.to > d.from ? "ml-1 font-semibold text-emerald-500" : "ml-1 font-semibold text-rose-500"}>
+                          {d.to > d.from ? `+${d.to - d.from}` : d.to - d.from}
+                        </span>
+                      </li>
+                    ))}
+                    {r.delta.length === 0 && <li>No constructor points change.</li>}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {recorded.length > 0 && (
+          <div>
+            <span className="text-eyebrow">Already on record</span>
+            <ul className="mt-1 divide-y divide-border">
+              {recorded.map((c) => (
+                <li key={c.id} className="flex items-center justify-between gap-3 py-1.5">
+                  <span className="text-medium">
+                    From round {c.fromRound}: {c.teamName}
+                  </span>
+                  <button
+                    className="transition text-xs font-semibold text-rose-500 hover:underline"
+                    disabled={busy}
+                    onClick={() => undo(c)}
+                  >
+                    Take back
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {error && <p className="text-sm font-semibold text-rose-500">{error}</p>}
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button className="btn-primary" disabled={busy || loading || !plan} onClick={confirm}>
+            {moved.length > 0 ? `Move and correct ${moved.length} round${moved.length === 1 ? "" : "s"}` : "Record transfer"}
+          </button>
+          <button
+            className="transition text-sm font-semibold text-light hover:text-medium"
+            disabled={busy}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function SafetyCarDrivers({ drivers, busy, onSet }) {
   const [pick, setPick] = useState("");
   const marked = drivers.filter((d) => d.role === "safety");
@@ -2708,7 +2971,7 @@ function DiscordEvents() {
   const [busy, setBusy] = useState(false);
   const [event, setEvent] = useState({
     number: "", track: "", date: "", type: "CHAMPIONSHIP",
-    qualiMinutes: "", raceLaps: "", info: "",
+    qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "",
   });
 
   async function saveWebhook(e) {
@@ -2762,6 +3025,8 @@ function DiscordEvents() {
         type: event.type,
         seasonId: current?.id,
         qualiMinutes: event.qualiMinutes || null,
+        raceFormat: event.raceFormat,
+        sprintLaps: event.raceFormat === "SPRINT_FEATURE" ? event.sprintLaps || null : null,
         raceLaps: event.raceLaps || null,
         info: event.info || null,
       });
@@ -2772,7 +3037,10 @@ function DiscordEvents() {
             ? `Training session "${event.track}" created.`
             : `Round ${event.number} created.`
       );
-      setEvent({ number: "", track: "", date: "", type: "CHAMPIONSHIP", qualiMinutes: "", raceLaps: "", info: "" });
+      setEvent({
+        number: "", track: "", date: "", type: "CHAMPIONSHIP",
+        qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "",
+      });
       reloadRaces();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -2807,6 +3075,8 @@ function DiscordEvents() {
       number: r.number ?? "",
       hasResults: (r.resultCount || 0) > 0,
       qualiMinutes: r.qualiMinutes ?? "",
+      raceFormat: r.raceFormat || "SINGLE",
+      sprintLaps: r.sprintLaps ?? "",
       raceLaps: r.raceLaps ?? "",
       info: r.info || "",
     });
@@ -2821,6 +3091,8 @@ function DiscordEvents() {
         type: edit.type,
         number: edit.type === "CHAMPIONSHIP" && edit.number !== "" ? Number(edit.number) : undefined,
         qualiMinutes: edit.qualiMinutes === "" ? null : edit.qualiMinutes,
+        raceFormat: edit.raceFormat,
+        sprintLaps: edit.raceFormat === "SPRINT_FEATURE" && edit.sprintLaps !== "" ? edit.sprintLaps : null,
         raceLaps: edit.raceLaps === "" ? null : edit.raceLaps,
         info: edit.info || null,
       });
@@ -2902,11 +3174,34 @@ function DiscordEvents() {
             onChange={(e) => setEvent({ ...event, date: e.target.value })} />
           {/* session format + free text: all optional, shown in the Discord
               announcement and on the site's upcoming-race panels */}
-          <div className="grid grid-cols-2 gap-3">
-            <input aria-label="Qualifying (min)" className="input" type="number" min="1" placeholder="Qualifying (min)" value={event.qualiMinutes}
-              onChange={(e) => setEvent({ ...event, qualiMinutes: e.target.value })} />
-            <input aria-label="Race laps" className="input" type="number" min="1" placeholder="Race laps" value={event.raceLaps}
-              onChange={(e) => setEvent({ ...event, raceLaps: e.target.value })} />
+          <Field label="Race day" tone="plain">
+            <select className="input" value={event.raceFormat}
+              onChange={(e) =>
+                setEvent({ ...event, raceFormat: e.target.value, sprintLaps: e.target.value === "SINGLE" ? "" : event.sprintLaps })}>
+              <option value="SINGLE">One race</option>
+              <option value="SPRINT_FEATURE">Sprint + feature race (F2 style)</option>
+            </select>
+          </Field>
+          {/* Labelled rather than placeholder-only: a sprint day puts three bare
+              numbers in a row, and "15 12 20" says nothing once they're typed. */}
+          <div className={`grid gap-3 ${event.raceFormat === "SPRINT_FEATURE" ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
+            <Field label="Qualifying (min)" tone="plain">
+              <input aria-label="Qualifying (min)" className="input" type="number" min="1" placeholder="e.g. 15" value={event.qualiMinutes}
+                onChange={(e) => setEvent({ ...event, qualiMinutes: e.target.value })} />
+            </Field>
+            {event.raceFormat === "SPRINT_FEATURE" && (
+              <Field label="Sprint laps" tone="plain">
+                <input aria-label="Sprint laps" className="input" type="number" min="1" placeholder="e.g. 12" value={event.sprintLaps}
+                  onChange={(e) => setEvent({ ...event, sprintLaps: e.target.value })} />
+              </Field>
+            )}
+            <Field label={event.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
+              <input
+                aria-label={event.raceFormat === "SPRINT_FEATURE" ? "Feature race laps" : "Race laps"}
+                className="input" type="number" min="1" placeholder="e.g. 20"
+                value={event.raceLaps}
+                onChange={(e) => setEvent({ ...event, raceLaps: e.target.value })} />
+            </Field>
           </div>
           <textarea aria-label="Details for the announcement & website: rules, mods, links… (optional)" className="input min-h-20" placeholder="Details for the announcement & website: rules, mods, links… (optional)"
             value={event.info} onChange={(e) => setEvent({ ...event, info: e.target.value })} />
@@ -2977,11 +3272,25 @@ function DiscordEvents() {
                         <input className="input" type="datetime-local" value={edit.date}
                           onChange={(e) => setEdit({ ...edit, date: e.target.value })} />
                       </Field>
+                      <Field label="Race day" tone="plain">
+                        <select className="input" value={edit.raceFormat}
+                          onChange={(e) =>
+                            setEdit({ ...edit, raceFormat: e.target.value, sprintLaps: e.target.value === "SINGLE" ? "" : edit.sprintLaps })}>
+                          <option value="SINGLE">One race</option>
+                          <option value="SPRINT_FEATURE">Sprint + feature race</option>
+                        </select>
+                      </Field>
                       <Field label="Qualifying (min)" tone="plain">
                         <input className="input" type="number" min="1" value={edit.qualiMinutes}
                           onChange={(e) => setEdit({ ...edit, qualiMinutes: e.target.value })} />
                       </Field>
-                      <Field label="Race laps" tone="plain">
+                      {edit.raceFormat === "SPRINT_FEATURE" && (
+                        <Field label="Sprint laps" tone="plain">
+                          <input className="input" type="number" min="1" value={edit.sprintLaps}
+                            onChange={(e) => setEdit({ ...edit, sprintLaps: e.target.value })} />
+                        </Field>
+                      )}
+                      <Field label={edit.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
                         <input className="input" type="number" min="1" value={edit.raceLaps}
                           onChange={(e) => setEdit({ ...edit, raceLaps: e.target.value })} />
                       </Field>

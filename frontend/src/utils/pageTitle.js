@@ -72,6 +72,24 @@ export function disciplineOf(game, seriesName) {
   return /\bf1\b|formula/i.test(`${game || ""} ${seriesName || ""}`) ? "Formula 1" : null;
 }
 
+// What to call a season in a heading or a title.
+//
+// The name is free text an admin types, and a season is often stored with just
+// its number in it ("8"), which reads fine in the switcher's own list and
+// nowhere else: "8 driver standings" was a real page title. A name that is
+// nothing but digits therefore gets the word in front of it; anything the admin
+// actually named ("Winter Series") is left alone.
+//
+// The server writes the same label into the shipped HTML — see the `label` in
+// backend/src/lib/pageMeta.js, which follows this rule too. The two must agree,
+// or the tab and the search result argue about what the season is called.
+export function seasonLabelOf(season) {
+  if (!season) return null;
+  const name = String(season.name || "").trim();
+  if (name && !/^\d+$/.test(name)) return name;
+  return season.number != null ? `Season ${season.number}` : name || null;
+}
+
 // What each listing page calls itself. `label` is the season being shown; the
 // two pages that are not about a single season ignore it.
 const SECTIONS = {
@@ -94,7 +112,7 @@ const SEASONLESS = new Set(["records", "live"]);
 // context rows; `multi` says whether more than one series exists, which is the
 // only case where naming the series earns its space.
 export function titleFor(pathname, { season, series, multi } = {}) {
-  const label = season?.name || (season?.number ? `Season ${season.number}` : null);
+  const label = seasonLabelOf(season);
   const isPrimary = !multi || !!series?.isActive;
   const tail = isPrimary || !series?.name ? BRAND : `${series.name} · ${BRAND}`;
 

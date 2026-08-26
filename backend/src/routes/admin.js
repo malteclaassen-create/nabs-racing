@@ -23,7 +23,8 @@ import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, streamFullBackupZip, deleteBackup, pruneBackupsTo } from "../services/backupService.js";
 import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnostics.js";
 import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
-import { parseFormatNumber } from "../lib/raceFormat.js";
+import { parseFormatNumber, parseRaceFormat } from "../lib/raceFormat.js";
+import { ensureSprintChild, readSprintChildren } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { writeRaceHero } from "../lib/raceHero.js";
 import { deleteLap as deleteTelemetryLap, storedSummary as telemetryStoredSummary } from "../lib/telemetryLaps.js";
@@ -52,7 +53,8 @@ import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
   dbThreadVoices, readFileRetentionDays, writeFileRetentionDays, RETENTION_CHOICES,
-  dbSetAccused, dbPenaltiesForRace, dbMarkPenaltiesApplied,
+  dbSetAccused, dbRepointAccused, dbCreateReport, dbLinkedReports, dbEnsureIncidentGroup,
+  dbPenaltiesForRace, dbMarkPenaltiesApplied,
 } from "../lib/reports.js";
 import { sweepReportFiles } from "../services/reportHousekeeping.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
@@ -73,6 +75,7 @@ import {
 } from "../lib/members.js";
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
+import { applyTransfer, removeTransfer, readTransfers } from "../services/driverTransfers.js";
 import {
   dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups,
   dbMergeDuplicateAnswers,
@@ -578,6 +581,20 @@ router.post("/races/commit", async (req, res, next) => {
         });
     if (raceId && !race) return res.status(404).json({ error: "Race not found" });
 
+    // session:"SPRINT" — this file is the SPRINT of a sprint+feature weekend.
+    // The classification goes onto the event's hidden child row (find-or-create,
+    // lib/sprintRaces.js), so the event's own results stay the feature race and
+    // one evening can hold both. Only meaningful against an existing race.
+    const isSprint = req.body.session === "SPRINT";
+    if (isSprint) {
+      if (!race) return res.status(400).json({ error: "A sprint result needs an existing race (raceId)" });
+      const child = await ensureSprintChild(prisma, race);
+      race = await prisma.race.findFirst({
+        where: { id: child.id },
+        include: { _count: { select: { results: true } } },
+      });
+    }
+
     // Overwrite guard: committing over a round that already has stored results
     // replaces them entirely. Require an explicit confirmation from the UI.
     if (race && race._count.results > 0 && !req.body.overwrite) {
@@ -597,7 +614,7 @@ router.post("/races/commit", async (req, res, next) => {
         },
       });
       await seedRaceCountry(prisma, race.id, race.track);
-    } else {
+    } else if (!isSprint) {
       const renamed = track && track !== race.track;
       race = await prisma.race.update({
         where: { id: race.id },
@@ -609,11 +626,12 @@ router.post("/races/commit", async (req, res, next) => {
     // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
     await tryCreateBackup(prisma, `before-import-${race.number != null ? `r${race.number}` : "training"}`);
     const saveSummary = await saveRaceResults(prisma, race.id, results);
-    // Bell notification (deduped per race, so re-imports stay silent).
-    if (results.length) notifyResultsSaved(prisma, race);
+    // Bell notification (deduped per race, so re-imports stay silent). A sprint
+    // child stays quiet — the evening's bell rings once, with the feature.
+    if (results.length && !isSprint) notifyResultsSaved(prisma, race);
     // New results can tip a driver over a card-unlock threshold (and the finale
     // seals titles) — reconcile the season's linked drivers' bells.
-    if (results.length) notifyCardUnlocksForSeason(prisma, race.seasonId);
+    if (results.length && !isSprint) notifyCardUnlocksForSeason(prisma, race.seasonId);
     // Move the raw JSON into its season folder so this round's telemetry can be
     // recomputed later. Best-effort: never fails the commit.
     if (archiveKey) {
@@ -621,7 +639,7 @@ router.post("/races/commit", async (req, res, next) => {
       archiveCommitted(archiveKey, {
         seasonNumber: season?.number ?? null,
         raceNumber: race.number,
-        track: race.track,
+        track: isSprint ? `${race.track} Sprint` : race.track,
       });
     }
     // Steam GUID capture is best-effort; any confirmed mapping that would have
@@ -2125,6 +2143,67 @@ router.put("/drivers/:id", async (req, res, next) => {
   }
 });
 
+// Driver transfers, recorded against a ROUND (services/driverTransfers.js).
+//
+// POST /api/admin/drivers/:id/transfer   { teamId, fromRound, preview? }
+//   "From round 5 they drive for Ferrari." teamId is a team of the driver's own
+//   season or the literal "reserve"; fromRound is a round number that season
+//   actually has. With preview: true nothing is written and the answer lists
+//   every round that would be re-attributed and every constructor total that
+//   would move, which is what the confirm dialog reads out.
+//
+//   A round still ahead changes nothing today: the transfer waits, and applies
+//   itself when that round is saved. A round already driven is corrected, which
+//   DOES move constructor points, because the old attribution was wrong.
+//
+// GET    /api/admin/drivers/:id/transfers          what is on record
+// DELETE /api/admin/drivers/:id/transfers/:changeId  take one back (?preview=1)
+router.post("/drivers/:id/transfer", async (req, res, next) => {
+  try {
+    const out = await applyTransfer(prisma, {
+      driverId: req.params.id,
+      teamId: req.body?.teamId,
+      fromRound: req.body?.fromRound,
+      dryRun: req.body?.preview === true,
+    });
+    res.json(out);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/drivers/:id/transfers", async (req, res, next) => {
+  try {
+    const rows = await readTransfers(prisma, { driverId: req.params.id });
+    const teams = await prisma.team.findMany({ where: { id: { in: rows.map((r) => r.teamId) } } });
+    const byId = new Map(teams.map((t) => [t.id, t]));
+    res.json(
+      rows.map((r) => ({
+        id: r.id,
+        fromRound: r.fromRound,
+        teamId: r.teamId,
+        teamName: byId.get(r.teamId)?.name || r.teamId,
+        tier: byId.get(r.teamId)?.tier ?? null,
+      }))
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/drivers/:id/transfers/:changeId", async (req, res, next) => {
+  try {
+    const out = await removeTransfer(prisma, {
+      driverId: req.params.id,
+      changeId: req.params.changeId,
+      dryRun: req.query.preview === "1",
+    });
+    res.json(out);
+  } catch (e) {
+    next(e);
+  }
+});
+
 // DELETE /api/admin/drivers/:id -> remove ONE driver row from ITS season (the
 // other seasons' rows of the same person stay). Guard rails:
 //   - a row with race results can never be deleted (fix the results first, or
@@ -3076,8 +3155,10 @@ router.post("/races/:id/results-post", resultPostImages, async (req, res, next) 
 });
 
 // Validate the optional announcement fields shared by create & edit below:
-// info (free text for rules/mods), qualiMinutes, raceLaps. Returns { error }
-// or { info?, qualiMinutes?, raceLaps? } with only the supplied keys set.
+// info (free text for rules/mods), qualiMinutes, raceLaps, and the race-day
+// shape (raceFormat + sprintLaps). Returns { error } or
+// { info?, qualiMinutes?, raceLaps?, raceFormat?, sprintLaps? } with only the
+// supplied keys set.
 function parseEventExtras(body) {
   const out = {};
   if (body.info !== undefined) {
@@ -3091,13 +3172,20 @@ function parseEventExtras(body) {
   const laps = parseFormatNumber(body.raceLaps, "Race laps", 999);
   if (laps.error) return { error: laps.error };
   if (laps.ok) out.raceLaps = laps.value;
+  const shape = parseRaceFormat(body.raceFormat);
+  if (shape.error) return { error: shape.error };
+  if (shape.ok) out.raceFormat = shape.value;
+  const sprint = parseFormatNumber(body.sprintLaps, "Sprint laps", 999);
+  if (sprint.error) return { error: sprint.error };
+  if (sprint.ok) out.sprintLaps = sprint.value;
   const highlights = parseHighlightsUrl(body.highlightsUrl);
   if (highlights.error) return { error: highlights.error };
   if (highlights.ok) out.highlightsUrl = highlights.value;
   return out;
 }
 
-// qualiMinutes/raceLaps live outside the generated client -> raw write.
+// qualiMinutes/raceLaps/raceFormat/sprintLaps live outside the generated
+// client -> raw write.
 async function writeRaceFormat(raceId, extras) {
   if (extras.qualiMinutes !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Race" SET "qualiMinutes" = ? WHERE "id" = ?`, extras.qualiMinutes, raceId);
@@ -3105,13 +3193,25 @@ async function writeRaceFormat(raceId, extras) {
   if (extras.raceLaps !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Race" SET "raceLaps" = ? WHERE "id" = ?`, extras.raceLaps, raceId);
   }
+  if (extras.raceFormat !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "raceFormat" = ? WHERE "id" = ?`, extras.raceFormat, raceId);
+  }
+  // Turning the sprint back off takes its distance with it, so a weekend that
+  // ran the format once cannot come back as "one race" still carrying a sprint
+  // distance nobody can see or clear.
+  if (extras.raceFormat === "SINGLE") {
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "sprintLaps" = NULL WHERE "id" = ?`, raceId);
+  } else if (extras.sprintLaps !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "sprintLaps" = ? WHERE "id" = ?`, extras.sprintLaps, raceId);
+  }
   if (extras.highlightsUrl !== undefined) {
     await writeRaceHighlights(prisma, raceId, extras.highlightsUrl);
   }
 }
 
 // POST /api/admin/events  { number?, track, date?, seasonId?, type?,
-//                           isSpecialEvent?, info?, qualiMinutes?, raceLaps? }
+//                           isSpecialEvent?, info?, qualiMinutes?, raceLaps?,
+//                           raceFormat?, sprintLaps? }
 // Creates an upcoming race. `type` picks what it is: CHAMPIONSHIP (scored
 // round, needs a number), TRAINING (practice session — no number, not scored,
 // RSVP works) or SPECIAL (special event). The legacy isSpecialEvent flag still
@@ -3155,7 +3255,8 @@ router.post("/events", async (req, res, next) => {
 });
 
 // PUT /api/admin/events/:id  { track?, date?, type?, number?, info?,
-//                              qualiMinutes?, raceLaps? }
+//                              qualiMinutes?, raceLaps?, raceFormat?,
+//                              sprintLaps? }
 // Edit a race's details AFTER the fact — e.g. rename the raw AC track id
 // ("acu_cota_2021") to a display name ("COTA") once the round is imported.
 // Works for completed rounds too; results and scoring are untouched. Changing
@@ -3270,18 +3371,26 @@ router.delete("/events/:id", async (req, res, next) => {
       include: { _count: { select: { results: true } } },
     });
     if (!race) return res.status(404).json({ error: "Race not found" });
+    // A sprint weekend's hidden child goes wherever its event goes — and its
+    // stored sprint results count against the delete guard exactly like the
+    // event's own, so "no results" really means the whole evening is empty.
+    const childId = (await readSprintChildren(prisma, [race.id])).get(race.id) || null;
+    const childResults = childId ? await prisma.raceResult.count({ where: { raceId: childId } }) : 0;
     const force = req.query.force === "1" || req.query.force === "true";
-    if (race._count.results > 0 && !force) {
+    if (race._count.results + childResults > 0 && !force) {
       return res.status(409).json({ error: "Race has results; edit them instead of deleting." });
     }
-    if (race._count.results > 0) {
+    if (race._count.results + childResults > 0) {
       await tryCreateBackup(prisma, `before-delete-r${race.number ?? "x"}`);
     }
     // Raw column without a foreign key (see lib/downloads.js) — unlink by hand.
     // .catch: the Download table is created lazily and may not exist yet.
-    await prisma
-      .$executeRawUnsafe(`UPDATE "Download" SET "raceId" = NULL WHERE "raceId" = ?`, race.id)
-      .catch(() => {});
+    for (const id of [race.id, childId].filter(Boolean)) {
+      await prisma
+        .$executeRawUnsafe(`UPDATE "Download" SET "raceId" = NULL WHERE "raceId" = ?`, id)
+        .catch(() => {});
+    }
+    if (childId) await prisma.race.delete({ where: { id: childId } });
     await prisma.race.delete({ where: { id: race.id } });
     res.json({ ok: true });
   } catch (e) {
@@ -5067,6 +5176,17 @@ router.get("/reports/:id", async (req, res, next) => {
       ).map((m) => ({ ...m, mine: m.mine || m.author === "ADMIN" })),
       viewers: await dbViewers(prisma, report.id),
       attachments: await dbAttachments(prisma, report.id),
+      // The same incident's OTHER reports — the ones split off so each driver
+      // involved has their own thread. The desk draws a decision box for each,
+      // so a two-penalty crash is decided on one screen.
+      linked: (await dbLinkedReports(prisma, report).catch(() => [])).map((l) => ({
+        id: l.id,
+        accusedDriverId: l.accusedDriverId,
+        accusedName: l.accusedName,
+        status: l.status,
+        verdict: l.verdict,
+        penaltySeconds: l.penaltySeconds,
+      })),
     });
   } catch (e) {
     next(e);
@@ -5147,12 +5267,11 @@ router.get("/reports/:id/files/:attId", async (req, res, next) => {
 // presses are worked through here, after the race, against the round's own
 // result file. Nobody waits for a driver who has gone to bed.
 //
-// The one thing NOBODY can do is re-point a report that already names somebody.
-// That rule lives in dbSetAccused rather than here, so no route can get it
-// wrong: naming a driver lets them in and tells them, and changing it
-// afterwards would leave somebody sitting in a thread that is no longer about
-// them, having already read it. A report pointed at the wrong driver is deleted
-// and filed again, which is visible, rather than quietly re-aimed.
+// The desk can also CORRECT a name that is already there — a dropdown worked
+// through after a long evening will sometimes have the wrong row clicked. The
+// reporter's own naming stays once-only (lib/reports.js dbSetAccused); a
+// steward's correction goes through dbRepointAccused, which tells the driver
+// named by mistake as well as the right one, so nothing is quietly re-aimed.
 
 // One report, one driver. Returns the report as it now stands.
 async function nameAccused(reportId, driverId) {
@@ -5164,13 +5283,65 @@ async function nameAccused(reportId, driverId) {
   if (!driver) throw Object.assign(new Error("No such driver"), { status: 400 });
   // The NAME comes from the roster row, never from the request: it is the
   // byline the thread is read under for the rest of its life.
-  return dbSetAccused(prisma, report, { accusedDriverId: driver.id, accusedName: driver.name, by: "STEWARD" });
+  const named = { accusedDriverId: driver.id, accusedName: driver.name };
+  return report.accusedDriverId
+    ? dbRepointAccused(prisma, report, named)
+    : dbSetAccused(prisma, report, { ...named, by: "STEWARD" });
 }
 
 // PUT /api/admin/reports/:id/accused  { accusedDriverId }
 router.put("/reports/:id/accused", async (req, res, next) => {
   try {
     const report = await nameAccused(req.params.id, req.body?.accusedDriverId);
+    res.json({ ok: true, report });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// POST /api/admin/reports/:id/split  { accusedDriverId }
+//
+// The same incident, about ONE MORE driver. A first-corner mess regularly ends
+// with two penalties, and a report can only ever name one driver — a report is
+// a private thread between the reporter, ONE accused and the stewards, and its
+// decision is one verdict about one driver. Widening either would break both.
+// So the second penalty gets a report of its own: this copies the incident —
+// round, lap, moment, matched contact, the reporter's own words — into a new
+// report naming the second driver, who is let in and told exactly as a fresh
+// report tells them. Each driver keeps their own thread and their own decision,
+// and the penalties arithmetic (one row per report) never learns anything new.
+router.post("/reports/:id/split", async (req, res, next) => {
+  try {
+    const src = await dbGetReport(prisma, req.params.id);
+    if (!src) return res.status(404).json({ error: "Report not found" });
+    const driver = await prisma.driver
+      .findUnique({ where: { id: String(req.body?.accusedDriverId || "") }, select: { id: true, name: true } })
+      .catch(() => null);
+    if (!driver) return res.status(400).json({ error: "No such driver" });
+    if (String(driver.id) === String(src.accusedDriverId || "")) {
+      return res.status(400).json({ error: "This report is already about them" });
+    }
+    // The two reports stay one incident at the desk: the group id is what lets
+    // the open report show a decision box for every driver involved.
+    const groupId = await dbEnsureIncidentGroup(prisma, src);
+    const report = await dbCreateReport(prisma, {
+      incidentGroupId: groupId,
+      raceId: src.raceId,
+      lap: src.lap,
+      reporterDiscordId: src.reporterDiscordId,
+      reporterName: src.reporterName,
+      accusedDriverId: driver.id,
+      accusedName: driver.name,
+      // The reporter's own words, with one line under them saying why this
+      // thread reads like it was written about the incident as a whole: it was.
+      body: `${src.body}\n\n— The stewards split this incident into one report per driver involved; this thread is about ${driver.name}.`,
+      source: src.source,
+      incidentAt: src.incidentAt,
+      contactKph: src.contactKph,
+      contactSecond: src.contactSecond,
+      contactIndex: src.contactIndex,
+    });
     res.json({ ok: true, report });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });

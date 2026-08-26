@@ -27,6 +27,7 @@ import { getPrivateSeasonIds, getSeasonScoring } from "../services/seasonService
 import { applyPenalties, getDriverResultPoints } from "../services/pointsCalculator.js";
 import { getNameOverrides } from "./persons.js";
 import { seasonStandings, seasonRounds, constructorStandings } from "./crawlTables.js";
+import { seasonLabel } from "./seo.js";
 
 // How many finishers of a round are worth listing. The results table shows the
 // whole field, so listing the whole field is the honest mirror; the cap is only
@@ -282,6 +283,49 @@ function classificationTable(base, rows, scores) {
   };
 }
 
+// The landing page's strapline and its opening pitch: what the league IS,
+// rather than how its current season is going.
+//
+// The address this block is built for is "/", and a signed-out visitor there —
+// which is every visitor a crawler can be — gets the WELCOME page, not the
+// members' home (frontend/src/App.jsx, HomeRoute). So both strings below mirror
+// frontend/src/pages/Welcome.jsx: the strapline is the h2 under its headline,
+// the pitch is the paragraph under that. Change one and change the other.
+//
+// It matters because that page's headline is a promise rather than a
+// description — "Race wheel-to-wheel on the NABS grid" — and until the
+// strapline existed nothing above the fold said "Assetto Corsa" or "sim racing
+// league" at all. Google had the league's name and its round number and no idea
+// what sort of thing it was looking at.
+//
+// What is raced is read off the season's `game` field ("F1 2010 · Assetto
+// Corsa"), never written here: the era changes every season, and a season that
+// is not recognisably Formula 1 must not be advertised as one.
+function leagueStrapline(game) {
+  const [eraRaw, platformRaw] = String(game || "").split(/[·/|]/).map((x) => x.trim());
+  const era = eraRaw || null;
+  const platform = platformRaw || "Assetto Corsa";
+  // "Formula 1 sim racing league on Assetto Corsa" — the same opening the meta
+  // description has always used (lib/pageMeta.js, seasonDescription), so the
+  // snippet and the page's own subtitle say one thing rather than two.
+  const discipline = /\bf1\b|formula/i.test(era || "") ? "Formula 1 sim" : "Sim";
+  // A season whose game names only the sim collapses era and platform onto the
+  // same word, and "Assetto Corsa cars on Assetto Corsa" reads badly — the same
+  // guard the page itself applies (Welcome.jsx, showPlatform).
+  const gnorm = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const cars = era ? `${era} cars` : null;
+  const on = era && gnorm(platform) !== gnorm(era) ? ` on ${platform}` : "";
+  return {
+    heading: `${discipline} racing league on ${platform}`,
+    blurb:
+      "NABS Racing is a community-run sim racing league on Discord. " +
+      (cars
+        ? `Every season we race a new era of motorsport; right now the grid runs ${cars}${on}. `
+        : `Every season we race a new era of motorsport on ${platform}. `) +
+      "A full championship, and new drivers are welcome every season.",
+  };
+}
+
 // The season's leaders, which is the one table the home page puts on screen and
 // links: three drivers, in order, under "Title race right now". Three, because
 // that is what the card holds — a top ten here would be a table the reader
@@ -296,10 +340,11 @@ function classificationTable(base, rows, scores) {
 // door. Google does render, but rendering is a second pass that a young site
 // waits its turn for, and the first pass is where the early impression is made.
 //
-// So it now says the two things the page leads with, both of which are on
-// screen: which season is running and what it is driven in, and which round is
-// next and when. Same rule as everywhere in this file — the reader gets these
-// facts at this address, so a crawler may have them too.
+// So it now leads with what the page leads with: the strapline above, the
+// sentence under it, and then the things the ticker states — which season is
+// running and what it is driven in, and which round is next and when. Same rule
+// as everywhere in this file: the reader gets all of it at this address, so a
+// crawler may have it too.
 async function homeBlock(prisma, base, seasonId) {
   if (!seasonId) return null;
   let top = [];
@@ -320,7 +365,7 @@ async function homeBlock(prisma, base, seasonId) {
   try {
     season = await prisma.season.findUnique({
       where: { id: seasonId },
-      select: { number: true, game: true },
+      select: { number: true, name: true, game: true },
     });
   } catch {
     /* the standings group below is the block's real content */
@@ -337,6 +382,11 @@ async function homeBlock(prisma, base, seasonId) {
   }
 
   const facts = [];
+  // The season moved out of the heading and into this line when the heading
+  // became the league's strapline; the ticker at the top of the page names it
+  // in exactly this spot, so the block still mirrors what is on screen.
+  const label = seasonLabel(season);
+  if (label) facts.push(label);
   if (season?.game) facts.push(season.game);
   if (next?.track) {
     const when = next.date
@@ -349,8 +399,10 @@ async function homeBlock(prisma, base, seasonId) {
   // it paid. Three, because the card holds three — the round's own page has the
   // rest, and this block links straight to it.
   const latest = await latestRound(prisma, base, seasonId);
+  const strap = leagueStrapline(season?.game);
   return {
-    heading: season?.number ? `NABS Racing League · Season ${season.number}` : "NABS Racing League",
+    heading: strap.heading,
+    blurb: strap.blurb,
     line: facts.join(" · "),
     groups: [
       latest,

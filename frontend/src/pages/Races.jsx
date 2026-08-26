@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { seasonLabelOf } from "../utils/pageTitle.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -517,6 +518,13 @@ export default function Races() {
   const wantRaceId = searchParams.get("race");
   const wantSeason = searchParams.get("season");
   const { season, setSeason, current } = useSeason();
+  // The season belongs in the heading, not only in the switcher above it.
+  // Eight seasons of this page otherwise share one H1, so neither a reader
+  // landing from a search nor the search engine itself can tell them apart —
+  // and the tab title has named the season all along. Same label as there
+  // (utils/pageTitle.js), so the two never disagree.
+  const seasonName = seasonLabelOf(current);
+  const seasonHeading = seasonName ? `${seasonName} Races` : "Races";
   // Which series' "already seen" list to consult (each series runs its own
   // calendar, so each keeps its own memory).
   const { slug } = useSeriesPath();
@@ -640,6 +648,29 @@ export default function Races() {
     };
   }, [view, selectedId]);
 
+  // The sprint classification of a sprint+feature weekend: its own hidden race
+  // row, fetched through the same endpoint as any round, but only once the
+  // Sprint tab is actually opened — same manners as the lap chart above.
+  const [sprint, setSprint] = useState({ raceId: null, data: null, loading: false, error: null });
+  const sprintAsked = useRef(null);
+  const sprintRaceId = detail?.race?.sprintRaceId || null;
+  useEffect(() => {
+    if (session !== "sprint" || !sprintRaceId || sprintAsked.current === sprintRaceId) return;
+    sprintAsked.current = sprintRaceId;
+    let alive = true;
+    setSprint({ raceId: sprintRaceId, data: null, loading: true, error: null });
+    api
+      .raceResults(sprintRaceId)
+      .then((d) => alive && setSprint({ raceId: sprintRaceId, data: d, loading: false, error: null }))
+      .catch((e) => alive && setSprint({ raceId: sprintRaceId, data: null, loading: false, error: e.message }));
+    return () => {
+      alive = false;
+    };
+  }, [session, sprintRaceId]);
+  // The choice is sticky across rounds (see above) — a round without a sprint
+  // shows its race table instead of an empty Sprint view.
+  const shownSession = session === "sprint" && !sprintRaceId ? "race" : session;
+
   useEffect(() => {
     if (!selectedId) return;
     // `alive` guards against a slow answer for the PREVIOUS round landing after
@@ -762,7 +793,7 @@ export default function Races() {
   if (error)
     return (
       <div>
-        <PageHeader eyebrow="Schedule & Results" title="Races" />
+        <PageHeader eyebrow="Schedule & Results" title={seasonHeading} />
         <ErrorBox message={error} onRetry={reload} />
       </div>
     );
@@ -831,7 +862,7 @@ export default function Races() {
           down, so picking a type shows every view of it. */}
       <PageHeader
         eyebrow="Schedule & Results"
-        title="Races"
+        title={seasonHeading}
         right={
           // On phones the bar spans the full width and the buttons split it
           // evenly (one tidy row of equal targets) instead of wrapping into a
@@ -1046,17 +1077,20 @@ export default function Races() {
                               the group is full width: switch left, date right,
                               the way the row reads on a desktop. */}
                           <span className="flex w-full items-center justify-between gap-3 sm:w-auto sm:shrink-0">
-                            {!detailIsStale && detail.quali?.length > 0 && (
+                            {!detailIsStale && (detail.quali?.length > 0 || sprintRaceId) && (
                               <SlidingTabs
                                 className="shrink-0"
                                 wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
                                 btnClassName="px-2.5 py-1 text-[11px]"
                                 pillClassName="rounded-md bg-brand shadow"
                                 items={[
-                                  { key: "race", label: "Race" },
-                                  { key: "quali", label: "Quali" },
+                                  // With a sprint on file the evening has two
+                                  // races — name the main one what it is.
+                                  { key: "race", label: sprintRaceId ? "Feature" : "Race" },
+                                  ...(sprintRaceId ? [{ key: "sprint", label: "Sprint" }] : []),
+                                  ...(detail.quali?.length > 0 ? [{ key: "quali", label: "Quali" }] : []),
                                 ]}
-                                value={session}
+                                value={shownSession}
                                 onChange={setSession}
                               />
                             )}
@@ -1068,7 +1102,7 @@ export default function Races() {
                                 result file — hasLapChart, a directory listing
                                 on the server, not a promise the chart can't
                                 keep. */}
-                            {!detailIsStale && session === "race" && detail.race?.hasLapChart && (
+                            {!detailIsStale && shownSession === "race" && detail.race?.hasLapChart && (
                               <SlidingTabs
                                 className="shrink-0"
                                 wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
@@ -1122,7 +1156,19 @@ export default function Races() {
                           GOING does both jobs. */}
                       {detailIsStale ? (
                         <TableSkeleton rows={Math.max(selectedRace?.resultCount || 10, 4)} />
-                      ) : view === "chart" && session === "race" && detail.race?.hasLapChart ? (
+                      ) : shownSession === "sprint" ? (
+                        sprint.loading || sprint.raceId !== sprintRaceId ? (
+                          <div className="px-5 py-10 text-center text-sm text-light">Reading the sprint…</div>
+                        ) : sprint.error ? (
+                          <div className="px-5 py-10 text-center text-sm text-bad">{sprint.error}</div>
+                        ) : sprint.data?.results?.length ? (
+                          <RaceResults race={sprint.data.race} results={sprint.data.results} session="race" />
+                        ) : (
+                          <div className="px-5 py-10 text-center text-sm text-light">
+                            The sprint classification hasn&apos;t been imported yet.
+                          </div>
+                        )
+                      ) : view === "chart" && shownSession === "race" && detail.race?.hasLapChart ? (
                         laps.loading || laps.raceId !== selectedId ? (
                           <div className="px-5 py-10 text-center text-sm text-light">Reading the laps…</div>
                         ) : laps.error ? (
@@ -1135,9 +1181,11 @@ export default function Races() {
                           </div>
                         )
                       ) : (
-                        <RaceResults race={detail.race} results={detail.results} quali={detail.quali} session={session} />
+                        <RaceResults race={detail.race} results={detail.results} quali={detail.quali} session={shownSession} />
                       )}
-                      {!detailIsStale && detail.race.hasPositions && (
+                      {/* The facts belong to the feature race — under the
+                          sprint's table they would caption the wrong result. */}
+                      {!detailIsStale && detail.race.hasPositions && shownSession !== "sprint" && (
                         <RaceFacts race={detail.race} results={detail.results} quali={detail.quali} />
                       )}
                       {/* The night's photos, last: the classification is what
