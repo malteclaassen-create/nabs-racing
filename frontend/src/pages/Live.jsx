@@ -444,8 +444,15 @@ function Sector({ s, compact = false, runningMs = null }) {
 // the same source (the snapshot's CurrentLapSplits). Practice and qualifying
 // only: in a race the interesting question is the gap to the car ahead, not
 // which tenth of sector two someone is having, and the column has no room for
-// both. Nothing to show until the first split of the lap lands, so a driver who
+// both. Nothing is DRAWN until the first split of the lap lands, so a driver who
 // has just left the pits doesn't get an empty second line.
+//
+// The line is still THERE though, holding its height, and that is the whole
+// point of the `invisible` branch below. Splits appear and vanish constantly:
+// every driver, every lap, and again the moment anyone pits. When the line came
+// and went with them, every one of those moments resized a row and shoved the
+// rest of the table down a notch. Reserving the space costs 20 pixels a row and
+// buys a board that holds still.
 // A sector that has been running longer than this is not a sector, it is a
 // stale row: someone parked, went to the garage without the board noticing, or
 // the lap start we are counting from belongs to a lap they abandoned. Three
@@ -468,7 +475,17 @@ function BuildingSectors({ sectors, lastLapAt }) {
   const running = hasSplit && nextIdx > 0 && lastLapAt != null;
   const now = useNow(running);
 
-  if (!hasSplit) return null;
+  // Same three boxes, same gap, same margin: only the ink is missing, so the row
+  // is exactly as tall as it will be a moment later when the first split lands.
+  if (!hasSplit) {
+    return (
+      <div aria-hidden className="mt-1 flex justify-end gap-1 invisible">
+        {[0, 1, 2].map((i) => (
+          <Sector key={i} s={null} compact />
+        ))}
+      </div>
+    );
+  }
 
   let runningMs = null;
   if (running) {
@@ -613,21 +630,31 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
         )}
       </td>
       <td className="py-3 pr-4 text-right text-base">
-        {e.onTrack ? (
-          <>
+        {/* One fixed line, whatever the driver is doing. A running clock, "In
+            pit" at 11px and the "Left" pill are three different type sizes, and
+            left to themselves they settle into boxes a pixel apart, which is a
+            pixel the whole row moves every time somebody pits. */}
+        <span className="flex h-6 items-center justify-end">
+          {e.onTrack ? (
             <CurrentLap
               lastLapAt={e.lastLapAt}
               inPits={e.inPits}
               startedAt={isRace && !e.lapCount ? raceStartedAt : null}
             />
-            {/* A car in the pits isn't building a lap, and the clock says so
-                instead — leftover splits under "In pit" would read as progress. */}
-            {!isRace && !e.inPits && (
-              <BuildingSectors sectors={e.currentSectors} lastLapAt={e.lastLapAt} />
-            )}
-          </>
-        ) : (
-          <span className="pill bg-surface2 font-mono text-light">Left</span>
+          ) : (
+            <span className="pill bg-surface2 font-mono text-light">Left</span>
+          )}
+        </span>
+        {/* Outside a race this line is part of the row's shape, in all four
+            states a driver can be in. A car in the pits or gone to the garage
+            has nothing to show there and shows nothing, but it keeps the space:
+            leftover splits under "In pit" would read as progress, and a line
+            that disappears with them resizes the row. */}
+        {!isRace && (
+          <BuildingSectors
+            sectors={e.onTrack && !e.inPits ? e.currentSectors : null}
+            lastLapAt={e.lastLapAt}
+          />
         )}
       </td>
       <td className="hidden py-3 pr-4 text-right sm:table-cell">
@@ -657,10 +684,13 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
       <td className="hidden py-3 pr-4 text-right tabular-nums lg:table-cell">
         <span className="font-mono text-sm text-light">{e.ping ?? NO_VALUE}</span>
       </td>
+      {/* Reserved, exactly like the same column in the other table: an inactive
+          badge is invisible rather than absent, so a driver hitting the pit lane
+          neither grows the row nor widens this column into its neighbours. */}
       <td className="py-3 pr-5 text-right">
         <div className="flex justify-end gap-1.5">
-          {e.drs && <span className="pill bg-sky-500/15 text-sky-600">DRS</span>}
-          {e.inPits && <span className="pill bg-amber-500/15 text-warn">PIT</span>}
+          <span className={`pill bg-sky-500/15 text-sky-600 ${e.drs ? "" : "invisible"}`}>DRS</span>
+          <span className={`pill bg-amber-500/15 text-warn ${e.inPits ? "" : "invisible"}`}>PIT</span>
         </div>
       </td>
     </tr>
@@ -745,6 +775,12 @@ const TIMING_COLUMNS = [
     bp: "",
     align: "left",
     padCls: "pl-1 pr-3",
+    // The column that absorbs the slack. Everything else is numbers and sizes
+    // itself to its digits; this one takes what is left, so a PIT badge popping
+    // in beside a name on a phone (where the badges have no column of their
+    // own) eats into the name's own width instead of shoving every number in
+    // the row sideways. The name already truncates, so it has room to give.
+    extraCls: "w-full",
     cell: (e, ctx) => (
       <DriverCell
         e={e}
@@ -1014,10 +1050,15 @@ const TIMING_COLUMNS = [
     bp: "sm",
     align: "right",
     hint: "The DRS and PIT badges",
+    // Both badges are always in the row and an inactive one is invisible rather
+    // than absent. A pill is taller AND wider than the digits it sits beside, so
+    // one that comes and goes did two ugly things at once every time a driver
+    // hit the pit lane: it grew the row by a pixel, and it widened this column,
+    // which squeezed every other column and slid the numbers sideways.
     cell: (e) => (
       <div className="flex justify-end gap-1.5">
-        {e.drs && <span className="pill bg-sky-500/15 text-sky-600">DRS</span>}
-        {e.inPits && <span className="pill bg-amber-500/15 text-warn">PIT</span>}
+        <span className={`pill bg-sky-500/15 text-sky-600 ${e.drs ? "" : "invisible"}`}>DRS</span>
+        <span className={`pill bg-amber-500/15 text-warn ${e.inPits ? "" : "invisible"}`}>PIT</span>
       </div>
     ),
   },
@@ -1749,7 +1790,11 @@ function PitLaneSection({ entries, match, className = "" }) {
           })}
         </div>
       ) : (
-        <div className="flex flex-1 items-center justify-center px-4 py-8 text-center">
+        /* Exactly as tall as one entry, so the FIRST car to pit swaps this line
+           for a name without the card changing size. It used to be taller than
+           an entry, which meant the panel jumped SMALLER the moment somebody
+           pitted, and dragged the card beside it down with it. */
+        <div className="flex min-h-[56.5px] flex-1 items-center justify-center px-4 py-4 text-center">
           <p className="font-mono text-[11px] uppercase tracking-wider text-light">Pit lane is empty</p>
         </div>
       )}
