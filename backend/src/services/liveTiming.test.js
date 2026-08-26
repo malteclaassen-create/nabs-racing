@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { __testing } from "./liveTiming.js";
 
 const { accumulateStints, stintsFor, ingest, getBoard, raceSecond, reset } = __testing;
@@ -656,5 +656,112 @@ describe("liveTiming sector colours", () => {
       })
     );
     expect(getBoard().entries[0].potentialMs).toBe(29346 + 14275 + 15300);
+  });
+});
+
+// A lap that has ENDED, and a lap nobody is timing yet. Two states the board
+// used to show as if they were a lap in progress.
+describe("liveTiming: the lap in progress, and out laps", () => {
+  beforeEach(() => reset());
+
+  const ms = (n) => n * 1e6;
+  const splits = (times) =>
+    Object.fromEntries(
+      times.map((t, i) => [String(i), { SplitIndex: i, SplitTime: ms(t), Cuts: 0 }])
+    );
+
+  // One connected driver, with everything the pit and out-lap logic reads.
+  const snapshot = ({ current, inPits = false, laps = 10, spline = 0.5 }) => ({
+    SessionInfo: { Type: 1, Track: "most", CurrentSessionIndex: 0, Name: "Practice" },
+    TrackInfo: { name: "NABS Most" },
+    ConnectedDrivers: {
+      Drivers: {
+        g1: {
+          CarInfo: { DriverName: "Zohair", CarModel: "f", CarID: 1, Tyres: "SS", IsSpectator: false },
+          Cars: {
+            f: {
+              NumLaps: laps,
+              BestLap: ms(68396),
+              ...(current ? { CurrentLapSplits: splits(current) } : {}),
+            },
+          },
+          TotalNumLaps: laps,
+          NormalisedSplinePos: spline,
+          IsInPits: inPits,
+          NumPits: 0,
+        },
+      },
+    },
+    DisconnectedDrivers: { Drivers: {} },
+  });
+
+  it("clears the splits of a lap that has already finished", () => {
+    // All three present means the driver crossed the line: the upstream leaves
+    // that lap's splits in CurrentLapSplits until the next one's S1 lands, and
+    // shown as they came they read as the lap being driven now.
+    ingest(snapshot({ current: [31234, 16880, 20282] }));
+    expect(getBoard().entries[0].currentSectors).toEqual([null, null, null]);
+  });
+
+  it("keeps a lap that is genuinely part way through", () => {
+    ingest(snapshot({ current: [31234, 16880] }));
+    const [e] = getBoard().entries;
+    expect(e.currentSectors.map((s) => s?.ms ?? null)).toEqual([31234, 16880, null]);
+  });
+
+  it("calls the lap after a pit visit an out lap, and stops at the line", () => {
+    // In the pits...
+    ingest(snapshot({ inPits: true, laps: 10, spline: 0.02 }));
+    expect(getBoard().entries[0].inPits).toBe(true);
+    expect(getBoard().entries[0].outLap).toBe(false);
+
+    // ...out again. The pit flag needs to clear first (pitFlag.js), which the
+    // speed guard cannot do here because a test snapshot carries no velocity,
+    // so this is the timer's job and the board build after it.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.now());
+      ingest(snapshot({ inPits: false, laps: 10, spline: 0.05 }));
+      getBoard(); // observes the flag dropping
+      vi.advanceTimersByTime(2000);
+      const out = getBoard().entries[0];
+      expect(out.inPits).toBe(false);
+      expect(out.outLap).toBe(true);
+
+      // Round they go. Still the out lap at three quarters distance.
+      ingest(snapshot({ inPits: false, laps: 10, spline: 0.75 }));
+      expect(getBoard().entries[0].outLap).toBe(true);
+
+      // Across the line: the spline wraps, and that is a timed lap starting.
+      ingest(snapshot({ inPits: false, laps: 10, spline: 0.05 }));
+      expect(getBoard().entries[0].outLap).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ends the out lap on the lap counter too, for a spline that never wrapped", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.now());
+      ingest(snapshot({ inPits: true, laps: 4, spline: 0.02 }));
+      getBoard();
+      ingest(snapshot({ inPits: false, laps: 4, spline: 0.03 }));
+      getBoard();
+      vi.advanceTimersByTime(2000);
+      expect(getBoard().entries[0].outLap).toBe(true);
+      // The next snapshot lands after they crossed, with the counter moved on.
+      ingest(snapshot({ inPits: false, laps: 5, spline: 0.4 }));
+      expect(getBoard().entries[0].outLap).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never calls a normal lap an out lap", () => {
+    ingest(snapshot({ inPits: false, laps: 10, spline: 0.3 }));
+    ingest(snapshot({ inPits: false, laps: 10, spline: 0.9 }));
+    ingest(snapshot({ inPits: false, laps: 11, spline: 0.1 }));
+    expect(getBoard().entries[0].outLap).toBe(false);
   });
 });

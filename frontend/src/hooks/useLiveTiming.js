@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { noteBoardClock } from "./useNow.js";
 
 // Connects to the backend live-timing relay (/api/live/ws, proxied by Vite to
 // the backend, which in turn holds the upstream AC Server Manager socket).
@@ -85,6 +86,10 @@ export function useLiveTiming() {
             telListeners.current.forEach((cb) => cb(data.car));
             return; // fast-lane frame, not a board
           }
+          // Every lap time on the page is measured against a stamp from the
+          // race server, so the page runs on the board's clock rather than on
+          // this machine's. See useNow.js.
+          noteBoardClock(data.updatedAt);
           setBoard(data);
         } catch {
           /* ignore malformed frame */

@@ -196,12 +196,17 @@ export function onSnapshot(serverKey, status, sessionKey) {
 // Called from the ET53 per-car telemetry handler. Memory-only lap/time hints —
 // the CarID->guid mapping this rides on refreshes only per snapshot and can be
 // stale, so nothing here is allowed to reach the disk or fabricate a count.
-export function onTelemetry(serverKey, guid, live) {
+// `filteredInPits` is the relay's cleaned-up pit flag (services/pitFlag.js).
+// The raw IsInPits in the frame flickers true on cars that are plainly racing,
+// and this is what stamps a stop's pit-lane time — so a flicker put the entry
+// marker down laps early and the stop reported a pit-lane time that never
+// happened. Left optional so a caller with only the frame still works.
+export function onTelemetry(serverKey, guid, live, filteredInPits) {
   const st = state.get(serverKey);
   if (!st?.uid || !guid || !live) return;
   const rec = st.drivers.get(guid);
   if (!rec) return; // unknown until the next snapshot names the car
-  const inPits = !!live.IsInPits;
+  const inPits = filteredInPits === undefined ? !!live.IsInPits : !!filteredInPits;
   if (inPits && !rec.wasInPits) {
     rec.entry = { lap: rec.lap };
     rec.entryAt = Date.now();

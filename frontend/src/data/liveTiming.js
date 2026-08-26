@@ -158,6 +158,16 @@ export function formatSector(ms) {
   return (ms / 1000).toFixed(3);
 }
 
+// The sector a driver is IN right now -> "0.412". Zero is a real reading here,
+// which is the whole difference from formatSector above: a finished sector of
+// zero means the server has no time, but a running one means the split landed
+// this instant, and printing a dash for it made the chip blink out at exactly
+// the moment it started counting.
+export function formatRunningSector(ms) {
+  if (ms == null || ms < 0) return NO_VALUE;
+  return (ms / 1000).toFixed(3);
+}
+
 // Running current-lap clock -> "1:54.3" (tenths). null -> NO_VALUE.
 export function formatRunning(ms) {
   if (ms == null || ms < 0) return NO_VALUE;

@@ -29,6 +29,7 @@ import prisma from "../lib/prisma.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries, isValidServerKey } from "../lib/liveServers.js";
 import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
+import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 
 // ---------------------------------------------------------------------------
 // Public driver id for the live board.
@@ -491,6 +492,24 @@ function createRelay(server) {
   const crossingsByGuid = new Map(); // guid -> [{ lap, at }], oldest first
   const CROSSINGS_KEPT = 6;
 
+  // IsInPits, cleaned up. See pitFlag.js for why the raw flag cannot be shown
+  // as it arrives; the short version is that it goes true on cars doing 250
+  // km/h through the last corners at Most.
+  const pitFilter = createPitFilter();
+
+  // Who is on an OUT LAP, and the state needed to know when it ends.
+  //
+  //   lap     the lap counter when they left the pit lane
+  //   spline  where they were on the lap at that moment
+  //
+  // The lap ends at the line, and there are two ways to see that. The lap
+  // counter is the certain one but only lands with the next ~30s snapshot; the
+  // spline wrapping from the end of the lap back to the start comes off the
+  // telemetry immediately. Either clears it, so the badge goes out when the
+  // driver actually starts a timed lap rather than half a minute later.
+  const outLapByGuid = new Map(); // guid -> { lap, spline }
+  const lastSplineByGuid = new Map();
+
   // When the session on air started, in our own clock. Worked out once per
   // session from the snapshot's ElapsedMilliseconds and then left alone, so it
   // does not jitter by a snapshot's worth every tick.
@@ -529,6 +548,47 @@ function createRelay(server) {
     if (list.length > CROSSINGS_KEPT) list.shift();
   }
 
+  // Follow one car in and out of the pit lane and answer "are they on an out
+  // lap?". Called once per car per board build, which is also what advances it.
+  //
+  // Starts when the (filtered) pit flag drops, ends at the line. The line shows
+  // up two ways and either will do: the lap counter ticking over, which is
+  // certain but waits for the next snapshot, or the spline wrapping round from
+  // the end of the lap to the start, which is immediate because it rides on the
+  // telemetry. A driver who never left the pit lane at all is not on an out lap
+  // and neither is one sitting in the garage.
+  function trackOutLap(guid, { inPits, lapCount, spline, onTrack }) {
+    const prevSpline = lastSplineByGuid.get(guid);
+    if (onTrack) lastSplineByGuid.set(guid, spline);
+    else lastSplineByGuid.delete(guid);
+
+    if (!onTrack) {
+      outLapByGuid.delete(guid);
+      return false;
+    }
+    if (inPits) {
+      // In the pit lane now: whatever they were on is over, and the next exit
+      // opens a fresh one.
+      outLapByGuid.set(guid, null);
+      return false;
+    }
+    const state = outLapByGuid.get(guid);
+    if (state === null) {
+      // They were in the pits on the previous build and are out now.
+      outLapByGuid.set(guid, { lap: lapCount, spline });
+      return true;
+    }
+    if (!state) return false; // never seen in the pits: a normal lap
+
+    // Across the line, by either signal.
+    const wrapped = prevSpline != null && prevSpline > 0.7 && spline < 0.3;
+    if (lapCount > state.lap || wrapped) {
+      outLapByGuid.delete(guid);
+      return false;
+    }
+    return true;
+  }
+
   function accumulateStints(msg) {
     if (!msg) return;
     const si = msg.SessionInfo || {};
@@ -538,6 +598,9 @@ function createRelay(server) {
       lastRacePosByGuid.clear();
       raceRosterByGuid.clear();
       crossingsByGuid.clear();
+      pitFilter.clear();
+      outLapByGuid.clear();
+      lastSplineByGuid.clear();
       stintSessionKey = key;
     }
     // In Practice/Qualifying a driver teleports back to the pits to end a run and
@@ -778,8 +841,17 @@ function createRelay(server) {
             liveByCar.set(msg.Message.CarID, msg.Message);
             // Pit-lane edges (IsInPits flipping) are only visible here, at
             // telemetry frequency — the recorder needs them the moment they
-            // happen, not at the next 30s snapshot.
-            pitRecorder.onTelemetry(server.key, carIdToGuid.get(msg.Message.CarID), msg.Message);
+            // happen, not at the next 30s snapshot. It gets the CLEANED flag:
+            // a flicker on a car at racing speed used to mark a pit entry, and
+            // the stop that followed then reported a pit-lane time counted from
+            // whenever that flicker happened.
+            {
+              const guid = carIdToGuid.get(msg.Message.CarID);
+              const inPits = guid
+                ? pitFilter.read(guid, msg.Message.IsInPits, speedKmhOf(msg.Message))
+                : undefined;
+              pitRecorder.onTelemetry(server.key, guid, msg.Message, inPits);
+            }
             // Fast lane: followers of THIS car get its cockpit numbers now,
             // not at the next 700ms board tick.
             relayFollowedTelemetry(server.key, carIdToGuid.get(msg.Message.CarID), msg.Message);
@@ -877,6 +949,27 @@ function createRelay(server) {
     const live = onTrack ? liveByCar.get(ci.CarID) || {} : {};
     const racePos = live.RacePosition ?? d.RacePosition ?? null;
     if (onTrack && racePos != null) lastRacePosByGuid.set(guid, racePos);
+
+    const speedKmh = onTrack ? speedKmhOf(live) : null;
+    // The pit flag the board is allowed to show: the raw one, run through the
+    // filter that drops the flicker (pitFlag.js). A garaged car has no
+    // telemetry to argue with, so the snapshot's word stands.
+    const rawInPits = live.IsInPits ?? d.IsInPits ?? false;
+    const inPits = onTrack ? pitFilter.read(guid, rawInPits, speedKmh) : !!rawInPits;
+
+    const lapCount = car?.NumLaps ?? d.TotalNumLaps ?? 0;
+    const spline = live.NormalisedSplinePos ?? d.NormalisedSplinePos ?? 0;
+    const outLap = trackOutLap(guid, { inPits, lapCount, spline, onTrack });
+
+    // The lap in progress, sector by sector. Three filled splits is not a lap
+    // in progress: S3 lands as the driver crosses the line, and the upstream
+    // leaves all three sitting there until the next lap's first split arrives.
+    // Shown as they came, that meant the whole first sector of every lap was
+    // spent looking at the PREVIOUS lap's times, with no running number
+    // anywhere — the one moment a driver on a flying lap most wants one.
+    const curSplits = onTrack ? sectorsOf(car?.CurrentLapSplits) : [null, null, null];
+    const lapIsOver = curSplits.every(Boolean);
+
     return {
       // The real GUID stays server-side (it keys the stint and race-position
       // maps above); what leaves the building is the pseudonymous stand-in.
@@ -902,7 +995,7 @@ function createRelay(server) {
       // epoch ms of the last completed lap — frontend ticks the live current-lap
       // clock from here (now - lastLapAt) for on-track drivers.
       lastLapAt: car?.LastLapCompletedTime ? Date.parse(car.LastLapCompletedTime) || null : null,
-      lapCount: car?.NumLaps ?? d.TotalNumLaps ?? 0,
+      lapCount,
       // Two decimals, not a whole number: on a long straight two cars are often
       // within a tenth of a km/h of each other, and rounding threw exactly the
       // digits away that tell them apart. The frontend decides how many of them
@@ -915,24 +1008,25 @@ function createRelay(server) {
       // live page builds the lap up the way the race server's own timing page
       // does. Only for a car actually out there; a stored entry's leftover
       // splits belong to a lap that ended long ago.
-      currentSectors: onTrack ? sectorsOf(car?.CurrentLapSplits) : [null, null, null],
+      currentSectors: lapIsOver ? [null, null, null] : curSplits,
       potentialMs: potentialOf(car?.BestSplits),
-      inPits: live.IsInPits ?? d.IsInPits ?? false,
+      inPits,
+      // Out of the pit lane and not yet across the line. Their lap clock counts
+      // from a crossing that happened before the stop, so it is not a lap time
+      // and the frontend says so rather than printing it.
+      outLap,
       numPits: live.NumPits ?? d.NumPits ?? 0,
       // Cockpit readouts for the map's follow mode. Speed is the magnitude of
       // the ET53 velocity vector (m/s components -> km/h); gear stays in AC's
       // raw convention (0 = reverse, 1 = neutral, 2 = first) — translating is
       // the frontend's job. Only an on-track car streams telemetry.
-      speedKmh:
-        onTrack && live.Velocity
-          ? Math.round(Math.hypot(live.Velocity.X || 0, live.Velocity.Y || 0, live.Velocity.Z || 0) * 3.6)
-          : null,
+      speedKmh: speedKmh == null ? null : Math.round(speedKmh),
       gear: onTrack ? live.Gear ?? null : null,
       rpm: onTrack ? live.EngineRPM ?? null : null,
       ping: live.Ping ?? d.Ping ?? null,
       drs: live.DRSActive ?? d.DRSActive ?? false,
       deltaSelfMs: onTrack ? live.DeltaToSelf ?? d.DeltaToSelf ?? null : null,
-      spline: live.NormalisedSplinePos ?? d.NormalisedSplinePos ?? 0,
+      spline,
       // Real world position (X/Z ground plane) for the real-map dots. Only on-track
       // cars carry live telemetry, so it's null otherwise; rounded to keep the board
       // lean. The frontend projects it onto map.png with the ini's calibration.
@@ -1258,6 +1352,9 @@ function createRelay(server) {
       raceRosterByGuid.clear();
       lastRacePosByGuid.clear();
       crossingsByGuid.clear();
+      pitFilter.clear();
+      outLapByGuid.clear();
+      lastSplineByGuid.clear();
       liveByCar.clear();
       finishedRace = null;
       stintSessionKey = null;
