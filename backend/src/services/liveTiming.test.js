@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { __testing } from "./liveTiming.js";
 
-const { accumulateStints, stintsFor, ingest, getBoard, raceSecond, reset } = __testing;
+const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset } = __testing;
 
 // Build a minimal EventType-200 snapshot for one driver, enough to exercise the
 // stint accumulator (session type, laps, current tyre, pit count, in-pits flag).
@@ -765,5 +765,83 @@ describe("liveTiming: the lap in progress, and out laps", () => {
     ingest(snapshot({ inPits: false, laps: 10, spline: 0.9 }));
     ingest(snapshot({ inPits: false, laps: 11, spline: 0.1 }));
     expect(getBoard().entries[0].outLap).toBe(false);
+  });
+});
+
+// Two clocks a pit stop is judged on, and they are not the same clock.
+describe("liveTiming: pit lane and stop timing", () => {
+  beforeEach(() => reset());
+
+  // A car in the pit lane. Telemetry carries the velocity, so this drives the
+  // ET53 path as well as the snapshot: `carId` ties the two together.
+  const inPitSnapshot = (speedMs) => ({
+    SessionInfo: { Type: 3, Track: "most", CurrentSessionIndex: 0, Name: "Race" },
+    TrackInfo: { name: "NABS Most" },
+    ConnectedDrivers: {
+      Drivers: {
+        g1: {
+          CarInfo: { DriverName: "Zohair", CarModel: "f", CarID: 7, Tyres: "SS", IsSpectator: false },
+          Cars: { f: { NumLaps: 12, BestLap: 68396e6 } },
+          TotalNumLaps: 12,
+          NormalisedSplinePos: 0.02,
+          IsInPits: true,
+          NumPits: 1,
+          Velocity: { X: speedMs, Y: 0, Z: 0 },
+        },
+      },
+    },
+    DisconnectedDrivers: { Drivers: {} },
+  });
+
+  // The speed a stop is judged by comes off the telemetry, not the snapshot, so
+  // a test that only ingests snapshots is testing nothing about it.
+  const frame = (speedMs, inPits = true) => ({
+    CarID: 7,
+    IsInPits: inPits,
+    Velocity: { X: speedMs, Y: 0, Z: 0 },
+  });
+
+  it("dates the lane from the entry and the stop from standing still", () => {
+    vi.useFakeTimers();
+    try {
+      const t0 = Date.UTC(2026, 7, 26, 20, 0, 0);
+      vi.setSystemTime(t0);
+      // Rolling down the lane under the limiter: in the lane, not stopped.
+      ingest(inPitSnapshot(16)); // names the car, so CarID 7 maps to a driver
+      telemetry(frame(16)); // ~58 km/h
+      const rolling = getBoard().entries[0];
+      expect(rolling.inPits).toBe(true);
+      expect(rolling.pitSince).toBe(t0);
+      expect(rolling.stoppedSince).toBe(null);
+
+      // Five seconds later they are stationary in the box.
+      vi.setSystemTime(t0 + 5000);
+      telemetry(frame(0));
+      const stopped = getBoard().entries[0];
+      expect(stopped.pitSince).toBe(t0); // still the entry, not the stop
+      expect(stopped.stoppedSince).toBe(t0 + 5000);
+
+      // Held while they sit there, rather than restarting every frame.
+      vi.setSystemTime(t0 + 9000);
+      telemetry(frame(0.2));
+      expect(getBoard().entries[0].stoppedSince).toBe(t0 + 5000);
+
+      // And released the moment they pull away.
+      vi.setSystemTime(t0 + 12000);
+      telemetry(frame(10)); // ~36 km/h, pulling away
+      expect(getBoard().entries[0].stoppedSince).toBe(null);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says nothing about either clock for a car that is not in the pits", () => {
+    ingest(
+      fullSnap({ type: 1, laps: 0, drivers: { g1: { name: "Alice", laps: 3, carId: 1 } } })
+    );
+    const [e] = getBoard().entries;
+    expect(e.inPits).toBe(false);
+    expect(e.pitSince).toBe(null);
+    expect(e.stoppedSince).toBe(null);
   });
 });
