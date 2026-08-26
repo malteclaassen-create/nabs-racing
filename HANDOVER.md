@@ -345,3 +345,16 @@ the database lives.
 
 Secrets to guard: the `JWT_SECRET` variable, the Discord client secret, and
 the admin PIN. None of them should ever be posted in Discord chats.
+
+---
+
+## Want the site in the Google Play Store?
+
+That is a separate job, and it is optional: members can already put the site
+on their home screen from <https://nabsracing.com/app>, with no store
+involved. A store listing buys you two things, being findable by searching
+Play, and looking official.
+
+If you want it, `PLAY-STORE.md` in this repository walks through it the same
+way this guide does. It costs $25 once and takes three to four weeks, most
+of which is waiting on Google. The website side is already prepared.
