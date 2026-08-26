@@ -267,7 +267,7 @@ function projectDot(car, map, matchFn) {
 // stays a sensible landscape instead of a skyscraper of empty margin.
 const ROTATE_RATIO = 1.07;
 
-function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, className = "" }) {
+function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = null, className = "" }) {
   const W = map.width;
   const H = map.height;
   const rotated = H / W > ROTATE_RATIO;
@@ -505,6 +505,7 @@ export default function LiveTrackMap({ track, cars, matchFn, map, follow, onCarT
           focusGuid={focusGuid}
           zoom={zoom}
           onFocus={setFocusGuid}
+          server={server}
           className={className}
         />
       ) : (

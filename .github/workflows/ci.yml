@@ -43,7 +43,7 @@ jobs:
         working-directory: backend
 
   frontend:
-    name: Frontend build
+    name: Frontend lint and build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,9 +54,15 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
-      # There are no frontend tests yet, so the build IS the check. It is not a
-      # weak one: Vite fails on a missing import, a bad path or a syntax error
-      # anywhere in the module graph, which covers the way a React change
-      # usually breaks.
+      # The build does NOT catch a name that is used and never defined: a prop
+      # read in a component that never received it compiles fine and throws in
+      # the browser. That shipped once and took the Live page down, so the lint
+      # runs first and fails the job.
+      - run: npm run lint
+        working-directory: frontend
+      # There are no frontend tests yet, so the build is the rest of the check.
+      # It is not a weak one: Vite fails on a missing import, a bad path or a
+      # syntax error anywhere in the module graph, which covers the way a React
+      # change usually breaks.
       - run: npm run build
         working-directory: frontend
