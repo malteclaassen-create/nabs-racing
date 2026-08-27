@@ -66,50 +66,19 @@ function championshipRounds(races) {
 }
 
 // ---------------------------------------------------------------------------
-// Which round the page opens on when the address names none.
+// Which round the page opens on when the address names none: the last one with
+// a result in, every visit, for as long as it stands.
 //
-// Two wishes that pull apart: the evening a result lands, everyone comes to
-// SEE it; every visit after that, the thing they still have to do is sign up
-// for the round ahead. So a freshly saved result gets exactly one showing, and
-// from the next visit on the page opens on the coming round instead.
-//
-// "Already shown" is remembered per browser as a SET of race ids rather than a
-// single "last seen" marker: ids are unique across seasons, so browsing an
-// archive season (whose finale is also unseen) adds its own entry and can
-// never make the current season's result count as new again. Capped so the
-// list can't grow without end over the years.
+// It used to give a freshly saved result a single showing and then open on the
+// round ahead, on the theory that signing up is the thing still left to do. In
+// practice the result is what people come back for, again and again, while the
+// round ahead is one tap away on the rail and already has its own card on the
+// home page. Only a season that has not run a round yet opens on the coming
+// round, because there is no result to open on.
 // ---------------------------------------------------------------------------
-const SEEN_CAP = 50;
-const seenKeyFor = (slug) => `races-seen-results:${slug || "default"}`;
-
-function readSeenResults(key) {
-  try {
-    const v = JSON.parse(localStorage.getItem(key) || "[]");
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return []; // private mode / corrupt value: the result simply greets them again
-  }
-}
-
-function markResultSeen(key, id) {
-  try {
-    const list = readSeenResults(key).filter((x) => x !== id);
-    list.push(id);
-    localStorage.setItem(key, JSON.stringify(list.slice(-SEEN_CAP)));
-  } catch {
-    /* private mode — nothing to remember with, and nothing breaks without it */
-  }
-}
-
-// `fresh` = this is a result the visitor hasn't been shown yet, so it earns its
-// one showing (and gets marked). Otherwise: the next round, or the last result
-// again once a season has run out of rounds (an archive season opens on its
-// finale and stays there, exactly as it always did).
-function pickDefaultRound(rounds, seen) {
+function pickDefaultRound(rounds) {
   const lastDone = [...rounds].reverse().find((r) => r.isCompleted) || null;
-  const nextUp = rounds.find((r) => !r.isCompleted) || null;
-  if (lastDone && !seen.includes(lastDone.id)) return { race: lastDone, fresh: true };
-  return { race: nextUp || lastDone, fresh: false };
+  return lastDone || rounds.find((r) => !r.isCompleted) || null;
 }
 
 // A round whose date isn't fixed yet renders "Date TBA" rather than the literal
@@ -592,15 +561,13 @@ export default function Races() {
   useEffect(() => {
     if (!races || !races.length || selectedId) return;
     // A valid ?race=<id> is handled by the effect above; anything else opens on
-    // the round pickDefaultRound chooses (fresh result once, then the round
-    // ahead). The "rounds" tab is the initial tab, so the pick stays inside it.
+    // the round pickDefaultRound chooses (the last one with a result in). The
+    // "rounds" tab is the initial tab, so the pick stays inside it.
     if (wantRaceId && races.some((r) => r.id === wantRaceId)) return;
-    const key = seenKeyFor(slug);
-    const { race, fresh } = pickDefaultRound(championshipRounds(races), readSeenResults(key));
+    const race = pickDefaultRound(championshipRounds(races));
     if (!race) return;
-    if (fresh) markResultSeen(key, race.id);
     setSelectedId(race.id);
-  }, [races, selectedId, wantRaceId, slug]);
+  }, [races, selectedId, wantRaceId]);
 
   // Race | Qualifying view of the selected round (the switcher sits in the
   // round header row). The choice is STICKY across race switches on purpose:
