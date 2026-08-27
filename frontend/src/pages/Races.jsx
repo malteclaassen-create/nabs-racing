@@ -131,7 +131,7 @@ function edgeMask({ left, right }) {
   return { maskImage: img, WebkitMaskImage: img };
 }
 
-function RoundRail({ races, selectedId, onSelect }) {
+function RoundRail({ races, selectedId, onSelect, signupIds }) {
   const scrollerRef = useRef(null);
   const activeRef = useRef(null);
   // Which sides can still be scrolled to — drives the edge fade above.
@@ -221,10 +221,19 @@ function RoundRail({ races, selectedId, onSelect }) {
         const flag = flagFor(r.track, r.country);
         const active = r.id === selectedId;
         const done = r.isCompleted;
+        // The round that is taking answers right now (utils/signupQueue.js —
+        // the same rule the Attendance page and the "Sign up now" button
+        // follow, so the rail can never point at a round they would refuse).
+        // Green means run, brand means yours to act on: the accent the "Next
+        // up" card and that button already wear, rather than a fourth colour
+        // saying a fifth thing.
+        const signup = !done && !!signupIds?.has(r.id);
         const border = active
           ? "border-brand ring-1 ring-brand bg-brand/10"
           : done
           ? "border-emerald-500/40 bg-emerald-500/[0.06] hover:bg-emerald-500/10"
+          : signup
+          ? "border-brand/60 bg-brand/[0.07] hover:bg-brand/[0.12]"
           : "border-border bg-card hover:bg-surface2";
         return (
           <button
@@ -236,7 +245,7 @@ function RoundRail({ races, selectedId, onSelect }) {
             style={{ "--i": i }}
             className={`group flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition lg:w-full lg:shrink ${border}`}
           >
-            <span className={`font-display text-lg font-black leading-none tabular-nums ${active ? "text-dark" : done ? "text-ok" : "text-faint group-hover:text-light"}`}>
+            <span className={`font-display text-lg font-black leading-none tabular-nums ${active || signup ? "text-dark" : done ? "text-ok" : "text-faint group-hover:text-light"}`}>
               {r.number != null ? String(r.number).padStart(2, "0") : kindOf(r) === "TRAINING" ? "TR" : "SE"}
             </span>
             {flag && <Flag code={flag.country} title={flag.countryName} />}
@@ -259,6 +268,18 @@ function RoundRail({ races, selectedId, onSelect }) {
                 {fmtRaceDate(r.date) || (done ? "Done" : "Upcoming")}
               </span>
             </span>
+            {/* The only thing on this rail that is an invitation rather than a
+                record, so it sits on the right, clear of the name and the
+                date. Normally exactly one round wears it (sign-up runs one
+                round at a time); a later round an admin has forced open wears
+                it too, which is the point of forcing it. The chip itself is
+                not the sign-up: pressing it opens the round, and the round's
+                panel carries the button. */}
+            {signup && (
+              <span className="pill ml-auto shrink-0 bg-brand/25 text-[9px] tracking-wider text-dark">
+                Sign up
+              </span>
+            )}
           </button>
         );
       })}
@@ -897,7 +918,7 @@ export default function Races() {
               <h3 className="mb-4 hidden h-8 items-center font-mono text-[11px] font-bold uppercase tracking-widest text-light lg:flex">
                 {railLabel}
               </h3>
-              <RoundRail races={shown} selectedId={selectedId} onSelect={selectRace} />
+              <RoundRail races={shown} selectedId={selectedId} onSelect={selectRace} signupIds={signupIds} />
             </aside>
 
             {/* selected race: results for completed rounds, sign-up + driver
