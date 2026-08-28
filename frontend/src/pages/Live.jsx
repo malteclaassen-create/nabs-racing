@@ -1905,14 +1905,16 @@ function DrivingNowSection({ onTrack, match, flip = false, isRace = false, raceS
         )}
       </div>
       {onTrack.length > 0 ? (
-        // A box of its own: five drivers tall, always, and anything past that
-        // scrolls. It used to stretch to whatever the map + pit-lane column
-        // next door happened to be, which meant the number of cars you could
-        // see depended on how many were in the pit lane — two cars pitting and
-        // the list grew a row, they left and it shrank again. Nothing about a
-        // timing list should move because of something happening beside it.
-        <div className="min-h-0 flex-1">
-          <div className="scrollbar-slim h-[437px] overflow-auto">
+        // Phones: capped and scrolling. lg+: the card is exactly as deep as the
+        // map + pit-lane column beside it, and the absolutely-positioned scroll
+        // area fills it — so the two halves of the row end on the same line.
+        //
+        // That was true before as well, and it was still wrong, because the
+        // column it matched grew every time somebody pitted. The fix is not to
+        // stop matching: it is that the pit lane now keeps one size (above), so
+        // the height this follows no longer moves.
+        <div className="min-h-0 flex-1 lg:relative">
+          <div className="scrollbar-slim max-h-[437px] overflow-auto lg:absolute lg:inset-0 lg:max-h-none">
             <table className="w-full min-w-[520px]">
             <thead>
               <tr className="text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
@@ -1999,8 +2001,12 @@ function PitLaneSection({ entries, match, className = "" }) {
           {inPits.length > 0 ? `${inPits.length} in the pits` : "Empty"}
         </span>
       </div>
+      {/* Three cars deep, always. Sized to its content it grew with every car
+          that pitted, and that height came out of the track map above it and
+          the driving-now card beside it — so a stop somewhere in the pit lane
+          resized two other things people were looking at. Beyond three, scroll. */}
       {inPits.length > 0 ? (
-        <div className="scrollbar-slim max-h-[240px] flex-1 divide-y divide-border overflow-y-auto">
+        <div className="scrollbar-slim h-[174px] divide-y divide-border overflow-y-auto">
           {inPits.map((e) => {
             const m = match ? match(e.name) : null;
             const t = e.currentTyre ? tyreCompound(e.currentTyre) : null;
@@ -2028,11 +2034,10 @@ function PitLaneSection({ entries, match, className = "" }) {
           })}
         </div>
       ) : (
-        /* Exactly as tall as one entry, so the FIRST car to pit swaps this line
-           for a name without the card changing size. It used to be taller than
-           an entry, which meant the panel jumped SMALLER the moment somebody
-           pitted, and dragged the card beside it down with it. */
-        <div className="flex min-h-[56.5px] flex-1 items-center justify-center px-4 py-4 text-center">
+        /* The same box, empty. The card is one size whatever the pit lane is
+           doing, which is the whole point: nothing beside it or above it moves
+           because somebody came in. */
+        <div className="flex h-[174px] items-center justify-center px-4 py-4 text-center">
           <p className="font-mono text-[11px] uppercase tracking-wider text-light">Pit lane is empty</p>
         </div>
       )}
@@ -3424,7 +3429,7 @@ export default function Live() {
               // Two thirds of the row rather than three fifths: this is the
               // table with ten columns in it, the map next door is a picture
               // that scales to whatever it is given.
-              className="lg:col-span-2 lg:col-start-1 lg:row-start-1 lg:self-start"
+              className="lg:col-span-2 lg:col-start-1 lg:row-start-1"
             />
           </div>
 
