@@ -1905,12 +1905,14 @@ function DrivingNowSection({ onTrack, match, flip = false, isRace = false, raceS
         )}
       </div>
       {onTrack.length > 0 ? (
-        // Phones: the list is simply capped and scrolls. lg+: the map + pit-lane
-        // column next door sets the row height, and the absolutely-positioned
-        // scroll area fills exactly that — the table's own length never drives
-        // the page (that's what made it one endless column before).
-        <div className="min-h-0 flex-1 lg:relative">
-          <div className="scrollbar-slim max-h-[430px] overflow-auto lg:absolute lg:inset-0 lg:max-h-none">
+        // A box of its own: five drivers tall, always, and anything past that
+        // scrolls. It used to stretch to whatever the map + pit-lane column
+        // next door happened to be, which meant the number of cars you could
+        // see depended on how many were in the pit lane — two cars pitting and
+        // the list grew a row, they left and it shrank again. Nothing about a
+        // timing list should move because of something happening beside it.
+        <div className="min-h-0 flex-1">
+          <div className="scrollbar-slim h-[437px] overflow-auto">
             <table className="w-full min-w-[520px]">
             <thead>
               <tr className="text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
@@ -3422,7 +3424,7 @@ export default function Live() {
               // Two thirds of the row rather than three fifths: this is the
               // table with ten columns in it, the map next door is a picture
               // that scales to whatever it is given.
-              className="lg:col-span-2 lg:col-start-1 lg:row-start-1"
+              className="lg:col-span-2 lg:col-start-1 lg:row-start-1 lg:self-start"
             />
           </div>
 
