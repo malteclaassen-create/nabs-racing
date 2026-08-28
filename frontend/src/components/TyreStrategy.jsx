@@ -59,22 +59,33 @@ export function TyreBadge({ t, size = 20, className = "" }) {
   );
 }
 
-// The pit-lane block: shown only while the car is actually in the pits, gone the
-// moment they roll out. Hatched so it never reads as a compound. Positioned by
-// the track (absolute, just past the end of the line).
-function PitBlock({ leftPct = 0 }) {
+// The hatched pit chip itself, shared by both places it can appear: pinned to
+// a stint line (PitBlock, below) or centred in the empty "no laps yet" box.
+function PitChip({ className = "", style = {} }) {
   return (
-    <div
-      className="absolute top-1/2 flex h-5 -translate-y-1/2 items-center rounded-[5px] px-2"
+    <span
+      className={`flex h-5 items-center rounded-[5px] px-2 ${className}`}
       style={{
-        left: `min(calc(${leftPct}% + 10px), calc(100% - 36px))`,
         background:
           "repeating-linear-gradient(135deg, var(--c-surface2) 0 4px, var(--c-border) 4px 6px)",
+        ...style,
       }}
       title="In the pit lane right now"
     >
       <span className="font-mono text-[10px] font-black uppercase tracking-wider text-light">Pit</span>
-    </div>
+    </span>
+  );
+}
+
+// The pit-lane block: shown only while the car is actually in the pits, gone the
+// moment they roll out. Positioned by the track (absolute, just past the end
+// of the line).
+function PitBlock({ leftPct = 0 }) {
+  return (
+    <PitChip
+      className="absolute top-1/2 -translate-y-1/2"
+      style={{ left: `min(calc(${leftPct}% + 10px), calc(100% - 36px))` }}
+    />
   );
 }
 
@@ -98,12 +109,9 @@ function StintTrack({ stints, axisLaps, live, inPits, delayMs = 0 }) {
   return (
     <div className="relative h-10 w-full border-r border-dashed border-border/70">
       {total === 0 ? (
-        <>
-          <div className="flex h-full w-12 items-center justify-center rounded-lg border border-dashed border-border text-[9px] font-bold uppercase tracking-wider text-faint">
-            <span className="sr-only">No laps yet</span>
-          </div>
-          {inPits && <PitBlock leftPct={0} />}
-        </>
+        <div className="flex h-full w-12 items-center justify-center rounded-lg border border-dashed border-border text-[9px] font-bold uppercase tracking-wider text-faint">
+          {inPits ? <PitChip /> : <span className="sr-only">No laps yet</span>}
+        </div>
       ) : (
         <div
           className="wipe-ltr absolute inset-0"
