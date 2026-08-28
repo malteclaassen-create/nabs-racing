@@ -34,13 +34,15 @@ export function useLiveTiming() {
       if (!aliveRef.current) return;
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
       const base = import.meta.env.VITE_API_BASE || `${proto}//${window.location.host}`;
-      // Forward the page's ?demo=1 so the backend can send the fabricated demo
+      // Forward the page's ?demo so the backend can send the fabricated demo
       // board (dev/opt-in only there — a real visitor's plain URL never gets it).
+      // Two flavours: ?demo=1 is the race, ?demo=practice the practice session.
       // The series slug from the /s/<slug> URL rides along too, so the backend
       // relays the race server ASSIGNED to this series (admin Live tab); no
       // slug = the default series on the first server.
       const params = new URLSearchParams();
-      if (new URLSearchParams(window.location.search).has("demo")) params.set("demo", "1");
+      const demo = new URLSearchParams(window.location.search).get("demo");
+      if (demo != null) params.set("demo", demo === "practice" ? "practice" : "1");
       const slug = /^\/s\/([^/]+)/.exec(window.location.pathname)?.[1];
       if (slug) params.set("series", slug);
       // Carried on the URL as well as re-sent on open, so the very first board

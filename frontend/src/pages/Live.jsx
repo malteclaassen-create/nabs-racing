@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { useApi } from "../hooks/useApi.js";
@@ -7,7 +8,7 @@ import { useLiveTiming } from "../hooks/useLiveTiming.js";
 import { useNow } from "../hooks/useNow.js";
 import { motionOff } from "../hooks/motion.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
-import { PageHeader, SectionHeading, SafetyCarBadge, NoData} from "../components/ui.jsx";
+import { PageHeader, SectionHeading, SafetyCarBadge, NoData, MEDAL_TEXT } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
@@ -20,6 +21,7 @@ import VideoEmbed from "../components/VideoEmbed.jsx";
 import { streamEmbed } from "../utils/streamEmbed.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { LiveSortMenu, LiveColumnsMenu } from "../components/LiveTableMenu.jsx";
+import { useScrollLock } from "../components/overlay.jsx";
 import { useLiveTablePrefs } from "../hooks/useLiveTablePrefs.js";
 import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
 import {
@@ -103,7 +105,13 @@ function Stat({ label, children }) {
   );
 }
 
-function SessionHeader({ session, receivedAt }) {
+const SESSION_CARD_KEY = "nabs_live_session_card";
+// Has this browser ever opened the TV board? Until it has, the button that
+// opens it wears a "New" badge.
+const TV_SEEN_KEY = "nabs_live_tv_seen";
+
+
+function SessionHeader({ session, receivedAt, links, patreonUrl }) {
   const code = countryCodeFromName(session.country);
   const weather = prettyWeather(session.weather);
   const isRace = session.type === "Race";
@@ -113,6 +121,23 @@ function SessionHeader({ session, receivedAt }) {
   // .collapse-row wrapper animates the reveal and turns into `display:
   // contents` from sm up, where the stats are simply part of the card's grid.
   const [showMore, setShowMore] = useState(false);
+  // Folded or not, from sm up, remembered per browser. Somebody who watches
+  // every race night from the same machine and does not care about the air
+  // temperature should have to say so once, not once a week.
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(SESSION_CARD_KEY) !== "folded";
+    } catch {
+      return true; // private mode: the card is simply always open
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(SESSION_CARD_KEY, open ? "open" : "folded");
+    } catch {
+      /* nothing to remember with, and nothing breaks without it */
+    }
+  }, [open]);
   // The panel's open height, measured from the content so the close animation
   // starts moving immediately instead of idling through a too-generous cap.
   // Measured fresh on every toggle: a mount-time measurement reads 0 when the
@@ -163,28 +188,80 @@ function SessionHeader({ session, receivedAt }) {
           </span>
         </div>
       )}
-      <div className="grid grid-cols-1 gap-4 px-4 py-3.5 sm:grid-cols-2 sm:gap-5 sm:p-6 lg:grid-cols-6">
-        <div className="sm:col-span-2">
-          <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow sm:text-[11px]">
-            <span>{session.type}</span>
+      {/* Seven columns on a wide screen: the track, the four numbers, and the
+          buttons on the end. The buttons used to be a bordered strip under all
+          of it, which cost the page a whole row of height before the timing
+          even started. Below lg they drop to their own line, where there is no
+          room to do anything else. */}
+      <div
+        // pt is 4px more than pb, everywhere: the league's gradient line is
+        // drawn over the top edge (absolutely, so the layout never saw it), and
+        // an eye measuring the gap above the content starts below that line.
+        // Centred by the box, it looked high by exactly the line's thickness.
+        className={`grid grid-cols-1 gap-4 px-4 pb-3.5 pt-[18px] sm:grid-cols-2 sm:gap-5 sm:px-6 lg:gap-6 ${
+          open
+            ? // Not four equal columns: the clock can read "6d 23:46:50" and
+              // was breaking in half over it, while the track temperature is
+              // three characters wide. Tops aligned, so every stat label sits
+              // on one line across the card.
+              "sm:pb-6 sm:pt-[28px] lg:items-start lg:grid-cols-[minmax(0,3fr)_minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_auto]"
+            : // Folded, the four stat columns are gone — and the template has to
+              // go with them, or their 1fr each is still reserved and the track
+              // name is squeezed into a third of a card that is mostly empty.
+              "sm:pb-3.5 sm:pt-[18px] lg:items-center lg:grid-cols-[minmax(0,1fr)_auto]"
+        }`}
+      >
+        <div
+          className={`min-w-0 sm:col-span-2 lg:col-span-1 ${
+            open ? "" : "flex items-center gap-3"
+          }`}
+        >
+          {/* Folded, this rides AFTER the track name on the same line (order-2)
+              so the whole card is one line tall. Open, it is the line above it
+              and carries the server's own name as well — that used to be a
+              third line of its own, for a string that is truncated anyway. */}
+          <div
+            className={`flex min-w-0 items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow ${
+              open ? "" : "order-2 shrink-0"
+            }`}
+          >
+            <span className="shrink-0">{session.type}</span>
             {session.sessionCount > 1 && (
-              <span className="text-faint">
+              <span className="shrink-0 text-faint">
                 {session.sessionIndex + 1}/{session.sessionCount}
               </span>
             )}
+            {open && session.serverName && (
+              <>
+                <span className="hidden h-3 w-px shrink-0 bg-border sm:inline-block" />
+                <span className="hidden truncate font-sans text-xs normal-case tracking-normal text-light sm:inline">
+                  {session.serverName}
+                </span>
+              </>
+            )}
           </div>
-          <div className="mt-1.5 flex items-center gap-2.5 sm:mt-2">
+          <div className={`flex min-w-0 items-center gap-2.5 ${open ? "mt-1.5 sm:mt-2" : ""}`}>
             {code && <Flag code={code} title={session.country} w={26} h={19} />}
-            <span className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
+            {/* truncate rather than wrap: two lines of track name is what made
+                the left half look stacked up. The full name is a hover away and
+                sits in the page title regardless. */}
+            <span
+              title={session.trackName}
+              className="truncate font-display text-lg font-extrabold uppercase tracking-tight text-dark"
+            >
               {session.trackName}
             </span>
           </div>
-          {session.serverName && (
-            <div className="mt-1 truncate text-xs text-light">{session.serverName}</div>
-          )}
         </div>
 
-        <div className="collapse-row" style={{ height: showMore ? panelH : 0 }}>
+        {/* Below sm the panel slides (the measured height); from sm up the
+            wrapper dissolves into the grid, and folding is a plain hide — there
+            is nothing to animate when the four stats are grid items of a row
+            that simply stops existing. */}
+        <div
+          className={`collapse-row ${open ? "" : "is-folded"}`}
+          style={{ height: showMore ? panelH : 0 }}
+        >
           <div ref={innerRef} className="collapse-inner">
             {/* This grid only exists on phones — from sm up it dissolves too
                 (sm:contents, like the collapse wrappers around it), so the four
@@ -228,7 +305,7 @@ function SessionHeader({ session, receivedAt }) {
                 </Stat>
               ) : (
                 <Stat label="Time Left">
-                  <span className="text-xl font-bold sm:text-2xl">
+                  <span className="whitespace-nowrap text-xl font-bold sm:text-2xl">
                     <Countdown
                       baseMs={session.remainingMs}
                       receivedAt={receivedAt}
@@ -238,30 +315,57 @@ function SessionHeader({ session, receivedAt }) {
                 </Stat>
               )}
 
-              <Stat label="Drivers">
-                <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
-                  {session.driverCount}
+              {/* Both numbers in one reading: out there, of connected. It was
+                  a big number and a sentence beside it, which is two lines'
+                  worth of width for a fact that fits in five characters — and
+                  that width is what the clock next door needed. */}
+              <Stat label="On track">
+                <span className="whitespace-nowrap font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
+                  {session.onTrackCount}
+                  <span className="text-light">/{session.driverCount}</span>
                 </span>
-                <span className="ml-2 font-mono text-xs text-light">{session.onTrackCount} on track</span>
               </Stat>
 
-              <Stat label="Conditions">
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-                  {session.ambientTemp != null && (
-                    <span className="text-medium">
-                      Air <span className="font-mono font-bold text-dark">{session.ambientTemp}°</span>
-                    </span>
-                  )}
-                  {session.roadTemp != null && (
-                    <span className="text-medium">
-                      Track <span className="font-mono font-bold text-dark">{session.roadTemp}°</span>
-                    </span>
-                  )}
-                  {weather && <span className="capitalize text-light">{weather}</span>}
+              {/* Of air, track and sky, the track temperature is the one that
+                  decides what the lap times mean. The other two were three
+                  words and two numbers wrapping onto a second line to say
+                  something nobody was reading. Air and weather still travel on
+                  the board; the TV strip prints all three, where there is room
+                  for a row of them. */}
+              <Stat label="Track temp">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-xl font-bold tabular-nums text-dark sm:text-2xl">
+                    {session.roadTemp != null ? `${Math.round(session.roadTemp)}°` : NO_VALUE}
+                  </span>
+                  {weather && <span className="truncate text-xs capitalize text-light">{weather}</span>}
                 </div>
               </Stat>
             </div>
           </div>
+        </div>
+
+        {/* What you can DO about the session described to the left: join it, or
+            open the race server's own timing page. Last column on a wide screen,
+            its own line below that. The fold control rides with them, because
+            this is the corner of the card that is about the card rather than
+            about the session. */}
+        <div
+          className={`flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-1 lg:justify-end lg:self-center ${
+            open ? "lg:col-start-6" : ""
+          }`}
+        >
+          <ExternalButtons links={links} patreonUrl={patreonUrl} />
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            title={open ? "Fold the session details away" : "Show the session details"}
+            className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-light transition hover:bg-surface2 hover:text-dark sm:inline-flex"
+          >
+            <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${open ? "" : "rotate-180"}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 15l6-6 6 6" />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -477,7 +581,13 @@ const FINISHED_LAP_HOLD_MS = 10_000;
 // sideways the moment a driver left the pit lane.
 const BADGE_BOX = "w-[42px] justify-center";
 
-function BuildingSectors({ sectors, lastLapAt, outLap = false }) {
+// `compact` follows the chip it draws: the Driving-now table on the normal page
+// wants the narrow ones (its column shares a row with the track map), the TV
+// board wants the full-size ones. It used to be hard-wired narrow, so on the
+// board a driver's sectors SHRANK the moment they went out and grew again when
+// they parked — the same three numbers changing size depending on what the car
+// was doing, which is the one thing a column of times must never do.
+function BuildingSectors({ sectors, lastLapAt, outLap = false, compact = true }) {
   // The clock runs whenever there is a lap to measure: either to count a sector
   // or to expire the hold below.
   const now = useNow(lastLapAt != null && !outLap);
@@ -511,9 +621,9 @@ function BuildingSectors({ sectors, lastLapAt, outLap = false }) {
   // is exactly as tall as it will be a moment later when the first split lands.
   if (!hasSplit && !running) {
     return (
-      <div aria-hidden className="mt-1 flex justify-end gap-1 invisible">
+      <div aria-hidden className={`flex justify-end gap-1 invisible ${compact ? "mt-1" : ""}`}>
         {[0, 1, 2].map((i) => (
-          <Sector key={i} s={null} compact />
+          <Sector key={i} s={null} compact={compact} />
         ))}
       </div>
     );
@@ -532,9 +642,9 @@ function BuildingSectors({ sectors, lastLapAt, outLap = false }) {
   }
 
   return (
-    <div className="mt-1 flex justify-end gap-1">
+    <div className={`flex justify-end gap-1 ${compact ? "mt-1" : ""}`}>
       {(shown || [null, null, null]).map((s, i) => (
-        <Sector key={i} s={s} compact runningMs={i === nextIdx ? runningMs : null} />
+        <Sector key={i} s={s} compact={compact} runningMs={i === nextIdx ? runningMs : null} />
       ))}
     </div>
   );
@@ -1560,32 +1670,43 @@ function ExternalIcon() {
 
 // The admin-configured external buttons. Left: "Join in Content Manager"
 // (appears only once an admin has pasted the running server's CM deep link)
-// then "Full live timing" (always shows — it has a sensible default). Right,
-// on the same row: the league's Patreon (from the social links, when set).
+// then "Full live timing" (always shows — it has a sensible default), and the
+// league's Patreon at the far end when one is set.
+//
+// These sit in the SESSION CARD's footer, not in the page header. They used to
+// share the header's right slot with the server switch, the TV-mode button and
+// the demo pill: six controls in one line, three of them about which board you
+// are looking at and three of them about doing something somewhere else. Nobody
+// can read a row like that. The header now keeps only the view controls, and
+// these three moved to the card that describes the session they act on — the
+// server you would be joining is named two lines above the button that joins it.
 function ExternalButtons({ links, patreonUrl }) {
   const timing = links?.liveTimingUrl;
   const join = links?.cmJoinUrl;
   if (!timing && !join && !patreonUrl) return null;
-  // Lives in the PAGE HEADER's right slot (same height as the title), so the
-  // actual content starts right below. One shared size; phones stack them
-  // full-width under the title (the header handles the stacking).
-  // Phones: one row of three equal buttons with short labels, so they don't
-  // eat three stacked full-width rows before the timing even starts. The full
-  // wording comes back from sm up, where there's room for it.
+  // SHORT labels, at every width. Three buttons spelled out in full cost 560px
+  // of a 1488px card, and that is where the squeeze on the left came from: the
+  // track name was left with 261px, needed 340, and wrapped onto two lines.
+  // "Join the server" says everything "Join in Content Manager" says; the long
+  // wording moved to the hover title, which is where a sentence belongs.
   const base =
-    "flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-xs font-bold uppercase tracking-wide transition sm:w-auto sm:flex-none sm:gap-2 sm:px-4 sm:text-sm";
+    "flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-bold uppercase tracking-wide transition sm:flex-none sm:gap-2 sm:px-3.5";
+  // No border, no padding of its own: this is a group of buttons that the card
+  // places, not a strip. It used to bring its own bordered row, which is
+  // precisely the row that made the card taller than the board underneath it
+  // could afford.
   return (
-    <div className="flex w-full gap-2 sm:w-auto sm:flex-wrap sm:items-center sm:justify-end sm:gap-2.5">
+    <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
       {join && (
         <a
           href={join}
           target="_blank"
           rel="noreferrer noopener"
+          title="Join this race server in Content Manager"
           className={`transition ${base} bg-brand text-ink shadow-lg shadow-brand/25 hover:brightness-105`}
         >
           <ExternalIcon />
-          <span className="sm:hidden">Join</span>
-          <span className="hidden sm:inline">Join in Content Manager</span>
+          Join the server
         </a>
       )}
       {timing && (
@@ -1593,23 +1714,28 @@ function ExternalButtons({ links, patreonUrl }) {
           href={timing}
           target="_blank"
           rel="noreferrer noopener"
+          title="The race server's own full live timing page"
           className={`transition ${base} border border-border bg-card text-dark hover:bg-surface2`}
         >
           <ExternalIcon />
-          <span className="sm:hidden">Timing</span>
-          <span className="hidden sm:inline">Full live timing</span>
+          Live timing
         </a>
       )}
+      {/* Patreon in Patreon's own red, which is the only reason anybody spots
+          it. Quiet grey text was tidier and might as well not have been there.
+          It stays LAST and stays a different colour from the two buttons above,
+          so it reads as a different kind of thing rather than a third action on
+          the session. */}
       {patreonUrl && (
         <a
           href={patreonUrl}
           target="_blank"
           rel="noreferrer noopener"
-          className={`transition ${base} border border-[#FF424D]/40 bg-[#FF424D]/10 text-[#FF424D] hover:bg-[#FF424D]/20`}
+          title="Support the league on Patreon"
+          className={`${base} border border-[#FF424D]/40 bg-[#FF424D]/10 text-[#FF424D] hover:bg-[#FF424D]/20`}
         >
           <SocialIcon name="patreon" className="h-4 w-4" />
-          <span className="sm:hidden">Patreon</span>
-          <span className="hidden sm:inline">Support us on Patreon</span>
+          Patreon
         </a>
       )}
     </div>
@@ -2083,6 +2209,723 @@ function useHeldBoard(board) {
   return { shown: live || held, gap: !live && !!held };
 }
 
+// ---------------------------------------------------------------------------
+// TV MODE — the board as one screen, for the stream, a second monitor, or the
+// telly in the corner of the room.
+//
+// Same data, different question. The normal page is for reading: it explains
+// itself, it has menus, it scrolls. This is for GLANCING at from across a room
+// while doing something else, so everything that needs a pointer is gone and
+// what is left is set large enough to read at three metres.
+//
+// An overlay rather than a route of its own, on purpose: the page's hooks (one
+// socket, the held board, the projection poll) are already running and are
+// exactly the ones this needs. A second route would open a second feed to say
+// the same thing.
+//
+// ?tv=1 is a real address, so it can be a browser source in OBS and survive a
+// reload. Escape leaves; in fullscreen the first Escape is the browser's own
+// (it drops fullscreen) and the second one leaves the mode.
+// ---------------------------------------------------------------------------
+
+// The board shows the WHOLE field and scrolls: nothing is cut, and the slowest
+// lap of the evening is a flick of the wheel away. It does NOT scroll itself —
+// a board that moves on its own is unreadable the moment you actually want to
+// read something on it.
+
+// The board's columns, by width, in one place: the header row and the driver
+// rows both read from here, so they cannot drift apart. Everything to the right
+// of the name is fixed; the name is the flexible one, which is also what keeps
+// the numbers in a straight line down the board when a driver picks up a badge.
+const TV_W = {
+  num: "w-11",
+  bar: "w-1.5",
+  flag: "w-6",
+  gap: "w-24 xl:w-28",
+  time: "w-28 xl:w-32",
+  sectors: "w-[172px]",
+  tyre: "w-8",
+  small: "w-12",
+};
+
+function TvStat({ label, children }) {
+  return (
+    <div className="text-right">
+      <div className="font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-light">{label}</div>
+      <div className="font-mono text-2xl font-bold tabular-nums text-dark xl:text-3xl">{children}</div>
+    </div>
+  );
+}
+
+// The line that separates the two halves of a practice board. Its height is
+// TV_GROUP_H, which the fitting maths above has to be told about.
+const TV_GROUP_H = 34;
+
+function TvGroup({ label, count, gap = false }) {
+  return (
+    <div
+      // The gap belongs ABOVE the second heading, not inside it: a band with
+      // padding to spare still reads as one block with the rows under it. Empty
+      // space is what says "a different list starts here".
+      style={{ height: TV_GROUP_H, marginTop: gap ? 20 : 0 }}
+      // A shade louder than the column headings above it, and on its own band:
+      // this is the seam between two lists, and it has to be findable at a
+      // glance from the other side of a room. Sticky, because the list scrolls
+      // now and a heading you have scrolled past stops answering the question
+      // it was there to answer. Opaque for the same reason — rows must not
+      // show through it as they pass underneath.
+      // Underlined only. A rule above it as well drew a line across the gap
+      // that is doing the separating, which is one mark too many for one job.
+      className="sticky top-0 z-10 flex shrink-0 items-center gap-2.5 border-b border-border bg-bg px-2 font-mono text-[13px] font-bold uppercase tracking-[0.18em] text-eyebrow"
+    >
+      {label}
+      {count != null && <span className="text-light">{count}</span>}
+    </div>
+  );
+}
+
+function TvRow({ e, match, isRace, fastestLapMs, index = 0 }) {
+  const m = match ? match(e.name) : null;
+  const name = m?.nabsName || e.name;
+  const color = m?.teamColor || "var(--c-border)";
+  // The bleed only happens for a driver we can put a team colour to. Appending
+  // the alpha to the fallback would build "var(--c-border)1f", which is not a
+  // colour, and one invalid stop drops the whole gradient.
+  const tint = m?.teamColor ? `${m.teamColor}1f` : "transparent";
+  // In a race the running order is the truth; anywhere else the board arrives
+  // sorted by best lap and its own ranking is the answer.
+  const pos = (isRace ? e.racePosition : null) ?? e.position;
+  const holdsFastest = !!e.bestLapMs && e.bestLapMs === fastestLapMs;
+  const tyre = e.currentTyre || e.tyre;
+  // The number the row is about: in a race the lap they just did, otherwise the
+  // lap that put them here. Rolled rather than swapped (the same treatment the
+  // sector chips get): a driver improving from 1:08.9 to 1:08.4 runs through
+  // the tenths between, which is the whole story of the lap in one movement.
+  const timeMs = isRace ? e.lastLapMs : e.bestLapMs;
+  const rolledMs = useRolledMs(timeMs);
+  // Gold, silver, bronze on the podium places, and only in a race: a practice
+  // session's top three have not won anything. Same three tokens the standings
+  // and the hero use, so a medal means one thing site-wide.
+  const medal = isRace && pos >= 1 && pos <= 3 ? MEDAL_TEXT[pos - 1] : null;
+  return (
+    <div
+      data-flip-id={e.guid}
+      style={{ "--i": index }}
+      // Every row is written at full strength, whether or not the car is out
+      // there at that second. Dimming looked right for the one case it was
+      // built for (a retirement mid-race) and wrong for the case that actually
+      // fills this board: a practice session, where sitting in the garage
+      // between runs is what everybody is doing most of the evening, and the
+      // whole field came out grey. In a race, having left is said in a word
+      // instead (below), which is the thing that was worth saying anyway.
+      className="relative flex min-h-[56px] max-h-[84px] flex-1 items-center gap-3 border-b border-border/60 px-2"
+    >
+      {/* The team's colour, bled in from the left and gone by a third of the
+          way across. The bar alone was a 6px stripe on a screen two metres
+          wide; this is the same fact given enough room to be read at that
+          distance, and it stops well before the numbers so nothing is ever
+          printed on a tint. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 left-0 w-1/3"
+        style={{ background: `linear-gradient(90deg, ${tint}, transparent 100%)` }}
+      />
+      <span
+        className="relative w-11 shrink-0 text-right font-display text-[1.7rem] font-black leading-none tabular-nums"
+        style={{ color: medal || "var(--c-text)" }}
+      >
+        {pos ?? NO_VALUE}
+      </span>
+      <span className="relative h-7 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+      {m?.country ? (
+        <Flag code={m.country} title={m.teamName} w={24} h={17} />
+      ) : (
+        <span className="block h-[17px] w-6 shrink-0" />
+      )}
+      {/* Name over team. The colour bar says which team as fast as an eye can
+          move, and the word says which team to anyone who has not yet learned
+          the colours — which on a screen a room away is most people. A driver
+          we cannot place (a guest on the practice server) simply gets the one
+          line, rather than a line with nothing on it. */}
+      <span className="relative min-w-0 flex-1 leading-tight">
+        <span className="block truncate font-display text-xl font-bold uppercase tracking-tight text-dark">
+          {name}
+        </span>
+        {m?.teamName && (
+          <span className="block truncate font-mono text-[11px] uppercase tracking-wider text-light">
+            {m.teamName}
+          </span>
+        )}
+      </span>
+      {holdsFastest && (
+        <span className="pill shrink-0 bg-fl/20 text-fl" title="Fastest lap of the session">
+          FL
+        </span>
+      )}
+      {e.inPits && <span className="pill shrink-0 bg-amber-500/15 text-warn">Pit</span>}
+      {/* Gone from the server while the race is on: retired, disconnected, or
+          simply finished and closed the game. Their place is still theirs, so
+          the row stays exactly as legible as the others and just says so.
+          Only in a race — in practice this is called "having a cup of tea". */}
+      {isRace && !e.onTrack && (
+        <span className="pill shrink-0 bg-surface2 font-mono text-light">Left</span>
+      )}
+      {e.drs && !e.inPits && <span className="pill shrink-0 bg-sky-500/15 text-sky-600">DRS</span>}
+      {/* Everything from here right is one fixed column each. A race and a
+          practice session are asking different questions of the same board, so
+          they get different columns: in a race the story is the distance to the
+          car in front and the one at the front, and how many stops it took. In
+          practice there is only ever one story, the lap, so it gets taken apart
+          into its three sectors. */}
+      {isRace ? (
+        <>
+          <span className={`relative shrink-0 text-right font-mono text-base tabular-nums text-medium xl:text-lg ${TV_W.gap}`}>
+            {/* To the car ahead on the road. A lapped car has no honest
+                interval to quote, so it says nothing rather than a number that
+                would read as a fight. */}
+            {pos === 1 ? "" : e.lapsDown > 0 && e.intervalMs == null ? NO_VALUE : formatGap(e.intervalMs)}
+          </span>
+          <span className={`relative shrink-0 text-right font-mono text-base tabular-nums text-light xl:text-lg ${TV_W.gap}`}>
+            {pos === 1 ? "Leader" : formatRaceGap(e.gapToLeaderMs, e.lapsDown)}
+          </span>
+          <span className={`relative shrink-0 text-right font-mono text-base tabular-nums text-dark xl:text-lg ${TV_W.time}`}>
+            {formatLap(rolledMs)}
+          </span>
+          <span
+            className={`relative shrink-0 text-right font-mono text-base tabular-nums xl:text-lg ${TV_W.time} ${
+              holdsFastest ? "text-fl" : "text-medium"
+            }`}
+          >
+            {formatLap(e.bestLapMs)}
+          </span>
+        </>
+      ) : (
+        <>
+          {/* The lap being driven right now, counting. In a race the running
+              order carries the drama; in a practice session there is only one
+              thing happening, somebody is on a lap, and this is it. Falls back
+              to "In pit" / "Out lap" on its own, so a driver who is not on a
+              flying lap never shows a number that would read as one. */}
+          <span className={`relative shrink-0 text-right text-base xl:text-lg ${TV_W.gap}`}>
+            {/* Only for a car that is actually on the server. A driver who has
+                gone home still has a last crossing on file, and counting from
+                it printed a running lap clock for the next quarter of an hour —
+                the board would have said somebody was on a flying lap when
+                their car was not even in the session any more. */}
+            {e.onTrack ? (
+              <CurrentLap lastLapAt={e.lastLapAt} inPits={e.inPits} outLap={e.outLap} />
+            ) : (
+              <span className="font-mono tabular-nums text-faint">{NO_VALUE}</span>
+            )}
+          </span>
+          <span className={`relative shrink-0 text-right font-mono text-base tabular-nums text-light xl:text-lg ${TV_W.gap}`}>
+            {formatGap(e.gapToBestMs)}
+          </span>
+          {/* Sectors, in the chips the rest of the site already uses: purple for
+              the session's fastest, green for a personal best, amber otherwise.
+              For a car that is out there they BUILD as the lap goes round (the
+              same treatment the Driving Now table gets, holding the finished
+              lap for ten seconds before sector one takes the line over); for a
+              car in the garage they are the splits of the lap that put it where
+              it is, which is the only thing left to say about it. */}
+          <span className={`relative hidden shrink-0 justify-end gap-1 2xl:flex ${TV_W.sectors}`}>
+            {e.onTrack && !e.inPits ? (
+              <BuildingSectors
+                sectors={e.currentSectors}
+                lastLapAt={e.lastLapAt}
+                outLap={e.outLap}
+                compact={false}
+              />
+            ) : (
+              [0, 1, 2].map((i) => <Sector key={i} s={e.sectors?.[i]} />)
+            )}
+          </span>
+          <span className={`relative shrink-0 text-right font-mono text-base tabular-nums text-medium xl:text-lg ${TV_W.time}`}>
+            {formatLap(e.lastLapMs)}
+          </span>
+          <span
+            className={`relative shrink-0 text-right font-mono text-base tabular-nums xl:text-lg ${TV_W.time} ${
+              holdsFastest ? "text-fl" : "text-dark"
+            }`}
+          >
+            {formatLap(rolledMs)}
+          </span>
+        </>
+      )}
+      <span className={`relative flex shrink-0 justify-center ${TV_W.tyre}`}>
+        {tyre ? <TyreBadge t={tyreCompound(tyre)} size={22} /> : null}
+      </span>
+      {isRace && (
+        <span className={`relative shrink-0 text-center font-mono text-base tabular-nums ${TV_W.small} ${
+          e.numPits > 0 ? "text-medium" : "text-faint"
+        }`}>
+          {e.numPits ?? 0}
+        </span>
+      )}
+      <span className={`relative shrink-0 text-center font-mono text-base tabular-nums text-medium ${TV_W.small}`}>
+        {e.lapCount || 0}
+      </span>
+    </div>
+  );
+}
+
+// The right-hand column's shared frame: a card with one line of heading. Kept
+// apart from the page's own SectionHeading because that one is sized to be read
+// at a desk, and carries `reveal` — which starts at opacity zero and waits for
+// a scroll pass that never comes to a board nothing scrolls.
+function TvPanel({ title, right, children, className = "" }) {
+  return (
+    <section className={`flex flex-col overflow-hidden rounded-2xl border border-border bg-card ${className}`}>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">{title}</span>
+        {right != null && (
+          <span className="font-mono text-[11px] uppercase tracking-wider text-light">{right}</span>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+// Who owns each sector of the session, and it means exactly that: the fastest
+// sector anybody has driven, on any lap, not the best sector of whoever holds
+// the best lap. Those are different things and the difference is the ordinary
+// case, not a corner case — a driver sets a blinding first sector, throws the
+// lap away in the second, and comes back an hour later to set their best lap
+// with a tidier but slower first sector. The first one is still the fastest
+// first sector anybody has done, and this panel says so.
+//
+// So it reads `bestSectors` (the upstream's per-driver best splits, whatever
+// lap each was set on) and falls back to the best lap's splits only for a board
+// that does not carry them. Never the upstream's IsBest flag: that rides on the
+// best lap too, and can leave a whole field with no purple at all.
+function TvSectors({ entries, match }) {
+  const rows = [0, 1, 2].map((i) => {
+    let best = null;
+    for (const e of entries || []) {
+      const ms = e.bestSectors?.[i]?.ms ?? e.sectors?.[i]?.ms;
+      if (ms > 0 && (!best || ms < best.ms)) best = { ms, e };
+    }
+    return best;
+  });
+  // A server that sends no splits (it happens) gets no panel rather than three
+  // empty rows.
+  if (!rows.some(Boolean)) return null;
+  return (
+    <TvPanel title="Best sectors" className="shrink-0">
+      <div className="divide-y divide-border">
+        {rows.map((r, i) => {
+          const m = r && match ? match(r.e.name) : null;
+          return (
+            <div key={i} className="flex items-center gap-3 px-4 py-2">
+              <span className="w-6 shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                S{i + 1}
+              </span>
+              <span className="w-[74px] shrink-0 font-mono text-base font-bold tabular-nums text-fl">
+                {r ? formatSector(r.ms) : NO_VALUE}
+              </span>
+              {r && (
+                <span
+                  className="h-5 w-1 shrink-0 rounded-full"
+                  style={{ backgroundColor: m?.teamColor || "var(--c-border)" }}
+                />
+              )}
+              <span className="min-w-0 flex-1 truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+                {r ? m?.nabsName || r.e.name : ""}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </TvPanel>
+  );
+}
+
+// The pit lane, with both clocks the board already keeps: how long they have
+// been in the lane and how long they have been standing still in it. This is
+// the part of a race that the order alone never explains — a driver falling
+// two places while their car is on jacks.
+function TvPitLane({ entries, match, className = "" }) {
+  const inPits = (entries || []).filter((e) => e.onTrack && e.inPits);
+  return (
+    <TvPanel
+      title="Pit lane"
+      right={inPits.length > 0 ? `${inPits.length} in` : "Empty"}
+      className={className}
+    >
+      {inPits.length > 0 ? (
+        <div className="scrollbar-slim min-h-0 flex-1 divide-y divide-border overflow-y-auto">
+          {inPits.map((e) => {
+            const m = match ? match(e.name) : null;
+            const t = e.currentTyre ? tyreCompound(e.currentTyre) : null;
+            return (
+              <div key={e.guid} className="flex items-center gap-3 px-4 py-2">
+                <span
+                  className="h-7 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: m?.teamColor || "var(--c-border)" }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+                    {m?.nabsName || e.name}
+                  </span>
+                  <span className="block truncate text-[11px] text-light">{m?.teamName || NO_VALUE}</span>
+                </span>
+                <PitClocks pitSince={e.pitSince} stoppedSince={e.stoppedSince} />
+                {t && (
+                  <span className="inline-grid shrink-0 place-items-center" title="Current compound">
+                    <TyreBadge t={t} size={20} />
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6 text-center">
+          <p className="font-mono text-[11px] uppercase tracking-wider text-light">Nobody in the pit lane</p>
+        </div>
+      )}
+    </TvPanel>
+  );
+}
+
+function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, server, gap, connected, onExit, onSeen }) {
+  // The page underneath is still mounted, and without this it scrolls away
+  // behind the board on any stray wheel event.
+  useScrollLock(true);
+
+  // Going in is a fade (`content-in`, the same one every page arrives with).
+  // Coming out has to be asked for: the mode lives in the address, so dropping
+  // it unmounts this instantly and there is nothing left to animate. So the
+  // exit runs the fade first and hands over when it is done — 140ms, the
+  // scale's own quick step, matched to .fade-out in index.css.
+  //
+  // A CSS animation rather than a mounted-then-toggled class, deliberately: a
+  // class toggled on the next frame needs a frame to arrive, and rAF is exactly
+  // what a background tab (or an embedded pane) throttles. The animation runs
+  // from the markup, so the board can never be left sitting at opacity zero.
+  const [leaving, setLeaving] = useState(false);
+  const leave = useCallback(() => {
+    if (motionOff()) return onExit();
+    setLeaving(true);
+    setTimeout(onExit, 140);
+  }, [onExit]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") leave();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [leave]);
+
+  // Entering the board is what retires the "New" badge on the button that
+  // opens it. There is no welcome card: the board explains itself by being a
+  // board, and a note over the bottom two rows explained less than it hid.
+  useEffect(() => {
+    onSeen?.();
+  }, [onSeen]);
+
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const sync = () => setFull(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+  const toggleFull = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    // Refused when the gesture was not a real click (it always is here), and
+    // simply absent on some phones. Either way the mode still works; it just
+    // keeps the browser's own chrome around it.
+    else document.documentElement.requestFullscreen?.().catch(() => {});
+  };
+
+  const isRace = session?.type === "Race";
+  // A practice or qualifying board is really two boards, and the race server's
+  // own timing page has known this for years: at the top the cars that are out
+  // there right now, underneath the session's times as they stand. A driver
+  // pulling out of the pits moves from the lower list to the upper one and back
+  // again when they come in, which is the one thing you actually watch for on a
+  // practice evening. In a race everybody is in one running order and splitting
+  // it would be nonsense.
+  //
+  // Ordered by best lap inside both halves, so the upper one is not a separate
+  // ranking to learn: it is the same list with the drivers who are working cut
+  // out of it and put on top.
+  // The board deals itself out once, on arrival (see .tv-deal in index.css).
+  // Held for the length of the longest row's delay plus its rise, then dropped
+  // so the flip-glide has its transform back.
+  const [dealt, setDealt] = useState("tv-deal");
+  useEffect(() => {
+    const t = setTimeout(() => setDealt(""), 1200);
+    return () => clearTimeout(t);
+  }, []);
+  const listRef = useRef(null);
+  const all = entries || [];
+  // Everybody who is ON THE SERVER is in the upper half, in the pit lane or
+  // not. It used to be "out of the pits", which meant every stop threw a driver
+  // down into the lower list and back up again a minute later — the two halves
+  // shuffled all evening and you could not keep your eye on anyone. Being
+  // connected is the thing that lasts; the pit badge and the "In pit" clock
+  // already say what they are doing while they are up there.
+  const driving = isRace ? [] : all.filter((e) => e.onTrack);
+  const resting = isRace ? all : all.filter((e) => !e.onTrack);
+  const split = driving.length > 0;
+  const shownDriving = split ? driving : [];
+  const shownRest = resting;
+  const shown = [...shownDriving, ...shownRest];
+  // Overtakes glide into place, and so does a driver crossing between the two
+  // halves — the same hook, so leaving the pits is a move rather than a jump.
+  useFlipList(listRef, shown.map((e) => e.guid).join("|"));
+
+  // A label only for a half that has somebody in it. With the whole field out
+  // on track there is nothing left to head "session best times", and heading it
+  // anyway printed a title over an empty stretch of board.
+  const restLabel = split && resting.length > 0;
+
+  const code = session ? countryCodeFromName(session.country) : null;
+  const fastestLapMs = (entries || []).reduce(
+    (m, e) => (e.bestLapMs && (!m || e.bestLapMs < m) ? e.bestLapMs : m),
+    null
+  );
+  const fastestBy = fastestLapMs ? (entries || []).find((e) => e.bestLapMs === fastestLapMs) : null;
+  const fastestName = fastestBy ? (match ? match(fastestBy.name)?.nabsName : null) || fastestBy.name : null;
+  // The lap being DRIVEN, not the one last completed: lapsLeft counts down from
+  // the leader's completed laps, and a board reading LAP 14 while the leader is
+  // on their fifteenth is a lap behind the television.
+  const lapNow =
+    isRace && session.raceLaps != null && session.lapsLeft != null
+      ? Math.min(session.raceLaps, session.raceLaps - session.lapsLeft + 1)
+      : null;
+  const cars = (entries || []).filter((e) => e.onTrack || e.inPits);
+  // Either the race server's own overhead picture, or a stylised outline we
+  // hold for that circuit. With neither, the map stands down and the order
+  // takes the whole screen rather than sharing it with an empty rectangle.
+  const stylised = circuitForLive(session?.trackName, session?.track);
+  const hasMap = !!session?.map || !!stylised;
+  // The map sits in a box of the column's choosing rather than one of its own,
+  // and fills it the way a picture fills a frame: both dimensions given, the
+  // svg's own preserveAspectRatio ("meet", see LiveTrackMap) scaling the
+  // drawing to fit and centring it. Left to itself the svg is width-driven,
+  // which is right in the page's map card and wrong here — a circuit is not a
+  // square (Most comes off the server 1679 x 614, the stylised outlines are
+  // drawn portrait) and the box has to be able to hold either.
+  const mapFit =
+    "flex h-full w-full items-center justify-center [&>svg]:h-full [&>svg]:w-full [&>svg]:max-h-full";
+  const btn =
+    "inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 hover:text-dark";
+
+  // Straight onto the body, like every other overlay on the site. Not for
+  // tidiness: the page it is returned from sits inside the entrance animation,
+  // and an ancestor with a transform on it becomes the containing block for
+  // anything `fixed` inside it — so this laid itself out against the page
+  // column (1200px wide, no height) instead of against the screen.
+  return createPortal(
+    <div
+      className={`fixed inset-0 z-overlay flex flex-col bg-bg ${
+        leaving ? "fade-out" : "content-in"
+      }`}
+    >
+      {/* The league's own line, the one the session card on the normal page
+          wears. Three pixels of it is the whole reason this reads as a NABS
+          board rather than a generic timing screen. */}
+      <span aria-hidden className="h-[3px] shrink-0 bg-gradient-to-r from-primary via-amber-500 to-sky-600" />
+      {/* ===== One line across the top: where we are, and how long is left ===== */}
+      <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 sm:gap-5 sm:px-6">
+        {code && <Flag code={code} title={session?.country} w={38} h={27} />}
+        <div className="min-w-0">
+          <div className="truncate font-display text-xl font-black uppercase tracking-tight text-dark sm:text-2xl xl:text-3xl">
+            {session?.trackName || "Live Timing"}
+          </div>
+          <div className="truncate font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-eyebrow sm:text-[11px]">
+            {session?.type || "Standing by"}
+            {session?.serverName ? ` · ${session.serverName}` : ""}
+          </div>
+        </div>
+        {session?.safetyCar && (
+          <span className="pill shrink-0 bg-amber-500/20 text-warn" role="status">
+            Safety car
+          </span>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-5 sm:gap-8">
+          {session && (
+            <>
+              {lapNow != null ? (
+                <TvStat label="Lap">
+                  {lapNow}
+                  <span className="text-light"> / {session.raceLaps}</span>
+                </TvStat>
+              ) : (
+                <TvStat label="Time left">
+                  <Countdown
+                    baseMs={session.remainingMs}
+                    receivedAt={receivedAt}
+                    resetKey={`${session.type}|${session.sessionIndex}|${session.trackName}`}
+                  />
+                </TvStat>
+              )}
+              <TvStat label="On track">
+                {session.onTrackCount}
+                <span className="text-light"> / {session.driverCount}</span>
+              </TvStat>
+            </>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleFull}
+              className={btn}
+              title={full ? "Back to a window" : "Fill the screen"}
+            >
+              {full ? "Windowed" : "Fullscreen"}
+            </button>
+            <button type="button" onClick={leave} className={btn} title="Back to the normal page (Esc)">
+              Close
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {!session ? (
+        // Nothing running. The board stays put and says so rather than
+        // disappearing: a scene in OBS pointed at this address should not go
+        // blank between sessions.
+        <div className="flex flex-1 items-center justify-center">
+          <p className="font-mono text-sm uppercase tracking-[0.25em] text-light">Waiting for a session</p>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 sm:px-6 xl:flex-row xl:gap-6">
+          {/* ===== The order ===== */}
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex shrink-0 items-center gap-3 border-b border-border px-2 pb-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">
+              <span className={`${TV_W.num} text-right`}>Pos</span>
+              <span className={TV_W.bar} />
+              <span className={TV_W.flag} />
+              <span className="flex-1">Driver</span>
+              {isRace ? (
+                <>
+                  <span className={`${TV_W.gap} text-right`}>Int.</span>
+                  <span className={`${TV_W.gap} text-right`}>Gap</span>
+                  <span className={`${TV_W.time} text-right`}>Last</span>
+                  <span className={`${TV_W.time} text-right`}>Best</span>
+                </>
+              ) : (
+                <>
+                  <span className={`${TV_W.gap} text-right`}>Current</span>
+                  <span className={`${TV_W.gap} text-right`}>Off best</span>
+                  <span className={`hidden ${TV_W.sectors} justify-end gap-1 2xl:flex`}>
+                    <span className="w-[52px] text-center">S1</span>
+                    <span className="w-[52px] text-center">S2</span>
+                    <span className="w-[52px] text-center">S3</span>
+                  </span>
+                  <span className={`${TV_W.time} text-right`}>Last</span>
+                  <span className={`${TV_W.time} text-right`}>Best</span>
+                </>
+              )}
+              <span className={TV_W.tyre} />
+              {isRace && <span className={`${TV_W.small} text-center`}>Pits</span>}
+              <span className={`${TV_W.small} text-center`}>Laps</span>
+            </div>
+            {/* tv-deal only while the board is being built: the rows carry
+                data-flip-id, and a running CSS animation on transform outranks
+                the inline transform useFlipList glides with. Once the entrance
+                has played the class comes off and overtakes glide again. */}
+            <div
+              ref={listRef}
+              className={`scrollbar-slim flex min-h-0 flex-1 flex-col overflow-y-auto ${dealt}`}
+            >
+              {split && <TvGroup label="Driving now" count={driving.length} />}
+              {shownDriving.map((e, i) => (
+                <TvRow
+                  key={e.guid}
+                  e={e}
+                  match={match}
+                  isRace={isRace}
+                  fastestLapMs={fastestLapMs}
+                  index={i}
+                />
+              ))}
+              {restLabel && <TvGroup label="Session best times" count={resting.length} gap />}
+              {shownRest.map((e, i) => (
+                <TvRow
+                  key={e.guid}
+                  e={e}
+                  match={match}
+                  isRace={isRace}
+                  fastestLapMs={fastestLapMs}
+                  index={shownDriving.length + i}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* ===== The right-hand column, on a screen wide enough for it.
+                 The map is the top of it, not the whole of it: a wide circuit
+                 in a tall column leaves two thirds of that column empty, and
+                 the answer is not to move the map but to give the space to the
+                 three things a timing screen is otherwise silent about — who is
+                 in the pit lane and for how long, who owns each sector, and
+                 what the weather is doing. All of it is already in the board.
+                 The map keeps the card behind it, because the stylised outline
+                 is stroked in the border colour: a visible line on a card, and
+                 very nearly nothing on the darker page. ===== */}
+          <aside className={`hidden min-h-0 w-[34%] shrink-0 flex-col gap-4 xl:flex ${dealt}`}>
+            {hasMap && cars.length > 0 && (
+              // The map takes what the other three leave. It is the one panel
+              // that is better for being bigger, and the pit lane is the one
+              // that is usually empty: fixing the map's share instead left a
+              // half-metre of blank card under "Nobody in the pit lane".
+              <div className="flex min-h-0 flex-1 items-stretch justify-center overflow-hidden rounded-2xl border border-border bg-card p-3">
+                <LiveTrackMap
+                  track={session.trackName || session.track}
+                  cars={cars}
+                  matchFn={match}
+                  map={session.map || null}
+                  follow={follow}
+                  onCarTelemetry={onCarTelemetry}
+                  server={server}
+                  className={`${mapFit} text-medium`}
+                />
+              </div>
+            )}
+            <TvSectors entries={entries} match={match} />
+            {/* A FIXED share of the column, not "as tall as it needs". Sized
+                to what it holds, it grew every time somebody pitted and took
+                the height out of the map above it — so the picture everyone is
+                watching jumped about because two cars came in. It keeps its box
+                whatever happens and scrolls inside it. */}
+            <TvPitLane entries={entries} match={match} className="h-[26%] shrink-0" />
+          </aside>
+        </div>
+      )}
+
+      {/* ===== The strip along the bottom: the one lap time worth a line of its
+             own, and the truth about the feed ===== */}
+      <footer className="flex shrink-0 items-center gap-4 border-t border-border px-4 py-2.5 font-mono text-[11px] uppercase tracking-wider sm:px-6">
+        {fastestLapMs ? (
+          <span className="truncate text-light">
+            <span className="text-fl">Fastest lap</span> {formatLap(fastestLapMs)}
+            {fastestName ? ` · ${fastestName}` : ""}
+          </span>
+        ) : (
+          <span className="text-light">No lap set yet</span>
+        )}
+        {all.length > 0 && (
+          <span className="hidden shrink-0 text-faint sm:inline">{all.length} drivers</span>
+        )}
+        <span className="ml-auto shrink-0">
+          {gap || !connected ? (
+            <span className="text-warn">Connection lost, showing last known data</span>
+          ) : (
+            <span className="text-light">Live</span>
+          )}
+        </span>
+      </footer>
+    </div>,
+    document.body
+  );
+}
+
 export default function Live() {
   const { board: feed, socketState, follow, onCarTelemetry, setServer, serverKey } = useLiveTiming();
   // Polled once here and handed to both pieces of the server switch: the
@@ -2097,6 +2940,44 @@ export default function Live() {
   const social = useSocial();
   // Timing ⇄ Strategy switch (the track map sits above both).
   const [view, setView] = useState("timing");
+
+  // TV mode lives in the ADDRESS (?tv=1), not in a piece of state: that way it
+  // survives a reload, can be bookmarked on the machine that drives the telly,
+  // and can be handed to OBS as a browser source. Leaving replaces the history
+  // entry so the back button goes back to wherever the viewer came from rather
+  // than into the mode they just closed.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tv = searchParams.get("tv") === "1";
+  // A browser that has never been in there gets told, once: a badge on the way
+  // in and a line of explanation on arrival. A browser with nothing to remember
+  // with (private mode) counts as having seen it — a "new" badge that is new
+  // every single visit is not a badge, it is a nag.
+  const [tvSeen, setTvSeen] = useState(() => {
+    try {
+      return localStorage.getItem(TV_SEEN_KEY) === "1";
+    } catch {
+      return true; // nothing to remember with: never nag
+    }
+  });
+  const markTvSeen = useCallback(() => {
+    setTvSeen(true);
+    try {
+      localStorage.setItem(TV_SEEN_KEY, "1");
+    } catch {
+      /* nothing to remember with */
+    }
+  }, []);
+  const enterTv = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    next.set("tv", "1");
+    setSearchParams(next);
+  }, [searchParams, setSearchParams]);
+  const exitTv = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("tv");
+    setSearchParams(next, { replace: true });
+    if (document.fullscreenElement) document.exitFullscreen?.();
+  }, [searchParams, setSearchParams]);
 
   // The state of the feed RIGHT NOW (not of the board on screen, which may be a
   // held one): everything arriving, fresh, and our own socket up.
@@ -2388,6 +3269,27 @@ export default function Live() {
     </>
   );
 
+  // TV mode answers with the same board on a screen of its own (see TvMode
+  // above). It RETURNS rather than rendering over the page, deliberately: two
+  // track maps mounted at once would both animate, and both would tell the
+  // relay which car to stream on the fast lane.
+  if (tv)
+    return (
+      <TvMode
+        onSeen={markTvSeen}
+        session={session}
+        entries={entries}
+        receivedAt={receivedAt}
+        match={match}
+        follow={follow}
+        onCarTelemetry={onCarTelemetry}
+        server={board?.serverKey || serverKey}
+        gap={gap}
+        connected={connected}
+        onExit={exitTv}
+      />
+    );
+
   return (
     // content-in on the root, which is what every other page does. This one had
     // it on the inner board only, so the title and the buttons above simply
@@ -2403,18 +3305,44 @@ export default function Live() {
       <PageHeader
         eyebrow="Real-time"
         title="Live Timing"
-        // The external buttons share the title's row (right-aligned), so the
-        // session card moves up to just under the header.
+        // The header's right slot answers one question only: WHICH board am I
+        // looking at. The server it comes from, whether this is the demo, and
+        // whether to fill the screen with it. Anything you would do about the
+        // session itself (join it, open the server's own timing) sits in the
+        // session card below, where the session is actually described.
         right={
           <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
             {board?.demo && <span className="pill bg-amber-500/15 text-warn">Demo</span>}
+            {/* The same board, sized for a screen nobody is sitting at. Not on
+                phones: there is no second monitor there and no stream running
+                off it, and the button would be taking room from the two that
+                are actually used on a phone. */}
+            <button
+              type="button"
+              onClick={enterTv}
+              title="Full-screen board for a stream or a second screen"
+              className={`hidden items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider transition sm:inline-flex ${
+                tvSeen
+                  ? "border-border text-light hover:bg-surface2 hover:text-dark"
+                  : "border-brand/60 bg-brand/10 text-dark hover:bg-brand/20"
+              }`}
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="2" y="4" width="20" height="14" rx="2" />
+                <path d="M8 21h8" />
+              </svg>
+              TV mode
+              {/* Until it has been opened once. It is a real pill rather than a
+                  dot, because a dot on a button says "something changed here"
+                  and leaves you to guess what. */}
+              {!tvSeen && <span className="pill bg-brand/30 text-[9px] text-dark">New</span>}
+            </button>
             {/* The board names its own server, so the switch shows where the
                 data actually comes from rather than what was last clicked. The
                 two only diverge briefly — a click before the answer lands, a
                 reconnect — but those are exactly the moments a wrong button
                 would mislead. */}
             <LiveServerSwitch servers={liveServers} current={board?.serverKey || serverKey} onSwitch={setServer} />
-            <ExternalButtons links={extLinks} patreonUrl={social.data?.patreon} />
           </div>
         }
       />
@@ -2438,7 +3366,12 @@ export default function Live() {
       ) : (
         <div className="space-y-8">
           {/* ===== Session bar across the top ===== */}
-          <SessionHeader session={session} receivedAt={receivedAt} />
+          <SessionHeader
+            session={session}
+            receivedAt={receivedAt}
+            links={extLinks}
+            patreonUrl={social.data?.patreon}
+          />
 
           {quiet ? (
             // Empty server: the best-times board takes the "right now" slot,

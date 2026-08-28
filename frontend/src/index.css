@@ -769,6 +769,38 @@ body::before {
   .tour-card { animation: none; }
 }
 
+/* --- Live board: TV mode --------------------------------------------------
+   The full-screen board (TvMode in pages/Live.jsx). It is looked at from across
+   a room, often for an hour at a time, so it earns an entrance that builds
+   instead of appearing. The ground under it is the page's own flat colour: a
+   gradient there was one texture too many behind a screenful of numbers.
+
+/* The board deals itself out, top to bottom, the way the standings and the race
+   cards do (.cascade). It cannot BE .cascade: that one waits for the scroll
+   observer to add .is-visible, and nothing in a full-screen overlay ever
+   scrolls into view. So the same idea with its own trigger — being on screen at
+   all — and a quicker beat, because there is no scrolling to catch up with.
+
+   28ms and a 220ms rise: the whole field is home in well under a second, which
+   is as long as anyone should be made to wait for a board they opened to read
+   RIGHT NOW. */
+@keyframes tv-deal {
+  from { opacity: 0; transform: translateY(9px); }
+  to   { opacity: 1; transform: none; }
+}
+.tv-deal > * {
+  animation: tv-deal var(--t-base) var(--e-out) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
+}
+.fx-lite .tv-deal > * {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tv-deal > * {
+    animation: none !important;
+  }
+}
+
 /* --- Odometer digits ----------------------------------------------- */
 /* Countdown numerals roll to their value instead of hard-swapping (RollingNumber
    in ui.jsx). Each digit is a clipped 1em window over a 0–9 column that slides. */
@@ -857,6 +889,14 @@ body::before {
   .collapse-row,
   .collapse-row > .collapse-inner {
     display: contents;
+  }
+  /* Folded away by choice, from sm up (the live page's session card). It has to
+     live here rather than as a `sm:hidden` on the element: the rule above is
+     unlayered, and unlayered CSS beats anything in @layer utilities however
+     specific the utility looks. Two classes, so it also outranks its own
+     neighbour above. */
+  .collapse-row.is-folded {
+    display: none;
   }
 }
 

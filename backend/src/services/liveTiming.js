@@ -1037,6 +1037,13 @@ function createRelay(server) {
       // one counting. Blanking them here took that choice away and left the
       // whole first sector empty.
       currentSectors: onTrack ? sectorsOf(car?.CurrentLapSplits) : [null, null, null],
+      // The driver's best sector times regardless of which lap they were set
+      // on — the upstream keeps them separately from the best lap's splits, and
+      // `sectors` above is the latter. They are different questions: a sector
+      // set on a lap that was ruined afterwards is still the best sector that
+      // driver has done, and on a timing screen that is the number that counts.
+      // (potentialMs below is the sum of exactly these three.)
+      bestSectors: sectorsOf(car?.BestSplits),
       potentialMs: potentialOf(car?.BestSplits),
       inPits,
       // Epoch ms, this server's clock: when they entered the pit lane, and when
@@ -1606,7 +1613,53 @@ async function ensureDemoState() {
   demoBuilding = false;
 }
 
-function getDemoBoard() {
+// The fabricated board, in one of two flavours.
+//
+// "race" is the original: a 30-lap race, running order by distance covered.
+// "practice" is the same twelve cars on the same circuit with the clock running
+// instead of a lap count, ordered by best lap. It exists because the practice
+// layout is the one nobody can look at on a Tuesday: a race can at least be
+// imagined from the race demo, but a practice board with cars actually out
+// there only happens when drivers are online, which is exactly when nobody
+// wants to be changing it.
+// Where the demo's sector lines are, as a share of the lap. Deliberately the
+// same three numbers the current-lap splits use below: the running sector is
+// measured as (time since the line) minus (the splits already in), so cuts that
+// disagreed with the spline thresholds made it go negative and print 0.000 for
+// the first moments of every sector.
+const DEMO_CUT = [0.34, 0.33, 0.33];
+
+// A lap time cut into three sectors.
+function demoSectors(lapMs) {
+  const cut = DEMO_CUT;
+  return cut.map((share) => ({ ms: Math.round(lapMs * share), best: false, driversBest: true, cuts: 0 }));
+}
+
+// A driver's best sectors: their best lap's splits, each a little quicker,
+// by an amount that rotates with the driver index.
+function demoBestSectors(lapMs, idx) {
+  const off = [((idx * 37) % 90) + 10, ((idx * 53) % 90) + 10, ((idx * 71) % 90) + 10];
+  return DEMO_CUT.map((share, i) => ({
+    ms: Math.max(1, Math.round(lapMs * share) - off[i]),
+    best: false,
+    driversBest: true,
+    cuts: 0,
+  }));
+}
+
+// The same, but only as far round as the car has got. Nulls after that, exactly
+// as the upstream leaves them (see sectorsOf), so the display builds the lap up
+// rather than showing three times that have not been set yet.
+function demoCurrentSectors(lapMs, spline) {
+  const done = spline < DEMO_CUT[0] ? 0 : spline < DEMO_CUT[0] + DEMO_CUT[1] ? 1 : 2;
+  const cut = DEMO_CUT;
+  return [0, 1, 2].map((i) =>
+    i < done ? { ms: Math.round(lapMs * cut[i]), best: false, driversBest: false, cuts: 0 } : null
+  );
+}
+
+function getDemoBoard(kind = "race") {
+  const practice = kind === "practice";
   if (!demoState) {
     return { ok: false, connected: false, demo: true, stale: false, session: null, entries: [], updatedAt: Date.now() };
   }
@@ -1650,7 +1703,21 @@ function getDemoBoard() {
       // Fractional, like the real thing (see buildEntry), so the demo exercises
       // the two decimals the timing table prints.
       topSpeed: Math.round((330.4 - idx * 1.37) * 100) / 100,
-      sectors: [null, null, null],
+      // The three splits of that best lap. Roughly a 41/38/21 circuit, which is
+      // close enough to Monza to look like a lap and is the only thing the
+      // sector chips need to exercise their three colours. The flags are set
+      // once the whole field is known (below): purple belongs to the session's
+      // fastest, not to whoever is being built at the time.
+      sectors: demoSectors(80000 + idx * 180),
+      // A few hundredths under the best lap's splits, shuffled per driver, so
+      // the session's best sectors land on different cars than the best lap —
+      // which is the whole point of keeping the two apart.
+      bestSectors: demoBestSectors(80000 + idx * 180, idx),
+      // The lap being driven RIGHT NOW, filling up as the car goes round: S1
+      // lands a third of the way in, S2 two thirds, S3 at the line. This is
+      // what a hot lap looks like from the outside, and without it the practice
+      // board has nothing to tick.
+      currentSectors: demoCurrentSectors(80500 + idx * 200, spline),
       // No sector times in the demo, but an ideal lap the table can sort by:
       // a few tenths under each car's best, as a real one always is.
       potentialMs: 80000 + idx * 180 - (140 + idx * 9),
@@ -1690,14 +1757,38 @@ function getDemoBoard() {
   // _prog is read across rows above (each car against the one ahead), so it can
   // only be dropped once every row is done with it.
   for (const e of entries) delete e._prog;
+  // Purple per sector, decided over the whole field like the real thing.
+  for (const i of [0, 1, 2]) {
+    let best = null;
+    for (const e of entries) {
+      const sec = e.sectors?.[i];
+      if (sec && (!best || sec.ms < best.ms)) best = sec;
+    }
+    if (best) best.best = true;
+  }
+  // In practice the board is ranked by best lap, not by distance covered, and
+  // the race-only numbers have no meaning: nobody is "a lap down" in a session
+  // everyone is driving on their own.
+  if (practice) {
+    entries.sort((a, b) => (a.bestLapMs ?? Infinity) - (b.bestLapMs ?? Infinity));
+    const leadBest = entries[0]?.bestLapMs ?? null;
+    entries.forEach((e, i) => {
+      e.position = i + 1;
+      e.racePosition = null;
+      e.lapsDown = 0;
+      e.gapToLeaderMs = null;
+      e.intervalMs = null;
+      e.gapToBestMs = leadBest != null && e.bestLapMs != null ? e.bestLapMs - leadBest : null;
+    });
+  }
   return {
     ok: true,
     connected: true,
     demo: true,
     stale: false,
     session: {
-      type: "Race",
-      name: "Demo Race",
+      type: practice ? "Practice" : "Race",
+      name: practice ? "Demo Practice" : "Demo Race",
       serverName: "NABS demo session (not a real race)",
       track: demoState.track,
       trackName: demoState.trackName,
@@ -1711,12 +1802,14 @@ function getDemoBoard() {
       driverCount: entries.length,
       onTrackCount: entries.filter((e) => e.onTrack).length,
       safetyCar: false,
-      leaderName: entries[0]?.name ?? null,
-      lapsLeft: Math.max(0, DEMO_RACE_LAPS - (entries[0]?.lapCount ?? 0)),
+      leaderName: practice ? null : entries[0]?.name ?? null,
+      // A practice session counts down a clock, not laps. The countdown is
+      // built from the demo's own age so it actually moves while you watch.
+      lapsLeft: practice ? null : Math.max(0, DEMO_RACE_LAPS - (entries[0]?.lapCount ?? 0)),
       sessionIndex: 0,
-      sessionCount: 1,
-      remainingMs: 32 * 60000,
-      raceLaps: DEMO_RACE_LAPS, // lap-based demo race: the strategy axis runs the distance
+      sessionCount: practice ? 3 : 1,
+      remainingMs: practice ? Math.max(0, 60 * 60000 - Math.round(secs * 1000)) : 32 * 60000,
+      raceLaps: practice ? null : DEMO_RACE_LAPS, // the strategy axis runs the race distance
       map: null, // the demo carries no world positions — stylised outline only
     },
     entries,
@@ -1724,8 +1817,14 @@ function getDemoBoard() {
   };
 }
 
-function wantsDemo(req) {
-  return DEMO_ENABLED && /[?&]demo=1/.test(req?.url || "");
+// Which fabricated board a client asked for, if any: ?demo=1 is the race,
+// ?demo=practice the practice session. Null means the real thing.
+function demoKindOf(req) {
+  if (!DEMO_ENABLED) return null;
+  const m = /[?&]demo=([a-z0-9]+)/i.exec(req?.url || "");
+  if (!m) return null;
+  const v = m[1].toLowerCase();
+  return v === "practice" ? "practice" : v === "1" ? "race" : null;
 }
 
 // The race server a client asked for on the WS URL (?server=<key>), if any.
@@ -1816,7 +1915,8 @@ export function initLiveTiming(server) {
         /* not a follow message — ignore */
       }
     });
-    ws.isDemo = wantsDemo(req);
+    ws.demoKind = demoKindOf(req);
+    ws.isDemo = !!ws.demoKind;
     if (ws.isDemo) await ensureDemoState();
     // Which race server this client follows: resolved once, from the series it
     // passes on the URL (admin-managed assignment; default = first server).
@@ -1831,7 +1931,7 @@ export function initLiveTiming(server) {
     }
     // send a snapshot immediately so the board paints without waiting a tick
     try {
-      ws.send(JSON.stringify(ws.isDemo ? getDemoBoard() : getBoard(ws.serverKey)));
+      ws.send(JSON.stringify(ws.isDemo ? getDemoBoard(ws.demoKind) : getBoard(ws.serverKey)));
     } catch {
       /* noop */
     }
@@ -1885,7 +1985,9 @@ export function initLiveTiming(server) {
     // finished race's frozen result (see the hold in the relay), and it must
     // keep being asked at the old cadence.
     const frameByKey = new Map(); // key -> json to send, or null when unchanged
-    let demoFrame; // undefined = not built this tick
+    // One entry per demo flavour (race, practice), built at most once a tick and
+    // only when somebody is actually watching that one.
+    const demoFrames = new Map();
     let viewers = 0;
     let totalBuffered = 0;
     let maxBuffered = 0;
@@ -1917,8 +2019,11 @@ export function initLiveTiming(server) {
       }
       try {
         if (c.isDemo) {
-          if (demoFrame === undefined) demoFrame = frameFor("demo", getDemoBoard(), now);
-          if (demoFrame) c.send(demoFrame);
+          // One cached frame per flavour, exactly like the per-server ones.
+          const dk = c.demoKind || "race";
+          if (!demoFrames.has(dk)) demoFrames.set(dk, frameFor(`demo:${dk}`, getDemoBoard(dk), now));
+          const frame = demoFrames.get(dk);
+          if (frame) c.send(frame);
         } else {
           const key = c.serverKey || DEFAULT_SERVER_KEY;
           if (!frameByKey.has(key)) frameByKey.set(key, frameFor(key, getBoard(key), now));
