@@ -1056,35 +1056,20 @@ export default function Races() {
                               away from the buttons. Desktop only: on phones the
                               groups are on their own lines already. */}
                           <span className="hidden flex-1 sm:block" />
-                          {/* Race | Qualifying switch — not an action on the
-                              round but a view of the table underneath, so it
-                              sits on the right with the date rather than in
-                              among the buttons. Only for rounds with an
-                              imported qualifying. */}
+                          {/* The two view switches — neither is an action on
+                              the round, they are ways of looking at the table
+                              underneath, so they sit on the right with the date
+                              rather than in among the buttons. Each appears
+                              only when it has something to offer: a lap chart
+                              on file, an imported qualifying. */}
                           {/* justify-between only bites on the phone line, where
                               the group is full width: switch left, date right,
                               the way the row reads on a desktop. */}
                           <span className="flex w-full items-center justify-between gap-3 sm:w-auto sm:shrink-0">
-                            {!detailIsStale && (detail.quali?.length > 0 || sprintRaceId) && (
-                              <SlidingTabs
-                                className="shrink-0"
-                                wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
-                                btnClassName="px-2.5 py-1 text-[11px]"
-                                pillClassName="rounded-md bg-brand shadow"
-                                items={[
-                                  // With a sprint on file the evening has two
-                                  // races — name the main one what it is.
-                                  { key: "race", label: sprintRaceId ? "Feature" : "Race" },
-                                  ...(sprintRaceId ? [{ key: "sprint", label: "Sprint" }] : []),
-                                  ...(detail.quali?.length > 0 ? [{ key: "quali", label: "Quali" }] : []),
-                                ]}
-                                value={shownSession}
-                                onChange={setSession}
-                              />
-                            )}
-                            {/* Table ⇄ lap chart. Two switches, one job each:
-                                that one picks the session, this one picks how
-                                to look at it. Only for the race (a qualifying
+                            {/* Table ⇄ lap chart, and the session switch after
+                                it. Two switches, one job each: this one picks
+                                how to look at the round, that one picks which
+                                session. Only for the race (a qualifying
                                 classification has no laps to plot) and only
                                 where the round was archived with its raw
                                 result file — hasLapChart, a directory listing
@@ -1102,6 +1087,23 @@ export default function Races() {
                                 ]}
                                 value={view}
                                 onChange={setView}
+                              />
+                            )}
+                            {!detailIsStale && (detail.quali?.length > 0 || sprintRaceId) && (
+                              <SlidingTabs
+                                className="shrink-0"
+                                wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
+                                btnClassName="px-2.5 py-1 text-[11px]"
+                                pillClassName="rounded-md bg-brand shadow"
+                                items={[
+                                  // With a sprint on file the evening has two
+                                  // races — name the main one what it is.
+                                  { key: "race", label: sprintRaceId ? "Feature" : "Race" },
+                                  ...(sprintRaceId ? [{ key: "sprint", label: "Sprint" }] : []),
+                                  ...(detail.quali?.length > 0 ? [{ key: "quali", label: "Quali" }] : []),
+                                ]}
+                                value={shownSession}
+                                onChange={setSession}
                               />
                             )}
                             {head.date && (
