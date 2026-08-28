@@ -15,6 +15,7 @@ import { useAuth } from "./hooks/useAuth.js";
 import PreviewToggle from "./components/PreviewToggle.jsx";
 import ScrollBar from "./components/ScrollBar.jsx";
 import FeedbackWidget from "./components/FeedbackWidget.jsx";
+import UpdateBanner from "./components/UpdateBanner.jsx";
 import { Skeleton } from "./components/ui.jsx";
 import { usePreviewMode, applyPreviewFromUrl } from "./preview.js";
 import { setFallbackTitle, titleFor } from "./utils/pageTitle.js";
@@ -448,6 +449,9 @@ function SeriesScopedApp() {
             (bottom right); on phones it has no button of its own and is opened
             from the "Feedback" row in the burger menu. */}
         <FeedbackWidget />
+        {/* "A new version is ready" for tabs that have been open since before
+            the last deploy — the live page is left up for hours. */}
+        <UpdateBanner />
         </ConfirmProvider>
       </SeasonProvider>
     </TourProvider>
