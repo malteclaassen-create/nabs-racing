@@ -19,6 +19,11 @@ export default function SlidingTabs({
   pillClassName = "rounded-lg bg-brand shadow", // the sliding pill's look
   activeClassName = "text-ink", // active button (text only — the pill is the bg)
   idleClassName = "text-light hover:text-dark",
+  // A bar whose colour is data (a team colour) can't reach for a class — these
+  // two ride along as inline styles instead. pillStyle paints the pill,
+  // activeStyle the label sitting on it (its readable ink).
+  pillStyle,
+  activeStyle,
 }) {
   const wrapRef = useRef(null);
   const btnRefs = useRef({});
@@ -57,7 +62,7 @@ export default function SlidingTabs({
         <span
           aria-hidden
           className={`absolute left-0 top-0 will-change-transform ${pillClassName} transition-[transform,width,height] duration-base ease-out-soft`}
-          style={{ transform: `translate(${pill.left}px, ${pill.top}px)`, width: pill.width, height: pill.height }}
+          style={{ transform: `translate(${pill.left}px, ${pill.top}px)`, width: pill.width, height: pill.height, ...pillStyle }}
         />
       )}
       {items.map((it) => (
@@ -69,6 +74,7 @@ export default function SlidingTabs({
           data-tour={it.dataTour}
           onClick={() => onChange(it.key)}
           aria-pressed={value === it.key}
+          style={value === it.key ? activeStyle : undefined}
           className={`relative z-10 rounded-lg font-bold transition-colors ${btnClassName} ${
             value === it.key ? activeClassName : idleClassName
           }`}

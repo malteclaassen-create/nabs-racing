@@ -399,7 +399,7 @@ async function previousSeasonOrder(prisma, seasonId, depth) {
 // head-to-head panel walks the keys of this map instead. A season whose only
 // completed session was a friendly showed duel records for whoever raced it.
 export function buildDriverPerRace(results, driverId, raceNumberById, table = DEFAULT_POINTS_TABLE) {
-  const perRace = {}; // raceNumber -> { points, status, position }
+  const perRace = {}; // raceNumber -> { points, status, position, grid }
   const pointsByRound = {};
   for (const r of results) {
     if (r.driverId !== driverId) continue;
@@ -407,7 +407,10 @@ export function buildDriverPerRace(results, driverId, raceNumberById, table = DE
     if (num == null) continue;
     const pts = getDriverResultPoints(r, table);
     pointsByRound[num] = pts;
-    perRace[num] = { points: pts, status: r.status, position: r.position };
+    // grid rides along so a comparison between two drivers (the head-to-head
+    // panel) can put their qualifying side by side — the standings table
+    // itself ignores it. Rounds without a recorded grid slot carry null.
+    perRace[num] = { points: pts, status: r.status, position: r.position, grid: r.grid ?? null };
   }
   return { perRace, pointsByRound };
 }

@@ -94,12 +94,22 @@ function readableText(hex) {
 function statsFromRow(row) {
   const fin = Object.values(row.perRace).filter((r) => r.status === "FINISHED" && r.position != null);
   const pos = fin.map((r) => r.position);
+  // Qualifying is read off the starting grid stored with each result — the very
+  // same source as the Poles and Avg Grid tiles further up the page (a pole is
+  // recorded as grid 1 site-wide), so the two can never disagree. Rounds with
+  // no grid slot on file simply don't count towards any of it.
+  const grids = Object.values(row.perRace).map((r) => r.grid).filter((g) => g != null);
+  const avg = (arr) => (arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null);
   return {
     points: row.total,
     wins: fin.filter((r) => r.position === 1).length,
     podiums: fin.filter((r) => r.position <= 3).length,
     bestFinish: pos.length ? Math.min(...pos) : null,
-    avgFinish: pos.length ? Math.round((pos.reduce((a, b) => a + b, 0) / pos.length) * 10) / 10 : null,
+    avgFinish: avg(pos),
+    quali: grids.length,
+    poles: grids.filter((g) => g === 1).length,
+    bestGrid: grids.length ? Math.min(...grids) : null,
+    avgGrid: avg(grids),
   };
 }
 
@@ -634,6 +644,9 @@ function HeadToHead({ me, meRow, standings }) {
   }, [others, meRow, me.driver]);
 
   const [oppId, setOppId] = useState(defaultOpp);
+  // Sunday or Saturday. Two blocks stacked made this panel half again as tall
+  // as the chart beside it, so the qualifying record lives behind a switch.
+  const [duelMode, setDuelMode] = useState("race");
   const opp = standings.find((s) => s.driverId === oppId) || others[0];
   // The split bar trails the picker by one beat: on a switch it keeps showing
   // the OLD opponent with a quick fade-out, then swaps to the new one, whose
@@ -652,9 +665,19 @@ function HeadToHead({ me, meRow, standings }) {
   const meStats = statsFromRow(meRow);
   const oppStats = statsFromRow(opp);
   let meAhead = 0, oppAhead = 0, shared = 0;
+  // The qualifying duel is counted over the same rounds, but on its own terms:
+  // a round counts the moment BOTH have a grid slot, whatever the race then did
+  // to them — out-qualifying someone who later retired still happened.
+  let meAheadQ = 0, oppAheadQ = 0, sharedQ = 0;
   for (const num of Object.keys(meRow.perRace)) {
     const a = meRow.perRace[num], b = opp.perRace[num];
-    if (!a || !b || a.status !== "FINISHED" || b.status !== "FINISHED" || a.position == null || b.position == null) continue;
+    if (!a || !b) continue;
+    if (a.grid != null && b.grid != null) {
+      sharedQ++;
+      if (a.grid < b.grid) meAheadQ++;
+      else if (b.grid < a.grid) oppAheadQ++;
+    }
+    if (a.status !== "FINISHED" || b.status !== "FINISHED" || a.position == null || b.position == null) continue;
     shared++;
     if (a.position < b.position) meAhead++;
     else if (b.position < a.position) oppAhead++;
@@ -685,7 +708,7 @@ function HeadToHead({ me, meRow, standings }) {
   // them stay put instead of re-entering.
   const num = (v, { prefix = "" } = {}) =>
     v == null ? "–" : <CountUp key={opp.driverId} end={v} prefix={prefix} decimals={Number.isInteger(v) ? 0 : 1} />;
-  const rows = [
+  const raceRows = [
     {
       label: "Finished ahead",
       sub: (
@@ -701,6 +724,29 @@ function HeadToHead({ me, meRow, standings }) {
     { label: "Podiums", a: num(meStats.podiums), b: num(oppStats.podiums), cmp: sign(meStats.podiums - oppStats.podiums) },
     { label: "Best finish", a: num(meStats.bestFinish, { prefix: "P" }), b: num(oppStats.bestFinish, { prefix: "P" }), cmp: sign((oppStats.bestFinish ?? 99) - (meStats.bestFinish ?? 99)) },
     { label: "Avg finish", a: num(meStats.avgFinish), b: num(oppStats.avgFinish), cmp: sign((oppStats.avgFinish ?? 99) - (meStats.avgFinish ?? 99)) },
+  ];
+  // Saturday's half of the duel. Grid slots are entered per result, and older
+  // archive seasons have none — with nothing on file for either driver the
+  // whole block stays away rather than showing a column of dashes.
+  const hasQuali = meStats.quali > 0 || oppStats.quali > 0;
+  // Switching to an opponent from a season with no grid slots takes the switch
+  // away with it — without this the panel would sit on an empty Qualifying view.
+  const mode = hasQuali ? duelMode : "race";
+  const qualiRows = [
+    {
+      label: "Out-qualified",
+      sub: (
+        <>
+          <CountUp key={opp.driverId} end={sharedQ} /> shared {sharedQ === 1 ? "grid" : "grids"}
+        </>
+      ),
+      a: num(meAheadQ),
+      b: num(oppAheadQ),
+      cmp: sign(meAheadQ - oppAheadQ),
+    },
+    { label: "Poles", a: num(meStats.poles), b: num(oppStats.poles), cmp: sign(meStats.poles - oppStats.poles) },
+    { label: "Best grid", a: num(meStats.bestGrid, { prefix: "P" }), b: num(oppStats.bestGrid, { prefix: "P" }), cmp: sign((oppStats.bestGrid ?? 99) - (meStats.bestGrid ?? 99)) },
+    { label: "Avg grid", a: num(meStats.avgGrid), b: num(oppStats.avgGrid), cmp: sign((oppStats.avgGrid ?? 99) - (meStats.avgGrid ?? 99)) },
   ];
 
   return (
@@ -762,35 +808,89 @@ function HeadToHead({ me, meRow, standings }) {
           </div>
         </div>
 
-        {/* NOT keyed on the opponent: the rows stay put on a switch — only
+        {/* Race ⇄ Qualifying, the same switch the season form carries. Only
+            offered when a starting grid is actually on file for one of the two
+            — older archive seasons have none. */}
+        {hasQuali && (
+          <div className="mb-3 flex justify-end">
+            {/* The pill wears the page driver's team colour — the same colour
+                their half of the points bar and their winning rows carry, so
+                the switch belongs to this profile rather than to the site. */}
+            <SlidingTabs
+              items={[
+                { key: "race", label: "Race" },
+                { key: "quali", label: "Qualifying" },
+              ]}
+              value={mode}
+              onChange={setDuelMode}
+              btnClassName="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider"
+              pillClassName="rounded-lg shadow"
+              pillStyle={{ backgroundColor: meColor }}
+              activeStyle={{ color: readableText(meColor) }}
+            />
+          </div>
+        )}
+
+        {/* Both lists sit in the SAME grid cell and the hidden one keeps its
+            space, so the card holds ONE height whichever view is picked — the
+            switch never resizes the panel, nor the chart stretched beside it.
+            NOT keyed on the opponent: the rows stay put on a switch — only
             their numbers count up to the new values (CountUp re-counts). */}
-        <div className="cascade divide-y divide-border overflow-hidden rounded-xl bg-surface2/60">
-          {rows.map((r, i) => {
-            const aWin = r.cmp > 0, bWin = r.cmp < 0;
-            const cell = (val, win, color, align) =>
-              win ? (
-                <span
-                  className={`inline-block rounded-md px-2 py-0.5 font-display text-base font-black tabular-nums ${align}`}
-                  style={{ backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
-                >
-                  {val}
-                </span>
-              ) : (
-                <span className={`font-display text-base font-black tabular-nums text-medium ${align}`}>{val}</span>
-              );
-            return (
-              <div key={r.label} style={{ "--i": i }} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2.5">
-                <span className="flex justify-start">{cell(r.a, aWin, meColor, "text-left")}</span>
-                <span className="text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-medium">
-                  {r.label}
-                  {r.sub && <span className="block text-[9px] font-medium normal-case tracking-normal text-light">{r.sub}</span>}
-                </span>
-                <span className="flex justify-end">{cell(r.b, bWin, oppColor, "text-right")}</span>
-              </div>
-            );
-          })}
+        <div className="grid">
+          <div
+            className={`col-start-1 row-start-1 ${mode === "race" ? "" : "invisible pointer-events-none"}`}
+            aria-hidden={mode !== "race"}
+          >
+            <DuelRows rows={raceRows} meColor={meColor} oppColor={oppColor} />
+          </div>
+          {hasQuali && (
+            <div
+              className={`col-start-1 row-start-1 ${mode === "quali" ? "" : "invisible pointer-events-none"}`}
+              aria-hidden={mode !== "quali"}
+            >
+              <DuelRows rows={qualiRows} meColor={meColor} oppColor={oppColor} />
+            </div>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// One block of head-to-head rows: the focal driver's value on the left, the
+// opponent's on the right, and whoever leads the row wearing their team colour.
+function DuelRows({ rows, meColor, oppColor }) {
+  return (
+    <div className="cascade divide-y divide-border overflow-hidden rounded-xl bg-surface2/60">
+      {rows.map((r, i) => {
+        const aWin = r.cmp > 0, bWin = r.cmp < 0;
+        // Leading a row only changes the colour, never the box: the tinted
+        // plate is on every value with the same padding and the same line
+        // height, transparent where nobody leads. Drawing it for the leader
+        // alone made the number step sideways and the row grow a little
+        // taller, so the whole list shuffled itself on a Race ⇄ Qualifying
+        // switch — and on every change of opponent.
+        const cell = (val, win, color, align) => (
+          <span
+            className={`inline-block rounded-md px-2 py-0.5 font-display text-base font-black tabular-nums ${align} ${
+              win ? "" : "text-medium"
+            }`}
+            style={win ? { backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`, color } : undefined}
+          >
+            {val}
+          </span>
+        );
+        return (
+          <div key={r.label} style={{ "--i": i }} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2.5">
+            <span className="flex justify-start">{cell(r.a, aWin, meColor, "text-left")}</span>
+            <span className="text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-medium">
+              {r.label}
+              {r.sub && <span className="block text-[9px] font-medium normal-case tracking-normal text-light">{r.sub}</span>}
+            </span>
+            <span className="flex justify-end">{cell(r.b, bWin, oppColor, "text-right")}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
