@@ -473,7 +473,16 @@ function CockpitReadout({ car, onCarTelemetry }) {
 
 // Picks the real map when calibration is present, else the stylised outline.
 // Owns the focus + zoom state so they survive a map-mode change mid-session.
-export default function LiveTrackMap({ track, cars, matchFn, map, follow, onCarTelemetry, server = null, className = "" }) {
+// `className` dresses the map itself; `wrapClassName` REPLACES the frame around
+// it — the zoom buttons and the focus label hang off this element, so a caller
+// that wants the map to fill a box has to say so HERE. It used to be the map
+// alone that was told, and this wrapper sat between them with no height of its
+// own: the map's `h-full` then had nothing to be a percentage OF (see the TV
+// board). Replaced rather than added to, because the default `relative` and a
+// caller's `absolute` are the same property and the stylesheet, not the class
+// string, decides which of the two wins. Whatever a caller passes has to keep
+// this element positioned — the controls inside are absolute against it.
+export default function LiveTrackMap({ track, cars, matchFn, map, follow, onCarTelemetry, server = null, className = "", wrapClassName = "" }) {
   const [focusGuid, setFocusGuid] = useState(null);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
   // The followed car left the server -> drop the focus rather than staring at
@@ -496,7 +505,7 @@ export default function LiveTrackMap({ track, cars, matchFn, map, follow, onCarT
   const zoomBtn =
     "flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 font-mono text-sm font-bold text-white backdrop-blur transition hover:bg-black/75";
   return (
-    <div className="relative">
+    <div className={wrapClassName || "relative"}>
       {real ? (
         <RealTrackMap
           cars={cars}

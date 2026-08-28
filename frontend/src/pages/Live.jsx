@@ -1816,22 +1816,18 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
   const showStream = !!stream && view === "stream";
   return (
     <section className={`reveal card flex flex-col overflow-hidden ${className}`}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 sm:px-5">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
-          {showStream ? "Stream" : "Track map"}
-        </span>
-        {showStream ? (
-          <span className="ml-auto">
-            <StreamLink url={streamUrl} stream={stream} />
-          </span>
-        ) : (
-          <span className="ml-auto font-mono text-[11px] uppercase tracking-wider text-light">
-            {cars.filter((c) => !c.inPits).length} on track
-          </span>
-        )}
-        {stream && (
+      {/* No header strip over the map. A card that says "Track map" above a
+          picture of a track is a line of chrome charging rent on the one panel
+          that is better for being bigger — the same reason the fullscreen board
+          has none. The on-track count went with it: the session card above says
+          the same thing. What survives is the switch, and only when there is a
+          stream to switch TO, because nothing else can say which of the two
+          views you are looking at. */}
+      {stream && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 sm:px-5">
+          {showStream && <StreamLink url={streamUrl} stream={stream} />}
           <SlidingTabs
-            className="w-full sm:w-auto"
+            className="ml-auto w-full sm:w-auto"
             items={[
               { key: "map", label: "Map" },
               { key: "stream", label: "Stream" },
@@ -1840,12 +1836,14 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
             onChange={setView}
             btnClassName="flex-1 px-3 py-1 text-[11px] font-bold uppercase tracking-wider sm:flex-none"
           />
-        )}
-      </div>
+        </div>
+      )}
       {showStream ? (
         <VideoEmbed embedUrl={stream.embedUrl} poster={false} title={stream.title} accent={stream.accent} />
       ) : (
-      <div className="p-3 sm:p-4">
+      // The same 12px the fullscreen board leaves around its map, at every
+      // width — the map's own frame draws the border inside it.
+      <div className="p-3">
         {hasMap ? (
           <>
             <LiveTrackMap
@@ -2717,8 +2715,18 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
   // which is right in the page's map card and wrong here — a circuit is not a
   // square (Most comes off the server 1679 x 614, the stylised outlines are
   // drawn portrait) and the box has to be able to hold either.
-  const mapFit =
-    "flex h-full w-full items-center justify-center [&>svg]:h-full [&>svg]:w-full [&>svg]:max-h-full";
+  //
+  // The frame is taken by ABSOLUTE POSITION rather than by a chain of
+  // percentages. The map's own wrapper (LiveTrackMap's root, which carries the
+  // zoom buttons) sat in the flow with an automatic height, so `h-full` below
+  // it was a percentage of nothing. Chrome answers that by falling back to the
+  // svg's aspect ratio, which happens to look right; Firefox answers it with
+  // the size a browser gives a replaced element it cannot measure, 300 x 150,
+  // and drew the whole circuit into that stamp in the middle of a full-size
+  // card. An inset box is definite in every engine, so everything under it
+  // resolves — `inset-3` being the padding this card used to carry.
+  const mapFrame = "absolute inset-3";
+  const mapFit = "h-full w-full [&>svg]:h-full [&>svg]:w-full";
   const btn =
     "inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 hover:text-dark";
 
@@ -2882,7 +2890,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
               // that is better for being bigger, and the pit lane is the one
               // that is usually empty: fixing the map's share instead left a
               // half-metre of blank card under "Nobody in the pit lane".
-              <div className="flex min-h-0 flex-1 items-stretch justify-center overflow-hidden rounded-2xl border border-border bg-card p-3">
+              <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card">
                 <LiveTrackMap
                   track={session.trackName || session.track}
                   cars={cars}
@@ -2891,6 +2899,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
                   follow={follow}
                   onCarTelemetry={onCarTelemetry}
                   server={server}
+                  wrapClassName={mapFrame}
                   className={`${mapFit} text-medium`}
                 />
               </div>
@@ -3394,8 +3403,15 @@ export default function Live() {
                  first in the DOM so it leads on phones; explicit column starts
                  put it right on lg, and the pit-lane card stretches so both
                  columns close flush. ===== */}
-          <div className="grid gap-4 sm:gap-6 lg:grid-cols-3 lg:items-stretch">
-            <div className="flex flex-col gap-4 sm:gap-6 lg:col-span-1 lg:col-start-3 lg:row-start-1">
+          {/* Five columns rather than three from xl up, so the map's share is
+              two fifths instead of one third: a circuit drawn in a third of the
+              row was the one panel here that came out smaller than the same
+              panel on the fullscreen board, and a map is read by its shape.
+              Only from xl, though — the timing table beside it needs about
+              710px to lay its columns out, and at lg two fifths would put it
+              into a sideways scroll it does not have today. */}
+          <div className="grid gap-4 sm:gap-6 lg:grid-cols-3 lg:items-stretch xl:grid-cols-5">
+            <div className="flex flex-col gap-4 sm:gap-6 lg:col-span-1 lg:col-start-3 lg:row-start-1 xl:col-span-2 xl:col-start-4">
               <TrackMapSection
                 session={session}
                 entries={entries}
@@ -3429,7 +3445,7 @@ export default function Live() {
               // Two thirds of the row rather than three fifths: this is the
               // table with ten columns in it, the map next door is a picture
               // that scales to whatever it is given.
-              className="lg:col-span-2 lg:col-start-1 lg:row-start-1"
+              className="lg:col-span-2 lg:col-start-1 lg:row-start-1 xl:col-span-3"
             />
           </div>
 
