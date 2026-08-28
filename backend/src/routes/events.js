@@ -6,6 +6,7 @@ import { resolveSeasonId, getPrivateSeasonIds } from "../services/seasonService.
 import { resolveSeries, seasonIdsOfSeries } from "../lib/series.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
+import { readRaceHotlaps } from "../lib/raceHotlaps.js";
 import {
   seasonRowForDriver, dbLinkDrivers, getIdentityOverrides, getPersonGroups,
 } from "../lib/persons.js";
@@ -125,6 +126,9 @@ router.get("/", async (req, res, next) => {
 
     // Session format (raw-SQL columns) for the attendance hero.
     const format = await readRaceFormat(prisma, races.map((r) => r.id));
+    // Laps this event filmed for itself. Only the ones that HAVE their own are
+    // in the map; the attendance page falls back to the circuit's for the rest.
+    const hotlaps = await readRaceHotlaps(prisma, races.map((r) => r.id));
 
     // Sign-up gating + which answer columns the page shows (admin-configured).
     //
@@ -201,6 +205,9 @@ router.get("/", async (req, res, next) => {
         date: race.date,
         capacity: race.capacity,
         info: race.info,
+        // null, not [] — "this event has no laps of its own" is the state the
+        // page answers by showing the circuit's.
+        hotlapVideos: hotlaps.get(race.id) || null,
         qualiMinutes: format.get(race.id)?.qualiMinutes ?? null,
         raceLaps: format.get(race.id)?.raceLaps ?? null,
         raceFormat: format.get(race.id)?.raceFormat ?? "SINGLE",

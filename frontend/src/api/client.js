@@ -1012,6 +1012,11 @@ export const api = {
   updateDownloadFolder: (id, body) => request(`/admin/download-folders/${id}`, { method: "PATCH", body, auth: true }),
   deleteDownloadFolder: (id) => request(`/admin/download-folders/${id}`, { method: "DELETE", auth: true }),
 
+  // Hotlap videos of ONE event (admin). The circuit keeps its own list in
+  // adminTrackInfo below; an event with its own laps shows those instead.
+  adminRaceHotlaps: (id) => request(`/admin/races/${id}/hotlaps`, { auth: true }),
+  saveRaceHotlaps: (id, videos) => request(`/admin/races/${id}/hotlaps`, { method: "PUT", body: { videos }, auth: true }),
+
   // Track info (admin): fun facts + custom map image per circuit
   adminTrackInfo: (key) => request(`/admin/tracks/${key}/info`, { auth: true }),
   saveTrackCountry: (key, country) => request(`/admin/tracks/${key}/country`, { method: "PUT", body: { country }, auth: true }),

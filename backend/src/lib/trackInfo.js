@@ -4,7 +4,7 @@
 // computed track history. Stored as a Setting blob keyed by the canonical track
 // key (see lib/trackKeys.js). Same pattern as raceInfo.js / welcomeFaq.js.
 // ---------------------------------------------------------------------------
-import { youtubeId } from "./videoLinks.js";
+import { sanitizeVideoList } from "./videoLinks.js";
 
 const KEY_PREFIX = "track_info_";
 const MAX_FACTS = 8;
@@ -35,22 +35,10 @@ export function sanitizeTrackInfo(input) {
   // the upcoming-race panel. Normalised to 0..359; 0 = as drawn.
   const rot = Number(input?.mapRotation);
   if (Number.isFinite(rot)) out.mapRotation = ((Math.round(rot) % 360) + 360) % 360;
-  // Hotlap videos. Only what we can actually embed survives: a row whose link
-  // isn't a YouTube video is dropped rather than stored as a dead player. The
-  // id is resolved here, once, so every reader gets it without re-parsing.
-  // Note this runs on the way IN and on the way OUT, so it has to accept the
-  // stored shape ({ id }) as readily as the editor's ({ url }) — reading a
-  // saved track back must not empty it.
-  if (input && Array.isArray(input.videos)) {
-    const seen = new Set();
-    for (const v of input.videos) {
-      const id = youtubeId(v?.url ?? v?.videoId ?? v?.id);
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      out.videos.push({ id, title: cap(v?.title, MAX_TITLE).trim() });
-      if (out.videos.length >= MAX_VIDEOS) break;
-    }
-  }
+  // Hotlap videos, cleaned by the shared rule (see sanitizeVideoList): only
+  // what we can actually embed survives, and the id is resolved here, once, so
+  // every reader gets it without re-parsing.
+  out.videos = sanitizeVideoList(input?.videos, { max: MAX_VIDEOS, maxTitle: MAX_TITLE });
   return out;
 }
 

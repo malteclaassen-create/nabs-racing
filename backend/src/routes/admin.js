@@ -26,6 +26,7 @@ import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from 
 import { parseFormatNumber, parseRaceFormat } from "../lib/raceFormat.js";
 import { ensureSprintChild, readSprintChildren } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
+import { readRaceHotlaps, writeRaceHotlaps } from "../lib/raceHotlaps.js";
 import { writeRaceHero } from "../lib/raceHero.js";
 import { deleteLap as deleteTelemetryLap, storedSummary as telemetryStoredSummary } from "../lib/telemetryLaps.js";
 import { readTelemetryActivity } from "../lib/telemetryIngestLog.js";
@@ -774,6 +775,38 @@ router.delete("/races/:id/quali", async (req, res, next) => {
       .$executeRawUnsafe(`UPDATE "RaceResult" SET "qualiTimeMs" = NULL WHERE "raceId" = ?`, race.id)
       .catch(() => {});
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/races/:id/hotlaps -> { videos } — the laps this ONE event
+// shows under its sign-up. Empty means it has none of its own and the circuit's
+// list is what members see (lib/raceHotlaps.js).
+router.get("/races/:id/hotlaps", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    const videos = await readRaceHotlaps(prisma, [race.id]);
+    res.json({ raceId: race.id, videos: videos.get(race.id) || [] });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/races/:id/hotlaps — Body: { videos: [{ url, title }] }.
+// Saving an empty list is how an event goes back to showing the circuit's laps,
+// so it is a valid save and not a rejected one.
+router.put("/races/:id/hotlaps", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    const wanted = req.body?.videos;
+    if (wanted !== undefined && !Array.isArray(wanted)) {
+      return res.status(400).json({ error: "videos must be a list" });
+    }
+    const videos = await writeRaceHotlaps(prisma, race.id, wanted || []);
+    res.json({ raceId: race.id, videos });
   } catch (e) {
     next(e);
   }

@@ -38,6 +38,27 @@ export function youtubeId(url) {
   return null;
 }
 
+// A list of pasted video rows, cleaned into what the site can actually embed:
+// a row whose link isn't a YouTube video is dropped rather than stored as a
+// dead player, the same video twice is kept once, and the list is capped.
+// Runs on the way IN and on the way OUT, so it has to accept the stored shape
+// ({ id }) as readily as an editor's ({ url }) — reading a saved list back
+// must not empty it. Shared by the per-circuit laps (lib/trackInfo.js) and the
+// per-event ones (lib/raceHotlaps.js), which only differ in where they live.
+export function sanitizeVideoList(list, { max = 6, maxTitle = 80 } = {}) {
+  const out = [];
+  if (!Array.isArray(list)) return out;
+  const seen = new Set();
+  for (const v of list) {
+    const id = youtubeId(v?.url ?? v?.videoId ?? v?.id);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, title: (typeof v?.title === "string" ? v.title : "").slice(0, maxTitle).trim() });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 // Which platform a pasted post URL belongs to, or null when we don't know it.
 // Only the platforms the social wall renders a card for.
 export function platformOf(url) {

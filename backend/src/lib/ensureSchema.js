@@ -119,6 +119,12 @@ export async function ensureAppSchema(prisma) {
   // http(s) address; see lib/raceHighlights.js.
   await addColumn(prisma, "Race", "highlightsUrl", "TEXT");
 
+  // --- This event's OWN hotlap videos (JSON array of { id, title }). A circuit
+  // that hosts two events in a season with two different cars needs a lap per
+  // event, not one per track; empty here means the circuit's own laps are shown
+  // instead. See lib/raceHotlaps.js.
+  await addColumn(prisma, "Race", "hotlapVideos", "TEXT");
+
   // --- Per-round main-card photo: the Home hero shows the latest round, so
   // each round can carry its own picture of the place it was run at. Without
   // one the hero keeps the season photo, exactly as before (lib/raceHero.js).

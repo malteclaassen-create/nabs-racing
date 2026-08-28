@@ -432,7 +432,21 @@ export default function Attendance() {
           );
 
           // Shown to everyone, signed in or not: the lap is public.
-          const videoPanel = <TrackVideos track={ev.track} videos={hist.data?.videos} loading={hist.loading} />;
+          //
+          // An event's OWN laps win. One circuit can hold two events in the
+          // same season with two different cars — a training session next to
+          // the championship round — and then the round's lap says nothing
+          // about the training car. An event that filmed nothing of its own
+          // keeps showing the circuit's laps, which is still the right answer
+          // for every ordinary round.
+          const ownLaps = ev.hotlapVideos?.length ? ev.hotlapVideos : null;
+          const videoPanel = (
+            <TrackVideos
+              track={ev.track}
+              videos={ownLaps || hist.data?.videos}
+              loading={!ownLaps && hist.loading}
+            />
+          );
           const errorBox = error ? <ErrorBox message={error} /> : null;
 
           // ONE arrangement, always: the race and the sign-up down the left,
