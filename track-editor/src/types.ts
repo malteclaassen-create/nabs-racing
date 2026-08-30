@@ -46,6 +46,28 @@ export interface PathData {
   nodes: TrackNode[];
 }
 
+/**
+ * What a decorative access road is surfaced with. The surface decides both the
+ * material it is drawn with and the physics surface it exports as, so every one
+ * of them is genuinely drivable in the game.
+ */
+export type DecoSurface = 'asphalt' | 'concrete';
+
+/**
+ * A road beside the circuit: a paddock access road, a service road behind the
+ * garages, a country lane running past the track. Drawn like the pit lane --
+ * its own open spline with widths per point -- and, like the pit lane, glued
+ * onto the circuit wherever an end is brought up to the tarmac: the junction
+ * machinery the pit lane uses (attach, height merge, lead-out wedge, clip)
+ * is exactly the machinery a road joining a road needs.
+ */
+export interface DecoRoad {
+  id: string;
+  name: string;
+  surface: DecoSurface;
+  path: PathData;
+}
+
 /** Surface keys we emit into data/surfaces.ini and use as mesh name prefixes. */
 export type SurfaceKey =
   | 'ROAD'
@@ -589,6 +611,8 @@ export interface Project {
   acImport: AcImport | null;
   track: PathData;
   pit: PathData;
+  /** Decorative but drivable roads beside the circuit. */
+  decoRoads: DecoRoad[];
   road: RoadSettings;
   pitCfg: PitSettings;
   grid: GridSettings;
@@ -603,7 +627,32 @@ export interface Project {
 /* Editor only state                                                   */
 /* ------------------------------------------------------------------ */
 
-export type PathId = 'track' | 'pit';
+export type PathId = 'track' | 'pit' | `road:${string}`;
+
+/** The deco road id a PathId names, or null for the two built in paths. */
+export function roadIdOf(path: PathId): string | null {
+  return path.startsWith('road:') ? path.slice(5) : null;
+}
+
+/**
+ * The path data a PathId points at, or null when it names a road that has been
+ * deleted. One resolver, so the store, the viewport and the panels can never
+ * disagree about what `road:x` means.
+ */
+export function pathDataOf(p: Project, path: PathId): PathData | null {
+  if (path === 'track') return p.track;
+  if (path === 'pit') return p.pit;
+  const id = roadIdOf(path);
+  return p.decoRoads.find((r) => r.id === id)?.path ?? null;
+}
+
+/** A human name for a path, for status lines and panel titles. */
+export function pathLabelOf(p: Project, path: PathId): string {
+  if (path === 'track') return 'track';
+  if (path === 'pit') return 'pit lane';
+  const id = roadIdOf(path);
+  return p.decoRoads.find((r) => r.id === id)?.name ?? 'road';
+}
 
 export type Selection =
   | { kind: 'node'; path: PathId; id: string }
@@ -635,6 +684,7 @@ export type Tool =
   | 'select'
   | 'drawTrack'
   | 'drawPit'
+  | 'drawRoad'
   | 'place'
   | 'terrain'
   | 'ground'

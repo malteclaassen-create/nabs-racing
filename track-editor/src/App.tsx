@@ -15,7 +15,7 @@ import { autosave, downloadProject, loadAutosave } from './io/project';
 import { ensureAssets } from './io/assetCache';
 import { noteRender } from './scene/stallLog';
 import { deleteSectionInterior } from './core/section';
-import type { Project } from './types';
+import { pathDataOf, type Project } from './types';
 
 /*
  * The line along the bottom of the viewport: what the left button does in the
@@ -27,6 +27,7 @@ const TOOL_HINTS: Record<string, string> = {
   select: 'Click to select · Shift+click a second point for the stretch between · Alt+click the line inserts · Del removes',
   drawTrack: 'Click the ground to append a point · Alt overrides mode and grid · Select tool drags points, height included',
   drawPit: 'Click the ground to append a pit lane point · the lane gets the PIT surface, so the limiter works',
+  drawRoad: 'Click the ground to draw an access road · end it at the circuit and it glues itself on · New road in the panel starts another',
   terrain: 'Drag to sculpt · Shift lowers · the road corridor is protected',
   scatter: 'Drag to plant · Alt clears · trees keep off the track and pit lane on their own',
   kerb: 'Drag along the roadside to lay a kerb · click one to edit it · Alt+drag rubs it out',
@@ -339,6 +340,8 @@ export default function App() {
         case 'v': s.setTool('select'); break;
         case 't': s.setTool('drawTrack'); break;
         case 'p': s.setTool('drawPit'); break;
+        // Not R: W/E/R drive the camera and R turns a placement.
+        case 'u': s.setTool('drawRoad'); break;
         case 'g': s.setTool('terrain'); break;
         // M for material: what the ground is made of, as opposed to its shape.
         case 'm': s.setTool('ground'); break;
@@ -403,7 +406,8 @@ export default function App() {
           else if (sel.kind === 'kerb') s.deleteKerb(sel.id);
           else if (sel.kind === 'section') {
             s.commit((p) => {
-              deleteSectionInterior(sel.path === 'track' ? p.track : p.pit, sel.fromId, sel.toId);
+              const data = pathDataOf(p, sel.path);
+              if (data) deleteSectionInterior(data, sel.fromId, sel.toId);
             });
             s.select({ kind: 'node', path: sel.path, id: sel.fromId });
           }

@@ -82,12 +82,38 @@ import { setRenderer } from '../io/screenshot';
 import { FpsProbe } from './FpsMeter';
 import { AcLayer } from './AcLayer';
 import { acGroupCentre, acMeshCentre, applyMarkerEdits } from '../ac/acScene';
-import { partKey } from '../types';
+import { partKey, pathDataOf, pathLabelOf, roadIdOf } from '../types';
 import { attachRenderer, noteEffect, noteRender, SCENE_ID, timeEffect } from './stallLog';
 
 /* ------------------------------------------------------------------ */
 /* Small helpers                                                       */
 /* ------------------------------------------------------------------ */
+
+/** The three tools that put spline points down with a click. */
+function isDrawTool(tool: string): boolean {
+  return tool === 'drawTrack' || tool === 'drawPit' || tool === 'drawRoad';
+}
+
+/**
+ * Which path a draw click lands on. For the Road tool that is the active deco
+ * road -- created on the spot when there is none yet, so the first click of a
+ * fresh road just works.
+ */
+function drawTargetPath(tool: string): PathId {
+  if (tool === 'drawTrack') return 'track';
+  if (tool === 'drawPit') return 'pit';
+  const s = useEditor.getState();
+  const id = s.activeDeco ?? s.addDecoRoad(s.decoSurface);
+  return `road:${id}`;
+}
+
+/** The same, for previews: never creates anything. */
+function drawPreviewPath(tool: string): PathId | null {
+  if (tool === 'drawTrack') return 'track';
+  if (tool === 'drawPit') return 'pit';
+  const id = useEditor.getState().activeDeco;
+  return id ? `road:${id}` : null;
+}
 
 /**
  * Thin out a polyline for display. drei's Line rebuilds and re-uploads its
@@ -244,6 +270,9 @@ function TrackSurfaces({ derived }: { derived: Derived }) {
         <SurfaceMesh key={d.name} def={d} wireframe={view.wireframe} cheap={cheap} />
       ))}
       {derived.pitMeshes.map((d) => (
+        <SurfaceMesh key={d.name} def={d} wireframe={view.wireframe} cheap={cheap} />
+      ))}
+      {derived.decoMeshes.map((d) => (
         <SurfaceMesh key={d.name} def={d} wireframe={view.wireframe} cheap={cheap} />
       ))}
       {derived.gridMeshes.map((d) => (
@@ -653,6 +682,8 @@ function TerrainLayer({ derived }: { derived: Derived }) {
   const snap = useEditor((s) => s.snap);
   const drawMode = useEditor((s) => s.drawMode);
   const drawCfg = useEditor((s) => s.drawCfg);
+  // Subscribed here so the Road tool's preview follows the active road.
+  useEditor((s) => s.activeDeco);
   const barrierMode = useEditor((s) => s.barrierMode);
   const barrierDraft = useEditor((s) => s.barrierDraft);
   const eraseRadius = useEditor((s) => s.eraseRadius);
@@ -993,9 +1024,9 @@ function TerrainLayer({ derived }: { derived: Derived }) {
     }
     /* Freehand: hold the button and steer. Points go down every so many
        metres, and the whole stroke is one undo step. */
-    if ((tool === 'drawTrack' || tool === 'drawPit') && drawMode === 'freehand' && e.button === 0) {
+    if (isDrawTool(tool) && drawMode === 'freehand' && e.button === 0) {
       e.stopPropagation();
-      const path: PathId = tool === 'drawTrack' ? 'track' : 'pit';
+      const path = drawTargetPath(tool);
       const at = atDrawHeight(snapped(e.point.clone(), e.nativeEvent.altKey));
       pushHistory();
       useEditor.getState().appendNodeLive(path, at);
@@ -1066,7 +1097,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
       );
       return;
     }
-    if (tool === 'drawTrack' || tool === 'drawPit') {
+    if (isDrawTool(tool)) {
       const stroke = freehand.current;
       if (stroke) {
         // A control point every so many metres: dropping one per pointer event
@@ -1135,7 +1166,8 @@ function TerrainLayer({ derived }: { derived: Derived }) {
       return;
     }
     if (freehand.current) {
-      const count = useEditor.getState().project[freehand.current.path].nodes.length;
+      const count =
+        pathDataOf(useEditor.getState().project, freehand.current.path)?.nodes.length ?? 0;
       freehand.current = null;
       setTimeout(() => useEditor.setState({ interacting: false }), 0);
       setStatus(`Freehand: ${count} points on the path`);
@@ -1201,18 +1233,19 @@ function TerrainLayer({ derived }: { derived: Derived }) {
     if (tool === 'scatter') {
       // A click that never moved: plant one clump rather than doing nothing.
       scatterStep(e.point.x, e.point.z, 0.2);
-    } else if (tool === 'drawTrack' || tool === 'drawPit') {
-      const path: PathId = tool === 'drawTrack' ? 'track' : 'pit';
+    } else if (isDrawTool(tool)) {
+      const path = drawTargetPath(tool);
       // Freehand puts its points down while the pointer moves, so a plain
       // click in that mode is just a single point like the free mode.
       const mode = drawMode === 'freehand' ? 'free' : drawMode;
-      const plan = planDraw(mode, project[path].nodes, point, ANGLE_STEP, snap);
+      const nodes = pathDataOf(useEditor.getState().project, path)?.nodes ?? [];
+      const plan = planDraw(mode, nodes, point, ANGLE_STEP, snap);
       // After the plan, not before it: an arc interpolates the height of its
       // intermediate points, and in 'offset' mode each of them has to sample
       // the ground it actually passes over.
       applyDrawHeight(plan.points, drawCfg, groundAt);
       useEditor.getState().addNodes(path, plan.points);
-      const what = tool === 'drawTrack' ? 'Track' : 'Pit lane';
+      const what = tool === 'drawTrack' ? 'Track' : tool === 'drawPit' ? 'Pit lane' : 'Road';
       setStatus(
         plan.radius > 0
           ? `${what}: ${plan.length.toFixed(0)} m bend, radius ${plan.radius.toFixed(0)} m`
@@ -1307,14 +1340,15 @@ function TerrainLayer({ derived }: { derived: Derived }) {
   const freeBarrier = tool === 'barrier' && barrierMode === 'free';
   const handlers =
     tool === 'terrain' || tool === 'ground' || tool === 'place' || tool === 'scatter'
-    || tool === 'drawTrack' || tool === 'drawPit' || tool === 'erase' || freeBarrier
+    || isDrawTool(tool) || tool === 'erase' || freeBarrier
     || (tool === 'select' && boxing)
       ? { onPointerDown, onPointerUp, onPointerMove, onPointerLeave: () => setCursor(null) }
       : { onPointerDown, onPointerUp };
 
-  const drawPreview = (tool === 'drawTrack' || tool === 'drawPit') && cursor && (
+  const previewPath = isDrawTool(tool) ? drawPreviewPath(tool) : null;
+  const drawPreview = previewPath && cursor && (
     <DrawPreview
-      path={tool === 'drawTrack' ? 'track' : 'pit'}
+      path={previewPath}
       cursor={cursor}
       exact={placeExact}
       groundAt={groundAt}
@@ -1646,6 +1680,9 @@ function BarrierRunPreview({
  * show you where before you commit to it. Free mode shows the plain rubber band
  * to the last point, which is worth having on its own.
  */
+/** Stable empty list, so the selector above keeps its identity. */
+const EMPTY_NODES: TrackNode[] = [];
+
 function DrawPreview({
   path,
   cursor,
@@ -1657,7 +1694,7 @@ function DrawPreview({
   exact: boolean;
   groundAt: (x: number, z: number) => number;
 }) {
-  const nodes = useEditor((s) => s.project[path].nodes);
+  const nodes = useEditor((s) => pathDataOf(s.project, path)?.nodes ?? EMPTY_NODES);
   const drawMode = useEditor((s) => s.drawMode);
   const drawCfg = useEditor((s) => s.drawCfg);
   const snap = useEditor((s) => s.snap);
@@ -1752,7 +1789,8 @@ function CentreLine({
     const frame = nearestFrame(e.point.x, e.point.z);
     if (!frame) return;
 
-    const path = pathId === 'track' ? s.project.track : s.project.pit;
+    const path = pathDataOf(s.project, pathId);
+    if (!path) return;
     const at = frame.pos.clone();
     if (s.snap > 0) {
       at.x = Math.round(at.x / s.snap) * s.snap;
@@ -1760,7 +1798,7 @@ function CentreLine({
     }
     const id = s.addNode(pathId, at, segmentStartId(path, frame) ?? undefined);
     s.select({ kind: 'node', path: pathId, id });
-    s.setStatus(`Point inserted into the ${pathId === 'track' ? 'track' : 'pit lane'}`);
+    s.setStatus(`Point inserted into the ${pathLabelOf(s.project, pathId)}`);
   };
 
   if (points.length < 2) return null;
@@ -1796,8 +1834,17 @@ function anchorFor(selection: Selection | null, path: PathId): string | null {
 
 function sectionIds(project: Project, selection: Selection): Set<string> {
   if (selection.kind !== 'section') return new Set();
-  const path = selection.path === 'track' ? project.track : project.pit;
+  const path = pathDataOf(project, selection.path);
+  if (!path) return new Set();
   return new Set(sectionNodes(path, selection.fromId, selection.toId).map((n) => n.id));
+}
+
+/** The sampled centre line a PathId is drawn with, for handles and highlights. */
+function framesOfPath(derived: Derived, path: PathId): Frame[] {
+  if (path === 'track') return derived.trackFrames;
+  if (path === 'pit') return derived.pitFrames;
+  const id = roadIdOf(path);
+  return derived.decoLines.find((l) => l.id === id)?.frames ?? [];
 }
 
 /* Scratch for the section drag, so a pointer move allocates nothing. */
@@ -1855,7 +1902,8 @@ function SectionHighlight({ derived }: { derived: Derived }) {
     // other code path happened to mark the editor busy.
     useEditor.getState().markBusy();
     useEditor.getState().live((p) => {
-      translateSection(d.path === 'track' ? p.track : p.pit, d.fromId, d.toId, dx, dy, dz);
+      const data = pathDataOf(p, d.path);
+      if (data) translateSection(data, d.fromId, d.toId, dx, dy, dz);
     });
   }, []);
 
@@ -1955,8 +2003,9 @@ function SectionHighlight({ derived }: { derived: Derived }) {
 
   const points = useMemo(() => {
     if (selection?.kind !== 'section') return [];
-    const path = selection.path === 'track' ? project.track : project.pit;
-    const frames = selection.path === 'track' ? derived.trackFrames : derived.pitFrames;
+    const path = pathDataOf(project, selection.path);
+    if (!path) return [];
+    const frames = framesOfPath(derived, selection.path);
     const idx = sectionIndices(path, selection.fromId, selection.toId);
     if (idx.length < 2 || frames.length === 0 || path.nodes.length === 0) return [];
 
@@ -2012,9 +2061,16 @@ function PathNodes({ derived }: { derived: Derived }) {
   const tool = useEditor((s) => s.tool);
   const select = useEditor((s) => s.select);
 
-  const paths = [
-    { id: 'track' as const, nodes: project.track.nodes, color: '#4da3ff', frames: derived.trackFrames, closed: project.track.closed },
-    { id: 'pit' as const, nodes: project.pit.nodes, color: '#ff9f43', frames: derived.pitFrames, closed: project.pit.closed },
+  const paths: Array<{ id: PathId; nodes: TrackNode[]; color: string; frames: Frame[]; closed: boolean }> = [
+    { id: 'track', nodes: project.track.nodes, color: '#4da3ff', frames: derived.trackFrames, closed: project.track.closed },
+    { id: 'pit', nodes: project.pit.nodes, color: '#ff9f43', frames: derived.pitFrames, closed: project.pit.closed },
+    ...project.decoRoads.map((r) => ({
+      id: `road:${r.id}` as PathId,
+      nodes: r.path.nodes,
+      color: '#7bd88f',
+      frames: derived.decoLines.find((l) => l.id === r.id)?.frames ?? [],
+      closed: r.path.closed,
+    })),
   ];
 
   /*
@@ -2027,7 +2083,7 @@ function PathNodes({ derived }: { derived: Derived }) {
    * circuit's own objects. So while a track is imported they only appear for
    * the tools that actually move them.
    */
-  const drawing = tool === 'drawTrack' || tool === 'drawPit';
+  const drawing = isDrawTool(tool);
   const visible = drawing || (tool === 'select' && !project.acImport);
 
   // Once per render, not once per control point. This used to build a fresh Set
@@ -3825,7 +3881,7 @@ function GizmoLayer({ derived }: { derived: Derived }) {
   const target = useMemo(() => {
     if (!selection) return null;
     if (selection.kind === 'node') {
-      const list = selection.path === 'track' ? project.track.nodes : project.pit.nodes;
+      const list = pathDataOf(project, selection.path)?.nodes ?? [];
       const n = list.find((x) => x.id === selection.id);
       return n ? { pos: new THREE.Vector3(n.p[0], n.p[1], n.p[2]), quat: new THREE.Quaternion(), scale: new THREE.Vector3(1, 1, 1) } : null;
     }
@@ -3986,7 +4042,7 @@ function GizmoLayer({ derived }: { derived: Derived }) {
 
     useEditor.getState().live((p) => {
       if (sel.kind === 'node') {
-        const list = sel.path === 'track' ? p.track.nodes : p.pit.nodes;
+        const list = pathDataOf(p, sel.path)?.nodes ?? [];
         const n = list.find((x) => x.id === sel.id);
         if (n) n.p = [pos.x, pos.y, pos.z];
       } else if (sel.kind === 'prop') {

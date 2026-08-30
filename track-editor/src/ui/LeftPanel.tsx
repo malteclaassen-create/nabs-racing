@@ -13,7 +13,7 @@ import {
 } from '../io/assetCache';
 import { pickFile } from '../io/project';
 import { Check, Num, Row, Seg, Section, Slider } from './controls';
-import { IconBarrier, IconCursor, IconErase, IconFlag, IconGround, IconKerb, IconPit, IconPlace, IconScatter, IconTerrain, IconTrack, IconTrash } from './icons';
+import { IconBarrier, IconCursor, IconErase, IconFlag, IconGround, IconKerb, IconPit, IconPlace, IconRoad, IconScatter, IconTerrain, IconTrack, IconTrash } from './icons';
 import {
   APRON_COLOURS,
   fullLapKerbs,
@@ -24,6 +24,7 @@ import {
   STYLE_HEIGHT,
 } from '../core/kerbs';
 import { DRAW_MODES, FREEHAND_SPACING } from '../core/draw';
+import { pathDataOf } from '../types';
 import type { KerbStyle, PathId, Tool } from '../types';
 import type { KerbCfg } from '../store/store';
 
@@ -43,6 +44,7 @@ const TOOLS: Array<{
   { id: 'select', label: 'Select', icon: IconCursor, title: 'Select and move things (V)' },
   { id: 'drawTrack', label: 'Track', icon: IconTrack, title: 'Click the ground to add track points (T)', modes: ['build'] },
   { id: 'drawPit', label: 'Pit lane', icon: IconPit, title: 'Click the ground to add pit lane points (P)', modes: ['build'] },
+  { id: 'drawRoad', label: 'Roads', icon: IconRoad, title: 'Draw access and service roads (U). Ends near the circuit glue themselves onto it.' },
   { id: 'terrain', label: 'Sculpt', icon: IconTerrain, title: 'Raise, lower and smooth the ground (G)', modes: ['build'] },
   { id: 'ground', label: 'Ground', icon: IconGround, title: 'Paint grass, asphalt, concrete or gravel into the ground itself, run off included (M). Alt rubs it out.', modes: ['build'] },
   { id: 'kerb', label: 'Kerbs', icon: IconKerb, title: 'Drag along the roadside to lay a kerb (K). Alt removes.' },
@@ -89,6 +91,7 @@ export function LeftPanel() {
       <div className="panel-scroll">
         {tool === 'select' && <SelectOptions />}
         {(tool === 'drawTrack' || tool === 'drawPit') && <DrawOptions />}
+        {tool === 'drawRoad' && <RoadOptions />}
         {tool === 'terrain' && <TerrainOptions />}
         {tool === 'ground' && <GroundOptions />}
         {tool === 'kerb' && <KerbOptions />}
@@ -250,12 +253,109 @@ function DrawOptions() {
 }
 
 /**
+ * The Road tool's panel: which road the next click extends, what it is made
+ * of, and the same drawing options the other two spline tools have.
+ */
+function RoadOptions() {
+  const roads = useEditor((s) => s.project.decoRoads);
+  const activeDeco = useEditor((s) => s.activeDeco);
+  const setActiveDeco = useEditor((s) => s.setActiveDeco);
+  const decoSurface = useEditor((s) => s.decoSurface);
+  const setDecoSurface = useEditor((s) => s.setDecoSurface);
+  const updateDecoRoad = useEditor((s) => s.updateDecoRoad);
+  const deleteDecoRoad = useEditor((s) => s.deleteDecoRoad);
+  const drawMode = useEditor((s) => s.drawMode);
+  const setDrawMode = useEditor((s) => s.setDrawMode);
+  const setStatus = useEditor((s) => s.setStatus);
+
+  const active = roads.find((r) => r.id === activeDeco) ?? null;
+  const surface = active ? active.surface : decoSurface;
+
+  return (
+    <>
+      <Section title="Access roads">
+        <p className="hint" style={{ marginTop: 0 }}>
+          Deco roads you can actually drive on. End one at the circuit and it glues itself onto the
+          tarmac, junction and all; the ground is bedded under it wherever it runs.
+        </p>
+        <Row label="Surface">
+          <Seg
+            value={surface}
+            options={[
+              { value: 'asphalt' as const, label: 'Asphalt' },
+              { value: 'concrete' as const, label: 'Concrete' },
+            ]}
+            onChange={(v) => {
+              setDecoSurface(v);
+              if (active) updateDecoRoad(active.id, { surface: v });
+            }}
+          />
+        </Row>
+        <Row label="Drawing">
+          <Seg
+            value={drawMode}
+            options={DRAW_MODES.map((m) => ({ value: m.value, label: m.label }))}
+            onChange={setDrawMode}
+          />
+        </Row>
+        <SnapRow />
+        <Row label="">
+          <button
+            className="btn"
+            style={{ width: '100%', justifyContent: 'center' }}
+            disabled={!active}
+            onClick={() => {
+              setActiveDeco(null);
+              setStatus('Road finished — the next click starts a new one');
+            }}
+          >
+            {active ? `Finish "${active.name}"` : 'Click the ground to start a road'}
+          </button>
+        </Row>
+        {roads.length > 0 && (
+          <div className="list">
+            {roads.map((r) => (
+              <div
+                key={r.id}
+                className={`list-item ${r.id === activeDeco ? 'on' : ''}`}
+                onClick={() => setActiveDeco(r.id)}
+                title="Click to keep drawing this road"
+              >
+                <span className="dot" style={{ background: '#7bd88f' }} />
+                <span className="grow">{r.name}</span>
+                <span className="badge">{r.path.nodes.length} pts · {r.surface}</span>
+                <button
+                  className="btn ghost icon"
+                  style={{ padding: 2 }}
+                  title="Delete this road"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteDecoRoad(r.id);
+                  }}
+                >
+                  <IconTrash />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <NewPointSection path={active ? `road:${active.id}` : 'road:none'} />
+    </>
+  );
+}
+
+/**
  * What the next point will be, before there is one.
  *
  * Raw range inputs rather than `Slider`, for the same reason the scatter brush
  * uses them: `Slider` routes every pixel of travel through `tweakRun`, which
  * opens an undo burst, and none of this touches the project at all.
  */
+/** Stable empty list for the selector above. */
+const NO_NODES: never[] = [];
+
 function NewPointSection({ path }: { path: PathId }) {
   const cfg = useEditor((s) => s.drawCfg);
   const setDrawCfg = useEditor((s) => s.setDrawCfg);
@@ -263,17 +363,20 @@ function NewPointSection({ path }: { path: PathId }) {
   const applyDrawLevel = useEditor((s) => s.applyDrawLevel);
   const terrain = useEditor((s) => s.project.terrain);
   const setStatus = useEditor((s) => s.setStatus);
-  const nodes = useEditor((s) => s.project[path].nodes);
+  const nodes = useEditor((s) => pathDataOf(s.project, path)?.nodes ?? NO_NODES);
   const heights = useDerived().terrainHeights;
 
   const isTrack = path === 'track';
-  const widthL = isTrack ? cfg.trackWidthL : cfg.pitWidthL;
-  const widthR = isTrack ? cfg.trackWidthR : cfg.pitWidthR;
+  const isPit = path === 'pit';
+  const widthL = isTrack ? cfg.trackWidthL : isPit ? cfg.pitWidthL : cfg.roadWidthL;
+  const widthR = isTrack ? cfg.trackWidthR : isPit ? cfg.pitWidthR : cfg.roadWidthR;
   const total = widthL + widthR;
-  const what = isTrack ? 'track' : 'pit lane';
+  const what = isTrack ? 'track' : isPit ? 'pit lane' : 'road';
 
-  const setL = (v: number) => setDrawCfg(isTrack ? { trackWidthL: v } : { pitWidthL: v });
-  const setR = (v: number) => setDrawCfg(isTrack ? { trackWidthR: v } : { pitWidthR: v });
+  const setL = (v: number) =>
+    setDrawCfg(isTrack ? { trackWidthL: v } : isPit ? { pitWidthL: v } : { roadWidthL: v });
+  const setR = (v: number) =>
+    setDrawCfg(isTrack ? { trackWidthR: v } : isPit ? { pitWidthR: v } : { roadWidthR: v });
   /* Scaling both halves keeps a deliberately lopsided road lopsided: setting
      each to half the total would quietly straighten out a 8/4 m road the first
      time the overall width was nudged. */

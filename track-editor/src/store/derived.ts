@@ -3,6 +3,7 @@ import type * as THREE from 'three';
 import { useEditor } from './store';
 import { computeFrames, pathLength, type Frame } from '../core/spline';
 import {
+  buildDecoRoadMeshes,
   buildPitMeshes,
   buildRoadMeshes,
   sideProfile,
@@ -19,12 +20,14 @@ import {
   GROUND_KINDS,
   sampleGroundValue,
   paintKind,
+  type Corridor,
   type CorridorMask,
 } from '../core/terrain';
 import { buildAiLine, buildAllMarkers, type AiPoint, type MarkerSet } from '../core/markers';
 import { buildGridBoxes } from '../core/gridBoxes';
 import { buildStartGantry } from '../core/gantry';
 import {
+  attachRoadEnds,
   mergePitFrames,
   pitLead,
   pitApronWidths,
@@ -93,6 +96,10 @@ export interface Derived {
   profile: SideProfile;
   /** Lowest point of the ground, so the reference grid can sit below it. */
   terrainMinY: number;
+  /** The decorative roads, drawn and glued to the circuit where they meet it. */
+  decoMeshes: MeshDef[];
+  /** The drawn centre line of each deco road, for the viewport's handles. */
+  decoLines: Array<{ id: string; frames: Frame[]; closed: boolean }>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -196,6 +203,18 @@ interface PitDraw {
 }
 const slotPitDraw = memoSlot<PitDraw>();
 const slotRoadMeshes = memoSlot<MeshDef[]>();
+/**
+ * Every deco road together: meshes, ground corridors and centre lines. One
+ * slot for the lot -- a single road is a few hundred cross sections, so
+ * rebuilding all of them when one moves costs less than the bookkeeping of a
+ * slot per road would.
+ */
+interface DecoBuild {
+  meshes: MeshDef[];
+  corridors: Corridor[];
+  lines: Array<{ id: string; frames: Frame[]; closed: boolean }>;
+}
+const slotDeco = memoSlot<DecoBuild>();
 const slotPitMeshes = memoSlot<MeshDef[]>();
 const slotPitApron = memoSlot<Float32Array>();
 const slotProfile = memoSlot<SideProfile>();
@@ -230,6 +249,7 @@ function retire(previous: MeshDef[], next: MeshDef[]) {
 
 let lastRoad: MeshDef[] = [];
 let lastPit: MeshDef[] = [];
+let lastDeco: MeshDef[] = [];
 let lastGrid: MeshDef[] = [];
 let lastGantry: MeshDef[] = [];
 
@@ -449,6 +469,58 @@ function compute(project: Project, interacting: boolean): Derived {
     return next;
   });
 
+  /*
+   * The decorative roads. Each one runs through the same junction machinery
+   * the pit lane does: ends near the circuit are snapped onto its edge
+   * (attachRoadEnds), the ribbon is carried on over the tarmac as a wedge
+   * (pitLead), glued onto the road plane (mergePitFrames) and cut back against
+   * the tarmac's real edge (pitRoadClip). A road that never comes near the
+   * circuit passes through all four untouched.
+   */
+  const sigDeco = hash((h) => {
+    h.num(project.decoRoads.length);
+    for (const r of project.decoRoads) {
+      h.str(r.id).str(r.surface);
+      feedPath(h, r.path);
+    }
+  });
+  const deco = slotDeco(
+    `${sigTrack}|${spp}|${sigDeco}|${project.road.uvLength}|${project.road.uvWidth}`,
+    () => {
+      const meshes: MeshDef[] = [];
+      const corridors: Corridor[] = [];
+      const lines: DecoBuild['lines'] = [];
+      const reuse = reuseMap(lastDeco);
+      project.decoRoads.forEach((r, ri) => {
+        if (r.path.nodes.length < 2) {
+          lines.push({ id: r.id, frames: [], closed: r.path.closed });
+          return;
+        }
+        const attached = attachRoadEnds(r.path, trackFrames);
+        const raw = computeFrames(attached, spp);
+        const lead = pitLead(raw, trackFrames, r.path.closed, project.track.closed, 0);
+        const merged = mergePitFrames(lead.frames, trackFrames, 1.5, 0, lead);
+        const clip = pitRoadClip(
+          merged.frames,
+          trackFrames,
+          project.track.closed,
+          undefined,
+          undefined,
+          0,
+          { from: lead.from, to: lead.to },
+        );
+        meshes.push(
+          ...buildDecoRoadMeshes(merged.frames, r.path.closed, project.road, r.surface, `deco_${ri}`, reuse, clip),
+        );
+        corridors.push(pitCorridor(merged.frames, 0.9, clip, merged.weight));
+        lines.push({ id: r.id, frames: merged.frames.slice(lead.from, lead.to + 1), closed: r.path.closed });
+      });
+      retire(lastDeco, meshes);
+      lastDeco = meshes;
+      return { meshes, corridors, lines };
+    },
+  );
+
   // Where the road pulls the ground, and how hard. Independent of what the user
   // sculpts, so a brush stroke never pays for it.
   //
@@ -461,7 +533,7 @@ function compute(project: Project, interacting: boolean): Derived {
   //
   // The shape, not the whole road: the ground has to meet the tarmac, and it
   // does not care what pattern is painted on it.
-  const maskKey = `${sigTrack}|${sigPit}|${spp}|${sigShape}|${sigTerrain}|${project.road.pitGap}|${apron}`;
+  const maskKey = `${sigTrack}|${sigPit}|${spp}|${sigShape}|${sigTerrain}|${project.road.pitGap}|${apron}|${sigDeco}`;
   const mask = !project.terrain.enabled
     ? EMPTY_MASK
     : interacting && lastMask
@@ -474,6 +546,8 @@ function compute(project: Project, interacting: boolean): Derived {
             return buildCorridorMask(project.terrain, [
               roadCorridor(trackFrames, project.road, profile, project.track.closed),
               pitCorridor(pitDraw.frames, pitApron, pitClip, pitDraw.weight),
+              // The deco roads bed into the ground exactly like the pit lane.
+              ...deco.corridors,
             ]);
           },
         );
@@ -622,6 +696,10 @@ function compute(project: Project, interacting: boolean): Derived {
     pitLength: pathLength(pitFrames, project.pit.closed),
     pitDrawFrames: pitDraw.frames,
     pitDrawLength: pitDraw.length,
+    // A deco road drawn on an imported circuit is an addition of the user's
+    // own, so unlike our generated road it is not held back there.
+    decoMeshes: deco.meshes,
+    decoLines: deco.lines,
     // Falls out of the side profile for free, no second sweep needed.
     pitSide: profile.pitSide,
     profile,

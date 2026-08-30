@@ -56,6 +56,15 @@ export const IconPit = icon(
   'M6 21v-6a3 3 0 0 1 3 -3h11',
 );
 
+/** tabler: road -- decorative access roads */
+export const IconRoad = icon(
+  'M4 19l4 -14',
+  'M16 5l4 14',
+  'M12 8v-2',
+  'M12 13v-2',
+  'M12 18v-2',
+);
+
 /** tabler: mountain -- Sculpt the ground */
 export const IconTerrain = icon(
   'M3 20h18l-6.921 -14.612a2.3 2.3 0 0 0 -4.158 0l-6.921 14.612',

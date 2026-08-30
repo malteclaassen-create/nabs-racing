@@ -1,5 +1,5 @@
 import { unzlibSync, zlibSync } from 'fflate';
-import type { AcEdits, AcImport, KerbSpan, PathData, Project, RoadSettings } from '../types';
+import type { AcEdits, AcImport, DecoRoad, KerbSpan, PathData, Project, RoadSettings } from '../types';
 import { defaultProject } from '../store/store';
 import { normalizeNode } from '../core/spline';
 import { GROUND_KINDS, paintRes } from '../core/terrain';
@@ -149,6 +149,7 @@ export function deserializeProject(json: string): Project {
     exportCfg: { ...base.exportCfg, ...(raw.exportCfg ?? {}) },
     track: normalizePath(raw.track, base.track),
     pit: normalizePath(raw.pit, base.pit),
+    decoRoads: normalizeDecoRoads(raw.decoRoads),
     props: raw.props ?? [],
     assets: raw.assets ?? [],
     terrain: { ...base.terrain, ...terrainRaw, heights, paint, paintEdge },
@@ -246,6 +247,29 @@ function normalizePath(raw: unknown, fallback: PathData): PathData {
     closed: Boolean(src.closed),
     nodes: src.nodes.map((n) => normalizeNode(n)),
   };
+}
+
+/**
+ * The decorative roads. A file from before they existed has none, and a road
+ * whose nodes will not normalize is dropped rather than left to feed NaN into
+ * the geometry.
+ */
+function normalizeDecoRoads(raw: unknown): DecoRoad[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DecoRoad[] = [];
+  for (const r of raw as Array<Partial<DecoRoad>>) {
+    if (!r || typeof r.id !== 'string' || !r.path || !Array.isArray(r.path.nodes)) continue;
+    out.push({
+      id: r.id,
+      name: typeof r.name === 'string' && r.name !== '' ? r.name : `Road ${out.length + 1}`,
+      surface: r.surface === 'concrete' ? 'concrete' : 'asphalt',
+      path: {
+        closed: Boolean(r.path.closed),
+        nodes: r.path.nodes.map((n) => normalizeNode(n)),
+      },
+    });
+  }
+  return out;
 }
 
 export function downloadProject(p: Project) {

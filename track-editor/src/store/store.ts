@@ -4,6 +4,7 @@ import { produce, setAutoFreeze } from 'immer';
 import type {
   AcMarkerEdit,
   BrushSettings,
+  DecoRoad,
   KerbSpan,
   KerbStyle,
   PathId,
@@ -16,8 +17,8 @@ import type {
   TrackNode,
 } from '../types';
 import {
-  emptyAcEdits, isIdentityTransform, parsePartKey, partKey, sameAcMeshRef,
-  type AcMeshRef, type AcMeshTransform,
+  emptyAcEdits, isIdentityTransform, parsePartKey, partKey, pathDataOf, sameAcMeshRef,
+  type AcMeshRef, type AcMeshTransform, type DecoSurface,
 } from '../types';
 import {
   acMeshBox, acPieceWorldPoints, disposeAcScene, loadAcScene, rebuildSceneModel, tarmacMeshes,
@@ -158,6 +159,7 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
     },
     track: { closed: true, nodes: track },
     pit: { closed: false, nodes: pit },
+    decoRoads: [],
     road: {
       // Editing detail only: dragging rebuilds every cross section per frame,
       // so the default keeps the editor fluid. The export ignores this and
@@ -352,6 +354,9 @@ export function generatedProject(
 /* ------------------------------------------------------------------ */
 
 const HISTORY_LIMIT = 50;
+
+/** Serial for deco road ids, like propCounter for objects. */
+let decoCounter = 0;
 
 /* Stroke state for the vegetation brush. Module level rather than store state:
    it changes many times per frame and nothing renders from it. */
@@ -674,6 +679,19 @@ export interface EditorState {
   /** Append one point with no history entry, for a freehand stroke. */
   appendNodeLive: (path: PathId, at: THREE.Vector3) => void;
   deleteNode: (path: PathId, id: string) => void;
+  /**
+   * Which deco road the Road tool is currently extending. Null means the next
+   * click starts a new one.
+   */
+  activeDeco: string | null;
+  setActiveDeco: (id: string | null) => void;
+  /** Surface the NEXT deco road starts with. Tool state, like drawCfg. */
+  decoSurface: DecoSurface;
+  setDecoSurface: (s: DecoSurface) => void;
+  /** Create an empty deco road, make it the active one, return its id. */
+  addDecoRoad: (surface: DecoSurface) => string;
+  deleteDecoRoad: (id: string) => void;
+  updateDecoRoad: (id: string, patch: Partial<Pick<DecoRoad, 'name' | 'surface'>>) => void;
   /** `scale` is per axis, for the ground patches that are sized in metres. */
   addProp: (kind: string, at: THREE.Vector3, rotY?: number, scale?: [number, number, number]) => void;
   /** Move terrain, track, pit lane and every object up or down together. */
@@ -1494,7 +1512,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const { widthL, widthR } = drawWidths(get().drawCfg, path);
     let n = 0;
     get().commit((p) => {
-      for (const node of path === 'track' ? p.track.nodes : p.pit.nodes) {
+      for (const node of pathDataOf(p, path)?.nodes ?? []) {
         node.widthL = widthL;
         node.widthR = widthR;
         n += 1;
@@ -1508,7 +1526,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (cfg.heightMode === 'ground') return 0;
     let n = 0;
     get().commit((p) => {
-      for (const node of path === 'track' ? p.track.nodes : p.pit.nodes) {
+      for (const node of pathDataOf(p, path)?.nodes ?? []) {
         node.p[1] = drawHeightOf(cfg, groundAt(node.p[0], node.p[2]));
         n += 1;
       }
@@ -1526,7 +1544,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (points.length === 0) return last;
     const widths = drawWidths(get().drawCfg, path);
     get().commit((p) => {
-      const list = path === 'track' ? p.track.nodes : p.pit.nodes;
+      const list = pathDataOf(p, path)?.nodes;
+      if (!list) return;
       for (const at of points) {
         const prev = list.length > 0 ? list[list.length - 1] : undefined;
         const node = makeNode(at, { ...prev, ...widths });
@@ -1540,7 +1559,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   appendNodeLive: (path, at) => {
     const widths = drawWidths(get().drawCfg, path);
     get().live((p) => {
-      const list = path === 'track' ? p.track.nodes : p.pit.nodes;
+      const list = pathDataOf(p, path)?.nodes;
+      if (!list) return;
       const prev = list.length > 0 ? list[list.length - 1] : undefined;
       list.push(makeNode(at, { ...prev, ...widths }));
     });
@@ -1549,7 +1569,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   addNode: (path, at, afterId) => {
     let created = '';
     get().commit((p) => {
-      const list = path === 'track' ? p.track.nodes : p.pit.nodes;
+      const list = pathDataOf(p, path)?.nodes;
+      if (!list) return;
       // An id that is no longer in the list means the caller is working from a
       // stale copy. Appending is the honest answer; splicing at findIndex + 1
       // put the point at the very front of the track instead.
@@ -1568,11 +1589,60 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   deleteNode: (path, id) => {
     get().commit((p) => {
-      const list = path === 'track' ? p.track.nodes : p.pit.nodes;
+      const list = pathDataOf(p, path)?.nodes;
+      if (!list) return;
       const i = list.findIndex((n) => n.id === id);
-      if (i >= 0 && list.length > 2) list.splice(i, 1);
+      // A deco road may shrink below two points; the track and pit keep their
+      // minimum so the splines they anchor never collapse.
+      const min = path === 'track' || path === 'pit' ? 3 : 1;
+      if (i >= 0 && list.length >= min) list.splice(i, 1);
     });
     set({ selection: null });
+  },
+
+  activeDeco: null,
+  setActiveDeco: (activeDeco) => set({ activeDeco }),
+  decoSurface: 'asphalt',
+  setDecoSurface: (decoSurface) => set({ decoSurface }),
+
+  addDecoRoad: (surface) => {
+    decoCounter += 1;
+    const id = `dr${Date.now().toString(36)}${decoCounter.toString(36)}`;
+    let count = 0;
+    get().commit((p) => {
+      count = p.decoRoads.length;
+      p.decoRoads.push({
+        id,
+        name: `Road ${count + 1}`,
+        surface,
+        path: { closed: false, nodes: [] },
+      });
+    });
+    set({ activeDeco: id });
+    return id;
+  },
+
+  deleteDecoRoad: (id) => {
+    get().commit((p) => {
+      p.decoRoads = p.decoRoads.filter((r) => r.id !== id);
+    });
+    const s = get();
+    if (s.activeDeco === id) set({ activeDeco: null });
+    const sel = s.selection;
+    if (
+      sel &&
+      (sel.kind === 'node' || sel.kind === 'section') &&
+      sel.path === `road:${id}`
+    ) {
+      set({ selection: null });
+    }
+  },
+
+  updateDecoRoad: (id, patch) => {
+    get().commit((p) => {
+      const r = p.decoRoads.find((x) => x.id === id);
+      if (r) Object.assign(r, patch);
+    });
   },
 
   addProp: (kind, at, rotY, scale) => {
@@ -1635,6 +1705,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       p.terrain.heights = moved;
       for (const n of p.track.nodes) n.p[1] += delta;
       for (const n of p.pit.nodes) n.p[1] += delta;
+      for (const r of p.decoRoads) for (const n of r.path.nodes) n.p[1] += delta;
       for (const prop of p.props) prop.p[1] += delta;
       // The hand placed grid slots and pit boxes are absolute positions too.
       for (const o of Object.values(p.grid.overrides)) o.p[1] += delta;
@@ -1956,6 +2027,15 @@ const hot = (import.meta as { hot?: {
   dispose: (cb: () => void) => void;
   accept: () => void;
 } }).hot;
+
+// The store on the console, development only: `__editor.getState()` is how a
+// selection or an action can be exercised without aiming at a 3 px sphere.
+// Optional, because only Vite defines import.meta.env: the verify tools load
+// this module under plain node, where the bare read threw and took the whole
+// suite down with it.
+if (import.meta.env?.DEV) {
+  (globalThis as Record<string, unknown>).__editor = useEditor;
+}
 
 if (hot) {
   const carried = hot.data.editorState as Partial<EditorState> | undefined;

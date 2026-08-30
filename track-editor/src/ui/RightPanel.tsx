@@ -6,7 +6,8 @@ import { LIBRARY_BY_KEY, PAD_SIZE, propSize } from '../core/library';
 import { assetIdOf, assetVersion, onAssetsChanged } from '../io/assetCache';
 import { Check, Num, Row, Seg, Section, Slider, Text } from './controls';
 import { IconCopy, IconTrash } from './icons';
-import type { PathData, Project, PropInstance, TrackNode } from '../types';
+import { pathDataOf, pathLabelOf } from '../types';
+import type { PathData, PathId, Project, PropInstance, TrackNode } from '../types';
 import {
   applyToSection,
   deleteSectionInterior,
@@ -312,26 +313,29 @@ function PropertiesTab() {
   return null;
 }
 
-function NodeProps({ path, id }: { path: 'track' | 'pit'; id: string }) {
+function NodeProps({ path, id }: { path: PathId; id: string }) {
   const project = useEditor((s) => s.project);
   const commit = useEditor((s) => s.commit);
   const deleteNode = useEditor((s) => s.deleteNode);
-  const list = path === 'track' ? project.track.nodes : project.pit.nodes;
+  const list = pathDataOf(project, path)?.nodes ?? [];
   const index = list.findIndex((n) => n.id === id);
   const node = list[index];
   if (!node) return <Section title="Control point">{null}</Section>;
+  // Barriers, run off and the AI line belong to the circuit; a deco road has
+  // none of them, so its points only offer what actually does something.
+  const isRoad = path !== 'track' && path !== 'pit';
 
   const edit = (fn: (n: typeof node) => void) =>
     commit((p) => {
-      const l = path === 'track' ? p.track.nodes : p.pit.nodes;
-      const n = l.find((x) => x.id === id);
+      const n = pathDataOf(p, path)?.nodes.find((x) => x.id === id);
       if (n) fn(n);
     });
 
+  const label = pathLabelOf(project, path);
   return (
     <>
       <Section
-        title={`${path === 'track' ? 'Track' : 'Pit lane'} point ${index + 1}`}
+        title={`${label[0].toUpperCase()}${label.slice(1)} point ${index + 1}`}
         right={
           <button className="btn ghost icon" title="Delete point (Del)" onClick={() => deleteNode(path, id)}>
             <IconTrash />
@@ -368,7 +372,7 @@ function NodeProps({ path, id }: { path: 'track' | 'pit'; id: string }) {
         <Row label="Banking">
           <Slider value={node.bank} min={-25} max={25} step={0.5} unit="°" digits={1} onChange={(v) => edit((n) => { n.bank = v; })} />
         </Row>
-        <Row label="Barriers">
+        {!isRoad && <><Row label="Barriers">
           <Check label="Left" checked={node.wallL} onChange={(v) => edit((n) => { n.wallL = v; })} />
           <Check label="Right" checked={node.wallR} onChange={(v) => edit((n) => { n.wallR = v; })} />
         </Row>
@@ -389,7 +393,7 @@ function NodeProps({ path, id }: { path: 'track' | 'pit'; id: string }) {
         </Row>
         <p className="hint">
           Pushes the racing line sideways here: negative left, positive right.
-        </p>
+        </p></>}
       </Section>
     </>
   );
@@ -540,7 +544,7 @@ function KerbProps({ id }: { id: string }) {
  * builds a span across the same stretch instead -- the result looks the same
  * and can afterwards be trimmed to the metre with the Kerb tool.
  */
-function kerbSection(path: 'track' | 'pit', data: PathData, from: number, to: number, on: boolean) {
+function kerbSection(path: PathId, data: PathData, from: number, to: number, on: boolean) {
   const store = useEditor.getState();
   if (path !== 'track' || from < 0 || to < 0 || from === to) return;
   const count = data.nodes.length;
@@ -562,11 +566,11 @@ function kerbSection(path: 'track' | 'pit', data: PathData, from: number, to: nu
   store.setStatus(on ? 'Kerb laid along the section' : 'Kerbs lifted from the section');
 }
 
-function SectionProps({ path, fromId, toId }: { path: 'track' | 'pit'; fromId: string; toId: string }) {
+function SectionProps({ path, fromId, toId }: { path: PathId; fromId: string; toId: string }) {
   const project = useEditor((s) => s.project);
   const commit = useEditor((s) => s.commit);
   const select = useEditor((s) => s.select);
-  const data = path === 'track' ? project.track : project.pit;
+  const data = pathDataOf(project, path) ?? { closed: false, nodes: [] };
   const nodes = sectionNodes(data, fromId, toId);
   const indices = sectionIndices(data, fromId, toId);
 
@@ -581,7 +585,8 @@ function SectionProps({ path, fromId, toId }: { path: 'track' | 'pit'; fromId: s
   /** Run an operation on the live project copy of this section. */
   const run = (fn: (p: Project, d: PathData) => void) =>
     commit((p) => {
-      fn(p, path === 'track' ? p.track : p.pit);
+      const d = pathDataOf(p, path);
+      if (d) fn(p, d);
     });
 
   const setAll = (fn: (n: TrackNode) => void) =>

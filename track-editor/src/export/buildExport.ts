@@ -301,6 +301,9 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
   const meshes: MeshDef[] = [
     ...derived.roadMeshes,
     ...derived.pitMeshes,
+    // The decorative roads, drivable like everything else: they carry ROAD or
+    // CONCRETE surfaces, so surfaces.ini already knows them.
+    ...derived.decoMeshes,
     // The paint on the starting grid. Visual only, like the limiter line: it
     // is named 1OBJ_ so AC gives it no surface of its own.
     ...derived.gridMeshes,

@@ -136,7 +136,7 @@ export async function buildOverlayModel(
   /* --- what is there to add? --------------------------------------- */
   // Already filtered: `derived` holds back the generated road surfaces on an
   // imported track, so the viewport and this build from the same list.
-  const roadParts = [...derived.roadMeshes, ...derived.pitMeshes];
+  const roadParts = [...derived.roadMeshes, ...derived.pitMeshes, ...derived.decoMeshes];
   if (roadParts.length === 0 && project.props.length === 0) return null;
 
   /* --- the surface everything is pinned to -------------------------- */

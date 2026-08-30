@@ -62,6 +62,8 @@ export interface DrawCfg {
   trackWidthR: number;
   pitWidthL: number;
   pitWidthR: number;
+  roadWidthL: number;
+  roadWidthR: number;
   heightMode: HeightMode;
   /** Absolute height for 'level', metres. */
   level: number;
@@ -76,16 +78,20 @@ export const DEFAULT_DRAW_CFG: DrawCfg = {
   trackWidthR: 7,
   pitWidthL: 4,
   pitWidthR: 4,
+  // A two lane access road: 6 m kerb to kerb, which is what the service roads
+  // around a real circuit measure.
+  roadWidthL: 3,
+  roadWidthR: 3,
   heightMode: 'ground',
   level: 0,
   offset: 0,
 };
 
 /** The half widths a point drawn on `path` starts with. */
-export function drawWidths(cfg: DrawCfg, path: 'track' | 'pit'): { widthL: number; widthR: number } {
-  return path === 'track'
-    ? { widthL: cfg.trackWidthL, widthR: cfg.trackWidthR }
-    : { widthL: cfg.pitWidthL, widthR: cfg.pitWidthR };
+export function drawWidths(cfg: DrawCfg, path: string): { widthL: number; widthR: number } {
+  if (path === 'track') return { widthL: cfg.trackWidthL, widthR: cfg.trackWidthR };
+  if (path === 'pit') return { widthL: cfg.pitWidthL, widthR: cfg.pitWidthR };
+  return { widthL: cfg.roadWidthL, widthR: cfg.roadWidthR };
 }
 
 /** Where a point lands vertically, given the ground under it. */
