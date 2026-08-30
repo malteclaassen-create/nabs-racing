@@ -166,6 +166,79 @@ export function attachPitLane(
   };
 }
 
+/**
+ * How close a deco road's end has to come to the tarmac before it is counted
+ * as "meant to join". Generous on purpose: the point of the automatic attach
+ * is that a road ended roughly at the circuit snaps cleanly onto it.
+ */
+const ROAD_SNAP = 30;
+
+/**
+ * Glue whichever ENDS of a deco road lie near the circuit onto its edge.
+ *
+ * The same construction attachPitLane uses -- end point onto the tarmac edge,
+ * the neighbour led along the track so the spline leaves parallel, heights
+ * taken from the road -- but per end and non destructively: a road that starts
+ * at the paddock and ends in a field keeps its far end exactly where it was
+ * drawn, and the caller gets the original object back untouched when neither
+ * end is near the circuit. Run inside the derived pipeline on every rebuild,
+ * so the join follows the circuit automatically when the circuit moves.
+ */
+export function attachRoadEnds(road: PathData, trackFrames: Frame[]): PathData {
+  if (road.closed || road.nodes.length < 2 || trackFrames.length < 2) return road;
+  const index = new PointIndex(trackFrames.map((f) => f.pos), 30);
+  const vec = (n: TrackNode) => new THREE.Vector3(n.p[0], n.p[1], n.p[2]);
+
+  /** Distance from the point to the tarmac edge nearest it, and that frame. */
+  const gapOf = (n: TrackNode): { f: Frame; gap: number; side: -1 | 1 } | null => {
+    const f = nearestFrame(trackFrames, vec(n), index);
+    if (!f) return null;
+    const lat = sideOf(f, vec(n));
+    const side: -1 | 1 = lat < 0 ? -1 : 1;
+    const half = side < 0 ? f.widthL : f.widthR;
+    return { f, gap: Math.abs(lat) - half, side };
+  };
+
+  const nodes = road.nodes;
+  let out: TrackNode[] | null = null;
+  const copy = () => out ?? (out = nodes.map((n) => ({ ...n, p: [...n.p] as [number, number, number] })));
+
+  const attachEnd = (endIdx: number, neighbourIdx: number) => {
+    const hit = gapOf(nodes[endIdx]);
+    if (!hit || hit.gap > ROAD_SNAP) return;
+    const list = copy();
+    const end = list[endIdx];
+    const edgePoint = (f: Frame, n: TrackNode) => {
+      const half = hit.side < 0 ? f.widthL : f.widthR;
+      const roadHalf = hit.side < 0 ? n.widthR : n.widthL;
+      return f.pos.clone().addScaledVector(f.right, hit.side * (half + roadHalf - Math.min(BURY, roadHalf)));
+    };
+    const endPos = edgePoint(hit.f, end);
+    end.p = [endPos.x, endPos.y, endPos.z];
+    if (nodes.length >= 3) {
+      const nb = list[neighbourIdx];
+      const d = leadIn(vec(nodes[neighbourIdx]).distanceTo(vec(nodes[endIdx])));
+      // Which way along the track the road leaves: towards the side its second
+      // point already lies on, so the join bends as little as possible.
+      const along = (vec(nb).x - hit.f.pos.x) * hit.f.fwd.x + (vec(nb).z - hit.f.pos.z) * hit.f.fwd.z;
+      const sign = along >= 0 ? 1 : -1;
+      const target = edgePoint(frameAlong(trackFrames, hit.f, sign * d), nb);
+      // Only pulled towards the edge when the neighbour is close enough to be
+      // part of the join itself; a long first leg keeps its drawn heading.
+      if (vec(nb).distanceTo(endPos) < 60) nb.p = [target.x, nb.p[1], target.z];
+    }
+    // The last stretch takes the height of the road it joins, so the merge has
+    // a surface at the right level to glue.
+    const f2 = nearestFrame(trackFrames, vec(list[neighbourIdx]), index);
+    if (f2 && vec(list[neighbourIdx]).distanceTo(endPos) < 60) list[neighbourIdx].p[1] = f2.pos.y;
+    return;
+  };
+
+  attachEnd(0, 1);
+  attachEnd(nodes.length - 1, nodes.length - 2);
+  return out ? { ...road, nodes: out } : road;
+}
+
 /* ------------------------------------------------------------------ */
 /* Merging the pit lane surface into the road                          */
 /* ------------------------------------------------------------------ */
@@ -245,6 +318,50 @@ export function mergePitFrames(
   for (const f of pitFrames) maxPitHalf = Math.max(maxPitHalf, f.widthL, f.widthR);
   const reach = maxHalf + maxPitHalf + span + 2;
 
+  /* The weights first, for the whole lane, and SMOOTHED along it before any
+     frame is touched. The gap under each one is measured to the nearest
+     SAMPLED track cross section, and which section is nearest changes in
+     steps -- so along a stretch where the gap sits near the easing span, the
+     raw weight flickered from section to section. Everything downstream rides
+     this number: the glue itself, and through it the concrete's shoulder
+     fall, which flickered with it -- the apron's outer edge dipped under the
+     ground on one cross section and stood on it at the next, and the seam
+     read as a row of clipped triangles at the pit entry. Three passes of the
+     same little filter the heights get, and the edge runs straight. */
+  for (let i = 0; i < pitFrames.length; i++) {
+    const pf = pitFrames[i];
+    const ti = index.nearest(pf.pos.x, pf.pos.z, reach);
+    if (ti < 0) continue;
+    const tf = trackFrames[ti];
+    const lateral = (pf.pos.x - tf.pos.x) * tf.right.x + (pf.pos.z - tf.pos.z) * tf.right.z;
+    const roadHalf = lateral < 0 ? tf.widthL : tf.widthR;
+    const cross = pf.right.x * tf.right.x + pf.right.z * tf.right.z;
+    const nearHalf = (((lateral < 0) === (cross >= 0) ? pf.widthR : pf.widthL) + apron) * Math.abs(cross);
+    const gap = Math.abs(lateral) - roadHalf - nearHalf;
+    weight[i] = 1 - smoothstep(0, span, gap);
+  }
+  {
+    const raw = weight.slice();
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 1; i < pitFrames.length - 1; i++) {
+        weight[i] = (weight[i - 1] + 2 * weight[i] + weight[i + 1]) / 4;
+      }
+    }
+    for (let i = 0; i < weight.length; i++) {
+      /* The upper envelope: the flicker was DIPS in the raw weight, and a dip
+         is a cross section that briefly lets go of the road -- its concrete
+         drops, its neighbour's does not, and the edge saw-tooths. The peaks
+         are already right (glued is glued), so the blur may only fill the
+         dips, never shave a section that measured fully glued: shaved, the
+         apron leaned on the tarmac 12 cm below it at the mouths, where flush
+         is the whole point. */
+      weight[i] = Math.max(raw[i], weight[i]);
+      // And a hair of spread is no glue at all: the paddock stretch stays
+      // exactly weight zero, which the identity of its frames depends on.
+      if (weight[i] < 1e-3) weight[i] = 0;
+    }
+  }
+
   let frames: Frame[] | null = null;
   for (let i = 0; i < pitFrames.length; i++) {
     const pf = pitFrames[i];
@@ -257,14 +374,13 @@ export function mergePitFrames(
     const lateral = dx * tf.right.x + dz * tf.right.z;
     const roadHalf = lateral < 0 ? tf.widthL : tf.widthR;
 
-    // How parallel the two ribbons run, and which pit edge faces the road.
+    const w = weight[i];
+    if (w <= 1e-3) continue;
+    // The raw gap again, for the sink easing below -- the smoothing above is
+    // only for the weight.
     const cross = pf.right.x * tf.right.x + pf.right.z * tf.right.z;
     const nearHalf = (((lateral < 0) === (cross >= 0) ? pf.widthR : pf.widthL) + apron) * Math.abs(cross);
     const gap = Math.abs(lateral) - roadHalf - nearHalf;
-
-    const w = 1 - smoothstep(0, span, gap);
-    if (w <= 1e-3) continue;
-    weight[i] = w;
 
     /* How far the lane reaches over the tarmac. What is DONE about that is
        pitRoadClip's job -- it measures against the edge polyline itself rather

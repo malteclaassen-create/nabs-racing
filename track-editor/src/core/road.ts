@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { ApronColour, KerbSpan, KerbStyle, RoadSettings, SurfaceKey } from '../types';
+import type { ApronColour, DecoSurface, KerbSpan, KerbStyle, RoadSettings, SurfaceKey } from '../types';
 import { INNER_LIMIT, pathLength, type Frame } from './spline';
 import { spanExtent, spanMetres, spanPieces, type Piece } from './kerbs';
 import { PointIndex } from './spatial';
@@ -1584,6 +1584,9 @@ export function sideProfile(
   const wallR = new Uint8Array(n);
   const wallGapL = new Float32Array(n);
   const wallGapR = new Float32Array(n);
+  // Which cross sections the pit clearance actually cut: see the steadying
+  // pass at the end of the loop.
+  const pitCut = new Uint8Array(n);
   // What was asked for before any of the clamps below had their say, so the
   // height can be brought down by the same fraction the width was.
   const wantL = new Float32Array(n);
@@ -1881,11 +1884,52 @@ export function sideProfile(
        stop that close to the concrete anyway, it runs on and closes onto it. */
     if (tight > surface && tight - surface < 1) surface = tight;
     if (side < 0) {
-      if (clear && surface < runoffL[i]) runoffL[i] = surface;
+      if (clear && surface < runoffL[i]) { runoffL[i] = surface; pitCut[i] = 1; }
       if (!room) wallL[i] = 0;
     } else {
-      if (clear && surface < runoffR[i]) runoffR[i] = surface;
+      if (clear && surface < runoffR[i]) { runoffR[i] = surface; pitCut[i] = 1; }
       if (!room) wallR[i] = 0;
+    }
+  }
+
+  /* The clearance, steadied along the track.
+   *
+   * Every number it is cut from -- the near edge of the drawn band, the width
+   * of the concrete abreast -- is read off SAMPLED cross sections through a
+   * six metre window, and which samples fall in the window changes from one
+   * track section to the next. Along a stretch where the lane runs parallel,
+   * the run off it left came out half a metre to three metres wide by turns,
+   * section against section: a sawtooth of grass strip against bare pad,
+   * read in the viewport as a row of clipped triangles beside the pit entry.
+   *
+   * A short MIN window takes the spikes of width out and leaves the cuts in:
+   * it can only ever pull the run off further off the concrete, so the one
+   * guarantee this clearance makes -- keep off the drawn band -- survives by
+   * construction. Two sections either side is seven metres, the scale of the
+   * jitter and well under the scale of a real mouth.
+   */
+  for (const arr of [runoffL, runoffR]) {
+    const raw = arr.slice();
+    for (let i = 0; i < n; i++) {
+      /* Only the open-strip regime. Under about a metre the width is the slot
+         rule's carefully chosen answer -- run on to the concrete, or exactly
+         fill what is there -- and dragging a neighbour's smaller figure over
+         it reopened the very slots it exists to close, a metre of bare ground
+         off the tarmac at both mouths. Those sections keep their own answer,
+         and they do not drag the open strip beside them down either. */
+      if (raw[i] <= 1.2) continue;
+      let near = false;
+      for (let k = -2; k <= 2 && !near; k++) {
+        const j = closed ? (i + k + n) % n : Math.min(n - 1, Math.max(0, i + k));
+        if (pitCut[j]) near = true;
+      }
+      if (!near) continue;
+      let v = raw[i];
+      for (let k = -2; k <= 2; k++) {
+        const j = closed ? (i + k + n) % n : Math.min(n - 1, Math.max(0, i + k));
+        if (raw[j] > 1.2 && raw[j] < v) v = raw[j];
+      }
+      arr[i] = v;
     }
   }
 
@@ -3398,6 +3442,112 @@ export function buildPitMeshes(
   band(laneEnd, 'OBJ_pit_limit_out');
 
   return out;
+}
+
+/**
+ * What a deco road's surface choice means: the material it is drawn with and
+ * the physics surface its mesh name carries. Both existing keys, so the
+ * exporter's surfaces.ini already knows every one of them and the road is
+ * drivable in the game with no new plumbing.
+ */
+const DECO_LOOK: Record<DecoSurface, { material: MaterialKey; surface: SurfaceKey; prefix: string }> = {
+  asphalt: { material: 'asphalt', surface: 'ROAD', prefix: '1ROAD' },
+  concrete: { material: 'concrete', surface: 'CONCRETE', prefix: '1CONCRETE' },
+};
+
+/** How far the outer edge of a deco road falls to meet the ground. */
+const DECO_EDGE_DROP = 0.04;
+
+/**
+ * One decorative road, as a ribbon of its chosen surface.
+ *
+ * The same shape the pit lane's tarmac has, without the pit complex around it:
+ * a flat lane between the two half widths, and a short bevel either side that
+ * takes the edge down to the ground the way the pit apron's outer edge does --
+ * the terrain corridor holds the ground EDGE_SINK under every road mesh, and
+ * without the bevel that gap stands along both edges as a step.
+ *
+ * `clip` and `mergeWeight` come from the same pit-junction machinery the lane
+ * uses: where an end has been brought up to the circuit, the ribbon is carried
+ * on as a wedge over the tarmac (pitLead), glued onto the road plane
+ * (mergePitFrames) and cut back against the tarmac's real edge (pitRoadClip),
+ * so the junction is a seam and not a pile of surfaces.
+ */
+export function buildDecoRoadMeshes(
+  frames: Frame[],
+  closed: boolean,
+  road: RoadSettings,
+  surface: DecoSurface,
+  /** Mesh name suffix, unique per road. */
+  key: string,
+  reuse?: Map<string, THREE.BufferGeometry>,
+  clip?: PitClip,
+): MeshDef[] {
+  if (frames.length < 2) return [];
+  const fr = expand(frames, closed);
+  const n = fr.length;
+  const s = takeScratch(n);
+  const look = DECO_LOOK[surface];
+
+  const outL = s.edgeL;
+  const left = s.left;
+  const rightE = s.right;
+  const outR = s.edgeR;
+  const bandAt = (a: Float32Array | undefined, i: number, fallback: number) =>
+    (a && a.length > 0 ? a[i < a.length ? i : 0] : fallback);
+
+  for (let i = 0; i < n; i++) {
+    const f = fr[i];
+    // The bevel lives INSIDE the drawn width, so the drivable middle is what
+    // is left of the band once both edges have taken their share.
+    const bevel = Math.min(0.5, (f.widthL + f.widthR) * 0.12);
+    let lo = bandAt(clip?.lo, i, -f.widthL);
+    let hi = bandAt(clip?.hi, i, f.widthR);
+    if (hi < lo) hi = lo;
+    const laneLo = Math.min(lo + bevel, hi);
+    const laneHi = Math.max(hi - bevel, laneLo);
+    const cutL = clip !== undefined && lo > -f.widthL + 0.05;
+    const cutR = clip !== undefined && hi < f.widthR - 0.05;
+
+    outL[i].copy(f.pos).addScaledVector(f.right, lo);
+    left[i].copy(f.pos).addScaledVector(f.right, laneLo);
+    rightE[i].copy(f.pos).addScaledVector(f.right, laneHi);
+    outR[i].copy(f.pos).addScaledVector(f.right, hi);
+    // An edge the clip has cut lies against the circuit's tarmac, not against
+    // the ground, and must stay on the road plane.
+    outL[i].y -= cutL ? 0 : DECO_EDGE_DROP + EDGE_SINK;
+    outR[i].y -= cutR ? 0 : DECO_EDGE_DROP + EDGE_SINK;
+    s.awL[i] = laneLo - lo;
+    s.awR[i] = hi - laneHi;
+    s.lane[i] = laneHi - laneLo;
+    s.uA[i] = (laneLo - lo) / road.uvWidth;
+    s.uB[i] = (laneHi - laneLo) / road.uvWidth;
+    s.v[i] = f.dist / road.uvLength;
+  }
+
+  const b = new StripBuilder(reuse?.get(`${look.prefix}_${key}`), n * 6);
+  const hasLane = (i: number) => s.lane[i] > THIN;
+  const reachOver = (span: [number, number]): [number, number] => [
+    span[0] > 0 && hasLane(span[0] - 1) ? span[0] - 1 : span[0],
+    span[1] < n - 1 && hasLane(span[1] + 1) ? span[1] + 1 : span[1],
+  ];
+  for (const span of runs(n, hasLane)) {
+    const [a, z] = reachOver(span);
+    b.addStrip(left, rightE, s.zeros, s.uB, s.v, a, z);
+  }
+  for (const span of runs(n, (i) => s.awL[i] > THIN)) {
+    const [a, z] = reachOver(span);
+    b.addStrip(outL, left, s.zeros, s.uA, s.v, a, z);
+  }
+  for (const span of runs(n, (i) => s.awR[i] > THIN)) {
+    const [a, z] = reachOver(span);
+    b.addStrip(rightE, outR, s.zeros, s.uA, s.v, a, z);
+  }
+  if (b.empty) {
+    b.discard();
+    return [];
+  }
+  return [{ name: `${look.prefix}_${key}`, material: look.material, surface: look.surface, geometry: b.finish() }];
 }
 
 /* ------------------------------------------------------------------ */
