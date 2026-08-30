@@ -6,7 +6,7 @@
   "description": "Browser based 3D track editor that exports Assetto Corsa ready track folders",
   "scripts": {
     "dev": "vite --port 5199",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build",
     "preview": "vite preview --port 5200",
     "typecheck": "tsc -b --force",
     "verify": "node --import ./tools/ts-resolve.mjs tools/verify-export.mjs && node --import ./tools/ts-resolve.mjs tools/verify-kn5.mjs && node --import ./tools/ts-resolve.mjs tools/verify-kn5fix.mjs && node --import ./tools/ts-resolve.mjs tools/verify-import.mjs && node --import ./tools/ts-resolve.mjs tools/verify-scene.mjs && node --import ./tools/ts-resolve.mjs tools/verify-pit.mjs && node --import ./tools/ts-resolve.mjs tools/verify-perf.mjs",
