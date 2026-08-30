@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <title>NABS Track Editor</title>
+    <script>
+      /*
+       * React 19's dev build ships a "Components" performance track that, on
+       * every commit whose props changed, deep-diffs old against new props for
+       * a DevTools tooltip. With the terrain height field (a 37k-entry
+       * Float32Array) passed as a prop to ~40 components, that diff ran for
+       * SECONDS per sculpt dab and froze the page for the whole brush stroke.
+       * The track keys off `typeof console.timeStamp == "function"` once at
+       * module load; removing the function before the app loads disables it.
+       * Production builds never contain the track, so this is dev-only in
+       * effect. Delete this line if you ever want the track in a DevTools
+       * recording -- and expect sculpting to freeze while it is back.
+       */
+      console.timeStamp = undefined;
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

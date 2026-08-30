@@ -66,3 +66,24 @@ jobs:
       # change usually breaks.
       - run: npm run build
         working-directory: frontend
+
+  track-editor:
+    name: Track editor build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: track-editor/package-lock.json
+      - run: npm ci
+        working-directory: track-editor
+      # The editor is part of `npm run build` at the repo root, which is what
+      # Railway runs — so a break in here is a broken DEPLOY of the whole site,
+      # not just of the editor. Worth its own job for that reason alone.
+      #
+      # `build` is `tsc -b && vite build`: the editor is TypeScript, so this
+      # catches considerably more than the frontend's own build does.
+      - run: npm run build
+        working-directory: track-editor

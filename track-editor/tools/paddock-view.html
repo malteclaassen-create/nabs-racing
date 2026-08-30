@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><title>paddock from the racing line</title>
+    <style>
+      body { background: #1a1c1a; color: #ccc; font: 12px system-ui; margin: 0; }
+      .cap { padding: 6px 10px; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="cap" id="cap">building…</div>
+    <script type="module">
+      import * as THREE from 'three';
+      import { generateCircuit } from '/src/core/generate.ts';
+      import { propParts } from '/src/core/library.ts';
+      import { computeFrames } from '/src/core/spline.ts';
+      import { MATERIAL_COLORS } from '/src/core/textures.ts';
+
+      let s = 12345;
+      const rng = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+      const g = generateCircuit('medium', 7, undefined, 12, rng, { trees: false, paddock: true });
+      const frames = computeFrames({ closed: true, nodes: g.track }, 12);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color('#9fb4c6');
+      scene.add(new THREE.HemisphereLight('#dfe8f0', '#4a5138', 1.5));
+      const sun = new THREE.DirectionalLight('#fff6e0', 1.6);
+      sun.position.set(-120, 200, 90);
+      scene.add(sun);
+
+      // The ground, so the buildings are not floating in mid air.
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(3000, 3000),
+        new THREE.MeshLambertMaterial({ color: '#46542c' }),
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -0.05;
+      scene.add(ground);
+
+      // The tarmac, as a flat ribbon through the frames.
+      const pos = [], idx = [];
+      frames.forEach((f, i) => {
+        pos.push(f.pos.x - f.right.x * f.widthL, f.pos.y + 0.02, f.pos.z - f.right.z * f.widthL);
+        pos.push(f.pos.x + f.right.x * f.widthR, f.pos.y + 0.02, f.pos.z + f.right.z * f.widthR);
+        if (i > 0) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      });
+      const road = new THREE.BufferGeometry();
+      road.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      road.setIndex(idx);
+      road.computeVertexNormals();
+      scene.add(new THREE.Mesh(road, new THREE.MeshLambertMaterial({ color: '#3a3c3f', side: THREE.DoubleSide })));
+
+      // Every building the generator dropped, at its own position and heading.
+      const mats = new Map();
+      const matFor = (k) => {
+        if (!mats.has(k)) mats.set(k, new THREE.MeshLambertMaterial({ color: MATERIAL_COLORS[k] ?? '#888' }));
+        return mats.get(k);
+      };
+      let building = null;
+      for (const inst of g.props) {
+        for (const part of propParts(inst.kind)) {
+          const m = new THREE.Mesh(part.geometry, matFor(part.material));
+          m.position.set(inst.p[0], inst.p[1], inst.p[2]);
+          m.rotation.y = THREE.MathUtils.degToRad(inst.r[1]);
+          m.scale.set(inst.s[0], inst.s[1], inst.s[2]);
+          scene.add(m);
+        }
+        if (inst.kind === 'pit_building') building = inst;
+      }
+
+      // Stand ON the racing line beside the pit building, at eye height in a
+      // car, and look straight at it. This is the view that settles which way
+      // round the thing is: garage doors and canopy, or blank back wall.
+      let best = frames[0], bd = Infinity;
+      for (const f of frames) {
+        const d = Math.hypot(f.pos.x - building.p[0], f.pos.z - building.p[2]);
+        if (d < bd) { bd = d; best = f; }
+      }
+      const w = 900, h = 460;
+      const cam = new THREE.PerspectiveCamera(50, w / h, 0.5, 4000);
+      cam.position.set(best.pos.x, best.pos.y + 1.2, best.pos.z);
+      cam.lookAt(building.p[0], building.p[1] + 5, building.p[2]);
+
+      const gl = new THREE.WebGLRenderer({ antialias: true });
+      gl.setSize(w, h);
+      document.body.appendChild(gl.domElement);
+      gl.render(scene, cam);
+
+      // And the same thing from behind, so both faces are on one page.
+      const bx = building.p[0] - (best.pos.x - building.p[0]);
+      const bz = building.p[2] - (best.pos.z - building.p[2]);
+      const cam2 = cam.clone();
+      cam2.position.set(bx, best.pos.y + 12, bz);
+      cam2.lookAt(building.p[0], building.p[1] + 5, building.p[2]);
+      const gl2 = new THREE.WebGLRenderer({ antialias: true });
+      gl2.setSize(w, h);
+      document.body.appendChild(gl2.domElement);
+      gl2.render(scene, cam2);
+
+      document.getElementById('cap').textContent =
+        `top: from the racing line (${bd.toFixed(0)} m away), looking at the pit building. ` +
+        `bottom: from the paddock side. heading ${building.r[1].toFixed(1)}°`;
+    </script>
+  </body>
+</html>

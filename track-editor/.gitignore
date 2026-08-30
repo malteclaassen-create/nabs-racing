@@ -1,0 +1,7 @@
+node_modules
+dist
+.verify
+*.local
+.vite
+ac-root.txt
+tsconfig.tsbuildinfo

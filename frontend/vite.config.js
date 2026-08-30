@@ -67,6 +67,21 @@ export default defineConfig({
         changeOrigin: true,
         ws: true, // proxy the live-timing WebSocket (/api/live/ws) too
       },
+      // The track editor is its own Vite project (track-editor/) and in
+      // development it has its own dev server, with its own hot reload. In a
+      // BUILT site it is just a folder inside dist/ that Express hands out, so
+      // /track-editor/ is the address either way and the card on /tools does
+      // not need to know which of the two it is talking to.
+      //
+      // Only reachable while that second server is actually running:
+      //     npm --prefix ../track-editor run dev
+      // Without it the proxy has nothing to reach and the page fails to load,
+      // which is the honest outcome — the alternative would be this app's own
+      // 404, and that reads like the editor was never integrated at all.
+      "/track-editor": {
+        target: "http://localhost:5199",
+        changeOrigin: true,
+      },
     },
   },
   // `vite preview` serves the production build with NO HMR websocket — the

@@ -1,0 +1,1016 @@
+/*
+ * The look of a tool, not of a page.
+ *
+ * The surfaces are neutral grey: an editor is a frame around a 3D view, and
+ * every degree of colour in the frame is a degree the viewport has to fight.
+ * There is one accent -- the league's rose -- and it is spent only on state
+ * that answers "where am I": the selected row, the tool you are in, the tab you
+ * are on. Nothing is filled with it decoratively, nothing is a gradient, and
+ * the corners are tight enough that a panel of twenty controls does not read as
+ * twenty cards.
+ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/fonts/inter-400-latin.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/fonts/inter-500-latin.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/inter-600-latin.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(/fonts/inter-700-latin.woff2) format('woff2');
+}
+/* The display face. It is the wordmark's, and nothing else's: headings set in
+   it are what made every panel read as a landing page. */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(/fonts/archivo-700-latin.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url(/fonts/archivo-800-latin.woff2) format('woff2');
+}
+/* Numbers, so a column of them lines up and does not jitter as it counts. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/fonts/jetbrains-mono-500-latin.woff2) format('woff2');
+}
+
+:root {
+  /* Surfaces: page, panel, control, raised, hover. Neutral, with a trace of
+     warmth so the grey does not go blue against the green of the terrain. */
+  --bg-0: #141517;
+  --bg-1: #1c1e21;
+  --bg-2: #26282c;
+  --bg-3: #303338;
+  --bg-hover: #33373c;
+  --line: #383c42;
+  --line-soft: #101113;
+  --text: #dee1e5;
+  --text-dim: #a2a8b0;
+  --text-faint: #6d747d;
+  /*
+   * One accent, the league's rose, and only for state. --accent-fill is the
+   * solid it becomes when something has to be filled with it; it is dark
+   * enough to carry white text.
+   */
+  --accent: #d98da5;
+  --accent-fill: #8c3d54;
+  --accent-line: #a8546c;
+  --warn: #d9a441;
+  --danger: #d96a6a;
+  --good: #58ab7e;
+  --radius: 3px;
+  --radius-lg: 4px;
+  --shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.75);
+  --font-display: 'Archivo', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 12.5px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* ---------------- layout ---------------- */
+
+.app {
+  display: grid;
+  grid-template-rows: 38px 1fr 22px;
+  /* 292 rather than 268: four segments of a switch fit on one line at this
+     width, which is what most of the panels are made of. */
+  grid-template-columns: 292px 1fr 320px;
+  grid-template-areas:
+    'top top top'
+    'left view right'
+    'status status status';
+  height: 100%;
+  gap: 1px;
+  background: var(--line-soft);
+}
+
+.topbar {
+  grid-area: top;
+  background: var(--bg-1);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+}
+
+.leftpanel {
+  grid-area: left;
+  background: var(--bg-1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.viewwrap {
+  grid-area: view;
+  position: relative;
+  /* A shade below the panels, so the 3D view reads as a window cut into them. */
+  background: #0c0d0f;
+  min-width: 0;
+}
+
+.rightpanel {
+  grid-area: right;
+  background: var(--bg-1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.statusbar {
+  grid-area: status;
+  background: var(--bg-1);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 10px;
+  color: var(--text-dim);
+  /* Mono: the lap length and the object count tick over constantly and would
+     otherwise shove the bar about. */
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+canvas {
+  display: block;
+  outline: none;
+  /*
+   * The browser must not treat a press on the viewport as a gesture of its own.
+   *
+   * Without `touch-action: none` a pen or touch press starts a pan/zoom
+   * negotiation: the browser withholds the pointer stream while it decides what
+   * the gesture is, and on a sustained press that shows up as the page being
+   * frozen for exactly as long as the button is held -- no frames, no timers,
+   * no events, and the editor's own code accounting for a millisecond of it.
+   * A viewport you draw on has no use for the browser's gestures in any case.
+   */
+  touch-action: none;
+  /* A drag across the viewport must not start selecting the interface behind
+     it, which is the other way a press turns into a browser gesture. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* An image is draggable by default, and starting a native drag puts the whole
+   renderer into a nested loop until the drop. Nothing here is meant to be
+   dragged out of the window. */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* ---------------- top bar ---------------- */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-right: 10px;
+  margin-right: 2px;
+  border-right: 1px solid var(--line);
+  height: 22px;
+}
+
+.brand-mark {
+  width: 18px;
+  height: 18px;
+  display: block;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+/* The wordmark is the one place the display face and the brand colour appear
+   together, and the only thing on the bar that is not a control. */
+.brand-league {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+}
+
+.brand-name {
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.title-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 3px 6px;
+  color: var(--text);
+  font-weight: 500;
+  width: 190px;
+}
+
+.title-input:hover {
+  border-color: var(--line);
+}
+
+.title-input:focus {
+  outline: none;
+  border-color: var(--accent-line);
+  background: var(--bg-2);
+}
+
+/* ---------------- buttons ---------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 4px 9px;
+  cursor: pointer;
+  /* Wraps rather than pushing the panel out from the inside. A long label --
+     "Attach entry and exit to the track" -- was several pixels wider than the
+     panel on its own, and a few pixels of overflow is a scrollbar all the same. */
+  white-space: normal;
+  text-align: center;
+  min-width: 0;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: #454a51;
+}
+
+.btn:active:not(:disabled) {
+  background: var(--bg-3);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn.icon {
+  padding: 4px 6px;
+}
+
+/* The one filled button in the interface, for the one action that ends the
+   job. Flat: a gradient on a button this size is decoration. */
+.btn.primary {
+  background: var(--accent-fill);
+  border-color: var(--accent-line);
+  color: #fdf2f5;
+  font-weight: 500;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: #9d4560;
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+
+.btn.ghost:hover:not(:disabled) {
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+/* Mixed from the status colour rather than picked separately, so a change to
+   --danger carries through to the button that means it. */
+.btn.danger {
+  color: #e79b9b;
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--bg-2));
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg-2));
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 18%, var(--bg-2));
+}
+
+/* ---------------- tool rail ---------------- */
+
+.toolrail {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  padding: 6px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 44px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--text-dim);
+  transition: background 0.1s, color 0.1s;
+}
+
+.tool:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+/* The tool you are in: one filled cell in an otherwise empty rail, which is
+   easier to find at a glance than nine cells that differ by a shade. */
+.tool.active,
+.tool.active:hover {
+  background: var(--bg-3);
+  border-color: var(--line);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent-line);
+}
+
+.tool.active svg {
+  color: var(--accent);
+}
+
+.tool svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---------------- panels ---------------- */
+
+.panel-scroll {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.section {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 10px 10px 12px;
+}
+
+/* A caption over a group of controls and nothing more: the smallest thing on
+   the panel rather than the loudest. */
+.section-title {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+  margin: 0 0 8px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+.row > label {
+  /* Shrinkable: a fixed 96 px label plus a control that will not go below its
+     content is how a row ends up wider than the panel holding it. */
+  flex: 0 1 88px;
+  min-width: 58px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.row > .rowbody {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hint {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 7px 0 0;
+}
+
+/* Emphasis inside a hint is a key or a control, so it is set like one rather
+   than as bold prose. */
+.hint b {
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+/* ---------------- inputs ---------------- */
+
+input[type='text'],
+input[type='number'],
+select,
+textarea {
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 4px 6px;
+  width: 100%;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 11.5px;
+}
+
+input[type='number'] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent-line);
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  outline: none;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: #9aa2ac;
+  cursor: pointer;
+  border: none;
+}
+
+input[type='range']:hover::-webkit-slider-thumb {
+  background: var(--text);
+}
+
+/* Readouts in the mono face: a value that changes as you drag stops shuffling
+   sideways as its digits change width. */
+.val {
+  flex: 0 0 54px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  font-size: 10.5px;
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.checkbox input {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--accent-fill);
+  margin: 0;
+}
+
+/* segmented control */
+/* A segmented switch wraps rather than pushing the panel wider than it is.
+   `nowrap` on the buttons plus no wrapping here meant a five option switch --
+   the kerb styles, the sculpt modes -- was simply wider than the panel, and
+   the whole left hand side grew a horizontal scrollbar because of it. */
+.seg {
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1px;
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
+}
+
+.seg button {
+  /* Grow to share the row, shrink when there is not enough for one line, and
+     never below something you can still read and hit. */
+  flex: 1 1 auto;
+  min-width: 40px;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  padding: 3px 4px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.seg button:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+.seg button.on {
+  background: var(--bg-3);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* ---------------- tabs ---------------- */
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-0);
+  flex: 0 0 auto;
+}
+
+.tabs button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 7px 4px;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.tabs button:hover {
+  color: var(--text-dim);
+}
+
+.tabs button.on {
+  color: var(--text);
+  background: var(--bg-1);
+  border-bottom-color: var(--accent-line);
+}
+
+/* ---------------- lists ---------------- */
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 7px;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.list-item:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+/* The selected row: a flat fill and a stripe down its edge. */
+.list-item.on {
+  background: var(--bg-3);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent-line);
+}
+
+.list-item .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.list-item .grow {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-group {
+  margin-bottom: 10px;
+}
+
+.list-group > h4 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+/* ---------------- prop library ---------------- */
+
+.propgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.propcard {
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  border-radius: var(--radius);
+  padding: 6px 7px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.propcard:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.propcard.on {
+  border-color: var(--accent-line);
+  background: var(--bg-3);
+  color: var(--text);
+}
+
+/* ---------------- start dialog ---------------- */
+
+/* One row per way to start. Full width and left aligned: these are choices with
+   a sentence of explanation each, not buttons. */
+.startopt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.startopt:hover {
+  background: var(--bg-hover);
+}
+
+.startopt > b {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.startopt > span {
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.startopt.on {
+  border-color: var(--line);
+  border-left-color: var(--accent-line);
+  background: var(--bg-3);
+  color: var(--text);
+}
+
+/* The autosave offer acts immediately rather than waiting for Start, so it is
+   set apart from the three that are a choice. */
+.startopt.resume {
+  border-left-color: var(--good);
+  margin-bottom: 14px;
+}
+
+/* ---------------- tutorial ---------------- */
+
+/* In the corner of the viewport, not over it: the editor stays live so the
+   panel each step talks about is on screen beside the words. */
+.tutorial {
+  position: absolute;
+  right: 12px;
+  bottom: 34px;
+  width: 320px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 10px 12px 12px;
+  z-index: 15;
+}
+
+.tutorial-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tutorial-head > b {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+.tutorial-step {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.tutorial > p {
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.tutorial-foot {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ---------------- overlay / dialog ---------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 40;
+}
+
+.dialog {
+  width: min(680px, 92vw);
+  max-height: 84vh;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dialog header {
+  padding: 9px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dialog .body {
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.dialog footer {
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.callout {
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--warn);
+  background: var(--bg-2);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.callout.ok {
+  border-left-color: var(--good);
+}
+
+.callout.info {
+  border-left-color: var(--text-faint);
+}
+
+.callout b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 14px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.kv b {
+  color: var(--text);
+  font-weight: 500;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A count, set like the figures in the status bar. Square, because everything
+   else here is. */
+.badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewtoggles {
+  display: flex;
+  gap: 1px;
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1px;
+}
+
+.viewtoggles button {
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  padding: 3px 7px;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.viewtoggles button:hover {
+  background: var(--bg-2);
+  color: var(--text-dim);
+}
+
+.viewtoggles button.on {
+  color: var(--text);
+  background: var(--bg-3);
+}
+
+/* The line under the viewport. One line, along the bottom edge, so it can sit
+   there without becoming something to read. */
+.overlay-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(12, 13, 15, 0.82);
+  border-top: 1px solid var(--line-soft);
+  padding: 4px 10px;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.overlay-hint b {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.busy {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.65);
+  color: var(--text);
+  font-size: 12.5px;
+  z-index: 20;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-0);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3b4046;
+  border-radius: 0;
+  border: 3px solid var(--bg-0);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5158;
+}
+
+/* ---------------- import progress ---------------- */
+
+/* A plain determinate bar. Reading a 116 MB model takes a few seconds and a
+   dialog that says nothing for that long reads as a hang. */
+.progress {
+  height: 3px;
+  background: var(--bg-0);
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.progress > div {
+  height: 100%;
+  background: var(--accent-line);
+  transition: width 120ms linear;
+}

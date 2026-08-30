@@ -454,6 +454,60 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
       }
     },
   }));
+  // The track editor (track-editor/, built into dist/track-editor by the root
+  // build). Its bundle, fonts and the showcase project are plain files and the
+  // static handler above already serves them; this is only about the ONE
+  // address people actually type.
+  //
+  // It needs saying because express.static runs with `index: false` — set for
+  // the site's own "/" a few lines up, but it applies to every folder, this one
+  // included. So /track-editor/ matched no file, fell through to the SPA
+  // fallback below, and answered with the WEBSITE's index.html: the league site
+  // booted, found no route for the path and drew its 404. A missing page, from
+  // a folder that was sitting right there.
+  //
+  // Deliberately NOT behind an auth check. Nothing here reads league data — it
+  // is a static app that runs entirely in the visitor's browser — and the
+  // "admins only" of the moment is that nothing links to it (the card on /tools
+  // is admin-gated). A real lock wants the ticket-and-cookie dance that
+  // downloads use, because a plain navigation carries no Authorization header.
+  const EDITOR_DIR = join(__dir, "../../track-editor/dist");
+  const EDITOR_INDEX = join(EDITOR_DIR, "index.html");
+  if (existsSync(EDITOR_INDEX)) {
+    // Its own mount rather than a folder inside frontend/dist, because the
+    // website's build empties that folder and would carry the editor off with
+    // it on every deploy (see track-editor/vite.config.ts).
+    app.use("/track-editor", express.static(EDITOR_DIR, {
+      // Same reason as the site's own mount above: the index is served by the
+      // handler below, which sets its own caching.
+      index: false,
+      setHeaders(res, filePath) {
+        if (/[\\/]assets[\\/]/.test(filePath)) {
+          // Hashed by the build, so it can never go stale.
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        } else {
+          // Fonts, the logo, and the showcase project: stable files, 7 days.
+          res.setHeader("Cache-Control", "public, max-age=604800");
+        }
+      },
+    }));
+    // ONE handler, and it answers both /track-editor and /track-editor/.
+    //
+    // The obvious version -- redirect the bare path to the trailing-slash one,
+    // then serve that -- is an infinite redirect here. Express runs with strict
+    // routing OFF, so "/track-editor" and "/track-editor/" are the same route
+    // to it: the redirect matched its own target and the browser gave up after
+    // twenty hops. Nothing is lost by serving both, because the page's asset
+    // URLs are absolute (vite `base`), so nothing depends on which of the two
+    // the address bar happens to be showing.
+    app.get("/track-editor", (req, res) => {
+      // Same rule as the site's own index.html: never cached, so a rebuilt
+      // editor reaches people on their next visit instead of whenever the
+      // browser next felt like asking.
+      res.setHeader("Cache-Control", "no-cache");
+      res.sendFile(EDITOR_INDEX);
+    });
+  }
   // SPA fallback: any non-API GET returns index.html so client-side routes work
   // on refresh / deep links (e.g. /downloads). API paths fall through to the 404.
   //

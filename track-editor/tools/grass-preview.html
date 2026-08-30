@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><title>grass tile</title>
+    <style>
+      body { background: #222; color: #ccc; font: 12px system-ui; margin: 12px; }
+      canvas { image-rendering: pixelated; border: 1px solid #444; }
+      .row { display: flex; gap: 16px; align-items: flex-start; }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <div><div id="lbl">tile, middle 512 px at 1:1</div><canvas id="one" width="512" height="512"></canvas></div>
+      <div><div>3x3 tiled (24 m)</div><canvas id="many" width="768" height="768"></canvas></div>
+    </div>
+    <script type="module">
+      import { textureCanvas } from '/src/core/textures.ts';
+      const t0 = performance.now();
+      const t = textureCanvas('grass');
+      const ms = performance.now() - t0;
+      const o = document.getElementById('one').getContext('2d');
+      o.drawImage(t, (t.width - 512) / 2, (t.height - 512) / 2, 512, 512, 0, 0, 512, 512);
+      const m = document.getElementById('many').getContext('2d');
+      for (let x = 0; x < 3; x++) for (let y = 0; y < 3; y++) m.drawImage(t, x * 256, y * 256, 256, 256);
+      document.getElementById('lbl').textContent = `tile ${t.width}px, middle 512 at 1:1 -- built in ${ms.toFixed(0)} ms`;
+
+      // Same statistics as the survey script, so the tile can be compared with
+      // the real ones by number and not by eye alone.
+      const d = t.getContext('2d').getImageData(0, 0, t.width, t.height).data;
+      const px = [];
+      let dry = 0, dark = 0, mr = 0, mg = 0, mb = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        px.push([l, r, g, b]);
+        if (r >= g - 4) dry++;
+        if (l < 55) dark++;
+        mr += r; mg += g; mb += b;
+      }
+      px.sort((a, b) => a[0] - b[0]);
+      const hex = (r, g, b) => '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+      const at = q => {
+        const c = Math.floor(q * (px.length - 1));
+        const lo = Math.max(0, c - 2000), hi = Math.min(px.length, c + 2000);
+        let r = 0, g = 0, b = 0;
+        for (let i = lo; i < hi; i++) { r += px[i][1]; g += px[i][2]; b += px[i][3]; }
+        return hex(r / (hi - lo), g / (hi - lo), b / (hi - lo));
+      };
+      const n = px.length;
+      window.STATS = {
+        ms: +ms.toFixed(0), size: t.width,
+        mean: hex(mr / n, mg / n, mb / n),
+        p2: at(0.02), p10: at(0.1), p25: at(0.25), p50: at(0.5), p75: at(0.75), p90: at(0.9), p98: at(0.98),
+        straw: +((dry / n) * 100).toFixed(1), shadow: +((dark / n) * 100).toFixed(1),
+      };
+    </script>
+  </body>
+</html>
