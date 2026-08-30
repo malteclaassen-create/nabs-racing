@@ -1715,8 +1715,19 @@ export function sideProfile(
     // Nothing abreast (the lane only passes at a distance): the old estimate.
     if (!Number.isFinite(nearLat)) nearLat = Math.abs(lateral) - pitHalf;
 
-    // Free space between the road centre and the near edge of the pit lane.
-    const free = nearLat - road.pitGap;
+    /*
+     * Free space between the road centre and the near edge of the pit lane --
+     * which is the edge of its CONCRETE, not of its tarmac.
+     *
+     * This used to measure to the tarmac, so the run off was allowed to reach
+     * to within the gap of it and ran straight across the concrete beside it.
+     * With 2.5 m of concrete and a 3 m gap that happened to come out half a
+     * metre short and nobody saw it; widen the concrete past the gap and the
+     * run off lies on top of it, two drivable surfaces in the same place
+     * decided per pixel by the depth buffer.
+     */
+    const nearEdge = nearLat - nearApron;
+    const free = nearEdge - road.pitGap;
 
     // Where the pit ribbon physically reaches into the kerb strip, drop the
     // kerb entirely: the pit surface replaces it there. A kerb carrying on
@@ -1725,7 +1736,9 @@ export function sideProfile(
     // meshes through the same space are wrong no matter the setting.
     const roadHalf = side < 0 ? f.widthL : f.widthR;
     const kerbW = side < 0 ? kerbWL[i] : kerbWR[i];
-    if (kerbW > 0 && nearLat < roadHalf + kerbW + 0.1) {
+    // Measured on the concrete too: a kerb standing up through the apron beside
+    // the lane is exactly as wrong as one standing up through its tarmac.
+    if (kerbW > 0 && nearEdge < roadHalf + kerbW + 0.1) {
       if (side < 0) {
         kerbWL[i] = 0;
         apronL[i] = 0;
@@ -1754,6 +1767,17 @@ export function sideProfile(
      * hard against the tarmac, the only place left would be the racing line.
      */
     const room = allowed >= MIN_WALL_ROOM;
+    /*
+     * Nothing to clear where the ribbon has gone under the tarmac.
+     *
+     * At a junction the lane runs onto the circuit, and pitRoadClip takes away
+     * every part of it that lands there -- so at those cross sections there is
+     * no pit surface outboard of the tarmac at all, and a run off narrowed to
+     * keep off it is keeping off nothing. What that leaves instead is bare
+     * ground straight off the racing line, with the concrete it was avoiding
+     * clipped away metres inside the tarmac.
+     */
+    const clear = nearEdge > roadHalf + kerb;
     /* Where there is no room for the gap there is no room for a gap at all.
      *
      * The run off is meant to stop short of the lane, and it does. But once
@@ -1768,18 +1792,30 @@ export function sideProfile(
      * that is what the gap is for, and it is dropped outright below
      * MIN_WALL_ROOM either way.
      */
-    const tight = Math.max(0, nearLat - nearApron - roadHalf - kerb);
-    let surface = allowed > 0.01 ? allowed : Math.min(tight, road.pitGap);
+    const tight = Math.max(0, nearEdge - roadHalf - kerb);
+    /*
+     * Under a metre is not a run off, it is a slot.
+     *
+     * The first branch leaves the gap the pit wall stands in, which is right
+     * while there is room for both. Squeeze it and the two want opposite
+     * things: what is left of the run off shrinks towards nothing while the
+     * gap keeps its full width, so the surface beside the racing line ends a
+     * hand's width off the tarmac and the next three metres are bare ground --
+     * ground the corridor has pulled down under the road, so what shows is a
+     * dark slot at the edge of the circuit. Below a metre the run off is worth
+     * less than the gap is, and it runs on to the concrete instead.
+     */
+    let surface = allowed > 1 ? allowed : Math.min(tight, road.pitGap);
     /* A sliver of bare ground less than a metre wide is not a paddock, it is
        a trench: the ground under it is pulled down below the road, and what
        shows beside the racing line is a dark slot. Where the run off would
        stop that close to the concrete anyway, it runs on and closes onto it. */
     if (tight > surface && tight - surface < 1) surface = tight;
     if (side < 0) {
-      if (surface < runoffL[i]) runoffL[i] = surface;
+      if (clear && surface < runoffL[i]) runoffL[i] = surface;
       if (!room) wallL[i] = 0;
     } else {
-      if (surface < runoffR[i]) runoffR[i] = surface;
+      if (clear && surface < runoffR[i]) runoffR[i] = surface;
       if (!room) wallR[i] = 0;
     }
   }

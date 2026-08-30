@@ -345,8 +345,31 @@ function arcClears(ring: Pt[], g: CornerGroup, arc: Pt[]): boolean {
  */
 const PIT_SPAN = 6;
 
-/** How far outside the centre line the pit lane runs, metres. */
-const PIT_OFFSET = 26;
+/**
+ * The concrete either side of a generated pit lane, metres.
+ *
+ * Five metres of working lane on each side of an 8 m fast lane is about
+ * eighteen metres from the pit wall to the garage doors, which is what a modern
+ * pit complex measures. Everything else about the paddock is measured off it:
+ * where the boxes stand, where the garages stand behind them, and how far out
+ * the lane has to run for the circuit's own run off to still fit beside it.
+ */
+export const PIT_APRON_WIDTH = 5;
+
+/** Where a pit box sits across the working lane, from the lane's centre line. */
+export const PIT_BOX_OFFSET = PIT_APRON_WIDTH + 2;
+
+/**
+ * How far outside the centre line the pit lane runs, metres.
+ *
+ * Added up rather than dialled in, so it stays right when a piece of it moves:
+ * 7 m of road half width, 12 m of run off, the 3 m the barrier and the pit wall
+ * stand in, PIT_APRON_WIDTH of working lane, and the lane's own 4 m half width.
+ * It was 26 when the concrete beside the lane was a fixed 2.5 m; the concrete is
+ * now the working lane of a real pit complex and the straight has to make room
+ * for it, or the run off is squeezed out between the two.
+ */
+export const PIT_OFFSET = 7 + 12 + 3 + PIT_APRON_WIDTH + 4;
 
 /**
  * The least start/finish straight the layout hands over, metres, measured
@@ -701,7 +724,7 @@ export interface GeneratedLayout {
    * for the hand drawn demo oval and put every box at the mouth of a lane ten
    * times too long for them.
    */
-  pitCfg: Pick<PitSettings, 'boxCount' | 'boxSpacing' | 'boxSide' | 'startDist' | 'limitStart' | 'limitEnd'>;
+  pitCfg: Pick<PitSettings, 'boxCount' | 'boxSpacing' | 'boxSide' | 'startDist' | 'limitStart' | 'limitEnd' | 'apron' | 'boxOffset'>;
   /** The country planted, if it was asked for. Empty otherwise. */
   props: PropInstance[];
 }
@@ -807,9 +830,13 @@ function buildPaddock(
   };
 
   const mid = pad.length / 2;
-  // Garage doors open onto the working lane, a couple of metres behind where
-  // the pit box markers stand (they sit 5.5 m off the lane's centre line).
-  const front = laneOffset + 9;
+  /* Garage doors open onto the working lane, at the far edge of the concrete
+     and a metre back for a threshold. Measured off the concrete rather than
+     guessed: it used to be a flat 9 m, which was a couple of metres behind
+     where the box markers stood back when the working lane was 2.5 m wide.
+     Widen the lane and that same 9 m puts the buildings ON the concrete, with
+     the cars parked inside them. */
+  const front = laneOffset + 4 + PIT_APRON_WIDTH + 1;
 
   // Race control and the main garages on the timing line, plainer garage rows
   // carrying the building line on either side of them.
@@ -1553,6 +1580,13 @@ export function generateCircuit(
     pitCfg: {
       boxCount: pitBoxes,
       boxSpacing: pitBoxSpacing,
+      /* Said out loud rather than left to the project defaults: the whole
+         paddock is laid out around these two -- how far out the lane runs, how
+         much run off is left beside the circuit, where the garages stand --
+         so a generated circuit that took them from somewhere else would have
+         its buildings in the wrong place the moment a default changed. */
+      apron: PIT_APRON_WIDTH,
+      boxOffset: PIT_BOX_OFFSET,
       // The lane sits to the right of the track, so away from the track is
       // further right still: garages outside, working lane inside.
       boxSide: 1,
