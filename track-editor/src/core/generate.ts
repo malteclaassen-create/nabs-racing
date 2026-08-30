@@ -34,6 +34,7 @@ import { cellSize, createHeights, sampleHeights } from './terrain';
 import { PointIndex } from './spatial';
 import { PREFABS_BY_KEY, instantiatePrefab } from './prefabs';
 import { propTileBox } from './library';
+import { createPaint, createPaintEdge, paintGroundRect, paintValue, GROUND_KINDS } from './terrain';
 import type { PitSettings, PropInstance, TerrainSettings, TrackNode } from '../types';
 
 export type CircuitSize = 'short' | 'medium' | 'long';
@@ -823,7 +824,11 @@ function buildPaddock(
       const ti = idx.nearest(part.p[0], part.p[2], 80);
       if (ti >= 0) {
         const tp = trackPts[ti];
-        if (Math.hypot(tp.x - part.p[0], tp.z - part.p[2]) < 22) return;
+        /* 26 m: the racing surface is 7, the run off 12, the fence line 22 --
+           a building may stand no closer than a walkway's width behind the
+           fence. It was 22, which let a garage stand exactly ON the fence
+           line where the next corner swings the circuit towards the row. */
+        if (Math.hypot(tp.x - part.p[0], tp.z - part.p[2]) < 26) return;
       }
     }
     out.push(...parts);
@@ -1569,6 +1574,82 @@ export function generateCircuit(
   };
   const props: PropInstance[] = [];
   if (opts.paddock !== false) props.push(...buildPaddock(frames, paddock, PIT_OFFSET, ys[0]));
+
+  /* The open ends of the pit wall get closed.
+   *
+   * Between the circuit's fence line and the lane's concrete runs the pit
+   * wall, and a wall has two ends -- each of them, left open, a steel edge
+   * pointing straight up the road for anyone who misses the entry. A real
+   * circuit closes the mouth with tyres, so a tyre wall stands ACROSS the
+   * gap at both ends of the box run, from the fence to the concrete: hit it
+   * and you stop against rubber, square on, instead of finding the end of a
+   * barrier edge-first. Placed as ordinary props, so they can be dragged
+   * about or deleted like anything else the generator builds.
+   */
+  if (opts.paddock !== false) {
+    const wallLat = halfWidth + 13.5;
+    const mouths = [
+      lane0 + pitEdgeRun + pitTaper + 2,
+      lane0 + laneLen - pitEdgeRun - pitTaper - 2,
+    ];
+    mouths.forEach((along, k) => {
+      /* Measured off the frames the road actually describes, exactly as the
+         lane's own points are: towards the ends of the straight the corners
+         are already leading in, and a stack placed off the chord stood ten
+         metres out in the country. */
+      const f = frameAtDistance(frames, true, startDist - straightLen / 2 + along);
+      props.push({
+        id: `genpit_tyres_${k}`,
+        kind: 'tyre_wall',
+        name: `pit_wall_end_${k}`,
+        p: [f.pos.x + f.right.x * wallLat, ys[0], f.pos.z + f.right.z * wallLat],
+        r: [0, (Math.atan2(f.right.x, f.right.z) * 180) / Math.PI, 0],
+        s: [1, 1, 1],
+        ground: true,
+      });
+    });
+  }
+
+  /* And the paddock stands on concrete, not on a lawn.
+   *
+   * Everything between the working lane and the back of the garage rows is
+   * ground people walk and push cars across all weekend, and on a real
+   * circuit it is one poured apron. The ground brush's concrete is painted
+   * over that whole rectangle -- the light one, same as painting it by hand
+   * with the Ground tool, so it exports as CONCRETE and can be repainted or
+   * rubbed out afterwards like any other patch. It reaches a metre onto the
+   * drawn working lane so the two surfaces meet under the concrete rather
+   * than leaving a thread of grass between them, and it stops short of the
+   * strip towards the circuit, which stays what it is: run off.
+   */
+  if (opts.paddock !== false) {
+    const concrete = GROUND_KINDS.findIndex((k) => k.label === 'Concrete');
+    if (concrete >= 0) {
+      if (!terrain.paint) terrain.paint = createPaint(terrain.res);
+      if (!terrain.paintEdge) terrain.paintEdge = createPaintEdge(terrain.res);
+      const latNear = PIT_OFFSET + 4 + PIT_APRON_WIDTH - 1;
+      const latFar =
+        PIT_OFFSET + 4 + PIT_APRON_WIDTH + 1
+        + propTileBox('pit_building').hz + propTileBox('garage_bay').hz * 2 + 14;
+      const alongA = lane0 + pitEdgeRun;
+      const alongB = lane0 + laneLen - pitEdgeRun;
+      const mid = (alongA + alongB) / 2;
+      paintGroundRect(
+        terrain,
+        terrain.paint,
+        terrain.paintEdge,
+        {
+          x: paddock.ax + paddock.dirX * mid + paddock.rightX * ((latNear + latFar) / 2),
+          z: paddock.az + paddock.dirZ * mid + paddock.rightZ * ((latNear + latFar) / 2),
+          w: latFar - latNear,
+          l: alongB - alongA + 30,
+          rotY: -(Math.atan2(paddock.dirX, paddock.dirZ) * 180) / Math.PI,
+        },
+        paintValue(concrete),
+      );
+    }
+  }
+
   if (opts.trees) props.push(...plantForest(rng, terrain, frames, pitNodes, paddock));
 
   return {

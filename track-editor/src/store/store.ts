@@ -306,8 +306,10 @@ export function emptyProject(opts: { hills?: boolean } = {}): Project {
 export function generatedProject(
   size: CircuitSize = 'medium',
   opts: { trees?: boolean; paddock?: boolean } = {},
+  /** Source of randomness, so a test can hand in a seeded one. */
+  rng?: () => number,
 ): Project {
-  const layout = generateCircuit(size, DEFAULT_DRAW_CFG.trackWidthL, undefined, undefined, undefined, {
+  const layout = generateCircuit(size, DEFAULT_DRAW_CFG.trackWidthL, undefined, undefined, rng, {
     trees: opts.trees ?? true,
     paddock: opts.paddock ?? true,
   });

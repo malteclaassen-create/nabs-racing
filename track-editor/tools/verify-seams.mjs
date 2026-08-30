@@ -135,7 +135,7 @@ runCase('Flat default oval, everything at 0', flat);
 {
   let seed = 999;
   const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-  const gen = generatedProject('medium', rng);
+  const gen = generatedProject('medium', {}, rng);
   for (const n of gen.track.nodes) n.p[1] = 0;
   for (const n of gen.pit.nodes) n.p[1] = 0;
   if (gen.terrain.heights) gen.terrain.heights = new Float32Array(gen.terrain.heights.length);

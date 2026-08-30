@@ -3025,7 +3025,12 @@ console.log('\nPrefabs');
      comes from the invisible 1WALL_ duplicates the kn5 writer appends. */
   {
     const keys = [...surfacesIni().matchAll(/KEY=(\w+)/g)].map((m) => m[1]);
-    check('surfaces.ini declares the physics keys', keys.includes('WALL') && keys.includes('ROAD'), keys.join(','));
+    check('surfaces.ini declares the drive-on keys', keys.includes('ROAD') && keys.includes('PIT'), keys.join(','));
+    /* And NOT the walls. Declared surfaces are found by casting straight down
+       at the ground, which never meets a vertical plane -- a declared WALL is
+       a wall the car drives through. AC handles 1WALL_ meshes as collision
+       geometry on its own, exactly because no surfaces.ini declares them. */
+    check('and keeps WALL out of it, so barriers stay solid', !keys.includes('WALL'), keys.join(','));
 
     useEditor.setState({ project: defaultProject(), past: [], future: [], selection: null, placeRotation: 0 });
     useEditor.getState().placePrefab('pit_complex', new THREE.Vector3(10, 0, 10), 20);
@@ -5499,6 +5504,11 @@ console.log('\nWays to start');
         [...kinds].join(','));
       let nearest = Infinity;
       for (const p2 of c.props) {
+        /* Except the tyre walls that close the pit wall's mouths: they stand
+           IN the barrier strip on purpose, past the run off and short of the
+           lane's concrete -- exactly where a barrier belongs. verify-generate
+           holds them to their own window. */
+        if (p2.id.startsWith('genpit_tyres_')) continue;
         for (const f of cf) {
           nearest = Math.min(nearest, Math.hypot(f.pos.x - p2.p[0], f.pos.z - p2.p[2]));
         }

@@ -47,10 +47,19 @@ const SURFACES: SurfaceDef[] = [
     key: 'SAND', friction: 0.72, wav: 'sand.wav', wavPitch: 1, dirtAdditive: 1, isValidTrack: 0,
     blackFlagTime: 30, sinHeight: 0.02, sinLength: 0.4, isPitlane: 0, vibrationGain: 0.6, vibrationLength: 0.6, damping: 0.3,
   },
-  {
-    key: 'WALL', friction: 0.9, wav: '', wavPitch: 0, dirtAdditive: 0, isValidTrack: 0,
-    blackFlagTime: 0, sinHeight: 0, sinLength: 0, isPitlane: 0, vibrationGain: 0, vibrationLength: 0, damping: 0,
-  },
+  /*
+   * No WALL entry, deliberately, and it used to have one.
+   *
+   * surfaces.ini declares surfaces you DRIVE ON: the game finds the ground
+   * under each tyre by casting straight down at meshes whose names carry
+   * these keys. Declaring WALL moved every barrier out of AC's own built-in
+   * wall handling and into that list -- and a ray cast downwards never meets
+   * a vertical plane, so as far as the physics was concerned the barriers
+   * simply were not there. Cars drove clean through every fence on the
+   * circuit. WALL is AC's own namespace, handled as collision geometry
+   * exactly because it is NOT declared -- no Kunos surfaces.ini declares it,
+   * and the importer has known as much all along (see verify-import).
+   */
 ];
 
 export function surfacesIni(): string {
