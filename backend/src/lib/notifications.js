@@ -757,6 +757,18 @@ const FEATURE_ANNOUNCEMENTS = [
     body: "The site can sit on your home screen like a normal app: full screen, no address bar, and still signed in. Tap here for the steps. There's a set for Android and a set for iPhone and iPad.",
     link: "/app",
   },
+  // A personal entry, not a broadcast: recipientId sends it to one member's
+  // bell only. The editor is being shown around before it is announced to
+  // everyone, and the card that links it on /tools is admin-gated, so without
+  // a pointer nobody else would find it.
+  {
+    dedupeKey: "feature:track-editor:306124825439764480",
+    type: "NEWS",
+    title: "New: the track editor",
+    body: "There's now a track editor on the site: draw a circuit in the browser, shape the ground, build the pit complex and export it as a ready-to-drive Assetto Corsa track. Tap here to open it.",
+    link: "/track-editor",
+    recipientId: "306124825439764480",
+  },
 ];
 
 export async function announceFeatures(prisma) {
