@@ -101,20 +101,20 @@ function TrackEditorCard() {
 
       <p className="text-sm leading-relaxed text-medium">
         A full 3D editor in the browser. Draw the centre line, sculpt the ground it runs over, lay
-        kerbs and barriers, place the paddock, set the grid, the pit boxes and the timing gates —
+        kerbs and barriers, place the paddock, set the grid, the pit boxes and the timing gates,
         then export a ZIP with a finished <code className="rounded bg-surface2 px-1 py-0.5 text-xs">.kn5</code>{" "}
         that drops straight into Assetto Corsa. No ksEditor pass, no Blender.
       </p>
 
       <p className="text-sm leading-relaxed text-light">
-        It runs entirely on your own machine — nothing you draw is uploaded anywhere, and your work
+        It runs entirely on your own machine. Nothing you draw is uploaded anywhere, and your work
         is kept in this browser between visits. Start from the{" "}
         <b className="text-medium">showcase circuit</b> to see a finished track you can take apart:
         five kilometres, a forty-box pit complex, grandstands and seven thousand trees.
       </p>
 
       <div className="rounded-xl bg-surface2/60 px-4 py-3 text-xs leading-relaxed text-light">
-        <b className="text-medium">Two things to know.</b> It wants a desktop — it is built around a
+        <b className="text-medium">Two things to know.</b> It wants a desktop: it is built around a
         mouse, a keyboard and a graphics card, and there is no phone layout. And opening a track
         that is already installed in your game only works when you run the editor locally; from here
         you can build one from scratch and export it.
