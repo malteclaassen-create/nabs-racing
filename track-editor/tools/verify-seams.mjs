@@ -131,15 +131,16 @@ for (const n of flat.track.nodes) n.p[1] = 0;
 for (const n of flat.pit.nodes) n.p[1] = 0;
 runCase('Flat default oval, everything at 0', flat);
 
-/* A generated circuit flattened by hand, wedge tips and working lane included. */
+/* A generated circuit AS GENERATED, hills and all. It used to be flattened by
+   hand here, which quietly masked the very fault a user photographed: on real
+   relief the complex stood on whatever the hillside did, and grass stood up
+   through the concrete along the entry. The generator grades the pad flat
+   now, and this is what holds it to that. */
 {
   let seed = 999;
   const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
   const gen = generatedProject('medium', {}, rng);
-  for (const n of gen.track.nodes) n.p[1] = 0;
-  for (const n of gen.pit.nodes) n.p[1] = 0;
-  if (gen.terrain.heights) gen.terrain.heights = new Float32Array(gen.terrain.heights.length);
-  runCase('Generated circuit, flattened', gen);
+  runCase('Generated circuit, on its own relief', gen, { hardStep: 0.05, trench: 0.15 });
 }
 
 /* The same oval over hills: the plane fits and the corridor have to follow.

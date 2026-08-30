@@ -72,6 +72,15 @@ for (let seed = 1; seed <= 21; seed++) {
     if (d < worstProp.d) worstProp = { d, seed, id: prop.id };
   }
 
+  // The pad is graded flat: under the box run the raw sculpted ground sits at
+  // one level. Sampled beside the lane's own nodes, which ride the pad.
+  {
+    const y0 = gen.pit[0].p[1];
+    let worst = 0;
+    for (const nd of gen.pit) worst = Math.max(worst, Math.abs(nd.p[1] - y0));
+    if (worst > 0.01) laneFailures++;
+  }
+
   // Concrete where the paddock is, grass where the racing line is.
   const t = gen.terrain;
   if (t.paint) {

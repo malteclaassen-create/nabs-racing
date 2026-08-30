@@ -1572,6 +1572,62 @@ export function generateCircuit(
     length: straightLen,
     latMin: opts.paddock === false ? -20 : -80,
   };
+  /* The ground under the whole complex is GRADED before anything stands on
+   * it, the way a real circuit cuts its paddock into the country: one level
+   * pad at the straight's height, from just past the circuit's own edge to
+   * behind the garage rows, eased back into the landscape over a wide skirt.
+   *
+   * Without it the complex stood on whatever the hills happened to do there,
+   * and every surface that rides the LANE's plane fought the ground that
+   * rides the TERRAIN: wherever the two crossed between height samples, a
+   * wedge of grass stood up through the concrete -- in the editor and in the
+   * game alike, worst along the entry where the hillside runs across the
+   * tapers. A flat pad and the fight is over: there is nothing left to poke
+   * through.
+   */
+  if (opts.paddock !== false) {
+    const cs2 = terrain.size / (terrain.res - 1);
+    const padY = ys[0];
+    const alongMin = lane0 - 30;
+    const alongMax = lane0 + laneLen + 30;
+    const latMin = halfWidth + 1;
+    const latMax =
+      PIT_OFFSET + 4 + PIT_APRON_WIDTH + 1
+      + propTileBox('pit_building').hz + propTileBox('garage_bay').hz * 2 + 20;
+    const skirt = 45;
+    const ease = (d: number) => {
+      const t = Math.min(1, Math.max(0, d / skirt));
+      return t * t * (3 - 2 * t);
+    };
+    for (let iz = 0; iz < terrain.res; iz++) {
+      for (let ix = 0; ix < terrain.res; ix++) {
+        const wx = terrain.originX + ix * cs2;
+        const wz = terrain.originZ + iz * cs2;
+        // Distance along/across from where the straight and its frames really
+        // run, not from the chord: the pad has to follow the same bend the
+        // lane does or its corner juts out past the exit into the field.
+        const f = frameAtDistance(
+          frames,
+          true,
+          startDist - straightLen / 2
+            + Math.min(alongMax, Math.max(alongMin,
+              (wx - paddock.ax) * paddock.dirX + (wz - paddock.az) * paddock.dirZ)),
+        );
+        const lat = (wx - f.pos.x) * f.right.x + (wz - f.pos.z) * f.right.z;
+        const along = (wx - paddock.ax) * paddock.dirX + (wz - paddock.az) * paddock.dirZ;
+        const dLat = lat < latMin ? latMin - lat : lat > latMax ? lat - latMax : 0;
+        const dAlong = along < alongMin ? alongMin - along : along > alongMax ? along - alongMax : 0;
+        const outside = Math.hypot(dLat, dAlong);
+        if (outside >= skirt) continue;
+        const w = 1 - ease(outside);
+        const i = iz * terrain.res + ix;
+        terrain.heights[i] += (padY - terrain.heights[i]) * w;
+      }
+    }
+    // The lane's own points ride the pad, not the hills they were sampled on.
+    for (const node of pitNodes) node.p[1] = padY;
+  }
+
   const props: PropInstance[] = [];
   if (opts.paddock !== false) props.push(...buildPaddock(frames, paddock, PIT_OFFSET, ys[0]));
 
@@ -1631,8 +1687,12 @@ export function generateCircuit(
       const latFar =
         PIT_OFFSET + 4 + PIT_APRON_WIDTH + 1
         + propTileBox('pit_building').hz + propTileBox('garage_bay').hz * 2 + 14;
-      const alongA = lane0 + pitEdgeRun;
-      const alongB = lane0 + laneLen - pitEdgeRun;
+      /* Only the box run. Carried past it, the rectangle's far corner stood
+         out in the field beyond the exit taper -- a grey tongue pointing the
+         wrong way where the circuit had already begun to bend. The tapers
+         keep their grass verge, exactly as a real entry ramp does. */
+      const alongA = lane0 + pitEdgeRun + pitTaper;
+      const alongB = lane0 + laneLen - pitEdgeRun - pitTaper;
       const mid = (alongA + alongB) / 2;
       paintGroundRect(
         terrain,
@@ -1642,7 +1702,7 @@ export function generateCircuit(
           x: paddock.ax + paddock.dirX * mid + paddock.rightX * ((latNear + latFar) / 2),
           z: paddock.az + paddock.dirZ * mid + paddock.rightZ * ((latNear + latFar) / 2),
           w: latFar - latNear,
-          l: alongB - alongA + 30,
+          l: alongB - alongA,
           rotY: -(Math.atan2(paddock.dirX, paddock.dirZ) * 180) / Math.PI,
         },
         paintValue(concrete),
