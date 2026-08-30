@@ -197,10 +197,24 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
     },
     pitCfg: {
       width: 4,
+      /*
+       * Five metres of concrete either side, which is what makes it read as a
+       * pit lane rather than a wide bit of road.
+       *
+       * It used to be a fixed 2.5 m, and with the boxes at 5.5 m from the
+       * centre that put every car half on the concrete and half hanging off
+       * the edge of it, with nothing behind for anyone to work in. A modern
+       * pit complex is about 18 m from the wall to the garage doors: an 8 m
+       * fast lane with a working lane either side of it, which is what these
+       * three numbers together now come to.
+       */
+      apron: 5,
       boxCount: 12,
       boxSpacing: 9,
       boxSide: 1,
-      boxOffset: 5.5,
+      // Out of the fast lane and into the working lane, where a car being
+      // worked on belongs and where there is now room for one.
+      boxOffset: 7,
       startDist: 25,
       // On as soon as the lane has left the tarmac, off just before it
       // rejoins -- the same place a real limiter line sits.

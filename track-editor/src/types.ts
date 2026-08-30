@@ -171,6 +171,20 @@ export interface RoadSettings {
 export interface PitSettings {
   /** Half width of the pit lane road. */
   width: number;
+  /**
+   * Width of the concrete either side of the lane, metres.
+   *
+   * Not decoration. On a real circuit this is where the work happens: the pit
+   * wall and its stands on the track side, the garage apron and the boxes
+   * themselves on the other. The lane's own tarmac is only the fast lane
+   * through the middle of it, which is why a lane drawn as tarmac alone reads
+   * as a service road rather than a pit lane.
+   *
+   * Inside the limiter window the concrete is exported with the PIT surface,
+   * the same as the tarmac, so a car that puts two wheels on it is still in
+   * the pit lane as far as the game is concerned.
+   */
+  apron: number;
   boxCount: number;
   /** Distance between two pit boxes along the pit lane. */
   boxSpacing: number;

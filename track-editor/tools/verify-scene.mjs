@@ -22,6 +22,7 @@ import {
   computeEdges,
   barrierHandles,
   barrierHandleHeight,
+  EDGE_SINK,
   runoffBankRise,
   shoulderDrop,
   RUNOFF_BANK_RUN,
@@ -810,6 +811,51 @@ check(
     }
   }
   check('the ground meets the outer edge of the run off', worstStep < 0.3, `step of ${worstStep.toFixed(3)} m`);
+
+  /*
+   * And the mesh comes DOWN to that ground rather than standing on it.
+   *
+   * The ground is deliberately held EDGE_SINK under every road mesh, so the two
+   * are never coplanar and the depth buffer never has to guess which is in
+   * front. Under the middle of the road that gap is buried and nobody sees it.
+   * At the outer edge the mesh stops and the ground takes over, and there it
+   * stood as a four centimetre lip running the whole length of the circuit --
+   * a step off the run off, and beside a pit lane a step a car drives over on
+   * its way into the box. The last ring of the mesh is now dropped by exactly
+   * that much, which is the bevel a real surface has where it meets what is
+   * beside it.
+   *
+   * Read off the geometry rather than recomputed: what is being checked is
+   * that the triangles really are there, not that the arithmetic agrees with
+   * itself.
+   */
+  const flatEdges = computeEdges(flatFrames, flat.road, flatProfile);
+  const flatMeshes = buildRoadMeshes(flatFrames, true, flat.road, flatPitFrames, undefined, flatProfile);
+  const runoffPos = flatMeshes
+    .filter((m) => m.name.includes('_runoff'))
+    .map((m) => m.geometry.getAttribute('position').array);
+  let worstBevel = 0;
+  let bevelled = 0;
+  for (let i = 0; i < flatFrames.length; i += 5) {
+    for (const [ring, w] of [[flatEdges.outerL, flatProfile.runoffL], [flatEdges.outerR, flatProfile.runoffR]]) {
+      if (w[i] <= 0.05) continue;
+      const want = ring[i];
+      let bestD = Infinity;
+      let bestY = 0;
+      for (const pos of runoffPos) {
+        for (let k = 0; k < pos.length; k += 3) {
+          const d = (pos[k] - want.x) ** 2 + (pos[k + 2] - want.z) ** 2;
+          if (d < bestD) { bestD = d; bestY = pos[k + 1]; }
+        }
+      }
+      if (bestD > 0.01) continue;
+      bevelled += 1;
+      worstBevel = Math.max(worstBevel, Math.abs((want.y - bestY) - EDGE_SINK));
+    }
+  }
+  check('and the run off ends level with it rather than on a lip above it',
+    bevelled > 20 && worstBevel < 0.002,
+    `${bevelled} edges checked, worst ${(worstBevel * 1000).toFixed(1)} mm out`);
 }
 
 {
@@ -2529,9 +2575,19 @@ console.log('\nGround patches');
     const cross = Math.abs(longAxis.x * f.fwd.z - longAxis.z * f.fwd.x);
     check('and the slab ends up exactly parallel with it', cross < 1e-6, `cross ${cross.toExponential(2)}`);
 
+    /* Off square to begin with, which is the state the action is for. Pressed
+       when the tool is ALREADY square it deliberately turns the object round
+       instead -- "along the road" has two answers and one press gives the other
+       -- so starting at the answer tested the wrong half of the function, and
+       said so the moment the default rotation and this heading agreed. */
+    useEditor.setState({ placeRotation: 12.5 });
     const msg = alignPlacementToPath(beside);
     check('the action turns the place tool and says what it did',
       Math.abs(useEditor.getState().placeRotation - aligned.rotY) < 1e-9 && /pit lane/.test(msg), msg);
+    const again = alignPlacementToPath(beside);
+    check('and pressing it again faces the object the other way along the road',
+      Math.abs(((useEditor.getState().placeRotation - aligned.rotY - 180) % 360 + 360) % 360) < 1e-9
+      && /other way/.test(again), again);
     check('and it says so rather than nothing when there is no pointer yet',
       /Point at the ground/.test(alignPlacementToPath()));
   }
@@ -5794,6 +5850,33 @@ console.log('\nPainted ground');
     ) / 2;
     check('and the mesh follows the outline, diagonal side and all',
       Math.abs(area - want) / want < 0.05, `${Math.round(area)} m2 vs ${Math.round(want)} m2`);
+  }
+
+  /* --- concrete you can and cannot speed on ----------------------- */
+  /*
+   * Widening a pit lane means painting concrete beside it, and plain concrete
+   * is not a pit lane as far as the game is concerned: the car drives onto the
+   * piece you just added and the speed limiter goes off. Nothing about the look
+   * of concrete decides that, so the palette carries both -- the same material
+   * to the eye, one with the PIT surface and one without.
+   */
+  {
+    const plain = GROUND_KINDS.findIndex((k) => k.surface === 'CONCRETE');
+    const pit = GROUND_KINDS.findIndex((k) => k.surface === 'PIT');
+    check('the palette has concrete with the speed limiter and concrete without',
+      plain >= 0 && pit >= 0 && plain !== pit
+      && GROUND_KINDS[plain].material === GROUND_KINDS[pit].material,
+      GROUND_KINDS.map((k) => `${k.label}:${k.surface}`).join(', '));
+
+    const field = createPaint(t.res);
+    paintGroundDisc(t, field, null, 400, -300, 40, paintValue(pit));
+    const def = terrainMesh(t, t.heights, field);
+    const pitPart = (def.groups ?? []).find((g) => g.surface === 'PIT');
+    check('and painting the pit one puts a pit surface into the ground',
+      pitPart !== undefined && pitPart.name === '1PIT_terrain_concrete',
+      (def.groups ?? []).map((g) => g.name).join(','));
+    check('which Assetto Corsa has a physics surface for',
+      surfacesIni().includes('KEY=PIT'));
   }
 
   /* --- a straight edge at an angle -------------------------------- */

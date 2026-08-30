@@ -27,6 +27,7 @@ import { buildStartGantry } from '../core/gantry';
 import {
   mergePitFrames,
   pitLead,
+  pitApronWidths,
   pitRoadClip,
   pitTrackLines,
   type PitClip,
@@ -194,6 +195,7 @@ interface PitDraw {
 const slotPitDraw = memoSlot<PitDraw>();
 const slotRoadMeshes = memoSlot<MeshDef[]>();
 const slotPitMeshes = memoSlot<MeshDef[]>();
+const slotPitApron = memoSlot<Float32Array>();
 const slotProfile = memoSlot<SideProfile>();
 const slotMask = memoSlot<CorridorMask>();
 const slotHeights = memoSlot<Float32Array>();
@@ -297,12 +299,17 @@ function compute(project: Project, interacting: boolean): Derived {
     mergePitFrames(pitFramesRaw, trackFrames, project.road.pitGap),
   );
   const pitFrames = pitMerge.frames;
+  /* The concrete either side of the lane. It decides how far the ribbon
+     reaches, so it belongs in the key of everything that measures against the
+     ribbon: where the junction is, where the lane has to stop, how much room
+     the run off is left and how far the ground is pulled down. */
+  const apron = project.pitCfg.apron;
 
   /* Carried on past both ends, so the junction is a wedge rather than a square
      cut with a triangle of grass beside it. The lead-out runs onto the tarmac
      by construction; the clip below is what shapes it. */
-  const pitDraw = slotPitDraw(`${sigTrack}|${sigPit}|${spp}|${project.road.pitGap}`, () => {
-    const lead = pitLead(pitFramesRaw, trackFrames, project.pit.closed, project.track.closed);
+  const pitDraw = slotPitDraw(`${sigTrack}|${sigPit}|${spp}|${project.road.pitGap}|${apron}`, () => {
+    const lead = pitLead(pitFramesRaw, trackFrames, project.pit.closed, project.track.closed, apron);
     if (lead.frames === pitFramesRaw) {
       return { frames: pitFrames, raw: lead, from: lead.from, to: lead.to, length: lead.length };
     }
@@ -320,20 +327,33 @@ function compute(project: Project, interacting: boolean): Derived {
   // and a clearance that could not see it left the run off running straight
   // across it: two surfaces in the same place, decided per pixel by the depth
   // buffer, which is the flicker at the junction this fixes.
-  const profile = slotProfile(`${sigTrack}|${sigPit}|${spp}|${sigShape}|${project.road.pitGap}`, () =>
-    sideProfile(trackFrames, project.road, pitDraw.frames, project.track.closed),
+  /* The concrete either side of the lane, cross section by cross section: full
+     width along the lane and faded out over the lead-out at each end, so the
+     clip, the run off clearance, the mesh and the ground all measure against
+     the same ribbon. */
+  const pitApron = slotPitApron(
+    `${sigPit}|${spp}|${apron}|${pitDraw.frames.length}|${pitDraw.from}|${pitDraw.to}|${pitDraw.raw.apronTip}`,
+    () => pitApronWidths(
+      pitDraw.frames.length,
+      { from: pitDraw.from, to: pitDraw.to, apronTip: pitDraw.raw.apronTip },
+      apron,
+    ),
+  );
+
+  const profile = slotProfile(`${sigTrack}|${sigPit}|${spp}|${sigShape}|${project.road.pitGap}|${apron}`, () =>
+    sideProfile(trackFrames, project.road, pitDraw.frames, project.track.closed, pitApron),
   );
 
   // Where the lane has to stop so the circuit stays intact. After the profile
   // because the edge it stops at includes whatever kerb survived beside it.
-  const pitClip = slotPitClip(`${sigTrack}|${sigPit}|${spp}|${sigShape}`, () =>
+  const pitClip = slotPitClip(`${sigTrack}|${sigPit}|${spp}|${sigShape}|${apron}`, () =>
     pitRoadClip(
       pitDraw.frames,
       trackFrames,
       project.track.closed,
       profile.kerbWL,
       profile.kerbWR,
-      undefined,
+      pitApron,
       { from: pitDraw.from, to: pitDraw.to },
     ),
   );
@@ -341,8 +361,8 @@ function compute(project: Project, interacting: boolean): Derived {
   /* Where the lane's own edge line hands over to the paint on the circuit.
      After the clip, because the handover is the cross section at which the
      circuit has taken the last of the concrete beside the lane. */
-  const pitLines = slotPitLines(`${sigTrack}|${sigPit}|${spp}|${sigShape}`, () =>
-    pitTrackLines(pitDraw.raw, pitClip, trackFrames, project.track.closed),
+  const pitLines = slotPitLines(`${sigTrack}|${sigPit}|${spp}|${sigShape}|${apron}`, () =>
+    pitTrackLines(pitDraw.raw, pitClip, trackFrames, project.track.closed, apron),
   );
 
   // The paint field is shared by reference and copied on write, exactly like
@@ -400,7 +420,7 @@ function compute(project: Project, interacting: boolean): Derived {
    * Keyed on the track as well: the merge glues the lane onto the road
    * surface, so moving the road reshapes the pit meshes near the junction.
    */
-  const sigLimit = `${project.pitCfg.limitStart}|${project.pitCfg.limitEnd}`;
+  const sigLimit = `${project.pitCfg.limitStart}|${project.pitCfg.limitEnd}|${apron}`;
   const pitMeshes = slotPitMeshes(`${sigTrack}|${sigPit}|${spp}|${sigRoad}|${sigLimit}`, () => {
     const next = buildPitMeshes(
       pitDraw.frames,
@@ -413,6 +433,7 @@ function compute(project: Project, interacting: boolean): Derived {
       pitDraw.from,
       pitDraw.to,
       pitDraw.length,
+      pitApron,
     );
     retire(lastPit, next);
     lastPit = next;
@@ -431,7 +452,7 @@ function compute(project: Project, interacting: boolean): Derived {
   //
   // The shape, not the whole road: the ground has to meet the tarmac, and it
   // does not care what pattern is painted on it.
-  const maskKey = `${sigTrack}|${sigPit}|${spp}|${sigShape}|${sigTerrain}|${project.road.pitGap}`;
+  const maskKey = `${sigTrack}|${sigPit}|${spp}|${sigShape}|${sigTerrain}|${project.road.pitGap}|${apron}`;
   const mask = !project.terrain.enabled
     ? EMPTY_MASK
     : interacting && lastMask
@@ -443,7 +464,7 @@ function compute(project: Project, interacting: boolean): Derived {
             // lead-out wedge exactly as it is under the lane itself.
             return buildCorridorMask(project.terrain, [
               roadCorridor(trackFrames, project.road, profile, project.track.closed),
-              pitCorridor(pitDraw.frames),
+              pitCorridor(pitDraw.frames, pitApron),
             ]);
           },
         );
