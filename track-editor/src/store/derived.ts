@@ -16,6 +16,9 @@ import {
   pitCorridor,
   roadCorridor,
   terrainMesh,
+  GROUND_KINDS,
+  sampleGroundValue,
+  paintKind,
   type CorridorMask,
 } from '../core/terrain';
 import { buildAiLine, buildAllMarkers, type AiPoint, type MarkerSet } from '../core/markers';
@@ -342,7 +345,32 @@ function compute(project: Project, interacting: boolean): Derived {
     pitTrackLines(pitDraw.raw, pitClip, trackFrames, project.track.closed),
   );
 
-  const roadMeshes = slotRoadMeshes(`${sigTrack}|${sigPit}|${spp}|${sigRoad}`, () => {
+  // The paint field is shared by reference and copied on write, exactly like
+  // the height field, so its identity is a sound cache key too.
+  const paintId = project.terrain.paint ? idOf(project.terrain.paint) : 0;
+
+  /*
+   * The ground brush's say over the run off, or nothing at all.
+   *
+   * Nothing when the terrain is off, when no one has painted, or when the
+   * setting is off -- and that is the point of checking all three: a circuit
+   * that has never been near the ground brush builds exactly the run off it
+   * always did, out of one material, in one mesh per side.
+   */
+  const runoffGround =
+    project.road.runoffPaint && project.terrain.enabled && project.terrain.paint
+      ? {
+          kinds: GROUND_KINDS,
+          at: (x: number, z: number) => {
+            const v = sampleGroundValue(project.terrain, project.terrain.paint, x, z);
+            return v === 0 ? -1 : paintKind(v);
+          },
+        }
+      : undefined;
+
+  const roadMeshes = slotRoadMeshes(
+    `${sigTrack}|${sigPit}|${spp}|${sigRoad}|${runoffGround ? paintId : 0}`,
+    () => {
     const next = buildRoadMeshes(
       trackFrames,
       project.track.closed,
@@ -351,11 +379,13 @@ function compute(project: Project, interacting: boolean): Derived {
       reuseMap(lastRoad),
       profile,
       pitLines,
+      runoffGround,
     );
     retire(lastRoad, next);
     lastRoad = next;
     return next;
-  });
+  },
+  );
   /*
    * The speed limiter is an INPUT to these meshes, so it belongs in the key.
    *
@@ -427,9 +457,6 @@ function compute(project: Project, interacting: boolean): Derived {
         applyCorridorMask(project.terrain.heights, mask),
       );
 
-  // The paint field is shared by reference and copied on write, exactly like
-  // the height field, so its identity is a sound cache key too.
-  const paintId = project.terrain.paint ? idOf(project.terrain.paint) : 0;
   const terrainDef = !project.terrain.enabled
     ? null
     : slotTerrainDef(`${idOf(terrainHeights)}|${sigTerrain}|${paintId}`, (previous) => {

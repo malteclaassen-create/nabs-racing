@@ -31,7 +31,9 @@ import {
   applyBrushToPath,
   createHeights,
   createPaint,
+  createPaintEdge,
   heightsDelta,
+  paintValue,
   paintGroundDisc as discPaint,
   paintGroundPolygon as polygonPaint,
   paintGroundRect as rectPaint,
@@ -182,6 +184,9 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
        */
       runoffDrop: 0,
       runoffSurface: 'GRASS',
+      // The run off follows the ground brush wherever it has been. Off, it is
+      // one material for the whole circuit and the brush cannot reach it.
+      runoffPaint: true,
       wall: true,
       wallHeight: 1.1,
       wallStyle: 'wall',
@@ -241,6 +246,7 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
       // All grass until the ground brush says otherwise, and no field at all
       // until then either.
       paint: null,
+      paintEdge: null,
     },
     exportCfg: {
       markerAsMesh: false,
@@ -505,13 +511,18 @@ export interface EditorState {
   /**
    * One dab of the ground brush. No history entry, call pushHistory first.
    * Returns whether the ground actually changed.
+   *
+   * `kind` is an index into GROUND_KINDS, or -1 to rub the paint out and hand
+   * the ground back to whatever it would be unpainted. Those two are not the
+   * same as each other: grass is a material you can lay over a gravel run off,
+   * and the eraser is how you take a patch off again.
    */
   paintGround: (x: number, z: number, kind: number) => boolean;
   /** A rectangle of ground, in one undo step. */
   paintGroundRect: (rect: GroundRect, kind: number) => boolean;
   /** The inside of an outline, in one undo step. */
   paintGroundPolygon: (points: ReadonlyArray<{ x: number; z: number }>, kind: number) => boolean;
-  /** The whole field at once. Grass empties the paint field rather than filling it. */
+  /** The whole field at once. -1 empties the paint field rather than filling it. */
   fillGround: (kind: number) => void;
   /**
    * The outline the polygon mode is collecting, in world XZ. Empty when none is
@@ -772,7 +783,7 @@ let suppressHistory = false;
  * as they hold the previous height field.
  */
 function applyGroundPaint(
-  run: (t: TerrainSettings, paint: Uint8Array, probe: boolean) => boolean,
+  run: (t: TerrainSettings, paint: Uint8Array, edge: Int8Array | null, probe: boolean) => boolean,
   kind: number,
   history: 'live' | 'commit',
 ): boolean {
@@ -780,14 +791,23 @@ function applyGroundPaint(
   const t = s.project.terrain;
   if (!t.enabled) return false;
   const current = t.paint;
-  if (current && !run(t, current, true)) return false;
+  if (current && !run(t, current, null, true)) return false;
   // Nothing to take away from a field that has never been painted on.
-  if (!current && kind === 0) return false;
+  if (!current && kind < 0) return false;
 
   const next = current ? new Uint8Array(current) : createPaint(t.res);
-  if (!run(t, next, false)) return false;
+  /* The edge distances travel with the paint and are copied on write with it,
+     so a history entry holds the pair it was taken with. A project from before
+     they existed starts an empty one here rather than going without: the shape
+     being drawn right now can be cut properly even if the ones under it cannot. */
+  const nextEdge =
+    t.paintEdge && t.paintEdge.length === next.length
+      ? new Int8Array(t.paintEdge)
+      : createPaintEdge(t.res);
+  if (!run(t, next, nextEdge, false)) return false;
   const write = (p: Project) => {
     p.terrain.paint = next;
+    p.terrain.paintEdge = nextEdge;
   };
   if (history === 'live') s.live(write);
   else s.commit(write);
@@ -992,7 +1012,8 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   paintGround: (x, z, kind) =>
     applyGroundPaint(
-      (t, arr, probe) => discPaint(t, arr, x, z, get().ground.radius, kind, probe),
+      (t, arr, edge, probe) =>
+        discPaint(t, arr, edge, x, z, get().ground.radius, paintValue(kind), probe),
       kind,
       // A dab is one frame of a sweep, and the sweep is one undo step, taken
       // when the button went down.
@@ -1000,22 +1021,33 @@ export const useEditor = create<EditorState>((set, get) => ({
     ),
 
   paintGroundRect: (rect, kind) =>
-    applyGroundPaint((t, arr, probe) => rectPaint(t, arr, rect, kind, probe), kind, 'commit'),
+    applyGroundPaint(
+      (t, arr, edge, probe) => rectPaint(t, arr, edge, rect, paintValue(kind), probe),
+      kind,
+      'commit',
+    ),
 
   paintGroundPolygon: (points, kind) =>
-    applyGroundPaint((t, arr, probe) => polygonPaint(t, arr, points, kind, probe), kind, 'commit'),
+    applyGroundPaint(
+      (t, arr, edge, probe) => polygonPaint(t, arr, edge, points, paintValue(kind), probe),
+      kind,
+      'commit',
+    ),
 
   fillGround: (kind) => {
     const t = get().project.terrain;
     if (!t.enabled) return;
-    if (kind === 0) {
+    if (kind < 0) {
       get().clearGroundPaint();
       return;
     }
     const next = createPaint(t.res);
-    next.fill(kind);
+    next.fill(paintValue(kind));
     get().commit((p) => {
       p.terrain.paint = next;
+      // One material edge to edge has no boundary anywhere, so there is
+      // nothing for the cuts to place and the old distances are stale.
+      p.terrain.paintEdge = null;
     });
   },
 
@@ -1026,6 +1058,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!get().project.terrain.paint) return;
     get().commit((p) => {
       p.terrain.paint = null;
+      p.terrain.paintEdge = null;
     });
   },
 

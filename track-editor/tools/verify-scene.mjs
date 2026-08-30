@@ -75,11 +75,14 @@ import {
   GROUND_KINDS,
   makeTerrainRaycast,
   paintCellSize,
+  createPaintEdge,
   paintGroundDisc,
   paintGroundPolygon,
   paintGroundRect,
+  paintValue,
   paintRes,
   sampleGround,
+  sampleGroundValue,
   sampleHeights,
   roadCorridor,
   pitCorridor,
@@ -5561,10 +5564,12 @@ console.log('\nPainted ground');
   const R = 60;
   const gravel = GROUND_KINDS.findIndex((k) => k.surface === 'SAND');
   const paint = createPaint(t.res);
+  const edge = createPaintEdge(t.res);
   check('gravel is one of the materials the ground can be made of', gravel > 0);
-  check('painting it changes the ground', paintGroundDisc(t, paint, cx, cz, R, gravel) === true);
+  check('painting it changes the ground',
+    paintGroundDisc(t, paint, edge, cx, cz, R, paintValue(gravel)) === true);
   check('painting the same thing again changes nothing, so no mesh is rebuilt',
-    paintGroundDisc(t, paint, cx, cz, R, gravel, true) === false);
+    paintGroundDisc(t, paint, edge, cx, cz, R, paintValue(gravel), true) === false);
   check('and the ground in the middle of it reads back as gravel',
     sampleGround(t, paint, cx, cz) === gravel);
   check('the paint is finer than the height grid, so the edge is not blocky',
@@ -5676,7 +5681,7 @@ console.log('\nPainted ground');
     highestSand > 5, `${highestSand.toFixed(2)} m`);
 
   const repainted = new Uint8Array(paint);
-  paintGroundDisc(t, repainted, cx + 300, cz, 40, gravel);
+  paintGroundDisc(t, repainted, null, cx + 300, cz, 40, paintValue(gravel));
   check('a repaint cuts the mesh again instead of patching the old picture',
     updateTerrainGeometry(def.geometry, t, lifted, undefined, repainted) === false);
 
@@ -5720,7 +5725,8 @@ console.log('\nPainted ground');
   {
     const rect = { x: 200, z: -150, w: 120, l: 80, rotY: 0 };
     const field = createPaint(t.res);
-    check('a rectangle paints', paintGroundRect(t, field, rect, asphalt) === true);
+    check('a rectangle paints',
+      paintGroundRect(t, field, null, rect, paintValue(asphalt)) === true);
     check('and covers exactly the rectangle asked for',
       sampleGround(t, field, rect.x, rect.z) === asphalt
       && sampleGround(t, field, rect.x + rect.w / 2 - 3, rect.z + rect.l / 2 - 3) === asphalt
@@ -5748,7 +5754,7 @@ console.log('\nPainted ground');
 
     // A turned rectangle is still a rectangle: same area, different corners.
     const turned = createPaint(t.res);
-    paintGroundRect(t, turned, { ...rect, rotY: 30 }, asphalt);
+    paintGroundRect(t, turned, null, { ...rect, rotY: 30 }, paintValue(asphalt));
     check('a turned rectangle keeps its middle and loses its old corners',
       sampleGround(t, turned, rect.x, rect.z) === asphalt
       && sampleGround(t, turned, rect.x + rect.w / 2 - 2, rect.z + rect.l / 2 - 2) === 0);
@@ -5762,13 +5768,14 @@ console.log('\nPainted ground');
       { x: -400, z: 480 },
     ];
     const field = createPaint(t.res);
-    check('an outline paints its inside', paintGroundPolygon(t, field, poly, asphalt) === true);
+    check('an outline paints its inside',
+      paintGroundPolygon(t, field, null, poly, paintValue(asphalt)) === true);
     check('and only its inside',
       sampleGround(t, field, -380, 370) === asphalt
       && sampleGround(t, field, -260, 460) === 0
       && sampleGround(t, field, -420, 340) === 0);
     check('an outline of fewer than three corners paints nothing',
-      paintGroundPolygon(t, field, poly.slice(0, 2), asphalt) === false);
+      paintGroundPolygon(t, field, null, poly.slice(0, 2), paintValue(asphalt)) === false);
 
     const polyDef = terrainMesh(t, t.heights, field);
     const slot = polyDef.groups.findIndex((g) => g.surface === 'ROAD');
@@ -5789,10 +5796,116 @@ console.log('\nPainted ground');
       Math.abs(area - want) / want < 0.05, `${Math.round(area)} m2 vs ${Math.round(want)} m2`);
   }
 
+  /* --- a straight edge at an angle -------------------------------- */
+  /*
+   * The paint can only say which material each LATTICE POINT is, so the mesh
+   * has to decide for itself where between two of them the boundary ran. The
+   * midpoint is the only answer the paint alone justifies, and it is what turns
+   * every edge that does not run along or across the grid into a staircase of
+   * little steps -- which is exactly what you see if you pull a rectangle out
+   * and then turn it.
+   *
+   * The edge field remembers how far each sample sat from the shape that drew
+   * it, and two distances of opposite sign say where the zero between them is.
+   * So the check is direct: take the vertices the two materials SHARE, which
+   * are the boundary and nothing else, and ask how far each is from the side of
+   * the rectangle it is supposed to be lying on.
+   */
+  {
+    const rect = { x: -150, z: -420, w: 240, l: 140, rotY: 23 };
+    const a = (rect.rotY * Math.PI) / 180;
+    const cos = Math.cos(a);
+    const sin = Math.sin(a);
+    /** Distance from the side of the rectangle, negative inside. */
+    const boxDist = (x, z) => {
+      const dx = x - rect.x;
+      const dz = z - rect.z;
+      const u = Math.abs(dx * cos + dz * sin) - rect.w / 2;
+      const v = Math.abs(-dx * sin + dz * cos) - rect.l / 2;
+      const out = Math.hypot(Math.max(u, 0), Math.max(v, 0));
+      return out > 0 ? out : Math.max(u, v);
+    };
+
+    /**
+     * How far the boundary vertices stray off the side they sit on: the typical
+     * one, and the one at the 95th percentile.
+     *
+     * Not the very worst, because the four CORNERS of the rectangle are a real
+     * exception rather than a fault. A sub-cell with a corner of the shape
+     * inside it has the boundary entering and leaving through the same pair of
+     * sides, and a cut that meets each side once cannot draw that -- with or
+     * without the distances. Four points out of six hundred.
+     */
+    const strayOff = (withEdge) => {
+      const field = createPaint(t.res);
+      const dist = withEdge ? createPaintEdge(t.res) : null;
+      paintGroundRect(t, field, dist, rect, paintValue(asphalt));
+      const def = terrainMesh({ ...t, paintEdge: dist }, t.heights, field);
+      const geo = def.geometry;
+      const pos = geo.getAttribute('position').array;
+      const idx = geo.getIndex().array;
+      const roadSlot = def.groups.findIndex((g) => g.surface === 'ROAD');
+      const grassSlot = def.groups.findIndex((g) => g.surface === 'GRASS');
+      const used = (slot) => {
+        const g = geo.groups[slot];
+        const set = new Set();
+        for (let i = g.start; i < g.start + g.count; i++) set.add(idx[i]);
+        return set;
+      };
+      const road = used(roadSlot);
+      const off = [];
+      for (const v of used(grassSlot)) {
+        if (!road.has(v)) continue;
+        off.push(Math.abs(boxDist(pos[v * 3], pos[v * 3 + 2])));
+      }
+      off.sort((a2, b2) => a2 - b2);
+      return {
+        mean: off.reduce((sum, d) => sum + d, 0) / off.length,
+        p95: off[Math.floor(off.length * 0.95)],
+      };
+    };
+
+    const step = paintCellSize(t);
+    const cut = strayOff(true);
+    const midpoints = strayOff(false);
+    check('a turned rectangle is cut on its real edge, not halfway to it',
+      cut.p95 < step * 0.05,
+      `${cut.mean.toFixed(3)} m out typically, ${cut.p95.toFixed(3)} m at the 95th`);
+    check('which is the difference between an edge and a staircase',
+      cut.mean < midpoints.mean / 10,
+      `${cut.mean.toFixed(3)} m against ${midpoints.mean.toFixed(3)} m`);
+    check('because a midpoint cut is out by a good part of a paint step',
+      midpoints.p95 > step * 0.3, `${midpoints.p95.toFixed(2)} m of ${step.toFixed(2)} m`);
+  }
+
+  /* --- what a save does to it ------------------------------------- */
+  {
+    const field = createPaint(t.res);
+    const dist = createPaintEdge(t.res);
+    paintGroundRect(t, field, dist, { x: 300, z: 300, w: 100, l: 60, rotY: 23 }, paintValue(asphalt));
+    const back = deserializeProject(serializeProject({ ...gp, terrain: { ...t, paint: field, paintEdge: dist } }));
+    let same = back.terrain.paintEdge !== null && back.terrain.paintEdge.length === dist.length;
+    for (let i = 0; same && i < dist.length; i++) same = back.terrain.paintEdge[i] === dist[i];
+    check('a saved project brings back where every edge really ran', same);
+  }
+
+  /* --- painted grass is not unpainted ground ---------------------- */
+  {
+    const grass = GROUND_KINDS.findIndex((k) => k.surface === 'GRASS');
+    const field = createPaint(t.res);
+    paintGroundDisc(t, field, null, 0, 0, 50, paintValue(grass));
+    check('grass is a material you can lay, not just the absence of one',
+      field[0] === 0 && sampleGroundValue(t, field, 0, 0) === paintValue(grass)
+      && sampleGround(t, field, 0, 0) === grass);
+    paintGroundDisc(t, field, null, 0, 0, 50, paintValue(-1));
+    check('and the eraser takes it off again, back to untouched ground',
+      sampleGroundValue(t, field, 0, 0) === 0);
+  }
+
   /* --- the whole field at once ------------------------------------ */
   {
     const all = createPaint(t.res);
-    all.fill(asphalt);
+    all.fill(paintValue(asphalt));
     const allDef = terrainMesh(t, t.heights, all);
     check('a field filled with one material is one mesh again, not four',
       allDef.groups === undefined && allDef.surface === 'ROAD'
@@ -5800,6 +5913,79 @@ console.log('\nPainted ground');
     check('and it is still the plain grid underneath, with nothing cut up',
       allDef.geometry.getAttribute('position').count === t.res * t.res);
   }
+}
+
+/*
+ * The ground brush reaching the run off.
+ *
+ * The strip between the edge of the circuit and the barrier belongs to the ROAD
+ * mesh, not to the terrain, so painting under it changed nothing you could see.
+ * That made the one band of ground a circuit is actually shaped by -- the
+ * gravel at the outside of a corner, the tarmac at the exit of another -- the
+ * only band the brush could not draw. It now takes its material from the paint
+ * wherever the brush has been, and from the road setting everywhere else.
+ */
+console.log('\nThe brush reaches the run off');
+{
+  const rp = defaultProject();
+  const rf = computeFrames(rp.track, rp.road.samplesPerSegment);
+  const plainRoad = buildRoadMeshes(rf, true, rp.road, []);
+
+  /** Total flat area of every mesh whose name says it is run off. */
+  const runoffArea = (defs) => {
+    let total = 0;
+    for (const def of defs) {
+      if (!def.name.includes('_runoff')) continue;
+      const pos = def.geometry.getAttribute('position').array;
+      const idx = def.geometry.getIndex().array;
+      for (let i = 0; i < idx.length; i += 3) {
+        const a = idx[i] * 3;
+        const b = idx[i + 1] * 3;
+        const c = idx[i + 2] * 3;
+        total += Math.abs(
+          (pos[b] - pos[a]) * (pos[c + 2] - pos[a + 2]) - (pos[c] - pos[a]) * (pos[b + 2] - pos[a + 2]),
+        ) / 2;
+      }
+    }
+    return total;
+  };
+
+  const sand = GROUND_KINDS.findIndex((k) => k.surface === 'SAND');
+  // Half the world painted gravel, so the run off crosses the boundary twice
+  // per lap and there is a real transition to look for.
+  const half = {
+    kinds: GROUND_KINDS,
+    at: (x) => (x > 0 ? sand : -1),
+  };
+  const painted = buildRoadMeshes(rf, true, rp.road, [], undefined, undefined, [], half);
+  const names = painted.map((m) => m.name);
+  check('the painted half of the run off is built out of gravel',
+    names.some((n) => n === '1SAND_runoff_left') && names.some((n) => n === '1SAND_runoff_right'),
+    names.filter((n) => n.includes('runoff')).join(','));
+  check('and the rest of it is still what the road setting says',
+    names.some((n) => n === '1GRASS_runoff_left') && names.some((n) => n === '1GRASS_runoff_right'));
+
+  const before = runoffArea(plainRoad);
+  const after = runoffArea(painted);
+  check('the strip is the same strip either way, only made of two things',
+    Math.abs(after - before) / before < 0.01,
+    `${Math.round(after)} m2 against ${Math.round(before)} m2`);
+
+  const sandArea = runoffArea(painted.filter((m) => m.surface === 'SAND'));
+  check('and the gravel really is about the half that was painted',
+    sandArea > before * 0.3 && sandArea < before * 0.7,
+    `${Math.round(sandArea)} m2 of ${Math.round(before)} m2`);
+
+  const untouched = buildRoadMeshes(rf, true, rp.road, [], undefined, undefined, [], {
+    kinds: GROUND_KINDS,
+    at: () => -1,
+  });
+  check('ground nobody has painted leaves the run off exactly as it was',
+    untouched.filter((m) => m.name.includes('runoff')).map((m) => m.name).sort().join(',')
+      === plainRoad.filter((m) => m.name.includes('runoff')).map((m) => m.name).sort().join(','));
+  check('down to the last square metre of it',
+    Math.abs(runoffArea(untouched) - before) / before < 0.01,
+    `${Math.round(runoffArea(untouched))} m2 against ${Math.round(before)} m2`);
 }
 
 /*

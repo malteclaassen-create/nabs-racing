@@ -92,6 +92,31 @@ export function paintCellSize(t: TerrainSettings): number {
   return t.size / ((t.res - 1) * paintSub(t.res));
 }
 
+/**
+ * The value stored in the paint field for one material.
+ *
+ * Zero is reserved: it means "nobody has painted here", which is NOT the same
+ * thing as "here is grass". The run off between the tarmac and the barrier
+ * takes its material from the road unless the ground brush has been over it,
+ * and with grass at zero there was no way to say "grass, and I mean it" -- a
+ * gravel run off could never be turned back into a verge one patch at a time.
+ * So a painted material is stored as its index plus one, and the untouched
+ * field is what it always was: all zeroes.
+ */
+export const PAINT_NONE = 0;
+
+/** Store `kind`. Pass -1 to rub the paint out and hand the ground back. */
+export function paintValue(kind: number): number {
+  return kind < 0 ? PAINT_NONE : kind + 1;
+}
+
+/** The GROUND_KINDS index one stored byte names. Unpainted reads as grass. */
+export function paintKind(value: number): number {
+  if (value <= 0) return 0;
+  const k = value - 1;
+  return k < GROUND_KINDS.length ? k : 0;
+}
+
 /** What the ground is made of at a world point. 0 (grass) outside the grid. */
 export function sampleGround(
   t: TerrainSettings,
@@ -99,34 +124,106 @@ export function sampleGround(
   x: number,
   z: number,
 ): number {
-  if (!paint) return 0;
+  return paintKind(sampleGroundValue(t, paint, x, z));
+}
+
+/**
+ * The raw byte at a world point, so a caller can tell painted grass apart from
+ * ground nobody has touched. PAINT_NONE outside the grid.
+ */
+export function sampleGroundValue(
+  t: TerrainSettings,
+  paint: Uint8Array | null | undefined,
+  x: number,
+  z: number,
+): number {
+  if (!paint) return PAINT_NONE;
   const pw = paintRes(t.res);
   const ps = paintCellSize(t);
   const px = Math.round((x - t.originX) / ps);
   const pz = Math.round((z - t.originZ) / ps);
-  if (px < 0 || pz < 0 || px >= pw || pz >= pw) return 0;
+  if (px < 0 || pz < 0 || px >= pw || pz >= pw) return PAINT_NONE;
   return paint[pz * pw + px];
 }
 
 /**
- * Set every paint sample a shape covers.
+ * How far each paint sample sits from the edge of the last shape drawn near
+ * it, in 64ths of a paint cell and negative on the inside.
+ *
+ * This is what stops a painted edge from being a staircase.
+ *
+ * The paint itself can only say which material a LATTICE POINT is; the mesh
+ * then cuts each little square where two of its corners disagree. Cutting at
+ * the midpoint -- the only place the paint alone can justify -- means every
+ * boundary is built from steps and 45 degree diagonals, so the one edge that
+ * comes out straight is the one that happens to run along or across the grid.
+ * Turn the same rectangle by twenty degrees and its long sides break up into
+ * exactly the ladder of little steps this field exists to remove.
+ *
+ * With the distance recorded either side of the boundary, the cut goes where
+ * the shape actually crossed rather than halfway, and the edge is as straight
+ * as the shape that drew it at any angle at all.
+ */
+export const EDGE_UNKNOWN = -128;
+
+/** Distances are quantised in 64ths of a paint cell, so they reach two cells. */
+const EDGE_SCALE = 64;
+
+/** How far either side of a boundary a distance is worth keeping, in cells. */
+const EDGE_BAND = 2;
+
+export function createPaintEdge(res: number): Int8Array {
+  const p = paintRes(res);
+  const e = new Int8Array(p * p);
+  e.fill(EDGE_UNKNOWN);
+  return e;
+}
+
+/**
+ * The paint field as GROUND_KINDS indices, cached against the field itself.
+ *
+ * The mesh builder wants kinds, the stored field carries kind-plus-one, and it
+ * is read several times per rebuild -- the cell classifier, the cut, the
+ * fallback for a cell the budget could not split. Decoding it once per field
+ * rather than once per read keeps every one of those loops exactly as tight as
+ * it was, and the cache is weak so a superseded field still collects.
+ */
+const decoded = new WeakMap<Uint8Array, Uint8Array>();
+
+function paintKinds(paint: Uint8Array): Uint8Array {
+  const hit = decoded.get(paint);
+  if (hit) return hit;
+  const out = new Uint8Array(paint.length);
+  for (let i = 0; i < paint.length; i++) out[i] = paintKind(paint[i]);
+  decoded.set(paint, out);
+  return out;
+}
+
+/**
+ * Set every paint sample a shape covers, and note how far the rest sit from
+ * its edge.
  *
  * All three shapes come through here, so they cannot disagree about what
- * "inside" means or about how a change is reported. `inside` is asked about the
- * world position of each sample in the box; anything it says yes to becomes
- * `value`.
+ * "inside" means or about how a change is reported. Each is handed in as a
+ * SIGNED DISTANCE rather than a yes or no: negative inside, positive outside,
+ * in metres. Inside becomes `value`, and everything within `EDGE_BAND` cells of
+ * the boundary -- on either side of it -- has its distance written into `edge`,
+ * which is what lets the mesh cut the boundary where it really runs. A plain
+ * "is this point inside" cannot say that, and a midpoint cut is a staircase.
  *
  * With `probe` set nothing is written and the first sample that would change
  * ends it. That is what keeps a sweep cheap: the pointer stays inside a patch
  * it has already painted for most of a stroke, and every one of those dabs
  * would otherwise copy the whole paint field and rebuild the whole ground mesh
- * to arrive back at the picture that is already on screen.
+ * to arrive back at the picture that is already on screen. A probe asks about
+ * the materials only, so it scans the shape itself rather than the wider band.
  */
 function fillPaint(
   t: TerrainSettings,
   paint: Uint8Array,
+  edge: Int8Array | null,
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
-  inside: (x: number, z: number) => boolean,
+  sdf: (x: number, z: number) => number,
   value: number,
   probe: boolean,
 ): boolean {
@@ -134,20 +231,33 @@ function fillPaint(
   const ps = paintCellSize(t);
   const originX = t.originX;
   const originZ = t.originZ;
-  const i0 = Math.max(0, Math.floor((bounds.minX - originX) / ps));
-  const i1 = Math.min(pw - 1, Math.ceil((bounds.maxX - originX) / ps));
-  const j0 = Math.max(0, Math.floor((bounds.minZ - originZ) / ps));
-  const j1 = Math.min(pw - 1, Math.ceil((bounds.maxZ - originZ) / ps));
+  const band = probe || !edge ? 0 : EDGE_BAND * ps;
+  const i0 = Math.max(0, Math.floor((bounds.minX - band - originX) / ps));
+  const i1 = Math.min(pw - 1, Math.ceil((bounds.maxX + band - originX) / ps));
+  const j0 = Math.max(0, Math.floor((bounds.minZ - band - originZ) / ps));
+  const j1 = Math.min(pw - 1, Math.ceil((bounds.maxZ + band - originZ) / ps));
   let changed = false;
 
   for (let jz = j0; jz <= j1; jz++) {
     const wz = originZ + jz * ps;
     const row = jz * pw;
     for (let ix = i0; ix <= i1; ix++) {
-      if (paint[row + ix] === value) continue;
-      if (!inside(originX + ix * ps, wz)) continue;
+      const k = row + ix;
+      // The probe only ever asks about samples that would change material, so
+      // it can skip the distance for the rest -- which during a sweep is very
+      // nearly all of them.
+      if (probe && paint[k] === value) continue;
+      const d = sdf(originX + ix * ps, wz);
+      if (edge && !probe && d > -band && d < band) {
+        const q = Math.round((d / ps) * EDGE_SCALE);
+        // EDGE_UNKNOWN is -128 and has to stay reachable only by never being
+        // written here, so the clamp stops one short of it.
+        edge[k] = q < -127 ? -127 : q > 127 ? 127 : q;
+      }
+      if (d > 0) continue;
+      if (paint[k] === value) continue;
       if (probe) return true;
-      paint[row + ix] = value;
+      paint[k] = value;
       changed = true;
     }
   }
@@ -158,18 +268,19 @@ function fillPaint(
 export function paintGroundDisc(
   t: TerrainSettings,
   paint: Uint8Array,
+  edge: Int8Array | null,
   x: number,
   z: number,
   radius: number,
   value: number,
   probe = false,
 ): boolean {
-  const r2 = radius * radius;
   return fillPaint(
     t,
     paint,
+    edge,
     { minX: x - radius, maxX: x + radius, minZ: z - radius, maxZ: z + radius },
-    (px, pz) => (px - x) * (px - x) + (pz - z) * (pz - z) <= r2,
+    (px, pz) => Math.hypot(px - x, pz - z) - radius,
     value,
     probe,
   );
@@ -188,6 +299,7 @@ export interface GroundRect {
 export function paintGroundRect(
   t: TerrainSettings,
   paint: Uint8Array,
+  edge: Int8Array | null,
   rect: GroundRect,
   value: number,
   probe = false,
@@ -204,14 +316,18 @@ export function paintGroundRect(
   return fillPaint(
     t,
     paint,
+    edge,
     { minX: rect.x - reach, maxX: rect.x + reach, minZ: rect.z - reachZ, maxZ: rect.z + reachZ },
     (px, pz) => {
       const dx = px - rect.x;
       const dz = pz - rect.z;
-      // Into the rectangle's own frame, where the test is two comparisons.
-      const u = dx * cos + dz * sin;
-      const v = -dx * sin + dz * cos;
-      return u >= -hw && u <= hw && v >= -hl && v <= hl;
+      // Into the rectangle's own frame, where the distance is the textbook box
+      // one: how far outside each pair of sides the point is, with the corner
+      // case falling out of taking both at once.
+      const u = Math.abs(dx * cos + dz * sin) - hw;
+      const v = Math.abs(-dx * sin + dz * cos) - hl;
+      const out = Math.hypot(Math.max(u, 0), Math.max(v, 0));
+      return out > 0 ? out : Math.max(u, v);
     },
     value,
     probe,
@@ -221,13 +337,15 @@ export function paintGroundRect(
 /**
  * Paint the inside of a closed outline. Returns whether anything changed.
  *
- * Even-odd crossings, which is the rule that makes a shape drawn back over
- * itself hollow rather than nonsense, and needs nothing of the outline but its
- * points -- no winding order, no convexity, no self intersection test.
+ * Even-odd crossings decide the inside, which is the rule that makes a shape
+ * drawn back over itself hollow rather than nonsense, and needs nothing of the
+ * outline but its points -- no winding order, no convexity, no self
+ * intersection test. The distance is then the nearest edge, signed by it.
  */
 export function paintGroundPolygon(
   t: TerrainSettings,
   paint: Uint8Array,
+  edge: Int8Array | null,
   points: ReadonlyArray<{ x: number; z: number }>,
   value: number,
   probe = false,
@@ -247,16 +365,29 @@ export function paintGroundPolygon(
   return fillPaint(
     t,
     paint,
+    edge,
     { minX, maxX, minZ, maxZ },
     (px, pz) => {
       let inside = false;
+      let best = Infinity;
       for (let i = 0, j = n - 1; i < n; j = i++) {
         const a = points[i];
         const b = points[j];
-        if ((a.z > pz) === (b.z > pz)) continue;
-        if (px < ((b.x - a.x) * (pz - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+        if ((a.z > pz) !== (b.z > pz)
+          && px < ((b.x - a.x) * (pz - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+        // Distance to the segment a-b, the projection clamped to its ends.
+        const ex = b.x - a.x;
+        const ez = b.z - a.z;
+        const len2 = ex * ex + ez * ez;
+        let s = len2 > 1e-12 ? ((px - a.x) * ex + (pz - a.z) * ez) / len2 : 0;
+        s = s < 0 ? 0 : s > 1 ? 1 : s;
+        const dx = px - (a.x + ex * s);
+        const dz = pz - (a.z + ez * s);
+        const d2 = dx * dx + dz * dz;
+        if (d2 < best) best = d2;
       }
-      return inside;
+      const d = Math.sqrt(best);
+      return inside ? -d : d;
     },
     value,
     probe,
@@ -277,12 +408,50 @@ export function resamplePaint(
   for (let jz = 0; jz < pw; jz++) {
     const z = to.originZ + jz * ps;
     for (let ix = 0; ix < pw; ix++) {
-      const v = sampleGround(from, paint, to.originX + ix * ps, z);
+      const v = sampleGroundValue(from, paint, to.originX + ix * ps, z);
       out[jz * pw + ix] = v;
-      if (v !== 0) any = true;
+      if (v !== PAINT_NONE) any = true;
     }
   }
   return any ? out : null;
+}
+
+/**
+ * Carry the edge distances across with the paint.
+ *
+ * They are lengths, so they are rescaled: the same boundary is a different
+ * number of cells away once the cells change size. Anything that lands outside
+ * the band the new grid can express goes back to "unknown", where the mesh
+ * falls back to a midpoint cut -- a slightly softer edge on a resampled patch,
+ * never a wrong one.
+ */
+export function resamplePaintEdge(
+  from: TerrainSettings,
+  edge: Int8Array | null,
+  to: TerrainSettings,
+): Int8Array | null {
+  if (!edge) return null;
+  const fromPw = paintRes(from.res);
+  if (edge.length !== fromPw * fromPw) return null;
+  const pw = paintRes(to.res);
+  const ps = paintCellSize(to);
+  const fromPs = paintCellSize(from);
+  const scale = fromPs / ps;
+  const out = new Int8Array(pw * pw);
+  out.fill(EDGE_UNKNOWN);
+  for (let jz = 0; jz < pw; jz++) {
+    const z = to.originZ + jz * ps;
+    for (let ix = 0; ix < pw; ix++) {
+      const px = Math.round((to.originX + ix * ps - from.originX) / fromPs);
+      const pz = Math.round((z - from.originZ) / fromPs);
+      if (px < 0 || pz < 0 || px >= fromPw || pz >= fromPw) continue;
+      const v = edge[pz * fromPw + px];
+      if (v === EDGE_UNKNOWN) continue;
+      const q = Math.round(v * scale);
+      if (q >= -127 && q <= 127) out[jz * pw + ix] = q;
+    }
+  }
+  return out;
 }
 
 /**
@@ -919,6 +1088,8 @@ interface TerrainGridTag {
    * picture and the mesh has to be cut again.
    */
   paint: Uint8Array | null;
+  /** The distances the cuts were placed from; a change reshapes every edge. */
+  paintEdge: Int8Array | null;
   /** The vertices added inside cells the paint splits, or null when none. */
   extras: TerrainExtras | null;
 }
@@ -963,7 +1134,8 @@ const MAX_SPLIT_CELLS = 4000;
  * project starts in and most stay in. That null is what keeps the ground mesh
  * of an unpainted track exactly what it was before any of this existed.
  */
-function classifyCells(t: TerrainSettings, paint: Uint8Array | null | undefined): Int8Array | null {
+function classifyCells(t: TerrainSettings, kinds: Uint8Array | null | undefined): Int8Array | null {
+  const paint = kinds;
   if (!paint) return null;
   const res = t.res;
   const cells = res - 1;
@@ -997,7 +1169,8 @@ function classifyCells(t: TerrainSettings, paint: Uint8Array | null | undefined)
 }
 
 /** The material most of a split cell is made of, used when the budget runs out. */
-function dominantKind(t: TerrainSettings, paint: Uint8Array, ci: number, cj: number): number {
+function dominantKind(t: TerrainSettings, kinds: Uint8Array, ci: number, cj: number): number {
+  const paint = kinds;
   const sub = paintSub(t.res);
   const pw = (t.res - 1) * sub + 1;
   const tally = new Array<number>(GROUND_KINDS.length).fill(0);
@@ -1203,9 +1376,38 @@ export function buildTerrainGeometry(
   const cells = res - 1;
   const base = res * res;
 
-  const kind = classifyCells(t, paint);
+  // Kinds, not stored bytes: the field carries kind-plus-one so that unpainted
+  // ground can be told from painted grass, and everything below this line is
+  // about materials.
+  const kinds = paint ? paintKinds(paint) : null;
+  const kind = classifyCells(t, kinds);
   const sub = paintSub(res);
   const pw = cells * sub + 1;
+  /*
+   * Where a boundary crosses the line between two paint samples, as a fraction
+   * of the way from the first to the second.
+   *
+   * The paint alone can only say that the two ends disagree, and the honest
+   * answer to "where between them" is then the middle -- which is what builds
+   * a staircase out of every edge that does not run along the grid. The edge
+   * field remembers how far each sample sat from the shape that drew it, and
+   * two distances of opposite sign say exactly where the zero between them is.
+   *
+   * The result is nudged off the ends: a cut sitting exactly on a corner makes
+   * a triangle of no area, and a fan over one of those is a crack.
+   */
+  const edge = t.paintEdge && t.paintEdge.length === pw * pw ? t.paintEdge : null;
+  const crossing = (a: number, b: number): number => {
+    if (!edge) return 0.5;
+    const da = edge[a];
+    const db = edge[b];
+    if (da === EDGE_UNKNOWN || db === EDGE_UNKNOWN) return 0.5;
+    // Same side of the boundary, or both exactly on it: the distances are
+    // remembered from different shapes and cannot place this crossing.
+    if ((da <= 0) === (db <= 0) || da === db) return 0.5;
+    const f = da / (da - db);
+    return f < 0.04 ? 0.04 : f > 0.96 ? 0.96 : f;
+  };
   // The half-step lattice a cut cell is expressed on: every sub-cell corner and
   // every point a boundary can cross an edge at.
   const span = 2 * sub + 1;
@@ -1221,7 +1423,7 @@ export function buildTerrainGeometry(
     for (let c = 0; c < kind.length; c++) {
       if (kind[c] >= 0) continue;
       if (split.length < maxSplit) split.push(c);
-      else kind[c] = dominantKind(t, paint!, c % cells, (c / cells) | 0);
+      else kind[c] = dominantKind(t, kinds!, c % cells, (c / cells) | 0);
     }
   }
 
@@ -1286,8 +1488,30 @@ export function buildTerrainGeometry(
         for (let a = 0; a < span; a++) {
           extras.cellX[k] = ci;
           extras.cellZ[k] = cj;
-          extras.u[k] = a / (2 * sub);
-          extras.v[k] = b / (2 * sub);
+          /*
+           * Even lattice steps are the sub-cell corners and sit on a paint
+           * sample; the odd ones in between are the only places a boundary is
+           * ever cut, so they -- and only they -- move onto it. A point odd in
+           * both is the middle of a sub-cell, used by the saddle case, and has
+           * no single edge to sit on.
+           *
+           * The points along a cell's own border are even and therefore never
+           * move, which is what keeps two neighbouring cut cells sharing the
+           * same edge and the mesh free of cracks.
+           */
+          let u = a / (2 * sub);
+          let v = b / (2 * sub);
+          const oddA = (a & 1) === 1;
+          const oddB = (b & 1) === 1;
+          if (oddA && !oddB) {
+            const s0 = (cj * sub + (b >> 1)) * pw + ci * sub + (a >> 1);
+            u = ((a >> 1) + crossing(s0, s0 + 1)) / sub;
+          } else if (!oddA && oddB) {
+            const s0 = (cj * sub + (b >> 1)) * pw + ci * sub + (a >> 1);
+            v = ((b >> 1) + crossing(s0, s0 + pw)) / sub;
+          }
+          extras.u[k] = u;
+          extras.v[k] = v;
           k++;
         }
       }
@@ -1318,7 +1542,7 @@ export function buildTerrainGeometry(
         const hi = lo + pw;
         for (let a = 0; a < sub; a++) {
           cutSubCell(
-            paint![lo + a], paint![hi + a], paint![hi + a + 1], paint![lo + a + 1],
+            kinds![lo + a], kinds![hi + a], kinds![hi + a + 1], kinds![lo + a + 1],
             (k, ring) => take(k, ring, v0, a, b),
           );
         }
@@ -1390,6 +1614,7 @@ export function buildTerrainGeometry(
     res, size: t.size, originX: t.originX, originZ: t.originZ, minY, maxY,
     heights,
     paint: paint ?? null,
+    paintEdge: edge,
     extras,
   };
   g.userData.grid = tag;
@@ -1432,6 +1657,8 @@ export function updateTerrainGeometry(
   // A repaint moves triangles between materials and can cut new cells up, so
   // there is nothing to patch: the mesh has to be built again.
   if (tag.paint !== (paint ?? null)) return false;
+  // Same materials, different edges: the cuts move, so the mesh is rebuilt.
+  if (tag.paintEdge !== (t.paintEdge ?? null)) return false;
 
   const pa = pos.array as Float32Array;
 
@@ -1949,6 +2176,7 @@ export function fitTerrainToTrack(
     }
   }
   next.paint = resamplePaint(t, t.paint, next);
+  next.paintEdge = resamplePaintEdge(t, t.paintEdge, next);
   return next;
 }
 
@@ -1969,5 +2197,6 @@ export function resampleTerrain(t: TerrainSettings, res: number): TerrainSetting
   // The paint grid is tied to the height grid, so it is resampled with it --
   // otherwise changing the resolution would silently throw the ground away.
   next.paint = resamplePaint(t, t.paint, next);
+  next.paintEdge = resamplePaintEdge(t, t.paintEdge, next);
   return next;
 }

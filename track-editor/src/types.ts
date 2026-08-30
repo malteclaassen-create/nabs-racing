@@ -128,6 +128,18 @@ export interface RoadSettings {
   /** How far the outer edge of the run off drops below the road edge. */
   runoffDrop: number;
   runoffSurface: 'GRASS' | 'SAND' | 'CONCRETE';
+  /**
+   * Whether the ground brush is allowed to reach the run off: the strip between
+   * the edge of the circuit and the barrier.
+   *
+   * That strip is part of the ROAD mesh, not the terrain, so painting under it
+   * used to change nothing you could see -- which made the one band of ground a
+   * circuit is actually shaped by, the gravel at the outside of a corner and
+   * the tarmac at the exit of another, the only band that could not be drawn.
+   * On, the run off takes its material from the paint wherever the brush has
+   * been, and from `runoffSurface` everywhere else.
+   */
+  runoffPaint: boolean;
   wall: boolean;
   wallHeight: number;
   /**
@@ -269,6 +281,16 @@ export interface TerrainSettings {
    * drawn and exported with, so there is never anything underneath it.
    */
   paint: Uint8Array | null;
+  /**
+   * How far each paint sample sat from the edge of the shape that last passed
+   * near it, in 64ths of a paint cell and negative inside. EDGE_UNKNOWN where
+   * nothing is known, and null on a project that predates it.
+   *
+   * The paint says WHICH material a lattice point is; this says WHERE between
+   * two of them the boundary ran, which is the difference between an edge and
+   * a staircase on every shape that is not aligned to the grid.
+   */
+  paintEdge: Int8Array | null;
 }
 
 export interface ExportSettings {
