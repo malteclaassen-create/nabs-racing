@@ -30,7 +30,13 @@ export type StartChoice = 'empty' | 'generate' | 'demo' | 'showcase';
  * BASE_URL, not a leading slash: the editor is served under /track-editor on
  * the league site (see vite.config.ts) and from the root in dev.
  */
-const SHOWCASE_URL = `${import.meta.env.BASE_URL}showcase.actrack.json`;
+/* Imported through the bundler rather than fetched from public/: the file is
+   emitted under a content hash, so every new build gets a new address. From
+   public/ it sat at ONE url that the server caches for a week -- ship a
+   reworked showcase and everybody's browser kept serving the old one until
+   the cache ran out. */
+import showcaseUrl from '../assets/showcase.actrack.json?url';
+const SHOWCASE_URL = showcaseUrl;
 
 async function loadShowcase(): Promise<Project> {
   const res = await fetch(SHOWCASE_URL);
