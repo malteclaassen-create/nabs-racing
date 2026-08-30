@@ -34,6 +34,7 @@ let worstProp = { d: Infinity };
 let worstTyre = null;
 let laneFailures = 0;
 let paintFailures = 0;
+let garageFailures = 0;
 let trackPaintFailures = 0;
 let nanFailures = 0;
 
@@ -59,6 +60,19 @@ for (let seed = 1; seed <= 21; seed++) {
     if (i < 0) return Infinity;
     return Math.hypot(frames[i].pos.x - x, frames[i].pos.z - z);
   };
+
+  // Room between the pit boxes and the garage doors: no garage part may come
+  // nearer the lane's centre line than the concrete plus the garage apron.
+  const pitFrames = computeFrames({ closed: false, nodes: gen.pit }, 12);
+  let nearestGarage = Infinity;
+  for (const prop of gen.props) {
+    if (!prop.id.startsWith('genpad_') || !/garage/.test(prop.name)) continue;
+    for (const f of pitFrames) {
+      const dd = Math.hypot(f.pos.x - prop.p[0], f.pos.z - prop.p[2]);
+      if (dd < nearestGarage) nearestGarage = dd;
+    }
+  }
+  if (nearestGarage < 13) garageFailures++;
 
   for (const prop of gen.props) {
     if (prop.id.startsWith('gentree_')) continue;
@@ -146,6 +160,7 @@ check(
   worstTyre === null,
   worstTyre ? `${worstTyre.d.toFixed(1)} m off the centre line at seed ${worstTyre.seed}` : '',
 );
+check('the garages keep their apron behind the boxes', garageFailures === 0, `${garageFailures} circuits`);
 check('the paddock stands on painted concrete', paintFailures === 0, `${paintFailures} circuits`);
 check('and none of it leaked onto the racing surface', trackPaintFailures === 0, `${trackPaintFailures} circuits`);
 

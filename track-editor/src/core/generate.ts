@@ -361,6 +361,16 @@ export const PIT_APRON_WIDTH = 5;
 export const PIT_BOX_OFFSET = PIT_APRON_WIDTH + 2;
 
 /**
+ * Ground between the edge of the working lane's concrete and the garage
+ * doors, metres. It was one metre -- a door threshold -- which put the
+ * garage fronts three metres from the centre of the pit boxes: the crew
+ * would be changing tyres with their backs against the shutters, and in the
+ * viewport the roofs hung over the box markers. Five metres is a real
+ * garage apron: room to stand a trolley and walk a wheel behind the box.
+ */
+export const PIT_GARAGE_SETBACK = 5;
+
+/**
  * How far outside the centre line the pit lane runs, metres.
  *
  * Added up rather than dialled in, so it stays right when a piece of it moves:
@@ -841,7 +851,7 @@ function buildPaddock(
      where the box markers stood back when the working lane was 2.5 m wide.
      Widen the lane and that same 9 m puts the buildings ON the concrete, with
      the cars parked inside them. */
-  const front = laneOffset + 4 + PIT_APRON_WIDTH + 1;
+  const front = laneOffset + 4 + PIT_APRON_WIDTH + PIT_GARAGE_SETBACK;
 
   // Race control and the main garages on the timing line, plainer garage rows
   // carrying the building line on either side of them.
@@ -1592,7 +1602,7 @@ export function generateCircuit(
     const alongMax = lane0 + laneLen + 30;
     const latMin = halfWidth + 1;
     const latMax =
-      PIT_OFFSET + 4 + PIT_APRON_WIDTH + 1
+      PIT_OFFSET + 4 + PIT_APRON_WIDTH + PIT_GARAGE_SETBACK
       + propTileBox('pit_building').hz + propTileBox('garage_bay').hz * 2 + 20;
     const skirt = 45;
     const ease = (d: number) => {
@@ -1685,7 +1695,7 @@ export function generateCircuit(
       if (!terrain.paintEdge) terrain.paintEdge = createPaintEdge(terrain.res);
       const latNear = PIT_OFFSET + 4 + PIT_APRON_WIDTH - 1;
       const latFar =
-        PIT_OFFSET + 4 + PIT_APRON_WIDTH + 1
+        PIT_OFFSET + 4 + PIT_APRON_WIDTH + PIT_GARAGE_SETBACK
         + propTileBox('pit_building').hz + propTileBox('garage_bay').hz * 2 + 14;
       /* Only the box run. Carried past it, the rectangle's far corner stood
          out in the field beyond the exit taper -- a grey tongue pointing the
