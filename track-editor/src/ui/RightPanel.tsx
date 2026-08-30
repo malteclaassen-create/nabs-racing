@@ -1320,6 +1320,24 @@ function RaceTab() {
                 derived.pitSide < 0 ? 'left' : 'right'
               } of the track.`}
         </p>
+        <Row label="Concrete">
+          <Slider
+            value={pitCfg.apron}
+            min={0}
+            max={15}
+            step={0.5}
+            digits={1}
+            unit=" m"
+            onChange={(v) => commit((p) => { p.pitCfg.apron = v; })}
+          />
+        </Row>
+        <p className="hint" style={{ marginTop: 0 }}>
+          The concrete either side of the lane's tarmac, which is where the work happens: the pit
+          wall on the track side, the garages and the boxes on the other. Inside the limiter window
+          it is exported as pit lane, so a car with two wheels on it still has its limiter on. Add
+          more of it with the <b>Ground tool (G)</b> and its <b>Pit lane</b> material, which is the
+          same concrete with the same surface.
+        </p>
         <Row label="">
           <button
             className="btn"

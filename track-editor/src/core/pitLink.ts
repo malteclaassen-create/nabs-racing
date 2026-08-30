@@ -348,8 +348,55 @@ export function mergePitFrames(pitFrames: Frame[], trackFrames: Frame[], pitGap:
 /* Clipping the pit lane against the edge of the track                 */
 /* ------------------------------------------------------------------ */
 
-/** How wide the concrete shoulder beside the pit lane is, metres. */
+/**
+ * How wide the concrete shoulder beside the pit lane is, metres.
+ *
+ * The fallback only. The real figure is `pitCfg.apron` and it is passed in
+ * wherever the ribbon's true width matters -- how far the lane may tuck under
+ * the circuit, how far out a junction is looked for, where the lane's edge
+ * line hands over to the one on the road. This is what those all fall back to
+ * when nobody says, which is the tools and the tests.
+ */
 export const PIT_APRON = 2.5;
+
+/**
+ * The width of the concrete at each cross section of the DRAWN ribbon.
+ *
+ * Full width along the lane itself, faded to nothing across the lead-out at
+ * either end.
+ *
+ * A pit complex is wider than the circuit it joins -- an 8 m lane with five
+ * metres of working lane either side is 18 m against a 14 m road -- so a ribbon
+ * that kept its full width all the way to the junction could not tuck under the
+ * tarmac at all: the wedge never closes, the lead-out runs out of track, and
+ * what is left is a notch of bare ground beside the merge.
+ *
+ * A real circuit does not carry the concrete to the junction either. The
+ * garages stop, the apron stops with them, and the last stretch merges as
+ * tarmac. Everything that measures against the ribbon reads its width from
+ * here, so the clip, the run off clearance and the mesh all agree about where
+ * the concrete actually is.
+ */
+export function pitApronWidths(
+  n: number,
+  lead: { from: number; to: number; apronTip?: number } | undefined,
+  apron: number,
+): Float32Array {
+  const out = new Float32Array(n);
+  const from = lead ? Math.max(0, lead.from) : 0;
+  const to = lead ? Math.min(n - 1, lead.to) : n - 1;
+  const tip = Math.min(apron, lead?.apronTip ?? apron);
+  for (let i = 0; i < n; i++) {
+    if (i >= from && i <= to) {
+      out[i] = apron;
+      continue;
+    }
+    const run = i < from ? from : n - 1 - to;
+    const into = i < from ? i : n - 1 - i;
+    out[i] = run > 0 ? tip + ((apron - tip) * into) / run : apron;
+  }
+  return out;
+}
 
 /**
  * How far the lane is allowed to tuck UNDER the track edge.
@@ -409,8 +456,11 @@ export function pitRoadClip(
   /** Extra width the kerb adds beyond the tarmac, per track cross section. */
   kerbL?: Float32Array,
   kerbR?: Float32Array,
-  /** How far past its own half width each side of the lane reaches. */
-  extra = PIT_APRON,
+  /**
+   * How far past its own half width each side of the lane reaches: one width
+   * for the whole ribbon, or the tapered run pitApronWidths gives.
+   */
+  extra: number | Float32Array = PIT_APRON,
   /**
    * Which cross sections are the lane itself. The ones outside that range are
    * the lead-out, and they are tidied at the end: see closeLead.
@@ -425,9 +475,11 @@ export function pitRoadClip(
   const wholeLo = new Float32Array(n);
   const wholeHi = new Float32Array(n);
   const m = trackFrames.length;
+  const widths = typeof extra === 'number' ? pitApronWidths(n, lead, extra) : extra;
   for (let i = 0; i < n; i++) {
-    wholeLo[i] = -(pitFrames[i].widthL + extra);
-    wholeHi[i] = pitFrames[i].widthR + extra;
+    const e = widths[i] ?? 0;
+    wholeLo[i] = -(pitFrames[i].widthL + e);
+    wholeHi[i] = pitFrames[i].widthR + e;
     lo[i] = wholeLo[i];
     hi[i] = wholeHi[i];
   }
@@ -592,7 +644,7 @@ export function pitRoadClip(
     if (flat < 1e-6) continue;
     const dx = pf.right.x / flat;
     const dz = pf.right.z / flat;
-    const search = (Math.max(pf.widthL, pf.widthR) + extra) * flat + span;
+    const search = (Math.max(pf.widthL, pf.widthR) + widths[i]) * flat + span;
 
     cast(pf.pos.x, pf.pos.z, dx, dz, search);
     hitR[i] = hit.dist < Infinity ? 1 : 0;
@@ -630,7 +682,7 @@ export function pitRoadClip(
     rz /= flat;
     const px = (a.pos.x + b.pos.x) / 2;
     const pz = (a.pos.z + b.pos.z) / 2;
-    const search = (Math.max(a.widthL, a.widthR) + extra) * flat + span;
+    const search = (Math.max(a.widthL, a.widthR) + widths[i]) * flat + span;
 
     if (okR[i] && okR[i + 1]) {
       cast(px, pz, rx, rz, search);
@@ -787,6 +839,17 @@ export interface PitLead {
   to: number;
   /** Arc length of the real lane, so the limiter window keeps its meaning. */
   length: number;
+  /**
+   * How much of the concrete the junction can still carry, metres.
+   *
+   * The lead-out only closes once the whole ribbon has gone under the tarmac,
+   * and a modern pit complex is wider than the circuit it joins: an 8 m lane
+   * with five metres of working lane either side is 18 m against a 14 m road.
+   * So the concrete narrows over the lead-out to whatever the circuit has room
+   * for, which is what a real junction does -- the garages stop, the apron
+   * stops with them, and the last stretch merges as tarmac.
+   */
+  apronTip: number;
 }
 
 /**
@@ -836,6 +899,8 @@ export function pitLead(
    * entry had no lead-out at all on a generated circuit.
    */
   trackClosed = false,
+  /** Width of the concrete either side of the lane. */
+  apron = PIT_APRON,
 ): PitLead {
   const n = pitFrames.length;
   const base: PitLead = {
@@ -843,11 +908,15 @@ export function pitLead(
     from: 0,
     to: Math.max(0, n - 1),
     length: n > 0 ? pitFrames[n - 1].dist : 0,
+    apronTip: apron,
   };
   if (n < 2 || pitClosed || trackFrames.length < 2) return base;
 
   const m = trackFrames.length;
   const index = new PointIndex(trackFrames.map((f) => f.pos), 30);
+  // The narrower of the two junctions: one taper for the ribbon, so the mesh,
+  // the clip and the clearance do not each have their own idea of it.
+  let apronTip = apron;
 
   /**
    * The lead-out at one end of the lane.
@@ -873,7 +942,7 @@ export function pitLead(
     // exactly as long as it was drawn. What counts as "at the circuit" is how
     // far the RIBBON reaches, not the centre line -- a lane whose shoulder is
     // already on the tarmac has a junction whatever its centre says.
-    const reachOut = Math.max(end.widthL, end.widthR) + PIT_APRON;
+    const reachOut = Math.max(end.widthL, end.widthR) + apron;
     if (Math.abs(lateral) - roadHalf > reachOut + 1) return [];
 
     const dir = end.fwd.x * tf.fwd.x + end.fwd.z * tf.fwd.z < 0 ? -1 : 1;
@@ -883,7 +952,7 @@ export function pitLead(
        edge has gone under the tarmac. Trusting the estimate alone left the
        ribbon stopping 40 cm short of closing, because the rate is measured at
        the junction and the tarmac's own half width changes along the way. */
-    const reach = Math.abs(lateral) - roadHalf + Math.max(end.widthL, end.widthR) + PIT_APRON;
+    const reach = Math.abs(lateral) - roadHalf + Math.max(end.widthL, end.widthR) + apron;
     const span = Math.min(LEAD_MAX, (reach / rate) * 1.5 + 20);
 
     // Along the circuit in the lane's direction of travel; index the other way
@@ -893,9 +962,40 @@ export function pitLead(
     let u = 0;
     let k = ti;
     let prev = tf;
-    // How much of the ribbon still sticks out past the near tarmac edge. This
-    // is the wedge, and where it reaches zero the junction is closed.
-    let over = Math.abs(lateral) + reachOut - roadHalf;
+    /*
+     * How much of the LANE still sticks out past the near tarmac edge. This is
+     * the wedge, and where it reaches zero the junction is closed.
+     *
+     * The lane, not the whole ribbon: the concrete beside it is wider than the
+     * circuit once the apron is set to anything like a real pit complex, so a
+     * wedge that had to tuck the concrete under the tarmac too could never
+     * close at all and the lead-out simply ran out of track, leaving the notch
+     * this walk exists to remove. The concrete does not need to be carried
+     * there -- pitRoadClip takes it away against the same tarmac edge, cross
+     * section by cross section, which is what a real junction looks like: the
+     * apron stops and the lane merges as tarmac.
+     */
+    const laneReach = Math.max(end.widthL, end.widthR);
+    /*
+     * How much concrete the junction can carry, and the width the wedge is
+     * therefore closed at.
+     *
+     * The wedge closes when the whole ribbon has gone under the tarmac. That
+     * only ever happens if the ribbon is narrower than the road, and a pit
+     * complex is not: five metres of working lane either side of an 8 m lane
+     * is 18 m against a 14 m circuit, so a wedge measured at full width can
+     * never close and the lead-out simply runs out of track. Narrowing the
+     * concrete to what fits is what lets it close -- and the metre of margin
+     * is what stops it closing on a knife edge, where the last plate is a
+     * hairline and the ground beside the circuit shows through.
+     *
+     * pitApronWidths ramps the drawn concrete down to this same figure over
+     * exactly the frames this walk produces, so what is measured here is the
+     * width the ribbon is really drawn at.
+     */
+    const tip = Math.max(0, Math.min(apron, roadHalf - laneReach - 1));
+    if (tip < apronTip) apronTip = tip;
+    let over = Math.abs(lateral) + laneReach + tip - roadHalf;
     let last: Frame = end;
     for (let guard = 0; guard < m; guard++) {
       const next = k + stepIndex;
@@ -925,7 +1025,7 @@ export function pitLead(
         curvature: tk.curvature * dir,
         dist: end.dist + sign * u,
       };
-      const nowOver = off + reachOut - half;
+      const nowOver = off + laneReach + tip - half;
       if (nowOver <= 0) {
         /* The wedge closes somewhere inside this step. Landing on the track's
            own cross section instead would overshoot it by most of a metre --
@@ -950,6 +1050,7 @@ export function pitLead(
     from: head.length,
     to: head.length + n - 1,
     length: pitFrames[n - 1].dist,
+    apronTip,
   };
 }
 

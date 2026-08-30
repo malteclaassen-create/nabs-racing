@@ -3,7 +3,8 @@ import type { BrushSettings, PathData, RoadSettings, SurfaceKey, TerrainSettings
 import type { Frame } from './spline';
 import { trackBounds } from './spline';
 import type { MaterialKey, MeshDef, SideProfile } from './road';
-import { runoffBankRise, shoulderDrop } from './road';
+import { EDGE_SINK, PIT_APRON_DROP, runoffBankRise, shoulderDrop } from './road';
+import { PIT_APRON } from './pitLink';
 
 /**
  * The terrain is a regular height grid. `heights` holds what the user sculpted.
@@ -50,6 +51,17 @@ export const GROUND_KINDS: ReadonlyArray<{
   { label: 'Asphalt', surface: 'ROAD', material: 'asphalt', name: '1ROAD_terrain_asphalt' },
   { label: 'Concrete', surface: 'CONCRETE', material: 'concrete', name: '1CONCRETE_terrain_concrete' },
   { label: 'Gravel', surface: 'SAND', material: 'sand', name: '1SAND_terrain_gravel' },
+  /*
+   * Concrete again, and the same concrete to look at -- but exported with the
+   * PIT surface, so the game turns the speed limiter on over it.
+   *
+   * The pair is the point. Widening a pit lane means painting concrete beside
+   * it, and plain concrete is not a pit lane as far as Assetto Corsa is
+   * concerned: the car drives onto the piece you just added and the limiter
+   * goes off. There is nothing about the look of concrete that decides that,
+   * so the only way to say which you meant is to have both.
+   */
+  { label: 'Pit lane', surface: 'PIT', material: 'concrete', name: '1PIT_terrain_concrete' },
 ];
 
 /**
@@ -611,12 +623,20 @@ export function roadCorridor(
   };
 }
 
-export function pitCorridor(frames: Frame[]): Corridor {
-  const w = new Float32Array(frames.length).fill(2.5);
-  const none = new Float32Array(frames.length);
+export function pitCorridor(
+  frames: Frame[],
+  apron: number | Float32Array = PIT_APRON,
+): Corridor {
+  const n = frames.length;
+  // The tapered run where there is one: the ground follows the concrete that is
+  // really drawn, so it is not pulled down under an apron that has run out.
+  const w = typeof apron === 'number' ? new Float32Array(n).fill(apron) : apron;
+  let full = 0;
+  for (let i = 0; i < w.length; i++) if (w[i] > full) full = w[i];
+  const none = new Float32Array(n);
   // A pit lane is open: joining its ends would fence off the whole infield.
-  return { frames, kerbL: none, kerbR: none, shoulderL: w, shoulderR: w, drop: 0.05,
-    shoulderFull: 2.5, closed: false };
+  return { frames, kerbL: none, kerbR: none, shoulderL: w, shoulderR: w, drop: PIT_APRON_DROP,
+    shoulderFull: Math.max(1e-6, full), closed: false };
 }
 
 /**
@@ -779,8 +799,6 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
  * becomes the visible surface again.
  */
 const ROAD_SINK = 0.2;
-/** Remaining gap where the terrain takes over as the visible surface. */
-const EDGE_SINK = 0.04;
 /** Shortest distance the sink is allowed to ease out over. */
 const MIN_SINK_SPAN = 1.2;
 

@@ -614,6 +614,33 @@ export function runoffBankRise(rightY: number, across: number): number {
 }
 
 /**
+ * How far the concrete beside the pit lane falls across its own width.
+ *
+ * Enough to drain and far too little to feel, and it scales with the width the
+ * same way every other shoulder does, so widening the apron makes it flatter
+ * rather than steeper.
+ */
+export const PIT_APRON_DROP = 0.05;
+
+/**
+ * The gap the ground keeps under the outer edge of a road mesh.
+ *
+ * The road, its kerbs, its run off and the concrete beside the pit lane are
+ * meshes lying on the terrain, so the terrain is sunk underneath them: two
+ * coplanar surfaces leave the depth buffer to guess, and what that looks like
+ * is grass flickering through tarmac. Deep under the middle of the road, eased
+ * back to this much by the outer edge, where the ground becomes the surface
+ * you actually see.
+ *
+ * It lives here rather than in terrain.ts because BOTH sides need it. The
+ * ground stops this far below the mesh edge, and the mesh edge is therefore
+ * dropped by the same amount to come down and meet it -- otherwise every
+ * ribbon ends in a four centimetre lip standing along its outer edge, which on
+ * the concrete beside a pit lane is a step a car drives over.
+ */
+export const EDGE_SINK = 0.04;
+
+/**
  * How far the outer edge of a shoulder `w` metres wide sits below the road.
  *
  * The drop used to reach its full value once the shoulder was 2 m wide, which
@@ -1524,6 +1551,14 @@ export function sideProfile(
   pitFrames: Frame[] = [],
   /** Whether `frames` form a ring, so the clearance sweep wraps at the seam. */
   closed = false,
+  /**
+   * Width of the concrete beside the pit lane, which the run off keeps off:
+   * one width, or the tapered run pitApronWidths gives for `pitFrames`. It has
+   * to be the same figure the ribbon is actually drawn at, or the run off stops
+   * short of concrete that is not there and what shows between them is bare
+   * ground at the very edge of the racing line.
+   */
+  pitApron: number | Float32Array = PIT_APRON,
 ): SideProfile {
   const n = frames.length;
   const runoffL = new Float32Array(n);
@@ -1658,6 +1693,11 @@ export function sideProfile(
      * abreast of this cross section, at its nearest.
      */
     let nearLat = Infinity;
+    /* The concrete beside the cross section of the lane that is actually
+       nearest, not the widest the setting allows: the apron fades out across
+       the lead-out, and a clearance measured off the full width leaves the run
+       off stopping a metre short of concrete that ends before it. */
+    let nearApron = typeof pitApron === 'number' ? pitApron : 0;
     index.within(f.pos.x, f.pos.z, reach, (j) => {
       const qf = pitFrames[j];
       const qdx = qf.pos.x - f.pos.x;
@@ -1667,7 +1707,10 @@ export function sideProfile(
       const latQ = qdx * f.right.x + qdz * f.right.z;
       if (latQ < 0 !== side < 0) return;
       const nl = Math.abs(latQ) - (side < 0 ? qf.widthR : qf.widthL);
-      if (nl < nearLat) nearLat = nl;
+      if (nl < nearLat) {
+        nearLat = nl;
+        nearApron = typeof pitApron === 'number' ? pitApron : (pitApron[j] ?? 0);
+      }
     });
     // Nothing abreast (the lane only passes at a distance): the old estimate.
     if (!Number.isFinite(nearLat)) nearLat = Math.abs(lateral) - pitHalf;
@@ -1725,7 +1768,7 @@ export function sideProfile(
      * that is what the gap is for, and it is dropped outright below
      * MIN_WALL_ROOM either way.
      */
-    const tight = Math.max(0, nearLat - PIT_APRON - roadHalf - kerb);
+    const tight = Math.max(0, nearLat - nearApron - roadHalf - kerb);
     let surface = allowed > 0.01 ? allowed : Math.min(tight, road.pitGap);
     /* A sliver of bare ground less than a metre wide is not a paddock, it is
        a trench: the ground under it is pulled down below the road, and what
@@ -2307,13 +2350,26 @@ export function buildRoadMeshes(
       }
       const kindAt = (b: number, i: number): number => (table ? table[b * n + i] : -1);
 
-      /** Fill the two edge rings and the two u coordinates of one band. */
+      /*
+       * Fill the two edge rings and the two u coordinates of one band.
+       *
+       * The last band's outer ring comes down by EDGE_SINK, because that ring
+       * is where the run off stops and the ground takes over. The ground is
+       * deliberately held that far under every road mesh -- two coplanar
+       * surfaces leave the depth buffer to guess -- and at the outer edge the
+       * gap has nothing left to hide under: it stands there as a four
+       * centimetre lip running the length of the circuit. Bringing the edge
+       * down to meet the ground costs 4 cm over the width of a run off, which
+       * is a slope of two in a thousand, and removes the step.
+       */
       const layBand = (b: number) => {
         const t0 = b / bands;
         const t1 = (b + 1) / bands;
+        const last = b === bands - 1;
         for (let i = 0; i < n; i++) {
           bandI[i].copy(inner[i]).lerp(outer[i], t0);
           bandO[i].copy(inner[i]).lerp(outer[i], t1);
+          if (last && wide(i)) bandO[i].y -= EDGE_SINK;
           v[i] = fr[i].dist / 8;
           uA[i] = (width[i] * t0) / 8;
           uB[i] = (width[i] * t1) / 8;
@@ -2345,20 +2401,16 @@ export function buildRoadMeshes(
         const material: MaterialKey =
           road.runoffSurface === 'SAND' ? 'sand'
             : road.runoffSurface === 'CONCRETE' ? 'concrete' : 'grass';
-        for (let i = 0; i < n; i++) {
-          v[i] = fr[i].dist / 8;
-          uA[i] = width[i] / 8;
-        }
+        // Through the same one band, so the outer edge gets the same bevel
+        // whether or not the ground brush has anything to say about it.
+        layBand(0);
         emit(
           `1${road.runoffSurface}_runoff_${side === 'L' ? 'left' : 'right'}`,
           material,
           road.runoffSurface,
           (b) => {
             for (const [a, z] of runs(n, wide)) {
-              const from = Math.max(0, a - 1);
-              const to = Math.min(n - 1, z + 1);
-              if (side === 'L') b.addStrip(outer, inner, uA, zeros, v, from, to);
-              else b.addStrip(inner, outer, zeros, uA, v, from, to);
+              strip(b, Math.max(0, a - 1), Math.min(n - 1, z + 1));
             }
           },
         );
@@ -2859,13 +2911,25 @@ export function buildPitMeshes(
   laneTo = frames.length - 1,
   /** Arc length of the lane itself, so the limiter window keeps its meaning. */
   laneLength = frames.length ? frames[frames.length - 1].dist : 0,
+  /**
+   * Width of the concrete either side of the lane: one width, or the tapered
+   * run pitApronWidths gives for `frames`.
+   */
+  apronWidth: number | Float32Array = PIT_APRON,
 ): MeshDef[] {
   if (frames.length < 2) return [];
   const fr = expand(frames, closed);
   const n = fr.length;
   const out: MeshDef[] = [];
   const s = takeScratch(n);
-  const apron = PIT_APRON;
+  /* The widest the concrete ever gets, which is what the cross slope of the
+     shoulder is dialled in for: a stretch where it has tapered to half falls
+     half as far, so the taper flattens out rather than dropping off the end. */
+  let apron = 0;
+  if (typeof apronWidth === 'number') apron = Math.max(0, apronWidth);
+  else for (let i = 0; i < apronWidth.length; i++) apron = Math.max(apron, apronWidth[i]);
+  const apronAt = (i: number) =>
+    typeof apronWidth === 'number' ? apron : (apronWidth[i < apronWidth.length ? i : 0] ?? 0);
   // The seam frame a closed loop appends is a copy of frame 0.
   const bandAt = (a: Float32Array | undefined, i: number, fallback: number) =>
     (a && a.length > 0 ? a[i < a.length ? i : 0] : fallback);
@@ -2908,8 +2972,8 @@ export function buildPitMeshes(
    */
   for (let i = 0; i < n; i++) {
     const f = fr[i];
-    let lo = bandAt(clip?.lo, i, -(f.widthL + apron));
-    let hi = bandAt(clip?.hi, i, f.widthR + apron);
+    let lo = bandAt(clip?.lo, i, -(f.widthL + apronAt(i)));
+    let hi = bandAt(clip?.hi, i, f.widthR + apronAt(i));
     // The drawn lane never breaks, even if it has been dragged onto the
     // circuit: a gap in the middle of a pit lane is worse than a hairline of
     // it under the tarmac. The lead-out is exempt -- running out is its job.
@@ -2941,11 +3005,19 @@ export function buildPitMeshes(
     lineR[i].copy(f.pos).addScaledVector(f.right, laneHi - wR);
     rightE[i].copy(f.pos).addScaledVector(f.right, laneHi);
     outR[i].copy(f.pos).addScaledVector(f.right, hi);
-    // The shoulder falls away by 5 cm over its full width. Held as a slope
-    // rather than a fixed drop, or a shoulder tapering to nothing at the
-    // junction would end in a 5 cm cliff standing along the tarmac edge.
-    outL[i].y -= 0.05 * (awL / apron);
-    outR[i].y -= 0.05 * (awR / apron);
+    /* The shoulder falls away over its full width. Held as a slope rather than
+       a fixed drop, or a shoulder tapering to nothing at the junction would end
+       in a cliff standing along the tarmac edge.
+   
+       And the last of it goes down by EDGE_SINK as well, so the concrete meets
+       the ground instead of standing on it. The terrain is deliberately kept
+       that far under every road mesh; at the outer edge, where the mesh stops
+       and the ground takes over, the gap has nothing left to hide behind and
+       stands there as a step -- which beside a pit lane is a step a car drives
+       over on its way into the box. Bringing the edge down to the ground is the
+       same bevel a real concrete apron has where it meets what is beside it. */
+    outL[i].y -= shoulderDrop(PIT_APRON_DROP, awL, apron) + EDGE_SINK * (awL > THIN ? 1 : 0);
+    outR[i].y -= shoulderDrop(PIT_APRON_DROP, awR, apron) + EDGE_SINK * (awR > THIN ? 1 : 0);
     s.awL[i] = awL;
     s.awR[i] = awR;
     s.uB[i] = (laneHi - wR - (laneLo + wL)) / road.uvWidth;
@@ -3049,20 +3121,62 @@ export function buildPitMeshes(
      drawn: a 0.22 m wedge of bare ground at the junction, on the demo circuit
      at pit s=228. Reaching onto the empty cross section makes that plate a
      triangle that closes on the point where the concrete runs out. */
-  emit('1CONCRETE_pit_apron_left', 'concrete', 'CONCRETE', (b) => {
-    for (let i = 0; i < n; i++) s.uA[i] = s.awL[i] / 8;
-    for (const span of runs(n, (i) => s.awL[i] > THIN)) {
-      const [a, z] = toPoint(span);
-      b.addStrip(outL, left, s.zeros, s.uA, s.v, a, z);
-    }
-  });
-  emit('1CONCRETE_pit_apron_right', 'concrete', 'CONCRETE', (b) => {
-    for (let i = 0; i < n; i++) s.uA[i] = s.awR[i] / 8;
-    for (const span of runs(n, (i) => s.awR[i] > THIN)) {
-      const [a, z] = toPoint(span);
-      b.addStrip(rightE, outR, s.zeros, s.uA, s.v, a, z);
-    }
-  });
+  /*
+   * The concrete is PIT LANE where the lane is.
+   *
+   * It used to be CONCRETE from end to end, and concrete is not a pit lane as
+   * far as the game is concerned: a car with two wheels on it -- which is every
+   * car pulling into a box, because that is where the box is -- had no speed
+   * limiter. The strip is the working lane of a real pit complex, not a verge,
+   * so inside the limiter window it carries the same surface the tarmac does
+   * and only outside it, along the entry and the exit, is it plain concrete.
+   *
+   * Split with reachOver rather than toPoint, for the same reason the tarmac
+   * is: two ranges that merely abut leave the plate between them belonging to
+   * neither, and that hole would sit exactly on the limiter line.
+   */
+  const apronSide = (
+    side: 'left' | 'right',
+    width: number[],
+    /** The two edges of the strip, in the winding that faces up. */
+    edgeA: THREE.Vector3[],
+    edgeB: THREE.Vector3[],
+  ) => {
+    const has = (i: number) => width[i] > THIN;
+    /*
+     * Every run reaches one cross section FORWARD, and back only into one with
+     * no concrete on it at all.
+     *
+     * Forward covers both things that can be on the other side of the end of a
+     * run. Where the concrete carries on but the surface changes -- the limiter
+     * line -- the plate between the two belongs to the run before it, and
+     * without that it belongs to neither and is simply not drawn: a hole across
+     * the apron, exactly where the limiter comes on. Where the concrete stops
+     * instead, the same reach turns that last plate into the triangle closing
+     * on a point that the taper wants. Backwards there is nothing to collect:
+     * the run before has already drawn the plate, and reaching back would draw
+     * it twice -- two drivable surfaces in the same place.
+     */
+    const spread = (span: [number, number]): [number, number] => [
+      span[0] > 0 && !has(span[0] - 1) ? span[0] - 1 : span[0],
+      span[1] < n - 1 ? span[1] + 1 : span[1],
+    ];
+    const lay = (b: StripBuilder, a: number, z: number) =>
+      b.addStrip(edgeA, edgeB, s.zeros, s.uA, s.v, a, z);
+    const both = (name: string, surface: SurfaceKey, keep: (i: number) => boolean) => {
+      emit(name, 'concrete', surface, (b) => {
+        for (let i = 0; i < n; i++) s.uA[i] = width[i] / 8;
+        for (const span of runs(n, (i) => has(i) && keep(i))) {
+          const [a, z] = spread(span);
+          lay(b, a, z);
+        }
+      });
+    };
+    both(`1PIT_apron_${side}`, 'PIT', inLimit);
+    both(`1CONCRETE_pit_apron_${side}`, 'CONCRETE', (i) => !inLimit(i));
+  };
+  apronSide('left', s.awL, outL, left);
+  apronSide('right', s.awR, rightE, outR);
 
   /* The line itself, tagged the same way the surface beside it is: pit lane
      inside the limiter window, plain road outside it. One 14 cm strip of the

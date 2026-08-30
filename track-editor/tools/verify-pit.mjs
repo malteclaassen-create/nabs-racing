@@ -17,7 +17,7 @@ import * as THREE from 'three';
 
 import { defaultProject } from '../src/store/store.ts';
 import { computeFrames } from '../src/core/spline.ts';
-import { attachPitLane, mergePitFrames, pitLaneSide, pitLead, pitRoadClip, pitTrackLines } from '../src/core/pitLink.ts';
+import { attachPitLane, mergePitFrames, pitApronWidths, pitLaneSide, pitLead, pitRoadClip, pitTrackLines } from '../src/core/pitLink.ts';
 import { buildRoadMeshes, buildPitMeshes, sideProfile } from '../src/core/road.ts';
 import { surfaceOfMesh } from '../src/ac/acScene.ts';
 
@@ -42,22 +42,26 @@ function build(project) {
   const merge = mergePitFrames(pitRaw, trackFrames, project.road.pitGap);
   const pitFrames = merge.frames;
   // The meshes are drawn from the lane plus its lead-out at either end.
-  const lead = pitLead(pitRaw, trackFrames, project.pit.closed, project.track.closed);
+  const apron = project.pitCfg.apron;
+  const lead = pitLead(pitRaw, trackFrames, project.pit.closed, project.track.closed, apron);
   const drawFrames = lead.frames === pitRaw
     ? pitFrames
     : mergePitFrames(lead.frames, trackFrames, project.road.pitGap).frames;
   // The profile sees the DRAWN ribbon, wedges included, exactly as the app
   // does: the run off has to clear the wedge too, or it runs across it.
-  const profile = sideProfile(trackFrames, project.road, drawFrames, project.track.closed);
+  // Full width along the lane, faded out over the lead-out: the same widths
+  // the app measures everything against.
+  const apronW = pitApronWidths(drawFrames.length, lead, apron);
+  const profile = sideProfile(trackFrames, project.road, drawFrames, project.track.closed, apronW);
   const side = pitLaneSide(pitFrames, trackFrames);
-  const clip = pitRoadClip(drawFrames, trackFrames, project.track.closed, profile.kerbWL, profile.kerbWR, undefined, { from: lead.from, to: lead.to });
-  const trackLines = pitTrackLines(lead, clip, trackFrames, project.track.closed);
+  const clip = pitRoadClip(drawFrames, trackFrames, project.track.closed, profile.kerbWL, profile.kerbWR, apronW, { from: lead.from, to: lead.to });
+  const trackLines = pitTrackLines(lead, clip, trackFrames, project.track.closed, apron);
 
   // Cloned: derived recycles mesh buffers into the next build, so holding on
   // to the originals across two builds compares a thing with itself.
   const defs = [
     ...buildRoadMeshes(trackFrames, project.track.closed, project.road, pitFrames, undefined, profile, trackLines),
-    ...buildPitMeshes(drawFrames, project.pit.closed, project.road, undefined, clip, project.pitCfg.limitStart, project.pitCfg.limitEnd, lead.from, lead.to, lead.length),
+    ...buildPitMeshes(drawFrames, project.pit.closed, project.road, undefined, clip, project.pitCfg.limitStart, project.pitCfg.limitEnd, lead.from, lead.to, lead.length, apronW),
   ].map((d) => ({
     name: d.name,
     surface: d.surface,
@@ -279,11 +283,15 @@ function runCase(label, project, allowance = 0) {
   // left, so its outer side is its right. That side keeps its apron the whole
   // way; the road-facing one tapers away on purpose.
   const out = side > 0 ? 1 : -1;
+  /* Either concrete: the apron carries the PIT surface inside the limiter
+     window and CONCRETE outside it, so a car with two wheels on it keeps its
+     limiter. Both are the same strip and either one means it is there. */
+  const isApron = (h) => h.name.includes('apron');
   let apronGaps = 0;
   let laneGaps = 0;
   for (let i = 0; i < pitFrames.length - 1; i++) {
     const [ax, az] = mid(i, 1.0, out);
-    if (!probe(defs, ax, az).some((h) => h.surface === 'CONCRETE')) apronGaps += 1;
+    if (!probe(defs, ax, az).some(isApron)) apronGaps += 1;
     const a = pitFrames[i];
     const b = pitFrames[i + 1];
     const lx = (a.pos.x + b.pos.x) / 2;
@@ -589,6 +597,71 @@ const shoved = defaultProject();
   shoved.pitPlaced = true;
 }
 runCase('Lane dragged 2 m towards the track', shoved);
+
+/*
+ * The working lane: the concrete either side of the tarmac.
+ *
+ * On a real circuit this is where the cars stop and the work happens, and it is
+ * wider than the lane itself. Two things had to be true of it and neither was:
+ * that there is enough of it to stand a car on, and that the game counts it as
+ * pit lane -- concrete is not, so every car pulling into a box, which is every
+ * car, had two wheels somewhere the speed limiter does not apply.
+ */
+console.log('\nThe concrete beside the lane');
+{
+  const wide = defaultProject();
+  const { defs, drawFrames, clip, lead, side } = build(wide);
+  const cfg = wide.pitCfg;
+
+  /* Beside the middle of the lane, where the concrete is at full width and the
+     limiter is on. Probed a metre outside the lane's own edge, on the side the
+     boxes are on. */
+  const at = (i, off) => {
+    const f = drawFrames[i];
+    const u = (side > 0 ? 1 : -1) * ((side > 0 ? f.widthR : f.widthL) + off);
+    return [f.pos.x + f.right.x * u, f.pos.z + f.right.z * u];
+  };
+  const middle = Math.round((lead.from + lead.to) / 2);
+  const [mx, mz] = at(middle, 1);
+  const hits = probe(defs, mx, mz);
+  check('the concrete beside the lane is pit lane, not just concrete',
+    hits.some((h) => h.surface === 'PIT' && h.name.includes('apron')),
+    hits.map((h) => `${h.name}:${h.surface}`).join(',') || 'nothing there');
+
+  /* And it reaches far enough out to park a car on. The box sits boxOffset from
+     the centre and a car is about two metres wide, so the concrete has to carry
+     at least half a metre past the far side of it. */
+  const need = cfg.boxOffset + 1 + 0.5;
+  const reach = Math.abs(side > 0 ? clip.hi[middle] : clip.lo[middle]);
+  check('and reaches past the far side of a car standing in its box',
+    reach >= need, `${reach.toFixed(1)} m of ribbon against ${need.toFixed(1)} m needed`);
+
+  /* Outside the limiter window it is plain concrete again: the entry ramp and
+     the exit are not pit lane, and nothing there should turn a limiter on. */
+  const early = drawFrames.findIndex((f, i) => i > lead.from && f.dist - drawFrames[lead.from].dist > 1
+    && f.dist - drawFrames[lead.from].dist < cfg.limitStart - 2);
+  if (early > 0) {
+    const [ex, ez] = at(early, 1);
+    const before = probe(defs, ex, ez);
+    check('and before the limiter line it is concrete, the same as the tarmac there',
+      before.length > 0 && before.every((h) => h.surface !== 'PIT'),
+      before.map((h) => `${h.name}:${h.surface}`).join(','));
+  }
+
+  /* Setting it wider really does make the pit complex wider, rather than being
+     a number that changes nothing. */
+  const narrow = defaultProject();
+  narrow.pitCfg = { ...narrow.pitCfg, apron: 2 };
+  const narrowBuild = build(narrow);
+  const wideReach = Math.abs(side > 0 ? clip.hi[middle] : clip.lo[middle]);
+  const narrowReach = Math.abs(side > 0
+    ? narrowBuild.clip.hi[middle]
+    : narrowBuild.clip.lo[middle]);
+  check('and the setting is what decides how wide it is',
+    wideReach - narrowReach > (cfg.apron - narrow.pitCfg.apron) - 0.5,
+    `${wideReach.toFixed(1)} m at ${cfg.apron} m against ${narrowReach.toFixed(1)} m at 2 m`);
+}
+
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) failed.\n`);
 process.exit(failures === 0 ? 0 : 1);
