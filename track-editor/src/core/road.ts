@@ -1698,6 +1698,11 @@ export function sideProfile(
        the lead-out, and a clearance measured off the full width leaves the run
        off stopping a metre short of concrete that ends before it. */
     let nearApron = typeof pitApron === 'number' ? pitApron : 0;
+    /* How far the lane reaches on its FAR side, away from the circuit.
+       The near edge above says where the pit surface starts; this says whether
+       there is any of it left out here at all once the tarmac has taken its
+       share. See `clear` below, which is the only thing that reads it. */
+    let farLat = -Infinity;
     index.within(f.pos.x, f.pos.z, reach, (j) => {
       const qf = pitFrames[j];
       const qdx = qf.pos.x - f.pos.x;
@@ -1706,14 +1711,20 @@ export function sideProfile(
       if (Math.abs(alongQ) > 6) return;
       const latQ = qdx * f.right.x + qdz * f.right.z;
       if (latQ < 0 !== side < 0) return;
+      const apronQ = typeof pitApron === 'number' ? pitApron : (pitApron[j] ?? 0);
       const nl = Math.abs(latQ) - (side < 0 ? qf.widthR : qf.widthL);
       if (nl < nearLat) {
         nearLat = nl;
-        nearApron = typeof pitApron === 'number' ? pitApron : (pitApron[j] ?? 0);
+        nearApron = apronQ;
       }
+      const fl = Math.abs(latQ) + (side < 0 ? qf.widthL : qf.widthR) + apronQ;
+      if (fl > farLat) farLat = fl;
     });
     // Nothing abreast (the lane only passes at a distance): the old estimate.
     if (!Number.isFinite(nearLat)) nearLat = Math.abs(lateral) - pitHalf;
+    if (!Number.isFinite(farLat)) {
+      farLat = Math.abs(lateral) + (side < 0 ? pf.widthL : pf.widthR) + nearApron;
+    }
 
     /*
      * Free space between the road centre and the near edge of the pit lane --
@@ -1771,13 +1782,39 @@ export function sideProfile(
      * Nothing to clear where the ribbon has gone under the tarmac.
      *
      * At a junction the lane runs onto the circuit, and pitRoadClip takes away
-     * every part of it that lands there -- so at those cross sections there is
-     * no pit surface outboard of the tarmac at all, and a run off narrowed to
-     * keep off it is keeping off nothing. What that leaves instead is bare
-     * ground straight off the racing line, with the concrete it was avoiding
-     * clipped away metres inside the tarmac.
+     * every part of it that lands there -- so where the whole ribbon has gone
+     * under, a run off narrowed to keep off it is keeping off nothing. What
+     * that leaves instead is bare ground straight off the racing line, with
+     * the concrete it was avoiding clipped away metres inside the tarmac.
+     *
+     * Which is decided on the lane's FAR edge, not its near one. Measured on
+     * the near edge this read "gone under" from the moment the lane's own
+     * centre line crossed the tarmac, which is most of the entry and the exit
+     * -- and at those cross sections the clip does not empty the band, it
+     * moves it: what survives is the wedge lying BESIDE the track, running out
+     * to twenty metres and more. Switching the clearance off there let the run
+     * off keep its full width and draw straight across that wedge, two
+     * surfaces in the same place along the whole of both junctions, which is
+     * the same fault as concrete under a run off and looks the same in the
+     * viewport: the pit lane torn along its edges by the ground beside the
+     * track. Measured on the demo oval, 32 cross sections with 12 m of overlap
+     * apiece; on a generated circuit, 26.
+     *
+     * The far edge says what the clip really leaves. Reaching a good way past
+     * the circuit, there is a wedge to keep off, and the rules below narrow
+     * the run off to nothing against it -- which is right, because the wedge
+     * is what covers that ground instead. Inboard and the ribbon is genuinely
+     * gone, and the run off carries on over the top of where it used to be.
+     *
+     * A metre, not nothing, because the wedge tapers out rather than stopping.
+     * On its last cross sections it is a few centimetres wide, and a run off
+     * pulled to nothing against THAT covers nothing: measured on a lane
+     * dragged in by hand, 2 cm of wedge and 80 cm of bare ground behind it,
+     * straight off the racing line, which is the trench again. Under a metre
+     * the wedge is worth less than the surface is, so the run off runs on over
+     * it -- the same trade, and the same metre, as the slot rule below.
      */
-    const clear = nearEdge > roadHalf + kerb;
+    const clear = farLat - roadHalf - kerb >= 1;
     /* Where there is no room for the gap there is no room for a gap at all.
      *
      * The run off is meant to stop short of the lane, and it does. But once
