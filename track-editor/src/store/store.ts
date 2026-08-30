@@ -42,7 +42,7 @@ import {
 import { makeNode, type Frame } from '../core/spline';
 import { STYLE_HEIGHT } from '../core/kerbs';
 import { F1_GRID_BOX } from '../core/gridBoxes';
-import { generateCircuit, rollingHeights, type CircuitSize } from '../core/generate';
+import { generateCircuit, rollingHeights, PIT_APRON_WIDTH, PIT_BOX_OFFSET, PIT_OFFSET, type CircuitSize } from '../core/generate';
 import { DEFAULT_DRAW_CFG, drawHeightOf, drawWidths, type DrawCfg, type DrawMode } from '../core/draw';
 import { layBarrierRun } from '../core/barrierRun';
 import {
@@ -116,7 +116,11 @@ function pitNodes(): TrackNode[] {
   const count = 7;
   const from = -0.62;
   const to = 0.62;
-  const offset = 24;
+  /* The same distance out a generated circuit puts its lane, and for the same
+     reason: an 18 m pit complex needs the room, and a lane any closer squeezes
+     the circuit's own run off out between the two. It was 24, which was enough
+     when the concrete beside the lane was a fixed 2.5 m and is not now. */
+  const offset = PIT_OFFSET;
   for (let i = 0; i < count; i++) {
     const a = from + ((to - from) * i) / (count - 1);
     const p = ovalPoint(a);
@@ -208,13 +212,13 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
        * fast lane with a working lane either side of it, which is what these
        * three numbers together now come to.
        */
-      apron: 5,
+      apron: PIT_APRON_WIDTH,
       boxCount: 12,
       boxSpacing: 9,
       boxSide: 1,
       // Out of the fast lane and into the working lane, where a car being
       // worked on belongs and where there is now room for one.
-      boxOffset: 7,
+      boxOffset: PIT_BOX_OFFSET,
       startDist: 25,
       // On as soon as the lane has left the tarmac, off just before it
       // rejoins -- the same place a real limiter line sits.

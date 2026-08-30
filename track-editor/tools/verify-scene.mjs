@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 
 import { defaultProject, emptyProject, generatedProject, useEditor } from '../src/store/store.ts';
-import { generateCircuit } from '../src/core/generate.ts';
+import { generateCircuit, PIT_OFFSET } from '../src/core/generate.ts';
 import { computeFrames, pathLength, frameAtFraction, segmentStartId, samplesFor } from '../src/core/spline.ts';
 import {
   buildRoadMeshes,
@@ -1377,16 +1377,35 @@ console.log('\nPit lane clearance');
   const side = pitLaneSide(pitFrames, frames);
   check('pit lane side is detected', side === 1 || side === -1, `got ${side}`);
 
-  // Frames where the pit lane really is close by.
+  /* Frames where the pit lane really is close by -- measured off where the
+     layout actually puts its lane rather than a number typed in here, which
+     silently emptied this whole section the moment the lane moved out to make
+     room for a wider pit complex. */
   const near = [];
   for (let i = 0; i < frames.length; i++) {
     let best = Infinity;
     for (const pf of pitFrames) best = Math.min(best, frames[i].pos.distanceTo(pf.pos));
-    if (best < 30) near.push(i);
+    if (best < PIT_OFFSET + 6) near.push(i);
   }
   check('the default layout has the pit lane running alongside', near.length > 5, `${near.length} frames`);
 
-  const withPit = sideProfile(frames, p.road, pitFrames);
+  /*
+   * The clearance measured on a lane that actually needs it.
+   *
+   * The default layout puts its lane far enough out that the circuit's full run
+   * off fits beside it -- which is the point of where it sits, and which means
+   * the clearance rule has nothing to pull back there. So the rule is tested
+   * against a lane dragged six metres in towards the track, which is what
+   * somebody doing it by hand in the editor produces: close enough that the run
+   * off has to give way, far enough that there is still room for the pit wall.
+   */
+  const trackIndex = new PointIndex(frames.map((f) => f.pos), 40);
+  const tightPitFrames = pitFrames.map((f) => {
+    const ti = trackIndex.nearest(f.pos.x, f.pos.z, 200);
+    const towards = frames[ti < 0 ? 0 : ti].pos.clone().sub(f.pos).setY(0).normalize();
+    return { ...f, pos: f.pos.clone().addScaledVector(towards, 6) };
+  });
+  const withPit = sideProfile(frames, p.road, tightPitFrames);
   const withoutPit = sideProfile(frames, p.road, []);
 
   const sideKey = side < 0 ? 'runoffL' : 'runoffR';
