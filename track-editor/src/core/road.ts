@@ -164,6 +164,11 @@ const scratch = {
   /* The two rings of a single fold of the guardrail, refilled per fold. */
   wallLo: [] as THREE.Vector3[],
   wallHi: [] as THREE.Vector3[],
+  /* The inner and outer edge of one band across the run off, refilled per band.
+     The run off is split across its width so the ground brush can change what
+     it is made of part way over, not only from one cross section to the next. */
+  bandI: [] as THREE.Vector3[],
+  bandO: [] as THREE.Vector3[],
   v: [] as number[],
   zeros: [] as number[],
   ones: [] as number[],
@@ -191,7 +196,7 @@ const scratch = {
 
 function takeScratch(n: number) {
   if (scratch.size < n) {
-    for (const key of ['left', 'right', 'top', 'edgeL', 'edgeR', 'apronEL', 'apronER', 'outerL', 'outerR', 'lineL', 'lineR', 'cutA', 'cutB', 'wallBase', 'wallMid', 'wallTip', 'gateBase', 'gateMid', 'gateTop', 'gateTip', 'gateTmp', 'wallLo', 'wallHi'] as const) {
+    for (const key of ['left', 'right', 'top', 'edgeL', 'edgeR', 'apronEL', 'apronER', 'outerL', 'outerR', 'lineL', 'lineR', 'cutA', 'cutB', 'wallBase', 'wallMid', 'wallTip', 'gateBase', 'gateMid', 'gateTop', 'gateTip', 'gateTmp', 'wallLo', 'wallHi', 'bandI', 'bandO'] as const) {
       const arr = scratch[key];
       while (arr.length < n) arr.push(new THREE.Vector3());
     }
@@ -1927,6 +1932,22 @@ export function computeEdges(fr: Frame[], road: RoadSettings, profile: SideProfi
 }
 
 /**
+ * What the ground brush has painted where the run off is, so the strip between
+ * the circuit and the barrier can be made of it.
+ *
+ * Handed in as a lookup rather than the paint field itself, because the field
+ * lives in terrain.ts and terrain.ts already reads this module: the shape of
+ * the run off is what the ground is blended up to meet. A callback keeps the
+ * dependency one way round.
+ */
+export interface RunoffGround {
+  /** The materials the run off may be built from, by index. */
+  kinds: ReadonlyArray<{ surface: SurfaceKey; material: MaterialKey }>;
+  /** Which of them the ground is at a point, or -1 where nobody has painted. */
+  at: (x: number, z: number) => number;
+}
+
+/**
  * Build every mesh of the main road corridor.
  *
  * Mesh names follow the AC convention: a leading digit that the engine skips,
@@ -1945,6 +1966,8 @@ export function buildRoadMeshes(
    * the pits has to stay behind, and its mirror image at the entry.
    */
   pitLines: PitTrackLine[] = [],
+  /** The ground brush's say over the run off. Undefined leaves it one material. */
+  ground?: RunoffGround,
 ): MeshDef[] {
   if (frames.length < 2) return [];
   const fr = expand(frames, closed);
@@ -1970,9 +1993,6 @@ export function buildRoadMeshes(
   const uA = scratch.uA;
   const uB = scratch.uB;
   for (let i = 0; i < n; i++) v[i] = fr[i].dist / road.uvLength;
-
-  const runoffMaterial: MaterialKey =
-    road.runoffSurface === 'SAND' ? 'sand' : road.runoffSurface === 'CONCRETE' ? 'concrete' : 'grass';
 
   const emit = (
     name: string,
@@ -2229,37 +2249,155 @@ export function buildRoadMeshes(
   }
 
   /* --- run off -------------------------------------------------------- */
-  // Built in runs so a stretch where the run off is squeezed to nothing, next
-  // to the pit lane for instance, produces no degenerate triangles at all.
-  for (const side of ['L', 'R'] as const) {
-    const width = side === 'L' ? profile.runoffL : profile.runoffR;
-    const inner = side === 'L' ? e.apronEL : e.apronER;
-    const outer = side === 'L' ? e.outerL : e.outerR;
+  /*
+   * The strip between the edge of the circuit and the barrier.
+   *
+   * Built in runs so a stretch where the run off is squeezed to nothing, next
+   * to the pit lane for instance, produces no degenerate triangles at all.
+   *
+   * And built in BANDS across when the ground brush has a say, because half of
+   * what this strip is on a real circuit changes across it rather than along
+   * it: gravel at the outside of the corner with a metre of grass behind it,
+   * tarmac at the exit fading to grass at the barrier. One material per cross
+   * section could not draw either. The bands are a few metres wide, which is
+   * about what the paint itself can resolve, and every band shares its edge
+   * rings with its neighbours so the strip stays one continuous surface.
+   */
+  {
+    let maxRunoff = 0;
     for (let i = 0; i < n; i++) {
-      v[i] = fr[i].dist / 8;
-      uA[i] = width[i] / 8;
+      maxRunoff = Math.max(maxRunoff, profile.runoffL[i], profile.runoffR[i]);
     }
-    emit(
-      `1${road.runoffSurface}_runoff_${side === 'L' ? 'left' : 'right'}`,
-      runoffMaterial,
-      road.runoffSurface,
-      (b) => {
-        /* One cross section past the last one with any width. Beside the pit
-           lane the run off is squeezed to nothing, and a run that stops on its
-           last wide cross section leaves the plate between that one and the
-           empty one next to it belonging to nobody -- so it is not drawn, and
-           what shows instead is bare ground at the very edge of the tarmac.
-           Measured on the demo circuit: 2.6 m of it, straight off the racing
-           surface, at both pit junctions. Reaching onto the empty cross
-           section makes that plate the taper it was always meant to be. */
-        for (const [a, z] of runs(n, (i) => width[i] > 0.05)) {
-          const from = Math.max(0, a - 1);
-          const to = Math.min(n - 1, z + 1);
-          if (side === 'L') b.addStrip(outer, inner, uA, zeros, v, from, to);
-          else b.addStrip(inner, outer, zeros, uA, v, from, to);
+    const bands = ground ? Math.max(1, Math.min(6, Math.round(maxRunoff / 4))) : 1;
+    // The material the run off falls back to: what the road settings say, for
+    // every band of every cross section the brush has never been over.
+    // Every run off surface is also a ground material, so this always finds
+    // one; grass is the safe answer if a future one ever does not.
+    const fallback = ground
+      ? Math.max(0, ground.kinds.findIndex((k) => k.surface === road.runoffSurface))
+      : -1;
+    const bandI = scratch.bandI;
+    const bandO = scratch.bandO;
+
+    for (const side of ['L', 'R'] as const) {
+      const width = side === 'L' ? profile.runoffL : profile.runoffR;
+      const inner = side === 'L' ? e.apronEL : e.apronER;
+      const outer = side === 'L' ? e.outerL : e.outerR;
+      const wide = (i: number) => width[i] > 0.05;
+
+      /*
+       * Which material each band is made of at each cross section, worked out
+       * once. It is then read by the run finder once per material as well as by
+       * the pass that decides which materials turn up at all, and the road is
+       * rebuilt on every frame of a drag: asking the paint field again each
+       * time is a hundred thousand lookups a frame for an answer that cannot
+       * have changed since the top of the function.
+       */
+      const table = ground ? new Int8Array(bands * n) : null;
+      if (ground && table) {
+        for (let b = 0; b < bands; b++) {
+          const t = (b + 0.5) / bands;
+          for (let i = 0; i < n; i++) {
+            const x = inner[i].x + (outer[i].x - inner[i].x) * t;
+            const z = inner[i].z + (outer[i].z - inner[i].z) * t;
+            const k = ground.at(x, z);
+            table[b * n + i] = k < 0 ? fallback : k;
+          }
         }
-      },
-    );
+      }
+      const kindAt = (b: number, i: number): number => (table ? table[b * n + i] : -1);
+
+      /** Fill the two edge rings and the two u coordinates of one band. */
+      const layBand = (b: number) => {
+        const t0 = b / bands;
+        const t1 = (b + 1) / bands;
+        for (let i = 0; i < n; i++) {
+          bandI[i].copy(inner[i]).lerp(outer[i], t0);
+          bandO[i].copy(inner[i]).lerp(outer[i], t1);
+          v[i] = fr[i].dist / 8;
+          uA[i] = (width[i] * t0) / 8;
+          uB[i] = (width[i] * t1) / 8;
+        }
+      };
+
+      /*
+       * One stretch of one band, as cross sections [from, to].
+       *
+       * Two cross sections in a row can be made of different things, and the
+       * plate BETWEEN them belongs to the one before: every run therefore
+       * reaches one section forward, and only the last of them stops short.
+       * Without that the transition from gravel to grass is a gap you can see
+       * the sky through.
+       *
+       * The same reach backwards, but only into a cross section with no run
+       * off at all. Beside the pit lane the strip is squeezed to nothing, and a
+       * run that stopped on its last wide section left the plate between that
+       * one and the empty one next to it belonging to nobody -- measured on the
+       * demo circuit as 2.6 m of bare ground straight off the racing surface,
+       * at both pit junctions.
+       */
+      const strip = (b: StripBuilder, from: number, to: number) => {
+        if (side === 'L') b.addStrip(bandO, bandI, uB, uA, v, from, to);
+        else b.addStrip(bandI, bandO, uA, uB, v, from, to);
+      };
+
+      if (!ground) {
+        const material: MaterialKey =
+          road.runoffSurface === 'SAND' ? 'sand'
+            : road.runoffSurface === 'CONCRETE' ? 'concrete' : 'grass';
+        for (let i = 0; i < n; i++) {
+          v[i] = fr[i].dist / 8;
+          uA[i] = width[i] / 8;
+        }
+        emit(
+          `1${road.runoffSurface}_runoff_${side === 'L' ? 'left' : 'right'}`,
+          material,
+          road.runoffSurface,
+          (b) => {
+            for (const [a, z] of runs(n, wide)) {
+              const from = Math.max(0, a - 1);
+              const to = Math.min(n - 1, z + 1);
+              if (side === 'L') b.addStrip(outer, inner, uA, zeros, v, from, to);
+              else b.addStrip(inner, outer, zeros, uA, v, from, to);
+            }
+          },
+        );
+        continue;
+      }
+
+      // Which materials actually turn up, so nothing is built for the three
+      // the circuit does not use.
+      const used = new Set<number>();
+      for (let b = 0; b < bands; b++) {
+        for (let i = 0; i < n; i++) if (wide(i)) used.add(kindAt(b, i));
+      }
+      used.delete(-1);
+
+      for (const k of used) {
+        const kind = ground.kinds[k];
+        if (!kind) continue;
+        emit(
+          `1${kind.surface}_runoff_${side === 'L' ? 'left' : 'right'}`,
+          kind.material,
+          kind.surface,
+          (sb) => {
+            for (let b = 0; b < bands; b++) {
+              let laid = false;
+              for (const [a, z] of runs(n, (i) => wide(i) && kindAt(b, i) === k)) {
+                if (!laid) {
+                  layBand(b);
+                  laid = true;
+                }
+                const from = a > 0 && !wide(a - 1) ? a - 1 : a;
+                const to = Math.min(n - 1, z + 1);
+                strip(sb, from, to);
+              }
+            }
+          },
+          n * 2 * bands,
+        );
+      }
+    }
   }
 
   /* --- barriers ------------------------------------------------------- */

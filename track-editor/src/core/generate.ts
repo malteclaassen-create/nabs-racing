@@ -1119,6 +1119,7 @@ export function generateCircuit(
     blend: 40,
     heights: createHeights(res, 0),
     paint: null,
+    paintEdge: null,
   };
   terrain.heights = groundFrom(terrain, hills);
 

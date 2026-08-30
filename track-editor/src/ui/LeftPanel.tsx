@@ -44,7 +44,7 @@ const TOOLS: Array<{
   { id: 'drawTrack', label: 'Track', icon: IconTrack, title: 'Click the ground to add track points (T)', modes: ['build'] },
   { id: 'drawPit', label: 'Pit lane', icon: IconPit, title: 'Click the ground to add pit lane points (P)', modes: ['build'] },
   { id: 'terrain', label: 'Sculpt', icon: IconTerrain, title: 'Raise, lower and smooth the ground (G)', modes: ['build'] },
-  { id: 'ground', label: 'Ground', icon: IconGround, title: 'Paint asphalt, concrete or gravel into the ground itself (M). Alt paints grass back.', modes: ['build'] },
+  { id: 'ground', label: 'Ground', icon: IconGround, title: 'Paint grass, asphalt, concrete or gravel into the ground itself, run off included (M). Alt rubs it out.', modes: ['build'] },
   { id: 'kerb', label: 'Kerbs', icon: IconKerb, title: 'Drag along the roadside to lay a kerb (K). Alt removes.' },
   { id: 'barrier', label: 'Barrier', icon: IconBarrier, title: 'Drag along the roadside to add or remove barriers (C)' },
   { id: 'place', label: 'Place', icon: IconPlace, title: 'Drop objects onto the ground (B)' },
@@ -421,6 +421,18 @@ export function RoadShapeSection() {
           onChange={(v) => set('runoffSurface', v)}
         />
       </Row>
+      <Row label="">
+        <Check
+          label="Ground brush can paint the run off"
+          checked={road.runoffPaint}
+          onChange={(v) => set('runoffPaint', v)}
+        />
+      </Row>
+      <p className="hint" style={{ marginTop: 0 }}>
+        The run off is part of the road, so the type above is what it is made of everywhere. With
+        this on, the <b>Ground tool (G)</b> overrules it wherever you have painted: gravel at the
+        outside of one corner, tarmac at the exit of the next, and the type above for the rest.
+      </p>
       <Row label="Barriers">
         <Check label="Barrier at the edge" checked={road.wall} onChange={(v) => set('wall', v)} />
       </Row>
@@ -1234,15 +1246,17 @@ function GroundOptions() {
       )}
 
       <p className="hint" style={{ marginTop: 0 }}>
-        <b>Alt</b> paints grass back in any of the three. Whatever you paint <i>replaces</i> the
-        grass rather than covering it: nothing sits on top, nothing shows through, and sculpting
-        moves it with the rest of the ground. Each material is exported as its own mesh, so a car
-        really does slide on the gravel.
+        <b>Alt</b> rubs the paint out in any of the three, which is not the same as painting grass:
+        grass is a material you lay over what was there, the eraser hands the patch back. Whatever
+        you paint <i>replaces</i> the ground rather than covering it: nothing sits on top, nothing
+        shows through, and sculpting moves it with the rest. Each material is exported as its own
+        mesh, so a car really does slide on the gravel.
       </p>
       <p className="hint" style={{ marginTop: 0 }}>
         The edge is cut where the material changes, every{' '}
-        {paintCellSize(terrain).toFixed(1)} m and diagonally as well as square, so it follows the
-        shape rather than stepping round it. A finer terrain resolution makes it finer still.
+        {paintCellSize(terrain).toFixed(1)} m, and it is cut where the shape really ran rather than
+        halfway between two samples, so a rectangle at any angle at all comes out with straight
+        sides instead of a staircase. A finer terrain resolution makes it finer still.
       </p>
 
       <Row label="">
@@ -1250,7 +1264,6 @@ function GroundOptions() {
           <button
             className="btn"
             style={{ flex: 1, justifyContent: 'center' }}
-            disabled={ground.kind === 0}
             onClick={() => {
               fillGround(ground.kind);
               setStatus(`The whole field is ${material.label.toLowerCase()}`);
@@ -1264,10 +1277,10 @@ function GroundOptions() {
             disabled={!painted}
             onClick={() => {
               clearGroundPaint();
-              setStatus('Ground is all grass again');
+              setStatus('Ground is untouched again');
             }}
           >
-            All back to grass
+            Rub it all out
           </button>
         </div>
       </Row>

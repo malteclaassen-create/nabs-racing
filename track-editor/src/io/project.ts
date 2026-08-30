@@ -31,14 +31,36 @@ export function serializeProject(p: Project): string {
    * "Continue last session" quietly disappearing on exactly the projects that
    * used the ground brush most.
    */
-  let paint: string | undefined;
-  if (p.terrain.paint) {
-    const z = zlibSync(p.terrain.paint, { level: 6 });
-    paint = arrayBufferToBase64(z.buffer.slice(z.byteOffset, z.byteOffset + z.byteLength) as ArrayBuffer);
-  }
+  const deflate = (bytes: Uint8Array): string => {
+    const z = zlibSync(bytes, { level: 6 });
+    return arrayBufferToBase64(z.buffer.slice(z.byteOffset, z.byteOffset + z.byteLength) as ArrayBuffer);
+  };
+  const paint = p.terrain.paint ? deflate(p.terrain.paint) : undefined;
+  /* The edge distances go the same way and for the same reason. They are one
+     byte per sample like the paint and nearly all of them are the same one --
+     "no boundary anywhere near" -- because a boundary is a line through a
+     field, so they deflate about as far. Without them a reloaded project keeps
+     its materials but loses the angle of every edge, which shows: the
+     rectangle that was straight on screen comes back as a staircase. */
+  const paintEdge = p.terrain.paintEdge
+    ? deflate(new Uint8Array(p.terrain.paintEdge.buffer, p.terrain.paintEdge.byteOffset, p.terrain.paintEdge.byteLength))
+    : undefined;
   const plain = {
     ...p,
-    terrain: { ...p.terrain, heights: undefined, heightsB64: heights, paint: undefined, paintZ: paint },
+    terrain: {
+      ...p.terrain,
+      heights: undefined,
+      heightsB64: heights,
+      paint: undefined,
+      paintZ: paint,
+      paintEdge: undefined,
+      paintEdgeZ: paintEdge,
+      /* Which encoding `paintZ` is in. Version 1 stored the material index
+         itself, so grass and untouched ground were the same byte; version 2
+         stores the index plus one and keeps zero for "nobody painted here",
+         which is what lets a patch of grass be laid over a gravel run off. */
+      paintV: 2,
+    },
   };
   return JSON.stringify(plain, null, 1);
 }
@@ -86,11 +108,33 @@ export function deserializeProject(json: string): Project {
         }
         bytes = wide;
       }
+      // A file written before painted grass could be told from untouched
+      // ground stores the material index itself. Shifted up by one it means the
+      // same picture in the encoding this build reads, and its grass -- which
+      // back then could only ever be "nothing painted here" -- stays zero.
+      if (terrainRaw.paintV !== 2) {
+        for (let i = 0; i < bytes.length; i++) if (bytes[i] !== 0) bytes[i] += 1;
+      }
       // Every byte has to name a material this build knows, or the mesh would
       // be cut for a material there is no entry for.
-      if (bytes.length === pw * pw && bytes.every((b) => b < GROUND_KINDS.length)) paint = bytes;
+      if (bytes.length === pw * pw && bytes.every((b) => b <= GROUND_KINDS.length)) paint = bytes;
     } catch {
       paint = null;
+    }
+  }
+
+  /* Where each boundary really ran, so a reloaded edge is as straight as the
+     shape that drew it. Optional in every direction: a file without it, or one
+     whose field does not match the grid, simply cuts at the midpoints. */
+  let paintEdge: Int8Array | null = null;
+  if (paint && typeof terrainRaw.paintEdgeZ === 'string') {
+    try {
+      const bytes = unzlibSync(new Uint8Array(base64ToArrayBuffer(terrainRaw.paintEdgeZ)));
+      if (bytes.length === paint.length) {
+        paintEdge = new Int8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      }
+    } catch {
+      paintEdge = null;
     }
   }
 
@@ -107,11 +151,13 @@ export function deserializeProject(json: string): Project {
     pit: normalizePath(raw.pit, base.pit),
     props: raw.props ?? [],
     assets: raw.assets ?? [],
-    terrain: { ...base.terrain, ...terrainRaw, heights, paint },
+    terrain: { ...base.terrain, ...terrainRaw, heights, paint, paintEdge },
     acImport: normalizeAcImport(raw.acImport),
   };
   delete (project.terrain as unknown as Record<string, unknown>).heightsB64;
   delete (project.terrain as unknown as Record<string, unknown>).paintZ;
+  delete (project.terrain as unknown as Record<string, unknown>).paintEdgeZ;
+  delete (project.terrain as unknown as Record<string, unknown>).paintV;
   return project;
 }
 
