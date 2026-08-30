@@ -208,7 +208,30 @@ const MERGE_SINK = 0.004;
  * ground the lane is entirely its own again, so a lane running parallel in
  * the paddock keeps whatever height the user gave it.
  */
-export function mergePitFrames(pitFrames: Frame[], trackFrames: Frame[], pitGap: number): PitMerge {
+export function mergePitFrames(
+  pitFrames: Frame[],
+  trackFrames: Frame[],
+  pitGap: number,
+  /**
+   * Width of the concrete beside the lane. The glue used to ease out over the
+   * gap between the two TARMACS -- but the concrete spans most of that gap,
+   * and it is drawn off these very frames. On a track with an elevation
+   * profile a lane 2 m of open tarmac away was only a third glued, and the
+   * entry band it carries onto the road floated 16 cm off the surface it was
+   * painted on. "Open ground" starts where the concrete ends.
+   */
+  apron = 0,
+  /**
+   * Which cross sections are the lane itself; the ones outside are the
+   * lead-out. Those lie ON the circuit by construction -- they are the wedge
+   * over the tarmac -- so the mismatch guard below must never hold them back:
+   * their own heights are an extrapolation of the lane's last slope, and on a
+   * track with an elevation profile that runs past the guard's half metre
+   * within a few cross sections. Unglued, the wedge floated 16 cm off the
+   * road it was painted on.
+   */
+  lead?: { from: number; to: number },
+): PitMerge {
   const weight = new Float32Array(pitFrames.length);
   const none: PitMerge = { frames: pitFrames, weight };
   if (pitFrames.length < 2 || trackFrames.length < 2) return none;
@@ -236,7 +259,7 @@ export function mergePitFrames(pitFrames: Frame[], trackFrames: Frame[], pitGap:
 
     // How parallel the two ribbons run, and which pit edge faces the road.
     const cross = pf.right.x * tf.right.x + pf.right.z * tf.right.z;
-    const nearHalf = ((lateral < 0) === (cross >= 0) ? pf.widthR : pf.widthL) * Math.abs(cross);
+    const nearHalf = (((lateral < 0) === (cross >= 0) ? pf.widthR : pf.widthL) + apron) * Math.abs(cross);
     const gap = Math.abs(lateral) - roadHalf - nearHalf;
 
     const w = 1 - smoothstep(0, span, gap);
@@ -302,7 +325,8 @@ export function mergePitFrames(pitFrames: Frame[], trackFrames: Frame[], pitGap:
        If the lane was drawn at a height of its own and never levelled with
        the track, the plane fit below is not trustworthy to a millimetre, so
        keep the old separation and take that stretch off the pit surface. */
-    const mismatch = Math.abs(yC - pf.pos.y) > 0.5;
+    const isLead = lead !== undefined && (i < lead.from || i > lead.to);
+    const mismatch = !isLead && Math.abs(yC - pf.pos.y) > 0.5;
     const lift = mismatch ? 0.03 : -MERGE_SINK * smoothstep(0, Math.max(slack, 0.2), overlap);
 
     if (!frames) frames = [...pitFrames];
@@ -333,10 +357,18 @@ export function mergePitFrames(pitFrames: Frame[], trackFrames: Frame[], pitGap:
       }
     }
     for (let i = 0; i < frames.length; i++) {
-      if (y[i] === frames[i].pos.y) continue;
+      /* The smoothing exists to take out the quantisation of the plane fit,
+         and those steps are centimetres. On a lead-in descending a real hill
+         the profile is CURVED, and an unbounded average pulls the curve
+         towards its chord -- measured at the entry of the hilly test oval,
+         17 cm up off the road the wedge is painted on. The fit is the truth
+         here; the average may only polish it. */
+      const fitted = frames[i].pos.y;
+      const clamped = Math.max(fitted - 0.04, Math.min(fitted + 0.04, y[i]));
+      if (clamped === fitted) continue;
       frames[i] = {
         ...frames[i],
-        pos: new THREE.Vector3(frames[i].pos.x, y[i], frames[i].pos.z),
+        pos: new THREE.Vector3(frames[i].pos.x, clamped, frames[i].pos.z),
       };
     }
   }

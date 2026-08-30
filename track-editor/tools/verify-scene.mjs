@@ -1258,7 +1258,12 @@ console.log('\nTerrain picking');
 
   check('the fast picker agrees on where the ground is', checked > 200, `only ${checked} comparable rays`);
   check('and it never disagrees about whether there is a hit', misses === 0, `${misses} mismatches`);
-  check('hit positions match the real geometry', worstGap < 0.6, `worst gap ${worstGap.toFixed(3)} m`);
+  /* The budget is a calibration of the marching picker against this test
+     landscape, not a physical bound: the worst gap is always a ray grazing
+     the steepest relief, and the corridor now digs slightly steeper relief
+     beside road edges on a climb (the climb bump, see terrain.ts). At 0.8 the
+     guard still catches a broken picker an order of magnitude out. */
+  check('hit positions match the real geometry', worstGap < 0.8, `worst gap ${worstGap.toFixed(3)} m`);
 
   // Rays that miss the terrain entirely must report nothing.
   raycaster.set(new THREE.Vector3(0, 500, 0), new THREE.Vector3(0, 1, 0));
@@ -4225,7 +4230,10 @@ console.log('\nBanked run off');
        * countryside, and the bank of earth between the two is real ground that
        * a square height grid can only draw as accurately as its cell size --
        * about a cell times the gradient. Sharpening that is a matter of terrain
-       * resolution, not of this formula.
+       * resolution, not of this formula. The allowance carries the mesh edge's
+       * own EDGE_SINK bevel on top of the grid error: the edge now comes down
+       * to the ground the corridor holds under it, so it sits 4 cm below where
+       * this check was first calibrated.
        */
       if (Math.abs(fr[i].right.y) < 0.01) {
         const gOut = sampleHeights(banked.terrain, d.terrainHeights, outer[i].x, outer[i].z);
@@ -4246,7 +4254,7 @@ console.log('\nBanked run off');
   check('the ground never comes up through the shoulder',
     worstGround < 0.02, `${worstGround.toFixed(2)} m proud at the worst`);
   check('and it meets it where the shoulder ends and the ground takes over',
-    worstSeam < 0.2, `${worstSeam.toFixed(2)} m apart at the seam`);
+    worstSeam < 0.2 + EDGE_SINK, `${worstSeam.toFixed(2)} m apart at the seam`);
 
   /* --- no cliffs left in the width either --------------------------- */
   let worstTaper = 0;
@@ -5598,7 +5606,12 @@ console.log('\nWays to start');
   }
 
   // The barrier on a fresh project stands level with the ground it is on,
-  // which is the whole reason the shoulder now starts flat.
+  // which is the whole reason the shoulder now starts flat. "Level with the
+  // ground" is EDGE_SINK below the road plane: the shoulder's outer edge
+  // bevels down by exactly that to meet the ground the corridor keeps that
+  // far under every road mesh, and the barrier's foot stands at the seam the
+  // two now share. Level with the ROAD, the old reading, put the foot 4 cm
+  // above the grass beside it.
   const level = defaultProject();
   for (const n of level.track.nodes) { n.wallL = true; n.wallR = true; }
   const lf2 = computeFrames(level.track, level.road.samplesPerSegment);
@@ -5609,7 +5622,7 @@ console.log('\nWays to start');
     worstDrop = Math.max(worstDrop, lf2[i2].pos.y - le.outerR[i2].y, lf2[i2].pos.y - le.outerL[i2].y);
   }
   check('the barrier foot sits level with the road, not in a trench',
-    worstDrop < 0.01, `${worstDrop.toFixed(3)} m below`);
+    worstDrop < EDGE_SINK + 0.01, `${worstDrop.toFixed(3)} m below`);
 }
 
 /*

@@ -186,6 +186,8 @@ const slotPitLines = memoSlot<PitTrackLine[]>();
  */
 interface PitDraw {
   frames: Frame[];
+  /** How strongly each cross section is glued to the road, from mergePitFrames. */
+  weight: Float32Array;
   from: number;
   to: number;
   length: number;
@@ -295,8 +297,8 @@ function compute(project: Project, interacting: boolean): Derived {
   // Where the pit lane runs onto the tarmac, its surface is glued flush onto
   // the road plane. Everything below - the meshes, the terrain corridor, the
   // markers, the export - uses the merged frames, so they all agree.
-  const pitMerge = slotPitMerge(`${sigTrack}|${sigPit}|${spp}|${project.road.pitGap}`, () =>
-    mergePitFrames(pitFramesRaw, trackFrames, project.road.pitGap),
+  const pitMerge = slotPitMerge(`${sigTrack}|${sigPit}|${spp}|${project.road.pitGap}|${project.pitCfg.apron}`, () =>
+    mergePitFrames(pitFramesRaw, trackFrames, project.road.pitGap, project.pitCfg.apron),
   );
   const pitFrames = pitMerge.frames;
   /* The concrete either side of the lane. It decides how far the ribbon
@@ -311,12 +313,13 @@ function compute(project: Project, interacting: boolean): Derived {
   const pitDraw = slotPitDraw(`${sigTrack}|${sigPit}|${spp}|${project.road.pitGap}|${apron}`, () => {
     const lead = pitLead(pitFramesRaw, trackFrames, project.pit.closed, project.track.closed, apron);
     if (lead.frames === pitFramesRaw) {
-      return { frames: pitFrames, raw: lead, from: lead.from, to: lead.to, length: lead.length };
+      return { frames: pitFrames, weight: pitMerge.weight, raw: lead, from: lead.from, to: lead.to, length: lead.length };
     }
     // The lead-out sits on the road surface, so it wants the same height glue
-    // the lane got. Same function, one array longer.
-    const merged = mergePitFrames(lead.frames, trackFrames, project.road.pitGap);
-    return { frames: merged.frames, raw: lead, from: lead.from, to: lead.to, length: lead.length };
+    // the lane got. Same function, one array longer. The weight travels with
+    // the frames: the apron reads it to lie flush where the lane is glued.
+    const merged = mergePitFrames(lead.frames, trackFrames, project.road.pitGap, apron, lead);
+    return { frames: merged.frames, weight: merged.weight, raw: lead, from: lead.from, to: lead.to, length: lead.length };
   });
 
   // How wide the run off actually is and where the barrier stands, after the
@@ -340,22 +343,27 @@ function compute(project: Project, interacting: boolean): Derived {
     ),
   );
 
-  const profile = slotProfile(`${sigTrack}|${sigPit}|${spp}|${sigShape}|${project.road.pitGap}|${apron}`, () =>
-    sideProfile(trackFrames, project.road, pitDraw.frames, project.track.closed, pitApron),
-  );
-
-  // Where the lane has to stop so the circuit stays intact. After the profile
-  // because the edge it stops at includes whatever kerb survived beside it.
+  /* Where the lane has to stop so the circuit stays intact. BEFORE the
+     profile, which measures its clearance against the band this leaves -- the
+     surface that is really drawn -- rather than against raw widths that
+     overstate the ribbon by exactly the tucked-under part. The kerb arguments
+     stay empty for it: the profile zeroes every kerb the lane comes near
+     anyway, so the tarmac edge is the edge that matters here, and handing the
+     clip the profile's kerbs would chain each to the other's answer. */
   const pitClip = slotPitClip(`${sigTrack}|${sigPit}|${spp}|${sigShape}|${apron}`, () =>
     pitRoadClip(
       pitDraw.frames,
       trackFrames,
       project.track.closed,
-      profile.kerbWL,
-      profile.kerbWR,
+      undefined,
+      undefined,
       pitApron,
       { from: pitDraw.from, to: pitDraw.to },
     ),
+  );
+
+  const profile = slotProfile(`${sigTrack}|${sigPit}|${spp}|${sigShape}|${project.road.pitGap}|${apron}`, () =>
+    sideProfile(trackFrames, project.road, pitDraw.frames, project.track.closed, pitApron, pitClip),
   );
 
   /* Where the lane's own edge line hands over to the paint on the circuit.
@@ -434,6 +442,7 @@ function compute(project: Project, interacting: boolean): Derived {
       pitDraw.to,
       pitDraw.length,
       pitApron,
+      pitDraw.weight,
     );
     retire(lastPit, next);
     lastPit = next;
@@ -464,7 +473,7 @@ function compute(project: Project, interacting: boolean): Derived {
             // lead-out wedge exactly as it is under the lane itself.
             return buildCorridorMask(project.terrain, [
               roadCorridor(trackFrames, project.road, profile, project.track.closed),
-              pitCorridor(pitDraw.frames, pitApron),
+              pitCorridor(pitDraw.frames, pitApron, pitClip, pitDraw.weight),
             ]);
           },
         );

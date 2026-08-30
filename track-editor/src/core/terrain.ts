@@ -4,7 +4,7 @@ import type { Frame } from './spline';
 import { trackBounds } from './spline';
 import type { MaterialKey, MeshDef, SideProfile } from './road';
 import { EDGE_SINK, PIT_APRON_DROP, runoffBankRise, shoulderDrop } from './road';
-import { PIT_APRON } from './pitLink';
+import { PIT_APRON, type PitClip } from './pitLink';
 
 /**
  * The terrain is a regular height grid. `heights` holds what the user sculpted.
@@ -521,6 +521,22 @@ export interface Corridor {
   shoulderFull: number;
   /** Whether the ribbon joins up end to end, so the seam segment exists. */
   closed: boolean;
+  /**
+   * Per-frame factor on `drop`, 0..1. The pit apron lies flush with the road
+   * where the lane is glued onto it (see mergeWeight in buildPitMeshes), and
+   * the ground has to follow the concrete it actually meets: a corridor that
+   * kept the full drop under a glued apron held the ground 15 cm below it.
+   */
+  dropScale?: Float32Array;
+  /**
+   * Carry the frame's full camber all the way across the shoulder. The road's
+   * run off goes out flat and fades its banking, and the ground under it does
+   * the same; the pit apron is concrete of the complex and rides the lane's
+   * plane to its outer edge. A corridor that faded the bank under it held the
+   * ground a hand above the concrete's low side wherever a glued lane adopted
+   * the road's camber.
+   */
+  fullBank?: boolean;
 }
 
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -626,8 +642,35 @@ export function roadCorridor(
 export function pitCorridor(
   frames: Frame[],
   apron: number | Float32Array = PIT_APRON,
+  /**
+   * The drawn band per cross section. The frames run a few cross sections past
+   * the wedge tip at each end -- the clip has taken their whole band, nothing
+   * of them is drawn -- and a corridor built over them went on sinking the
+   * ground 20 cm under a surface that is not there. What showed, right at the
+   * edge of the racing line, was a trench of bare earth the length of the
+   * overhang. The corridor now ends where the drawn surface ends.
+   */
+  clip?: PitClip,
+  /** How strongly each cross section is glued to the road, from mergePitFrames. */
+  mergeWeight?: Float32Array,
 ): Corridor {
+  let from = 0;
+  let to = frames.length - 1;
+  if (clip) {
+    while (from <= to && clip.hi[from] - clip.lo[from] <= 1e-3) from++;
+    while (to >= from && clip.hi[to] - clip.lo[to] <= 1e-3) to--;
+  }
+  if (from > 0 || to < frames.length - 1) {
+    frames = frames.slice(from, to + 1);
+    if (typeof apron !== 'number') apron = apron.slice(from, to + 1);
+    if (mergeWeight) mergeWeight = mergeWeight.slice(from, to + 1);
+  }
   const n = frames.length;
+  let dropScale: Float32Array | undefined;
+  if (mergeWeight) {
+    dropScale = new Float32Array(n);
+    for (let i = 0; i < n; i++) dropScale[i] = 1 - Math.min(1, mergeWeight[i] ?? 0);
+  }
   // The tapered run where there is one: the ground follows the concrete that is
   // really drawn, so it is not pulled down under an apron that has run out.
   const w = typeof apron === 'number' ? new Float32Array(n).fill(apron) : apron;
@@ -636,7 +679,7 @@ export function pitCorridor(
   const none = new Float32Array(n);
   // A pit lane is open: joining its ends would fence off the whole infield.
   return { frames, kerbL: none, kerbR: none, shoulderL: w, shoulderR: w, drop: PIT_APRON_DROP,
-    shoulderFull: Math.max(1e-6, full), closed: false };
+    shoulderFull: Math.max(1e-6, full), closed: false, dropScale, fullBank: true };
 }
 
 /**
@@ -859,7 +902,7 @@ export function buildCorridorMask(t: TerrainSettings, corridors: Corridor[]): Co
   const { maxWeight, sumW2, sumW2T, ceiling } = takeScratch(n);
 
   for (const corridor of corridors) {
-    const { frames, kerbL, kerbR, shoulderL, shoulderR, drop, shoulderFull } = corridor;
+    const { frames, kerbL, kerbR, shoulderL, shoulderR, drop, shoulderFull, dropScale, fullBank } = corridor;
     const closedPath = corridor.closed;
     if (frames.length < 2) continue;
 
@@ -948,16 +991,18 @@ export function buildCorridorMask(t: TerrainSettings, corridors: Corridor[]): Co
          * curve here would put the ground up to 35 cm above a flat quad in the
          * middle of the verge.
          */
-        const bank =
-          Math.sign(lateral) *
-          (Math.min(clamped, overRoad) * rightY + runoffBankRise(rightY, shoulder) * shoulderT);
+        const bank = fullBank
+          ? Math.sign(lateral) * clamped * rightY
+          : Math.sign(lateral) *
+            (Math.min(clamped, overRoad) * rightY + runoffBankRise(rightY, shoulder) * shoulderT);
         /*
          * The centre line height comes from the projection, so there is no
          * "along the track" correction left to make: the old code took the
          * height of one cross section and walked the tangent plane up to 20 m
          * to reach the cell, which is the same approximation this replaces.
          */
-        const surface = centreY + bank - shoulderDrop(drop, shoulder, shoulderFull) * shoulderT;
+        const dropF = dropScale ? mix(dropScale[a] ?? 1, dropScale[b] ?? 1, st) : 1;
+        const surface = centreY + bank - shoulderDrop(drop * dropF, shoulder, shoulderFull) * shoulderT;
 
         /*
          * How far a grid this coarse can lie about a surface this steep.
@@ -979,13 +1024,52 @@ export function buildCorridorMask(t: TerrainSettings, corridors: Corridor[]): Co
          * kerb, undisturbed. A finer terrain needs proportionally less of it,
          * and a flat circuit needs none at all.
          */
+        /* Both axes of tilt, not just the camber: a lane running along a
+           hillside has the same corner-cutting problem lengthways -- measured
+           on the hilly test oval, grass standing 19 cm proud of the concrete
+           midway between two grid points, with the camber itself under 1%. */
         const slack = 0.6 * cs * Math.abs(rightY);
-        // Full depth under the tarmac, easing out to a hair's gap by the time
-        // the terrain becomes the surface you actually see.
-        const sinkSpan = Math.max(shoulder, MIN_SINK_SPAN);
-        const sinkT = smoothstep(overRoad, overRoad + sinkSpan, Math.min(abs, overRoad + sinkSpan));
+        /* The same corner-cutting happens LENGTHWAYS on a climb: the ground
+           between two grid points beside a road running up a hillside is a
+           straight line through a target field that changes regime at the
+           mesh edge, and on the hilly test oval it stood 19 cm proud of the
+           concrete midway between samples. This term buys the room -- but
+           only in the band around the edge, as a bump that is zero both at
+           the road centre and at the edge itself: at the centre the road
+           hides everything and the depth is already spoken for (deepening it
+           there broke the terrain raycast's error budget), and at the edge
+           the ground must MEET the bevel, exactly, or the seam is back. */
+        const climb = Math.min(0.5, 0.6 * cs * Math.abs(mix(fa.fwd.y, fb.fwd.y, st)));
+        /* Full depth under the tarmac, easing out to a hair's gap by the time
+           the terrain becomes the surface you actually see.
+
+           Measured BACK from the outer edge, not forward from the hard one.
+           Forward, the ease ran over max(shoulder, MIN_SINK_SPAN) of lateral
+           distance regardless of where the mesh actually ends -- so wherever
+           the run off is squeezed under that span, which is most of the ground
+           beside a pit lane, the terrain was still 15 cm down at the very
+           point it becomes the visible surface. What that drew was a trench a
+           hand deep and under a metre wide along the seam, read in the
+           viewport as a dark slot beside the concrete. Anchored to the edge,
+           the ease finishes exactly where the mesh hands over -- EDGE_SINK
+           under it, which the mesh's own edge bevel comes down to meet -- and
+           a narrow shoulder simply starts easing under the tarmac, where
+           nobody can see it. */
+        /* And never sharper than the grid can draw. The heights live on the
+           grid and are read back as straight lines between its points: a sink
+           that plunges to full depth within one cell of the edge is invisible
+           AT the points and a hand-deep scoop between them -- which is what
+           dug the trench beside every road on a coarse terrain. Easing over
+           a cell and a half keeps the interpolated line within a few
+           centimetres of the surface it hides under. */
+        const sinkSpan = Math.max(shoulder, MIN_SINK_SPAN, cs * 1.5);
+        const sinkT = smoothstep(inner - sinkSpan, inner, Math.min(abs, inner));
         const target =
-          surface - (ROAD_SINK + slack * (1 - sinkT) + (EDGE_SINK - ROAD_SINK) * sinkT);
+          surface
+          - (ROAD_SINK
+            + slack * (1 - sinkT)
+            + climb * 4 * sinkT * (1 - sinkT)
+            + (EDGE_SINK - ROAD_SINK) * sinkT);
 
         const w = 1 - smoothstep(inner, inner + t.blend, abs);
         if (w <= 1e-6) continue;
@@ -997,9 +1081,14 @@ export function buildCorridorMask(t: TerrainSettings, corridors: Corridor[]): Co
         sumW2[i] += w2;
         sumW2T[i] += w2 * target;
         if (w > maxWeight[i]) maxWeight[i] = w;
-        // Directly underneath this ribbon, so it caps how high the ground goes:
-        // never above where this ribbon alone would have put it.
-        if (abs <= inner && target < ceiling[i]) ceiling[i] = target;
+        // Directly underneath this ribbon -- plus one grid cell beyond its
+        // edge -- so it caps how high the ground goes: never above where this
+        // ribbon alone would have put it. The extra cell is for the grid, not
+        // the ribbon: the seam is only ever pinned AT grid points, and a point
+        // just outside the edge left at open-country height hoists the
+        // interpolated ground over the ribbon's outer metres on any hillside.
+        // Measured on the hilly test oval: grass 14 cm proud of the concrete.
+        if (abs <= inner + cs && target < ceiling[i]) ceiling[i] = target;
       }
     }
   }

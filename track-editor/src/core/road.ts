@@ -1559,6 +1559,15 @@ export function sideProfile(
    * ground at the very edge of the racing line.
    */
   pitApron: number | Float32Array = PIT_APRON,
+  /**
+   * Where the circuit has already taken the lane back: the drawn band per pit
+   * cross section, from pitRoadClip. With it, the clearance measures against
+   * the surface that is REALLY drawn -- so past the wedge tip, where the clip
+   * has taken the whole band, there is nothing left to keep off and the run
+   * off comes back. Without it (the tools, and old callers) the raw widths
+   * stand in, which overstate the ribbon by exactly the tucked-under part.
+   */
+  pitClip?: PitClip,
 ): SideProfile {
   const n = frames.length;
   const runoffL = new Float32Array(n);
@@ -1698,6 +1707,11 @@ export function sideProfile(
        the lead-out, and a clearance measured off the full width leaves the run
        off stopping a metre short of concrete that ends before it. */
     let nearApron = typeof pitApron === 'number' ? pitApron : 0;
+    /* How far the lane reaches on its FAR side, away from the circuit.
+       The near edge above says where the pit surface starts; this says whether
+       there is any of it left out here at all once the tarmac has taken its
+       share. See `clear` below, which is the only thing that reads it. */
+    let farLat = -Infinity;
     index.within(f.pos.x, f.pos.z, reach, (j) => {
       const qf = pitFrames[j];
       const qdx = qf.pos.x - f.pos.x;
@@ -1706,14 +1720,43 @@ export function sideProfile(
       if (Math.abs(alongQ) > 6) return;
       const latQ = qdx * f.right.x + qdz * f.right.z;
       if (latQ < 0 !== side < 0) return;
-      const nl = Math.abs(latQ) - (side < 0 ? qf.widthR : qf.widthL);
-      if (nl < nearLat) {
-        nearLat = nl;
-        nearApron = typeof pitApron === 'number' ? pitApron : (pitApron[j] ?? 0);
+      const apronQ = typeof pitApron === 'number' ? pitApron : (pitApron[j] ?? 0);
+      let nl: number;
+      let fl: number;
+      if (pitClip) {
+        /* The drawn band, projected onto this cross section's own axis. Its
+           offsets live along the PIT frame's right vector, so the projection
+           scales by how parallel the two ribbons run; head-on the band
+           collapses to a point at the lane's centre, which is the honest
+           answer. The band already contains the concrete, so there is no
+           apron left to subtract. */
+        const bLo = pitClip.lo[j];
+        const bHi = pitClip.hi[j];
+        if (bHi - bLo <= 1e-3) return; // nothing drawn here: nothing to keep off
+        const dotQ = qf.right.x * f.right.x + qf.right.z * f.right.z;
+        const e1 = Math.abs(latQ + bLo * dotQ);
+        const e2 = Math.abs(latQ + bHi * dotQ);
+        nl = Math.min(e1, e2);
+        fl = Math.max(e1, e2);
+        if (nl < nearLat) {
+          nearLat = nl;
+          nearApron = 0;
+        }
+      } else {
+        nl = Math.abs(latQ) - (side < 0 ? qf.widthR : qf.widthL);
+        if (nl < nearLat) {
+          nearLat = nl;
+          nearApron = apronQ;
+        }
+        fl = Math.abs(latQ) + (side < 0 ? qf.widthL : qf.widthR) + apronQ;
       }
+      if (fl > farLat) farLat = fl;
     });
     // Nothing abreast (the lane only passes at a distance): the old estimate.
     if (!Number.isFinite(nearLat)) nearLat = Math.abs(lateral) - pitHalf;
+    if (!Number.isFinite(farLat)) {
+      farLat = Math.abs(lateral) + (side < 0 ? pf.widthL : pf.widthR) + nearApron;
+    }
 
     /*
      * Free space between the road centre and the near edge of the pit lane --
@@ -1771,13 +1814,39 @@ export function sideProfile(
      * Nothing to clear where the ribbon has gone under the tarmac.
      *
      * At a junction the lane runs onto the circuit, and pitRoadClip takes away
-     * every part of it that lands there -- so at those cross sections there is
-     * no pit surface outboard of the tarmac at all, and a run off narrowed to
-     * keep off it is keeping off nothing. What that leaves instead is bare
-     * ground straight off the racing line, with the concrete it was avoiding
-     * clipped away metres inside the tarmac.
+     * every part of it that lands there -- so where the whole ribbon has gone
+     * under, a run off narrowed to keep off it is keeping off nothing. What
+     * that leaves instead is bare ground straight off the racing line, with
+     * the concrete it was avoiding clipped away metres inside the tarmac.
+     *
+     * Which is decided on the lane's FAR edge, not its near one. Measured on
+     * the near edge this read "gone under" from the moment the lane's own
+     * centre line crossed the tarmac, which is most of the entry and the exit
+     * -- and at those cross sections the clip does not empty the band, it
+     * moves it: what survives is the wedge lying BESIDE the track, running out
+     * to twenty metres and more. Switching the clearance off there let the run
+     * off keep its full width and draw straight across that wedge, two
+     * surfaces in the same place along the whole of both junctions, which is
+     * the same fault as concrete under a run off and looks the same in the
+     * viewport: the pit lane torn along its edges by the ground beside the
+     * track. Measured on the demo oval, 32 cross sections with 12 m of overlap
+     * apiece; on a generated circuit, 26.
+     *
+     * The far edge says what the clip really leaves. Reaching a good way past
+     * the circuit, there is a wedge to keep off, and the rules below narrow
+     * the run off to nothing against it -- which is right, because the wedge
+     * is what covers that ground instead. Inboard and the ribbon is genuinely
+     * gone, and the run off carries on over the top of where it used to be.
+     *
+     * A metre, not nothing, because the wedge tapers out rather than stopping.
+     * On its last cross sections it is a few centimetres wide, and a run off
+     * pulled to nothing against THAT covers nothing: measured on a lane
+     * dragged in by hand, 2 cm of wedge and 80 cm of bare ground behind it,
+     * straight off the racing line, which is the trench again. Under a metre
+     * the wedge is worth less than the surface is, so the run off runs on over
+     * it -- the same trade, and the same metre, as the slot rule below.
      */
-    const clear = nearEdge > roadHalf + kerb;
+    const clear = farLat - roadHalf - kerb >= 1;
     /* Where there is no room for the gap there is no room for a gap at all.
      *
      * The run off is meant to stop short of the lane, and it does. But once
@@ -1991,19 +2060,31 @@ export function computeEdges(fr: Frame[], road: RoadSettings, profile: SideProfi
     if (flatLen > 1e-6) flat.multiplyScalar(1 / flatLen);
     else flat.set(0, 0, 0);
 
+    /* And the last of the run off goes down by EDGE_SINK, exactly as the pit
+       apron's outer edge does: the terrain is deliberately kept that far under
+       every road mesh, and at the outer edge, where the mesh stops and the
+       ground becomes the surface you see, that gap has nothing left to hide
+       behind. Without the bevel it stood along every run off edge as a step
+       of a few centimetres of bare cut earth -- the crease that made every
+       grass verge look torn. The corridor eases the ground up to exactly
+       EDGE_SINK under this edge, so the two now meet. */
     outerL[i]
       .copy(pL)
       .addScaledVector(flat, -wL)
       .addScaledVector(
         DOWN,
-        runoffBankRise(f.right.y, wL) + shoulderDrop(road.runoffDrop, wL, road.runoffWidth),
+        runoffBankRise(f.right.y, wL)
+          + shoulderDrop(road.runoffDrop, wL, road.runoffWidth)
+          + EDGE_SINK * (wL > THIN ? 1 : 0),
       );
     outerR[i]
       .copy(pR)
       .addScaledVector(flat, wR)
       .addScaledVector(
         DOWN,
-        -runoffBankRise(f.right.y, wR) + shoulderDrop(road.runoffDrop, wR, road.runoffWidth),
+        -runoffBankRise(f.right.y, wR)
+          + shoulderDrop(road.runoffDrop, wR, road.runoffWidth)
+          + EDGE_SINK * (wR > THIN ? 1 : 0),
       );
   });
 
@@ -2952,6 +3033,16 @@ export function buildPitMeshes(
    * run pitApronWidths gives for `frames`.
    */
   apronWidth: number | Float32Array = PIT_APRON,
+  /**
+   * How strongly each cross section is glued onto the road surface, 0..1,
+   * from mergePitFrames. Where the lane rides on the road plane its concrete
+   * has to lie flush with the tarmac beside it: the apron kept its full 5 cm
+   * of shoulder fall plus the 4 cm edge bevel right through the junction, so
+   * the wedge a car crosses entering the pits lay up to 9 cm below the
+   * circuit with a clean edge along the seam. The drop fades out as the glue
+   * takes hold, and comes back as the lane becomes its own surface again.
+   */
+  mergeWeight?: Float32Array,
 ): MeshDef[] {
   if (frames.length < 2) return [];
   const fr = expand(frames, closed);
@@ -3052,8 +3143,23 @@ export function buildPitMeshes(
        stands there as a step -- which beside a pit lane is a step a car drives
        over on its way into the box. Bringing the edge down to the ground is the
        same bevel a real concrete apron has where it meets what is beside it. */
-    outL[i].y -= shoulderDrop(PIT_APRON_DROP, awL, apron) + EDGE_SINK * (awL > THIN ? 1 : 0);
-    outR[i].y -= shoulderDrop(PIT_APRON_DROP, awR, apron) + EDGE_SINK * (awR > THIN ? 1 : 0);
+    // See mergeWeight above: flush against the road where glued, falling to
+    // the ground where free. Only the DROP fades with the glue -- the bevel is
+    // what meets the ground, and the ground is held EDGE_SINK under this edge
+    // whether the concrete above it is glued or not.
+    //
+    // Neither applies to an edge the CLIP has cut: that edge lies against or
+    // under the tarmac, not against the ground. Dropped anyway, the concrete
+    // leaned on the racing line 6 cm below it -- a cliff along the seam where
+    // a car crosses into the pits -- because the lane's glue is measured
+    // between the two tarmacs and fades out over exactly the gap the 5 m of
+    // concrete still spans.
+    // `fr` appends at most one seam copy of frame 0.
+    const glue = mergeWeight ? Math.min(1, mergeWeight[i < mergeWeight.length ? i : 0] ?? 0) : 0;
+    const cutL = clip !== undefined && lo > -(f.widthL + apronAt(i)) + 0.05;
+    const cutR = clip !== undefined && hi < f.widthR + apronAt(i) - 0.05;
+    outL[i].y -= cutL ? 0 : shoulderDrop(PIT_APRON_DROP, awL, apron) * (1 - glue) + EDGE_SINK * (awL > THIN ? 1 : 0);
+    outR[i].y -= cutR ? 0 : shoulderDrop(PIT_APRON_DROP, awR, apron) * (1 - glue) + EDGE_SINK * (awR > THIN ? 1 : 0);
     s.awL[i] = awL;
     s.awR[i] = awR;
     s.uB[i] = (laneHi - wR - (laneLo + wL)) / road.uvWidth;
