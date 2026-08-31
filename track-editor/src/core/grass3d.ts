@@ -1,4 +1,4 @@
-import type { TerrainSettings, RoadSettings } from '../types';
+import type { PropInstance, TerrainSettings, RoadSettings } from '../types';
 import type { Frame } from './spline';
 import type { SideProfile } from './road';
 import type { PitClip } from './pitLink';
@@ -75,6 +75,67 @@ const BEYOND = 6;
 export function grass3dOnGrass(terrain: TerrainSettings, x: number, z: number): boolean {
   const v = sampleGroundValue(terrain, terrain.paint, x, z);
   return v <= 0 || paintKind(v) === 0;
+}
+
+/**
+ * The ground PADS a tuft must keep off: gravel beds, paddock tarmac, concrete
+ * aprons dropped with the Place tool. They are props, not paint, so the paint
+ * test above cannot see them -- and grass standing on a gravel bed is the same
+ * lie as grass on a painted gravel bed, told by a different tool. One entry
+ * per pad, its rotation pre-resolved, tested by whoever draws the tufts (the
+ * same contract, and the same reason, as the paint: props move without the
+ * generator's cache key ever hearing about it).
+ */
+export interface GrassBlocker {
+  x: number;
+  z: number;
+  cos: number;
+  sin: number;
+  hx: number;
+  hz: number;
+}
+
+export function grass3dBlockers(
+  props: readonly PropInstance[],
+  isPad: (kind: string) => boolean,
+  footprint: (kind: string) => { cx: number; cz: number; hx: number; hz: number },
+): GrassBlocker[] {
+  const out: GrassBlocker[] = [];
+  for (const p of props) {
+    if (!isPad(p.kind)) continue;
+    const box = footprint(p.kind);
+    const a = ((p.r[1] ?? 0) * Math.PI) / 180;
+    const cos = Math.cos(a);
+    const sin = Math.sin(a);
+    const sx = p.s[0] ?? 1;
+    const sz = p.s[2] ?? 1;
+    // The footprint centre in world space, so an off-centre box stays honest.
+    const lcx = box.cx * sx;
+    const lcz = box.cz * sz;
+    out.push({
+      x: p.p[0] + cos * lcx + sin * lcz,
+      z: p.p[2] - sin * lcx + cos * lcz,
+      cos,
+      sin,
+      hx: Math.abs(box.hx * sx),
+      hz: Math.abs(box.hz * sz),
+    });
+  }
+  return out;
+}
+
+/** Whether a tuft at (x, z) stands on one of the pads. */
+export function grass3dOnPad(blockers: readonly GrassBlocker[], x: number, z: number): boolean {
+  for (const b of blockers) {
+    const dx = x - b.x;
+    const dz = z - b.z;
+    const r = b.hx + b.hz;
+    if (dx * dx + dz * dz > r * r) continue;
+    const lx = b.cos * dx - b.sin * dz;
+    const lz = b.sin * dx + b.cos * dz;
+    if (Math.abs(lx) <= b.hx && Math.abs(lz) <= b.hz) return true;
+  }
+  return false;
 }
 
 /** Bucket edge for the coarse neighbour grid, metres. */

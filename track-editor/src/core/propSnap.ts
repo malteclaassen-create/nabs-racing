@@ -78,6 +78,9 @@ export function tileRuleOf(kind: string): TileRule | null {
   // Parking bay paint tiles like the pads it is painted on: a second row laid
   // next to the first latches flush, so a long car park is rows of one stamp.
   if (def.key.startsWith('park_bays')) return 'grid';
+  // The road bridge kit: ramp, deck and pier latch end to end, which is the
+  // whole idea of a kit of spans.
+  if (def.key.startsWith('bridge_road')) return 'grid';
   if (def.category === 'Barriers') return 'row';
   return null;
 }

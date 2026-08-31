@@ -184,7 +184,56 @@ const ROAD_SNAP = 30;
  * end is near the circuit. Run inside the derived pipeline on every rebuild,
  * so the join follows the circuit automatically when the circuit moves.
  */
-export function attachRoadEnds(road: PathData, trackFrames: Frame[]): PathData {
+/**
+ * How far a point is from the drivable edge of `frames`, metres. Negative
+ * inside it, Infinity when there is nothing to measure against.
+ *
+ * The same measurement `attachRoadEnds` makes before it decides to glue,
+ * exported so a caller can ask WHICH of several surfaces an end is nearest
+ * before gluing it to any of them.
+ */
+export function roadEndGap(frames: Frame[], at: readonly [number, number, number]): number {
+  if (frames.length < 2) return Infinity;
+  const index = new PointIndex(frames.map((f) => f.pos), 30);
+  const v = new THREE.Vector3(at[0], at[1], at[2]);
+  const f = nearestFrame(frames, v, index);
+  return f ? ribbonGap(f, v) : Infinity;
+}
+
+/**
+ * How far a point lies from the drivable band around one cross section.
+ *
+ * Both components, and that is the whole point of it. Measured on the lateral
+ * offset alone -- which is what this used to be -- a point sitting a hundred
+ * metres PAST the end of a road, but on the line the road runs along, reads
+ * as three metres INSIDE it: the lateral offset is zero out there, and zero
+ * minus a half width is a comfortable negative. Two approach roads facing
+ * each other across a roundabout are exactly that arrangement, and each one
+ * duly decided the far one was the nearest thing to glue itself to, so both
+ * ends of both roads were dragged onto the other side of the circle.
+ *
+ * Taking the along-track component as well turns the answer back into a
+ * distance: beside the ribbon it is the lateral gap, past its end it is how
+ * far past, and the two combine the way distances do.
+ */
+function ribbonGap(f: Frame, v: THREE.Vector3): number {
+  const lat = sideOf(f, v);
+  const half = lat < 0 ? f.widthL : f.widthR;
+  const along = (v.x - f.pos.x) * f.fwd.x + (v.z - f.pos.z) * f.fwd.z;
+  return Math.hypot(Math.max(0, Math.abs(lat) - half), along);
+}
+
+export function attachRoadEnds(
+  road: PathData,
+  trackFrames: Frame[],
+  /**
+   * Which end may be glued this time. A road can only ever be glued to ONE
+   * surface per end -- glue it to each in turn and the last one wins, which
+   * is not the nearest one -- so the caller picks the surface per end and
+   * says which end it means.
+   */
+  which: 'both' | 'first' | 'last' = 'both',
+): PathData {
   if (road.closed || road.nodes.length < 2 || trackFrames.length < 2) return road;
   const index = new PointIndex(trackFrames.map((f) => f.pos), 30);
   const vec = (n: TrackNode) => new THREE.Vector3(n.p[0], n.p[1], n.p[2]);
@@ -195,8 +244,9 @@ export function attachRoadEnds(road: PathData, trackFrames: Frame[]): PathData {
     if (!f) return null;
     const lat = sideOf(f, vec(n));
     const side: -1 | 1 = lat < 0 ? -1 : 1;
-    const half = side < 0 ? f.widthL : f.widthR;
-    return { f, gap: Math.abs(lat) - half, side };
+    // See ribbonGap: the lateral offset alone calls a point far past the end
+    // of a ribbon "inside" it, because out there the offset is nothing.
+    return { f, gap: ribbonGap(f, vec(n)), side };
   };
 
   const nodes = road.nodes;
@@ -234,8 +284,8 @@ export function attachRoadEnds(road: PathData, trackFrames: Frame[]): PathData {
     return;
   };
 
-  attachEnd(0, 1);
-  attachEnd(nodes.length - 1, nodes.length - 2);
+  if (which !== 'last') attachEnd(0, 1);
+  if (which !== 'first') attachEnd(nodes.length - 1, nodes.length - 2);
   return out ? { ...road, nodes: out } : road;
 }
 

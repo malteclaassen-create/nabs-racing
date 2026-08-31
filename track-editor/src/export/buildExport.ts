@@ -3,13 +3,13 @@ import { zipSync, type Zippable } from 'fflate';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import type { Project, SurfaceKey, TerrainSettings } from '../types';
+import type { Project, PropInstance, SurfaceKey, TerrainSettings } from '../types';
 import type { Derived } from '../store/derived';
 import type { MaterialKey, MeshDef } from '../core/road';
-import { propParts, LIBRARY_BY_KEY } from '../core/library';
+import { isGroundPad, propParts, propTileBox, LIBRARY_BY_KEY } from '../core/library';
 import { propMatrix } from '../core/props';
 import { sampleHeights, splitByGroups } from '../core/terrain';
-import { grass3dFor, grass3dOnGrass } from '../core/grass3d';
+import { grass3dBlockers, grass3dFor, grass3dOnGrass, grass3dOnPad } from '../core/grass3d';
 import { ALL_MATERIALS, ALPHA_TESTED, EMISSIVE, MATERIAL_COLORS, textureFileName, texturePngBytes, texturePngBytesFlipped } from '../core/textures';
 import { assetError, assetIdOf, getAsset } from '../io/assetCache';
 import { captureCanvas } from '../io/screenshot';
@@ -70,7 +70,9 @@ export function grass3dMeshes(
   data: Float32Array,
   terrain: TerrainSettings,
   heights: Float32Array,
+  props: readonly PropInstance[] = [],
 ): MeshDef[] {
+  const blockers = grass3dBlockers(props, isGroundPad, propTileBox);
   if (data.length === 0) return [];
   const part = propParts('grass_tuft')[0];
   if (!part) return [];
@@ -88,6 +90,7 @@ export function grass3dMeshes(
 
   for (let i = 0; i < data.length; i += 5) {
     if (!grass3dOnGrass(terrain, data[i], data[i + 1])) continue;
+    if (grass3dOnPad(blockers, data[i], data[i + 1])) continue;
     q.setFromAxisAngle(up, data[i + 2]);
     p.set(data[i], sampleHeights(terrain, heights, data[i], data[i + 1]) + data[i + 4], data[i + 1]);
     sc.setScalar(data[i + 3]);
@@ -404,6 +407,7 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
         : new Float32Array(0),
       project.terrain,
       derived.terrainHeights,
+      project.props,
     ),
     // Everything below reads plain index buffers, so the draw range the road
     // builder publishes is resolved here, once, for all three writers.

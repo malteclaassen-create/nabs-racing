@@ -869,6 +869,118 @@ export const LIBRARY: PropDef[] = [
       ]);
     },
   },
+  /*
+   * The road bridge kit: a bridge you can actually drive over.
+   *
+   * Three pieces. The DECK is a 12 m span with an asphalt roadway on top and a
+   * guardrail either side -- lay several end to end for any length; they latch
+   * flush like the pads do. The RAMP climbs from the ground to deck level over
+   * 44 m (12.5%, a real overpass grade) with its supports built in. The PIER
+   * is a separate portal frame to stand under the deck joints wherever there
+   * is ground to stand on -- deliberately not part of the deck, because a
+   * deck crossing the circuit must not bring a column onto the tarmac.
+   *
+   * Deck level is 5.5 m: the same clearance the footbridge keeps, above
+   * anything that can pass underneath on four wheels. All three carry their
+   * exact footprint as the body part and everything else as trim, so they
+   * tile on whole metres (8 wide; 12, 44 and 2 long) about their own origin.
+   *
+   * The ramp's slab is a SHEARED box: y' = y + z * slope. Unlike a rotated
+   * box, a sheared one keeps its exact ground footprint, so the tiling stays
+   * on the metre grid and the ends stay vertical where the next piece butts
+   * against them. Low end at -Z, high end at +Z.
+   */
+  ...(() => {
+    const DECK_TOP = 5.5;
+    const ASPHALT = 0.06;
+    const STRUCT = 0.5;
+    const RAMP_LEN = 44;
+    const SLOPE = DECK_TOP / RAMP_LEN;
+    const RAIL_H = 1.0;
+    // y' = y + z * slope, spelled out row by row: makeShear's argument order
+    // is easy to hold the wrong way round, and holding it the wrong way round
+    // sheared z by y -- the ramp grew LONGER instead of higher.
+    const shear = new THREE.Matrix4().set(
+      1, 0, 0, 0,
+      0, 1, SLOPE, 0,
+      0, 0, 1, 0,
+      0, 0, 0, 1,
+    );
+    const sheared = (g: THREE.BufferGeometry) => {
+      g.applyMatrix4(shear);
+      g.computeVertexNormals();
+      return g;
+    };
+    return [
+      {
+        key: 'bridge_road_deck',
+        label: 'Road bridge deck (12 m)',
+        category: 'Track furniture' as const,
+        surface: 'ROAD' as const,
+        build: () =>
+          group([
+            // The body: the concrete span, exactly 8 x 12 so the tiling is
+            // honest. Top at 5.44, with the asphalt wearing course on it.
+            [[box(8, STRUCT, 12, 0, DECK_TOP - ASPHALT - STRUCT)], 'concrete'],
+            [[box(7.6, ASPHALT, 12, 0, DECK_TOP - ASPHALT)], 'asphalt'],
+            [
+              [
+                box(0.12, RAIL_H, 12, -3.94, DECK_TOP),
+                box(0.12, RAIL_H, 12, 3.94, DECK_TOP),
+              ],
+              'guardrail',
+            ],
+          ]),
+      },
+      {
+        key: 'bridge_road_ramp',
+        label: 'Road bridge ramp (44 m)',
+        category: 'Track furniture' as const,
+        surface: 'ROAD' as const,
+        build: () => {
+          const supports: THREE.BufferGeometry[] = [];
+          for (const z of [-11, 0, 11, 18]) {
+            // Column tops follow the slab's underside down the slope.
+            const h = DECK_TOP - ASPHALT - STRUCT + SLOPE * z;
+            if (h < 0.4) continue;
+            supports.push(box(0.7, h, 0.7, -2.6, 0, z));
+            supports.push(box(0.7, h, 0.7, 2.6, 0, z));
+          }
+          return group([
+            // The body: the sheared slab, 8 x 44 on the ground exactly.
+            [[sheared(box(8, STRUCT + ASPHALT, RAMP_LEN, 0, DECK_TOP / 2 - STRUCT - ASPHALT))], 'asphalt'],
+            [supports, 'concrete'],
+            [
+              [
+                sheared(box(0.12, RAIL_H, RAMP_LEN, -3.94, DECK_TOP / 2)),
+                sheared(box(0.12, RAIL_H, RAMP_LEN, 3.94, DECK_TOP / 2)),
+              ],
+              'guardrail',
+            ],
+          ]);
+        },
+      },
+      {
+        key: 'bridge_road_pier',
+        label: 'Road bridge pier',
+        category: 'Track furniture' as const,
+        surface: 'WALL' as const,
+        build: () =>
+          group([
+            // The body: the crossbeam, 8 x 2, whose top carries the deck.
+            [[box(8, STRUCT, 2, 0, DECK_TOP - ASPHALT - STRUCT * 2)], 'concrete'],
+            [
+              [
+                box(0.9, DECK_TOP - ASPHALT - STRUCT * 2, 0.9, -3.4, 0, 0),
+                box(0.9, DECK_TOP - ASPHALT - STRUCT * 2, 0.9, 3.4, 0, 0),
+              ],
+              'concrete',
+            ],
+          ]),
+      },
+    ];
+  })(),
+
   {
     key: 'fence',
     label: 'Debris fence (8 m)',

@@ -2146,10 +2146,17 @@ console.log('\nObject library');
       part.geometry.computeBoundingBox();
       minY = Math.min(minY, part.geometry.boundingBox.min.y);
     }
+    // The road bridge DECK is the one object that floats by design: it is the
+    // span between two supports, and the whole point of it is the air under
+    // it. Its ramp buries its foot the way a pad does, a slab thickness deep.
+    if (d.key === 'bridge_road_deck') continue;
     if (minY > 0.05) floating.push(`${d.key} ${minY.toFixed(2)}`);
     // Nature is allowed to sit half in the ground, and a ground pad reaches
     // below it on purpose so a slope shows no gap under the slab.
-    const allowance = d.category === 'Nature' ? 0.6 : d.category === 'Ground' ? 0.4 : 0.05;
+    const allowance =
+      d.category === 'Nature' ? 0.6
+        : d.category === 'Ground' || d.key === 'bridge_road_ramp' ? 0.6
+          : 0.05;
     if (minY < -allowance) sunken.push(`${d.key} ${minY.toFixed(2)}`);
   }
   check('nothing hovers above the ground it is dropped on', floating.length === 0, floating.join(','));

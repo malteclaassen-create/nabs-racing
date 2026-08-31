@@ -5,7 +5,7 @@ import { Grid, Line, OrbitControls, Sky, TransformControls, useCursor } from '@r
 
 import { QUALITY_DPR, useEditor } from '../store/store';
 import { useDerived, type Derived } from '../store/derived';
-import { EMPTY_GRASS3D, GRASS3D_STRIDE, grass3dFor, grass3dOnGrass } from '../core/grass3d';
+import { EMPTY_GRASS3D, GRASS3D_STRIDE, grass3dBlockers, grass3dFor, grass3dOnGrass, grass3dOnPad } from '../core/grass3d';
 import { ALPHA_TESTED, EMISSIVE, EMISSIVE_TINT, getTexture, MATERIAL_COLORS } from '../core/textures';
 import {
   barrierHandleHeight,
@@ -2552,6 +2552,10 @@ function Grass3DLayer({ derived }: { derived: Derived }) {
   const road = useEditor((s) => s.project.road);
   const trackClosed = useEditor((s) => s.project.track.closed);
   const acImport = useEditor((s) => s.project.acImport);
+  const props = useEditor((s) => s.project.props);
+  // The gravel beds and other ground pads the tufts keep off, rotation
+  // pre-resolved once per props change rather than once per tuft.
+  const blockers = useMemo(() => grass3dBlockers(props, isGroundPad, propTileBox), [props]);
 
   /*
    * Grown a beat AFTER the shape settles, never during an editing frame.
@@ -2603,9 +2607,11 @@ function Grass3DLayer({ derived }: { derived: Derived }) {
     let wi = 0;
     for (let i = 0; i < count; i++) {
       const o = i * GRASS3D_STRIDE;
-      // Tufts standing on ground painted to something other than grass are
-      // simply not drawn; the generator does not know about the paint.
+      // Tufts standing on ground painted to something other than grass, or on
+      // a placed ground pad, are simply not drawn; the generator knows about
+      // neither, so a brush dab or a dragged pad never regrows the lawn.
       if (!grass3dOnGrass(terrain, data[o], data[o + 1])) continue;
+      if (grass3dOnPad(blockers, data[o], data[o + 1])) continue;
       q.setFromAxisAngle(UP_AXIS, data[o + 2]);
       p.set(data[o], sampleHeights(terrain, heights, data[o], data[o + 1]) + data[o + 4], data[o + 1]);
       const sc = data[o + 3];
@@ -2615,7 +2621,7 @@ function Grass3DLayer({ derived }: { derived: Derived }) {
     }
     mesh.count = wi;
     mesh.instanceMatrix.needsUpdate = true;
-  }, [data, count, terrain, heights]);
+  }, [data, count, terrain, heights, blockers]);
 
   if (!view.props || count === 0 || !part) return null;
   return (

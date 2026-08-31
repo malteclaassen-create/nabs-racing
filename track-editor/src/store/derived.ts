@@ -36,6 +36,7 @@ import {
   pitApronWidths,
   pitRoadClip,
   pitTrackLines,
+  roadEndGap,
   type PitClip,
   type PitLead,
   type PitMerge,
@@ -540,20 +541,49 @@ function compute(project: Project, interacting: boolean): Derived {
       const corridors: Corridor[] = [];
       const lines: DecoBuild['lines'] = [];
       const reuse = reuseMap(lastDeco);
-      /* Every road built so far, so the NEXT one can junction with it exactly
-         as it junctions with the circuit: end a road at another and it glues
-         itself on; cross one over another and the later is cut back against
-         the earlier's edge instead of the two fighting for the same pixels.
-         Draw order is seniority -- a roundabout laid down first is what the
-         approach roads dock onto. */
+      /* Every road as DRAWN, before anything is glued to anything: each one
+         attached to the circuit alone, which is a decision that cannot depend
+         on the other roads. This is what lets an end dock onto a road drawn
+         LATER than itself -- a roundabout dropped after its approaches is the
+         same roundabout, and having to lay it down first was a rule nobody
+         could see and everybody broke. */
+      const drawnRaw = project.decoRoads.map((r) =>
+        r.path.nodes.length < 2 ? null : computeFrames(attachRoadEnds(r.path, trackFrames), spp),
+      );
+
+      /* Built so far, in draw order, for the passes where order is real: who
+         cuts whom where two roads cross. */
       const built: Array<{ frames: Frame[]; closed: boolean }> = [];
       project.decoRoads.forEach((r, ri) => {
         if (r.path.nodes.length < 2) {
           lines.push({ id: r.id, frames: [], closed: r.path.closed });
           return;
         }
-        let attached = attachRoadEnds(r.path, trackFrames);
-        for (const prev of built) attached = attachRoadEnds(attached, prev.frames);
+        /* Each end is glued to ONE surface: whichever it is really nearest,
+           the circuit or another road. Gluing it to each in turn -- which is
+           what this did -- means the LAST one wins rather than the nearest,
+           so an end that clearly pointed at the roundabout was yanked onto
+           whatever else happened to lie within thirty metres of it, and which
+           that was depended on draw order. It looked like the attach working
+           sometimes and not others, and sometimes onto the far side. */
+        const targets: Array<{ frames: Frame[] }> = [{ frames: trackFrames }];
+        drawnRaw.forEach((fr, j) => {
+          if (j !== ri && fr && fr.length >= 2) targets.push({ frames: fr });
+        });
+        let attached = r.path;
+        if (!r.path.closed) {
+          for (const which of ['first', 'last'] as const) {
+            const nodeIdx = which === 'first' ? 0 : attached.nodes.length - 1;
+            const at = attached.nodes[nodeIdx].p;
+            let best: Frame[] | null = null;
+            let bestGap = Infinity;
+            for (const t of targets) {
+              const g = roadEndGap(t.frames, at);
+              if (g < bestGap) { bestGap = g; best = t.frames; }
+            }
+            if (best) attached = attachRoadEnds(attached, best, which);
+          }
+        }
         // Pads come last: an end the circuit or another road has claimed --
         // its position moved above -- is not up for parking. Attaching copies
         // every node, so "claimed" is a value comparison, not identity.
