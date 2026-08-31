@@ -63,72 +63,6 @@ function makeAsphalt(): HTMLCanvasElement {
   return c;
 }
 
-/**
- * The racing line, as a band whose U runs ACROSS it.
- *
- * Dark down the middle where the rubber is laid, fading to nothing at both
- * edges so the band dissolves into the tarmac instead of ending at a border.
- * The fade is why this is a texture and not a colour: the geometry can only
- * cut a straight edge, and a straight edge is exactly what a racing line
- * does not have.
- *
- * It starts from the road's own tile, so the band and the tarmac either side
- * of it are unmistakably one surface with one grain.
- */
-function makeRubber(): HTMLCanvasElement {
-  const [c, ctx] = canvas();
-  ctx.fillStyle = '#3a3c3f';
-  ctx.fillRect(0, 0, SIZE, SIZE);
-  ctx.globalAlpha = 0.12;
-  blotches(ctx, '#4a4d51', 900, 2, 9, 7);
-  blotches(ctx, '#2c2e31', 700, 2, 7, 19);
-  ctx.globalAlpha = 1;
-
-  /* The laid rubber. Not black: rubber on grey tarmac is a very dark brown
-     grey, and true black reads as a painted stripe -- which is what the first
-     go at this looked like, a dark ribbon somebody had rolled down the
-     circuit. Rubber is a stain, not a coat of paint, so all three layers here
-     are about half the strength they started at: enough to see where the cars
-     run, not enough to look like a marking. */
-  const g = ctx.createLinearGradient(0, 0, SIZE, 0);
-  g.addColorStop(0.0, 'rgba(22,21,20,0)');
-  g.addColorStop(0.14, 'rgba(22,21,20,0.16)');
-  g.addColorStop(0.5, 'rgba(22,21,20,0.38)');
-  g.addColorStop(0.86, 'rgba(22,21,20,0.16)');
-  g.addColorStop(1.0, 'rgba(22,21,20,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-
-  /* The marbles: rubber swept off the line collects just outside it, and it
-     is PALER than the road, not darker. Two soft bands riding the shoulders
-     of the fade, which is what makes the line read as swept rather than
-     painted on. */
-  const m = ctx.createLinearGradient(0, 0, SIZE, 0);
-  m.addColorStop(0.0, 'rgba(150,146,138,0)');
-  m.addColorStop(0.08, 'rgba(150,146,138,0.09)');
-  m.addColorStop(0.2, 'rgba(150,146,138,0)');
-  m.addColorStop(0.8, 'rgba(150,146,138,0)');
-  m.addColorStop(0.92, 'rgba(150,146,138,0.09)');
-  m.addColorStop(1.0, 'rgba(150,146,138,0)');
-  ctx.fillStyle = m;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-
-  /* Streaks ALONG the band -- V runs down the track, so these are the smears
-     a tyre leaves, not a pattern across the road. Full height, so they carry
-     across the tile seam without a join. */
-  ctx.globalAlpha = 0.06;
-  let seed = 20260901;
-  const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
-  for (let k = 0; k < 90; k++) {
-    const x = SIZE * (0.16 + rnd() * 0.68);
-    ctx.fillStyle = rnd() > 0.5 ? '#15140f' : '#55565a';
-    ctx.fillRect(x, 0, 1 + rnd() * 3, SIZE);
-  }
-  ctx.globalAlpha = 1;
-  noise(ctx, 22, 4242);
-  return c;
-}
-
 function makeKerb(): HTMLCanvasElement {
   const [c, ctx] = canvas();
   // One full texture tile = one red + one white stripe pair.
@@ -1430,7 +1364,6 @@ function makeGuardrailOrange(): HTMLCanvasElement {
 /** Base colour of every material, also written into the FBX as DiffuseColor. */
 export const MATERIAL_COLORS: Record<MaterialKey, string> = {
   asphalt: '#3a3c3f',
-  rubber: '#2c2b2c',
   kerb: '#c22030',
   grass: '#3f6b34',
   sand: '#c2a878',
@@ -1466,7 +1399,6 @@ export const MATERIAL_COLORS: Record<MaterialKey, string> = {
 
 const builders: Record<MaterialKey, () => HTMLCanvasElement> = {
   asphalt: makeAsphalt,
-  rubber: makeRubber,
   kerb: makeKerb,
   grass: makeGrass,
   sand: makeSand,

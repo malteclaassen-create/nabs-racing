@@ -95,7 +95,6 @@ import {
 import { buildAllMarkers, buildAiLine, buildGridMarkers } from '../src/core/markers.ts';
 import { buildGridBoxes, F1_GRID_BOX } from '../src/core/gridBoxes.ts';
 import { LIBRARY, LIBRARY_BY_KEY, propFootprint, propTileBox, propParts, PAD_SIZE } from '../src/core/library.ts';
-import { racingLine } from '../src/core/road.ts';
 import { ALPHA_TESTED, SIGN_DISTANCES, TREE_CARDS, TREE_SHEET_TILES } from '../src/core/textures.ts';
 import { layBarrierRun, runLength } from '../src/core/barrierRun.ts';
 import {
@@ -243,130 +242,6 @@ check(
  * tips debris towards the crowd, and it looks near enough right from the car
  * that nobody would notice.
  */
-console.log('\nRacing line rubber');
-{
-  /* The band is cut INTO the road plate, so two things have to hold at once:
-     it follows the racing line, and the plate still covers every millimetre
-     of tarmac around it. A gap here is a hole you can see the sky through. */
-  const q = generatedProject('medium', {}, (() => {
-    let x = 999 >>> 0;
-    return () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
-  })());
-  const dq = getDerived(q);
-  const rline = racingLine(dq.trackFrames, q.track.closed, q.road.rubberWidth);
-  const rub = dq.roadMeshes.find((m) => m.name === '1ROAD_rubber');
-  check('the rubber is its own mesh, on the ROAD surface',
-    !!rub && rub.surface === 'ROAD', rub ? rub.surface : 'missing');
-
-  /* The line has to be a racing line, not the middle of the road. Two things
-     say so and both are needed: it leaves the centre, and it comes back --
-     a line pinned to one side all lap is a track that only turns one way. */
-  let maxOff = 0;
-  let crossings = 0;
-  let minW = Infinity;
-  let maxW = 0;
-  for (let i2 = 0; i2 < dq.trackFrames.length; i2++) {
-    maxOff = Math.max(maxOff, Math.abs(rline.offset[i2]));
-    minW = Math.min(minW, rline.width[i2]);
-    maxW = Math.max(maxW, rline.width[i2]);
-    if (i2 > 0 && Math.abs(rline.offset[i2]) > 0.5
-      && Math.sign(rline.offset[i2]) !== Math.sign(rline.offset[i2 - 1])) crossings++;
-  }
-  check('the line leaves the middle of the road', maxOff > 2, `${maxOff.toFixed(2)} m at most`);
-  check('and changes sides between corners', crossings >= 2, `${crossings} crossings a lap`);
-  check('and the band is not one width everywhere',
-    maxW - minW > 0.8, `${minW.toFixed(2)} to ${maxW.toFixed(2)} m`);
-
-  /* At the tightest corner on the circuit the line must be on the INSIDE of
-     it, which is the one thing an out-in-out cannot get wrong. */
-  let tight = 0;
-  let tightI = -1;
-  for (let i2 = 0; i2 < dq.trackFrames.length; i2++) {
-    const c = Math.abs(dq.trackFrames[i2].curvature ?? 0);
-    if (c > tight) { tight = c; tightI = i2; }
-  }
-  const inside = Math.sign(dq.trackFrames[tightI].curvature) >= 0 ? 1 : -1;
-  check('and it apexes on the inside of the tightest corner',
-    Math.sign(rline.offset[tightI]) === inside && Math.abs(rline.offset[tightI]) > 1,
-    `${rline.offset[tightI].toFixed(2)} m, inside is ${inside > 0 ? 'right' : 'left'}`);
-  check('where the rubber is at its narrowest, not its widest',
-    rline.width[tightI] < (minW + maxW) / 2,
-    `${rline.width[tightI].toFixed(2)} m against ${minW.toFixed(2)}..${maxW.toFixed(2)}`);
-
-  /* The band's own MIDDLE against the line, cross section by cross section --
-     a strip writes its two edges as consecutive vertices, so each pair is one
-     cross section. Measuring every corner instead punishes the band for the
-     two things it is supposed to do at the edges of the road: stop short of
-     the tarmac edge, and close to a point where it ends. The middle is what
-     "follows the racing line" actually means. */
-  const devs = [];
-  let offTrack = 0;
-  if (rub) {
-    const pos = rub.geometry.getAttribute('position');
-    for (let k = 0; k + 1 < pos.count; k += 2) {
-      const mx = (pos.getX(k) + pos.getX(k + 1)) / 2;
-      const mz = (pos.getZ(k) + pos.getZ(k + 1)) / 2;
-      let bi = 0, bd = Infinity;
-      for (let i2 = 0; i2 < dq.trackFrames.length; i2++) {
-        const d2 = (dq.trackFrames[i2].pos.x - mx) ** 2 + (dq.trackFrames[i2].pos.z - mz) ** 2;
-        if (d2 < bd) { bd = d2; bi = i2; }
-      }
-      const f2 = dq.trackFrames[bi];
-      const lat = (mx - f2.pos.x) * f2.right.x + (mz - f2.pos.z) * f2.right.z;
-      devs.push(Math.abs(lat - rline.offset[bi]));
-      for (const j of [k, k + 1]) {
-        const vx = pos.getX(j), vz = pos.getZ(j);
-        const vlat = (vx - f2.pos.x) * f2.right.x + (vz - f2.pos.z) * f2.right.z;
-        if (vlat < -f2.widthL || vlat > f2.widthR) offTrack++;
-      }
-    }
-  }
-  devs.sort((a2, b2) => a2 - b2);
-  const median = devs.length ? devs[Math.floor(devs.length / 2)] : 99;
-  const worstOff = devs.length ? devs[devs.length - 1] : 99;
-  check('and the rubber sits on that line, not beside it',
-    median < 0.35, `${median.toFixed(2)} m off it, half the time or more`);
-  check('and never wanders off somewhere else entirely',
-    worstOff < 3, `${worstOff.toFixed(2)} m at the worst`);
-  check('and never leaves the tarmac', offTrack === 0, `${offTrack} vertices off it`);
-
-  // The plate, probed from above exactly as the game finds the ground.
-  const rmesh = dq.roadMeshes.map((m) => {
-    const o = new THREE.Mesh(m.geometry, new THREE.MeshBasicMaterial());
-    o.updateMatrixWorld();
-    return { name: m.name, mesh: o };
-  });
-  const rr = new THREE.Raycaster();
-  /* Probed HALFWAY BETWEEN cross sections, not on them.
-     The first go at this measured on the cross sections and passed while the
-     road had a metre and a half of nothing in it at the pit exit: the plate
-     is drawn as two strips that part around the band, and where the band
-     switches off they travel apart across a single quad. Every cross section
-     was sound; the hole was in the plate BETWEEN two of them, which is the
-     only place this kind of fault can ever be. */
-  let holes = 0;
-  let holeAt = null;
-  for (let i2 = 0; i2 + 1 < dq.trackFrames.length; i2++) {
-    const a2 = dq.trackFrames[i2];
-    const b2 = dq.trackFrames[i2 + 1];
-    for (let u = -a2.widthL + 0.15; u <= a2.widthR - 0.15; u += 0.2) {
-      const x = (a2.pos.x + a2.right.x * u + b2.pos.x + b2.right.x * u) / 2;
-      const z = (a2.pos.z + a2.right.z * u + b2.pos.z + b2.right.z * u) / 2;
-      rr.set(new THREE.Vector3(x, 200, z), new THREE.Vector3(0, -1, 0));
-      let hit = false;
-      for (const o of rmesh) if (rr.intersectObject(o.mesh, false).length) { hit = true; break; }
-      if (!hit) { holes++; if (!holeAt) holeAt = { s: a2.dist, u }; }
-    }
-  }
-  check('cutting the band in leaves no hole in the road', holes === 0,
-    holeAt ? `${holes} probes hit nothing, first at s=${holeAt.s.toFixed(0)} u=${holeAt.u.toFixed(1)}` : '');
-
-  const offQ = { ...q, road: { ...q.road, rubber: false } };
-  check('and switching it off really rebuilds the road',
-    !getDerived(offQ).roadMeshes.some((m) => m.name === '1ROAD_rubber'),
-    'the mesh key has to carry the setting or the switch does nothing');
-}
-
 console.log('\nModern barriers');
 {
   for (const key of ['tecpro', 'tecpro_low', 'bridge']) {
@@ -3725,13 +3600,6 @@ console.log('\nKerb spans');
   const lp = defaultProject();
   lp.road.edgeLine = true;
   lp.road.edgeLineWidth = 0.2;
-  /* This block is about the EDGE LINE, and it measures the road plate as one
-     strip spanning the width. With the rubber on, that plate is three bands
-     either side of the racing line, so the measurement would be reading one
-     band and calling it the road. The rubber has its own section above, and
-     the raycast there proves the coverage this one is really asking about --
-     with the band in, which is the harder case. */
-  lp.road.rubber = false;
   const lf = computeFrames(lp.track, lp.road.samplesPerSegment);
   const lprofile = sideProfile(lf, lp.road, [], true);
   const lmeshes = buildRoadMeshes(lf, true, lp.road, [], undefined, lprofile);
@@ -3774,8 +3642,6 @@ console.log('\nKerb spans');
 
   const noLine = defaultProject();
   noLine.road.edgeLine = false;
-  // Same reason as above: this measures the plate as one strip.
-  noLine.road.rubber = false;
   const nlFrames = computeFrames(noLine.track, noLine.road.samplesPerSegment);
   const nlProfile = sideProfile(nlFrames, noLine.road, [], true);
   const nlMeshes = buildRoadMeshes(nlFrames, true, noLine.road, [], undefined, nlProfile);

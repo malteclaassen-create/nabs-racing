@@ -842,26 +842,6 @@ function KerbOptions() {
             />
           </Row>
         )}
-        <Row label="Racing line">
-          <Check
-            label="Rubber laid down the line"
-            checked={road.rubber}
-            onChange={(v) => commit((p) => { p.road.rubber = v; })}
-          />
-        </Row>
-        {road.rubber && (
-          <Row label="Line width">
-            <Slider
-              value={road.rubberWidth}
-              min={1.5}
-              max={8}
-              step={0.5}
-              unit=" m"
-              digits={1}
-              onChange={(v) => commit((p) => { p.road.rubberWidth = v; })}
-            />
-          </Row>
-        )}
         <Row label="Strip colour">
           <Seg
             value={road.apronColour}

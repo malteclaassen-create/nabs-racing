@@ -6,9 +6,7 @@ import {
   buildDecoRoadMeshes,
   buildPitMeshes,
   buildRoadMeshes,
-  racingLine,
   sideProfile,
-  type RacingLine,
   type MeshDef,
   type SideProfile,
 } from '../core/road';
@@ -183,12 +181,6 @@ function feedRoad(h: Hasher, r: RoadSettings) {
   h.num(r.kerbHeight)
     .bool(r.edgeLine)
     .num(r.edgeLineWidth)
-    // The rubber is cut INTO the road plate, so it belongs in the mesh key --
-    // left out, the switch in the panel changed a setting nothing rebuilt.
-    // Not in feedRoadShape: it moves no width, so it owes the side profile
-    // and the terrain corridor nothing.
-    .bool(r.rubber)
-    .num(r.rubberWidth)
     .str(r.apronColour)
     .str(r.runoffSurface)
     .num(r.wallHeight)
@@ -251,9 +243,6 @@ const slotDeco = memoSlot<DecoBuild>();
 const slotPitMeshes = memoSlot<MeshDef[]>();
 const slotPitApron = memoSlot<Float32Array>();
 const slotProfile = memoSlot<SideProfile>();
-/* The racing line settles a whole lap, so it is memoised on the SHAPE of the
-   circuit alone: it must not be recomputed because a kerb changed colour. */
-const slotRacing = memoSlot<RacingLine>();
 const slotMask = memoSlot<CorridorMask>();
 const slotHeights = memoSlot<Float32Array>();
 const slotTerrainDef = memoSlotReusing<MeshDef | null>();
@@ -294,12 +283,6 @@ let lastGantry: MeshDef[] = [];
  * of it instead of redoing them dozens of times a second.
  */
 let lastMask: CorridorMask | null = null;
-/* The racing line settles a whole lap and is therefore reused unchanged while
-   a control point is being dragged, exactly as the corridor mask is: paying
-   for it on every frame of a drag is what the mask comment warns about, and
-   the line is worth 2 ms of a 16 ms frame on a 5 km circuit. The rubber
-   catches up the moment the point is let go. */
-let lastRacing: RacingLine | null = null;
 let lastAi: AiPoint[] | null = null;
 
 /**
@@ -458,18 +441,6 @@ function compute(project: Project, interacting: boolean): Derived {
         }
       : undefined;
 
-  /* Not computed at all with the rubber off: it is the only thing that reads
-     it, and a circuit that has switched the racing line off should not pay a
-     lap's worth of relaxation to be told so. */
-  const racing = !project.road.rubber
-    ? undefined
-    : interacting && lastRacing
-      ? lastRacing
-      : slotRacing(`${sigTrack}|${spp}|${project.road.rubberWidth}`, () =>
-          racingLine(trackFrames, project.track.closed, project.road.rubberWidth),
-        );
-  if (racing) lastRacing = racing;
-
   const roadMeshes = slotRoadMeshes(
     `${sigTrack}|${sigPit}|${spp}|${sigRoad}|${runoffGround ? paintId : 0}`,
     () => {
@@ -482,7 +453,6 @@ function compute(project: Project, interacting: boolean): Derived {
       profile,
       pitLines,
       runoffGround,
-      racing,
     );
     retire(lastRoad, next);
     lastRoad = next;

@@ -34,7 +34,6 @@ export interface MeshDef {
 export type MaterialKey =
   /* textured track materials */
   | 'asphalt'
-  | 'rubber'
   | 'kerb'
   | 'grass'
   | 'sand'
@@ -187,30 +186,21 @@ const scratch = {
      apron -- which then drew itself across the middle of the circuit. */
   cutA: [] as THREE.Vector3[],
   cutB: [] as THREE.Vector3[],
-  /* The two edges of the rubber band down the racing line. */
-  rubL: [] as THREE.Vector3[],
-  rubR: [] as THREE.Vector3[],
   uCutA: [] as number[],
   uCutB: [] as number[],
   paint: [] as number[],
   dash: [] as number[],
   vDash: [] as number[],
-  rubOn: [] as number[],
-  uRubL: [] as number[],
-  uRubR: [] as number[],
-  cutOffA: [] as number[],
-  rubUA: [] as number[],
-  rubUB: [] as number[],
   awR: [] as number[],
 };
 
 function takeScratch(n: number) {
   if (scratch.size < n) {
-    for (const key of ['left', 'right', 'top', 'edgeL', 'edgeR', 'apronEL', 'apronER', 'outerL', 'outerR', 'lineL', 'lineR', 'cutA', 'cutB', 'rubL', 'rubR', 'wallBase', 'wallMid', 'wallTip', 'gateBase', 'gateMid', 'gateTop', 'gateTip', 'gateTmp', 'wallLo', 'wallHi', 'bandI', 'bandO'] as const) {
+    for (const key of ['left', 'right', 'top', 'edgeL', 'edgeR', 'apronEL', 'apronER', 'outerL', 'outerR', 'lineL', 'lineR', 'cutA', 'cutB', 'wallBase', 'wallMid', 'wallTip', 'gateBase', 'gateMid', 'gateTop', 'gateTip', 'gateTmp', 'wallLo', 'wallHi', 'bandI', 'bandO'] as const) {
       const arr = scratch[key];
       while (arr.length < n) arr.push(new THREE.Vector3());
     }
-    for (const key of ['v', 'gateV', 'zeros', 'ones', 'uA', 'uB', 'uCutA', 'uCutB', 'awL', 'awR', 'lane', 'lineWL', 'lineWR', 'paint', 'dash', 'vDash', 'rubOn', 'uRubL', 'uRubR', 'cutOffA', 'rubUA', 'rubUB'] as const) {
+    for (const key of ['v', 'gateV', 'zeros', 'ones', 'uA', 'uB', 'uCutA', 'uCutB', 'awL', 'awR', 'lane', 'lineWL', 'lineWR', 'paint', 'dash', 'vDash'] as const) {
       const arr = scratch[key];
       while (arr.length < n) arr.push(0);
     }
@@ -2349,14 +2339,6 @@ export function buildRoadMeshes(
   pitLines: PitTrackLine[] = [],
   /** The ground brush's say over the run off. Undefined leaves it one material. */
   ground?: RunoffGround,
-  /**
-   * Where the cars run and how wide the rubber lies, per cross section, from
-   * `racingLine`. Computed once against the shape of the circuit and handed
-   * in, because it settles a whole lap and must not be paid for again every
-   * time a kerb changes colour. Without it the band falls back to `aiOffset`
-   * at the set width, which is what it did before there was a line to follow.
-   */
-  racing?: RacingLine,
 ): MeshDef[] {
   if (frames.length < 2) return [];
   const fr = expand(frames, closed);
@@ -2491,23 +2473,12 @@ export function buildRoadMeshes(
   const exitPaint = scratch.lane;
   const uCutA = scratch.uCutA;
   const uCutB = scratch.uCutB;
-  const cutOffA = scratch.cutOffA;
   for (let i = 0; i < n; i++) {
     exitPaint[i] = 0;
     cutA[i].copy(tarmacR[i]);
     cutB[i].copy(tarmacR[i]);
     uCutA[i] = uB[i];
     uCutB[i] = uB[i];
-    /* Where the plate's outer edge REALLY is, as an offset, carried rather
-       than worked back out of `uCutA`: the default U is `uB`, which is the U
-       at the tarmac edge BEFORE the white line is taken out of it. Harmless
-       as a texture coordinate -- it stretches the asphalt by the width of a
-       line across a whole road -- and quietly wrong as a position: read back,
-       it put the plate's edge a line's width outside where the plate ends,
-       and the band cut against it ran over the paint. */
-    cutOffA[i] = hasLine
-      ? fr[i].widthR - Math.min(lineWidth, fr[i].widthR / 3)
-      : fr[i].widthR;
     for (const line of pitLines) {
       if (line.kind !== 'exit') continue;
       // Anchored at the START of the mouth, where the lane's own edge line
@@ -2544,7 +2515,6 @@ export function buildRoadMeshes(
       const bOff = a + width;
       cutA[i].copy(f.pos).addScaledVector(f.right, a);
       cutB[i].copy(f.pos).addScaledVector(f.right, bOff);
-      cutOffA[i] = a;
       uCutA[i] = (a + f.widthL) / road.uvWidth;
       uCutB[i] = (bOff + f.widthL) / road.uvWidth;
       exitPaint[i] = 1;
@@ -2555,87 +2525,8 @@ export function buildRoadMeshes(
   for (let i = 0; i < n; i++) if (exitPaint[i] > 0) { hasExitLine = true; break; }
   const exitSpans = hasExitLine ? runs(n, (i) => exitPaint[i] > 0) : [];
 
-  /* --- the rubber down the racing line ---------------------------------
-   *
-   * A circuit is not one shade of grey. Where the cars actually run, the
-   * tarmac is laid with rubber and goes almost black; a metre either side of
-   * that the marbles collect and it goes pale again. It is the single loudest
-   * thing that says "this track has been raced on", and its absence is why a
-   * built circuit reads as a model of one.
-   *
-   * The band is centred on the AI line, which IS the racing line: the line is
-   * the centre line offset by `aiOffset` per control point (see buildAiLine),
-   * so the same number that moves the cars moves the rubber, and dragging the
-   * racing line in the editor drags the black with it.
-   *
-   * It is not laid ON the road -- a second surface a hair above the tarmac
-   * z-fights at distance, which is the whole reason the exit line below is
-   * cut INTO the plate rather than floated over it. The band is cut in the
-   * same way: the road is drawn either side of it and the band fills the
-   * middle, one surface throughout, nothing to sort and nothing to flicker.
-   * The fade lives in the texture, whose U runs across the band, so the edges
-   * dissolve into tarmac instead of ending at a line.
-   */
-  const rubL = scratch.rubL;
-  const rubR = scratch.rubR;
-  const rubOn = scratch.rubOn;
-  const uRubL = scratch.uRubL;
-  const uRubR = scratch.uRubR;
-  const rubUA = scratch.rubUA;
-  const rubUB = scratch.rubUB;
-  let hasRubber = false;
-  for (let i = 0; i < n; i++) {
-    const f = fr[i];
-    // Where the plate ends: the exit line's inner edge where there is one,
-    // the tarmac edge everywhere else -- and the tarmac edge is inside the
-    // white line, not outside it.
-    const cutOff = cutOffA[i];
-    const tarLo = hasLine ? -f.widthL + Math.min(lineWidth, f.widthL / 3) : -f.widthL;
-    // `fr` may carry one appended seam frame, which is a copy of frame 0.
-    const ri = racing && i < racing.offset.length ? i : 0;
-    const centre = racing ? racing.offset[ri] : f.aiOffset;
-    const want = racing ? racing.width[ri] : Math.max(0, road.rubberWidth);
-    const halfW = want / 2;
-    const lo = Math.max(tarLo + RUBBER_MARGIN, centre - halfW);
-    const hi = Math.min(cutOff - RUBBER_MARGIN, centre + halfW);
-    /* Off only where there is genuinely nothing to draw. It used to give up
-       below a metre, which is most of the pit exit: the boundary line eats
-       into the plate there, the band was squeezed under the threshold and
-       simply stopped -- and the cars go through a pit exit like anywhere
-       else, so the rubber has to as well. It runs on, narrowed to whatever
-       the plate leaves beside the paint. */
-    const on = road.rubber && hi - lo > 0.4;
-    rubOn[i] = on ? 1 : 0;
-    if (on) hasRubber = true;
-    /* Collapsed onto the plate's own outer edge when off, so the strip left
-       of the band covers the whole plate and the one right of it is
-       degenerate -- the same trick the exit line's cut uses. */
-    const a = on ? lo : cutOff;
-    const b2 = on ? hi : cutOff;
-    rubL[i].copy(f.pos).addScaledVector(f.right, a);
-    rubR[i].copy(f.pos).addScaledVector(f.right, b2);
-    /* Switched off, both edges take the plate's own U as well as its
-       position, so the strip left of the band is EXACTLY the plate this used
-       to draw in one piece -- same vertices, same texture, to the last
-       decimal. A feature that is off has to leave no trace at all. */
-    uRubL[i] = on ? (a + f.widthL) / road.uvWidth : uCutA[i];
-    uRubR[i] = on ? (b2 + f.widthL) / road.uvWidth : uCutA[i];
-    /* And how much of the rubber TILE the band shows, which is what makes a
-       narrow band read as darker rather than merely thinner. The tile is
-       black down its middle and pale at its edges; a band at the widest the
-       line ever gets shows the whole of it, marbles included, and a band
-       squeezed to an apex shows only the black core. Measured against the
-       set width rather than this cross section's, so the two ends of a
-       corner are darker than the straight before it -- which is the point. */
-    const full = Math.max(0.001, Math.max(road.rubberWidth, want));
-    const frac = Math.min(1, (b2 - a) / full);
-    rubUA[i] = 0.5 - frac / 2;
-    rubUB[i] = 0.5 + frac / 2;
-  }
-
   emit('1ROAD_track', 'asphalt', 'ROAD', (b) => {
-    b.addStrip(tarmacL, rubL, zeros, uRubL, v, 0, n - 1);
-    b.addStrip(rubR, cutA, uRubR, uCutA, v, 0, n - 1);
+    b.addStrip(tarmacL, cutA, zeros, uCutA, v, 0, n - 1);
     for (const [a, z] of exitSpans) {
       b.addStrip(cutB, tarmacR, uCutB, uB, v, Math.max(0, a - 1), Math.min(n - 1, z + 1));
       /* The plate where the line begins and the one where it ends belong to
@@ -2646,27 +2537,7 @@ export function buildRoadMeshes(
       if (a > 0) b.addStrip(cutA, cutB, uCutA, uCutB, v, a - 1, a);
       if (z < n - 1) b.addStrip(cutA, cutB, uCutA, uCutB, v, z, z + 1);
     }
-  }, n * 6);
-
-  if (hasRubber) {
-    emit('1ROAD_rubber', 'rubber', 'ROAD', (b) => {
-      // U across the band, 0 to 1, so the texture's fade lands exactly on its
-      // two edges however wide the band is set.
-      /* Reaching one cross section past each end of the run, exactly as every
-         other optional strip of the road does.
-         Without it the road had a HOLE. The plate is drawn as two strips that
-         part around the band, and their edges travel from where the band is
-         to where it collapses over the single quad where it switches off --
-         but that quad belonged to no run, so the band was not drawn across
-         it and the two halves of the road simply stood apart. A metre and a
-         half of nothing at the pit exit, with the ground showing through it.
-         Reaching over means the band is drawn there too, closing to a point
-         on the cross section where it ends. */
-      for (const [a, z] of runs(n, (i) => rubOn[i] > 0)) {
-        b.addStrip(rubL, rubR, rubUA, rubUB, v, Math.max(0, a - 1), Math.min(n - 1, z + 1));
-      }
-    }, n * 2);
-  }
+  }, n * 4);
   if (hasExitLine) {
     emit('1ROAD_line_pit_exit', 'line_white', 'ROAD', (b) => {
       for (const [a, z] of exitSpans) b.addStrip(cutA, cutB, zeros, ones, v, a, z);
@@ -3953,131 +3824,6 @@ const DECO_LOOK: Record<DecoSurface, { material: MaterialKey; surface: SurfaceKe
   asphalt: { material: 'asphalt', surface: 'ROAD', prefix: '1ROAD' },
   concrete: { material: 'concrete', surface: 'CONCRETE', prefix: '1CONCRETE' },
 };
-
-/**
- * Where the cars really run, and how wide the rubber lies there.
- *
- * `aiOffset` was the wrong answer, and it was wrong in the quietest way: it
- * defaults to zero on every control point, so unless somebody had sat down and
- * dragged the racing line by hand -- which nobody does -- the "racing line"
- * WAS the centre line, and the rubber ran straight down the middle of the road
- * through every corner on the circuit. Right by construction, useless in fact.
- *
- * So the line is derived instead. Not by a rule about corners -- an out-in-out
- * written as a formula needs to know where a corner starts, and on a real
- * circuit that question has no answer -- but by letting a rubber band find its
- * own way down the corridor: start at the centre, repeatedly move each point
- * towards the straight line between its neighbours, and stop it at the edge of
- * the tarmac. What settles out is the straightest path the circuit allows,
- * which is the racing line: hard against the inside at an apex, out on the far
- * side before and after it, and crossing over between corners of opposite
- * hand. Nobody has to say the word "apex" anywhere.
- *
- * `aiOffset` is where it starts from, so a hand-dragged line still pulls the
- * result its way instead of being thrown away.
- */
-export interface RacingLine {
-  /** Lateral offset from the centre line, per cross section. */
-  offset: Float32Array;
-  /** How wide the rubber lies there, metres. */
-  width: Float32Array;
-}
-
-/** Passes of the relaxation. Enough for a lap to settle, cheap enough to. */
-const LINE_PASSES = 260;
-/** How far a point moves towards straight per pass. Over ~0.5 it oscillates. */
-const LINE_RELAX = 0.35;
-/** How close to the tarmac edge the line may run, metres. */
-const LINE_MARGIN = 1.2;
-/** Radius at which a corner counts as fully a corner, metres. */
-const LINE_TIGHT = 140;
-
-export function racingLine(frames: Frame[], closed: boolean, baseWidth: number): RacingLine {
-  const n = frames.length;
-  const offset = new Float32Array(n);
-  const width = new Float32Array(n);
-  if (n === 0) return { offset, width };
-  const lo = new Float32Array(n);
-  const hi = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const f = frames[i];
-    lo[i] = -f.widthL + LINE_MARGIN;
-    hi[i] = f.widthR - LINE_MARGIN;
-    if (hi[i] < lo[i]) { lo[i] = 0; hi[i] = 0; }
-    offset[i] = Math.min(hi[i], Math.max(lo[i], f.aiOffset));
-    width[i] = baseWidth;
-  }
-  if (n < 3) return { offset, width };
-
-  /* Gauss-Seidel: each point is moved using the neighbours as they already
-     are this pass, not as they were last pass, which settles a lap in a few
-     hundred passes instead of a few thousand. */
-  const px = new Float64Array(n);
-  const pz = new Float64Array(n);
-  const put = (i: number) => {
-    const f = frames[i];
-    px[i] = f.pos.x + f.right.x * offset[i];
-    pz[i] = f.pos.z + f.right.z * offset[i];
-  };
-  for (let i = 0; i < n; i++) put(i);
-
-  const first = closed ? 0 : 1;
-  const last = closed ? n - 1 : n - 2;
-  for (let pass = 0; pass < LINE_PASSES; pass++) {
-    for (let i = first; i <= last; i++) {
-      const a = i === 0 ? n - 1 : i - 1;
-      const b = i === n - 1 ? 0 : i + 1;
-      // The point halfway between the neighbours is where this one would sit
-      // if the path through the three of them were straight.
-      const mx = (px[a] + px[b]) / 2 - px[i];
-      const mz = (pz[a] + pz[b]) / 2 - pz[i];
-      const f = frames[i];
-      const d = mx * f.right.x + mz * f.right.z;
-      const v = offset[i] + d * LINE_RELAX;
-      offset[i] = v < lo[i] ? lo[i] : v > hi[i] ? hi[i] : v;
-      put(i);
-    }
-  }
-
-  /* The width follows what the line turned out to be, not what the road does.
-     On a straight the field is spread across the tarmac and the rubber is
-     wide and thin; at an apex every car takes very nearly the same line and it
-     goes narrow and black. The band's own texture does the rest -- see the U
-     range in buildRoadMeshes, which shows only the dark core of the tile when
-     the band is narrow and the pale marble edges as it widens. */
-  const raw = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const a = i === 0 ? (closed ? n - 1 : 0) : i - 1;
-    const b = i === n - 1 ? (closed ? 0 : n - 1) : i + 1;
-    const abx = px[i] - px[a], abz = pz[i] - pz[a];
-    const bcx = px[b] - px[i], bcz = pz[b] - pz[i];
-    const acx = px[b] - px[a], acz = pz[b] - pz[a];
-    const la = Math.hypot(abx, abz), lb = Math.hypot(bcx, bcz), lc = Math.hypot(acx, acz);
-    const area2 = Math.abs(abx * bcz - bcx * abz);
-    // Menger curvature of the three points, as a radius.
-    const radius = area2 > 1e-6 ? (la * lb * lc) / (2 * area2) : 1e6;
-    const corner = Math.min(1, LINE_TIGHT / Math.max(1, radius));
-    raw[i] = baseWidth * (1.4 - 0.75 * corner);
-  }
-  // Smoothed along the lap, or the band pulses cross section by cross section
-  // wherever the sampled curvature does.
-  for (let pass = 0; pass < 6; pass++) {
-    for (let i = 0; i < n; i++) {
-      const a = i === 0 ? (closed ? n - 1 : 0) : i - 1;
-      const b = i === n - 1 ? (closed ? 0 : n - 1) : i + 1;
-      raw[i] = (raw[a] + 2 * raw[i] + raw[b]) / 4;
-    }
-  }
-  width.set(raw);
-  return { offset, width };
-}
-
-/**
- * How close the rubber band may come to the edge of the plate it is cut into,
- * metres. Right up against the tarmac edge the fade has nowhere to finish and
- * the band shows a hard border, which is the one thing it must never do.
- */
-const RUBBER_MARGIN = 0.6;
 
 /** How far the outer edge of a deco road falls to meet the ground. */
 const DECO_EDGE_DROP = 0.04;

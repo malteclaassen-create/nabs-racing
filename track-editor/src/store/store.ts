@@ -176,12 +176,6 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
       kerbs: [],
       edgeLine: true,
       edgeLineWidth: 0.14,
-      /* On by default, because a circuit without it does not look like a
-         circuit: the rubber down the racing line is the first thing that
-         says a track has been raced on rather than modelled. Existing saves
-         pick it up too -- they carry no setting, so they take this one. */
-      rubber: true,
-      rubberWidth: 3.5,
       apronColour: 'grey',
       runoffWidth: 12,
       /*

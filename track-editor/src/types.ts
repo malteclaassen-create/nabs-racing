@@ -167,13 +167,6 @@ export interface RoadSettings {
    */
   edgeLine: boolean;
   edgeLineWidth: number;
-  /**
-   * Lay rubber down the racing line: the dark band a circuit wears where the
-   * cars actually drive, fading out to bare tarmac either side of it.
-   */
-  rubber: boolean;
-  /** How wide that band is, metres. */
-  rubberWidth: number;
   /** Colour of every kerb span's tarmac strip. The width is per span. */
   apronColour: ApronColour;
   runoffWidth: number;
