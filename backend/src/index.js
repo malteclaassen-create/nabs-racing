@@ -505,7 +505,16 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
       // editor reaches people on their next visit instead of whenever the
       // browser next felt like asking.
       res.setHeader("Cache-Control", "no-cache");
-      res.sendFile(EDITOR_INDEX);
+      // The editor is meant to be found through a search (it is listed in
+      // sitemap.xml), and this one handler answers under two addresses —
+      // with and without the trailing slash (see above). A canonical tag
+      // picks the slashed one, matching the sitemap, so a search engine
+      // sees one page instead of two duplicates. Injected here rather than
+      // written into track-editor/index.html because the origin is not
+      // fixed (localhost, tunnel, the real domain).
+      const canonical = `<link rel="canonical" href="${publicOrigin(req)}/track-editor/" />`;
+      const html = readFileSync(EDITOR_INDEX, "utf8").replace("</head>", `${canonical}\n  </head>`);
+      res.type("html").send(html);
     });
   }
   // SPA fallback: any non-API GET returns index.html so client-side routes work
