@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <title>NABS Track Editor</title>
+    <!--
+      For the search snippet. The page is deliberately not linked from any
+      public page on the site (its card on /tools is admins-only), but it IS
+      in sitemap.xml and meant to be findable through a search engine — see
+      backend/src/lib/sitemap.js. Without this, Google invents a snippet from
+      whatever text the app happens to render first.
+    -->
+    <meta
+      name="description"
+      content="A free 3D track editor for Assetto Corsa that runs entirely in your browser. Draw the racing line, sculpt the terrain, place kerbs, barriers and pits, then export a finished .kn5 track ready to drive."
+    />
     <script>
       /*
        * React 19's dev build ships a "Components" performance track that, on

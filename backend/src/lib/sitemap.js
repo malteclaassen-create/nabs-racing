@@ -138,6 +138,13 @@ export async function buildSitemapXml(prisma, origin) {
   const index = await getSiteIndex(prisma);
   const urls = ["/"];
 
+  // The track editor. On the site itself its card (on /tools) is shown to
+  // admins only, but the page is public and should be findable through a
+  // search — the sitemap is its ONLY way in, since no crawlable page links to
+  // it. Spelled with the trailing slash to match the canonical the
+  // /track-editor handler serves (backend/src/index.js).
+  urls.push("/track-editor/");
+
   // A database from before the series model has no Series rows at all; the site
   // then lives under its flat paths, so list those rather than nothing.
   if (!index.series.length) {
