@@ -34,6 +34,7 @@ export interface MeshDef {
 export type MaterialKey =
   /* textured track materials */
   | 'asphalt'
+  | 'rubber'
   | 'kerb'
   | 'grass'
   | 'sand'
@@ -186,21 +187,30 @@ const scratch = {
      apron -- which then drew itself across the middle of the circuit. */
   cutA: [] as THREE.Vector3[],
   cutB: [] as THREE.Vector3[],
+  /* The two edges of the rubber band down the racing line. */
+  rubL: [] as THREE.Vector3[],
+  rubR: [] as THREE.Vector3[],
   uCutA: [] as number[],
   uCutB: [] as number[],
   paint: [] as number[],
   dash: [] as number[],
   vDash: [] as number[],
+  rubOn: [] as number[],
+  uRubL: [] as number[],
+  uRubR: [] as number[],
+  cutOffA: [] as number[],
+  rubUA: [] as number[],
+  rubUB: [] as number[],
   awR: [] as number[],
 };
 
 function takeScratch(n: number) {
   if (scratch.size < n) {
-    for (const key of ['left', 'right', 'top', 'edgeL', 'edgeR', 'apronEL', 'apronER', 'outerL', 'outerR', 'lineL', 'lineR', 'cutA', 'cutB', 'wallBase', 'wallMid', 'wallTip', 'gateBase', 'gateMid', 'gateTop', 'gateTip', 'gateTmp', 'wallLo', 'wallHi', 'bandI', 'bandO'] as const) {
+    for (const key of ['left', 'right', 'top', 'edgeL', 'edgeR', 'apronEL', 'apronER', 'outerL', 'outerR', 'lineL', 'lineR', 'cutA', 'cutB', 'rubL', 'rubR', 'wallBase', 'wallMid', 'wallTip', 'gateBase', 'gateMid', 'gateTop', 'gateTip', 'gateTmp', 'wallLo', 'wallHi', 'bandI', 'bandO'] as const) {
       const arr = scratch[key];
       while (arr.length < n) arr.push(new THREE.Vector3());
     }
-    for (const key of ['v', 'gateV', 'zeros', 'ones', 'uA', 'uB', 'uCutA', 'uCutB', 'awL', 'awR', 'lane', 'lineWL', 'lineWR', 'paint', 'dash', 'vDash'] as const) {
+    for (const key of ['v', 'gateV', 'zeros', 'ones', 'uA', 'uB', 'uCutA', 'uCutB', 'awL', 'awR', 'lane', 'lineWL', 'lineWR', 'paint', 'dash', 'vDash', 'rubOn', 'uRubL', 'uRubR', 'cutOffA', 'rubUA', 'rubUB'] as const) {
       const arr = scratch[key];
       while (arr.length < n) arr.push(0);
     }
@@ -480,8 +490,69 @@ export function railCount(h: number): number {
 /** Metres of barrier per texture repeat, the same on both axes. */
 const FENCE_UV = 4;
 
+/**
+ * Metres between two fence posts, matching the hand placed `fence` module's
+ * five posts per 8 m. The generated fence used to be mesh alone -- a curtain
+ * hanging on nothing -- while the module beside it had posts and leaning
+ * arms, and the two never read as the same product until both got them.
+ */
+const FENCE_POST_SPACING = 1.97;
+
 /** Least clear ground a barrier needs beside the road before it is dropped. */
 const MIN_WALL_ROOM = 0.8;
+
+/**
+ * Shortest run of barrier worth building beside an opening, metres.
+ *
+ * Half a module. Below that it is not a barrier, it is a piece of one left
+ * behind between two gaps.
+ */
+const MIN_BARRIER_PIECE = 4;
+
+/**
+ * A cut's curve parameters as one or two plain ranges.
+ *
+ * A span whose `from` is past its `to` runs across the start/finish seam, the
+ * same convention a kerb span uses, and that is two ranges rather than one.
+ */
+export function cutRanges(from: number, to: number, closed: boolean): Array<[number, number]> {
+  const a = Math.max(0, Math.min(1, from));
+  const b = Math.max(0, Math.min(1, to));
+  if (a <= b) return b - a > 1e-6 ? [[a, b]] : [];
+  return closed ? [[a, 1], [0, b]] : [[b, a]];
+}
+
+/**
+ * Metres of lap at a curve parameter, read off the cross sections.
+ *
+ * The seam needs care. `expand` closes a loop by repeating its FIRST cross
+ * section at the end, carrying the full lap length as its distance and the
+ * first one's curve parameter -- zero. So `t` climbs to nearly one across the
+ * ring and then drops back to zero on the very last entry, and a search that
+ * takes the array at its word concludes that every parameter is past the end
+ * and answers "the whole lap". Every cut then came out as an empty range and
+ * did nothing at all, which is exactly what the geometry showed. Reading that
+ * last entry as one is the whole fix.
+ */
+export function distanceAtT(fr: Frame[], t: number, closed: boolean): number {
+  const n = fr.length;
+  if (n === 0) return 0;
+  const tAt = (i: number) => (closed && i === n - 1 ? 1 : fr[i].t);
+  const want = Math.max(0, Math.min(1, t));
+  if (want <= tAt(0)) return fr[0].dist;
+  if (want >= tAt(n - 1)) return fr[n - 1].dist;
+  let lo = 0;
+  let hi = n - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (tAt(mid) <= want) lo = mid;
+    else hi = mid - 1;
+  }
+  const j = Math.min(n - 2, lo);
+  const span = tAt(j + 1) - tAt(j);
+  const k = span > 1e-9 ? (want - tAt(j)) / span : 0;
+  return fr[j].dist + (fr[j + 1].dist - fr[j].dist) * k;
+}
 
 /* ------------------------------------------------------------------ */
 /* What a barrier carries: marshalling panels and access gates          */
@@ -672,8 +743,22 @@ export function shoulderDrop(drop: number, w: number, full: number): number {
  * 74 cm up and down with it. Nothing is ever widened here, so no clearance the
  * rules established can be undone -- the width is only ever pulled DOWN towards
  * its neighbours, which turns a cliff into a wedge.
+ *
+ * A metre per metre is a 45 degree wedge, and that turned out to be the whole
+ * of the "barrier squashes together at the apex" problem. Inside a tight bend
+ * the width rules narrow the shoulder hard and then let it straight back out:
+ * measured on a 13 m corner, 12.7 m of run off down to 3.1 m and back up to
+ * 14.7 m inside ten metres of track. At 45 degrees the shoulder edge is
+ * allowed to do exactly that, and the barrier standing on it runs out to a
+ * point and turns around -- the sharp V on the inside of the corner. The
+ * width at the apex was never the problem; the RATE was.
+ *
+ * A real run off is tapered like a slip road, not chamfered like the corner of
+ * a table. One in three is the compromise measured here: it costs a tenth of a
+ * metre of mean shoulder on a tight circuit, where one in six costs half a
+ * metre and starts pulling the barrier in a good way short of the corner.
  */
-const SHOULDER_TAPER = 1;
+const SHOULDER_TAPER = 1 / 3;
 
 /** Lipschitz limit a width array in place: no step bigger than the gap. */
 function limitTaper(width: Float32Array, frames: Frame[], closed: boolean, slope = SHOULDER_TAPER) {
@@ -1179,6 +1264,56 @@ function innerRoom(f: Frame, side: -1 | 1): number {
   return (1 / Math.abs(kappa)) * INNER_LIMIT;
 }
 
+/**
+ * How much of the ground INSIDE a bend the shoulder may take.
+ *
+ * `innerRoom` above asks the wrong question on a tight corner. It only forbids
+ * reaching past the centre of the turn, so a twelve metre run off inside a
+ * bend whose infield is fifteen metres across is allowed: it eats twelve of
+ * them, and the barrier is left as a three metre ring wound round what is
+ * left. That is the "barrier squashes together at the apex and walks in
+ * towards the track" -- and it is not a fold, which is why every test for
+ * folding said the geometry was fine. The clearance from the tarmac is
+ * honestly twelve metres all the way round; there simply is not enough
+ * infield for it to mean anything.
+ *
+ * What a circuit does instead is narrow the shoulder on the inside. So the
+ * rule is stated against the thing that is actually scarce -- the infield --
+ * rather than against the radius: the shoulder may take a SHARE of the ground
+ * inside the tarmac and no more, which leaves the barrier a curve of its own
+ * with the rest of the infield behind it. On anything but a tight corner the
+ * infield is enormous and this never binds.
+ */
+const INFIELD_SHARE = 0.5;
+
+function infieldRoom(f: Frame, side: -1 | 1): number {
+  const kappa = f.curvature;
+  if (!Number.isFinite(kappa) || Math.abs(kappa) < 1e-6) return Infinity;
+  const inside = kappa > 0 ? 1 : -1;
+  if (side !== inside) return Infinity;
+  const half = side < 0 ? f.widthL : f.widthR;
+  // Radius of the tarmac's own inner edge: what there is to share.
+  const infield = Math.max(0, 1 / Math.abs(kappa) - half);
+  return half + infield * INFIELD_SHARE;
+}
+
+/*
+ * A note on what does NOT work here, so it is not tried a third time.
+ *
+ * The pointwise limit above misses the fold at a corner ENTRY: the barrier
+ * there is held by the tight bend a few metres ahead, not by the gentle one
+ * beneath it. The obvious repair -- govern each cross section by the tightest
+ * radius within reach of its own offset -- is far too blunt to ship. Curvature
+ * is measured per sample and is noisy, so ONE spike poisons the whole window
+ * either side of it, and a run off that should narrow only at the apex
+ * collapses onto the tarmac over forty metres of track. Tried on 2026-08-31
+ * and reverted the same day: on a hand drawn S bend the barriers ended up
+ * standing on the kerb.
+ *
+ * Anything attempted here has to be measured against BOTH halves of the
+ * problem: no fold, AND the run off still the width it was asked for wherever
+ * there is honestly room for it.
+ */
 /* ------------------------------------------------------------------ */
 /* Corridor clearance: where the lap runs back past itself              */
 /* ------------------------------------------------------------------ */
@@ -1350,7 +1485,23 @@ function applyCorridorClearance(
         const den = dx * ez - dz * ex;
         if (den > -1e-12 && den < 1e-12) continue;
         const t = (qx * ez - qz * ex) / den;
-        if (t <= 0.05 || t >= limit) continue;
+        /*
+         * Twice the claim, not once.
+         *
+         * Stopping at `limit` asks "does my run off reach their ROAD", and
+         * the answer is almost always no while the two are still laid through
+         * each other: what is coming the other way is not their tarmac, it is
+         * their run off, and that reaches as far towards me as mine does
+         * towards them. Two ribbons thirty metres apart with nineteen metres
+         * of claim apiece overlap by eight, and neither ray gets anywhere
+         * near the other's asphalt to notice.
+         *
+         * The two meet halfway, so their tarmac has to be visible out to
+         * twice my claim for the halving below to see the pairs that matter.
+         * Beyond that the split lands outside my claim anyway and nothing is
+         * taken away.
+         */
+        if (t <= 0.05 || t >= limit * 2) continue;
         const u = (qx * dz - qz * dx) / den;
         if (u < 0 || u > 1) continue;
 
@@ -1374,16 +1525,40 @@ function applyCorridorClearance(
     dlx = f.right.x;
     dlz = f.right.z;
     // A segment runs a step past its own cross section and its far edge sits a
-    // half width out, so both have to be inside the query to be seen.
-    index.within(fx, fz, reach + maxHalf + maxStep, visit);
+    // half width out, so both have to be inside the query to be seen -- and
+    // out to TWICE the claim, because what has to be found is the tarmac
+    // behind the run off coming the other way, not the run off itself.
+    index.within(fx, fz, reach * 2 + maxHalf + maxStep, visit);
   }
 
   // The allowance may not shrink faster than a metre per metre of track.
   // Without this the run off drops from full width to nothing between two
   // cross sections, and the edge doubles back on itself — a knot of its own,
   // just a tidier looking one.
-  for (const room of [left, right]) {
-    for (let i = 0; i < n; i++) if (Number.isFinite(room[i])) room[i] -= CLEARANCE_MARGIN;
+  for (const [room, isLeft] of [[left, true], [right, false]] as const) {
+    for (let i = 0; i < n; i++) {
+      if (!Number.isFinite(room[i])) continue;
+      /*
+       * Share the corridor; do not take all of it.
+       *
+       * The ray stops at the other ribbon's TARMAC, and that is the right
+       * place to stop asking -- but the other ribbon is asking the same
+       * question in the opposite direction and stopping at MY tarmac. Granted
+       * the whole gap each, the two run offs and the two barriers standing on
+       * them are laid straight through one another. Measured on a paperclip
+       * whose straights ran thirty metres apart: nineteen metres of claim from
+       * each side, eight metres of barrier inside the other's.
+       *
+       * Halving what lies BETWEEN the two tarmac edges makes the two claims
+       * come to exactly the separation, whatever the widths are: mine is
+       * (myHalf + t)/2, theirs is (theirHalf + t')/2, and with t = D - theirHalf
+       * and t' = D - myHalf those add to D. So the two meet and neither
+       * crosses. The margin then opens the seam by a hand's width.
+       */
+      const half = isLeft ? frames[i].widthL : frames[i].widthR;
+      room[i] = half + (room[i] - half) / 2;
+      room[i] -= CLEARANCE_MARGIN;
+    }
     const step = (a: number, b: number) => Math.hypot(px[b] - px[a], pz[b] - pz[a]);
     for (let pass = 0; pass < (closed ? 2 : 1); pass++) {
       for (let i = 1; i < n; i++) room[i] = Math.min(room[i], room[i - 1] + step(i - 1, i));
@@ -1636,9 +1811,11 @@ export function sideProfile(
     wallGapR[i] = f.wallGapR;
 
     // Tight bends first: nothing on the inside may reach past the centre of
-    // the turn, or the strip folds back over the track.
+    // the turn, or the strip folds back over the track -- and nothing may take
+    // more than its share of the infield either, or the barrier ends up wound
+    // into a knot at the apex with the run off filling the corner.
     for (const side of SIDES) {
-      const room = innerRoom(f, side);
+      const room = Math.min(innerRoom(f, side), infieldRoom(f, side));
       if (!Number.isFinite(room)) continue;
       const half = side < 0 ? f.widthL : f.widthR;
       const kerbRoom = Math.max(0, room - half);
@@ -2172,6 +2349,14 @@ export function buildRoadMeshes(
   pitLines: PitTrackLine[] = [],
   /** The ground brush's say over the run off. Undefined leaves it one material. */
   ground?: RunoffGround,
+  /**
+   * Where the cars run and how wide the rubber lies, per cross section, from
+   * `racingLine`. Computed once against the shape of the circuit and handed
+   * in, because it settles a whole lap and must not be paid for again every
+   * time a kerb changes colour. Without it the band falls back to `aiOffset`
+   * at the set width, which is what it did before there was a line to follow.
+   */
+  racing?: RacingLine,
 ): MeshDef[] {
   if (frames.length < 2) return [];
   const fr = expand(frames, closed);
@@ -2306,12 +2491,23 @@ export function buildRoadMeshes(
   const exitPaint = scratch.lane;
   const uCutA = scratch.uCutA;
   const uCutB = scratch.uCutB;
+  const cutOffA = scratch.cutOffA;
   for (let i = 0; i < n; i++) {
     exitPaint[i] = 0;
     cutA[i].copy(tarmacR[i]);
     cutB[i].copy(tarmacR[i]);
     uCutA[i] = uB[i];
     uCutB[i] = uB[i];
+    /* Where the plate's outer edge REALLY is, as an offset, carried rather
+       than worked back out of `uCutA`: the default U is `uB`, which is the U
+       at the tarmac edge BEFORE the white line is taken out of it. Harmless
+       as a texture coordinate -- it stretches the asphalt by the width of a
+       line across a whole road -- and quietly wrong as a position: read back,
+       it put the plate's edge a line's width outside where the plate ends,
+       and the band cut against it ran over the paint. */
+    cutOffA[i] = hasLine
+      ? fr[i].widthR - Math.min(lineWidth, fr[i].widthR / 3)
+      : fr[i].widthR;
     for (const line of pitLines) {
       if (line.kind !== 'exit') continue;
       // Anchored at the START of the mouth, where the lane's own edge line
@@ -2348,6 +2544,7 @@ export function buildRoadMeshes(
       const bOff = a + width;
       cutA[i].copy(f.pos).addScaledVector(f.right, a);
       cutB[i].copy(f.pos).addScaledVector(f.right, bOff);
+      cutOffA[i] = a;
       uCutA[i] = (a + f.widthL) / road.uvWidth;
       uCutB[i] = (bOff + f.widthL) / road.uvWidth;
       exitPaint[i] = 1;
@@ -2358,8 +2555,87 @@ export function buildRoadMeshes(
   for (let i = 0; i < n; i++) if (exitPaint[i] > 0) { hasExitLine = true; break; }
   const exitSpans = hasExitLine ? runs(n, (i) => exitPaint[i] > 0) : [];
 
+  /* --- the rubber down the racing line ---------------------------------
+   *
+   * A circuit is not one shade of grey. Where the cars actually run, the
+   * tarmac is laid with rubber and goes almost black; a metre either side of
+   * that the marbles collect and it goes pale again. It is the single loudest
+   * thing that says "this track has been raced on", and its absence is why a
+   * built circuit reads as a model of one.
+   *
+   * The band is centred on the AI line, which IS the racing line: the line is
+   * the centre line offset by `aiOffset` per control point (see buildAiLine),
+   * so the same number that moves the cars moves the rubber, and dragging the
+   * racing line in the editor drags the black with it.
+   *
+   * It is not laid ON the road -- a second surface a hair above the tarmac
+   * z-fights at distance, which is the whole reason the exit line below is
+   * cut INTO the plate rather than floated over it. The band is cut in the
+   * same way: the road is drawn either side of it and the band fills the
+   * middle, one surface throughout, nothing to sort and nothing to flicker.
+   * The fade lives in the texture, whose U runs across the band, so the edges
+   * dissolve into tarmac instead of ending at a line.
+   */
+  const rubL = scratch.rubL;
+  const rubR = scratch.rubR;
+  const rubOn = scratch.rubOn;
+  const uRubL = scratch.uRubL;
+  const uRubR = scratch.uRubR;
+  const rubUA = scratch.rubUA;
+  const rubUB = scratch.rubUB;
+  let hasRubber = false;
+  for (let i = 0; i < n; i++) {
+    const f = fr[i];
+    // Where the plate ends: the exit line's inner edge where there is one,
+    // the tarmac edge everywhere else -- and the tarmac edge is inside the
+    // white line, not outside it.
+    const cutOff = cutOffA[i];
+    const tarLo = hasLine ? -f.widthL + Math.min(lineWidth, f.widthL / 3) : -f.widthL;
+    // `fr` may carry one appended seam frame, which is a copy of frame 0.
+    const ri = racing && i < racing.offset.length ? i : 0;
+    const centre = racing ? racing.offset[ri] : f.aiOffset;
+    const want = racing ? racing.width[ri] : Math.max(0, road.rubberWidth);
+    const halfW = want / 2;
+    const lo = Math.max(tarLo + RUBBER_MARGIN, centre - halfW);
+    const hi = Math.min(cutOff - RUBBER_MARGIN, centre + halfW);
+    /* Off only where there is genuinely nothing to draw. It used to give up
+       below a metre, which is most of the pit exit: the boundary line eats
+       into the plate there, the band was squeezed under the threshold and
+       simply stopped -- and the cars go through a pit exit like anywhere
+       else, so the rubber has to as well. It runs on, narrowed to whatever
+       the plate leaves beside the paint. */
+    const on = road.rubber && hi - lo > 0.4;
+    rubOn[i] = on ? 1 : 0;
+    if (on) hasRubber = true;
+    /* Collapsed onto the plate's own outer edge when off, so the strip left
+       of the band covers the whole plate and the one right of it is
+       degenerate -- the same trick the exit line's cut uses. */
+    const a = on ? lo : cutOff;
+    const b2 = on ? hi : cutOff;
+    rubL[i].copy(f.pos).addScaledVector(f.right, a);
+    rubR[i].copy(f.pos).addScaledVector(f.right, b2);
+    /* Switched off, both edges take the plate's own U as well as its
+       position, so the strip left of the band is EXACTLY the plate this used
+       to draw in one piece -- same vertices, same texture, to the last
+       decimal. A feature that is off has to leave no trace at all. */
+    uRubL[i] = on ? (a + f.widthL) / road.uvWidth : uCutA[i];
+    uRubR[i] = on ? (b2 + f.widthL) / road.uvWidth : uCutA[i];
+    /* And how much of the rubber TILE the band shows, which is what makes a
+       narrow band read as darker rather than merely thinner. The tile is
+       black down its middle and pale at its edges; a band at the widest the
+       line ever gets shows the whole of it, marbles included, and a band
+       squeezed to an apex shows only the black core. Measured against the
+       set width rather than this cross section's, so the two ends of a
+       corner are darker than the straight before it -- which is the point. */
+    const full = Math.max(0.001, Math.max(road.rubberWidth, want));
+    const frac = Math.min(1, (b2 - a) / full);
+    rubUA[i] = 0.5 - frac / 2;
+    rubUB[i] = 0.5 + frac / 2;
+  }
+
   emit('1ROAD_track', 'asphalt', 'ROAD', (b) => {
-    b.addStrip(tarmacL, cutA, zeros, uCutA, v, 0, n - 1);
+    b.addStrip(tarmacL, rubL, zeros, uRubL, v, 0, n - 1);
+    b.addStrip(rubR, cutA, uRubR, uCutA, v, 0, n - 1);
     for (const [a, z] of exitSpans) {
       b.addStrip(cutB, tarmacR, uCutB, uB, v, Math.max(0, a - 1), Math.min(n - 1, z + 1));
       /* The plate where the line begins and the one where it ends belong to
@@ -2370,7 +2646,27 @@ export function buildRoadMeshes(
       if (a > 0) b.addStrip(cutA, cutB, uCutA, uCutB, v, a - 1, a);
       if (z < n - 1) b.addStrip(cutA, cutB, uCutA, uCutB, v, z, z + 1);
     }
-  }, n * 4);
+  }, n * 6);
+
+  if (hasRubber) {
+    emit('1ROAD_rubber', 'rubber', 'ROAD', (b) => {
+      // U across the band, 0 to 1, so the texture's fade lands exactly on its
+      // two edges however wide the band is set.
+      /* Reaching one cross section past each end of the run, exactly as every
+         other optional strip of the road does.
+         Without it the road had a HOLE. The plate is drawn as two strips that
+         part around the band, and their edges travel from where the band is
+         to where it collapses over the single quad where it switches off --
+         but that quad belonged to no run, so the band was not drawn across
+         it and the two halves of the road simply stood apart. A metre and a
+         half of nothing at the pit exit, with the ground showing through it.
+         Reaching over means the band is drawn there too, closing to a point
+         on the cross section where it ends. */
+      for (const [a, z] of runs(n, (i) => rubOn[i] > 0)) {
+        b.addStrip(rubL, rubR, rubUA, rubUB, v, Math.max(0, a - 1), Math.min(n - 1, z + 1));
+      }
+    }, n * 2);
+  }
   if (hasExitLine) {
     emit('1ROAD_line_pit_exit', 'line_white', 'ROAD', (b) => {
       for (const [a, z] of exitSpans) b.addStrip(cutA, cutB, zeros, ones, v, a, z);
@@ -2680,7 +2976,37 @@ export function buildRoadMeshes(
           return kept;
         });
 
+      /*
+       * The stretches the author took back out.
+       *
+       * Applied before the gates and through the same `cut`, so a hand made
+       * opening behaves exactly like one the gate machinery made: the runs
+       * either side keep their own clean ends, the fence posts follow the
+       * runs, and nothing else in here has to know about it. See BarrierCut
+       * for why they are held as curve parameters rather than metres.
+       */
       let front = intervals;
+      // Defensive: settings built by hand in a test, or a project older than
+      // the feature, simply have none.
+      const mine = (road.wallCuts ?? []).filter((c) => c.side === (side === 'L' ? -1 : 1));
+      for (const c of mine) {
+        for (const [t0, t1] of cutRanges(c.from, c.to, closed)) {
+          front = cut(front, distanceAtT(fr, t0, closed), distanceAtT(fr, t1, closed));
+        }
+      }
+      /*
+       * A slice of barrier left between two openings is not barrier.
+       *
+       * Two cuts that very nearly meet leave a couple of metres of fence
+       * standing on its own in the middle of the gap, which reads as debris
+       * rather than as a barrier -- and it is what the author was trying to
+       * get rid of in the first place. The cuts themselves are merged as they
+       * are made, so this is the backstop for the ways a sliver can turn up
+       * anyway: two openings made from opposite ends, or one landing against
+       * the end of a painted run.
+       */
+      if (mine.length > 0) front = front.filter(([lo, hi]) => hi - lo >= MIN_BARRIER_PIECE);
+
       const rearPieces: Array<[number, number]> = [];
       const openings: number[] = [];
       for (const station of gates) {
@@ -2932,6 +3258,176 @@ export function buildRoadMeshes(
       barrier('_gate', rearSpans);
       if (markSpans.length > 0) armco(`1WALL_${long}_mark`, markSpans, 'guardrail_orange');
 
+      /* --- the fence posts ------------------------------------------------ */
+      /*
+       * A catch fence is mesh STRUNG ON something: posts on the far side from
+       * the track, each with the leaning arm that carries the top over the
+       * circuit. The hand placed `fence` module always had them; the generated
+       * fence was the mesh alone, and next to a placed run -- or anywhere the
+       * camera got close -- it read as a different, cheaper barrier. Grown
+       * here the way the marshalling panels are: worked out from the same
+       * arc-length intervals, merged into one mesh per side.
+       */
+      if (fence && road.wallHeight > solid + 0.05) {
+        const mats: THREE.Matrix4[] = [];
+        const m = new THREE.Matrix4();
+        const ax = new THREE.Vector3();
+        const ay = new THREE.Vector3(0, 1, 0);
+        const az = new THREE.Vector3();
+        const at = new THREE.Vector3();
+        const leanY = new THREE.Vector3();
+        const armLen = Math.hypot(FENCE_LEAN_OUT, FENCE_LEAN_UP) + 0.3;
+        /** Where the post at `s` metres of lap stands, into `ax` and `at`. */
+        const footAt = (s: number, setBack: number) => {
+          const j = Math.min(n - 2, Math.max(0, sectionBefore(s)));
+          const plate = fr[j + 1].dist - fr[j].dist;
+          const t = plate > 1e-6 ? Math.min(1, Math.max(0, (s - fr[j].dist) / plate)) : 0;
+          ax.lerpVectors(fr[j].right, fr[j + 1].right, t);
+          ax.y = 0;
+          ax.normalize();
+          at.lerpVectors(base[j], base[j + 1], t);
+          // Behind the mesh plane, away from the track, where a real post
+          // stands so a glancing car meets wire and not steel.
+          if (setBack > 0) at.addScaledVector(ax, away * setBack);
+          at.addScaledVector(ax, away * 0.06);
+        };
+        const postAt = (s: number, setBack: number) => {
+          footAt(s, setBack);
+          az.crossVectors(ax, ay).normalize();
+          m.makeBasis(ax, ay, az);
+          m.setPosition(at.x, at.y + road.wallHeight / 2, at.z);
+          mats.push(m.clone());
+          // The arm: from the top of the post along the lean, carrying the
+          // top of the mesh back over the circuit -- the same 34 degrees the
+          // strip above folds to, because it is the same member.
+          leanY.copy(ax).multiplyScalar(-away * FENCE_LEAN_OUT).setY(FENCE_LEAN_UP).normalize();
+          // The third axis is the horizontal along-track direction, which is
+          // perpendicular to the lean; the first is rebuilt from the two so
+          // the basis stays orthogonal and the arm is not sheared.
+          az.crossVectors(ay, ax).normalize();
+          ax.crossVectors(leanY, az).normalize();
+          m.makeBasis(ax, leanY, az);
+          m.setPosition(
+            at.x + leanY.x * (armLen / 2 - 0.16),
+            at.y + road.wallHeight - 0.1 + leanY.y * (armLen / 2 - 0.16),
+            at.z + leanY.z * (armLen / 2 - 0.16),
+          );
+          mats.push(m.clone());
+        };
+        const posted: Array<{ lo: number; hi: number; sb: (s: number) => number }> = [
+          ...front.map(([lo, hi]) => ({ lo, hi, sb: () => 0 })),
+          ...rearPieces.map(([lo, hi]) => ({
+            lo,
+            hi,
+            sb: (s: number) =>
+              s <= hi - GATE_JOIN
+                ? GATE_SET_BACK
+                : Math.max(0.06, (GATE_SET_BACK * (hi - s)) / GATE_JOIN),
+          })),
+        ];
+        /*
+         * Posts are spaced along the BARRIER, not along the lap.
+         *
+         * An inward offset is shorter than the line it came from -- that is
+         * what makes it an inward offset -- so on the inside of a bend a step
+         * of lap metres buys far less barrier than it does on a straight.
+         * Stepped in lap metres the posts therefore crowd together exactly
+         * where the corner is tightest: measured on a 12 m run off, posts
+         * asked for 1.97 m apart came out 0.19 m apart, and a post is 0.14 m
+         * thick, so they stood inside one another. Walking the run's own
+         * length puts every post the same distance from the last one and
+         * simply asks for fewer of them around the inside of a corner.
+         */
+        const probe = new THREE.Vector3();
+        const prevFoot = new THREE.Vector3();
+        for (const run of posted) {
+          if (run.hi - run.lo < 0.3) continue;
+          // Lap distance against barrier length, close enough to interpolate.
+          const laps: number[] = [];
+          const lens: number[] = [];
+          const steps = Math.max(2, Math.ceil((run.hi - run.lo)));
+          let acc = 0;
+          for (let k = 0; k <= steps; k++) {
+            const s = run.lo + ((run.hi - run.lo) * k) / steps;
+            footAt(s, run.sb(s));
+            probe.copy(at);
+            if (k > 0) acc += probe.distanceTo(prevFoot);
+            prevFoot.copy(probe);
+            laps.push(s);
+            lens.push(acc);
+          }
+          if (acc < 0.3) continue;
+          const count = Math.max(1, Math.round(acc / FENCE_POST_SPACING));
+          let cursor = 0;
+          for (let k = 0; k <= count; k++) {
+            const want = (acc * k) / count;
+            while (cursor + 2 < lens.length && lens[cursor + 1] < want) cursor += 1;
+            const span = lens[cursor + 1] - lens[cursor];
+            const t = span > 1e-9 ? (want - lens[cursor]) / span : 0;
+            const s = laps[cursor] + (laps[cursor + 1] - laps[cursor]) * t;
+            postAt(s, run.sb(s));
+          }
+        }
+        /*
+         * Baked into ONE geometry by hand rather than merged from thousands
+         * of little boxes: this runs again on every committed edit of the
+         * track, and a lap of catch fence is a few thousand posts. The two
+         * templates are transformed vertex by vertex into one pre-sized
+         * buffer, which is the same work mergeGeometries does minus the few
+         * thousand allocations.
+         */
+        if (mats.length > 0) {
+          const tPost = new THREE.BoxGeometry(0.14, road.wallHeight, 0.14);
+          const tArm = new THREE.BoxGeometry(0.12, armLen, 0.12);
+          const templates = [tPost, tArm];
+          const vPer = templates.map((t) => t.getAttribute('position').count);
+          const iPer = templates.map((t) => t.getIndex()!.count);
+          const pairs = mats.length / 2;
+          const vTotal = pairs * (vPer[0] + vPer[1]);
+          const iTotal = pairs * (iPer[0] + iPer[1]);
+          const pos = new Float32Array(vTotal * 3);
+          const nrm = new Float32Array(vTotal * 3);
+          const uv = new Float32Array(vTotal * 2);
+          const index = vTotal > 65535 ? new Uint32Array(iTotal) : new Uint16Array(iTotal);
+          const v = new THREE.Vector3();
+          let vAt = 0;
+          let iAt = 0;
+          for (let k = 0; k < mats.length; k++) {
+            const t = templates[k % 2];
+            const tm = mats[k];
+            const tp = t.getAttribute('position');
+            const tn = t.getAttribute('normal');
+            const tu = t.getAttribute('uv');
+            const ti = t.getIndex()!;
+            for (let j = 0; j < ti.count; j++) index[iAt++] = ti.getX(j) + vAt;
+            for (let j = 0; j < tp.count; j++) {
+              v.fromBufferAttribute(tp, j).applyMatrix4(tm);
+              pos[(vAt + j) * 3] = v.x;
+              pos[(vAt + j) * 3 + 1] = v.y;
+              pos[(vAt + j) * 3 + 2] = v.z;
+              // The basis is orthonormal -- rotation only -- so the normals
+              // go through the same matrix without a normal matrix of their own.
+              v.fromBufferAttribute(tn, j).transformDirection(tm);
+              nrm[(vAt + j) * 3] = v.x;
+              nrm[(vAt + j) * 3 + 1] = v.y;
+              nrm[(vAt + j) * 3 + 2] = v.z;
+              uv[(vAt + j) * 2] = tu.getX(j);
+              uv[(vAt + j) * 2 + 1] = tu.getY(j);
+            }
+            vAt += tp.count;
+          }
+          tPost.dispose();
+          tArm.dispose();
+          const g = new THREE.BufferGeometry();
+          g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+          g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+          g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+          g.setIndex(new THREE.BufferAttribute(index, 1));
+          g.computeBoundingSphere();
+          out.push({ name: `1OBJ_fencepost_${long}`, material: 'prop_light', surface: null, geometry: g });
+        }
+      }
+
       /* --- the marshalling panels ---------------------------------------- */
       /*
        * Grown on the barrier rather than placed: every circuit has these all
@@ -2969,6 +3465,9 @@ export function buildRoadMeshes(
           // clearance is measured in metres, like the opening itself: a panel
           // half over a gate would hang off the end of the armco.
           if (flags[i] !== 1) continue;
+          // Nor anywhere the author has opened the barrier: a lit panel hung
+          // in the middle of a gap is standing on nothing at all.
+          if (!front.some(([lo, hi]) => s >= lo - PANEL_W && s <= hi + PANEL_W)) continue;
           // Measured against where the openings ACTUALLY are, not against the
           // 400 m marks they were asked for: an opening is centred in the
           // plate it falls in, which can be half a plate off the mark.
@@ -3455,8 +3954,139 @@ const DECO_LOOK: Record<DecoSurface, { material: MaterialKey; surface: SurfaceKe
   concrete: { material: 'concrete', surface: 'CONCRETE', prefix: '1CONCRETE' },
 };
 
+/**
+ * Where the cars really run, and how wide the rubber lies there.
+ *
+ * `aiOffset` was the wrong answer, and it was wrong in the quietest way: it
+ * defaults to zero on every control point, so unless somebody had sat down and
+ * dragged the racing line by hand -- which nobody does -- the "racing line"
+ * WAS the centre line, and the rubber ran straight down the middle of the road
+ * through every corner on the circuit. Right by construction, useless in fact.
+ *
+ * So the line is derived instead. Not by a rule about corners -- an out-in-out
+ * written as a formula needs to know where a corner starts, and on a real
+ * circuit that question has no answer -- but by letting a rubber band find its
+ * own way down the corridor: start at the centre, repeatedly move each point
+ * towards the straight line between its neighbours, and stop it at the edge of
+ * the tarmac. What settles out is the straightest path the circuit allows,
+ * which is the racing line: hard against the inside at an apex, out on the far
+ * side before and after it, and crossing over between corners of opposite
+ * hand. Nobody has to say the word "apex" anywhere.
+ *
+ * `aiOffset` is where it starts from, so a hand-dragged line still pulls the
+ * result its way instead of being thrown away.
+ */
+export interface RacingLine {
+  /** Lateral offset from the centre line, per cross section. */
+  offset: Float32Array;
+  /** How wide the rubber lies there, metres. */
+  width: Float32Array;
+}
+
+/** Passes of the relaxation. Enough for a lap to settle, cheap enough to. */
+const LINE_PASSES = 260;
+/** How far a point moves towards straight per pass. Over ~0.5 it oscillates. */
+const LINE_RELAX = 0.35;
+/** How close to the tarmac edge the line may run, metres. */
+const LINE_MARGIN = 1.2;
+/** Radius at which a corner counts as fully a corner, metres. */
+const LINE_TIGHT = 140;
+
+export function racingLine(frames: Frame[], closed: boolean, baseWidth: number): RacingLine {
+  const n = frames.length;
+  const offset = new Float32Array(n);
+  const width = new Float32Array(n);
+  if (n === 0) return { offset, width };
+  const lo = new Float32Array(n);
+  const hi = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const f = frames[i];
+    lo[i] = -f.widthL + LINE_MARGIN;
+    hi[i] = f.widthR - LINE_MARGIN;
+    if (hi[i] < lo[i]) { lo[i] = 0; hi[i] = 0; }
+    offset[i] = Math.min(hi[i], Math.max(lo[i], f.aiOffset));
+    width[i] = baseWidth;
+  }
+  if (n < 3) return { offset, width };
+
+  /* Gauss-Seidel: each point is moved using the neighbours as they already
+     are this pass, not as they were last pass, which settles a lap in a few
+     hundred passes instead of a few thousand. */
+  const px = new Float64Array(n);
+  const pz = new Float64Array(n);
+  const put = (i: number) => {
+    const f = frames[i];
+    px[i] = f.pos.x + f.right.x * offset[i];
+    pz[i] = f.pos.z + f.right.z * offset[i];
+  };
+  for (let i = 0; i < n; i++) put(i);
+
+  const first = closed ? 0 : 1;
+  const last = closed ? n - 1 : n - 2;
+  for (let pass = 0; pass < LINE_PASSES; pass++) {
+    for (let i = first; i <= last; i++) {
+      const a = i === 0 ? n - 1 : i - 1;
+      const b = i === n - 1 ? 0 : i + 1;
+      // The point halfway between the neighbours is where this one would sit
+      // if the path through the three of them were straight.
+      const mx = (px[a] + px[b]) / 2 - px[i];
+      const mz = (pz[a] + pz[b]) / 2 - pz[i];
+      const f = frames[i];
+      const d = mx * f.right.x + mz * f.right.z;
+      const v = offset[i] + d * LINE_RELAX;
+      offset[i] = v < lo[i] ? lo[i] : v > hi[i] ? hi[i] : v;
+      put(i);
+    }
+  }
+
+  /* The width follows what the line turned out to be, not what the road does.
+     On a straight the field is spread across the tarmac and the rubber is
+     wide and thin; at an apex every car takes very nearly the same line and it
+     goes narrow and black. The band's own texture does the rest -- see the U
+     range in buildRoadMeshes, which shows only the dark core of the tile when
+     the band is narrow and the pale marble edges as it widens. */
+  const raw = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = i === 0 ? (closed ? n - 1 : 0) : i - 1;
+    const b = i === n - 1 ? (closed ? 0 : n - 1) : i + 1;
+    const abx = px[i] - px[a], abz = pz[i] - pz[a];
+    const bcx = px[b] - px[i], bcz = pz[b] - pz[i];
+    const acx = px[b] - px[a], acz = pz[b] - pz[a];
+    const la = Math.hypot(abx, abz), lb = Math.hypot(bcx, bcz), lc = Math.hypot(acx, acz);
+    const area2 = Math.abs(abx * bcz - bcx * abz);
+    // Menger curvature of the three points, as a radius.
+    const radius = area2 > 1e-6 ? (la * lb * lc) / (2 * area2) : 1e6;
+    const corner = Math.min(1, LINE_TIGHT / Math.max(1, radius));
+    raw[i] = baseWidth * (1.4 - 0.75 * corner);
+  }
+  // Smoothed along the lap, or the band pulses cross section by cross section
+  // wherever the sampled curvature does.
+  for (let pass = 0; pass < 6; pass++) {
+    for (let i = 0; i < n; i++) {
+      const a = i === 0 ? (closed ? n - 1 : 0) : i - 1;
+      const b = i === n - 1 ? (closed ? 0 : n - 1) : i + 1;
+      raw[i] = (raw[a] + 2 * raw[i] + raw[b]) / 4;
+    }
+  }
+  width.set(raw);
+  return { offset, width };
+}
+
+/**
+ * How close the rubber band may come to the edge of the plate it is cut into,
+ * metres. Right up against the tarmac edge the fade has nowhere to finish and
+ * the band shows a hard border, which is the one thing it must never do.
+ */
+const RUBBER_MARGIN = 0.6;
+
 /** How far the outer edge of a deco road falls to meet the ground. */
 const DECO_EDGE_DROP = 0.04;
+
+/** Width of an access road's dashed centre line, metres. */
+const DECO_LINE_WIDTH = 0.12;
+
+/** Metres of road per dash-and-gap of its centre line (see PIT_DASH). */
+const DECO_DASH = 6;
 
 /**
  * One decorative road, as a ribbon of its chosen surface.
@@ -3482,6 +4112,13 @@ export function buildDecoRoadMeshes(
   key: string,
   reuse?: Map<string, THREE.BufferGeometry>,
   clip?: PitClip,
+  /**
+   * Paint the dashed centre line an ordinary public road carries. It runs
+   * where the road is whole and wide enough to be two-way, and stops wherever
+   * the clip has taken a bite -- a junction is exactly where a real centre
+   * line stops -- so it never runs onto the circuit or across a crossing.
+   */
+  centreLine = false,
 ): MeshDef[] {
   if (frames.length < 2) return [];
   const fr = expand(frames, closed);
@@ -3493,6 +4130,11 @@ export function buildDecoRoadMeshes(
   const left = s.left;
   const rightE = s.right;
   const outR = s.edgeR;
+  /* The two edges of the centre line band. Scratch has no spare Vector3
+     arrays, so these borrow the line arrays the circuit's edge lines use. */
+  const lineL = s.lineL;
+  const lineR = s.lineR;
+  const lineOn = s.paint;
   const bandAt = (a: Float32Array | undefined, i: number, fallback: number) =>
     (a && a.length > 0 ? a[i < a.length ? i : 0] : fallback);
 
@@ -3523,17 +4165,33 @@ export function buildDecoRoadMeshes(
     s.uA[i] = (laneLo - lo) / road.uvWidth;
     s.uB[i] = (laneHi - laneLo) / road.uvWidth;
     s.v[i] = f.dist / road.uvLength;
+    s.vDash[i] = fr[i].dist / DECO_DASH;
+
+    /* The centre line's band: 12 cm astride the middle of what is actually
+       drawn. Off wherever the clip has been at either edge (that is a
+       junction or a crossing), and off below two-way width -- a 4 m service
+       path with a centre line reads as a toy. */
+    const mid = (laneLo + laneHi) / 2;
+    const want = centreLine && !cutL && !cutR && s.lane[i] > 4.5;
+    const half = want ? DECO_LINE_WIDTH / 2 : 0;
+    lineOn[i] = want ? 1 : 0;
+    lineL[i].copy(f.pos).addScaledVector(f.right, mid - half);
+    lineR[i].copy(f.pos).addScaledVector(f.right, mid + half);
   }
 
-  const b = new StripBuilder(reuse?.get(`${look.prefix}_${key}`), n * 6);
+  const b = new StripBuilder(reuse?.get(`${look.prefix}_${key}`), n * 8);
   const hasLane = (i: number) => s.lane[i] > THIN;
   const reachOver = (span: [number, number]): [number, number] => [
     span[0] > 0 && hasLane(span[0] - 1) ? span[0] - 1 : span[0],
     span[1] < n - 1 && hasLane(span[1] + 1) ? span[1] + 1 : span[1],
   ];
+  /* Where the line runs, the lane is drawn in two halves either side of it,
+     exactly the way the circuit's own plate parts around its pit-exit line:
+     a strip laid on top would z-fight at distance. */
   for (const span of runs(n, hasLane)) {
     const [a, z] = reachOver(span);
-    b.addStrip(left, rightE, s.zeros, s.uB, s.v, a, z);
+    b.addStrip(left, lineL, s.zeros, s.uB, s.v, a, z);
+    b.addStrip(lineR, rightE, s.zeros, s.uB, s.v, a, z);
   }
   for (const span of runs(n, (i) => s.awL[i] > THIN)) {
     const [a, z] = reachOver(span);
@@ -3547,7 +4205,28 @@ export function buildDecoRoadMeshes(
     b.discard();
     return [];
   }
-  return [{ name: `${look.prefix}_${key}`, material: look.material, surface: look.surface, geometry: b.finish() }];
+  const out: MeshDef[] = [
+    { name: `${look.prefix}_${key}`, material: look.material, surface: look.surface, geometry: b.finish() },
+  ];
+
+  let anyLine = false;
+  for (let i = 0; i < n; i++) if (lineOn[i] > 0) { anyLine = true; break; }
+  if (anyLine) {
+    const lb = new StripBuilder(reuse?.get(`${look.prefix}_line_${key}`), n * 2);
+    for (const [a, z] of runs(n, (i) => lineOn[i] > 0)) {
+      lb.addStrip(lineL, lineR, s.zeros, s.ones, s.vDash, a, z);
+    }
+    if (lb.empty) lb.discard();
+    else {
+      out.push({
+        name: `${look.prefix}_line_${key}`,
+        material: 'line_dashed',
+        surface: look.surface,
+        geometry: lb.finish(),
+      });
+    }
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */

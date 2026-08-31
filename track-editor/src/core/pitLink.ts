@@ -240,6 +240,122 @@ export function attachRoadEnds(road: PathData, trackFrames: Frame[]): PathData {
 }
 
 /* ------------------------------------------------------------------ */
+/* Gluing a road end onto a paved pad                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One paved rectangle a road may end at: a ground pad, alone or as the tarmac
+ * of a car park prefab. World centre, heading in degrees, half sizes along the
+ * pad's own axes, and the height of its top surface.
+ */
+export interface PadRect {
+  x: number;
+  z: number;
+  rotY: number;
+  hx: number;
+  hz: number;
+  y: number;
+}
+
+/** How close a road end has to come to a pad before it means "park here". */
+const PAD_SNAP = 20;
+
+/** How far the end tucks in over the pad, so no hairline of ground shows. */
+const PAD_BURY = 0.4;
+
+/**
+ * Glue free ENDS of a deco road onto the nearest pad edge.
+ *
+ * The same idea as attachRoadEnds, aimed at a rectangle instead of a ribbon:
+ * the end lands ON the pad's edge (a little inside it), the neighbour is set
+ * square to that edge so the road arrives perpendicular the way a real access
+ * road meets a car park, and the end takes the pad's height so the ground
+ * blend pulls the ground -- and with it the pad, which rides the ground --
+ * onto the same level.
+ *
+ * `skipEnd` names ends another attach has already claimed: the circuit and
+ * other roads take precedence over a pad standing next to them.
+ */
+export function attachRoadToPads(
+  road: PathData,
+  pads: readonly PadRect[],
+  skipEnd?: { first?: boolean; last?: boolean },
+): PathData {
+  if (road.closed || road.nodes.length < 2 || pads.length === 0) return road;
+
+  let out: TrackNode[] | null = null;
+  const copy = () =>
+    out ?? (out = road.nodes.map((n) => ({ ...n, p: [...n.p] as [number, number, number] })));
+
+  const attachEnd = (endIdx: number, neighbourIdx: number) => {
+    const p = road.nodes[endIdx].p;
+    let best: { pad: PadRect; lx: number; lz: number; gap: number } | null = null;
+    for (const pad of pads) {
+      const a = (pad.rotY * Math.PI) / 180;
+      const cos = Math.cos(a);
+      const sin = Math.sin(a);
+      const dx = p[0] - pad.x;
+      const dz = p[2] - pad.z;
+      // Into the pad's own frame; the inverse of prefabs' `turn`.
+      const lx = dx * cos - dz * sin;
+      const lz = dx * sin + dz * cos;
+      const ox = Math.max(0, Math.abs(lx) - pad.hx);
+      const oz = Math.max(0, Math.abs(lz) - pad.hz);
+      const gap = Math.hypot(ox, oz);
+      if (gap < PAD_SNAP && (!best || gap < best.gap)) best = { pad, lx, lz, gap };
+    }
+    if (!best) return;
+
+    const { pad, lx, lz } = best;
+    // Which edge: the axis the end overshoots most, or is nearest to from the
+    // inside. That is the edge the road is clearly aiming at.
+    const overX = Math.abs(lx) - pad.hx;
+    const overZ = Math.abs(lz) - pad.hz;
+    const onXEdge = overX >= overZ;
+    // The landing point on that edge, tucked PAD_BURY inside, and kept a metre
+    // off the pad's corners so the whole road width lands on tarmac.
+    const road2 = copy();
+    const end = road2[endIdx];
+    const half = Math.max(end.widthL, end.widthR);
+    const along = (v: number, h: number) =>
+      Math.max(-(h - half - 1), Math.min(h - half - 1, v));
+    const le = onXEdge
+      ? { x: Math.sign(lx || 1) * (pad.hx - PAD_BURY), z: along(lz, pad.hz) }
+      : { x: along(lx, pad.hx), z: Math.sign(lz || 1) * (pad.hz - PAD_BURY) };
+
+    const a = (pad.rotY * Math.PI) / 180;
+    const cos = Math.cos(a);
+    const sin = Math.sin(a);
+    const toWorld = (l: { x: number; z: number }) => ({
+      x: pad.x + l.x * cos + l.z * sin,
+      z: pad.z - l.x * sin + l.z * cos,
+    });
+    const we = toWorld(le);
+    // A hair above the pad's top, so the road surface lies on the tarmac
+    // rather than a millimetre under it.
+    end.p = [we.x, pad.y + 0.02, we.z];
+
+    // The neighbour goes square to the edge, outside the pad, so the spline
+    // arrives perpendicular -- but only when it is close enough to be part of
+    // the approach at all.
+    const nb = road2[neighbourIdx];
+    const nbDist = Math.hypot(nb.p[0] - we.x, nb.p[2] - we.z);
+    if (road.nodes.length >= 3 && nbDist < 60) {
+      const d = Math.max(8, Math.min(25, nbDist));
+      const ln = onXEdge
+        ? { x: Math.sign(lx || 1) * (pad.hx + d), z: le.z }
+        : { x: le.x, z: Math.sign(lz || 1) * (pad.hz + d) };
+      const wn = toWorld(ln);
+      nb.p = [wn.x, nb.p[1], wn.z];
+    }
+  };
+
+  if (!skipEnd?.first) attachEnd(0, 1);
+  if (!skipEnd?.last) attachEnd(road.nodes.length - 1, road.nodes.length - 2);
+  return out ? { ...road, nodes: out } : road;
+}
+
+/* ------------------------------------------------------------------ */
 /* Merging the pit lane surface into the road                          */
 /* ------------------------------------------------------------------ */
 

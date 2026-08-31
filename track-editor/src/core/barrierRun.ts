@@ -9,14 +9,18 @@ import * as THREE from 'three';
  * outside of a corner that the track does not follow -- for those, the barrier
  * has to be drawn where it goes, the same way the track itself is drawn.
  *
- * Modules are placed end to end along the line, each one turned to sit along
- * its own piece of it. Pure geometry: line in, placements out.
+ * Modules are placed end to end along the line, each one turned AND stretched
+ * to span its own piece of it exactly. Pure geometry: line in, placements out.
  */
 
 export interface RunPiece {
   p: [number, number, number];
+  /** Full orientation in degrees, XYZ order, ready to store on a prop. */
+  rot: [number, number, number];
   /** Heading in degrees, the same convention as any other placed object. */
   rotY: number;
+  /** Stretch along the module's own run axis that makes its ends land exactly. */
+  sz: number;
 }
 
 export interface LineSample {
@@ -26,22 +30,15 @@ export interface LineSample {
 }
 
 /**
- * How much of a module may hang past the end of the line before it is dropped.
- *
- * A run 25 m long out of 8 m modules is three modules and a metre left over.
- * Adding a fourth overshoots by seven metres, which is worse than stopping a
- * metre short; leaving 4.5 m bare is worse than overshooting by 3.5. Half a
- * module is the line where one becomes the other.
- */
-const OVERSHOOT = 0.5;
-
-/**
  * Place modules of `length` metres end to end along a polyline.
  *
- * Each module is aimed along the CHORD of the piece of line it covers, not
- * along the tangent at its centre: modules are rigid, so what has to line up is
- * where their ends land. Aiming them at the tangent leaves a wedge of daylight
- * between every pair on a curve.
+ * The line is divided into equal steps as near to `length` as they can be, and
+ * each module spans the CHORD of its own step: turned to it, pitched to follow
+ * it uphill or down, and scaled along its run so its ends land exactly on the
+ * step's ends. Consecutive modules therefore SHARE their endpoints -- there is
+ * no gap and no overlap anywhere on a curve, on a slope, or at the far end of
+ * the run, which fixed 8 m pieces could never promise. The stretch is at most
+ * half a module either way, which the eye does not read on a fence or a rail.
  */
 export function layBarrierRun(points: LineSample[], length: number): RunPiece[] {
   const out: RunPiece[] = [];
@@ -57,37 +54,50 @@ export function layBarrierRun(points: LineSample[], length: number): RunPiece[] 
   const total = dist[dist.length - 1];
   if (total < 1e-6) return out;
 
-  const count = Math.max(1, Math.round(total / length - OVERSHOOT + 0.5));
+  const count = Math.max(1, Math.round(total / length));
+  const step = total / count;
+  const q = new THREE.Quaternion();
+  const qPitch = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const X = new THREE.Vector3(1, 0, 0);
+  const Y = new THREE.Vector3(0, 1, 0);
   for (let k = 0; k < count; k++) {
-    const a = at(k * length);
-    const b = at((k + 1) * length);
+    const a = at(k * step);
+    const b = at((k + 1) * step);
     const dx = b.x - a.x;
+    const dy = b.y - a.y;
     const dz = b.z - a.z;
-    if (Math.abs(dx) < 1e-9 && Math.abs(dz) < 1e-9) continue;
+    const horiz = Math.hypot(dx, dz);
+    if (horiz < 1e-9) continue;
+    const yaw = Math.atan2(dx, dz);
+    /*
+     * Yaw about the world's up, then pitch about the module's OWN sideways
+     * axis, so the run axis lies along the chord in 3D and the module rides a
+     * slope instead of stepping down it. Composed as a quaternion and read
+     * back as the XYZ Euler every prop stores: writing the pitch straight
+     * into r[0] would pitch about the WORLD X, which is only the same thing
+     * on a run that happens to head due north.
+     */
+    q.setFromAxisAngle(Y, yaw);
+    q.multiply(qPitch.setFromAxisAngle(X, -Math.atan2(dy, horiz)));
+    e.setFromQuaternion(q, 'XYZ');
     out.push({
       p: [(a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2],
-      rotY: (THREE.MathUtils.radToDeg(Math.atan2(dx, dz)) + 360) % 360,
+      rot: [
+        THREE.MathUtils.radToDeg(e.x),
+        THREE.MathUtils.radToDeg(e.y),
+        THREE.MathUtils.radToDeg(e.z),
+      ],
+      rotY: (THREE.MathUtils.radToDeg(yaw) + 360) % 360,
+      sz: Math.hypot(horiz, dy) / length,
     });
   }
   return out;
 
-  /** The point `s` metres along the line, carried on past the end if need be. */
+  /** The point `s` metres along the line. */
   function at(s: number): LineSample {
     if (s <= 0) return points[0];
-    if (s >= total) {
-      // Past the end, follow the last direction rather than piling up on the
-      // final point: an overshooting module has to stick out straight.
-      const n = points.length;
-      const last = points[n - 1];
-      const prev = points[n - 2];
-      const seg = Math.hypot(last.x - prev.x, last.z - prev.z) || 1;
-      const over = s - total;
-      return {
-        x: last.x + ((last.x - prev.x) / seg) * over,
-        y: last.y + ((last.y - prev.y) / seg) * over,
-        z: last.z + ((last.z - prev.z) / seg) * over,
-      };
-    }
+    if (s >= total) return points[points.length - 1];
     let i = 1;
     while (i < dist.length - 1 && dist[i] < s) i += 1;
     const t = (s - dist[i - 1]) / Math.max(1e-9, dist[i] - dist[i - 1]);

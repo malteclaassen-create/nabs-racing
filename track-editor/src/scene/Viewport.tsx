@@ -5,6 +5,7 @@ import { Grid, Line, OrbitControls, Sky, TransformControls, useCursor } from '@r
 
 import { QUALITY_DPR, useEditor } from '../store/store';
 import { useDerived, type Derived } from '../store/derived';
+import { EMPTY_GRASS3D, GRASS3D_STRIDE, grass3dFor, grass3dOnGrass } from '../core/grass3d';
 import { ALPHA_TESTED, EMISSIVE, EMISSIVE_TINT, getTexture, MATERIAL_COLORS } from '../core/textures';
 import {
   barrierHandleHeight,
@@ -1233,6 +1234,10 @@ function TerrainLayer({ derived }: { derived: Derived }) {
     if (tool === 'scatter') {
       // A click that never moved: plant one clump rather than doing nothing.
       scatterStep(e.point.x, e.point.z, 0.2);
+    } else if (tool === 'drawRoad' && useEditor.getState().roundaboutArm) {
+      // Armed from the Roads panel: this click IS the roundabout's centre.
+      useEditor.getState().addRoundabout({ x: point.x, y: point.y, z: point.z });
+      setStatus('Roundabout laid down. Roads drawn from here dock onto its edge.');
     } else if (isDrawTool(tool)) {
       const path = drawTargetPath(tool);
       // Freehand puts its points down while the pointer moves, so a plain
@@ -1279,20 +1284,44 @@ function TerrainLayer({ derived }: { derived: Derived }) {
        */
       const s = useEditor.getState();
       const draft = s.barrierDraft;
+      // Clicked near the generated barrier, the click means THAT line: the run
+      // starts or ends exactly where the trackside barrier stands, so the two
+      // join instead of nearly joining.
+      const snappedWall = snapToWallLine(point, derived, s.project.road.wallCuts ?? []);
+      if (snappedWall) point.copy(snappedWall);
       const here: [number, number, number] = [point.x, point.y, point.z];
       if (draft.length === 0) {
         s.setBarrierDraft([here]);
-        setStatus('Barrier started. Click again to run it there; Esc ends the run.');
+        setStatus(snappedWall
+          ? 'Barrier started on the trackside barrier. Click again to run it there; Esc ends the run.'
+          : 'Barrier started. Click again to run it there; Esc ends the run.');
         return;
       }
-      const plan = planBarrierLeg(draft, point, drawMode, e.nativeEvent.altKey ? 0 : ANGLE_STEP,
-        e.nativeEvent.altKey ? 0 : snap);
+      // A leg aimed at the wall line must LAND on it: the heading and length
+      // steps would round the endpoint back off the very line it snapped to.
+      const exact = e.nativeEvent.altKey || snappedWall !== null;
+      const plan = planBarrierLeg(draft, point, drawMode, exact ? 0 : ANGLE_STEP,
+        exact ? 0 : snap);
       const last = draft[draft.length - 1];
-      const line = [
-        { x: last[0], y: last[1], z: last[2] },
-        ...plan.map((p) => ({ x: p.x, y: groundAt(p.x, p.z), z: p.z })),
-      ];
-      const n = s.addBarrierRun(line);
+      /*
+       * A leg that ENDS on the barrier has to arrive at the barrier's height,
+       * not at the ground's. Every planned point took the terrain, snapped
+       * endpoint included, which threw the join away again the moment it was
+       * made -- the barrier's foot stands on the road's shoulder and that is
+       * metres above the ground beside it on any circuit with relief.
+       */
+      const legPts = plan.map((p, k) => ({
+        x: p.x,
+        y: snappedWall && k === plan.length - 1 ? point.y : groundAt(p.x, p.z),
+        z: p.z,
+      }));
+      const line = densifyRun([{ x: last[0], y: last[1], z: last[2] }, ...legPts], groundAt);
+      // Anything standing clear of the ground was put there on purpose -- a
+      // join to the barrier at either end -- and must not be sat back down on
+      // the terrain the next time it is sculpted.
+      const lifted = snappedWall !== null
+        || Math.abs(last[1] - groundAt(last[0], last[2])) > 0.1;
+      const n = s.addBarrierRun(line, !lifted);
       s.setBarrierDraft([...draft, ...line.slice(1).map((p) => [p.x, p.y, p.z] as [number, number, number])]);
       setStatus(
         n === 0
@@ -1356,7 +1385,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
   );
 
   const barrierPreview = freeBarrier && cursor && barrierDraft && (
-    <BarrierRunPreview from={barrierDraft} cursor={cursor} exact={placeExact} />
+    <BarrierRunPreview from={barrierDraft} cursor={cursor} exact={placeExact} derived={derived} />
   );
 
   const ghost = tool === 'place' && cursor && (
@@ -1560,6 +1589,151 @@ function planBarrierLeg(
 }
 
 /**
+ * How close a free barrier click has to land to the generated barrier's line
+ * before it is taken to MEAN that line. Handed the exact line, the run drawn
+ * away from a corner carries straight on from the trackside fence instead of
+ * starting a hand's width off it with a slit of daylight between the two.
+ */
+const WALL_SNAP_REACH = 3;
+
+/**
+ * How much further an END of the barrier reaches than the middle of a run.
+ *
+ * Drawing a fence up to a barrier almost always means joining the END of one:
+ * where the trackside barrier stops -- at a gate, where the painted run runs
+ * out, or where a stretch has been taken out by hand -- and carrying on from
+ * exactly there. A plain nearest-point search cannot express that, because the
+ * middle of the run is nearer from almost everywhere. So an end gets a wider
+ * catch and wins ties against the line it belongs to.
+ */
+const WALL_END_REACH = 7;
+
+/** Where the barrier stands at a cross section, or null if it does not. */
+function wallPointAt(
+  derived: Derived,
+  side: -1 | 1,
+  i: number,
+  out: THREE.Vector3,
+): THREE.Vector3 | null {
+  const f = derived.trackFrames[i];
+  const p = derived.profile;
+  if (!f) return null;
+  const off = side < 0
+    ? f.widthL + p.kerbWL[i] + p.apronL[i] + p.runoffL[i] + p.wallGapL[i]
+    : f.widthR + p.kerbWR[i] + p.apronR[i] + p.runoffR[i] + p.wallGapR[i];
+  const rx = f.right.x;
+  const rz = f.right.z;
+  const len = Math.hypot(rx, rz) || 1;
+  return out.set(
+    f.pos.x + (rx / len) * side * off,
+    f.pos.y,
+    f.pos.z + (rz / len) * side * off,
+  );
+}
+
+/**
+ * The point on the generated barrier a free run should start or finish at.
+ *
+ * Knows about the stretches taken out by hand: there is nothing to join in the
+ * middle of an opening, and the two places a drawn fence most wants to meet
+ * are its edges. Without that the tool cheerfully snapped a run onto barrier
+ * that is not there any more, and a fence drawn to close a gap started in
+ * mid-air a metre inside it.
+ */
+function snapToWallLine(
+  point: THREE.Vector3,
+  derived: Derived,
+  cuts: ReadonlyArray<{ side: -1 | 1; from: number; to: number }>,
+): THREE.Vector3 | null {
+  const frames = derived.trackFrames;
+  const p = derived.profile;
+  if (!frames || frames.length === 0 || !p) return null;
+
+  const inCut = (side: -1 | 1, t: number) =>
+    cuts.some((c) => c.side === side
+      && (c.from <= c.to ? t >= c.from && t <= c.to : t >= c.from || t <= c.to));
+
+  let best: THREE.Vector3 | null = null;
+  // Scored, not measured: an end within WALL_END_REACH beats a mid-run point
+  // that happens to be a little nearer, which is what "join it up" means.
+  let bestScore = 1;
+  const here = new THREE.Vector3();
+
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i];
+    // Cheap gate first: the barrier is never further from the centre line than
+    // the edge plus its gap, so a frame 60 m away cannot win and need not
+    // build a vector.
+    if (Math.hypot(f.pos.x - point.x, f.pos.z - point.z) > WALL_END_REACH + 40) continue;
+    for (const side of [-1, 1] as const) {
+      const flags = side < 0 ? p.wallL : p.wallR;
+      if (flags[i] !== 1 || inCut(side, f.t)) continue;
+      if (!wallPointAt(derived, side, i, here)) continue;
+      const d = Math.hypot(here.x - point.x, here.z - point.z);
+
+      /* An end is a standing cross section whose neighbour is not one --
+         because the painted run stops, or because a cut begins there. */
+      const standing = (j: number) => {
+        const k = j < 0 || j >= frames.length ? -1 : j;
+        if (k < 0) return false;
+        return flags[k] === 1 && !inCut(side, frames[k].t);
+      };
+      const isEnd = !standing(i - 1) || !standing(i + 1);
+
+      const reach = isEnd ? WALL_END_REACH : WALL_SNAP_REACH;
+      if (d >= reach) continue;
+      const score = d / reach;
+      if (score < bestScore) {
+        bestScore = score;
+        best = (best ?? new THREE.Vector3()).copy(here);
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Put a ground-sampled point every few metres along a drawn leg.
+ *
+ * The clicks only say where a leg starts and ends, so a straight leg over a
+ * hill used to be one straight module chain THROUGH the hill. Sampling the
+ * ground along the way gives the run the profile of the land it stands on,
+ * which the modules then follow piece by piece.
+ *
+ * The ends keep whatever height they were given, and the difference between
+ * that and the ground under them is carried across the leg rather than
+ * dropped at the first sample. That is what lets a run START on the trackside
+ * barrier: its foot stands on the outer edge of the run off, which is part of
+ * the ROAD and not of the terrain -- measured on a generated circuit, an
+ * average of 2.7 m above the ground beside it and as much as 15 m on an
+ * embankment. Sampled straight, the first module dived to the terrain and the
+ * join was a cliff; carried, the fence leaves the barrier at its own height
+ * and settles onto the ground over the length of the leg.
+ */
+function densifyRun(
+  line: Array<{ x: number; y: number; z: number }>,
+  groundAt: (x: number, z: number) => number,
+  step = 4,
+): Array<{ x: number; y: number; z: number }> {
+  const out: Array<{ x: number; y: number; z: number }> = [];
+  const lift = line.map((p) => p.y - groundAt(p.x, p.z));
+  for (let i = 0; i + 1 < line.length; i++) {
+    const a = line[i];
+    const b = line[i + 1];
+    out.push(a);
+    const parts = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / step);
+    for (let k = 1; k < parts; k++) {
+      const t = k / parts;
+      const x = a.x + (b.x - a.x) * t;
+      const z = a.z + (b.z - a.z) * t;
+      out.push({ x, y: groundAt(x, z) + lift[i] + (lift[i + 1] - lift[i]) * t, z });
+    }
+  }
+  out.push(line[line.length - 1]);
+  return out;
+}
+
+/**
  * The outline of the ground shape about to be painted.
  *
  * It is draped over the terrain rather than drawn as a flat ring: this shape
@@ -1644,26 +1818,34 @@ function BarrierRunPreview({
   from,
   cursor,
   exact,
+  derived,
 }: {
   from: Array<[number, number, number]>;
   cursor: THREE.Vector3;
   exact: boolean;
+  derived: Derived;
 }) {
   const drawMode = useEditor((s) => s.drawMode);
   const snap = useEditor((s) => s.snap);
+  const cuts = useEditor((s) => s.project.road.wallCuts);
   const points = useMemo(() => {
     if (from.length === 0) return null;
     const target = cursor.clone();
-    if (snap > 0 && !exact) {
+    // The same wall snap the click applies, so the preview shows the join the
+    // click is about to make rather than the near miss the cursor is on.
+    const onWall = snapToWallLine(target, derived, cuts ?? []);
+    if (onWall) target.copy(onWall);
+    else if (snap > 0 && !exact) {
       target.x = Math.round(target.x / snap) * snap;
       target.z = Math.round(target.z / snap) * snap;
     }
-    const leg = planBarrierLeg(from, target, drawMode, exact ? 0 : ANGLE_STEP, exact ? 0 : snap);
+    const free = exact || onWall !== null;
+    const leg = planBarrierLeg(from, target, drawMode, free ? 0 : ANGLE_STEP, free ? 0 : snap);
     const last = from[from.length - 1];
     return [new THREE.Vector3(last[0], last[1], last[2]), ...leg].map(
       (p) => new THREE.Vector3(p.x, p.y + 0.6, p.z),
     );
-  }, [from, cursor, drawMode, snap, exact]);
+  }, [from, cursor, drawMode, snap, exact, derived, cuts]);
 
   if (!points || points.length < 2) return null;
   // Green rather than the track tool's yellow: this line becomes a barrier, and
@@ -2355,6 +2537,102 @@ function AssetProp({
  * than once a frame. A few dozen hand placed objects never showed it; a brush
  * that plants hundreds of trees would have made it the whole frame budget.
  */
+/**
+ * The automatic 3D grass, straight from the derived transforms.
+ *
+ * One instanced mesh for the lot: the tufts share one geometry and one
+ * material, so thirty thousand of them are a single draw call. They are not
+ * props -- nothing to select, nothing to erase, no pointer handlers -- which
+ * is exactly why they bypass PropsLayer and its per-object bookkeeping.
+ */
+function Grass3DLayer({ derived }: { derived: Derived }) {
+  const quality = useEditor((s) => s.quality);
+  const view = useEditor((s) => s.view);
+  const terrain = useEditor((s) => s.project.terrain);
+  const road = useEditor((s) => s.project.road);
+  const trackClosed = useEditor((s) => s.project.track.closed);
+  const acImport = useEditor((s) => s.project.acImport);
+
+  /*
+   * Grown a beat AFTER the shape settles, never during an editing frame.
+   *
+   * Everything else derived is computed synchronously in getDerived, but a
+   * lawn is thirty thousand placements and the one consumer that cares about
+   * it being instant is nobody: while a node is being dragged the old grass
+   * is fine, and when the drag ends it can catch up a heartbeat later. Keeping
+   * it out of getDerived keeps every editing frame at its budget.
+   */
+  const [data, setData] = useState<Float32Array>(EMPTY_GRASS3D);
+  useEffect(() => {
+    if (!terrain.enabled || !terrain.grass3d || acImport) {
+      setData(EMPTY_GRASS3D);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setData(
+        grass3dFor(
+          terrain,
+          derived.terrainHeights,
+          road,
+          derived.trackFrames,
+          trackClosed,
+          derived.profile,
+          derived.pitDrawFrames,
+          derived.pitApron,
+          derived.pitClip,
+        ),
+      );
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [terrain, road, trackClosed, acImport, derived.trackFrames, derived.profile, derived.pitDrawFrames]);
+
+  const heights = derived.terrainHeights;
+  const count = data.length / GRASS3D_STRIDE;
+  const part = useMemo(() => propParts('grass_tuft')[0], []);
+  const ref = useRef<THREE.InstancedMesh>(null);
+
+  // The tufts carry no height of their own; they are dropped onto whatever
+  // the ground is right now, so sculpting moves the grass with the dirt.
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    const m = matrixScratch;
+    const q = quatScratch;
+    const p = vecScratchA;
+    const s = vecScratchB;
+    let wi = 0;
+    for (let i = 0; i < count; i++) {
+      const o = i * GRASS3D_STRIDE;
+      // Tufts standing on ground painted to something other than grass are
+      // simply not drawn; the generator does not know about the paint.
+      if (!grass3dOnGrass(terrain, data[o], data[o + 1])) continue;
+      q.setFromAxisAngle(UP_AXIS, data[o + 2]);
+      p.set(data[o], sampleHeights(terrain, heights, data[o], data[o + 1]) + data[o + 4], data[o + 1]);
+      const sc = data[o + 3];
+      s.set(sc, sc, sc);
+      mesh.setMatrixAt(wi, m.compose(p, q, s));
+      wi += 1;
+    }
+    mesh.count = wi;
+    mesh.instanceMatrix.needsUpdate = true;
+  }, [data, count, terrain, heights]);
+
+  if (!view.props || count === 0 || !part) return null;
+  return (
+    <instancedMesh
+      key={count}
+      ref={ref}
+      args={[part.geometry, propMaterial(part.material, quality !== 'high', false), count]}
+      frustumCulled={false}
+    />
+  );
+}
+
+// UP_AXIS lives further down, next to the other shared scratch values.
+const quatScratch = new THREE.Quaternion();
+const vecScratchA = new THREE.Vector3();
+const vecScratchB = new THREE.Vector3();
+
 function PropInstances({
   geometry,
   material,
@@ -3029,6 +3307,103 @@ function BarrierLayer({ derived }: { derived: Derived }) {
         if (painting.current === null) return;
         e.stopPropagation();
         paint(e.instanceId, false);
+      }}
+    />
+  );
+}
+
+/**
+ * Take a short stretch of the generated barrier back out.
+ *
+ * The painter above writes the per control point flags, so the shortest thing
+ * it can say is "no barrier between these two points" -- and on a fast sweeper
+ * drawn with points a hundred metres apart, that is a hundred metres of hole
+ * to remove ten metres of bad barrier. This works in metres of lap instead:
+ * where the pointer lands decides the middle of the gap and the panel decides
+ * how long it is, so the same click can take out eight metres or forty. See
+ * BarrierCut for what it leaves behind.
+ *
+ * The same handle band the painter uses, so there is nothing new to aim at,
+ * and clicking a stretch that is already open closes it again.
+ */
+function BarrierCutLayer({ derived }: { derived: Derived }) {
+  const nodes = useEditor((s) => s.project.track.nodes);
+  const closed = useEditor((s) => s.project.track.closed);
+  const wallHeight = useEditor((s) => s.project.road.wallHeight);
+  const cutLength = useEditor((s) => s.cutLength);
+  const ref = useRef<THREE.InstancedMesh>(null);
+
+  const material = useMemo(
+    () => new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, depthTest: false }),
+    [],
+  );
+  useEffect(() => () => material.dispose(), [material]);
+
+  const layout = useMemo(
+    () =>
+      barrierHandles(
+        derived.trackFrames,
+        derived.profile,
+        nodes.length,
+        closed,
+        barrierHandleHeight(wallHeight),
+        BARRIER_HANDLE_THICK,
+      ),
+    [derived, nodes.length, closed, wallHeight],
+  );
+
+  const cuts = useEditor((s) => s.project.road.wallCuts);
+
+  /* Amber where the barrier still stands, dark where it has been opened, so
+     what the next click will do is visible before making it. */
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh || !layout) return;
+    const m = new THREE.Matrix4();
+    const tint = new THREE.Color();
+    const frames = derived.trackFrames;
+    for (let k = 0; k < layout.count; k++) {
+      m.fromArray(layout.matrices, k * 16);
+      mesh.setMatrixAt(k, m);
+      const node = nodes[layout.nodeOf[k]];
+      const side = layout.sideOf[k] < 0 ? -1 : 1;
+      const on = node ? (side < 0 ? node.wallL : node.wallR) : false;
+      const t = frames[Math.min(frames.length - 1, k >> 1)]?.t ?? 0;
+      const open = cuts.some((c) => c.side === side
+        && (c.from <= c.to ? t >= c.from && t <= c.to : t >= c.from || t <= c.to));
+      tint.set(!on ? '#3b4149' : open ? '#8a4b2a' : '#e0a33c');
+      mesh.setColorAt(k, tint);
+    }
+    mesh.count = layout.count;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [layout, nodes, cuts, derived]);
+
+  if (!layout) return null;
+
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[UNIT_BOX, material, layout.count]}
+      frustumCulled={false}
+      renderOrder={9}
+      onPointerDown={(e) => {
+        if (e.button !== 0 || !layout || e.instanceId === undefined) return;
+        e.stopPropagation();
+        const frames = derived.trackFrames;
+        const side = layout.sideOf[e.instanceId] < 0 ? -1 : 1;
+        /* Which cross section was hit, not which control point: that is the
+           whole point of this tool. The handles run two per section. */
+        const i = Math.min(frames.length - 1, e.instanceId >> 1);
+        const lap = frames[frames.length - 1].dist;
+        const store = useEditor.getState();
+        const what = store.cutBarrierAt(side, frames[i].t, cutLength, lap);
+        store.setStatus(
+          what === 'restored'
+            ? `Barrier back on the ${side < 0 ? 'left' : 'right'}`
+            : `${cutLength} m of barrier removed on the ${side < 0 ? 'left' : 'right'}`,
+        );
       }}
     />
   );
@@ -4319,6 +4694,7 @@ function SceneRoot() {
       {/* Only in the mode that uses them: the handles sit over the roadside and
           would swallow the clicks a free run is drawn with. */}
       {tool === 'barrier' && barrierMode === 'track' && <BarrierLayer derived={derived} />}
+      {tool === 'barrier' && barrierMode === 'cut' && <BarrierCutLayer derived={derived} />}
       {tool === 'barrier' && barrierMode === 'edge' && <EdgeRowLayer derived={derived} />}
       {tool === 'kerb' && <KerbLayer derived={derived} />}
       {/* On the tab the two limiter boxes live on, so the posts are there to */}
@@ -4329,6 +4705,7 @@ function SceneRoot() {
       <TerrainLayer derived={derived} />
       <TrackSurfaces derived={derived} />
       <PropsLayer derived={derived} />
+      <Grass3DLayer derived={derived} />
       <PathNodes derived={derived} />
       <SectionHighlight derived={derived} />
       <MarkersLayer derived={derived} />

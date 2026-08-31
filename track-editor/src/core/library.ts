@@ -4,7 +4,7 @@ import type { SurfaceKey } from '../types';
 import { assetBox, assetIdOf } from '../io/assetCache';
 import type { MaterialKey } from './road';
 import { startGantryParts } from './gantry';
-import { SIGN_DISTANCES, TREE_CARDS, TREE_CARD_INSET, type TreeCardName } from './textures';
+import { SIGN_DISTANCES, TREE_CARDS, TREE_CARD_INSET, TREE_SHEET_TILES, type TreeCardName } from './textures';
 
 /**
  * Procedural prop library. Every object is built from primitives so the whole
@@ -112,25 +112,107 @@ const tileUv = (g: THREE.BufferGeometry, repeatU: number, repeatV: number) => {
 };
 
 /**
- * Lay the armco tile on a box the way the generated barrier lays it on its own
- * rails: U up the beam, one whole tile to one beam, V along the run in metres.
+ * One ribbon of the catch fence cross section, 8 m long: quads strung between
+ * the given (x, y, u) stations, exactly the way the run generator strips its
+ * barrier -- U up the profile, V along the run in FENCE_UV metres, normals
+ * facing the track side (-X).
  *
- * Box UVs are 0..1 per face, which would stretch a whole beam over the end cap
- * and squash one onto the face. Reading them off the position instead makes
- * every face agree, and makes a placed module and a painted run the same
- * barrier rather than two products that happen to be the same colour.
+ * `both` adds a second, back-facing copy for pieces whose material is culled
+ * one-sided in the game (the armco steel): the run generator gets away with
+ * one side because its barrier is only ever seen from the circuit, a placed
+ * module has no wrong side to hide. The copy sits half a centimetre behind
+ * the front rather than exactly on it, because two coincident faces fight
+ * over the depth buffer.
+ *
+ * The WINDING has to agree with the normal, and that is the whole trick here:
+ * the run generator never has to think about it because it takes its normals
+ * from the face it just wound (StripBuilder.accumulate), while these are
+ * written out by hand. Wound the other way, a renderer showing both sides
+ * flips the normal on every fragment that is really looking at the back of
+ * the triangle -- so the track side of the barrier, the one side that has to
+ * look right, was the side that got lit from behind and came out dark.
  */
-const armcoUv = (g: THREE.BufferGeometry, runUv = 4) => {
-  g.computeBoundingBox();
-  const b = g.boundingBox!;
-  const h = Math.max(1e-6, b.max.y - b.min.y);
-  const pos = g.getAttribute('position');
-  const uv = g.getAttribute('uv');
-  for (let i = 0; i < uv.count; i++) {
-    uv.setXY(i, (pos.getY(i) - b.min.y) / h, pos.getZ(i) / runUv);
+const wallStrip = (
+  stations: ReadonlyArray<readonly [number, number, number]>,
+  both: boolean,
+): THREE.BufferGeometry => {
+  const HZ = 4.0;
+  const UV = 4;
+  const GAP = 0.005;
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  const quad = (
+    x0: number, y0: number, u0: number,
+    x1: number, y1: number, u1: number,
+    back: boolean,
+  ) => {
+    const at = pos.length / 3;
+    const len = Math.hypot(x1 - x0, y1 - y0) || 1;
+    const s = back ? 1 : -1;
+    const nx = (s * (y1 - y0)) / len;
+    const ny = (-s * (x1 - x0)) / len;
+    const off = back ? GAP : 0;
+    pos.push(
+      x0 + nx * off, y0 + ny * off, -HZ,
+      x0 + nx * off, y0 + ny * off, HZ,
+      x1 + nx * off, y1 + ny * off, HZ,
+      x1 + nx * off, y1 + ny * off, -HZ,
+    );
+    for (let i = 0; i < 4; i++) nrm.push(nx, ny, 0);
+    uv.push(u0, -HZ / UV, u0, HZ / UV, u1, HZ / UV, u1, -HZ / UV);
+    // Corners run (x0,-HZ) (x0,+HZ) (x1,+HZ) (x1,-HZ), so 0-1-2 turns the way
+    // that puts the face on the same side as `nx, ny` above, and 0-2-1 the
+    // other way. Which is which is not something to take on trust: the four
+    // corners are laid out in the push above, and the cross product of
+    // (v1-v0) with (v2-v0) is what these two orders disagree about.
+    if (back) idx.push(at, at + 2, at + 1, at, at + 3, at + 2);
+    else idx.push(at, at + 1, at + 2, at, at + 2, at + 3);
+  };
+  for (let k = 0; k + 1 < stations.length; k++) {
+    const [x0, y0, u0] = stations[k];
+    const [x1, y1, u1] = stations[k + 1];
+    quad(x0, y0, u0, x1, y1, u1, false);
+    if (both) quad(x0, y0, u0, x1, y1, u1, true);
   }
-  uv.needsUpdate = true;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nrm), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uv), 2));
+  g.setIndex(idx);
+  g.computeBoundingSphere();
   return g;
+};
+
+/**
+ * The folded W-beam armco stack of the generated barrier, as one 8 m module.
+ *
+ * Copied fold for fold from road.ts (GUARDRAIL_FOLD, GUARDRAIL_OUT, three
+ * beams over the 1 m base, one texture tile per beam): the module and the
+ * painted run have to be the SAME steel, and the flat boxes this replaces
+ * were a different product with the same paint.
+ */
+const armcoW = (): THREE.BufferGeometry => {
+  const FOLD = [
+    [0.0, 0.0],
+    [0.09, 1.0],
+    [0.91, 1.0],
+    [1.0, 0.0],
+  ] as const;
+  const OUT = 0.07;
+  const RAILS = 3;
+  const RH = 1.0 / RAILS;
+  const rails: THREE.BufferGeometry[] = [];
+  for (let r = 0; r < RAILS; r++) {
+    rails.push(wallStrip(
+      FOLD.map(([f, d]) => [-d * OUT, (r + f) * RH, r + f] as const),
+      true,
+    ));
+  }
+  const merged = mergeGeometries(rails, false)!;
+  for (const g of rails) g.dispose();
+  return merged;
 };
 
 /**
@@ -308,6 +390,46 @@ const pad = (material: MaterialKey): PropPart[] =>
   group([[[box(PAD_SIZE, 0.3, PAD_SIZE, 0, -0.26)], material]]);
 
 /**
+ * Painted parking bays: the white lines only, no tarmac of their own.
+ *
+ * Laid over whatever ground is already there -- a pad, the paddock, plain
+ * grass if somebody insists -- which is what makes them composable: the user
+ * decides the pavement, these are just the paint. One separator per bay
+ * boundary at the real-world 2.5 m pitch, and a continuous line along the
+ * back edge where the bays end.
+ *
+ * 2.5 m, not the prefab car park's 2.8: four bays are then exactly 10 m and
+ * eight exactly 20 -- whole metres, which the tiling check demands so grid
+ * snapping stays sane, and the same 10 m module the ground pads tile by. The
+ * two outer separators are tucked half a line width inward so the footprint
+ * IS that round number rather than a line width over it.
+ *
+ * The lines float 4.5 cm over the origin: five millimetres clear of a pad's
+ * top face (which is 4 cm up), so they neither z-fight with it nor drown in
+ * it, and low enough that on bare ground the hover is invisible. The same
+ * trick the grid boxes and the limiter line use.
+ */
+const PARK_PITCH = 2.5;
+const PARK_DEPTH = 5;
+const PARK_LINE = 0.12;
+
+const parkBays = (count: number): PropPart[] => {
+  const lines: THREE.BufferGeometry[] = [];
+  const half = (count * PARK_PITCH) / 2;
+  for (let i = 0; i <= count; i++) {
+    const x = Math.max(
+      -half + PARK_LINE / 2,
+      Math.min(half - PARK_LINE / 2, -half + i * PARK_PITCH),
+    );
+    lines.push(box(PARK_LINE, 0.02, PARK_DEPTH, x, 0.045));
+  }
+  // The closed line along the back of the bays. The front stays open: that is
+  // the aisle the cars drive in from.
+  lines.push(box(count * PARK_PITCH, 0.02, PARK_LINE, 0, 0.045, -PARK_DEPTH / 2 + PARK_LINE / 2));
+  return group([[lines, 'prop_white']]);
+};
+
+/**
  * Light a card like a ball of leaves instead of like a fence panel.
  *
  * A card's own normals point out of its face, which is correct for a wall and
@@ -397,7 +519,7 @@ const treeCard = (name: TreeCardName): PropPart[] => {
         TREE_CARD_INSET + uv.getY(i) * span,
       );
     }
-    return atlasTile(g, tile);
+    return atlasTile(g, tile, TREE_SHEET_TILES, TREE_SHEET_TILES);
   };
   return group([
     [
@@ -521,6 +643,41 @@ export const LIBRARY: PropDef[] = [
     surface: null,
     build: () => treeCard('scrub'),
   },
+  {
+    key: 'tree_birch_2d',
+    label: 'Birch (2D)',
+    category: 'Nature',
+    surface: null,
+    build: () => treeCard('birch'),
+  },
+  {
+    key: 'tree_willow_2d',
+    label: 'Willow (2D)',
+    category: 'Nature',
+    surface: null,
+    build: () => treeCard('willow'),
+  },
+  {
+    key: 'tree_autumn_2d',
+    label: 'Autumn broadleaf (2D)',
+    category: 'Nature',
+    surface: null,
+    build: () => treeCard('autumn'),
+  },
+  {
+    key: 'tree_cypress_2d',
+    label: 'Cypress (2D)',
+    category: 'Nature',
+    surface: null,
+    build: () => treeCard('cypress'),
+  },
+  {
+    key: 'tree_fir_2d',
+    label: 'Fir (2D)',
+    category: 'Nature',
+    surface: null,
+    build: () => treeCard('fir'),
+  },
   /*
    * Real grass, as opposed to a picture of grass painted on the ground.
    *
@@ -627,57 +784,139 @@ export const LIBRARY: PropDef[] = [
       ]),
   },
   {
+    key: 'tecpro',
+    label: 'TecPro barrier (4 m)',
+    category: 'Barriers',
+    surface: 'WALL',
+    /*
+     * What every fast corner of a modern circuit is lined with, and the one
+     * barrier this library had no answer for: armco is what you hit at a
+     * shallow angle, tyres are what you hit at the end of an escape road,
+     * and TecPro is what stands where the impact is square and quick.
+     *
+     * Built the way the real thing is: interlocking blocks of blue foam-filled
+     * plastic, banded together by two horizontal straps that run the length of
+     * the module. Four metres, so a run of them divides the same 8 m the armco
+     * and the fence modules tile at.
+     */
+    build: () => {
+      const blocks: THREE.BufferGeometry[] = [];
+      /* Six blocks with a finger's gap, so the seams read from a car -- and
+         the OUTER faces land on exactly +-2.0, because the body box is what a
+         run tiles by (measure(), bodyOnly). Sitting on a round pitch instead
+         put them at +-1.97 and a run tiled 3.945 m apart: a pitch no snap
+         step divides and a seam nothing lines up with. */
+      for (let i = 0; i < 6; i++) blocks.push(box(0.9, 1.0, 0.62, 0, 0, -1.69 + i * 0.676));
+      return group([
+        [blocks, 'prop_blue'],
+        // The straps, proud of the blocks so they catch the light along the run.
+        [
+          [box(0.94, 0.07, 4.0, 0, 0.26), box(0.94, 0.07, 4.0, 0, 0.66)],
+          'prop_white',
+        ],
+      ]);
+    },
+  },
+  {
+    key: 'tecpro_low',
+    label: 'TecPro barrier, low (4 m)',
+    category: 'Barriers',
+    surface: 'WALL',
+    // The half height run, for where a barrier has to be seen over: pit exits,
+    // the inside of a hairpin, anywhere a marshal post looks past it.
+    build: () => {
+      const blocks: THREE.BufferGeometry[] = [];
+      for (let i = 0; i < 6; i++) blocks.push(box(0.9, 0.6, 0.62, 0, 0, -1.69 + i * 0.676));
+      return group([
+        [blocks, 'prop_blue'],
+        [[box(0.94, 0.07, 4.0, 0, 0.4)], 'prop_white'],
+      ]);
+    },
+  },
+  {
+    key: 'bridge',
+    label: 'Bridge over the track (26 m)',
+    category: 'Track furniture',
+    surface: 'WALL',
+    /*
+     * A footbridge across the circuit: the thing spectators cross between the
+     * infield and the outside, and from the car the landmark that says which
+     * corner is coming. Spans 26 m -- a 14 m road, a verge either side and a
+     * leg standing clear of both -- and the deck sits at 5.5 m, which is above
+     * anything that can leave the ground on four wheels.
+     *
+     * WALL like every other structure: the legs are what a car can reach, and
+     * they have to stop it. The deck is out of reach, so its surface costs
+     * nothing either way.
+     */
+    build: () => {
+      const legs: THREE.BufferGeometry[] = [];
+      const rails: THREE.BufferGeometry[] = [];
+      for (const side of [-1, 1]) {
+        // Two columns per side, braced, standing 12.5 m off the centre.
+        legs.push(box(0.7, 5.5, 0.7, 0, 0, side * 12.4));
+        legs.push(box(0.7, 5.5, 0.7, 0, 0, side * 11.0));
+        legs.push(box(0.5, 0.4, 1.4, 0, 5.1, side * 11.7));
+        // The parapet along the deck, one rail per side of the walkway.
+        rails.push(box(0.1, 1.1, 26, 1.5, 5.9));
+        rails.push(box(0.1, 1.1, 26, -1.5, 5.9));
+      }
+      return group([
+        [legs, 'prop_light'],
+        // The deck: 3.4 m of walkway, thick enough to read as a structure.
+        [[box(3.4, 0.4, 26, 0, 5.5)], 'prop_light'],
+        [rails, 'prop_metal'],
+      ]);
+    },
+  },
+  {
     key: 'fence',
     label: 'Debris fence (8 m)',
     category: 'Barriers',
     surface: 'WALL',
     build: () => {
       /*
-       * A real catch fence is not a flat panel on posts. It stands about four
-       * metres, the mesh is strung between posts on the far side from the
-       * track, and the top metre is angled back OVER the circuit so anything
-       * thrown at it drops back inside instead of carrying on into the crowd.
-       * That lean is the whole silhouette of a modern grand prix trackside,
-       * and the old flat board had none of it.
+       * The generated trackside catch fence, cut into an 8 m module -- the
+       * SAME cross section, so a placed run and the painted barrier read as
+       * one product: 1 m of folded W-beam armco, chain link from there to
+       * 3.6 m, and the top leaning 0.8 m back over the circuit while rising
+       * another 1.2 (FENCE_BASE / FENCE_LEAN_* in road.ts). What the module
+       * carries that the run generator leaves out are the gates and the
+       * marshalling panels, which is exactly what a hand placed piece is for.
        *
        * +Z is the run, so the fence lies in the YZ plane and the lean is a
        * rotation about Z. The track side is -X.
        */
+      const LEAN_OUT = 0.8;
+      const LEAN_UP = 1.2;
+      const LEAN_LEN = Math.hypot(LEAN_OUT, LEAN_UP);
+      const LEAN_DEG = THREE.MathUtils.radToDeg(Math.atan2(LEAN_OUT, LEAN_UP));
+      // The posts and their leaning arms, at the same 1.97 m rhythm and the
+      // same sizes the generated fence grows them at. The end pair sits 6 cm
+      // inside the module, so a free standing run ends on a post instead of
+      // on a torn edge of mesh.
       const posts: THREE.BufferGeometry[] = [];
       const arms: THREE.BufferGeometry[] = [];
+      const ARM_LEN = LEAN_LEN + 0.3;
+      const armCx = 0.06 - (LEAN_OUT / LEAN_LEN) * (ARM_LEN / 2 - 0.16);
+      const armCy = 3.6 - 0.1 + (LEAN_UP / LEAN_LEN) * (ARM_LEN / 2 - 0.16);
       for (let i = 0; i <= 4; i++) {
         const z = -3.94 + i * 1.97;
         posts.push(box(0.14, 3.6, 0.14, 0.06, 0, z));
-        arms.push(leaned(0.12, 1.5, 0.12, 34, -0.16, 4.2, z));
-      }
-      const rails: THREE.BufferGeometry[] = [
-        box(0.16, 0.1, 8.0, 0.06, 3.5),
-        leaned(0.12, 0.1, 8.0, 34, -0.5, 4.78),
-      ];
-      /*
-       * The armco at the foot of it, on the track side of the posts where it
-       * is bolted in real life: three W beams stacked, at the same heights the
-       * generated barrier folds out of its base (GUARDRAIL_PROFILE in road.ts)
-       * so a hand placed module and a painted run read as one product. It
-       * replaces the single rail that used to sit at 0.4 m -- a fence with one
-       * rail across the bottom of it is a garden fence.
-       */
-      const armco: THREE.BufferGeometry[] = [];
-      for (const [a, b] of [[0.03, 0.31], [0.37, 0.64], [0.7, 0.97]]) {
-        armco.push(armcoUv(box(0.08, b - a, 8.0, -0.06, a)));
+        arms.push(leaned(0.12, ARM_LEN, 0.12, LEAN_DEG, armCx, armCy, z));
       }
       return group([
-        // The mesh itself is the body: it is the plane the barrier occupies,
-        // and it is exactly 8 m so a run tiles with no seam. Chain link, the
-        // one material with holes in it, and repeated at the four metres it
-        // was drawn for -- stretched once over the whole panel its wire comes
-        // out twice as thick as on the generated barrier next to it.
-        [[tileUv(box(0.03, 3.4, 8.0, 0, 0.2), 2, 3.4 / 4)], 'chainlink', 'body'],
+        // The mesh is the body: the plane the barrier occupies, exactly 8 m
+        // so a run tiles with no seam. ONE plane, like the generated strip --
+        // it used to be a 3 cm box, and the second layer of wire on its far
+        // face read as a denser, darker fence than the barrier beside it. It
+        // runs from the top of the armco to 3.6 m and on up the lean in one
+        // unbroken texture, the same panel-metres UV the run generator uses.
+        [[wallStrip([[0, 1.0, 0], [0, 3.6, 2.6 / 4]], false)], 'chainlink', 'body'],
         [posts, 'prop_light'],
         [arms, 'prop_light'],
-        [rails, 'prop_metal'],
-        [armco, 'guardrail'],
-        [[tileUv(leaned(0.03, 1.3, 8.0, 34, -0.22, 4.35), 2, 1.3 / 4)], 'chainlink'],
+        [[armcoW()], 'guardrail'],
+        [[wallStrip([[0, 3.6, 2.6 / 4], [-LEAN_OUT, 3.6 + LEAN_UP, (2.6 + LEAN_LEN) / 4]], false)], 'chainlink'],
       ]);
     },
   },
@@ -746,6 +985,25 @@ export const LIBRARY: PropDef[] = [
    * barrier grows its own, and the only decision left is where the barrier
    * goes. See flagPanels() in road.ts.
    */
+  /*
+   * Parking bay markings, in a short and a long row. Lines only: the pavement
+   * underneath is whatever the user laid there, usually an asphalt patch.
+   * `surface: null` -- paint is not something a car collides with.
+   */
+  {
+    key: 'park_bays_4',
+    label: 'Parking bays (4)',
+    category: 'Track furniture',
+    surface: null,
+    build: () => parkBays(4),
+  },
+  {
+    key: 'park_bays_8',
+    label: 'Parking bays (8)',
+    category: 'Track furniture',
+    surface: null,
+    build: () => parkBays(8),
+  },
   {
     key: 'ad_board',
     label: 'Advertising board',

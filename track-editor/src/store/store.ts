@@ -176,6 +176,12 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
       kerbs: [],
       edgeLine: true,
       edgeLineWidth: 0.14,
+      /* On by default, because a circuit without it does not look like a
+         circuit: the rubber down the racing line is the first thing that
+         says a track has been raced on rather than modelled. Existing saves
+         pick it up too -- they carry no setting, so they take this one. */
+      rubber: true,
+      rubberWidth: 3.5,
       apronColour: 'grey',
       runoffWidth: 12,
       /*
@@ -196,6 +202,7 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
       wall: true,
       wallHeight: 1.1,
       wallStyle: 'wall',
+      wallCuts: [],
       pitClearance: true,
       pitGap: 3,
       uvLength: 14,
@@ -262,6 +269,7 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
       // from the offset and a datum to lose.
       base: 0,
       blend: 22,
+      grass3d: true,
       heights: createHeights(res, 0),
       // All grass until the ground brush says otherwise, and no field at all
       // until then either.
@@ -690,8 +698,15 @@ export interface EditorState {
   setDecoSurface: (s: DecoSurface) => void;
   /** Create an empty deco road, make it the active one, return its id. */
   addDecoRoad: (surface: DecoSurface) => string;
+  /** Armed: the next click on the ground drops a roundabout there. */
+  roundaboutArm: boolean;
+  setRoundaboutArm: (on: boolean) => void;
+  /** Centre-line radius of the next roundabout, metres. */
+  roundaboutRadius: number;
+  setRoundaboutRadius: (r: number) => void;
+  addRoundabout: (at: { x: number; y: number; z: number }) => string;
   deleteDecoRoad: (id: string) => void;
-  updateDecoRoad: (id: string, patch: Partial<Pick<DecoRoad, 'name' | 'surface'>>) => void;
+  updateDecoRoad: (id: string, patch: Partial<Pick<DecoRoad, 'name' | 'surface' | 'line'>>) => void;
   /** `scale` is per axis, for the ground patches that are sized in metres. */
   addProp: (kind: string, at: THREE.Vector3, rotY?: number, scale?: [number, number, number]) => void;
   /** Move terrain, track, pit lane and every object up or down together. */
@@ -703,8 +718,24 @@ export interface EditorState {
    * The barrier tool's two jobs: painting the generated barrier onto the edge
    * of the track, and drawing a free standing run of modules anywhere.
    */
-  barrierMode: 'track' | 'free' | 'edge';
-  setBarrierMode: (m: 'track' | 'free' | 'edge') => void;
+  barrierMode: 'track' | 'free' | 'edge' | 'cut';
+  setBarrierMode: (m: 'track' | 'free' | 'edge' | 'cut') => void;
+  /** How long a stretch the cut tool takes out, metres. */
+  cutLength: number;
+  setCutLength: (m: number) => void;
+  /**
+   * Open the barrier over `cutLength` metres centred on a point of the lap.
+   *
+   * Takes metres of lap and stores curve parameters: what the pointer knows is
+   * where on the ground it is, and what survives a control point being moved
+   * later is the parameter. Clicking a stretch that is already open closes it
+   * again, so the one tool both makes and unmakes a gap.
+   */
+  cutBarrierAt: (side: -1 | 1, t: number, metres: number, lapLength: number) => 'cut' | 'restored';
+  removeWallCut: (id: string) => void;
+  clearWallCuts: () => number;
+  /** Open the barrier over every stretch the check found. Returns how many. */
+  openBarrierFaults: (faults: Array<{ side: -1 | 1; from: number; to: number }>) => number;
   /**
    * Sideways offset of an edge row from the outer edge of the built-up
    * roadside (road + kerb + strip + run off), metres. Negative moves it onto
@@ -725,7 +756,15 @@ export interface EditorState {
   barrierDraft: Array<[number, number, number]>;
   setBarrierDraft: (p: Array<[number, number, number]>) => void;
   /** Lay modules along a drawn line. Returns how many went down. */
-  addBarrierRun: (points: Array<{ x: number; y: number; z: number }>) => number;
+  /**
+   * Lay a run of modules along a drawn line.
+   *
+   * `glue` off keeps the modules at the heights they were given instead of
+   * sitting them back on the terrain whenever it is sculpted -- what a run
+   * that joins the trackside barrier needs, since that barrier stands on the
+   * road's own shoulder rather than on the ground.
+   */
+  addBarrierRun: (points: Array<{ x: number; y: number; z: number }>, glue?: boolean) => number;
   /** Put down a planned set of boards, replacing every board already there. */
   applyBrakeMarkers: (markers: BrakeMarker[]) => number;
   /** Take them all away again. Returns how many went. */
@@ -790,6 +829,9 @@ function apply(p: Project, mutate: (p: Project) => void): Project {
 }
 
 let propCounter = 0;
+
+/** The same, for the stretches of barrier taken back out. */
+let cutCounter = 0;
 
 /** Headings are compared and stepped through, so keep them in 0..360. */
 function normalizeDeg(deg: number): number {
@@ -1615,10 +1657,64 @@ export const useEditor = create<EditorState>((set, get) => ({
         id,
         name: `Road ${count + 1}`,
         surface,
+        // A public road carries its centre line; a concrete service path does
+        // not. Both are a checkbox afterwards.
+        line: surface === 'asphalt',
         path: { closed: false, nodes: [] },
       });
     });
     set({ activeDeco: id });
+    return id;
+  },
+
+  roundaboutArm: false,
+  setRoundaboutArm: (roundaboutArm) => set({ roundaboutArm }),
+  roundaboutRadius: 14,
+  setRoundaboutRadius: (roundaboutRadius) =>
+    set({ roundaboutRadius: Math.min(30, Math.max(8, roundaboutRadius)) }),
+
+  addRoundabout: (at) => {
+    decoCounter += 1;
+    const id = `dr${Date.now().toString(36)}${decoCounter.toString(36)}`;
+    const r = get().roundaboutRadius;
+    /* A closed ring of eight points. Eight is enough for the spline to come
+       out circular to the eye, and few enough that reshaping it by hand -- an
+       oval, a teardrop -- is dragging a handful of handles, not surgery. The
+       ring is an ordinary road in every other way: approach roads drawn
+       AFTER it dock onto its edge exactly as they dock onto the circuit. */
+    const nodes = [] as import('../types').TrackNode[];
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      decoCounter += 1;
+      nodes.push({
+        id: `rb${Date.now().toString(36)}${decoCounter.toString(36)}`,
+        p: [at.x + Math.cos(a) * r, at.y, at.z + Math.sin(a) * r],
+        widthL: 3.2,
+        widthR: 3.2,
+        bank: 0,
+        wallL: false,
+        wallR: false,
+        runoffL: 0,
+        runoffR: 0,
+        wallGapL: 0,
+        wallGapR: 0,
+        aiOffset: 0,
+      });
+    }
+    let count = 0;
+    get().commit((p) => {
+      count = p.decoRoads.length;
+      p.decoRoads.push({
+        id,
+        name: `Roundabout ${count + 1}`,
+        surface: 'asphalt',
+        // No centre line on the ring itself: a roundabout's carriageway is
+        // one-way, the line would claim two-way traffic.
+        line: false,
+        path: { closed: true, nodes },
+      });
+    });
+    set({ roundaboutArm: false, activeDeco: null });
     return id;
   },
 
@@ -1719,6 +1815,106 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   barrierMode: 'track',
   setBarrierMode: (barrierMode) => set({ barrierMode, barrierDraft: [] }),
+  cutLength: 12,
+  setCutLength: (cutLength) => set({ cutLength }),
+
+  cutBarrierAt: (side, t, metres, lapLength) => {
+    const half = lapLength > 0 ? metres / 2 / lapLength : 0.005;
+    const closed = get().project.track.closed;
+    // Already open here? Then the click means "put it back", which is the only
+    // way to undo a cut without hunting for it in a list.
+    const hit = get().project.road.wallCuts.find((c) => {
+      if (c.side !== side) return false;
+      return c.from <= c.to
+        ? t >= c.from && t <= c.to
+        : t >= c.from || t <= c.to;
+    });
+    if (hit) {
+      get().commit((p) => {
+        p.road.wallCuts = p.road.wallCuts.filter((c) => c.id !== hit.id);
+      });
+      return 'restored';
+    }
+    let from = t - half;
+    let to = t + half;
+    if (closed) {
+      from = (from + 1) % 1;
+      to = (to + 1) % 1;
+    } else {
+      from = Math.max(0, from);
+      to = Math.min(1, to);
+    }
+    /*
+     * Swallow the neighbours instead of lining up beside them.
+     *
+     * Clicking along a stretch to take out forty metres of barrier means three
+     * or four clicks, and unless they land exactly a length apart each pair
+     * leaves a slice of barrier standing between them -- a two metre island of
+     * fence in the middle of a gap, which is worse than what was there before.
+     * Anything this cut touches, or comes within a few metres of, is absorbed
+     * into it, so a run of clicks grows ONE opening.
+     */
+    const near = half * 0.5 + 0.002;
+    const overlaps = (a0: number, a1: number, b0: number, b1: number) => {
+      const spans = (x0: number, x1: number): Array<[number, number]> =>
+        x0 <= x1 ? [[x0, x1]] : [[x0, 1], [0, x1]];
+      for (const [p0, p1] of spans(a0, a1)) {
+        for (const [q0, q1] of spans(b0, b1)) {
+          if (p0 - near <= q1 && q0 - near <= p1) return true;
+        }
+      }
+      return false;
+    };
+    const merged = get().project.road.wallCuts.filter(
+      (c) => c.side === side && overlaps(from, to, c.from, c.to),
+    );
+    for (const c of merged) {
+      // Union on the ring: keep whichever end reaches further out each way.
+      const ext = (x: number, edge: number, forward: boolean) => {
+        const d = forward ? (x - edge + 1) % 1 : (edge - x + 1) % 1;
+        return d < 0.5;
+      };
+      if (ext(c.from, from, false)) from = c.from;
+      if (ext(c.to, to, true)) to = c.to;
+    }
+    cutCounter += 1;
+    const gone = new Set(merged.map((c) => c.id));
+    get().commit((p) => {
+      p.road.wallCuts = p.road.wallCuts.filter((c) => !gone.has(c.id));
+      p.road.wallCuts.push({ id: `wc${Date.now().toString(36)}${cutCounter.toString(36)}`, side, from, to });
+    });
+    return 'cut';
+  },
+
+  removeWallCut: (id) => {
+    get().commit((p) => {
+      p.road.wallCuts = p.road.wallCuts.filter((c) => c.id !== id);
+    });
+  },
+
+  clearWallCuts: () => {
+    const had = get().project.road.wallCuts.length;
+    if (had === 0) return 0;
+    get().commit((p) => { p.road.wallCuts = []; });
+    return had;
+  },
+
+  openBarrierFaults: (faults) => {
+    if (faults.length === 0) return 0;
+    get().commit((p) => {
+      for (const f of faults) {
+        cutCounter += 1;
+        p.road.wallCuts.push({
+          id: `wc${Date.now().toString(36)}${cutCounter.toString(36)}`,
+          side: f.side,
+          from: f.from,
+          to: f.to,
+        });
+      }
+    });
+    return faults.length;
+  },
+
   barrierKind: 'armco',
   setBarrierKind: (barrierKind) => set({ barrierKind }),
   rowGap: 1,
@@ -1733,7 +1929,7 @@ export const useEditor = create<EditorState>((set, get) => ({
    * measurement the edge snapping uses. An armco rail is 8 m of rail with posts
    * inside it; measuring the posts would leave a gap at every joint.
    */
-  addBarrierRun: (points) => {
+  addBarrierRun: (points, glue = true) => {
     const kind = get().barrierKind;
     const box = propTileBox(kind);
     const pieces = layBarrierRun(points, Math.max(0.5, box.hz * 2));
@@ -1746,9 +1942,15 @@ export const useEditor = create<EditorState>((set, get) => ({
           kind,
           name: `${kind}_${propCounter}`,
           p: [...piece.p],
-          r: [0, piece.rotY, 0],
-          s: [1, 1, 1],
-          ground: true,
+          r: [...piece.rot],
+          // Stretched along its own run so its ends land exactly on the next
+          // module's: what closes the gaps a curve used to open up.
+          s: [1, 1, piece.sz],
+          /* A run joined to the trackside barrier must NOT be re-glued to the
+             terrain: its foot stands on the outer edge of the run off, which
+             belongs to the road, and the ground beside it can be metres lower.
+             Gluing it would tear the join apart the next time anyone sculpts. */
+          ground: glue,
         });
       }
     });

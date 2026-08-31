@@ -769,8 +769,34 @@ const MAX_TREES = 2600;
 const FAR_SPACING = 17;
 const MAX_FAR_TREES = 2600;
 
-/** Card trees: hundreds of them seen at speed is exactly what cards are for. */
-const TREE_KINDS = ['tree_pine_2d', 'tree_round_2d', 'tree_poplar_2d', 'tree_scrub_2d'] as const;
+/**
+ * Card trees: hundreds of them seen at speed is exactly what cards are for.
+ *
+ * Ordered along the species wave, darkest woods first: fir and pine hold the
+ * low end, birch sits between the broadleaf and the poplar. The library's
+ * willow, cypress and autumn cards are left out on purpose -- a willow means
+ * water, a cypress means the Mediterranean and an autumn tree means a season,
+ * and all three are statements for the author to make by hand, not for every
+ * generated wood to mumble at random.
+ */
+const TREE_KINDS = [
+  'tree_fir_2d',
+  'tree_pine_2d',
+  'tree_round_2d',
+  'tree_birch_2d',
+  'tree_poplar_2d',
+  'tree_scrub_2d',
+] as const;
+
+/** One species for the wave value at a point, groves staying one species. */
+function speciesFor(v: number): string {
+  if (v < -0.9) return TREE_KINDS[0];
+  if (v < -0.35) return TREE_KINDS[1];
+  if (v < 0.35) return TREE_KINDS[2];
+  if (v < 0.7) return TREE_KINDS[3];
+  if (v < 1.05) return TREE_KINDS[4];
+  return TREE_KINDS[5];
+}
 
 interface Paddock {
   ax: number;
@@ -996,8 +1022,7 @@ function plantForest(
         // understorey instead of ending in bare trunks.
         kind = 'tree_scrub_2d';
       } else {
-        const v = waveAt(species, px, pz) * 1.4 + (rng() - 0.5) * 0.8;
-        kind = v < -0.5 ? TREE_KINDS[0] : v < 0.55 ? TREE_KINDS[1] : v < 1.05 ? TREE_KINDS[2] : TREE_KINDS[3];
+        kind = speciesFor(waveAt(species, px, pz) * 1.4 + (rng() - 0.5) * 0.8);
       }
       const s = 0.8 + rng() * 0.5;
       out.push({
@@ -1038,9 +1063,7 @@ function plantForest(
       if (rng() >= mask * 0.92) continue;
 
       serial += 1;
-      const v = waveAt(species, px, pz) * 1.4 + (rng() - 0.5) * 0.8;
-      const kind =
-        v < -0.5 ? TREE_KINDS[0] : v < 0.55 ? TREE_KINDS[1] : v < 1.05 ? TREE_KINDS[2] : TREE_KINDS[3];
+      const kind = speciesFor(waveAt(species, px, pz) * 1.4 + (rng() - 0.5) * 0.8);
       const s = 0.8 + rng() * 0.5;
       far.push({
         id: `gentree_${serial}`,
@@ -1151,6 +1174,7 @@ export function generateCircuit(
   const res = Math.max(129, Math.min(maxRes, Math.round(fieldSize / TERRAIN_CELL / 2) * 2 + 1));
   const terrain: TerrainSettings = {
     enabled: true,
+    grass3d: true,
     res,
     size: fieldSize,
     originX: (minX + maxX) / 2 - fieldSize / 2,

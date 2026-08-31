@@ -63,6 +63,72 @@ function makeAsphalt(): HTMLCanvasElement {
   return c;
 }
 
+/**
+ * The racing line, as a band whose U runs ACROSS it.
+ *
+ * Dark down the middle where the rubber is laid, fading to nothing at both
+ * edges so the band dissolves into the tarmac instead of ending at a border.
+ * The fade is why this is a texture and not a colour: the geometry can only
+ * cut a straight edge, and a straight edge is exactly what a racing line
+ * does not have.
+ *
+ * It starts from the road's own tile, so the band and the tarmac either side
+ * of it are unmistakably one surface with one grain.
+ */
+function makeRubber(): HTMLCanvasElement {
+  const [c, ctx] = canvas();
+  ctx.fillStyle = '#3a3c3f';
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  ctx.globalAlpha = 0.12;
+  blotches(ctx, '#4a4d51', 900, 2, 9, 7);
+  blotches(ctx, '#2c2e31', 700, 2, 7, 19);
+  ctx.globalAlpha = 1;
+
+  /* The laid rubber. Not black: rubber on grey tarmac is a very dark brown
+     grey, and true black reads as a painted stripe -- which is what the first
+     go at this looked like, a dark ribbon somebody had rolled down the
+     circuit. Rubber is a stain, not a coat of paint, so all three layers here
+     are about half the strength they started at: enough to see where the cars
+     run, not enough to look like a marking. */
+  const g = ctx.createLinearGradient(0, 0, SIZE, 0);
+  g.addColorStop(0.0, 'rgba(22,21,20,0)');
+  g.addColorStop(0.14, 'rgba(22,21,20,0.16)');
+  g.addColorStop(0.5, 'rgba(22,21,20,0.38)');
+  g.addColorStop(0.86, 'rgba(22,21,20,0.16)');
+  g.addColorStop(1.0, 'rgba(22,21,20,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+
+  /* The marbles: rubber swept off the line collects just outside it, and it
+     is PALER than the road, not darker. Two soft bands riding the shoulders
+     of the fade, which is what makes the line read as swept rather than
+     painted on. */
+  const m = ctx.createLinearGradient(0, 0, SIZE, 0);
+  m.addColorStop(0.0, 'rgba(150,146,138,0)');
+  m.addColorStop(0.08, 'rgba(150,146,138,0.09)');
+  m.addColorStop(0.2, 'rgba(150,146,138,0)');
+  m.addColorStop(0.8, 'rgba(150,146,138,0)');
+  m.addColorStop(0.92, 'rgba(150,146,138,0.09)');
+  m.addColorStop(1.0, 'rgba(150,146,138,0)');
+  ctx.fillStyle = m;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+
+  /* Streaks ALONG the band -- V runs down the track, so these are the smears
+     a tyre leaves, not a pattern across the road. Full height, so they carry
+     across the tile seam without a join. */
+  ctx.globalAlpha = 0.06;
+  let seed = 20260901;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
+  for (let k = 0; k < 90; k++) {
+    const x = SIZE * (0.16 + rnd() * 0.68);
+    ctx.fillStyle = rnd() > 0.5 ? '#15140f' : '#55565a';
+    ctx.fillRect(x, 0, 1 + rnd() * 3, SIZE);
+  }
+  ctx.globalAlpha = 1;
+  noise(ctx, 22, 4242);
+  return c;
+}
+
 function makeKerb(): HTMLCanvasElement {
   const [c, ctx] = canvas();
   // One full texture tile = one red + one white stripe pair.
@@ -781,15 +847,20 @@ function makeStartBanner(): HTMLCanvasElement {
 /* ------------------------------------------------------------------ */
 
 /**
- * Four cut out trees on one 2 x 2 sheet.
+ * Nine cut out trees on one 3 x 3 sheet.
  *
  * This is the whole technique, and it is not ours -- it is what every AC track
  * does, Kunos' own included: a tree is a picture with the sky cut out of it,
  * stood up on two crossed cards. magione.kn5 carries `Trees` and `Trees_ext`
- * on ONE shared image, and that sharing is the point. Four species on four
- * separate textures would be four materials and four draw calls; on one sheet
+ * on ONE shared image, and that sharing is the point. Nine species on nine
+ * separate textures would be nine materials and nine draw calls; on one sheet
  * a whole wood is a single call, which is what makes it affordable to plant a
  * thousand of them.
+ *
+ * The sheet has its own resolution (see TREE_SHEET_PX): at the common 512 the
+ * move from four tiles to nine would have cost every tree a third of its
+ * pixels, and a blurred silhouette is the one thing an alpha tested card
+ * cannot hide.
  *
  * `w` and `h` are the metres a tile is drawn FOR. The tile is square and a
  * tree is not, so the drawing is done in metres through a scaled transform
@@ -803,7 +874,16 @@ export const TREE_CARDS = {
   poplar: { tile: 1, w: 4.6, h: 13.5 },
   pine: { tile: 2, w: 5.6, h: 12.5 },
   scrub: { tile: 3, w: 4.4, h: 4.2 },
+  birch: { tile: 4, w: 6.0, h: 12.0 },
+  willow: { tile: 5, w: 10.0, h: 9.5 },
+  autumn: { tile: 6, w: 8.5, h: 10.5 },
+  cypress: { tile: 7, w: 3.2, h: 12.0 },
+  fir: { tile: 8, w: 6.4, h: 10.0 },
 } as const;
+
+/** Tiles per side of the tree sheet, and the pixels it is drawn at. */
+export const TREE_SHEET_TILES = 3;
+const TREE_SHEET_PX = 1024;
 
 /**
  * How far the drawing keeps off the edges of its tile, as a fraction of the
@@ -843,11 +923,11 @@ const shade = (ramp: readonly string[], t: number) =>
  * off the broadleaf in the tile beside it.
  */
 function treePen(ctx: CanvasRenderingContext2D, card: { tile: number; w: number; h: number }) {
-  const tile = SIZE / 2;
+  const tile = TREE_SHEET_PX / TREE_SHEET_TILES;
   const inset = tile * TREE_CARD_INSET;
   const span = tile - inset * 2;
-  const ox = (card.tile % 2) * tile + inset;
-  const oy = ((card.tile / 2) | 0) * tile + inset;
+  const ox = (card.tile % TREE_SHEET_TILES) * tile + inset;
+  const oy = ((card.tile / TREE_SHEET_TILES) | 0) * tile + inset;
   ctx.save();
   ctx.translate(ox + span / 2, oy + span);
   ctx.scale(span / card.w, -span / card.h);
@@ -1166,8 +1246,8 @@ function drawConifer(
  * jitter ever fixes.
  */
 function makeTreeCards(): HTMLCanvasElement {
-  const [c, ctx] = canvas();
-  ctx.clearRect(0, 0, SIZE, SIZE);
+  const [c, ctx] = canvas(TREE_SHEET_PX);
+  ctx.clearRect(0, 0, TREE_SHEET_PX, TREE_SHEET_PX);
 
   /*
    * Foliage, dark to sunlit.
@@ -1181,6 +1261,17 @@ function makeTreeCards(): HTMLCanvasElement {
   const POPLAR = ['#20301a', '#2b3f21', '#3a5128', '#4a6631', '#5d7c3c', '#77964b'] as const;
   const SPRUCE = ['#12220f', '#1a2f15', '#233e1c', '#2d4f23', '#3a622c', '#4b7738'] as const;
   const SCRUB = ['#1e2e18', '#293e20', '#365028', '#456432', '#57793e', '#71914c'] as const;
+  // The lighter, yellower green of a birch, half a step towards lime.
+  const BIRCH = ['#26331a', '#334422', '#43562b', '#556a35', '#698040', '#82994f'] as const;
+  // A willow's silvery cast: the same greens pushed towards grey.
+  const WILLOW = ['#242e1e', '#303c27', '#3f4c31', '#4f5e3c', '#617148', '#788757'] as const;
+  // Turned leaves, deep rust to lit copper. One autumn tree beside the greens
+  // is an accent; the generator leaves it alone so a summer wood stays summer.
+  const AUTUMN = ['#3a2110', '#4d2c13', '#653a17', '#7e4a1c', '#985d24', '#b3742f'] as const;
+  // Cypress: darker than any of them, nearly blue in the shadows.
+  const CYPRESS = ['#101d0f', '#162815', '#1d331b', '#254022', '#2f4f2b', '#3c6136'] as const;
+  // A fir's needles run bluer than a spruce's.
+  const FIR = ['#101f14', '#16291b', '#1d3523', '#26422c', '#315237', '#3f6445'] as const;
 
   drawBroadleaf(ctx, TREE_CARDS.broadleaf, 20260829, {
     trunkTop: 3.6, trunkW: 0.6, lean: 0.22,
@@ -1206,6 +1297,52 @@ function makeTreeCards(): HTMLCanvasElement {
     cx: 0, cy: 2.5, rx: 2.0, ry: 1.5, pinchTop: 0.18, pinchBottom: 0.3,
     clumps: 260, rMin: 0.15, rMax: 0.32, channels: 5, holes: 55,
     leaves: SCRUB, bark: '#483a2c',
+  });
+
+  // Slender and airy: a tall visible trunk, a narrow crown, and more sky
+  // through it than any of the others -- which, with the white bark, is the
+  // whole of what says "birch" at a hundred metres.
+  drawBroadleaf(ctx, TREE_CARDS.birch, 9150217, {
+    trunkTop: 4.6, trunkW: 0.34, lean: 0.18,
+    cx: 0, cy: 8.0, rx: 2.5, ry: 3.9, pinchTop: 0.4, pinchBottom: 0.25,
+    clumps: 300, rMin: 0.16, rMax: 0.38, channels: 8, holes: 110,
+    leaves: BIRCH, bark: '#d9d6cb',
+  });
+
+  // A willow: short trunk, and a crown wider than it is tall that reaches
+  // nearly back down to the ground -- pinched hard at the top, barely at all
+  // underneath, which is the weeping silhouette without a new drawing routine.
+  drawBroadleaf(ctx, TREE_CARDS.willow, 3320871, {
+    trunkTop: 2.2, trunkW: 0.7, lean: 0.1,
+    cx: 0, cy: 5.4, rx: 4.7, ry: 3.9, pinchTop: 0.45, pinchBottom: 0.06,
+    clumps: 520, rMin: 0.22, rMax: 0.5, channels: 6, holes: 70,
+    leaves: WILLOW, bark: '#4a3d2e',
+  });
+
+  // The oak again in turned leaves: same family of shape, its own seed so it
+  // is not the same tree recoloured side by side with itself.
+  drawBroadleaf(ctx, TREE_CARDS.autumn, 18090344, {
+    trunkTop: 3.4, trunkW: 0.56, lean: -0.2,
+    cx: 0, cy: 6.7, rx: 4.0, ry: 3.4, pinchTop: 0.24, pinchBottom: 0.32,
+    clumps: 440, rMin: 0.24, rMax: 0.56, channels: 7, holes: 85,
+    leaves: AUTUMN, bark: '#443626',
+  });
+
+  // A cypress is one dark flame of foliage to the ground: no visible trunk to
+  // speak of, pinched hard at the tip. The avenue tree of every hillside
+  // circuit south of the Alps.
+  drawBroadleaf(ctx, TREE_CARDS.cypress, 7071923, {
+    trunkTop: 0.5, trunkW: 0.2, lean: 0.04,
+    cx: 0, cy: 6.2, rx: 1.35, ry: 5.7, pinchTop: 0.72, pinchBottom: 0.12,
+    clumps: 380, rMin: 0.14, rMax: 0.3, channels: 4, holes: 40,
+    leaves: CYPRESS, bark: '#2e2a20',
+  });
+
+  // A fir: the spruce's build, squatter and wider, needles a step bluer, with
+  // its lowest skirt nearly on the ground.
+  drawConifer(ctx, TREE_CARDS.fir, 5540108, {
+    trunkW: 0.5, top: 9.6, bottom: 0.7, spread: 3.0, tiers: 9,
+    needles: FIR, bark: '#3c332a',
   });
 
   return c;
@@ -1293,6 +1430,7 @@ function makeGuardrailOrange(): HTMLCanvasElement {
 /** Base colour of every material, also written into the FBX as DiffuseColor. */
 export const MATERIAL_COLORS: Record<MaterialKey, string> = {
   asphalt: '#3a3c3f',
+  rubber: '#2c2b2c',
   kerb: '#c22030',
   grass: '#3f6b34',
   sand: '#c2a878',
@@ -1328,6 +1466,7 @@ export const MATERIAL_COLORS: Record<MaterialKey, string> = {
 
 const builders: Record<MaterialKey, () => HTMLCanvasElement> = {
   asphalt: makeAsphalt,
+  rubber: makeRubber,
   kerb: makeKerb,
   grass: makeGrass,
   sand: makeSand,

@@ -66,6 +66,8 @@ export interface DecoRoad {
   name: string;
   surface: DecoSurface;
   path: PathData;
+  /** Paint the dashed centre line an ordinary two-way road carries. */
+  line?: boolean;
 }
 
 /** Surface keys we emit into data/surfaces.ini and use as mesh name prefixes. */
@@ -127,6 +129,27 @@ export interface KerbSpan {
   apron: number;
 }
 
+/**
+ * A stretch where the barrier is deliberately left open.
+ *
+ * The barrier itself is a flag per control point, so the shortest piece it can
+ * describe is whatever lies between two of them -- a hundred metres on a fast
+ * sweeper. That is the right grain for "is there a barrier along here at all"
+ * and far too coarse for taking out the ten metres where it came out wrong.
+ *
+ * `from` and `to` are curve parameters, 0..1, the same datum a kerb span uses
+ * and for the same reason: metres are measured from the start of the lap, so a
+ * control point moved anywhere behind a cut would slide the cut along the
+ * track. On a closed circuit `from > to` is legal and runs across the seam.
+ */
+export interface BarrierCut {
+  id: string;
+  /** Which side it opens. -1 = left, 1 = right. */
+  side: -1 | 1;
+  from: number;
+  to: number;
+}
+
 export interface RoadSettings {
   /** Geometry resolution: how many cross sections per spline segment. */
   samplesPerSegment: number;
@@ -144,6 +167,13 @@ export interface RoadSettings {
    */
   edgeLine: boolean;
   edgeLineWidth: number;
+  /**
+   * Lay rubber down the racing line: the dark band a circuit wears where the
+   * cars actually drive, fading out to bare tarmac either side of it.
+   */
+  rubber: boolean;
+  /** How wide that band is, metres. */
+  rubberWidth: number;
   /** Colour of every kerb span's tarmac strip. The width is per span. */
   apronColour: ApronColour;
   runoffWidth: number;
@@ -178,6 +208,12 @@ export interface RoadSettings {
    * every project ever saved has it written in it.
    */
   wallStyle: 'wall' | 'fence';
+  /**
+   * Stretches of barrier taken back out again, wherever they happen to fall.
+   * See BarrierCut: the per point flags cannot describe anything shorter than
+   * the gap between two control points, and this can.
+   */
+  wallCuts: BarrierCut[];
   /**
    * Automatically pull the run off back and open the barrier wherever the pit
    * lane runs alongside the track, so the two never grow into each other.
@@ -304,6 +340,11 @@ export interface TerrainSettings {
   base: number;
   /** How wide the blend from road level out into free terrain is. */
   blend: number;
+  /**
+   * Grow the automatic strip of 3D grass tufts along the verges. Derived, not
+   * stored: the tufts follow the track and the ground paint by themselves.
+   */
+  grass3d: boolean;
   /** res * res height values. Held as a Float32Array at runtime. */
   heights: Float32Array;
   /**

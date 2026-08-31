@@ -124,6 +124,12 @@ export function alignmentAt(at?: { x: number; z: number }): Alignment | null {
  * put on the status bar -- including when it could not, since "nothing
  * happened" is the one outcome a user has no way of telling apart from a bug.
  */
+/* What the last align SET, so a repeat press is distinguishable from a
+   heading that merely happens to match the road -- the place tool starts at
+   0°, and on a road running due north that coincidence would make the very
+   first press flip instead of align. */
+let lastAligned: number | null = null;
+
 export function alignPlacementToPath(at?: { x: number; z: number }): string {
   if (!at && !lastGround) return 'Point at the ground first, then align';
   const hit = alignmentAt(at);
@@ -132,23 +138,34 @@ export function alignPlacementToPath(at?: { x: number; z: number }): string {
   const name = hit.path === 'pit' ? 'pit lane' : 'track';
 
   /*
-   * Already square: turn it round instead.
+   * Pressed again without touching anything: turn it round instead.
    *
    * "Along the road" has two answers 180° apart, and which one was meant is
    * not knowable from geometry -- a garage faces the lane it serves, a
    * grandstand faces away from the ground it stands on. One press gives one
    * answer; when that is the wrong way round, the same key gives the other,
-   * which beats explaining to anyone why F chose the side it did.
+   * which beats explaining to anyone why F chose the side it did. Only a
+   * REPEAT counts: the heading has to be the one the last align set, not one
+   * that happens to coincide with the road.
    */
   const current = ((s.placeRotation % 360) + 360) % 360;
   const apart = Math.abs((((current - hit.rotY + 180) % 360) + 360) % 360 - 180);
-  if (apart < 0.05) {
+  const repeated = lastAligned !== null && Math.abs(current - lastAligned) < 0.05;
+  if (repeated && apart < 0.05) {
     const flipped = (hit.rotY + 180) % 360;
     s.setPlaceRotation(flipped);
+    lastAligned = flipped;
     return `Turned round — facing the other way along the ${name} (${flipped.toFixed(1)}°)`;
+  }
+  if (repeated && Math.abs(apart - 180) < 0.05) {
+    // Standing on the flipped answer from the press before: back again.
+    s.setPlaceRotation(hit.rotY);
+    lastAligned = hit.rotY;
+    return `Turned round — facing the other way along the ${name} (${hit.rotY.toFixed(1)}°)`;
   }
 
   s.setPlaceRotation(hit.rotY);
+  lastAligned = hit.rotY;
   return `Aligned with the ${name} at ${hit.rotY.toFixed(1)}°`;
 }
 

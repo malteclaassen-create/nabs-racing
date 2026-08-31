@@ -3,12 +3,13 @@ import { zipSync, type Zippable } from 'fflate';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import type { Project, SurfaceKey } from '../types';
+import type { Project, SurfaceKey, TerrainSettings } from '../types';
 import type { Derived } from '../store/derived';
 import type { MaterialKey, MeshDef } from '../core/road';
 import { propParts, LIBRARY_BY_KEY } from '../core/library';
 import { propMatrix } from '../core/props';
-import { splitByGroups } from '../core/terrain';
+import { sampleHeights, splitByGroups } from '../core/terrain';
+import { grass3dFor, grass3dOnGrass } from '../core/grass3d';
 import { ALL_MATERIALS, ALPHA_TESTED, EMISSIVE, MATERIAL_COLORS, textureFileName, texturePngBytes, texturePngBytesFlipped } from '../core/textures';
 import { assetError, assetIdOf, getAsset } from '../io/assetCache';
 import { captureCanvas } from '../io/screenshot';
@@ -55,6 +56,75 @@ function tileTag(n: number): string {
  * shadow setting. Imported models stay on their own -- there are few of them
  * and their names are the user's, not ours.
  */
+/**
+ * Bake the automatic 3D grass into world space meshes.
+ *
+ * The same merge-by-tile scheme the props use, and for the same reason: one
+ * mesh per tuft would be tens of thousands of meshes, one mesh for the lot
+ * would defeat AC's per-mesh culling. Within a tile the tufts are further
+ * chunked so a merged mesh stays under the 16-bit vertex limit the kn5 needs.
+ * All of it is 1OBJ_: scenery, no surface, no shadows -- ankle-high cards
+ * casting thirty thousand shadows is a frame budget spent on nothing.
+ */
+export function grass3dMeshes(
+  data: Float32Array,
+  terrain: TerrainSettings,
+  heights: Float32Array,
+): MeshDef[] {
+  if (data.length === 0) return [];
+  const part = propParts('grass_tuft')[0];
+  if (!part) return [];
+
+  // Vertices per tuft decide how many fit under 65535 in one merged mesh.
+  const perTuft = part.geometry.getAttribute('position').count;
+  const chunkMax = Math.max(1, Math.floor(60000 / perTuft));
+
+  const tiles = new Map<string, { tx: number; tz: number; geos: THREE.BufferGeometry[] }>();
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const p = new THREE.Vector3();
+  const sc = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+
+  for (let i = 0; i < data.length; i += 5) {
+    if (!grass3dOnGrass(terrain, data[i], data[i + 1])) continue;
+    q.setFromAxisAngle(up, data[i + 2]);
+    p.set(data[i], sampleHeights(terrain, heights, data[i], data[i + 1]) + data[i + 4], data[i + 1]);
+    sc.setScalar(data[i + 3]);
+    m.compose(p, q, sc);
+    const tx = Math.floor(data[i] / MERGE_TILE);
+    const tz = Math.floor(data[i + 1] / MERGE_TILE);
+    const key = `${tx}|${tz}`;
+    let t = tiles.get(key);
+    if (!t) {
+      t = { tx, tz, geos: [] };
+      tiles.set(key, t);
+    }
+    t.geos.push(part.geometry.clone().applyMatrix4(m));
+  }
+
+  const out: MeshDef[] = [];
+  for (const key of [...tiles.keys()].sort()) {
+    const t = tiles.get(key)!;
+    for (let c = 0; c * chunkMax < t.geos.length; c++) {
+      const slice = t.geos.slice(c * chunkMax, (c + 1) * chunkMax);
+      const merged = slice.length === 1 ? slice[0] : mergeGeometries(slice, false);
+      if (!merged) continue;
+      out.push({
+        name: `1OBJ_grass3d_x${tileTag(t.tx)}_z${tileTag(t.tz)}${c > 0 ? `_${c}` : ''}`,
+        material: 'grass_blades',
+        surface: null,
+        geometry: merged,
+        castShadows: false,
+      });
+    }
+    // Let the clones go tile by tile, for the same memory cliff propMeshes
+    // steps around above.
+    t.geos.length = 0;
+  }
+  return out;
+}
+
 /**
  * Placed imported models that will not make it into the export, and why.
  *
@@ -315,6 +385,26 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
     // Assetto Corsa is told what a car is driving on.
     ...(derived.terrainDef ? splitByGroups(derived.terrainDef) : []),
     ...propMeshes(project, derived.terrainHeights),
+    // The automatic 3D grass, baked exactly as the viewport draws it. 1OBJ_,
+    // so AC treats it as scenery: grass a car bounces off would be worse than
+    // no grass at all.
+    ...grass3dMeshes(
+      project.terrain.enabled && project.terrain.grass3d && !project.acImport
+        ? grass3dFor(
+            project.terrain,
+            derived.terrainHeights,
+            project.road,
+            derived.trackFrames,
+            project.track.closed,
+            derived.profile,
+            derived.pitDrawFrames,
+            derived.pitApron,
+            derived.pitClip,
+          )
+        : new Float32Array(0),
+      project.terrain,
+      derived.terrainHeights,
+    ),
     // Everything below reads plain index buffers, so the draw range the road
     // builder publishes is resolved here, once, for all three writers.
   ].map((m) => ({ ...m, geometry: trimToDrawRange(m.geometry) }));

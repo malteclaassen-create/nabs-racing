@@ -150,6 +150,15 @@ export const PREFABS: PrefabDef[] = [
     parts: row('armco', 5, 'z'),
   },
   {
+    key: 'tecpro_run',
+    label: 'TecPro run',
+    hint: '8 modules, 32 m',
+    // Eight, not five: TecPro comes in 4 m modules and the stretch it is put
+    // down in -- the outside of a fast corner -- is the same length either
+    // way, so the run has to cover it in one drag like the armco does.
+    parts: row('tecpro', 8, 'z'),
+  },
+  {
     key: 'fence_run',
     label: 'Catch fence run',
     hint: '5 modules, 40 m',

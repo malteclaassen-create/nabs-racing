@@ -1,7 +1,8 @@
 import { useState, useSyncExternalStore, type ReactElement } from 'react';
 import type { EditorMode } from '../store/store';
 import { useEditor } from '../store/store';
-import { useDerived } from '../store/derived';
+import { getDerived, useDerived } from '../store/derived';
+import { faultReason, findBarrierFaults, type BarrierFault } from '../core/barrierCheck';
 import { alignPlacementToPath, clearPlantsOffTrack } from '../store/placement';
 import { CATEGORIES, GRASS_KINDS, isGroundPad, LIBRARY, propSize, propTileBox } from '../core/library';
 import { PREFABS, PREFAB_PREFIX } from '../core/prefabs';
@@ -267,9 +268,14 @@ function RoadOptions() {
   const drawMode = useEditor((s) => s.drawMode);
   const setDrawMode = useEditor((s) => s.setDrawMode);
   const setStatus = useEditor((s) => s.setStatus);
+  const roundaboutArm = useEditor((s) => s.roundaboutArm);
+  const setRoundaboutArm = useEditor((s) => s.setRoundaboutArm);
+  const roundaboutRadius = useEditor((s) => s.roundaboutRadius);
+  const setRoundaboutRadius = useEditor((s) => s.setRoundaboutRadius);
 
   const active = roads.find((r) => r.id === activeDeco) ?? null;
   const surface = active ? active.surface : decoSurface;
+  const line = active ? (active.line ?? false) : decoSurface === 'asphalt';
 
   return (
     <>
@@ -290,6 +296,19 @@ function RoadOptions() {
               if (active) updateDecoRoad(active.id, { surface: v });
             }}
           />
+        </Row>
+        <Row label="Centre line">
+          <label className="check" title="The dashed line down the middle of a two-way road. It stops on its own at junctions and crossings.">
+            <input
+              type="checkbox"
+              checked={line}
+              disabled={!active}
+              onChange={(e) => {
+                if (active) updateDecoRoad(active.id, { line: e.target.checked });
+              }}
+            />
+            <span>{active ? 'Dashed centre line' : 'Pick a road first'}</span>
+          </label>
         </Row>
         <Row label="Drawing">
           <Seg
@@ -339,6 +358,49 @@ function RoadOptions() {
             ))}
           </div>
         )}
+      </Section>
+
+      <Section title="Roundabout">
+        <p className="hint" style={{ marginTop: 0 }}>
+          A closed ring road. Lay it down first, then draw the approach roads: a road ended at the
+          ring docks onto its edge like it docks onto the circuit.
+        </p>
+        <Row label="Radius">
+          <input
+            type="range"
+            min={8}
+            max={30}
+            step={1}
+            value={roundaboutRadius}
+            onChange={(e) => setRoundaboutRadius(Number(e.target.value))}
+          />
+          <span className="num">{roundaboutRadius} m</span>
+        </Row>
+        <Row label="">
+          <button
+            className={`btn ${roundaboutArm ? 'primary' : ''}`}
+            style={{ width: '100%', justifyContent: 'center' }}
+            onClick={() => {
+              setRoundaboutArm(!roundaboutArm);
+              setStatus(
+                roundaboutArm
+                  ? 'Roundabout cancelled'
+                  : 'Click the ground where the roundabout centre should be',
+              );
+            }}
+          >
+            {roundaboutArm ? 'Click the ground (or click here to cancel)' : 'Place a roundabout'}
+          </button>
+        </Row>
+      </Section>
+
+      <Section title="Car parks">
+        <p className="hint" style={{ marginTop: 0 }}>
+          Build one yourself: drag an <b>asphalt patch</b> out with the Place tool, stamp{' '}
+          <b>Parking bays</b> onto it (Track furniture — rows latch flush against each other), and
+          end a road at the patch: it docks onto the edge, square and level, exactly like it docks
+          onto the circuit.
+        </p>
       </Section>
 
       <NewPointSection path={active ? `road:${active.id}` : 'road:none'} />
@@ -780,6 +842,26 @@ function KerbOptions() {
             />
           </Row>
         )}
+        <Row label="Racing line">
+          <Check
+            label="Rubber laid down the line"
+            checked={road.rubber}
+            onChange={(v) => commit((p) => { p.road.rubber = v; })}
+          />
+        </Row>
+        {road.rubber && (
+          <Row label="Line width">
+            <Slider
+              value={road.rubberWidth}
+              min={1.5}
+              max={8}
+              step={0.5}
+              unit=" m"
+              digits={1}
+              onChange={(v) => commit((p) => { p.road.rubberWidth = v; })}
+            />
+          </Row>
+        )}
         <Row label="Strip colour">
           <Seg
             value={road.apronColour}
@@ -925,6 +1007,124 @@ function EdgeRowOptions() {
   );
 }
 
+/**
+ * Taking pieces back out of the generated barrier, and being told where to.
+ *
+ * The check is the important half. The barrier is derived from the shape of
+ * the track rather than placed, so a corner drawn tight enough will always
+ * find a way to make it come out wrong, and until now the only way to know
+ * was to fly down and look along five kilometres of it. This measures the
+ * line that was actually built -- see core/barrierCheck.ts -- and hands back
+ * the stretches, which are the same thing the Remove tool makes by hand.
+ */
+function BarrierCutOptions() {
+  const cutLength = useEditor((s) => s.cutLength);
+  const setCutLength = useEditor((s) => s.setCutLength);
+  const cuts = useEditor((s) => s.project.road.wallCuts);
+  const clearWallCuts = useEditor((s) => s.clearWallCuts);
+  const openBarrierFaults = useEditor((s) => s.openBarrierFaults);
+  const setStatus = useEditor((s) => s.setStatus);
+  const project = useEditor((s) => s.project);
+  const [faults, setFaults] = useState<BarrierFault[] | null>(null);
+
+  const check = () => {
+    const d = getDerived(project);
+    const found = findBarrierFaults(d.trackFrames, d.profile, project.track.closed, cuts);
+    setFaults(found);
+    setStatus(
+      found.length === 0
+        ? 'Checked: nothing wrong with the barriers'
+        : `${found.length} stretch${found.length === 1 ? '' : 'es'} of barrier came out wrong`,
+    );
+  };
+
+  return (
+    <>
+      <Section title="Check the barriers">
+        <Row label="">
+          <button className="btn" style={{ width: '100%', justifyContent: 'center' }} onClick={check}>
+            Find bad stretches
+          </button>
+        </Row>
+        {faults !== null && faults.length === 0 && (
+          <p className="hint" style={{ marginTop: 0 }}>
+            Nothing found: no stretch doubles back, stands on the tarmac, runs through another one
+            or is wound into a hook.
+          </p>
+        )}
+        {faults !== null && faults.length > 0 && (
+          <>
+            <div style={{ maxHeight: 168, overflowY: 'auto', margin: '2px 0 6px' }}>
+              {faults.slice(0, 12).map((f, i) => (
+                <div
+                  key={i}
+                  className="hint"
+                  style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between', gap: 8 }}
+                >
+                  <span>
+                    {f.side < 0 ? 'Left' : 'Right'}, {f.metres.toFixed(0)} m — {faultReason(f.kind)}
+                  </span>
+                </div>
+              ))}
+              {faults.length > 12 && (
+                <p className="hint" style={{ margin: '3px 0' }}>…and {faults.length - 12} more.</p>
+              )}
+            </div>
+            <Row label="">
+              <button
+                className="btn"
+                style={{ width: '100%', justifyContent: 'center' }}
+                onClick={() => {
+                  const n = openBarrierFaults(faults);
+                  setFaults(null);
+                  setStatus(`${n} bad stretch${n === 1 ? '' : 'es'} of barrier removed`);
+                }}
+              >
+                Remove all {faults.length} of them
+              </button>
+            </Row>
+          </>
+        )}
+      </Section>
+
+      <Section title="Remove by hand">
+        <Row label="Length">
+          {/* A raw range: this setting never touches the project, so it must
+              not open an undo step the way a Slider would. */}
+          <input
+            type="range"
+            min={4}
+            max={60}
+            step={2}
+            value={cutLength}
+            onChange={(e) => setCutLength(parseFloat(e.target.value))}
+          />
+          <span className="val">{cutLength} m</span>
+        </Row>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Click the roadside band where the barrier should stop. Amber is barrier that stands,
+          brown is a stretch already taken out — clicking a brown one puts it back. Each click is
+          its own undo step.
+        </p>
+        <Row label="">
+          <button
+            className="btn"
+            style={{ width: '100%', justifyContent: 'center' }}
+            disabled={cuts.length === 0}
+            onClick={() => {
+              const n = clearWallCuts();
+              setFaults(null);
+              setStatus(n === 0 ? 'No gaps to put back' : `${n} gap${n === 1 ? '' : 's'} closed up`);
+            }}
+          >
+            {cuts.length === 0 ? 'No gaps' : `Put all ${cuts.length} back`}
+          </button>
+        </Row>
+      </Section>
+    </>
+  );
+}
+
 function BarrierOptions() {
   const road = useEditor((s) => s.project.road);
   const commit = useEditor((s) => s.commit);
@@ -949,6 +1149,7 @@ function BarrierOptions() {
           value={mode}
           options={[
             { value: 'track' as const, label: 'Along the track' },
+            { value: 'cut' as const, label: 'Remove a stretch' },
             { value: 'edge' as const, label: 'Row on the edge' },
             { value: 'free' as const, label: 'Draw freely' },
           ]}
@@ -958,12 +1159,23 @@ function BarrierOptions() {
       <p className="hint" style={{ marginTop: 0 }}>
         {mode === 'track'
           ? 'Paints the generated barrier onto the edge of the road, which follows every change to the track afterwards.'
-          : mode === 'edge'
-            ? 'Drags a row of modules along the edge of the roadside — tyres round a corner, armco down a straight — without tracing the curve by hand.'
-            : 'Draws a run of barrier modules wherever you like, following the ground. Nothing to do with the track.'}
+          : mode === 'cut'
+            ? 'Takes short pieces back out of the generated barrier, measured in metres rather than in control points.'
+            : mode === 'edge'
+              ? 'Drags a row of modules along the edge of the roadside — tyres round a corner, armco down a straight — without tracing the curve by hand.'
+              : 'Draws a run of barrier modules wherever you like, following the ground. Nothing to do with the track.'}
       </p>
     </Section>
   );
+
+  if (mode === 'cut') {
+    return (
+      <>
+        {modeRow}
+        <BarrierCutOptions />
+      </>
+    );
+  }
 
   if (mode === 'edge') {
     return (
@@ -1167,6 +1379,24 @@ function TerrainOptions() {
             Terrain off is the fastest the editor gets: no ground to rebuild, and
             you draw on a flat plane instead. Good for laying a long track out,
             switch it back on to shape the landscape.
+          </p>
+        )}
+        <Row label="3D grass">
+          <Check
+            label="Grass tufts along the verges"
+            checked={terrain.grass3d}
+            onChange={(v) =>
+              commit((p) => {
+                p.terrain.grass3d = v;
+              })
+            }
+          />
+        </Row>
+        {terrain.grass3d && (
+          <p className="hint" style={{ marginTop: 0 }}>
+            A strip of little grass cards either side of the road, like the 3D
+            grass on real circuits. It follows the track and the ground paint by
+            itself and is baked into the export.
           </p>
         )}
         <Row label="Size">

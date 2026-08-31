@@ -6,7 +6,9 @@ import {
   buildDecoRoadMeshes,
   buildPitMeshes,
   buildRoadMeshes,
+  racingLine,
   sideProfile,
+  type RacingLine,
   type MeshDef,
   type SideProfile,
 } from '../core/road';
@@ -19,6 +21,7 @@ import {
   terrainMesh,
   GROUND_KINDS,
   sampleGroundValue,
+  sampleHeights,
   paintKind,
   type Corridor,
   type CorridorMask,
@@ -28,8 +31,10 @@ import { buildGridBoxes } from '../core/gridBoxes';
 import { buildStartGantry } from '../core/gantry';
 import {
   attachRoadEnds,
+  attachRoadToPads,
   mergePitFrames,
   pitLead,
+  type PadRect,
   pitApronWidths,
   pitRoadClip,
   pitTrackLines,
@@ -38,6 +43,7 @@ import {
   type PitMerge,
   type PitTrackLine,
 } from '../core/pitLink';
+import { isGroundPad, PAD_SIZE } from '../core/library';
 import { hash, memoSlot, memoSlotReusing, type Hasher } from '../core/hash';
 import type { PathData, Project, RoadSettings, TerrainSettings } from '../types';
 
@@ -85,6 +91,20 @@ export interface Derived {
    */
   pitDrawFrames: Frame[];
   pitDrawLength: number;
+  /**
+   * Concrete shoulder width per pitDrawFrames cross section -- wider along
+   * the boxes, tapering through the lead wedges. The 3D grass keeps off the
+   * pit band with exactly these widths, so it never stands on the concrete.
+   */
+  pitApron: Float32Array;
+  /**
+   * What is REALLY drawn of the pit band, per pitDrawFrames cross section: a
+   * lateral interval, clipped where the band runs onto the circuit's tarmac.
+   * The 3D grass reads it so its keep-off ends exactly where the concrete
+   * does -- a keep-off built from widths alone left bald corners at both ends
+   * of the lane, on ground the clip had already handed back to the grass.
+   */
+  pitClip: PitClip;
   /** Side of the track the pit lane runs on. -1 left, 1 right, 0 none. */
   pitSide: -1 | 0 | 1;
   /**
@@ -163,12 +183,25 @@ function feedRoad(h: Hasher, r: RoadSettings) {
   h.num(r.kerbHeight)
     .bool(r.edgeLine)
     .num(r.edgeLineWidth)
+    // The rubber is cut INTO the road plate, so it belongs in the mesh key --
+    // left out, the switch in the panel changed a setting nothing rebuilt.
+    // Not in feedRoadShape: it moves no width, so it owes the side profile
+    // and the terrain corridor nothing.
+    .bool(r.rubber)
+    .num(r.rubberWidth)
     .str(r.apronColour)
     .str(r.runoffSurface)
     .num(r.wallHeight)
     .str(r.wallStyle)
     .num(r.uvLength)
     .num(r.uvWidth);
+  /* Where the barrier has been opened. In the MESH key and deliberately not in
+     feedRoadShape: a cut moves no width, so it owes the side profile and the
+     terrain corridor nothing -- but it is the whole of what the barrier mesh
+     looks like, and without it here the memo handed back the barrier as it was
+     and the viewport only caught up when something else forced a rebuild. */
+  h.num(r.wallCuts?.length ?? 0);
+  for (const c of r.wallCuts ?? []) h.str(c.side < 0 ? 'L' : 'R').num(c.from).num(c.to);
   for (const k of r.kerbs) h.str(k.style);
 }
 
@@ -218,6 +251,9 @@ const slotDeco = memoSlot<DecoBuild>();
 const slotPitMeshes = memoSlot<MeshDef[]>();
 const slotPitApron = memoSlot<Float32Array>();
 const slotProfile = memoSlot<SideProfile>();
+/* The racing line settles a whole lap, so it is memoised on the SHAPE of the
+   circuit alone: it must not be recomputed because a kerb changed colour. */
+const slotRacing = memoSlot<RacingLine>();
 const slotMask = memoSlot<CorridorMask>();
 const slotHeights = memoSlot<Float32Array>();
 const slotTerrainDef = memoSlotReusing<MeshDef | null>();
@@ -258,6 +294,12 @@ let lastGantry: MeshDef[] = [];
  * of it instead of redoing them dozens of times a second.
  */
 let lastMask: CorridorMask | null = null;
+/* The racing line settles a whole lap and is therefore reused unchanged while
+   a control point is being dragged, exactly as the corridor mask is: paying
+   for it on every frame of a drag is what the mask comment warns about, and
+   the line is worth 2 ms of a 16 ms frame on a 5 km circuit. The rubber
+   catches up the moment the point is let go. */
+let lastRacing: RacingLine | null = null;
 let lastAi: AiPoint[] | null = null;
 
 /**
@@ -416,6 +458,18 @@ function compute(project: Project, interacting: boolean): Derived {
         }
       : undefined;
 
+  /* Not computed at all with the rubber off: it is the only thing that reads
+     it, and a circuit that has switched the racing line off should not pay a
+     lap's worth of relaxation to be told so. */
+  const racing = !project.road.rubber
+    ? undefined
+    : interacting && lastRacing
+      ? lastRacing
+      : slotRacing(`${sigTrack}|${spp}|${project.road.rubberWidth}`, () =>
+          racingLine(trackFrames, project.track.closed, project.road.rubberWidth),
+        );
+  if (racing) lastRacing = racing;
+
   const roadMeshes = slotRoadMeshes(
     `${sigTrack}|${sigPit}|${spp}|${sigRoad}|${runoffGround ? paintId : 0}`,
     () => {
@@ -428,6 +482,7 @@ function compute(project: Project, interacting: boolean): Derived {
       profile,
       pitLines,
       runoffGround,
+      racing,
     );
     retire(lastRoad, next);
     lastRoad = next;
@@ -477,11 +532,35 @@ function compute(project: Project, interacting: boolean): Derived {
    * the tarmac's real edge (pitRoadClip). A road that never comes near the
    * circuit passes through all four untouched.
    */
+  /*
+   * The paved pads a road may end at: every Ground pad in the scene, whether
+   * placed on its own or as the tarmac of a car park prefab. Height is read
+   * off the SCULPTED field on purpose: the blended one is downstream of the
+   * roads' own corridors, and reading it back here would make the attach a
+   * moving target.
+   */
+  const pads: PadRect[] = project.props
+    .filter((pr) => isGroundPad(pr.kind))
+    .map((pr) => ({
+      x: pr.p[0],
+      z: pr.p[2],
+      rotY: pr.r[1],
+      hx: (PAD_SIZE / 2) * pr.s[0],
+      hz: (PAD_SIZE / 2) * pr.s[2],
+      y: pr.ground
+        ? sampleHeights(project.terrain, project.terrain.heights, pr.p[0], pr.p[2])
+        : pr.p[1],
+    }));
+
   const sigDeco = hash((h) => {
     h.num(project.decoRoads.length);
     for (const r of project.decoRoads) {
-      h.str(r.id).str(r.surface);
+      h.str(r.id).str(r.surface).bool(r.line ?? false);
       feedPath(h, r.path);
+    }
+    h.num(pads.length);
+    for (const pad of pads) {
+      h.num(pad.x).num(pad.z).num(pad.rotY).num(pad.hx).num(pad.hz).num(pad.y);
     }
   });
   const deco = slotDeco(
@@ -491,29 +570,81 @@ function compute(project: Project, interacting: boolean): Derived {
       const corridors: Corridor[] = [];
       const lines: DecoBuild['lines'] = [];
       const reuse = reuseMap(lastDeco);
+      /* Every road built so far, so the NEXT one can junction with it exactly
+         as it junctions with the circuit: end a road at another and it glues
+         itself on; cross one over another and the later is cut back against
+         the earlier's edge instead of the two fighting for the same pixels.
+         Draw order is seniority -- a roundabout laid down first is what the
+         approach roads dock onto. */
+      const built: Array<{ frames: Frame[]; closed: boolean }> = [];
       project.decoRoads.forEach((r, ri) => {
         if (r.path.nodes.length < 2) {
           lines.push({ id: r.id, frames: [], closed: r.path.closed });
           return;
         }
-        const attached = attachRoadEnds(r.path, trackFrames);
+        let attached = attachRoadEnds(r.path, trackFrames);
+        for (const prev of built) attached = attachRoadEnds(attached, prev.frames);
+        // Pads come last: an end the circuit or another road has claimed --
+        // its position moved above -- is not up for parking. Attaching copies
+        // every node, so "claimed" is a value comparison, not identity.
+        const movedEnd = (i: number) => {
+          const a = attached.nodes[i].p;
+          const b = r.path.nodes[i].p;
+          return a[0] !== b[0] || a[2] !== b[2];
+        };
+        attached = attachRoadToPads(attached, pads, {
+          first: movedEnd(0),
+          last: movedEnd(attached.nodes.length - 1),
+        });
         const raw = computeFrames(attached, spp);
-        const lead = pitLead(raw, trackFrames, r.path.closed, project.track.closed, 0);
-        const merged = mergePitFrames(lead.frames, trackFrames, 1.5, 0, lead);
-        const clip = pitRoadClip(
-          merged.frames,
-          trackFrames,
-          project.track.closed,
-          undefined,
-          undefined,
-          0,
-          { from: lead.from, to: lead.to },
-        );
+
+        /* Leads first (they change the frame count), circuit before roads. */
+        let lead = pitLead(raw, trackFrames, r.path.closed, project.track.closed, 0);
+        let frames = lead.frames;
+        let from = lead.from;
+        let to = lead.to;
+        for (const prev of built) {
+          const l2 = pitLead(frames, prev.frames, r.path.closed, prev.closed, 0);
+          if (l2.frames === frames) continue;
+          from += l2.from;
+          to += l2.from;
+          frames = l2.frames;
+        }
+
+        /* Then the same-length passes: glue onto every surface it overlaps,
+           and cut it back against each one's real edge. */
+        let merged = mergePitFrames(frames, trackFrames, 1.5, 0, { from, to });
+        frames = merged.frames;
+        const weight = merged.weight.slice();
+        const clip = pitRoadClip(frames, trackFrames, project.track.closed, undefined, undefined, 0, { from, to });
+        for (const prev of built) {
+          const m2 = mergePitFrames(frames, prev.frames, 1.5, 0, { from, to });
+          frames = m2.frames;
+          for (let i = 0; i < weight.length; i++) {
+            if (m2.weight[i] > weight[i]) weight[i] = m2.weight[i];
+          }
+          const c2 = pitRoadClip(frames, prev.frames, prev.closed, undefined, undefined, 0, { from, to });
+          for (let i = 0; i < clip.lo.length; i++) {
+            if (c2.lo[i] > clip.lo[i]) clip.lo[i] = c2.lo[i];
+            if (c2.hi[i] < clip.hi[i]) clip.hi[i] = c2.hi[i];
+          }
+        }
+
         meshes.push(
-          ...buildDecoRoadMeshes(merged.frames, r.path.closed, project.road, r.surface, `deco_${ri}`, reuse, clip),
+          ...buildDecoRoadMeshes(
+            frames,
+            r.path.closed,
+            project.road,
+            r.surface,
+            `deco_${ri}`,
+            reuse,
+            clip,
+            r.line ?? false,
+          ),
         );
-        corridors.push(pitCorridor(merged.frames, 0.9, clip, merged.weight));
-        lines.push({ id: r.id, frames: merged.frames.slice(lead.from, lead.to + 1), closed: r.path.closed });
+        corridors.push(pitCorridor(frames, 0.9, clip, weight));
+        lines.push({ id: r.id, frames: frames.slice(from, to + 1), closed: r.path.closed });
+        built.push({ frames, closed: r.path.closed });
       });
       retire(lastDeco, meshes);
       lastDeco = meshes;
@@ -696,6 +827,8 @@ function compute(project: Project, interacting: boolean): Derived {
     pitLength: pathLength(pitFrames, project.pit.closed),
     pitDrawFrames: pitDraw.frames,
     pitDrawLength: pitDraw.length,
+    pitApron,
+    pitClip,
     // A deco road drawn on an imported circuit is an addition of the user's
     // own, so unlike our generated road it is not held back there.
     decoMeshes: deco.meshes,
@@ -753,6 +886,14 @@ export function getDerived(project: Project, interacting = false): Derived {
   cacheKey = project;
   cacheInteracting = interacting;
   return cacheValue;
+}
+
+// Beside the store's `__editor`: `__derived(__editor.getState().project)` on
+// the console reads the exact geometry the viewport is showing.
+// Optional chain, because only Vite defines import.meta.env: the verify tools
+// load this module under plain node, where it is undefined.
+if (import.meta.env?.DEV) {
+  (globalThis as Record<string, unknown>).__derived = getDerived;
 }
 
 export function useDerived(): Derived {

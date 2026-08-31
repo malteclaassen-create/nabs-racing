@@ -674,11 +674,42 @@ export function pitCorridor(
   // The tapered run where there is one: the ground follows the concrete that is
   // really drawn, so it is not pulled down under an apron that has run out.
   const w = typeof apron === 'number' ? new Float32Array(n).fill(apron) : apron;
+  /*
+   * And the clip is honoured SIDEWAYS too, not just at the overhanging ends.
+   *
+   * Through both junction wedges the clip cuts the band back one cross section
+   * at a time -- the concrete on the outer side is only drawn out to `hi` (or
+   * in to `lo`) -- but the corridor went on claiming the full width+apron and
+   * sank the ground the usual sink-ease under concrete that is not there. What
+   * showed beside every wedge was a sunken strip of bare grass between the
+   * concrete's tapering edge and the run off: the stepped dark bite at both
+   * ends of the pit lane. Shrinking each side's shoulder to what the clip
+   * actually leaves puts the corridor's edge -- and with it the ease back up
+   * to open ground -- exactly along the drawn edge, so the ground meets the
+   * concrete flush and the bite is ordinary grass at ordinary height.
+   *
+   * Only ever SHRUNK, never below zero: where the band has been cut inside the
+   * lane itself the ground under the missing half is the circuit's business,
+   * and the road corridor is already shaping it.
+   */
+  let shL = w;
+  let shR = w;
+  if (clip) {
+    shL = new Float32Array(n);
+    shR = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const f = frames[i];
+      const lo = clip.lo[from + i];
+      const hi = clip.hi[from + i];
+      shL[i] = Math.max(0, Math.min(w[i], -lo - f.widthL));
+      shR[i] = Math.max(0, Math.min(w[i], hi - f.widthR));
+    }
+  }
   let full = 0;
   for (let i = 0; i < w.length; i++) if (w[i] > full) full = w[i];
   const none = new Float32Array(n);
   // A pit lane is open: joining its ends would fence off the whole infield.
-  return { frames, kerbL: none, kerbR: none, shoulderL: w, shoulderR: w, drop: PIT_APRON_DROP,
+  return { frames, kerbL: none, kerbR: none, shoulderL: shL, shoulderR: shR, drop: PIT_APRON_DROP,
     shoulderFull: Math.max(1e-6, full), closed: false, dropScale, fullBank: true };
 }
 
@@ -886,6 +917,71 @@ function takeScratch(n: number) {
   scratch.sumW2T.fill(0, 0, n);
   scratch.ceiling.fill(Infinity, 0, n);
   return scratch;
+}
+
+/**
+ * The height of the drawn ribbon a corridor describes, at one world point.
+ *
+ * This is the SAME projection and the same cross-section sum the mask below
+ * uses to shape the ground -- extracted for callers that need to stand things
+ * ON the ribbon rather than under it (the 3D grass above all: a tuft dropped
+ * onto the terrain inside the run off stands under the surface you actually
+ * see, because the ground is deliberately held sunk beneath the mesh). Any
+ * private re-derivation of this height drifts from the mask exactly where the
+ * cross sections fan out through a corner, which is where it shows the most.
+ *
+ * Returns null where the point is outside every ribbon (past kerb+shoulder).
+ */
+export function corridorSurfaceSampler(
+  corridors: Corridor[],
+): (x: number, z: number) => number | null {
+  const entries = corridors
+    .filter((c) => c.frames.length >= 2)
+    .map((c) => {
+      let maxShoulder = 0;
+      let maxKerb = 0;
+      for (let i = 0; i < c.frames.length; i++) {
+        maxShoulder = Math.max(maxShoulder, c.shoulderL[i] ?? 0, c.shoulderR[i] ?? 0);
+        maxKerb = Math.max(maxKerb, c.kerbL[i] ?? 0, c.kerbR[i] ?? 0);
+      }
+      return { c, idx: new CorridorIndex(c.frames, maxKerb, maxShoulder, 0) };
+    });
+
+  return (x: number, z: number): number | null => {
+    let best: number | null = null;
+    for (const { c, idx } of entries) {
+      const { frames, kerbL, kerbR, shoulderL, shoulderR, drop, shoulderFull, dropScale, fullBank } = c;
+      const fi = idx.nearest(x, z);
+      if (fi < 0) continue;
+      const seg = projectOnSegments(frames, fi, x, z, c.closed);
+      const { a, b, t: st, dist: abs, left } = seg;
+      const fa = frames[a];
+      const fb = frames[b];
+      const lateral = left ? -abs : abs;
+
+      const roadHalf = mix(left ? fa.widthL : fa.widthR, left ? fb.widthL : fb.widthR, st);
+      const kerb = mix((left ? kerbL[a] : kerbR[a]) ?? 0, (left ? kerbL[b] : kerbR[b]) ?? 0, st);
+      const shoulder =
+        mix((left ? shoulderL[a] : shoulderR[a]) ?? 0, (left ? shoulderL[b] : shoulderR[b]) ?? 0, st);
+      const inner = roadHalf + kerb + shoulder;
+      if (abs > inner) continue;
+
+      const centreY = mix(fa.pos.y, fb.pos.y, st);
+      const rightY = mix(fa.right.y, fb.right.y, st);
+      const clamped = Math.min(abs, inner);
+      const overRoad = roadHalf + kerb;
+      const shoulderT =
+        shoulder > 1e-6 ? Math.min(1, Math.max(0, clamped - overRoad) / shoulder) : 0;
+      const bank = fullBank
+        ? Math.sign(lateral) * clamped * rightY
+        : Math.sign(lateral) *
+          (Math.min(clamped, overRoad) * rightY + runoffBankRise(rightY, shoulder) * shoulderT);
+      const dropF = dropScale ? mix(dropScale[a] ?? 1, dropScale[b] ?? 1, st) : 1;
+      const surface = centreY + bank - shoulderDrop(drop * dropF, shoulder, shoulderFull) * shoulderT;
+      if (best === null || surface > best) best = surface;
+    }
+    return best;
+  };
 }
 
 export function buildCorridorMask(t: TerrainSettings, corridors: Corridor[]): CorridorMask {

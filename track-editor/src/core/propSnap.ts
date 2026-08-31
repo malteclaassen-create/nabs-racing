@@ -75,6 +75,9 @@ export function tileRuleOf(kind: string): TileRule | null {
   const def = LIBRARY_BY_KEY.get(kind);
   if (!def) return null;
   if (def.category === 'Buildings' || def.category === 'Ground') return 'grid';
+  // Parking bay paint tiles like the pads it is painted on: a second row laid
+  // next to the first latches flush, so a long car park is rows of one stamp.
+  if (def.key.startsWith('park_bays')) return 'grid';
   if (def.category === 'Barriers') return 'row';
   return null;
 }
@@ -429,10 +432,18 @@ export function nearestFlush(
     if (dxRaw * dxRaw + dzRaw * dzRaw > reach * reach) continue;
 
     // Square up with the neighbour. Rounding the RELATIVE angle to a multiple
-    // of 180° keeps whichever way round the object was aimed while forcing its
-    // edges parallel to the neighbour's, which is what makes a slot flush.
-    const relative = Math.round((rotY - other.r[1]) / 180) * 180;
+    // of 90° keeps the way the object was aimed -- crosswise included --
+    // while forcing its edges parallel to the neighbour's, which is what
+    // makes a slot flush. It used to round to 180°, which silently threw a
+    // deliberate quarter turn away: aim a row of parking bays across the pad
+    // and the ghost snapped back parallel, so the R key looked broken.
+    const relative = Math.round((rotY - other.r[1]) / 90) * 90;
     const heading = other.r[1] + relative;
+    // Turned crosswise, the object's width lies along the neighbour's length:
+    // the slot maths runs in the neighbour's frame, so the extents swap.
+    const crosswise = Math.abs(Math.round(relative / 90)) % 2 === 1;
+    const mxM = crosswise ? hzM : hxM;
+    const mzM = crosswise ? hxM : hzM;
 
     // Work in the neighbour's own frame by inverting its rotation, rather than
     // writing out sines and sign flips by hand for four separate slots.
@@ -450,7 +461,7 @@ export function nearestFlush(
     // Where the cursor is asking to put this object's centre, in that frame.
     want.set(x + offM.x - centreNX, 0, z + offM.z - centreNZ).applyQuaternion(qNinv);
 
-    const count = fillSlots(rule, hxN, hzN, hxM, hzM);
+    const count = fillSlots(rule, hxN, hzN, mxM, mzM);
     for (let k = 0; k < count; k++) {
       const dx = want.x - slotX[k];
       const dz = want.z - slotZ[k];

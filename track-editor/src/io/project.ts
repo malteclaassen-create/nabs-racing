@@ -1,5 +1,5 @@
 import { unzlibSync, zlibSync } from 'fflate';
-import type { AcEdits, AcImport, DecoRoad, KerbSpan, PathData, Project, RoadSettings } from '../types';
+import type { AcEdits, AcImport, BarrierCut, DecoRoad, KerbSpan, PathData, Project, RoadSettings } from '../types';
 import { defaultProject } from '../store/store';
 import { normalizeNode } from '../core/spline';
 import { GROUND_KINDS, paintRes } from '../core/terrain';
@@ -173,8 +173,21 @@ export function deserializeProject(json: string): Project {
  * place they are still understood.
  */
 function normalizeRoad(rawRoad: unknown, rawTrack: unknown, base: RoadSettings): RoadSettings {
-  const src = (rawRoad ?? {}) as Partial<RoadSettings> & { kerbs?: unknown };
+  const src = (rawRoad ?? {}) as Partial<RoadSettings> & { kerbs?: unknown; wallCuts?: unknown };
   const road: RoadSettings = { ...base, ...src, kerbs: [] };
+
+  /* Every project saved before barrier cuts existed simply has none, and an
+     absent list must not arrive as undefined: the mesh builder walks it. */
+  road.wallCuts = Array.isArray(src.wallCuts)
+    ? (src.wallCuts as BarrierCut[])
+        .filter((c) => c && Number.isFinite(c.from) && Number.isFinite(c.to))
+        .map((c, i) => ({
+          id: typeof c.id === 'string' && c.id ? c.id : `wc${i}`,
+          side: c.side === -1 ? -1 : 1,
+          from: Math.max(0, Math.min(1, c.from)),
+          to: Math.max(0, Math.min(1, c.to)),
+        }))
+    : [];
 
   if (Array.isArray(src.kerbs)) {
     road.kerbs = src.kerbs
@@ -263,6 +276,9 @@ function normalizeDecoRoads(raw: unknown): DecoRoad[] {
       id: r.id,
       name: typeof r.name === 'string' && r.name !== '' ? r.name : `Road ${out.length + 1}`,
       surface: r.surface === 'concrete' ? 'concrete' : 'asphalt',
+      // Saves from before the centre line existed get one on their asphalt
+      // roads, which is what those roads would have been drawn with today.
+      line: typeof r.line === 'boolean' ? r.line : r.surface !== 'concrete',
       path: {
         closed: Boolean(r.path.closed),
         nodes: r.path.nodes.map((n) => normalizeNode(n)),
