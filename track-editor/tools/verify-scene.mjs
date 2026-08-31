@@ -629,7 +629,7 @@ console.log('\nBarrier style');
         `${sf[sf.length - 1].dist.toFixed(0)} m: ${stubMeshes.map((m) => m.name).join(',')}`);
     }
 
-    const panels = asWall.filter((m) => m.name.startsWith('1OBJ_flagpanel'));
+    const panels = asWall.filter((m) => m.name.startsWith('OBJ_flagpanel'));
     const screens = panels.filter((m) => !m.name.endsWith('_case'));
     check('the barrier carries marshalling panels', screens.length === 2,
       panels.map((m) => m.name).join(','));
@@ -637,7 +637,11 @@ console.log('\nBarrier style');
       screens.every((m) => m.material === 'led_flag'),
       screens.map((m) => `${m.name}/${m.material}`).join(' '));
     check('and nothing about them is solid to a car',
-      panels.every((m) => m.surface === null),
+      // Both halves of it: no surface key, AND no leading digit. The digit is
+      // what hands a mesh to the physics -- see gridBoxes.ts -- so a panel
+      // called 1OBJ_ was a solid slab beside the circuit however null its
+      // surface was.
+      panels.every((m) => m.surface === null && !/^[0-9]/.test(m.name)),
       panels.map((m) => `${m.name}/${m.surface}`).join(' '));
     // A lap of the demo circuit at 250 m a panel, both sides staggered. Two
     // boxes per panel, twelve triangles each.
@@ -3161,7 +3165,7 @@ console.log('\nPrefabs');
        collide as the wrong material -- or cover meshes that need none. */
     const bySurface = new Map();
     for (const m of meshes) {
-      const prefix = m.surface ? `1PROP_${m.surface}_` : '1OBJ_';
+      const prefix = m.surface ? `1PROP_${m.surface}_` : 'OBJ_';
       if (!m.name.startsWith(prefix)) bySurface.set(m.name, `${m.surface}`);
     }
     check('every merged mesh is named for the surface it carries', bySurface.size === 0,

@@ -136,7 +136,7 @@ export interface GantryPart {
 
 /** The mesh name of one column of lamps, counting from the left. */
 export function startLightMesh(column: number): string {
-  return `1OBJ_startgantry_light_${column}`;
+  return `OBJ_startgantry_light_${column}`;
 }
 
 /** Columns of lamps on the gantry. Five, and the reason is in the code below. */
@@ -528,9 +528,10 @@ export function buildStartGantry(
   const m = new THREE.Matrix4().makeBasis(right, up, fwd).setPosition(f.pos);
 
   return parts.map(({ geometry, material, group }) => {
-    // 1OBJ_: no surface key of its own, so Assetto Corsa treats it as scenery.
+    // No leading digit, so Assetto Corsa treats it as scenery and not as
+    // something to drive into. See buildExport's note on the prefix.
     // The barrier in front of the legs is what a car actually hits.
-    const name = group ?? `1OBJ_startgantry_${material}`;
+    const name = group ?? `OBJ_startgantry_${material}`;
     return { name, material, surface: null, geometry: place(geometry, m, reuse?.get(name)) };
   });
 }

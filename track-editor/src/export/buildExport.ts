@@ -63,8 +63,26 @@ function tileTag(n: number): string {
  * mesh per tuft would be tens of thousands of meshes, one mesh for the lot
  * would defeat AC's per-mesh culling. Within a tile the tufts are further
  * chunked so a merged mesh stays under the 16-bit vertex limit the kn5 needs.
- * All of it is 1OBJ_: scenery, no surface, no shadows -- ankle-high cards
+ * All of it is scenery: no leading digit, no surface, no shadows -- ankle-high cards
  * casting thirty thousand shadows is a frame budget spent on nothing.
+ */
+/*
+ * Scenery carries NO leading digit, and that is the whole of what keeps it out
+ * of the physics.
+ *
+ * It was all called 1OBJ_, on the theory that a mesh is physical only when its
+ * name past the first character matches a surfaces.ini KEY -- which is what
+ * this editor's own surfaces.ini says, and which is wrong. The leading digit
+ * is what hands a mesh to the physics; the key only says which surface it then
+ * is. The grid boxes and the pit limiter line were both caught by this and
+ * both fixed; the scenery was not, and the 3D grass made it impossible to miss
+ * -- blades of it stand at the very edge of the tarmac, so the first wheel put
+ * a hair wide hit them. Trees, fence posts, flag panels and the gantry were
+ * all equally solid and simply further from the racing line.
+ *
+ * See the note on the grid boxes in gridBoxes.ts: across two installed Kunos
+ * tracks, every overlay lying on the road starts with a letter and every mesh
+ * that starts with a digit is a surface.
  */
 export function grass3dMeshes(
   data: Float32Array,
@@ -114,7 +132,7 @@ export function grass3dMeshes(
       const merged = slice.length === 1 ? slice[0] : mergeGeometries(slice, false);
       if (!merged) continue;
       out.push({
-        name: `1OBJ_grass3d_x${tileTag(t.tx)}_z${tileTag(t.tz)}${c > 0 ? `_${c}` : ''}`,
+        name: `OBJ_grass3d_x${tileTag(t.tx)}_z${tileTag(t.tz)}${c > 0 ? `_${c}` : ''}`,
         material: 'grass_blades',
         surface: null,
         geometry: merged,
@@ -184,7 +202,7 @@ export function propMeshes(project: Project, heights: Float32Array): MeshDef[] {
           geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(count * 2), 2));
         }
         if (!geo.getAttribute('normal')) geo.computeVertexNormals();
-        out.push({ name: `1OBJ_${safe}_${i}`, material: 'prop_light', surface: null, geometry: geo });
+        out.push({ name: `OBJ_${safe}_${i}`, material: 'prop_light', surface: null, geometry: geo });
         i += 1;
       });
       continue;
@@ -221,7 +239,7 @@ export function propMeshes(project: Project, heights: Float32Array): MeshDef[] {
     // carries the surface in its name without being IN the namespace, and
     // the kn5 writer (or fix_kn5.py on the fallback route) derives the
     // invisible 1<SURFACE>_ collision copy from it.
-    const prefix = g.surface ? `1PROP_${g.surface}` : '1OBJ';
+    const prefix = g.surface ? `1PROP_${g.surface}` : 'OBJ';
     const name = `${prefix}_${g.material}_x${tileTag(g.tx)}_z${tileTag(g.tz)}`;
     const merged = g.geos.length === 1 ? g.geos[0] : mergeGeometries(g.geos, false);
     if (!merged) {
@@ -378,7 +396,7 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
     // CONCRETE surfaces, so surfaces.ini already knows them.
     ...derived.decoMeshes,
     // The paint on the starting grid. Visual only, like the limiter line: it
-    // is named 1OBJ_ so AC gives it no surface of its own.
+    // is named out of the physics namespace so AC gives it no collision.
     ...derived.gridMeshes,
     // The bridge over the line. Scenery too: the barrier in front of its legs
     // is what a car can actually reach, so it carries no surface of its own.
@@ -388,7 +406,7 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
     // Assetto Corsa is told what a car is driving on.
     ...(derived.terrainDef ? splitByGroups(derived.terrainDef) : []),
     ...propMeshes(project, derived.terrainHeights),
-    // The automatic 3D grass, baked exactly as the viewport draws it. 1OBJ_,
+    // The automatic 3D grass, baked exactly as the viewport draws it. No digit,
     // so AC treats it as scenery: grass a car bounces off would be worse than
     // no grass at all.
     ...grass3dMeshes(

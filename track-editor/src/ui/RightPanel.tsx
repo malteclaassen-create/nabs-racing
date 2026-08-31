@@ -901,7 +901,7 @@ function PropProps({ id }: { id: string }) {
         )}
         <p className="hint">
           Exported as{' '}
-          <code>{def?.surface ? `1PROP_${def.surface}_` : '1OBJ_'}{inst.name}</code>.{' '}
+          <code>{def?.surface ? `1PROP_${def.surface}_` : 'OBJ_'}{inst.name}</code>.{' '}
           {def?.surface
             ? `Cars ${def.surface === 'WALL' ? 'collide with it' : `drive on it as ${def.surface}`} `
               + `(invisible 1${def.surface}_ copy in the kn5).`

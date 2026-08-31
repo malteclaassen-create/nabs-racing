@@ -3295,7 +3295,7 @@ export function buildRoadMeshes(
           g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
           g.setIndex(new THREE.BufferAttribute(index, 1));
           g.computeBoundingSphere();
-          out.push({ name: `1OBJ_fencepost_${long}`, material: 'prop_light', surface: null, geometry: g });
+          out.push({ name: `OBJ_fencepost_${long}`, material: 'prop_light', surface: null, geometry: g });
         }
       }
 
@@ -3395,10 +3395,10 @@ export function buildRoadMeshes(
           for (const g of cases) g.dispose();
           for (const g of screens) g.dispose();
           if (shells) {
-            out.push({ name: `1OBJ_flagpanel_${long}_case`, material: 'prop_dark', surface: null, geometry: shells });
+            out.push({ name: `OBJ_flagpanel_${long}_case`, material: 'prop_dark', surface: null, geometry: shells });
           }
           if (faces) {
-            out.push({ name: `1OBJ_flagpanel_${long}`, material: 'led_flag', surface: null, geometry: faces });
+            out.push({ name: `OBJ_flagpanel_${long}`, material: 'led_flag', surface: null, geometry: faces });
           }
         }
       }
