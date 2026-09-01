@@ -82,6 +82,7 @@ import {
   paintGroundPath,
   paintGroundPolygon,
   paintGroundRect,
+  roundOutline,
   smoothOutline,
   paintValue,
   paintRes,
@@ -6004,6 +6005,43 @@ console.log('\nPainted ground');
     check('a closed line is a ring, not a disc',
       sampleGround(t, ringF, 350 + R, -350) === asphalt
       && sampleGround(t, ringF, 350, -350) === 0);
+  }
+
+  /* --- rounded corners ------------------------------------------------ */
+  {
+    // A rectangle with 10 m fillets: the sharp corner itself is no longer
+    // painted, a point just inside the fillet arc is, the sides stay where
+    // they were, and the area loses exactly the four corner bites.
+    const field = createPaint(t.res);
+    const rc = { x: -350, z: 300, w: 80, l: 60, rotY: 0, r: 10 };
+    check('a rounded rectangle paints',
+      paintGroundRect(t, field, null, rc, paintValue(asphalt)) === true);
+    const cx2 = rc.x + rc.w / 2, cz2 = rc.z + rc.l / 2;
+    check('its sharp corner is cut off and its sides stay straight',
+      sampleGround(t, field, cx2 - 1.2, cz2 - 1.2) === 0
+      && sampleGround(t, field, cx2 - 10, cz2 - 2, ) === asphalt
+      && sampleGround(t, field, cx2 - 2, cz2 - 10) === asphalt
+      && sampleGround(t, field, rc.x, cz2 - 2) === asphalt
+      && sampleGround(t, field, cx2 - 2, rc.z) === asphalt);
+
+    // The same fillets on an outline: roundOutline keeps every side exactly
+    // in place and replaces the corner with an arc that stays inside it.
+    const square = [
+      { x: 0, z: 0 }, { x: 40, z: 0 }, { x: 40, z: 40 }, { x: 0, z: 40 },
+    ];
+    const rounded = roundOutline(square, 8, true);
+    let outOfBox = 0;
+    let nearestToCorner = Infinity;
+    for (const p of rounded) {
+      if (p.x < -0.01 || p.x > 40.01 || p.z < -0.01 || p.z > 40.01) outOfBox += 1;
+      nearestToCorner = Math.min(nearestToCorner, Math.hypot(p.x - 40, p.z - 40));
+    }
+    check('an outline fillet stays inside the original outline',
+      outOfBox === 0, `${outOfBox} points escaped`);
+    // The arc's closest approach to a square corner is r * (sqrt(2) - 1).
+    check('and cuts the corner back by the radius',
+      Math.abs(nearestToCorner - 8 * (Math.SQRT2 - 1)) < 0.2,
+      `${nearestToCorner.toFixed(2)} m vs ${(8 * (Math.SQRT2 - 1)).toFixed(2)} m`);
   }
 
   /* --- the curve goes through the clicks ----------------------------- */

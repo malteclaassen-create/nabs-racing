@@ -39,6 +39,7 @@ import {
   paintGroundPath as pathPaint,
   paintGroundPolygon as polygonPaint,
   paintGroundRect as rectPaint,
+  roundOutline,
   smoothOutline,
   type GroundRect,
 } from '../core/terrain';
@@ -427,6 +428,13 @@ export interface GroundBrush {
   mode: 'brush' | 'rect' | 'polygon' | 'path';
   /** Width of a painted line, metres. */
   pathWidth: number;
+  /**
+   * Corner radius for the rectangle and the outline, metres. 0 keeps every
+   * corner square; anything above rounds the corner into a circular fillet
+   * while the sides stay dead straight -- the way a real run off area is
+   * poured. A radius too big for a side shrinks to what fits.
+   */
+  cornerRadius: number;
   /**
    * Bend the clicked points into a Catmull-Rom curve THROUGH them, for the
    * path and the polygon alike. Off, every segment is exactly the straight
@@ -930,7 +938,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   // The line is 6 m wide -- a single-track service road. Curve starts OFF:
   // straight between the clicks is the predictable answer, and an outline
   // drawn before the toggle existed must keep coming out with its corners.
-  ground: { kind: 1, radius: 12, mode: 'brush', pathWidth: 6, curve: false },
+  ground: { kind: 1, radius: 12, mode: 'brush', pathWidth: 6, curve: false, cornerRadius: 0 },
   // Two species rather than one, because a single tree repeated reads as a
   // plantation; 7 m is real forestry spacing and keeps the count sane.
   scatter: {
@@ -1119,17 +1127,26 @@ export const useEditor = create<EditorState>((set, get) => ({
       'live',
     ),
 
-  paintGroundRect: (rect, kind) =>
-    applyGroundPaint(
-      (t, arr, edge, probe) => rectPaint(t, arr, edge, rect, paintValue(kind), probe),
+  paintGroundRect: (rect, kind) => {
+    // The tool's corner radius rides along unless the rect brought its own.
+    const r = rect.r ?? get().ground.cornerRadius;
+    return applyGroundPaint(
+      (t, arr, edge, probe) => rectPaint(t, arr, edge, { ...rect, r }, paintValue(kind), probe),
       kind,
       'commit',
-    ),
+    );
+  },
 
   paintGroundPolygon: (points, kind) => {
-    // Bent through the corners when the tool says so: the same clicks, a
-    // curved border. The densified outline is computed once, not per probe.
-    const shaped = get().ground.curve ? smoothOutline(points, true) : points;
+    // Bent through the corners when the tool says so, or the corners rounded
+    // into fillets while the sides stay straight. The shaped outline is
+    // computed once, not per probe.
+    const g = get().ground;
+    const shaped = g.curve
+      ? smoothOutline(points, true)
+      : g.cornerRadius > 0
+        ? roundOutline(points, g.cornerRadius, true)
+        : points;
     return applyGroundPaint(
       (t, arr, edge, probe) => polygonPaint(t, arr, edge, shaped, paintValue(kind), probe),
       kind,

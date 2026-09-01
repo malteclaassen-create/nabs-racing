@@ -393,6 +393,8 @@ export interface GroundRect {
   w: number;
   l: number;
   rotY: number;
+  /** Corner radius in metres. 0 or absent keeps the corners square. */
+  r?: number;
 }
 
 /** Paint a rectangle. Returns whether anything actually changed. */
@@ -407,12 +409,20 @@ export function paintGroundRect(
   const a = (rect.rotY * Math.PI) / 180;
   const cos = Math.cos(a);
   const sin = Math.sin(a);
-  const hw = rect.w / 2;
-  const hl = rect.l / 2;
+  const hw0 = rect.w / 2;
+  const hl0 = rect.l / 2;
+  // Rounded corners are the textbook trick on a box distance: shrink the box
+  // by the radius and give the radius back to the whole field, which turns
+  // every corner into a quarter circle while the sides stay exactly where
+  // they were. Clamped so a radius bigger than the box degrades to a stadium
+  // rather than turning the shape inside out.
+  const r = Math.max(0, Math.min(rect.r ?? 0, Math.min(hw0, hl0)));
+  const hw = hw0 - r;
+  const hl = hl0 - r;
   // A turned rectangle still has to be found by an axis aligned scan, so the
   // box is the one that holds it whatever the angle.
-  const reach = Math.abs(hw * cos) + Math.abs(hl * sin);
-  const reachZ = Math.abs(hw * sin) + Math.abs(hl * cos);
+  const reach = Math.abs(hw0 * cos) + Math.abs(hl0 * sin);
+  const reachZ = Math.abs(hw0 * sin) + Math.abs(hl0 * cos);
   return fillPaint(
     t,
     paint,
@@ -427,7 +437,7 @@ export function paintGroundRect(
       const u = Math.abs(dx * cos + dz * sin) - hw;
       const v = Math.abs(-dx * sin + dz * cos) - hl;
       const out = Math.hypot(Math.max(u, 0), Math.max(v, 0));
-      return out > 0 ? out : Math.max(u, v);
+      return (out > 0 ? out : Math.max(u, v)) - r;
     },
     value,
     probe,
@@ -596,6 +606,92 @@ export function smoothOutline(
           + (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * u2
           + (3 * p1.z - p0.z - 3 * p2.z + p3.z) * u3),
       });
+    }
+  }
+  if (!closed) out.push({ x: points[n - 1].x, z: points[n - 1].z });
+  return out;
+}
+
+/**
+ * Round the CORNERS of an outline with circular fillets of radius `r`, leaving
+ * the sides dead straight.
+ *
+ * The other way an outline stops being angular. smoothOutline bends the whole
+ * shape into one curve through the points; this keeps every side exactly the
+ * line that was clicked and replaces only the corner itself with an arc -- a
+ * gravel trap or an apron the way a real circuit pours one: straight edges,
+ * rounded ends. Each fillet is clamped to half of its shorter neighbouring
+ * side, so a radius too big for a short side shrinks to what fits rather than
+ * folding the outline over itself; a corner that is nearly straight already
+ * is left alone.
+ */
+export function roundOutline(
+  points: ReadonlyArray<{ x: number; z: number }>,
+  r: number,
+  closed = true,
+  step = 0.5,
+): Array<{ x: number; z: number }> {
+  const n = points.length;
+  if (r <= 0 || n < 3) return points.map((p) => ({ x: p.x, z: p.z }));
+  const out: Array<{ x: number; z: number }> = [];
+  const first = closed ? 0 : 1;
+  const last = closed ? n - 1 : n - 2;
+  if (!closed) out.push({ x: points[0].x, z: points[0].z });
+  for (let i = first; i <= last; i++) {
+    const A = points[(i - 1 + n) % n];
+    const B = points[i];
+    const C = points[(i + 1) % n];
+    const l1 = Math.hypot(A.x - B.x, A.z - B.z);
+    const l2 = Math.hypot(C.x - B.x, C.z - B.z);
+    if (l1 < 1e-9 || l2 < 1e-9) {
+      out.push({ x: B.x, z: B.z });
+      continue;
+    }
+    const u1x = (A.x - B.x) / l1;
+    const u1z = (A.z - B.z) / l1;
+    const u2x = (C.x - B.x) / l2;
+    const u2z = (C.z - B.z) / l2;
+    const dot = Math.max(-1, Math.min(1, u1x * u2x + u1z * u2z));
+    const theta = Math.acos(dot);
+    // Nearly straight through: no visible corner to round, and the tangent
+    // length below would shoot off towards infinity.
+    if (theta > Math.PI - 0.03) {
+      out.push({ x: B.x, z: B.z });
+      continue;
+    }
+    const half = theta / 2;
+    // How far back along each side the arc has to start for radius r, capped
+    // at just under half of the shorter side so neighbouring fillets never
+    // eat into each other; the radius shrinks with the cap.
+    const t = Math.min(r / Math.tan(half), 0.49 * Math.min(l1, l2));
+    const rr = t * Math.tan(half);
+    const p1x = B.x + u1x * t;
+    const p1z = B.z + u1z * t;
+    const p2x = B.x + u2x * t;
+    const p2z = B.z + u2z * t;
+    // The fillet centre sits on the corner's bisector, one hypotenuse in.
+    let bx = u1x + u2x;
+    let bz = u1z + u2z;
+    const bl = Math.hypot(bx, bz);
+    if (bl < 1e-9) {
+      out.push({ x: B.x, z: B.z });
+      continue;
+    }
+    bx /= bl;
+    bz /= bl;
+    const ox = B.x + bx * (rr / Math.sin(half));
+    const oz = B.z + bz * (rr / Math.sin(half));
+    let a1 = Math.atan2(p1z - oz, p1x - ox);
+    const a2 = Math.atan2(p2z - oz, p2x - ox);
+    // The sweep of a fillet is always under half a turn, so the short way
+    // round from tangent point to tangent point is the arc.
+    let sweep = a2 - a1;
+    while (sweep > Math.PI) sweep -= Math.PI * 2;
+    while (sweep < -Math.PI) sweep += Math.PI * 2;
+    const steps = Math.max(2, Math.ceil((Math.abs(sweep) * rr) / step));
+    for (let s = 0; s <= steps; s++) {
+      const ang = a1 + (sweep * s) / steps;
+      out.push({ x: ox + Math.cos(ang) * rr, z: oz + Math.sin(ang) * rr });
     }
   }
   if (!closed) out.push({ x: points[n - 1].x, z: points[n - 1].z });

@@ -1517,6 +1517,19 @@ function GroundOptions() {
           />
         </Row>
       )}
+      {(ground.mode === 'rect' || ground.mode === 'polygon') && !(ground.mode === 'polygon' && ground.curve) && (
+        <Row label="Corners">
+          <Slider
+            value={ground.cornerRadius}
+            min={0}
+            max={25}
+            step={0.5}
+            digits={1}
+            unit=" m"
+            onChange={(v) => setGround({ cornerRadius: v })}
+          />
+        </Row>
+      )}
       {(ground.mode === 'polygon' || ground.mode === 'path') && (
         <Row label="">
           <Check
@@ -1543,7 +1556,8 @@ function GroundOptions() {
       {ground.mode === 'rect' && (
         <p className="hint">
           Pull a rectangle out corner to corner. Nothing is painted until you let go, and the snap
-          above is what makes two of them meet exactly.
+          above is what makes two of them meet exactly. <b>Corners</b> rounds the four corners into
+          circular fillets while the sides stay dead straight — how a real run off area ends.
         </p>
       )}
       {ground.mode === 'polygon' && (

@@ -24,7 +24,7 @@ import {
   spanMetres,
   tAtDist,
 } from '../core/kerbs';
-import { GROUND_KINDS, makeTerrainRaycast, sampleHeights, smoothOutline, type GroundRect } from '../core/terrain';
+import { GROUND_KINDS, makeTerrainRaycast, roundOutline, sampleHeights, smoothOutline, type GroundRect } from '../core/terrain';
 
 /* Alt while painting the ground rubs it out. Not the same as painting grass:
    grass is a material laid over whatever was there, the eraser hands the patch
@@ -1437,6 +1437,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
       draft={ground.mode === 'polygon' || ground.mode === 'path' ? groundDraft : []}
       open={ground.mode === 'path'}
       curve={ground.curve}
+      cornerRadius={ground.cornerRadius}
       cursor={cursor}
       colour={erasing.current ? '#ff6b6b' : MATERIAL_COLORS[GROUND_KINDS[ground.kind].material] ?? '#ffb02e'}
       groundAt={groundAt}
@@ -1777,6 +1778,7 @@ function GroundShapePreview({
   draft,
   open = false,
   curve = false,
+  cornerRadius = 0,
   cursor,
   colour,
   groundAt,
@@ -1787,6 +1789,8 @@ function GroundShapePreview({
   open?: boolean;
   /** Show the Catmull-Rom the commit will paint, not the chords between clicks. */
   curve?: boolean;
+  /** Show the corner fillets the commit will paint. */
+  cornerRadius?: number;
   cursor: THREE.Vector3 | null;
   colour: string;
   groundAt: (x: number, z: number) => number;
@@ -1801,8 +1805,9 @@ function GroundShapePreview({
         { x: rect.x + hx, z: rect.z - hz },
         { x: rect.x + hx, z: rect.z + hz },
         { x: rect.x - hx, z: rect.z + hz },
-        { x: rect.x - hx, z: rect.z - hz },
       );
+      if (cornerRadius > 0) ring = roundOutline(ring, cornerRadius, true);
+      ring.push(ring[0]);
     } else if (draft.length > 0) {
       for (const [x, z] of draft) ring.push({ x, z });
       if (cursor) ring.push(groundPoint(cursor.x, cursor.z));
@@ -1815,7 +1820,8 @@ function GroundShapePreview({
         if (closes) ring.push(ring[0]);
       } else if (closes) {
         // Shown closed from three corners on, because that is the shape that
-        // would be painted if it were closed right now.
+        // would be painted if it were closed right now -- fillets included.
+        if (cornerRadius > 0) ring = roundOutline(ring, cornerRadius, true);
         ring.push(ring[0]);
       }
     }
@@ -1836,7 +1842,7 @@ function GroundShapePreview({
     const last = ring[ring.length - 1];
     out.push(new THREE.Vector3(last.x, groundAt(last.x, last.z) + 0.3, last.z));
     return out;
-  }, [rect, draft, open, curve, cursor, groundAt]);
+  }, [rect, draft, open, curve, cornerRadius, cursor, groundAt]);
 
   if (!points) return null;
   const first = draft[0];
