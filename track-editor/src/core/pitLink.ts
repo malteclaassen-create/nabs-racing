@@ -272,15 +272,47 @@ export function attachRoadEnds(
     end.p = [endPos.x, endPos.y, endPos.z];
     if (nodes.length >= 3) {
       const nb = list[neighbourIdx];
-      const d = leadIn(vec(nodes[neighbourIdx]).distanceTo(vec(nodes[endIdx])));
-      // Which way along the track the road leaves: towards the side its second
-      // point already lies on, so the join bends as little as possible.
-      const along = (vec(nb).x - hit.f.pos.x) * hit.f.fwd.x + (vec(nb).z - hit.f.pos.z) * hit.f.fwd.z;
-      const sign = along >= 0 ? 1 : -1;
-      const target = edgePoint(frameAlong(trackFrames, hit.f, sign * d), nb);
-      // Only pulled towards the edge when the neighbour is close enough to be
-      // part of the join itself; a long first leg keeps its drawn heading.
-      if (vec(nb).distanceTo(endPos) < 60) nb.p = [target.x, nb.p[1], target.z];
+      const nbv = vec(nodes[neighbourIdx]);
+      /*
+       * Whether the neighbour is led along the target at all depends on HOW
+       * the road arrives. Arriving roughly ALONG the target -- a lane merging
+       * into a straight -- the neighbour is pulled onto the edge ahead so the
+       * spline leaves parallel, which is the join this construction was built
+       * for. Arriving ACROSS it -- an approach road running radially into a
+       * roundabout -- that same pull is exactly wrong: 25 m "ahead" on a
+       * small ring is a quarter of the way round the circle, so the second
+       * point was yanked onto the far side of the kerb and the road arrived
+       * as an S hooked around a point nobody drew. A transversal arrival
+       * keeps the neighbour precisely where it was drawn: the road meets the
+       * edge dead straight, at the angle it was aimed, and the junction
+       * machinery cuts the wedge.
+       */
+      const ax = nbv.x - endPos.x;
+      const az = nbv.z - endPos.z;
+      const al = Math.hypot(ax, az);
+      const alongness = al > 1e-6
+        ? Math.abs((ax * hit.f.fwd.x + az * hit.f.fwd.z) / al)
+        : 0;
+      if (alongness > 0.7 && al < 60) {
+        let d = leadIn(nbv.distanceTo(vec(nodes[endIdx])));
+        // Which way along the track the road leaves: towards the side its
+        // second point already lies on, so the join bends as little as
+        // possible.
+        const along = ax * hit.f.fwd.x + az * hit.f.fwd.z;
+        const sign = along >= 0 ? 1 : -1;
+        let f2 = frameAlong(trackFrames, hit.f, sign * d);
+        // Capped where the target curves away: on a tight ring the frame a
+        // lead-in ahead already points somewhere else entirely, and pinning
+        // the neighbour to it is the same S hook by another route.
+        const turn = Math.acos(Math.max(-1, Math.min(1,
+          f2.fwd.x * hit.f.fwd.x + f2.fwd.z * hit.f.fwd.z)));
+        if (turn > 0.5) {
+          d *= 0.5 / turn;
+          f2 = frameAlong(trackFrames, hit.f, sign * d);
+        }
+        const target = edgePoint(f2, nb);
+        nb.p = [target.x, nb.p[1], target.z];
+      }
     }
     // The last stretch takes the height of the road it joins, so the merge has
     // a surface at the right level to glue.

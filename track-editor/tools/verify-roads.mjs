@@ -330,6 +330,52 @@ check('both roads have centre lines for the viewport',
   }
 }
 
+/* --- docking stays straight: no S hook at the ring -------------------- */
+
+{
+  /* A road running RADIALLY at a small roundabout, with its second point
+     close behind the end. The attach used to pull that second point 25 m
+     "ahead" along the ring -- a quarter of the way round the circle -- so
+     the road arrived as an S hooked around a point nobody drew. Arriving
+     across the target, the neighbour has to stay exactly where it was drawn
+     and the last leg has to stay radial. */
+  const R3 = 22;
+  const C3 = { x: 1400, z: 900 };
+  const mkn = (x, z, i, half = 3.2) => ({
+    id: `sh${i}`, p: [x, 0, z], widthL: half, widthR: half, bank: 0,
+    wallL: false, wallR: false, runoffL: 0, runoffR: 0, wallGapL: 0, wallGapR: 0, aiOffset: 0,
+  });
+  const ringNodes = [];
+  for (let k = 0; k < 10; k++) {
+    const a = (k / 10) * Math.PI * 2;
+    ringNodes.push(mkn(C3.x + Math.cos(a) * R3, C3.z + Math.sin(a) * R3, `r${k}`));
+  }
+  const ringFrames = computeFrames({ closed: true, nodes: ringNodes }, 8);
+  const endD = R3 + 3.2 + 4; // 4 m off the ring's edge: clearly aimed at it
+  const road = {
+    closed: false,
+    nodes: [
+      mkn(C3.x + endD + 90, C3.z, 'a', 3),
+      mkn(C3.x + endD + 30, C3.z, 'b', 3),
+      mkn(C3.x + endD, C3.z, 'c', 3),
+    ],
+  };
+  const glued = attachRoadEnds(road, ringFrames, 'last');
+  const nb = glued.nodes[1];
+  const end = glued.nodes[2];
+  check('a transversal arrival leaves the second point where it was drawn',
+    nb.p[0] === road.nodes[1].p[0] && nb.p[2] === road.nodes[1].p[2]);
+  const endAng = (Math.atan2(end.p[2] - C3.z, end.p[0] - C3.x) * 180) / Math.PI;
+  check('and the end docks radially onto the ring, not around it',
+    Math.abs(endAng) < 3
+      && Math.abs(Math.hypot(end.p[0] - C3.x, end.p[2] - C3.z) - (R3 + 3.2 + 3 - 0.25)) < 1,
+    `${endAng.toFixed(1)} deg round the ring`);
+  // The last leg really is the straight line that was drawn.
+  const legAng = (Math.atan2(end.p[2] - nb.p[2], end.p[0] - nb.p[0]) * 180) / Math.PI;
+  check('so the road runs dead straight into the roundabout',
+    Math.abs(((legAng % 360) + 360) % 360 - 180) < 3, `leg at ${legAng.toFixed(1)} deg`);
+}
+
 /* --- a roundabout with four arms, drawn in every order ---------------- */
 
 {
