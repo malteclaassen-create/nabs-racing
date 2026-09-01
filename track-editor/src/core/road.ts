@@ -347,6 +347,12 @@ class StripBuilder {
   /**
    * Append one stretch. Winding is chosen so the face normal points up for a
    * horizontal strip where `left` is on the -right side of the road.
+   *
+   * `cols` cuts the strip lengthwise into that many quads side by side, all of
+   * them on the straight line between the two rails, so the surface is exactly
+   * the one a single quad spans -- only resolved across as well as along. It
+   * is what a twisted plate needs: see `twistColumns`. At 1, which is what
+   * every flat strip asks for, this writes byte for byte what it always did.
    */
   addStrip(
     left: THREE.Vector3[],
@@ -358,41 +364,61 @@ class StripBuilder {
     // be longer than the number of cross sections, so their length means nothing.
     from: number,
     to: number,
+    cols = 1,
   ) {
     const n = Math.min(to, left.length - 1, right.length - 1) - from + 1;
     if (n < 2) return;
     this.ensure();
-    if (this.v + n * 2 > this.capacity) return;
+    const c = Math.max(1, cols);
+    if (this.v + n * 2 * c > this.capacity) return;
 
-    const base = this.v;
-    for (let k = 0; k < n; k++) {
-      const s = from + k;
-      const a = (base + k * 2) * 3;
-      this.pos[a + 0] = left[s].x;
-      this.pos[a + 1] = left[s].y;
-      this.pos[a + 2] = left[s].z;
-      this.pos[a + 3] = right[s].x;
-      this.pos[a + 4] = right[s].y;
-      this.pos[a + 5] = right[s].z;
-      const b = (base + k * 2) * 2;
-      this.uv[b + 0] = uLeft[s];
-      this.uv[b + 1] = v[s];
-      this.uv[b + 2] = uRight[s];
-      this.uv[b + 3] = v[s];
-    }
+    for (let col = 0; col < c; col++) {
+      // Neighbouring columns repeat the rail between them rather than sharing
+      // it. The two copies are computed from the same two ends by the same
+      // expression, so they are the same float and the seam cannot open; a
+      // shared column would save a vertex per station and cost the strip its
+      // one flat index layout.
+      const t0 = col / c;
+      const t1 = (col + 1) / c;
+      /* The outermost rails are COPIED, never interpolated. `l + (r - l) * 1`
+         is not `r` in floating point, and this strip's outer rail is the one
+         the kerb beside it, or the strip before it, was built from: a rail
+         that misses by an ulp is a hairline crack that runs the length of the
+         circuit. Only the rails invented in between may be computed. */
+      const atL = col === 0;
+      const atR = col === c - 1;
+      const base = this.v;
+      for (let k = 0; k < n; k++) {
+        const s = from + k;
+        const l = left[s];
+        const r = right[s];
+        const a = (base + k * 2) * 3;
+        this.pos[a + 0] = atL ? l.x : l.x + (r.x - l.x) * t0;
+        this.pos[a + 1] = atL ? l.y : l.y + (r.y - l.y) * t0;
+        this.pos[a + 2] = atL ? l.z : l.z + (r.z - l.z) * t0;
+        this.pos[a + 3] = atR ? r.x : l.x + (r.x - l.x) * t1;
+        this.pos[a + 4] = atR ? r.y : l.y + (r.y - l.y) * t1;
+        this.pos[a + 5] = atR ? r.z : l.z + (r.z - l.z) * t1;
+        const b = (base + k * 2) * 2;
+        this.uv[b + 0] = atL ? uLeft[s] : uLeft[s] + (uRight[s] - uLeft[s]) * t0;
+        this.uv[b + 1] = v[s];
+        this.uv[b + 2] = atR ? uRight[s] : uLeft[s] + (uRight[s] - uLeft[s]) * t1;
+        this.uv[b + 3] = v[s];
+      }
 
-    for (let k = 0; k < n - 1; k++) {
-      const a = base + k * 2;
-      this.idx[this.i++] = a;
-      this.idx[this.i++] = a + 1;
-      this.idx[this.i++] = a + 2;
-      this.idx[this.i++] = a + 1;
-      this.idx[this.i++] = a + 3;
-      this.idx[this.i++] = a + 2;
-      this.accumulate(a, a + 1, a + 2);
-      this.accumulate(a + 1, a + 3, a + 2);
+      for (let k = 0; k < n - 1; k++) {
+        const a = base + k * 2;
+        this.idx[this.i++] = a;
+        this.idx[this.i++] = a + 1;
+        this.idx[this.i++] = a + 2;
+        this.idx[this.i++] = a + 1;
+        this.idx[this.i++] = a + 3;
+        this.idx[this.i++] = a + 2;
+        this.accumulate(a, a + 1, a + 2);
+        this.accumulate(a + 1, a + 3, a + 2);
+      }
+      this.v += n * 2;
     }
-    this.v += n * 2;
   }
 
   /**
@@ -799,6 +825,110 @@ export const PIT_APRON_DROP = 0.05;
  * the concrete beside a pit lane is a step a car drives over.
  */
 export const EDGE_SINK = 0.04;
+
+/**
+ * The steepest fold the two triangles of one plate may make, radians.
+ *
+ * A plate of BANKED road is not flat. Its far cross section is rolled a little
+ * further than its near one, so the four corners do not share a plane, and a
+ * quad whose corners do not share a plane is drawn as two triangles that meet
+ * along the diagonal at an angle. Consecutive plates cut the diagonal the same
+ * way, so what a tyre rides over is a saw: up the first triangle, down the
+ * second, once per plate. The car feels it as force feedback -- on the demo
+ * oval, 4 degrees of surface tilt flicking back and forth at 30 Hz -- and no
+ * amount of Detail removes it: shortening the plate shortens the tooth and
+ * raises its pitch, but the ANGLE of the fold is the width of the road times
+ * the rate the banking turns at, and neither of those changes.
+ *
+ * What does remove it is cutting the plate ACROSS. Ten centimetres of fold
+ * spread over a 14 m plate is a ridge; the same plate in eight columns folds
+ * an eighth as much over an eighth of the width, and the tilt drops with it.
+ *
+ * Three tenths of a degree is about what the plate joints of a banked corner
+ * make anyway -- the road really is turning there, and that part is honest, so
+ * there is nothing to gain by pushing the fold below it.
+ */
+const TWIST_FOLD = (0.3 * Math.PI) / 180;
+
+/**
+ * Never split a plate finer than this, whatever the twist.
+ *
+ * Eight columns take the demo oval's worst fold from 3.8 degrees to 0.7, which
+ * is already inside what the corner's own plate joints do. Sixteen would reach
+ * 0.5 for twice the road mesh, and the rest of the way is not the diagonal's
+ * fault: it is the plate's own twist, and only shorter plates take that out.
+ */
+const MAX_TWIST_COLUMNS = 8;
+
+/** The angle two triangles of a `plate` x `width` quad make at `off` of twist. */
+function foldAngle(off: number, plate: number, width: number): number {
+  // The far corner stands `off` off the plane of the other three, and it turns
+  // about the diagonal it does not touch. Its distance from that diagonal is
+  // the quad's area over the diagonal's length.
+  const lever = (plate * width) / Math.hypot(plate, width);
+  return lever < 1e-9 ? Math.PI / 2 : Math.atan2(off, lever);
+}
+
+/**
+ * How many quads across a drivable ribbon needs so its plates stop folding.
+ *
+ * Counted from the geometry itself rather than from the banking angle: it is
+ * the distance of one corner of each plate from the plane of the other three
+ * that matters, and that is zero for everything but twist. A flat road returns
+ * 1. So does a corner banked at a CONSTANT angle -- its cross sections all
+ * point at the same apex, so consecutive ones share a plane and the quads
+ * between them are flat. Only the stretch where the banking is winding on or
+ * off pays, which is exactly the stretch that needs it.
+ *
+ * Powers of two, so that a control point dragged about a banked corner changes
+ * the answer as rarely as possible: the vertex count decides whether the road's
+ * buffers can be reused on the next frame, and one that keeps changing is a
+ * full reallocation per frame of the drag.
+ */
+export function twistColumns(fr: Frame[], closed: boolean): number {
+  const n = fr.length;
+  if (n < 2) return 1;
+  const last = closed ? n : n - 1;
+  const l0 = new THREE.Vector3();
+  const r0 = new THREE.Vector3();
+  const l1 = new THREE.Vector3();
+  const r1 = new THREE.Vector3();
+  const edge = new THREE.Vector3();
+  const along = new THREE.Vector3();
+  const nrm = new THREE.Vector3();
+  let cols = 1;
+  for (let i = 0; i < last && cols < MAX_TWIST_COLUMNS; i++) {
+    const a = fr[i];
+    const b = fr[(i + 1) % n];
+    l0.copy(a.pos).addScaledVector(a.right, -a.widthL);
+    r0.copy(a.pos).addScaledVector(a.right, a.widthR);
+    l1.copy(b.pos).addScaledVector(b.right, -b.widthL);
+    r1.copy(b.pos).addScaledVector(b.right, b.widthR);
+    edge.subVectors(r0, l0);
+    along.subVectors(l1, l0);
+    nrm.crossVectors(edge, along);
+    const area = nrm.length();
+    if (area < 1e-9) continue;
+    const off = Math.abs(r1.sub(l0).dot(nrm)) / area;
+    const width = a.widthL + a.widthR;
+    const plate = a.pos.distanceTo(b.pos);
+    if (off < 1e-6 || width < 1e-3 || plate < 1e-6) continue;
+    /* Stop once the quads are about as wide as they are long, whatever the
+       fold still is. Past that point the diagonal is the short way across and
+       splitting again barely moves the angle -- on the demo oval the last
+       doubling buys a sixth of a degree for twice the road mesh -- while what
+       is left is the plate's own twist, which only shorter plates can take
+       out. */
+    while (
+      cols < MAX_TWIST_COLUMNS &&
+      width / cols > plate &&
+      foldAngle(off / cols, plate, width / cols) > TWIST_FOLD
+    ) {
+      cols *= 2;
+    }
+  }
+  return cols;
+}
 
 /**
  * How far the outer edge of a shoulder `w` metres wide sits below the road.
@@ -2645,10 +2775,16 @@ export function buildRoadMeshes(
   for (let i = 0; i < n; i++) if (exitPaint[i] > 0) { hasExitLine = true; break; }
   const exitSpans = hasExitLine ? runs(n, (i) => exitPaint[i] > 0) : [];
 
+  /* The tarmac is the one surface a car is on at speed for a whole lap, so it
+     is the one that has to be cut across where the banking winds on and off.
+     Everything else of the ribbon -- the edge lines, the kerbs, the shoulder --
+     is narrow enough that its own plates barely fold at all. */
+  // `fr` is the expanded ring, so the closing plate is already in it.
+  const cols = road.crossCut ? twistColumns(fr, false) : 1;
   emit('1ROAD_track', 'asphalt', 'ROAD', (b) => {
-    b.addStrip(tarmacL, cutA, zeros, uCutA, v, 0, n - 1);
+    b.addStrip(tarmacL, cutA, zeros, uCutA, v, 0, n - 1, cols);
     for (const [a, z] of exitSpans) {
-      b.addStrip(cutB, tarmacR, uCutB, uB, v, Math.max(0, a - 1), Math.min(n - 1, z + 1));
+      b.addStrip(cutB, tarmacR, uCutB, uB, v, Math.max(0, a - 1), Math.min(n - 1, z + 1), cols);
       /* The plate where the line begins and the one where it ends belong to
          the road, not to the line. The band collapses onto the tarmac edge
          either side of the painted stretch, so handing those two plates to
@@ -2657,7 +2793,7 @@ export function buildRoadMeshes(
       if (a > 0) b.addStrip(cutA, cutB, uCutA, uCutB, v, a - 1, a);
       if (z < n - 1) b.addStrip(cutA, cutB, uCutA, uCutB, v, z, z + 1);
     }
-  }, n * 4);
+  }, n * 4 * cols);
   if (hasExitLine) {
     emit('1ROAD_line_pit_exit', 'line_white', 'ROAD', (b) => {
       for (const [a, z] of exitSpans) b.addStrip(cutA, cutB, zeros, ones, v, a, z);
@@ -3978,17 +4114,20 @@ export function buildPitMeshes(
     ];
   };
 
+  // Same as the circuit's tarmac: a lane that leaves a banked corner twists,
+  // and the fold in its plates is felt at pit speed as much as at racing speed.
+  const cols = road.crossCut ? twistColumns(fr, false) : 1;
   emit('1PIT_lane', 'asphalt', 'PIT', (b) => {
     for (const [a, z] of runs(n, (i) => hasLane(i) && inLimit(i))) {
-      b.addStrip(lineL, lineR, s.zeros, s.uB, s.v, a, z);
+      b.addStrip(lineL, lineR, s.zeros, s.uB, s.v, a, z, cols);
     }
-  });
+  }, n * 2 * cols);
   emit('1ROAD_pit_entry', 'asphalt', 'ROAD', (b) => {
     for (const span of runs(n, (i) => hasLane(i) && !inLimit(i))) {
       const [a, z] = reachOver(span);
-      b.addStrip(lineL, lineR, s.zeros, s.uB, s.v, a, z);
+      b.addStrip(lineL, lineR, s.zeros, s.uB, s.v, a, z, cols);
     }
-  });
+  }, n * 2 * cols);
 
   for (let i = 0; i < n; i++) s.v[i] = fr[i].dist / 8;
   /* The shoulder is drawn wherever it has any width at all, and simply runs
@@ -4250,7 +4389,8 @@ export function buildDecoRoadMeshes(
     lineR[i].copy(f.pos).addScaledVector(f.right, mid + half);
   }
 
-  const b = new StripBuilder(reuse?.get(`${look.prefix}_${key}`), n * 8);
+  const cols = road.crossCut ? twistColumns(fr, false) : 1;
+  const b = new StripBuilder(reuse?.get(`${look.prefix}_${key}`), n * (4 + 4 * cols));
   const hasLane = (i: number) => s.lane[i] > THIN;
   const reachOver = (span: [number, number]): [number, number] => [
     span[0] > 0 && hasLane(span[0] - 1) ? span[0] - 1 : span[0],
@@ -4261,8 +4401,8 @@ export function buildDecoRoadMeshes(
      a strip laid on top would z-fight at distance. */
   for (const span of runs(n, hasLane)) {
     const [a, z] = reachOver(span);
-    b.addStrip(left, lineL, s.zeros, s.uB, s.v, a, z);
-    b.addStrip(lineR, rightE, s.zeros, s.uB, s.v, a, z);
+    b.addStrip(left, lineL, s.zeros, s.uB, s.v, a, z, cols);
+    b.addStrip(lineR, rightE, s.zeros, s.uB, s.v, a, z, cols);
   }
   for (const span of runs(n, (i) => s.awL[i] > THIN)) {
     const [a, z] = reachOver(span);

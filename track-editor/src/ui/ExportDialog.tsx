@@ -48,9 +48,22 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
        * An editor already set above that keeps its own figure.
        */
       const spp = Math.max(project.road.samplesPerSegment, 80);
-      const full = spp === project.road.samplesPerSegment
-        ? project
-        : { ...project, road: { ...project.road, samplesPerSegment: spp } };
+      /*
+       * `crossCut` goes with it, and for the same reason. A plate of BANKED
+       * road is twisted -- its far cross section is rolled further than its
+       * near one -- so the four corners do not share a plane, and the plate is
+       * drawn as two triangles folded along the diagonal between them. Every
+       * plate folds the same way, so what a tyre rides through a banked corner
+       * is a saw, and the wheel feels it: on a corner drawn with points 120 m
+       * apart, 4 degrees of surface tilt flicking back and forth at 30 Hz.
+       * Detail does not touch that -- a shorter plate is a shorter tooth at a
+       * higher pitch, nothing more. Cutting the plate ACROSS does, and it
+       * costs the editor nothing because only the export asks for it.
+       */
+      const full = {
+        ...project,
+        road: { ...project.road, samplesPerSegment: spp, crossCut: true },
+      };
       const derived = getDerived(full);
       const result = await buildExport(full, derived);
       downloadBytes(result.zip, result.fileName, 'application/zip');
@@ -80,7 +93,7 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
           {phase === 'idle' && (
             <>
               <div className="callout info">
-                Writes the <code>.kn5</code> directly — textures, materials, markers and collision —
+                Writes the <code>.kn5</code> directly, textures, materials, markers and collision,
                 with surfaces.ini, the AI line, the minimap and the Content Manager files, packed as{' '}
                 <code>content/tracks/{project.meta.slug}</code> in a ZIP.
               </div>

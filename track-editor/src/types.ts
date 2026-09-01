@@ -153,6 +153,19 @@ export interface BarrierCut {
 export interface RoadSettings {
   /** Geometry resolution: how many cross sections per spline segment. */
   samplesPerSegment: number;
+  /**
+   * Cut the drivable plates ACROSS as well as along, where the banking twists
+   * them. See `twistColumns` for what that is worth: without it a plate of
+   * banked road folds along its diagonal, and the car feels the fold as force
+   * feedback every time it crosses one.
+   *
+   * Set by the exporter, not by the author, and not saved with the project.
+   * The editor leaves it off on purpose: the extra columns are invisible --
+   * the fold they take out is a third of a degree -- and the road is rebuilt
+   * on every frame of a drag, where eight times the tarmac is felt at once.
+   * Nothing drives on the editor's road; everything drives on the exported one.
+   */
+  crossCut?: boolean;
   /** Size a newly drawn kerb span starts at. Each span then owns its own. */
   kerbWidth: number;
   kerbHeight: number;

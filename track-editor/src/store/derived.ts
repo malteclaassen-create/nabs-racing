@@ -201,7 +201,13 @@ function feedRoad(h: Hasher, r: RoadSettings) {
     .num(r.wallHeight)
     .str(r.wallStyle)
     .num(r.uvLength)
-    .num(r.uvWidth);
+    .num(r.uvWidth)
+    /* The exporter's cross cut. In the MESH key and nowhere else: it changes
+       how finely the drivable plates are cut across, so the road the export
+       asks for is a different mesh from the one the editor is holding -- and
+       without it here the memo hands the export the editor's road back and the
+       whole point of the setting is lost, silently. */
+    .bool(r.crossCut ?? false);
   /* Where the barrier has been opened. In the MESH key and deliberately not in
      feedRoadShape: a cut moves no width, so it owes the side profile and the
      terrain corridor nothing -- but it is the whole of what the barrier mesh

@@ -6588,6 +6588,95 @@ console.log('\nThe brush reaches the run off');
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* The fold in a banked plate                                          */
+/* ------------------------------------------------------------------ */
+/*
+ * A plate of banked road is twisted: the cross section at its far end is
+ * rolled a little further than the one at its near end, so its four corners do
+ * not share a plane. A quad whose corners do not share a plane is two
+ * triangles meeting along the diagonal at an angle, every plate folds the same
+ * way, and what a tyre rides over is therefore a saw -- felt in the game as
+ * force feedback all the way through the corner, and NOT curable with the
+ * Detail slider: a shorter plate is a shorter tooth at a higher pitch.
+ *
+ * Measured here on the mesh itself, as the angle between the two triangles of
+ * each plate. `crossCut` cuts the plate across as well as along, which is what
+ * takes it out; it is the exporter's setting, so the second number below is
+ * the one the car in the game actually drives on.
+ */
+console.log('\nThe fold in a banked plate');
+{
+  const bankedOval = (bank) => {
+    const proj = defaultProject();
+    proj.pit.nodes = [];
+    proj.road.samplesPerSegment = 80;
+    const radius = 120;
+    const straight = 400;
+    const spacing = 120;
+    const nodes = [];
+    const add = (x, z, b) =>
+      nodes.push({ ...proj.track.nodes[0], id: `t${nodes.length}`, p: [x, 0, z], bank: b, widthL: 7, widthR: 7 });
+    const nArc = Math.round((Math.PI * radius) / spacing);
+    const nStr = Math.round(straight / spacing);
+    for (let i = 0; i < nStr; i++) add(radius, -straight / 2 + (straight * i) / nStr, 0);
+    for (let i = 0; i < nArc; i++) {
+      const a = (i / nArc) * Math.PI;
+      add(radius * Math.cos(a), straight / 2 + radius * Math.sin(a), bank);
+    }
+    for (let i = 0; i < nStr; i++) add(-radius, straight / 2 - (straight * i) / nStr, 0);
+    for (let i = 0; i < nArc; i++) {
+      const a = Math.PI + (i / nArc) * Math.PI;
+      add(radius * Math.cos(a), -straight / 2 + radius * Math.sin(a), 0);
+    }
+    proj.track.nodes = nodes;
+    proj.track.closed = true;
+    return proj;
+  };
+
+  /** Worst angle between the two triangles of one plate, degrees. */
+  const worstFold = (geo) => {
+    const pos = geo.getAttribute('position');
+    const idx = geo.getIndex();
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    const e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
+    const n0 = new THREE.Vector3(), n1 = new THREE.Vector3();
+    const faceNormal = (i, out) => {
+      a.fromBufferAttribute(pos, idx.getX(i));
+      b.fromBufferAttribute(pos, idx.getX(i + 1));
+      c.fromBufferAttribute(pos, idx.getX(i + 2));
+      out.crossVectors(e1.subVectors(b, a), e2.subVectors(c, a));
+      if (out.lengthSq() < 1e-18) return null;
+      return out.normalize();
+    };
+    let worst = 0;
+    for (let i = 0; i + 5 < idx.count; i += 6) {
+      if (!faceNormal(i, n0) || !faceNormal(i + 3, n1)) continue;
+      worst = Math.max(worst, Math.acos(Math.min(1, Math.max(-1, n0.dot(n1)))));
+    }
+    return (worst * 180) / Math.PI;
+  };
+
+  const roadOf = (proj) => getDerived(proj).roadMeshes.find((m) => m.name === '1ROAD_track');
+  const verts = (m) => m.geometry.getAttribute('position').count;
+  const exported = (proj) => ({ ...proj, road: { ...proj.road, crossCut: true } });
+
+  const flat = bankedOval(0);
+  check(
+    'a flat road is not cut across at all',
+    verts(roadOf(exported(flat))) === verts(roadOf(flat)),
+    `${verts(roadOf(exported(flat)))} vs ${verts(roadOf(flat))} vertices`,
+  );
+
+  const banked = bankedOval(30);
+  const plain = worstFold(roadOf(banked).geometry);
+  const cutFold = worstFold(roadOf(exported(banked)).geometry);
+  check('a banked plate folds along its diagonal', plain > 2, `only ${plain.toFixed(2)} deg, nothing left to fix`);
+  check('and the export cuts it across until it stops', cutFold < 1, `${cutFold.toFixed(2)} deg, was ${plain.toFixed(2)}`);
+  console.log(`      worst fold ${plain.toFixed(2)} deg as drawn, ${cutFold.toFixed(2)} deg as exported`);
+  console.log(`      road mesh ${verts(roadOf(banked))} verts as drawn, ${verts(roadOf(exported(banked)))} as exported`);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) failed.\n`);
 process.exit(failures === 0 ? 0 : 1);
 
