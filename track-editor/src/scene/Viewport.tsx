@@ -4,7 +4,7 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { Grid, Line, OrbitControls, Sky, TransformControls, useCursor } from '@react-three/drei';
 
 import { QUALITY_DPR, useEditor } from '../store/store';
-import { useDerived, type Derived } from '../store/derived';
+import { getDerived, useDerived, type Derived } from '../store/derived';
 import { EMPTY_GRASS3D, GRASS3D_STRIDE, grass3dBlockers, grass3dFor, grass3dOnGrass, grass3dOnPad } from '../core/grass3d';
 import { ALPHA_TESTED, EMISSIVE, EMISSIVE_TINT, getTexture, MATERIAL_COLORS } from '../core/textures';
 import {
@@ -50,7 +50,7 @@ interface MarqueeBox {
 
 /** Metres a marquee has to reach before it stops being a click. */
 const MIN_MARQUEE = 1.5;
-import { GRASS_KINDS, isGroundPad, LIBRARY_BY_KEY, PAD_SIZE, propParts, propTileBox } from '../core/library';
+import { bridgeRoadwayAtEdge, GRASS_KINDS, isGroundPad, LIBRARY_BY_KEY, PAD_SIZE, propParts, propTileBox } from '../core/library';
 import {
   clearanceAt,
   padScale,
@@ -367,6 +367,18 @@ interface PlacementPose {
   rule: Placement['rule'];
   /** Per axis scale it will be stored at -- ground patches are sized in metres. */
   scale: [number, number, number];
+  /**
+   * False when the piece must keep the ABSOLUTE height in `pos.y` instead of
+   * riding the terrain: a bridge piece latched onto another bridge piece
+   * continues that piece's level, or a chain of decks over rolling ground
+   * comes out as a staircase.
+   */
+  ground?: boolean;
+}
+
+/** The kit whose pieces align to each other rather than to the ground. */
+function isBridgeKind(kind: string): boolean {
+  return kind.startsWith('bridge_road');
 }
 
 /** How big the next ground patch is, as a scale of the 10 m square. */
@@ -480,11 +492,63 @@ function resolvePlacementPose(point: THREE.Vector3, exact: boolean): PlacementPo
     snap: s.snap,
     scale,
     exact,
+    // Bridge pieces are 12 to 56 m long and MUST land flush -- a free-floating
+    // deck is a step in the roadway -- so their catch radius is far wider than
+    // the 2 m that suits a shed: within a dozen metres of the slot, the click
+    // means "continue the bridge".
+    threshold: isBridgeKind(s.placeKind) ? 12 : undefined,
   });
   const pos = point.clone();
   pos.x = hit.x;
   pos.z = hit.z;
+
+  /*
+   * A bridge piece latched onto another bridge piece continues that piece's
+   * LEVEL, not the ground's. Every piece riding its own patch of terrain is
+   * exactly right for a shed and exactly wrong for a bridge: over rolling
+   * ground the decks stepped, the ramp met nothing, and the pier missed the
+   * underside it exists to carry.
+   */
+  if (hit.rule === 'flush' && hit.neighborId && isBridgeKind(s.placeKind)) {
+    const neighbor = s.project.props.find((p) => p.id === hit.neighborId);
+    if (neighbor && isBridgeKind(neighbor.kind)) {
+      const heights = getDerived(s.project).terrainHeights;
+      const nY = propPosition(neighbor, s.project.terrain, heights).y;
+      /*
+       * What has to agree at the seam is the ROADWAY, not the origins. A deck
+       * is level, so for deck-to-deck the two are the same thing -- but a
+       * ramp's roadway is at 0 at its foot and a deck height up at its crest.
+       * So: which face of the neighbour does the slot sit on, which face of
+       * the new piece meets it, and the origin offset is whatever makes the
+       * two roadway heights meet. That is what lets a second ramp stack onto
+       * the first one's crest and keep climbing.
+       */
+      const a = THREE.MathUtils.degToRad(neighbor.r[1]);
+      const dx = hit.x - neighbor.p[0];
+      const dz = hit.z - neighbor.p[2];
+      const lz = dx * Math.sin(a) + dz * Math.cos(a);
+      const nBox = propTileBox(neighbor.kind);
+      let y = nY;
+      // Joined across a Z face; a side-by-side join keeps equal origins.
+      if (Math.abs(lz) > nBox.hz * neighbor.s[2] + 0.01) {
+        const b = THREE.MathUtils.degToRad(hit.rotY);
+        const mz = -dx * Math.sin(b) + -dz * Math.cos(b);
+        y =
+          nY +
+          bridgeRoadwayAtEdge(neighbor.kind, Math.sign(lz)) -
+          bridgeRoadwayAtEdge(s.placeKind, Math.sign(mz));
+      }
+      pos.y = y;
+      return { pos, rotY: hit.rotY, rule: hit.rule, scale: [scale.x, 1, scale.z], ground: false };
+    }
+  }
   return { pos, rotY: hit.rotY, rule: hit.rule, scale: [scale.x, 1, scale.z] };
+}
+
+// Beside the store's `__editor`: the placement resolver on the console, so a
+// snap can be exercised at exact coordinates without aiming a pointer at it.
+if (import.meta.env?.DEV) {
+  (globalThis as Record<string, unknown>).__pose = resolvePlacementPose;
 }
 
 /**
@@ -568,6 +632,7 @@ function GhostPiece({
   heights,
   flush = false,
   scale = UNIT_GHOST_SCALE,
+  y,
 }: {
   kind: string;
   x: number;
@@ -577,13 +642,20 @@ function GhostPiece({
   heights: Float32Array;
   flush?: boolean;
   scale?: [number, number, number];
+  /**
+   * Absolute height instead of the terrain's: what a bridge piece inheriting
+   * its neighbour's level will really land at. Without it the ghost lay on
+   * the grass while the piece was about to land seven metres up, which read
+   * as "the snap does not see the bridge".
+   */
+  y?: number;
 }) {
   const assetId = assetIdOf(kind);
   const parts = useMemo(() => (assetId === null ? propParts(kind) : []), [kind, assetId]);
   // Snapping moves the object sideways, so the ground under it is not the
   // ground the cursor is over.
   const matrix = new THREE.Matrix4().compose(
-    new THREE.Vector3(x, sampleHeights(terrain, heights, x, z), z),
+    new THREE.Vector3(x, y ?? sampleHeights(terrain, heights, x, z), z),
     new THREE.Quaternion().setFromEuler(new THREE.Euler(0, THREE.MathUtils.degToRad(rotY), 0)),
     new THREE.Vector3(scale[0], scale[1], scale[2]),
   );
@@ -735,6 +807,7 @@ function GhostProp({
       heights={heights}
       flush={pose.rule === 'flush'}
       scale={pose.scale}
+      y={pose.ground === false ? pose.pos.y : undefined}
     />
   );
 }
@@ -1500,7 +1573,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
         useEditor.getState().placePrefab(prefab.key, pose.pos, pose.rotY);
         setStatus(`Placed ${prefab.label} ${how}`);
       } else {
-        addProp(placeKind, pose.pos, pose.rotY);
+        addProp(placeKind, pose.pos, pose.rotY, undefined, pose.ground);
         setStatus(`Placed ${LIBRARY_BY_KEY.get(placeKind)?.label ?? placeKind} ${how}`);
       }
     } else if (tool === 'barrier' && barrierMode === 'free') {

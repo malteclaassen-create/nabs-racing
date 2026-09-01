@@ -532,6 +532,37 @@ const treeCard = (name: TreeCardName): PropPart[] => {
   ]);
 };
 
+/**
+ * The road bridge kit's shared measurements, at module scope so the placement
+ * code can reason about them too.
+ *
+ * Clear height under the deck: the footbridge's 5.5 plus the head room Malte
+ * asked for, so the bridge reads as clearly ABOVE the circuit. The FOOTING is
+ * how far below their origin the legs keep going: a piece aligned with the
+ * BRIDGE can stand well above its own patch of ground -- a whole deck height
+ * above it at the foot of a stacked ramp -- and the legs have to reach down
+ * and find it.
+ */
+const BRIDGE_CLEAR = 7.0;
+const BRIDGE_ASPHALT = 0.06;
+const BRIDGE_STRUCT = 0.5;
+/** Where the drivable surface lies, relative to a piece's origin. */
+export const BRIDGE_DECK_TOP = BRIDGE_CLEAR + BRIDGE_STRUCT + BRIDGE_ASPHALT;
+const BRIDGE_FOOTING = 10;
+
+/**
+ * Height of a bridge piece's ROADWAY at one of its Z edges, relative to the
+ * piece's own origin. This is what two pieces have to agree on at a seam: a
+ * deck is level, but a ramp is a slope -- its foot is at 0 and its crest a
+ * whole deck height up, and inheriting the neighbour's ORIGIN instead of the
+ * meeting edge is why a second ramp stacked after a first one used to land a
+ * deck height too low.
+ */
+export function bridgeRoadwayAtEdge(kind: string, edgeSign: number): number {
+  return kind === 'bridge_road_ramp' && edgeSign < 0 ? 0 : BRIDGE_DECK_TOP;
+}
+
+
 export const LIBRARY: PropDef[] = [
   {
     key: 'pad_asphalt',
@@ -873,17 +904,30 @@ export const LIBRARY: PropDef[] = [
    * The road bridge kit: a bridge you can actually drive over.
    *
    * Three pieces. The DECK is a 12 m span with an asphalt roadway on top and a
-   * guardrail either side -- lay several end to end for any length; they latch
-   * flush like the pads do. The RAMP climbs from the ground to deck level over
-   * 44 m (12.5%, a real overpass grade) with its supports built in. The PIER
-   * is a separate portal frame to stand under the deck joints wherever there
-   * is ground to stand on -- deliberately not part of the deck, because a
-   * deck crossing the circuit must not bring a column onto the tarmac.
+   * concrete parapet either side -- lay several end to end for any length;
+   * they latch flush like the pads do. The RAMP climbs from the ground to deck
+   * level over 56 m with its supports built in, and legs that keep going
+   * three metres below their origin -- the foundation that finds the ground
+   * when a piece aligned with the bridge stands higher than its own patch of
+   * grass. The PIER is a separate portal
+   * frame to stand under the deck joints wherever there is ground to stand on
+   * -- deliberately not part of the deck, because a deck crossing the circuit
+   * must not bring a column onto the tarmac.
    *
-   * Deck level is 5.5 m: the same clearance the footbridge keeps, above
-   * anything that can pass underneath on four wheels. All three carry their
-   * exact footprint as the body part and everything else as trim, so they
-   * tile on whole metres (8 wide; 12, 44 and 2 long) about their own origin.
+   * The deck's UNDERSIDE is at 7.0 m: comfortably above the footbridge's
+   * 5.5, so the road bridge reads as the bigger structure it is. The roadway
+   * on top is therefore at 7.56. All three pieces carry their exact footprint
+   * as the body part and everything else as trim, so they tile on whole
+   * metres (8 wide; 12, 56 and 2 long) about their own origin.
+   *
+   * Placed flush against another bridge piece, a piece takes that piece's
+   * HEIGHT rather than the ground's (see resolvePlacementPose in Viewport):
+   * that is what keeps a chain of decks a level road over rolling ground
+   * instead of a staircase of terrain-following slabs.
+   *
+   * The parapets are solid concrete, not guardrail texture: an armco texture
+   * stretched down a 48 m box smears into something that reads as fake, and a
+   * concrete parapet is what a real road bridge has anyway.
    *
    * The ramp's slab is a SHEARED box: y' = y + z * slope. Unlike a rotated
    * box, a sheared one keeps its exact ground footprint, so the tiling stays
@@ -891,12 +935,15 @@ export const LIBRARY: PropDef[] = [
    * against them. Low end at -Z, high end at +Z.
    */
   ...(() => {
-    const DECK_TOP = 5.5;
-    const ASPHALT = 0.06;
-    const STRUCT = 0.5;
-    const RAMP_LEN = 44;
+    const CLEAR = BRIDGE_CLEAR;
+    const ASPHALT = BRIDGE_ASPHALT;
+    const STRUCT = BRIDGE_STRUCT;
+    const DECK_TOP = BRIDGE_DECK_TOP;
+    const RAMP_LEN = 56;
+    const FOOTING = BRIDGE_FOOTING;
     const SLOPE = DECK_TOP / RAMP_LEN;
-    const RAIL_H = 1.0;
+    const RAIL_H = 0.9;
+    const RAIL_W = 0.35;
     // y' = y + z * slope, spelled out row by row: makeShear's argument order
     // is easy to hold the wrong way round, and holding it the wrong way round
     // sheared z by y -- the ramp grew LONGER instead of higher.
@@ -911,6 +958,8 @@ export const LIBRARY: PropDef[] = [
       g.computeVertexNormals();
       return g;
     };
+    /** Bottom of the ramp slab at its centre, before the shear tips it. */
+    const SLAB_BOTTOM = DECK_TOP / 2 - STRUCT - ASPHALT;
     return [
       {
         key: 'bridge_road_deck',
@@ -920,42 +969,51 @@ export const LIBRARY: PropDef[] = [
         build: () =>
           group([
             // The body: the concrete span, exactly 8 x 12 so the tiling is
-            // honest. Top at 5.44, with the asphalt wearing course on it.
-            [[box(8, STRUCT, 12, 0, DECK_TOP - ASPHALT - STRUCT)], 'concrete'],
+            // honest. Underside at CLEAR, asphalt wearing course on top.
+            [[box(8, STRUCT, 12, 0, CLEAR)], 'concrete'],
             [[box(7.6, ASPHALT, 12, 0, DECK_TOP - ASPHALT)], 'asphalt'],
             [
               [
-                box(0.12, RAIL_H, 12, -3.94, DECK_TOP),
-                box(0.12, RAIL_H, 12, 3.94, DECK_TOP),
+                box(RAIL_W, RAIL_H, 12, -(4 - RAIL_W / 2), DECK_TOP),
+                box(RAIL_W, RAIL_H, 12, 4 - RAIL_W / 2, DECK_TOP),
               ],
-              'guardrail',
+              'concrete',
             ],
           ]),
       },
       {
         key: 'bridge_road_ramp',
-        label: 'Road bridge ramp (44 m)',
+        label: 'Road bridge ramp (56 m)',
         category: 'Track furniture' as const,
         surface: 'ROAD' as const,
         build: () => {
           const supports: THREE.BufferGeometry[] = [];
-          for (const z of [-11, 0, 11, 18]) {
-            // Column tops follow the slab's underside down the slope.
-            const h = DECK_TOP - ASPHALT - STRUCT + SLOPE * z;
+          for (const z of [-14, 0, 14, 22]) {
+            // Column tops follow the slab's UNDERSIDE down the slope. It used
+            // to follow the deck's -- the full bridge height -- so the columns
+            // ran metres up through the roadway they were meant to carry.
+            // A few centimetres INTO the slab, or the sloped underside leaves
+            // a daylight wedge over the downhill corner of every column. The
+            // slab is half a metre thick, so nothing reaches the roadway.
+            const h = SLAB_BOTTOM + SLOPE * z + 0.04;
             if (h < 0.4) continue;
-            supports.push(box(0.7, h, 0.7, -2.6, 0, z));
-            supports.push(box(0.7, h, 0.7, 2.6, 0, z));
+            supports.push(box(0.7, h + FOOTING, 0.7, -2.6, -FOOTING, z));
+            supports.push(box(0.7, h + FOOTING, 0.7, 2.6, -FOOTING, z));
           }
           return group([
-            // The body: the sheared slab, 8 x 44 on the ground exactly.
-            [[sheared(box(8, STRUCT + ASPHALT, RAMP_LEN, 0, DECK_TOP / 2 - STRUCT - ASPHALT))], 'asphalt'],
+            // The body: the sheared slab, 8 x 48 on the ground exactly.
+            [[sheared(box(8, STRUCT + ASPHALT, RAMP_LEN, 0, SLAB_BOTTOM))], 'asphalt'],
+            // The abutment: a solid block under the foot of the ramp, so the
+            // start of the climb sits on masonry instead of on a thin edge --
+            // and keeps doing so when the ground rolls away beneath it.
+            [[box(8, 2.5 + FOOTING, 3, 0, -2.5 - FOOTING, -RAMP_LEN / 2 + 1.5)], 'concrete'],
             [supports, 'concrete'],
             [
               [
-                sheared(box(0.12, RAIL_H, RAMP_LEN, -3.94, DECK_TOP / 2)),
-                sheared(box(0.12, RAIL_H, RAMP_LEN, 3.94, DECK_TOP / 2)),
+                sheared(box(RAIL_W, RAIL_H, RAMP_LEN, -(4 - RAIL_W / 2), DECK_TOP / 2)),
+                sheared(box(RAIL_W, RAIL_H, RAMP_LEN, 4 - RAIL_W / 2, DECK_TOP / 2)),
               ],
-              'guardrail',
+              'concrete',
             ],
           ]);
         },
@@ -968,11 +1026,11 @@ export const LIBRARY: PropDef[] = [
         build: () =>
           group([
             // The body: the crossbeam, 8 x 2, whose top carries the deck.
-            [[box(8, STRUCT, 2, 0, DECK_TOP - ASPHALT - STRUCT * 2)], 'concrete'],
+            [[box(8, STRUCT, 2, 0, CLEAR - STRUCT)], 'concrete'],
             [
               [
-                box(0.9, DECK_TOP - ASPHALT - STRUCT * 2, 0.9, -3.4, 0, 0),
-                box(0.9, DECK_TOP - ASPHALT - STRUCT * 2, 0.9, 3.4, 0, 0),
+                box(0.9, CLEAR - STRUCT + FOOTING, 0.9, -3.4, -FOOTING, 0),
+                box(0.9, CLEAR - STRUCT + FOOTING, 0.9, 3.4, -FOOTING, 0),
               ],
               'concrete',
             ],
