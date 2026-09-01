@@ -5911,6 +5911,52 @@ console.log('\nPainted ground');
       && sampleGround(t, turned, rect.x + rect.w / 2 - 2, rect.z + rect.l / 2 - 2) === 0);
   }
 
+  /* --- the stored distances never lie about the side ----------------- */
+  {
+    /* A sample a few millimetres OUTSIDE a shape used to have its distance
+       rounded to zero, and everything downstream reads the sign of that
+       number as which side of the edge the sample sits on -- zero counted as
+       inside. The crossing between it and a genuinely painted neighbour then
+       looked like two samples on the same side, fell back to the midpoint
+       cut, and bit a triangular notch out of an otherwise straight edge --
+       the paddock slab a generated pit complex paints showed them coming and
+       going with the exact position of the rectangle against the lattice.
+       The invariant that kills the notch: wherever a distance is stored at
+       all, its sign and the paint agree about the side. */
+    const ps2 = paintCellSize(t);
+    const pw2 = paintRes(t.res);
+    const cases = [];
+    // The exact arrangement that used to lie: an edge 5 mm past a sample
+    // column, well inside half a quantum (a paint cell over 128).
+    const col = Math.round((130 - t.originX) / ps2);
+    cases.push({ x: t.originX + col * ps2 + 0.005 - 30, z: 100, w: 60, l: 40, rotY: 0 });
+    // And turned edges swept across the lattice in odd steps, so some stretch
+    // of each runs within a whisker of a sample somewhere.
+    for (let k = 0; k < 8; k++) cases.push({ x: 100 + k * (ps2 / 7.3), z: 100, w: 60, l: 40, rotY: 17 });
+    let wrong = 0;
+    let checked = 0;
+    for (const rc of cases) {
+      const field = createPaint(t.res);
+      const dist = createPaintEdge(t.res);
+      paintGroundRect(t, field, dist, rc, paintValue(asphalt));
+      const i0 = Math.max(0, Math.floor((rc.x - 60 - t.originX) / ps2));
+      const i1 = Math.min(pw2 - 1, Math.ceil((rc.x + 60 - t.originX) / ps2));
+      const j0 = Math.max(0, Math.floor((rc.z - 50 - t.originZ) / ps2));
+      const j1 = Math.min(pw2 - 1, Math.ceil((rc.z + 50 - t.originZ) / ps2));
+      for (let j = j0; j <= j1; j++) {
+        for (let i = i0; i <= i1; i++) {
+          const k = j * pw2 + i;
+          if (dist[k] === -128) continue; // EDGE_UNKNOWN: nothing stored here
+          checked += 1;
+          if ((dist[k] <= 0) !== (field[k] !== 0)) wrong += 1;
+        }
+      }
+    }
+    check('the stored edge distances agree with the paint about every side',
+      wrong === 0 && checked > 500,
+      `${wrong} of ${checked} samples lie about their side`);
+  }
+
   {
     // A plain triangle, so the area it should cover is not in doubt.
     const poly = [

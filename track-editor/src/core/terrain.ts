@@ -334,7 +334,22 @@ function fillPaint(
       if (probe && paint[k] === value) continue;
       const d = sdf(originX + ix * ps, wz);
       if (edge && !probe && d > -band && d < band) {
-        const q = Math.round((d / ps) * EDGE_SCALE);
+        /*
+         * Quantised WITHOUT crossing zero. A sample sitting a hair outside
+         * the shape -- closer than half a quantum, about a centimetre and a
+         * half -- used to round to 0, and everything downstream reads the
+         * SIGN of these numbers as which side of the edge the sample is on:
+         * zero counts as inside, the sample is not painted, and the crossing
+         * between it and a genuinely painted neighbour looks like two samples
+         * on the same side. That falls back to the midpoint cut, and the
+         * result was a triangular notch bitten out of an otherwise straight
+         * painted edge, appearing and disappearing with the exact position of
+         * the shape against the lattice. Rounding outside samples up to at
+         * least 1 keeps the sign telling the truth the paint itself tells:
+         * painted is d <= 0, and nothing else.
+         */
+        const q0 = Math.round((d / ps) * EDGE_SCALE);
+        const q = d > 0 ? Math.max(1, q0) : Math.min(0, q0);
         // EDGE_UNKNOWN is -128 and has to stay reachable only by never being
         // written here, so the clamp stops one short of it.
         edge[k] = q < -127 ? -127 : q > 127 ? 127 : q;
