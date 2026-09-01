@@ -361,9 +361,13 @@ export function generateGrass3d(
    */
   const pitN = pitDrawFrames.length;
   let pitBlocked: ((x: number, z: number) => boolean) | null = null;
+  let pitEffLo: Float32Array | null = null;
+  let pitEffHi: Float32Array | null = null;
   if (pitN >= 2) {
     const effLo = new Float32Array(pitN);
     const effHi = new Float32Array(pitN);
+    pitEffLo = effLo;
+    pitEffHi = effHi;
     let pitReach = 1;
     for (let i = 0; i < pitN; i++) {
       const f = pitDrawFrames[i];
@@ -373,6 +377,26 @@ export function generateGrass3d(
       effLo[i] = pitClip ? Math.max(pitClip.lo[i] ?? rawLo, rawLo) : rawLo;
       effHi[i] = pitClip ? Math.min(pitClip.hi[i] ?? rawHi, rawHi) : rawHi;
       pitReach = Math.max(pitReach, -effLo[i], effHi[i]);
+    }
+    /*
+     * One cross section further at each end of every drawn run. The mesh
+     * closes its wedge ON the first empty section (reachOver / toPoint in
+     * buildPitMeshes), so the plate between the last section with a band
+     * and the empty one beside it is drawn -- and with the keep-off ending
+     * at the band, that plate grew grass through the tarmac at both ends of
+     * the lane. Copying the neighbour's band onto the empty section makes
+     * the keep-off end exactly where the surface does.
+     */
+    const empty = (i: number) => effHi[i] - effLo[i] < 0.05;
+    const ext: Array<[number, number, number]> = [];
+    for (let i = 0; i < pitN; i++) {
+      if (!empty(i)) continue;
+      if (i > 0 && !empty(i - 1)) ext.push([i, effLo[i - 1], effHi[i - 1]]);
+      else if (i + 1 < pitN && !empty(i + 1)) ext.push([i, effLo[i + 1], effHi[i + 1]]);
+    }
+    for (const [i, lo, hi] of ext) {
+      effLo[i] = lo;
+      effHi[i] = hi;
     }
     const pitPts = pitDrawFrames.map((f) => f.pos);
     const pitMap = buckets(pitPts);
@@ -506,6 +530,87 @@ export function generateGrass3d(
           }
 
           out.push(px, pz, rnd() * Math.PI * 2, 0.7 + rnd() * 0.7, dy);
+        }
+      }
+    }
+  }
+
+  /*
+   * A second pass: grass along the PIT band's own outsides.
+   *
+   * The main loop plants a band measured from the CIRCUIT's edge, and beside
+   * the pit complex that band ends before the ground does -- the lane pushes
+   * the open grass so far out that the strip beyond the concrete never sees a
+   * tuft. It read as a mowed-bald apron right where the eye lingers at the
+   * pit entry. This walk plants the same kind of band, measured from the
+   * drawn pit band's edges instead, and a coarse grid of everything planted
+   * so far keeps the two passes from doubling up where they overlap.
+   */
+  if (pitBlocked && pitEffLo && pitEffHi) {
+    const PIT_BEYOND = 6;
+    const seenCell = 1.1;
+    const seen = new Set<number>();
+    const cellKey = (x: number, z: number) =>
+      Math.round(x / seenCell) * 262144 + Math.round(z / seenCell);
+    for (let i = 0; i < out.length; i += GRASS3D_STRIDE) seen.add(cellKey(out[i], out[i + 1]));
+    const taken = (x: number, z: number): boolean => {
+      const cx = Math.round(x / seenCell);
+      const cz = Math.round(z / seenCell);
+      for (let a = -1; a <= 1; a++)
+        for (let b = -1; b <= 1; b++) if (seen.has((cx + a) * 262144 + cz + b)) return true;
+      return false;
+    };
+
+    for (let i = 0; i + 1 < pitN; i++) {
+      const a = pitDrawFrames[i];
+      const b = pitDrawFrames[i + 1];
+      if (pitEffHi[i] - pitEffLo[i] < 0.05) continue;
+      const segLen = a.pos.distanceTo(b.pos);
+      if (segLen < 1e-6) continue;
+      const rows = Math.max(1, Math.round(segLen / ROW));
+
+      for (let side = -1; side <= 1; side += 2) {
+        const e0 = side < 0 ? -pitEffLo[i] : pitEffHi[i];
+        const e1 = side < 0 ? -pitEffLo[i + 1] : pitEffHi[i + 1];
+        for (let r = 0; r < rows; r++) {
+          const t = (r + rnd()) / rows;
+          const cx = a.pos.x + (b.pos.x - a.pos.x) * t;
+          const cz = a.pos.z + (b.pos.z - a.pos.z) * t;
+          const edge = e0 + (e1 - e0) * t;
+          for (let d = KEEP; d < PIT_BEYOND; d += COL) {
+            const lat = edge + d + (rnd() - 0.5) * COL * 0.9;
+            const frac = d / PIT_BEYOND;
+            if (rnd() < frac * 0.7) continue;
+            const px = cx + a.right.x * side * lat;
+            const pz = cz + a.right.z * side * lat;
+            if (px < x0 || px > x1 || pz < z0 || pz > z1) continue;
+            if (taken(px, pz)) continue;
+            if (pitBlocked(px, pz)) continue;
+
+            // Off the circuit's tarmac: whoever is nearest decides, exactly
+            // as in the main pass.
+            near(trackMap, trackPts, px, pz, reach, scratch);
+            let bad = false;
+            for (const j of scratch) {
+              const np = trackPts[j];
+              const dx = px - np.x;
+              const dz = pz - np.z;
+              const nd = Math.hypot(dx, dz);
+              const fr = trackFrames[j];
+              const left = dx * fr.right.x + dz * fr.right.z < 0;
+              if (nd < hardEdge(j, left) + KEEP) { bad = true; break; }
+            }
+            if (bad) continue;
+
+            let dy = 0.01;
+            const surface = surfaceAt(px, pz);
+            if (surface !== null) {
+              const ground = sampleHeights(terrain, heights, px, pz);
+              if (surface > ground) dy = surface - ground + 0.01;
+            }
+            out.push(px, pz, rnd() * Math.PI * 2, 0.7 + rnd() * 0.7, dy);
+            seen.add(cellKey(px, pz));
+          }
         }
       }
     }

@@ -731,7 +731,7 @@ const PANEL_MOUNT_TOP = 3.6;
  * and a thirty metre hole in the armco. The opening's exact edges are
  * interpolated instead (see the gates block in buildRoadMeshes).
  */
-const GATE_SPACING = 400;
+export const GATE_SPACING = 400;
 const GATE_WIDTH = 10;
 /**
  * The width of the SLOT between the two runs: a car and change, so a
@@ -739,7 +739,7 @@ const GATE_WIDTH = 10;
  * along the slot, out behind the barrier. The forward end is sealed
  * regardless, so nothing arrives through here at speed.
  */
-const GATE_SET_BACK = 2.2;
+export const GATE_SET_BACK = 2.2;
 /** How far past the opening's REAR edge the set-back piece reaches. Its
     forward end does not reach past anything: it angles in and joins the run
     at the opening's forward edge, so the slot only opens backwards. */
@@ -762,9 +762,34 @@ const GATE_MARK = 3;
  * out once and both sides open at the same place -- which is also what a
  * marshalling post looks like: a gate on the outside, the post behind it.
  */
-function gateStations(lap: number): number[] {
+export function gateStations(lap: number): number[] {
   const out: number[] = [];
   for (let k = 0; (k + 0.5) * GATE_SPACING < lap; k++) out.push((k + 0.5) * GATE_SPACING);
+  return out;
+}
+
+/*
+ * Camera windows.
+ *
+ * A catch fence on a real circuit has square openings cut into its mesh at
+ * intervals: the TV positions, where a camera on the far side films through
+ * the fence instead of over it. They are cut into the mesh band only -- the
+ * armco below and the lean above stay as they are -- and the replay cameras
+ * the editor writes stand at exactly these openings (see core/cameras.ts).
+ *
+ * The rhythm is like the gates', but on its own grid and offset from it, so
+ * a window never lands in a gate's opening.
+ */
+export const CAMERA_WINDOW_SPACING = 500;
+export const CAMERA_WINDOW_WIDTH = 2.0;
+/** Bottom and top of the opening, metres above the barrier's foot. */
+export const CAMERA_WINDOW_BOTTOM = 1.4;
+export const CAMERA_WINDOW_TOP = 2.6;
+
+/** Where the fence opens a camera window, as distances into the lap. */
+export function cameraWindowStations(lap: number): number[] {
+  const out: number[] = [];
+  for (let k = 0; (k + 0.5) * CAMERA_WINDOW_SPACING < lap; k++) out.push((k + 0.5) * CAMERA_WINDOW_SPACING);
   return out;
 }
 
@@ -1231,10 +1256,24 @@ function kerbStations(k: KerbSide, g: KerbGroup, sub: number): number[] {
   const spacingAfter = g.z + 1 < k.fr.length ? k.fr[g.z + 1].dist - k.fr[g.z].dist : Infinity;
   const sA = k.layout.along(run, k.fr[g.a].dist);
   const sZ = k.layout.along(run, k.fr[g.z].dist);
-  // Whether this end of the group is an end of the SPAN, or just where the
-  // cross sections happened to be cut in two by the seam.
-  const startIsEnd = run.ends && sA <= spacingBefore + 1e-6;
-  const endIsEnd = run.ends && run.length - sZ <= spacingAfter + 1e-6;
+  /*
+   * Whether this end of the group is an end of the SPAN, or just where the
+   * cross sections happened to be cut in two by the seam.
+   *
+   * With slack, and the slack matters. A group only holds cross sections
+   * whose kerb is wider than a centimetre, and a cross section standing a few
+   * centimetres inside the wedge is narrower than that -- so it is left out,
+   * and the first cross section IN the group then sits one full spacing plus
+   * those few centimetres past the start. Against a micrometre of tolerance
+   * that read as "cut by the seam": no start station, no wedge rings, and the
+   * kerb began as a square cut a whole cross section late. Seen on the
+   * showcase circuit's banked bend, where a span starts 3 cm short of a cross
+   * section. Half a metre is more than any sub-centimetre wedge can reach and
+   * far less than a cross section, so it cannot mistake a seam for an end.
+   */
+  const END_SLACK = 0.5;
+  const startIsEnd = run.ends && sA <= spacingBefore + END_SLACK;
+  const endIsEnd = run.ends && run.length - sZ <= spacingAfter + END_SLACK;
 
   const xs: number[] = [];
   if (startIsEnd) xs.push(indexAtDist(k.fr, Math.max(0, g.a - 1), g.z, run.start));
@@ -3453,9 +3492,28 @@ export function buildRoadMeshes(
         put(hi, setBackAt(hi));
         return [from, cAt - 1];
       };
+      /*
+       * The camera windows: only where the fence is continuous well past
+       * both sides of the opening, and only in a catch fence tall enough to
+       * have a mesh band to cut them from. Their edges are breaks in the
+       * front chain, so a ring sits exactly on each edge and the window is
+       * a clean rectangle rather than something sampled to the nearest
+       * cross section.
+       */
+      const windows: Array<[number, number]> = [];
+      // Both heights are measured from the barrier's foot, so the fence only
+      // has to reach past the top of the window itself.
+      if (fence && road.wallHeight > CAMERA_WINDOW_TOP + 0.05) {
+        for (const station of cameraWindowStations(fr[n - 1].dist)) {
+          const w0 = station - CAMERA_WINDOW_WIDTH / 2;
+          const w1 = station + CAMERA_WINDOW_WIDTH / 2;
+          if (front.some(([lo, hi]) => w0 - 2 >= lo && w1 + 2 <= hi)) windows.push([w0, w1]);
+        }
+      }
+      const windowEdges = windows.flatMap(([w0, w1]) => [w0, w1]);
       const frontSpans: Array<[number, number]> = [];
       for (const [lo, hi] of front) {
-        const span = addRun(lo, hi, () => 0);
+        const span = addRun(lo, hi, () => 0, windowEdges);
         if (span) frontSpans.push(span);
       }
       // The same run again, minus the painted tips: what the plain armco is
@@ -3572,7 +3630,13 @@ export function buildRoadMeshes(
       /** One complete barrier: the armco, and the catch fence over it. The
           fence may run over MORE than the steel does -- across the painted
           tips, which are their own armco mesh -- so it takes its own spans. */
-      const barrier = (suffix: string, armcoSpans: Array<[number, number]>, spans = armcoSpans) => {
+      const barrier = (
+        suffix: string,
+        armcoSpans: Array<[number, number]>,
+        spans = armcoSpans,
+        /** Camera windows to leave open in the mesh band, as lap metres. */
+        holes: Array<[number, number]> = [],
+      ) => {
         if (spans.length === 0) return;
         armco(`1WALL_${long}${suffix}`, armcoSpans);
         if (fence && road.wallHeight > solid + 0.05) {
@@ -3582,12 +3646,50 @@ export function buildRoadMeshes(
           // is fencing rather than a four metre slab of concrete: you see the
           // circuit through it, which is the whole difference between a catch
           // fence and a wall.
-          strip(`1WALL_${long}${suffix}_mesh`, 'chainlink', cMid, cTop, 0, panel, spans);
+          if (holes.length === 0) {
+            strip(`1WALL_${long}${suffix}_mesh`, 'chainlink', cMid, cTop, 0, panel, spans);
+          } else {
+            /*
+             * Three bands instead of one: below the windows, the band the
+             * windows are cut from, and above them. The middle band's spans
+             * stop at every window's edges, and those edges are rings of the
+             * chain (see windowEdges), so the opening is the exact rectangle
+             * asked for. The armco and the lean are untouched: a camera
+             * window is a hole in the mesh, not a gap in the barrier.
+             */
+            const h1 = (CAMERA_WINDOW_BOTTOM - solid) / (road.wallHeight - solid);
+            const h2 = (CAMERA_WINDOW_TOP - solid) / (road.wallHeight - solid);
+            const w1 = scratch.wallLo;
+            const w2 = scratch.wallHi;
+            for (let i = 0; i < cAt; i++) {
+              w1[i].lerpVectors(cMid[i], cTop[i], h1);
+              w2[i].lerpVectors(cMid[i], cTop[i], h2);
+            }
+            const inHole = (s: number) => holes.some(([a, z]) => s > a + 1e-4 && s < z - 1e-4);
+            const cut: Array<[number, number]> = [];
+            for (const [a, z] of spans) {
+              let start = a;
+              for (let i = a; i <= z; i++) {
+                const s = cV[i] * FENCE_UV;
+                const sNext = i < z ? cV[i + 1] * FENCE_UV : s;
+                // The plate from ring i to i+1 lies inside a window: close the
+                // run at i and reopen it at i+1.
+                if (i < z && inHole((s + sNext) / 2)) {
+                  if (i > start) cut.push([start, i]);
+                  start = i + 1;
+                }
+              }
+              if (z > start) cut.push([start, z]);
+            }
+            strip(`1WALL_${long}${suffix}_mesh`, 'chainlink', cMid, w1, 0, panel * h1, spans);
+            strip(`1WALL_${long}${suffix}_mesh_mid`, 'chainlink', w1, w2, panel * h1, panel * h2, cut);
+            strip(`1WALL_${long}${suffix}_mesh_top`, 'chainlink', w2, cTop, panel * h2, panel, spans);
+          }
           strip(`1WALL_${long}${suffix}_lean`, 'chainlink', cTop, cTip, panel, panel + lean, spans);
         }
       };
 
-      barrier('', railSpans, frontSpans);
+      barrier('', railSpans, frontSpans, windows);
       barrier('_gate', rearSpans);
       if (markSpans.length > 0) armco(`1WALL_${long}_mark`, markSpans, 'guardrail_orange');
 

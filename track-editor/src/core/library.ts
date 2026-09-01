@@ -577,6 +577,54 @@ export function bridgeRoadwayAtEdge(kind: string, edgeSign: number): number {
 }
 
 
+/**
+ * Rows of seats on a stepped bank: a coloured bench along the back of every
+ * step, split by a centre aisle where the bank is wide enough. This is what
+ * turns a flight of concrete steps into something that reads as a grandstand
+ * from the track.
+ */
+const seatRows = (
+  width: number,
+  count: number,
+  rise: number,
+  depth: number,
+  z0: number,
+  aisle: number,
+): THREE.BufferGeometry[] => {
+  const out: THREE.BufferGeometry[] = [];
+  const bench = aisle > 0 ? (width - 1.6 - aisle) / 2 : width - 1.6;
+  for (let i = 0; i < count; i++) {
+    const y = rise * (i + 1);
+    const z = z0 + i * depth + 0.3;
+    if (aisle > 0) {
+      out.push(box(bench, 0.5, 0.5, -(aisle / 2 + bench / 2), y, z));
+      out.push(box(bench, 0.5, 0.5, aisle / 2 + bench / 2, y, z));
+    } else {
+      out.push(box(bench, 0.5, 0.5, 0, y, z));
+    }
+  }
+  return out;
+};
+
+/**
+ * The solid base under a stand, reaching well below the origin. On level
+ * ground it is buried and invisible; on a slope, or on a stand that has taken
+ * its height from the neighbour it is latched to, it is the masonry the bank
+ * stands on instead of a slab of air.
+ */
+const standPlinth = (width: number, depth: number): THREE.BufferGeometry =>
+  box(width, 3, depth, 0, -3);
+
+/**
+ * Which pieces take their HEIGHT from a neighbour they latch onto, instead of
+ * from the ground under their own centre. The bridge kit, and the stands: a
+ * row of grandstands on a slope used to come out as a staircase, one step per
+ * stand, because each one sat on its own patch of hillside.
+ */
+export function alignsToNeighbourHeight(kind: string): boolean {
+  return kind.startsWith('bridge_road') || kind.startsWith('grandstand');
+}
+
 export const LIBRARY: PropDef[] = [
   {
     key: 'pad_asphalt',
@@ -741,7 +789,7 @@ export const LIBRARY: PropDef[] = [
       group([
         // Ankle high, not shin high: at 34 cm the verges read as a hay meadow
         // from the cockpit, and mowed-verge height is what a circuit has.
-        [[card(0.6, 0.17), card(0.6, 0.17, Math.PI / 2)], 'grass_blades'],
+        [[card(0.6, 0.13), card(0.6, 0.13, Math.PI / 2)], 'grass_blades'],
       ]),
   },
   {
@@ -1163,7 +1211,16 @@ export const LIBRARY: PropDef[] = [
     label: `Braking board ${d} m`,
     category: 'Track furniture' as const,
     surface: null,
-    build: () => group([[[atlasTile(box(SIGN_W, SIGN_H, 0.09), i)], 'sign_board' as MaterialKey]]),
+    /*
+     * The bare panel, lifted 30 cm off its origin and nothing under it. It sat
+     * with its bottom edge AT the origin, and on any cross slope, a banked run
+     * off, a grass bank, the downhill corner of the number sank into the
+     * ground. Posts were tried and taken out again on Malte's word: the board
+     * is the number, and the number is what has to be in view. The lift is
+     * what the 3D grass and a slope can eat without touching the paint.
+     */
+    build: () =>
+      group([[[atlasTile(box(SIGN_W, SIGN_H, 0.09, 0, 0.3), i)], 'sign_board' as MaterialKey]]),
   })),
   /*
    * There is no marshalling panel in this list on purpose. A panel is not a
@@ -1324,6 +1381,8 @@ export const LIBRARY: PropDef[] = [
       for (let i = 0; i < 8; i++) steps.push(box(24, 0.55 * (i + 1), 1.25, 0, 0, -4.375 + i * 1.25));
       return group([
         [steps, 'prop_light'],
+        [seatRows(24, 8, 0.55, 1.25, -4.375, 1.4), 'prop_blue'],
+        [[standPlinth(24, 10)], 'prop_light'],
         // A back wall behind the top row -- an open bank still has a back --
         // and it stops well short of anything a roof would need.
         [[box(24, 1.9, 0.35, 0, 4.4, 5.175)], 'prop_light'],
@@ -1353,6 +1412,8 @@ export const LIBRARY: PropDef[] = [
       for (let i = 0; i < 8; i++) steps.push(box(24, 0.55 * (i + 1), 1.25, 0, 0, -4.375 + i * 1.25));
       return group([
         [steps, 'prop_light'],
+        [seatRows(24, 8, 0.55, 1.25, -4.375, 1.4), 'prop_red'],
+        [[standPlinth(24, 10)], 'prop_light'],
         // Up to the roof, not to 7.6 m: stopping short of the underside left a
         // 0.8 m slot of daylight running the whole width of the back wall.
         [[box(24, 8.4, 0.4, 0, 0, 5.2)], 'prop_light'],
@@ -1383,6 +1444,8 @@ export const LIBRARY: PropDef[] = [
       for (let i = 0; i < 5; i++) steps.push(box(12, 0.5 * (i + 1), 1.2, 0, 0, -2.4 + i * 1.2));
       return group([
         [steps, 'prop_light'],
+        [seatRows(12, 5, 0.5, 1.2, -2.4, 0), 'prop_blue'],
+        [[standPlinth(12, 6)], 'prop_light'],
         [[box(12, 1.0, 0.1, 0, 2.5, 3.0)], 'prop_metal'],
         // Was a flat panel from 1.4 m to 2.5 m down both sides, which floated
         // 0.9 m above the front row and was buried in the back one.
@@ -1487,6 +1550,7 @@ export const LIBRARY: PropDef[] = [
          */
         [[box(36, 1.0, 0.12, 0, TOP, 11.94)], 'prop_metal'],
         [[box(36, 0.9, 0.14, 0, 14.6, -10.3), box(11, 1.2, 0.22, 0, 5.9, 10.3)], 'prop_white'],
+        [[standPlinth(36, 20)], 'prop_light'],
       ]);
     },
   },

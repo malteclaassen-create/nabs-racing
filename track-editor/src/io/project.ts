@@ -151,6 +151,14 @@ export function deserializeProject(json: string): Project {
     pit: normalizePath(raw.pit, base.pit),
     decoRoads: normalizeDecoRoads(raw.decoRoads),
     props: raw.props ?? [],
+    // Replay cameras. Absent in every file from before they existed.
+    cameras: Array.isArray(raw.cameras)
+      ? raw.cameras.filter(
+          (c: unknown): c is Project['cameras'][number] =>
+            !!c && typeof (c as { id?: unknown }).id === 'string'
+            && Array.isArray((c as { p?: unknown }).p),
+        )
+      : [],
     // Banner pictures. A file from before they existed has none; anything
     // malformed is dropped rather than fed to a texture loader.
     images: Array.isArray(raw.images)

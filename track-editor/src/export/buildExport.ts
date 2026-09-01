@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 import type { Project, ProjectImage, PropInstance, SurfaceKey, TerrainSettings } from '../types';
 import { bannerQuad, canCarryBanner } from '../core/banner';
+import { camerasIni } from '../core/cameras';
 import type { Derived } from '../store/derived';
 import type { MaterialKey, MeshDef } from '../core/road';
 import { isGroundPad, propParts, propTileBox, LIBRARY_BY_KEY } from '../core/library';
@@ -724,6 +725,13 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
 
   files[`${track}${slug}.kn5`] = [kn5, { level: 0 }];
   files[`${track}data/surfaces.ini`] = enc.encode(surfacesIni());
+  // Only when the author placed cameras: without the file AC falls back to
+  // its own generic ones, which beat an empty set.
+  if (project.cameras.length > 0) {
+    files[`${track}data/cameras.ini`] = enc.encode(
+      camerasIni(project.cameras, derived.trackFrames, project.track.closed),
+    );
+  }
   // Only when something on the track is actually wired to the session. An
   // extension folder on a track that has nothing to extend is a file for the
   // reader to wonder about.

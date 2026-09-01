@@ -15,6 +15,7 @@ import type {
   Selection,
   TerrainSettings,
   Tool,
+  TrackCamera,
   TrackNode,
 } from '../types';
 import {
@@ -45,7 +46,9 @@ import {
   smoothOutline,
   type GroundRect,
 } from '../core/terrain';
-import { makeNode, type Frame } from '../core/spline';
+import { makeNode, pathLength, type Frame } from '../core/spline';
+import { autoCameras, CAMERA_FOV_MAX, CAMERA_FOV_MIN, stretchAround } from '../core/cameras';
+import type { SideProfile } from '../core/road';
 import { STYLE_HEIGHT } from '../core/kerbs';
 import { F1_GRID_BOX } from '../core/gridBoxes';
 import { generateCircuit, rollingHeights, PIT_APRON_WIDTH, PIT_BOX_OFFSET, PIT_OFFSET, type CircuitSize } from '../core/generate';
@@ -166,6 +169,7 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
     pit: { closed: false, nodes: pit },
     decoRoads: [],
     images: [],
+    cameras: [],
     road: {
       // Editing detail only: dragging rebuilds every cross section per frame,
       // so the default keeps the editor fluid. The export ignores this and
@@ -758,6 +762,16 @@ export interface EditorState {
   addDecoRoad: (surface: DecoSurface) => string;
   /** Store a picture in the project (sponsor banners) and return its id. */
   addProjectImage: (name: string, mime: string, data: string) => string;
+  /**
+   * Replay cameras. `addCamera` drops one at a world position, covering the
+   * stretch of lap behind the nearest track point; `autoCameras` replaces the
+   * whole set with one camera per corner.
+   */
+  addCamera: (p: [number, number, number], trackFrames: Frame[]) => string;
+  updateCamera: (id: string, patch: Partial<TrackCamera>) => void;
+  deleteCamera: (id: string) => void;
+  autoCameras: (trackFrames: Frame[], profile: SideProfile) => number;
+  clearCameras: () => number;
   /** Armed: the next click on the ground drops a roundabout there. */
   roundaboutArm: boolean;
   setRoundaboutArm: (on: boolean) => void;
@@ -1985,6 +1999,67 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ crossingArm: false, activeDeco: null });
   },
 
+  addCamera: (p, trackFrames) => {
+    propCounter += 1;
+    const id = `cam${Date.now().toString(36)}${propCounter.toString(36)}`;
+    const project = get().project;
+    const total = pathLength(trackFrames, project.track.closed);
+    // The nearest point of the lap decides which stretch the camera watches.
+    let best = Infinity;
+    let dist = 0;
+    for (const f of trackFrames) {
+      const dd = (f.pos.x - p[0]) ** 2 + (f.pos.z - p[2]) ** 2;
+      if (dd < best) { best = dd; dist = f.dist; }
+    }
+    const stretch = stretchAround(dist, total);
+    get().commit((pr) => {
+      pr.cameras.push({
+        id,
+        name: `Camera ${pr.cameras.length + 1}`,
+        p: [p[0], p[1], p[2]],
+        inS: stretch.inS,
+        outS: stretch.outS,
+        fovMin: CAMERA_FOV_MIN,
+        fovMax: CAMERA_FOV_MAX,
+      });
+    });
+    return id;
+  },
+
+  updateCamera: (id, patch) => {
+    get().commit((p) => {
+      const c = p.cameras.find((x) => x.id === id);
+      if (c) Object.assign(c, patch);
+    });
+  },
+
+  deleteCamera: (id) => {
+    get().commit((p) => {
+      p.cameras = p.cameras.filter((x) => x.id !== id);
+    });
+  },
+
+  autoCameras: (trackFrames, profile) => {
+    const closed = get().project.track.closed;
+    const cams = autoCameras(trackFrames, closed, profile, () => {
+      propCounter += 1;
+      return `cam${Date.now().toString(36)}${propCounter.toString(36)}`;
+    });
+    get().commit((p) => {
+      p.cameras = cams;
+    });
+    return cams.length;
+  },
+
+  clearCameras: () => {
+    let gone = 0;
+    get().commit((p) => {
+      gone = p.cameras.length;
+      p.cameras = [];
+    });
+    return gone;
+  },
+
   addProjectImage: (name, mime, data) => {
     propCounter += 1;
     const id = `img${Date.now().toString(36)}${propCounter.toString(36)}`;
@@ -2254,7 +2329,10 @@ export const useEditor = create<EditorState>((set, get) => ({
           p: [...m.p],
           r: [0, m.rotY, 0],
           s: [1, 1, 1],
-          ground: true,
+          // On the run off the board keeps the surface height the planner
+          // computed; following the terrain there sinks it to the layer the
+          // road mesh covers up.
+          ground: !m.onRunoff,
         });
       }
     });

@@ -71,9 +71,10 @@ byte for byte against ksEditor output and Kunos' own track files, and the
 result is validated in game. ksEditorAT is NOT needed -- the fallback section
 at the end exists only in case a particular AC install refuses the file.
 
-Two things are deliberately left out:
-  - cameras.ini    a broken one can stop the track from loading, and AC uses
-                   perfectly good default cameras when the file is absent
+Two things to know:
+  - cameras.ini    written only when replay cameras were placed in the editor
+                   (Race tab). Without it AC uses its own default cameras,
+                   which is fine to start with.
   - a polished AI line   the included fast_lane.ai is built from the geometry.
                    The AI will drive it. Braking points and speeds are
                    estimated from curvature, not from real physics, so for

@@ -8,6 +8,8 @@ import { Check, Num, Row, Seg, Section, Slider, Text } from './controls';
 import { IconCopy, IconTrash } from './icons';
 import { pathDataOf, pathLabelOf } from '../types';
 import { canCarryBanner } from '../core/banner';
+import { getViewportCameraPose } from '../scene/Viewport';
+import { CAMERA_SPACING } from '../core/cameras';
 import { pickFile } from '../io/project';
 import type { PathData, PathId, Project, PropInstance, TrackNode } from '../types';
 import {
@@ -1690,7 +1692,134 @@ function RaceTab() {
           Written to <code>ai/fast_lane.ai</code>.
         </p>
       </Section>
+
+      <CamerasSection />
     </>
+  );
+}
+
+/**
+ * The replay cameras: where the TV cameras stand and which stretch of the
+ * lap each one watches. Placed from the viewport's own camera (fly there,
+ * press the button), or a whole set at once, one per corner.
+ */
+function CamerasSection() {
+  const cameras = useEditor((s) => s.project.cameras);
+  const closed = useEditor((s) => s.project.track.closed);
+  const addCamera = useEditor((s) => s.addCamera);
+  const updateCamera = useEditor((s) => s.updateCamera);
+  const deleteCamera = useEditor((s) => s.deleteCamera);
+  const autoCams = useEditor((s) => s.autoCameras);
+  const clearCameras = useEditor((s) => s.clearCameras);
+  const setStatus = useEditor((s) => s.setStatus);
+  const derived = useDerived();
+  const total = derived.trackLength;
+  const metres = (s: number) => `${Math.round(s * total)} m`;
+
+  return (
+    <Section
+      title="Replay cameras"
+      right={cameras.length > 0 ? <span className="badge">{cameras.length}</span> : undefined}
+    >
+      <p className="hint" style={{ marginTop: 0 }}>
+        TV cameras for replays and streams, written to <code>data/cameras.ini</code>. The catch
+        fence has a camera window cut into its mesh every {CAMERA_SPACING} m; the full set puts a
+        camera at every window, filming through it, each following the car through its stretch of
+        the lap. Fly the view to where a camera should stand and take it from there, or place the
+        full set at once.
+      </p>
+      <Row label="">
+        <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+          <button
+            className="btn"
+            style={{ flex: 1, justifyContent: 'center' }}
+            disabled={derived.trackFrames.length < 2}
+            onClick={() => {
+              const pose = getViewportCameraPose();
+              if (!pose) return;
+              addCamera([pose.pos.x, pose.pos.y, pose.pos.z], derived.trackFrames);
+              setStatus('Camera placed where the view is; it watches the road running up to the nearest point');
+            }}
+          >
+            Camera from this view
+          </button>
+          <button
+            className="btn"
+            style={{ flex: 1, justifyContent: 'center' }}
+            disabled={derived.trackFrames.length < 8}
+            title="One camera at every window in the fence, on the side the cars come towards, the stretches joined end to end. Replaces the set."
+            onClick={() => {
+              const n = autoCams(derived.trackFrames, derived.profile);
+              setStatus(`${n} cameras placed, one at every window in the fence`);
+            }}
+          >
+            One per window
+          </button>
+        </div>
+      </Row>
+      {cameras.length > 0 && (
+        <div className="list">
+          {cameras.map((cam) => (
+            <div key={cam.id} className="list-item" style={{ flexWrap: 'wrap', gap: 4 }}>
+              <span className="dot" style={{ background: '#ff5fa2' }} />
+              <input
+                type="text"
+                value={cam.name}
+                style={{ flex: 1, minWidth: 80 }}
+                onChange={(e) => updateCamera(cam.id, { name: e.target.value })}
+              />
+              <button
+                className="btn ghost icon"
+                style={{ padding: 2 }}
+                title="Delete this camera"
+                onClick={() => deleteCamera(cam.id)}
+              >
+                <IconTrash />
+              </button>
+              <div style={{ width: '100%', display: 'flex', gap: 6, alignItems: 'center', fontSize: 11 }}>
+                <span style={{ width: 22 }}>In</span>
+                <input
+                  type="range" min={0} max={0.999} step={0.001} value={cam.inS} style={{ flex: 1 }}
+                  onChange={(e) => updateCamera(cam.id, { inS: Number(e.target.value) })}
+                />
+                <span style={{ width: 52, textAlign: 'right' }}>{metres(cam.inS)}</span>
+              </div>
+              <div style={{ width: '100%', display: 'flex', gap: 6, alignItems: 'center', fontSize: 11 }}>
+                <span style={{ width: 22 }}>Out</span>
+                <input
+                  type="range" min={0} max={0.999} step={0.001} value={cam.outS} style={{ flex: 1 }}
+                  onChange={(e) => updateCamera(cam.id, { outS: Number(e.target.value) })}
+                />
+                <span style={{ width: 52, textAlign: 'right' }}>{metres(cam.outS)}</span>
+              </div>
+              <div style={{ width: '100%', display: 'flex', gap: 6, alignItems: 'center', fontSize: 11 }}>
+                <span style={{ width: 22 }}>Zoom</span>
+                <Num value={cam.fovMin} min={2} max={90} step={1} suffix="°" onChange={(v) => updateCamera(cam.id, { fovMin: v })} />
+                <Num value={cam.fovMax} min={2} max={120} step={1} suffix="°" onChange={(v) => updateCamera(cam.id, { fovMax: v })} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {cameras.length > 0 && (
+        <Row label="">
+          <button
+            className="btn danger"
+            style={{ width: '100%', justifyContent: 'center' }}
+            onClick={() => setStatus(`${clearCameras()} cameras removed`)}
+          >
+            Remove all cameras
+          </button>
+        </Row>
+      )}
+      <p className="hint">
+        In and Out are metres along the lap from the first track point, the same datum the AI line
+        uses; a stretch may run across the start line. The camera is aimed at the middle of its
+        stretch and the game turns it onto the car from there. Without any cameras the game uses its
+        own default ones, so an empty list is fine too.
+        {closed ? '' : ' Cameras want a closed lap to be worth much.'}
+      </p>
+    </Section>
   );
 }
 

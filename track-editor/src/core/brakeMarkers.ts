@@ -65,6 +65,13 @@ export interface BrakeMarker {
   dist: number;
   /** Distance along the lap of the corner it belongs to. */
   cornerDist: number;
+  /**
+   * Whether the board stands on the BUILT run off rather than on open ground.
+   * The run off is part of the road mesh and rides above the terrain that is
+   * tucked underneath it, so a board there must keep its computed height
+   * instead of following the terrain, or it sinks to the buried layer.
+   */
+  onRunoff: boolean;
 }
 
 /** Library key carrying a given distance. Mirrors the library's own naming. */
@@ -302,9 +309,22 @@ export function planBrakeMarkers(
       // along the tilted right vector plants the board under the grass.
       tmp.set(f.right.x, 0, f.right.z);
       if (tmp.lengthSq() > 1e-12) tmp.normalize();
+      /*
+       * Where the board's FOOT is. Within the run off the surface it stands on
+       * is the road mesh, which runs out flat from the tarmac edge, banking
+       * included, and sits ABOVE the terrain tucked beneath it. A board there
+       * used to follow the terrain and sank to that buried layer, its lower
+       * half behind the run off's edge. Beyond the run off the ground is the
+       * ground, and terrain following is right.
+       */
+      const runoffHere = side < 0 ? profile.runoffL[i] : profile.runoffR[i];
+      const onRunoff = cfg.offset <= runoffHere + 0.05;
+      const half = side < 0 ? f.widthL : f.widthR;
+      const y = onRunoff ? f.pos.y + side * f.right.y * half + 0.02 : f.pos.y;
       out.push({
         kind: brakeMarkerKind(distance),
-        p: [f.pos.x + tmp.x * lateral * side, f.pos.y, f.pos.z + tmp.z * lateral * side],
+        onRunoff,
+        p: [f.pos.x + tmp.x * lateral * side, y, f.pos.z + tmp.z * lateral * side],
         // Facing back down the track, so the car arriving sees the number.
         rotY: (THREE.MathUtils.radToDeg(Math.atan2(-f.fwd.x, -f.fwd.z)) + 360) % 360,
         distance,

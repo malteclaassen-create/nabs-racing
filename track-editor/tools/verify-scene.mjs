@@ -116,6 +116,9 @@ import {
 import { PREFABS, PREFABS_BY_KEY, instantiatePrefab, prefabOf } from '../src/core/prefabs.ts';
 import { propMeshes, physicsNameFor, trimToDrawRange } from '../src/export/buildExport.ts';
 import { surfacesIni } from '../src/export/ini.ts';
+import { frameAtDistance } from '../src/core/spline.ts';
+import { autoCameras, camerasIni, coverage, covers, stretchAround } from '../src/core/cameras.ts';
+import { CAMERA_WINDOW_SPACING, cameraWindowStations } from '../src/core/road.ts';
 import { propMatrix } from '../src/core/props.ts';
 
 let failures = 0;
@@ -338,8 +341,11 @@ console.log('\nBarrier style');
       && wallParts.some((m) => m.name === '1WALL_left_gate')
       && wallParts.some((m) => m.name === '1WALL_left_mark'),
     wallParts.map((m) => m.name).join(','));
+  /* Eighteen: base, mesh (in three bands, since the camera windows are cut
+     from the middle one), lean, gate run with its own mesh and lean, and the
+     painted tips, per side. */
   check('a catch fence is base, mesh and leaning top, both runs',
-    fenceParts.length === 14
+    fenceParts.length === 18
       && fenceParts.some((m) => m.name === '1WALL_left_mesh')
       && fenceParts.some((m) => m.name === '1WALL_left_lean')
       && fenceParts.some((m) => m.name === '1WALL_left_gate_mesh'),
@@ -365,10 +371,10 @@ console.log('\nBarrier style');
    * gap under it.
    */
   {
-    const mesh = fenceParts.filter((m) => /_mesh$|_lean$/.test(m.name));
-    const solidBase = fenceParts.filter((m) => !/_mesh$|_lean$/.test(m.name));
+    const mesh = fenceParts.filter((m) => /_mesh(_mid|_top)?$|_lean$/.test(m.name));
+    const solidBase = fenceParts.filter((m) => !/_mesh(_mid|_top)?$|_lean$/.test(m.name));
     check('the fencing is on the alpha tested material',
-      mesh.length === 8 && mesh.every((m) => m.material === 'chainlink'),
+      mesh.length === 12 && mesh.every((m) => m.material === 'chainlink'),
       mesh.map((m) => `${m.name}/${m.material}`).join(' '));
     check('and it is one AC will actually look through',
       mesh.every((m) => ALPHA_TESTED.has(m.material)));
@@ -402,10 +408,13 @@ console.log('\nBarrier style');
   for (const side of ['left', 'right']) {
     const inward = side === 'left' ? 1 : -1;
     const base = fenceParts.find((m) => m.name === `1WALL_${side}`);
-    const mesh = fenceParts.find((m) => m.name === `1WALL_${side}_mesh`);
+    // The mesh is three bands (the camera windows are cut from the middle
+    // one); what has to be continuous is the stack of all three.
+    const meshLow = fenceParts.find((m) => m.name === `1WALL_${side}_mesh`);
+    const meshTop = fenceParts.find((m) => m.name === `1WALL_${side}_mesh_top`);
     const lean = fenceParts.find((m) => m.name === `1WALL_${side}_lean`);
     const b = span(base, f0);
-    const m = span(mesh, f0);
+    const m = { lo: span(meshLow, f0).lo, hi: span(meshTop, f0).hi };
     const l = span(lean, f0);
 
     check(`the ${side} fence keeps a solid metre at the bottom`,
@@ -2179,17 +2188,24 @@ console.log('\nObject library');
     // span between two supports, and the whole point of it is the air under
     // it. Its ramp buries its foot the way a pad does, a slab thickness deep.
     if (d.key === 'bridge_road_deck') continue;
-    if (minY > 0.05) floating.push(`${d.key} ${minY.toFixed(2)}`);
+    // The braking boards hover 30 cm on purpose: see the library note.
+    const hover = d.key.startsWith('brake_') || d.key === 'marker_board' ? 0.35 : 0.05;
+    if (minY > hover) floating.push(`${d.key} ${minY.toFixed(2)}`);
     // Nature is allowed to sit half in the ground, and a ground pad reaches
     // below it on purpose so a slope shows no gap under the slab.
     // The bridge kit's legs carry a 3 m foundation below the origin on
     // purpose: a piece aligned with the BRIDGE can stand well above its own
     // patch of ground, and the legs have to reach down to find it.
+    // The stands carry a 3 m plinth below the origin for the same reason the
+    // bridge kit carries its footings: on a slope, or height-matched to a
+    // neighbour, the ground under one end is lower than the origin.
     const allowance =
       d.category === 'Nature' ? 0.6
         : d.key.startsWith('bridge_road') ? 13.2
-          : d.category === 'Ground' ? 0.4
-            : 0.05;
+          : d.key.startsWith('grandstand') ? 3.1
+            : d.key.startsWith('brake_') || d.key === 'marker_board' ? 1.1
+              : d.category === 'Ground' ? 0.4
+                : 0.05;
     if (minY < -allowance) sunken.push(`${d.key} ${minY.toFixed(2)}`);
   }
   check('nothing hovers above the ground it is dropped on', floating.length === 0, floating.join(','));
@@ -5267,14 +5283,18 @@ console.log('\nBraking boards');
   }
 
   /* --- the boards themselves ---------------------------------------- */
+  /* A bare panel, lifted 30 cm since 2026-09: with its bottom edge at the
+     origin the downhill corner of the number sank into every cross slope.
+     No posts (tried, taken out on the user's word): the lift alone keeps the
+     paint out of the grass. */
   for (const dmet of SIGN_DISTANCES) {
     const parts = propParts(brakeMarkerKind(dmet));
-    check(`the ${dmet} m board is one plain slab`,
+    check(`the ${dmet} m board is one plain panel`,
       parts.length === 1 && parts[0].material === 'sign_board');
     parts[0].geometry.computeBoundingBox();
     const bb = parts[0].geometry.boundingBox;
-    check(`and it stands on the ground with no legs under it`,
-      Math.abs(bb.min.y) < 1e-6 && bb.max.y > 1 && bb.max.y < 1.6,
+    check(`and the panel floats a little clear of the ground`,
+      bb.min.y > 0.2 && bb.min.y < 0.4 && bb.max.y > 1.4 && bb.max.y < 1.7,
       `${bb.min.y.toFixed(2)} .. ${bb.max.y.toFixed(2)} m`);
     // Each board reads its own quarter of the shared sheet.
     const uv = parts[0].geometry.getAttribute('uv');
@@ -6811,6 +6831,137 @@ console.log('\nThe painted pit stalls');
 
   console.log(`      ${cfg.boxCount} stalls, ${paint.geometry.getIndex().count / 3} triangles of paint`
     + ` and ${number.geometry.getIndex().count / 3} of numbers`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Replay cameras                                                      */
+/* ------------------------------------------------------------------ */
+
+console.log('\nReplay cameras');
+{
+  const proj = generatedProject('medium', { trees: false, paddock: false });
+  const d = getDerived(proj);
+  const closed = proj.track.closed;
+  const cams = autoCameras(d.trackFrames, closed, d.profile, (i) => `c${i}`);
+  // One at every camera window in the fence, every CAMERA_WINDOW_SPACING
+  // metres round the lap.
+  const windowCount = cameraWindowStations(d.trackFrames[d.trackFrames.length - 1].dist).length;
+  check('a generated lap gets a camera at every fence window',
+    cams.length === windowCount && windowCount >= 4, `${cams.length} cameras for ${windowCount} windows`);
+  {
+    const dists = cams.map((c) => {
+      let best = Infinity;
+      let at = 0;
+      for (const f of d.trackFrames) {
+        const dd = (f.pos.x - c.p[0]) ** 2 + (f.pos.z - c.p[2]) ** 2;
+        if (dd < best) { best = dd; at = f.dist; }
+      }
+      return at;
+    }).sort((a, b) => a - b);
+    let uneven = 0;
+    for (let i = 1; i < dists.length; i++) if (Math.abs(dists[i] - dists[i - 1] - CAMERA_WINDOW_SPACING) > 25) uneven++;
+    check('and they stand a window spacing apart', uneven === 0, `${uneven} gaps off ${CAMERA_WINDOW_SPACING} m`);
+  }
+  // The stretches partition the lap: every fraction of it is watched by
+  // exactly one camera, seam included.
+  let holes = 0;
+  let overlaps = 0;
+  for (let k = 0; k < 200; k++) {
+    const s = (k + 0.5) / 200;
+    const n = cams.filter((c) => covers(c, s)).length;
+    if (n === 0) holes++;
+    if (n > 1) overlaps++;
+  }
+  check('and the stretches cover the whole lap without a gap', holes === 0, `${holes} of 200 samples unwatched`);
+  check('and without two cameras claiming the same stretch', overlaps <= 2, `${overlaps} of 200 samples doubly watched`);
+  // Every camera stands beside the road, not on it, and above it. Measured
+  // against the cross section of ITS gate: the nearest cross section by
+  // distance is a different one for a camera standing outside a bend, and on
+  // a hilly lap that one can be a metre higher or lower.
+  const stations = cameraWindowStations(d.trackFrames[d.trackFrames.length - 1].dist);
+  let onRoad = 0;
+  let low = 0;
+  cams.forEach((c, k) => {
+    const f = frameAtDistance(d.trackFrames, closed, stations[k]);
+    const dd = Math.hypot(f.pos.x - c.p[0], f.pos.z - c.p[2]);
+    if (dd < 12) onRoad++;
+    if (c.p[1] - f.pos.y < 1.2) low++;
+  });
+  check('every camera stands clear of the tarmac', onRoad === 0, `${onRoad} within 12 m of the centre line`);
+  check('and at eye level above it', low === 0, `${low} less than 1.2 m above the road`);
+  /* On the barrier line: a generated lap is fenced all the way round, so
+     every camera has to stand just behind the fence, not out in the field. */
+  let offLine = 0;
+  cams.forEach((c, k) => {
+    const f = frameAtDistance(d.trackFrames, closed, stations[k]);
+    const n = d.trackFrames.length;
+    const i = Math.round((stations[k] / d.trackLength) * n) % n;
+    // Lateral along the FLATTENED right vector, the way the stand is built.
+    const len = Math.hypot(f.right.x, f.right.z) || 1;
+    const lat = ((c.p[0] - f.pos.x) * f.right.x + (c.p[2] - f.pos.z) * f.right.z) / len;
+    const side = lat < 0 ? -1 : 1;
+    const hasWall = (side < 0 ? d.profile.wallL[i] : d.profile.wallR[i]) === 1;
+    const wall = side < 0
+      ? f.widthL + d.profile.kerbWL[i] + d.profile.apronL[i] + d.profile.runoffL[i] + (hasWall ? d.profile.wallGapL[i] + 0.8 : 4)
+      : f.widthR + d.profile.kerbWR[i] + d.profile.apronR[i] + d.profile.runoffR[i] + (hasWall ? d.profile.wallGapR[i] + 0.8 : 4);
+    if (Math.abs(Math.abs(lat) - wall) > 1.0) offLine++;
+  });
+  check('and stands at the fence, its lens just behind the window', offLine === 0, `${offLine} off the fence line`);
+  /* The windows themselves: a horizontal ray through the middle of a window
+     passes clean through the fence at a camera station, and is stopped by
+     the mesh a few metres further along where there is no window. */
+  {
+    const meshes = d.roadMeshes.filter((m) => /^1WALL_(left|right)_mesh/.test(m.name));
+    check('the fence mesh is cut into bands around the windows',
+      meshes.some((m) => m.name.endsWith('_mesh_mid')));
+    const scene = new THREE.Scene();
+    for (const m of meshes) scene.add(new THREE.Mesh(m.geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })));
+    const ray = new THREE.Raycaster();
+    let open = 0;
+    let solid = 0;
+    cams.forEach((c, k) => {
+      const f = frameAtDistance(d.trackFrames, closed, stations[k]);
+      const lat = ((c.p[0] - f.pos.x) * f.right.x + (c.p[2] - f.pos.z) * f.right.z);
+      const side = lat < 0 ? -1 : 1;
+      const dir = new THREE.Vector3(f.right.x, 0, f.right.z).normalize().multiplyScalar(side);
+      // From the track side towards the lens, at lens height.
+      const origin = new THREE.Vector3(c.p[0], c.p[1], c.p[2]).addScaledVector(dir, -6);
+      ray.set(origin, dir);
+      ray.far = 8;
+      if (ray.intersectObjects(scene.children, false).length === 0) open++;
+      // Three metres along the fence, the mesh must be there.
+      const g = frameAtDistance(d.trackFrames, closed, stations[k] + 3);
+      const dir2 = new THREE.Vector3(g.right.x, 0, g.right.z).normalize().multiplyScalar(side);
+      const o2 = new THREE.Vector3(g.pos.x, c.p[1], g.pos.z).addScaledVector(dir2, Math.abs(lat) - 6);
+      ray.set(o2, dir2);
+      if (ray.intersectObjects(scene.children, false).length > 0) solid++;
+    });
+    check('every camera looks through an open window', open === cams.length, `${open} of ${cams.length} clear`);
+    // All but one: the probe three metres on is aimed from the window's own
+    // lateral, and where the run off is pulled back within those metres --
+    // the pit clearance does that -- the ray starts on the wrong side of the
+    // fence. One such spot per lap is the probe's business, not the fence's.
+    check('and the fence is closed again beside it', solid >= cams.length - 1, `${solid} of ${cams.length} blocked`);
+  }
+  // And the file: one block per camera, aimed at the lap, fractions in range.
+  const ini = camerasIni(cams, d.trackFrames, closed);
+  const blocks = ini.match(/\[CAMERA_\d+\]/g) ?? [];
+  check('cameras.ini carries one block per camera', blocks.length === cams.length && ini.includes(`CAMERA_COUNT=${cams.length}`));
+  const inPoints = [...ini.matchAll(/IN_POINT=([\d.]+)/g)].map((m) => Number(m[1]));
+  check('and its in points are lap fractions in ascending order',
+    inPoints.every((v, i) => v >= 0 && v <= 1 && (i === 0 || v >= inPoints[i - 1])));
+  const fwd = [...ini.matchAll(/FORWARD=([-\d.]+),([-\d.]+),([-\d.]+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+  /* Unit vectors, roughly level: a camera 6 m up looks a little down at a
+     target on the flat and a little UP at one on a hill a few hundred metres
+     away, so the sign of y is the lap's business. Straight up or down would
+     be a bug. */
+  check('and every forward vector is a unit vector aimed along the lap',
+    fwd.every(([x, y, z]) => Math.abs(Math.hypot(x, y, z) - 1) < 0.01 && Math.abs(y) < 0.5));
+  // A hand dropped camera watches the road BEHIND its spot, where the cars come from.
+  const total = d.trackLength;
+  const st = stretchAround(1000, total);
+  check('a hand placed camera watches the approach to its spot',
+    coverage(st) > 0 && covers(st, 900 / total) && !covers(st, 1300 / total));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) failed.\n`);

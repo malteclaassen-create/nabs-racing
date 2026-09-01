@@ -338,6 +338,30 @@ export interface PropInstance {
 }
 
 /**
+ * One replay camera: a fixed TV position beside the circuit that follows the
+ * car while it is inside the camera's stretch of the lap.
+ *
+ * The stretch is given as fractions of the lap, 0..1, measured the way the
+ * exported AI spline measures it (from the first track control point), because
+ * that is what Assetto Corsa's IN_POINT / OUT_POINT mean. The camera's initial
+ * direction is not stored: it is aimed at the middle of its stretch when the
+ * file is written, and the game turns the camera onto the car from there.
+ */
+export interface TrackCamera {
+  id: string;
+  name: string;
+  /** World position of the lens. */
+  p: Vec3;
+  /** Fraction of the lap the camera cuts in at. */
+  inS: number;
+  /** Fraction it hands over at. May be smaller than inS across the seam. */
+  outS: number;
+  /** Zoom range, degrees of vertical field of view. */
+  fovMin: number;
+  fovMax: number;
+}
+
+/**
  * A user supplied picture, stored inside the project file as base64 -- the
  * same treatment the imported models get. Small by nature: sponsor banners,
  * not photographs of the family.
@@ -694,6 +718,8 @@ export interface Project {
   props: PropInstance[];
   /** Sponsor banner pictures, referenced by PropInstance.banner. */
   images: ProjectImage[];
+  /** Replay cameras, written to data/cameras.ini. */
+  cameras: TrackCamera[];
   assets: AssetFile[];
   terrain: TerrainSettings;
   /**

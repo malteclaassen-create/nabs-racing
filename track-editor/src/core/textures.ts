@@ -592,9 +592,9 @@ function makeGrassBlades(): HTMLCanvasElement {
     // lawn instead of blades OF it -- lighter here lands them at the texture
     // once the lighting has had its say.
     const g = ctx.createLinearGradient(x, SIZE, x + lean, SIZE - h);
-    const tint = 0.8 + rnd() * 0.5;
-    g.addColorStop(0, `rgb(${Math.round(50 * tint)}, ${Math.round(88 * tint)}, ${Math.round(40 * tint)})`);
-    g.addColorStop(1, `rgb(${Math.round(126 * tint)}, ${Math.round(172 * tint)}, ${Math.round(76 * tint)})`);
+    const tint = 0.85 + rnd() * 0.5;
+    g.addColorStop(0, `rgb(${Math.round(62 * tint)}, ${Math.round(104 * tint)}, ${Math.round(50 * tint)})`);
+    g.addColorStop(1, `rgb(${Math.round(150 * tint)}, ${Math.round(196 * tint)}, ${Math.round(94 * tint)})`);
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(x - w, SIZE);
@@ -606,7 +606,7 @@ function makeGrassBlades(): HTMLCanvasElement {
   }
   // A hairline of root so a tuft is anchored rather than floating, thin enough
   // not to read as a green line when you are stood next to it.
-  ctx.fillStyle = 'rgba(56, 96, 46, 0.9)';
+  ctx.fillStyle = 'rgba(66, 110, 54, 0.9)';
   ctx.fillRect(0, SIZE - 2, SIZE, 2);
   return c;
 }
@@ -1423,7 +1423,7 @@ export const MATERIAL_COLORS: Record<MaterialKey, string> = {
   prop_yellow: '#e0b52c',
   prop_blue: '#2f5f9e',
   chainlink: '#b9c0c6',
-  grass_blades: '#5a8c3e',
+  grass_blades: '#699e4a',
   tree_card: '#3d5f2c',
   sign_board: '#f2f2ef',
   led_flag: '#e6ebef',

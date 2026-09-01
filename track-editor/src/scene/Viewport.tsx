@@ -50,8 +50,9 @@ interface MarqueeBox {
 
 /** Metres a marquee has to reach before it stops being a click. */
 const MIN_MARQUEE = 1.5;
-import { bridgeRoadwayAtEdge, GRASS_KINDS, isGroundPad, LIBRARY_BY_KEY, PAD_SIZE, propParts, propTileBox } from '../core/library';
+import { alignsToNeighbourHeight, bridgeRoadwayAtEdge, GRASS_KINDS, isGroundPad, LIBRARY_BY_KEY, PAD_SIZE, propParts, propTileBox } from '../core/library';
 import { bannerQuad, canCarryBanner } from '../core/banner';
+import { cameraTarget } from '../core/cameras';
 import {
   clearanceAt,
   padScale,
@@ -496,8 +497,13 @@ function resolvePlacementPose(point: THREE.Vector3, exact: boolean): PlacementPo
     // Bridge pieces are 12 to 56 m long and MUST land flush -- a free-floating
     // deck is a step in the roadway -- so their catch radius is far wider than
     // the 2 m that suits a shed: within a dozen metres of the slot, the click
-    // means "continue the bridge".
-    threshold: isBridgeKind(s.placeKind) ? 12 : undefined,
+    // means "continue the bridge". The stands, which also continue their
+    // neighbour's level, get a wider catch too: they are 12 to 36 m wide.
+    threshold: isBridgeKind(s.placeKind)
+      ? 12
+      : alignsToNeighbourHeight(s.placeKind)
+        ? 6
+        : undefined,
   });
   const pos = point.clone();
   pos.x = hit.x;
@@ -510,9 +516,9 @@ function resolvePlacementPose(point: THREE.Vector3, exact: boolean): PlacementPo
    * ground the decks stepped, the ramp met nothing, and the pier missed the
    * underside it exists to carry.
    */
-  if (hit.rule === 'flush' && hit.neighborId && isBridgeKind(s.placeKind)) {
+  if (hit.rule === 'flush' && hit.neighborId && alignsToNeighbourHeight(s.placeKind)) {
     const neighbor = s.project.props.find((p) => p.id === hit.neighborId);
-    if (neighbor && isBridgeKind(neighbor.kind)) {
+    if (neighbor && alignsToNeighbourHeight(neighbor.kind)) {
       const heights = getDerived(s.project).terrainHeights;
       const nY = propPosition(neighbor, s.project.terrain, heights).y;
       /*
@@ -5486,8 +5492,83 @@ export function Viewport() {
       */}
       <Profiler id={SCENE_ID} onRender={reportSceneRender}>
         <SceneRoot />
+        <CameraProbe />
+        <CameraGlyphs />
       </Profiler>
     </Canvas>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Replay cameras                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Where the editor's own camera is, kept fresh every frame.
+ *
+ * The Race panel's "camera from this view" reads it: fly to the spot you want
+ * the TV camera to stand, press the button, and that is the camera. A module
+ * variable rather than store state because the view moves sixty times a
+ * second under the mouse and nothing needs to render from it.
+ */
+const viewPose = { pos: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, -1), ready: false };
+
+export function getViewportCameraPose(): { pos: THREE.Vector3; dir: THREE.Vector3 } | null {
+  return viewPose.ready ? { pos: viewPose.pos.clone(), dir: viewPose.dir.clone() } : null;
+}
+
+function CameraProbe() {
+  const camera = useThree((s) => s.camera);
+  useFrame(() => {
+    viewPose.pos.copy(camera.position);
+    camera.getWorldDirection(viewPose.dir);
+    viewPose.ready = true;
+  });
+  return null;
+}
+
+/**
+ * Where each replay camera is and what it looks at: a small marker at the
+ * lens -- in the fence's camera window -- and a thin line to the middle of
+ * the stretch it covers. There is no camera model on purpose: the window in
+ * the fence is the camera position.
+ */
+function CameraGlyphs() {
+  const cameras = useEditor((s) => s.project.cameras);
+  const closed = useEditor((s) => s.project.track.closed);
+  const view = useEditor((s) => s.view);
+  const derived = useDerived();
+  const items = useMemo(() => {
+    if (derived.trackFrames.length < 2) return [];
+    return cameras.map((cam) => {
+      const target = cameraTarget(cam, derived.trackFrames, closed);
+      const pos = new THREE.Vector3(cam.p[0], cam.p[1], cam.p[2]);
+      return { id: cam.id, pos, target };
+    });
+  }, [cameras, derived.trackFrames, closed]);
+  if (!view.markers || items.length === 0) return null;
+  return (
+    <group>
+      {items.map((it) => (
+        <group key={it.id}>
+          <mesh
+            geometry={UNIT_SPHERE}
+            position={it.pos}
+            scale={0.35}
+            material={basicMaterial('#ff5fa2', 0.9, false)}
+            raycast={() => null}
+          />
+          <Line
+            points={[it.pos, it.target]}
+            color="#ff5fa2"
+            lineWidth={1}
+            transparent
+            opacity={0.5}
+            raycast={() => null}
+          />
+        </group>
+      ))}
+    </group>
   );
 }
 
