@@ -1461,6 +1461,7 @@ function GroundOptions() {
   const draft = useEditor((s) => s.groundDraft);
   const setGroundDraft = useEditor((s) => s.setGroundDraft);
   const paintGroundPolygon = useEditor((s) => s.paintGroundPolygon);
+  const paintGroundPath = useEditor((s) => s.paintGroundPath);
   const clearGroundPaint = useEditor((s) => s.clearGroundPaint);
   const fillGround = useEditor((s) => s.fillGround);
   const setStatus = useEditor((s) => s.setStatus);
@@ -1483,10 +1484,11 @@ function GroundOptions() {
             { value: 'brush' as const, label: 'Brush' },
             { value: 'rect' as const, label: 'Rectangle' },
             { value: 'polygon' as const, label: 'Outline' },
+            { value: 'path' as const, label: 'Line' },
           ]}
           onChange={(v) => {
             setGround({ mode: v });
-            if (v !== 'polygon') setGroundDraft([]);
+            if (v !== 'polygon' && v !== 'path') setGroundDraft([]);
           }}
         />
       </Row>
@@ -1499,6 +1501,28 @@ function GroundOptions() {
             step={1}
             unit=" m"
             onChange={(v) => setGround({ radius: v })}
+          />
+        </Row>
+      )}
+      {ground.mode === 'path' && (
+        <Row label="Width">
+          <Slider
+            value={ground.pathWidth}
+            min={1}
+            max={30}
+            step={0.5}
+            digits={1}
+            unit=" m"
+            onChange={(v) => setGround({ pathWidth: v })}
+          />
+        </Row>
+      )}
+      {(ground.mode === 'polygon' || ground.mode === 'path') && (
+        <Row label="">
+          <Check
+            label="Curve through the points"
+            checked={ground.curve}
+            onChange={(v) => setGround({ curve: v })}
           />
         </Row>
       )}
@@ -1528,6 +1552,42 @@ function GroundOptions() {
           and fills it in; <b>Esc</b> drops it. For a paddock or a run off area that is neither
           round nor square, which on a circuit is most of them.
         </p>
+      )}
+      {ground.mode === 'path' && (
+        <p className="hint">
+          Click points along the line, <b>Enter</b> paints it; clicking the first point again joins
+          it into a ring, <b>Esc</b> drops it. Dead straight between the points, or one continuous
+          curve through them with the toggle on — the precise way to lay a service road or a
+          painted band, exactly where you put it.
+        </p>
+      )}
+      {ground.mode === 'path' && draft.length > 0 && (
+        <Row label="">
+          <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+            <button
+              className="btn"
+              style={{ flex: 1, justifyContent: 'center' }}
+              disabled={draft.length < 2}
+              onClick={() => {
+                const ok = paintGroundPath(draft.map(([x, z]) => ({ x, z })), ground.kind);
+                setGroundDraft([]);
+                setStatus(ok ? 'Ground line painted' : 'That line covered nothing');
+              }}
+            >
+              Paint {draft.length} points
+            </button>
+            <button
+              className="btn"
+              style={{ flex: 1, justifyContent: 'center' }}
+              onClick={() => {
+                setGroundDraft([]);
+                setStatus('Line dropped');
+              }}
+            >
+              Drop it
+            </button>
+          </div>
+        </Row>
       )}
       {ground.mode === 'polygon' && draft.length > 0 && (
         <Row label="">
@@ -1559,7 +1619,7 @@ function GroundOptions() {
       )}
 
       <p className="hint" style={{ marginTop: 0 }}>
-        <b>Alt</b> rubs the paint out in any of the three, which is not the same as painting grass:
+        <b>Alt</b> rubs the paint out in any of the four, which is not the same as painting grass:
         grass is a material you lay over what was there, the eraser hands the patch back. Whatever
         you paint <i>replaces</i> the ground rather than covering it: nothing sits on top, nothing
         shows through, and sculpting moves it with the rest. Each material is exported as its own

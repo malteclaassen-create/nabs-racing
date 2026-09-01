@@ -494,6 +494,114 @@ export function paintGroundPolygon(
   );
 }
 
+/**
+ * Paint a stroke of the given width along a polyline. Returns whether anything
+ * changed.
+ *
+ * The precise counterpart to sweeping the round brush by hand: the centre line
+ * is exactly the points given -- a dead straight service road, or a curve
+ * densified through smoothOutline -- and the edge runs parallel to it at half
+ * the width, cut into the mesh by the same signed distance every other shape
+ * reports. `closed` joins the last point back to the first, which is how a
+ * ring road or the painted apron around an island is one stroke.
+ */
+export function paintGroundPath(
+  t: TerrainSettings,
+  paint: Uint8Array,
+  edge: Int8Array | null,
+  points: ReadonlyArray<{ x: number; z: number }>,
+  width: number,
+  value: number,
+  probe = false,
+  closed = false,
+): boolean {
+  if (points.length < 2 || width <= 0) return false;
+  const half = width / 2;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.z < minZ) minZ = p.z;
+    if (p.z > maxZ) maxZ = p.z;
+  }
+  const n = points.length;
+  const segs = closed ? n : n - 1;
+  return fillPaint(
+    t,
+    paint,
+    edge,
+    { minX: minX - half, maxX: maxX + half, minZ: minZ - half, maxZ: maxZ + half },
+    (px, pz) => {
+      let best = Infinity;
+      for (let i = 0; i < segs; i++) {
+        const a = points[i];
+        const b = points[i + 1 < n ? i + 1 : 0];
+        const ex = b.x - a.x;
+        const ez = b.z - a.z;
+        const len2 = ex * ex + ez * ez;
+        let s = len2 > 1e-12 ? ((px - a.x) * ex + (pz - a.z) * ez) / len2 : 0;
+        s = s < 0 ? 0 : s > 1 ? 1 : s;
+        const dx = px - (a.x + ex * s);
+        const dz = pz - (a.z + ez * s);
+        const d2 = dx * dx + dz * dz;
+        if (d2 < best) best = d2;
+      }
+      return Math.sqrt(best) - half;
+    },
+    value,
+    probe,
+  );
+}
+
+/**
+ * A smooth curve through the given points, densified into a polyline.
+ *
+ * Catmull-Rom, so the curve passes THROUGH every clicked point rather than
+ * merely being attracted to it -- click a corner and the curve is there, which
+ * is what "genau" has to mean for a drawing tool. Handed to paintGroundPath or
+ * paintGroundPolygon in place of the raw points, it turns their dead straight
+ * segments into one continuous curve; the sub metre step keeps the chords
+ * finer than anything the paint field can resolve, so the painted result IS
+ * the curve.
+ */
+export function smoothOutline(
+  points: ReadonlyArray<{ x: number; z: number }>,
+  closed: boolean,
+  step = 0.75,
+): Array<{ x: number; z: number }> {
+  const n = points.length;
+  if (n < 3) return points.map((p) => ({ x: p.x, z: p.z }));
+  const at = (i: number) =>
+    points[closed ? ((i % n) + n) % n : i < 0 ? 0 : i >= n ? n - 1 : i];
+  const out: Array<{ x: number; z: number }> = [];
+  const segs = closed ? n : n - 1;
+  for (let i = 0; i < segs; i++) {
+    const p0 = at(i - 1);
+    const p1 = at(i);
+    const p2 = at(i + 1);
+    const p3 = at(i + 2);
+    const steps = Math.max(1, Math.ceil(Math.hypot(p2.x - p1.x, p2.z - p1.z) / step));
+    for (let s = 0; s < steps; s++) {
+      const u = s / steps;
+      const u2 = u * u;
+      const u3 = u2 * u;
+      out.push({
+        x: 0.5 * (2 * p1.x + (p2.x - p0.x) * u
+          + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * u2
+          + (3 * p1.x - p0.x - 3 * p2.x + p3.x) * u3),
+        z: 0.5 * (2 * p1.z + (p2.z - p0.z) * u
+          + (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * u2
+          + (3 * p1.z - p0.z - 3 * p2.z + p3.z) * u3),
+      });
+    }
+  }
+  if (!closed) out.push({ x: points[n - 1].x, z: points[n - 1].z });
+  return out;
+}
+
 /** Carry a paint field onto a different grid, by world position. */
 export function resamplePaint(
   from: TerrainSettings,

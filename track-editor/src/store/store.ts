@@ -36,8 +36,10 @@ import {
   heightsDelta,
   paintValue,
   paintGroundDisc as discPaint,
+  paintGroundPath as pathPaint,
   paintGroundPolygon as polygonPaint,
   paintGroundRect as rectPaint,
+  smoothOutline,
   type GroundRect,
 } from '../core/terrain';
 import { makeNode, type Frame } from '../core/spline';
@@ -417,8 +419,20 @@ export interface GroundBrush {
    *   'polygon'  click the corners of an outline and close it. The shape that
    *              is neither round nor square, which on a circuit is most of
    *              them.
+   *   'path'     click points along a line and paint a stroke of `pathWidth`
+   *              along it. The precise way to lay a service road or a painted
+   *              band: dead straight between the points, or one continuous
+   *              curve through them with `curve` on.
    */
-  mode: 'brush' | 'rect' | 'polygon';
+  mode: 'brush' | 'rect' | 'polygon' | 'path';
+  /** Width of a painted line, metres. */
+  pathWidth: number;
+  /**
+   * Bend the clicked points into a Catmull-Rom curve THROUGH them, for the
+   * path and the polygon alike. Off, every segment is exactly the straight
+   * line between two clicks -- which is its own kind of precision.
+   */
+  curve: boolean;
 }
 
 /**
@@ -547,8 +561,16 @@ export interface EditorState {
   paintGround: (x: number, z: number, kind: number) => boolean;
   /** A rectangle of ground, in one undo step. */
   paintGroundRect: (rect: GroundRect, kind: number) => boolean;
-  /** The inside of an outline, in one undo step. */
+  /** The inside of an outline, in one undo step. Bent through the points when
+      the ground tool's curve toggle is on. */
   paintGroundPolygon: (points: ReadonlyArray<{ x: number; z: number }>, kind: number) => boolean;
+  /** A stroke of `ground.pathWidth` along the points, in one undo step.
+      `closed` joins the last point back to the first, so a ring is one line. */
+  paintGroundPath: (
+    points: ReadonlyArray<{ x: number; z: number }>,
+    kind: number,
+    closed?: boolean,
+  ) => boolean;
   /** The whole field at once. -1 empties the paint field rather than filling it. */
   fillGround: (kind: number) => void;
   /**
@@ -905,7 +927,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   // rigid causeway standing across every valley it dug.
   brushRoad: true,
   // Asphalt at 12 m: a paddock or an access road, which is what this is for.
-  ground: { kind: 1, radius: 12, mode: 'brush' },
+  // The line is 6 m wide -- a single-track service road. Curve starts OFF:
+  // straight between the clicks is the predictable answer, and an outline
+  // drawn before the toggle existed must keep coming out with its corners.
+  ground: { kind: 1, radius: 12, mode: 'brush', pathWidth: 6, curve: false },
   // Two species rather than one, because a single tree repeated reads as a
   // plantation; 7 m is real forestry spacing and keeps the count sane.
   scatter: {
@@ -1101,12 +1126,27 @@ export const useEditor = create<EditorState>((set, get) => ({
       'commit',
     ),
 
-  paintGroundPolygon: (points, kind) =>
-    applyGroundPaint(
-      (t, arr, edge, probe) => polygonPaint(t, arr, edge, points, paintValue(kind), probe),
+  paintGroundPolygon: (points, kind) => {
+    // Bent through the corners when the tool says so: the same clicks, a
+    // curved border. The densified outline is computed once, not per probe.
+    const shaped = get().ground.curve ? smoothOutline(points, true) : points;
+    return applyGroundPaint(
+      (t, arr, edge, probe) => polygonPaint(t, arr, edge, shaped, paintValue(kind), probe),
       kind,
       'commit',
-    ),
+    );
+  },
+
+  paintGroundPath: (points, kind, closed = false) => {
+    const g = get().ground;
+    const shaped = g.curve ? smoothOutline(points, closed) : points;
+    return applyGroundPaint(
+      (t, arr, edge, probe) =>
+        pathPaint(t, arr, edge, shaped, g.pathWidth, paintValue(kind), probe, closed),
+      kind,
+      'commit',
+    );
+  },
 
   fillGround: (kind) => {
     const t = get().project.terrain;

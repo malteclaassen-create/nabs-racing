@@ -366,6 +366,15 @@ export default function App() {
         // its first corner again, because the last corner is often nowhere
         // near the first one on screen.
         case 'enter': {
+          // A line only needs two points; an outline needs three corners.
+          if (s.ground.mode === 'path') {
+            if (s.groundDraft.length < 2) break;
+            const points = s.groundDraft.map(([x, z]) => ({ x, z }));
+            const painted = s.paintGroundPath(points, s.ground.kind);
+            s.setGroundDraft([]);
+            s.setStatus(painted ? 'Ground line painted' : 'That line covered nothing');
+            break;
+          }
           if (s.groundDraft.length < 3) break;
           const points = s.groundDraft.map(([x, z]) => ({ x, z }));
           const painted = s.paintGroundPolygon(points, s.ground.kind);

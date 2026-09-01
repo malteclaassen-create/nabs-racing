@@ -24,7 +24,7 @@ import {
   spanMetres,
   tAtDist,
 } from '../core/kerbs';
-import { GROUND_KINDS, makeTerrainRaycast, sampleHeights, type GroundRect } from '../core/terrain';
+import { GROUND_KINDS, makeTerrainRaycast, sampleHeights, smoothOutline, type GroundRect } from '../core/terrain';
 
 /* Alt while painting the ground rubs it out. Not the same as painting grass:
    grass is a material laid over whatever was there, the eraser hands the patch
@@ -1006,6 +1006,35 @@ function TerrainLayer({ derived }: { derived: Derived }) {
         return;
       }
 
+      /* A line goes down point by point the same way, but stays a line: Enter
+         paints the open stroke, and clicking the first point again joins it
+         into a ring instead of closing an area. */
+      if (ground.mode === 'path') {
+        const at = groundPoint(e.point.x, e.point.z);
+        const s = useEditor.getState();
+        const draft = s.groundDraft;
+        const first = draft[0];
+        const ringing = draft.length >= 3 && first
+          && Math.hypot(at.x - first[0], at.z - first[1]) < closeReach(ground.radius);
+        if (ringing) {
+          const painted = s.paintGroundPath(
+            draft.map(([x, z]) => ({ x, z })),
+            e.nativeEvent.altKey ? GROUND_ERASE : s.ground.kind,
+            true,
+          );
+          s.setGroundDraft([]);
+          setStatus(painted ? 'Ground line painted as a ring' : 'That line covered nothing');
+          return;
+        }
+        s.setGroundDraft([...draft, [at.x, at.z]]);
+        setStatus(
+          draft.length === 0
+            ? 'Point down. Click along the line; Enter paints it, the first point again makes a ring.'
+            : `${draft.length + 1} points · Enter paints the line, Esc drops it`,
+        );
+        return;
+      }
+
       // The brush rides the sculpt loop: press, sweep, one undo entry for the
       // whole sweep.
       sculpting.current = true;
@@ -1405,7 +1434,9 @@ function TerrainLayer({ derived }: { derived: Derived }) {
   const groundPreview = tool === 'ground' && (
     <GroundShapePreview
       rect={groundRect}
-      draft={ground.mode === 'polygon' ? groundDraft : []}
+      draft={ground.mode === 'polygon' || ground.mode === 'path' ? groundDraft : []}
+      open={ground.mode === 'path'}
+      curve={ground.curve}
       cursor={cursor}
       colour={erasing.current ? '#ff6b6b' : MATERIAL_COLORS[GROUND_KINDS[ground.kind].material] ?? '#ffb02e'}
       groundAt={groundAt}
@@ -1744,18 +1775,24 @@ function densifyRun(
 function GroundShapePreview({
   rect,
   draft,
+  open = false,
+  curve = false,
   cursor,
   colour,
   groundAt,
 }: {
   rect: GroundRect | null;
   draft: Array<[number, number]>;
+  /** A line being collected: shown as drawn, never closed back on itself. */
+  open?: boolean;
+  /** Show the Catmull-Rom the commit will paint, not the chords between clicks. */
+  curve?: boolean;
   cursor: THREE.Vector3 | null;
   colour: string;
   groundAt: (x: number, z: number) => number;
 }) {
   const points = useMemo(() => {
-    const ring: Array<{ x: number; z: number }> = [];
+    let ring: Array<{ x: number; z: number }> = [];
     if (rect) {
       const hx = rect.w / 2;
       const hz = rect.l / 2;
@@ -1769,9 +1806,18 @@ function GroundShapePreview({
     } else if (draft.length > 0) {
       for (const [x, z] of draft) ring.push({ x, z });
       if (cursor) ring.push(groundPoint(cursor.x, cursor.z));
-      // Shown closed from three corners on, because that is the shape that
-      // would be painted if it were closed right now.
-      if (ring.length >= 3) ring.push(ring[0]);
+      /* What you see is what the commit paints: bent through the points when
+         the curve toggle is on, with the closing chord added BEFORE the bend
+         for an outline so the curve rounds the join too. */
+      const closes = !open && ring.length >= 3;
+      if (curve && ring.length >= 3) {
+        ring = smoothOutline(ring, closes, 2);
+        if (closes) ring.push(ring[0]);
+      } else if (closes) {
+        // Shown closed from three corners on, because that is the shape that
+        // would be painted if it were closed right now.
+        ring.push(ring[0]);
+      }
     }
     if (ring.length < 2) return null;
 
@@ -1790,7 +1836,7 @@ function GroundShapePreview({
     const last = ring[ring.length - 1];
     out.push(new THREE.Vector3(last.x, groundAt(last.x, last.z) + 0.3, last.z));
     return out;
-  }, [rect, draft, cursor, groundAt]);
+  }, [rect, draft, open, curve, cursor, groundAt]);
 
   if (!points) return null;
   const first = draft[0];

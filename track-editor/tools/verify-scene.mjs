@@ -79,8 +79,10 @@ import {
   paintCellSize,
   createPaintEdge,
   paintGroundDisc,
+  paintGroundPath,
   paintGroundPolygon,
   paintGroundRect,
+  smoothOutline,
   paintValue,
   paintRes,
   sampleGround,
@@ -5955,6 +5957,76 @@ console.log('\nPainted ground');
     check('the stored edge distances agree with the paint about every side',
       wrong === 0 && checked > 500,
       `${wrong} of ${checked} samples lie about their side`);
+  }
+
+  /* --- a painted line ------------------------------------------------ */
+  {
+    // A dead straight 8 m stroke at 45 degrees: on the centre line it is
+    // asphalt, half a width plus a cell off it it is not, and the area is the
+    // rectangle the stroke describes plus its two round ends.
+    const field = createPaint(t.res);
+    const dist = createPaintEdge(t.res);
+    const a = { x: -300, z: -300 };
+    const b = { x: -200, z: -200 };
+    check('a line paints',
+      paintGroundPath(t, field, dist, [a, b], 8, paintValue(asphalt)) === true);
+    const mid = { x: -250, z: -250 };
+    const off = { x: mid.x + 8, z: mid.z - 8 }; // 11.3 m off the centre line
+    check('and runs exactly where it was drawn',
+      sampleGround(t, field, mid.x, mid.z) === asphalt
+      && sampleGround(t, field, a.x, a.z) === asphalt
+      && sampleGround(t, field, off.x, off.z) === 0);
+    const lineDef = terrainMesh(t, t.heights, field);
+    const slot = lineDef.groups.findIndex((g) => g.surface === 'ROAD');
+    const gg = lineDef.geometry.groups[slot];
+    const pp = lineDef.geometry.getAttribute('position').array;
+    const ii = lineDef.geometry.getIndex().array;
+    let area = 0;
+    for (let i = gg.start; i < gg.start + gg.count; i += 3) {
+      const q = ii[i] * 3, r = ii[i + 1] * 3, s = ii[i + 2] * 3;
+      area += Math.abs((pp[r] - pp[q]) * (pp[s + 2] - pp[q + 2]) - (pp[s] - pp[q]) * (pp[r + 2] - pp[q + 2])) / 2;
+    }
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const wanted = len * 8 + Math.PI * 16; // the band plus its two round caps
+    check('and its mesh is the stroke to within a paint step along each edge',
+      Math.abs(area - wanted) < 2 * len * paintCellSize(t),
+      `${Math.round(area)} m2 vs ${Math.round(wanted)} m2`);
+
+    // A ring: the same tool with the ends joined. The middle stays untouched.
+    const ringF = createPaint(t.res);
+    const R = 40;
+    const ringPts = [];
+    for (let k = 0; k < 24; k++) {
+      const ang = (k / 24) * Math.PI * 2;
+      ringPts.push({ x: 350 + Math.cos(ang) * R, z: -350 + Math.sin(ang) * R });
+    }
+    paintGroundPath(t, ringF, null, ringPts, 6, paintValue(asphalt), false, true);
+    check('a closed line is a ring, not a disc',
+      sampleGround(t, ringF, 350 + R, -350) === asphalt
+      && sampleGround(t, ringF, 350, -350) === 0);
+  }
+
+  /* --- the curve goes through the clicks ----------------------------- */
+  {
+    const pts = [
+      { x: 0, z: 0 },
+      { x: 40, z: 25 },
+      { x: 80, z: 0 },
+      { x: 120, z: -25 },
+    ];
+    const curve = smoothOutline(pts, false, 1);
+    // Catmull-Rom interpolates its control points: every click is ON the
+    // curve, which is what "genau" means for a drawing tool.
+    let worst = 0;
+    for (const p of pts) {
+      let best = Infinity;
+      for (const q of curve) best = Math.min(best, Math.hypot(q.x - p.x, q.z - p.z));
+      worst = Math.max(worst, best);
+    }
+    check('the smoothed line passes through every clicked point',
+      worst < 0.01, `worst miss ${worst.toFixed(3)} m`);
+    check('and is dense enough that its chords are finer than the paint',
+      curve.length > pts.length * 10, `${curve.length} points`);
   }
 
   {
