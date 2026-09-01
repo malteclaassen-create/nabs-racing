@@ -90,6 +90,99 @@ function catmullScalar(values: number[], closed: boolean, t: number): number {
   );
 }
 
+/**
+ * The same interpolation, held inside the values it was given.
+ *
+ * A Catmull-Rom curve through 0, 0, 30, 30 does not go from 0 to 30 and stop
+ * there. To arrive smoothly it swings the other way first and sails past the
+ * far end afterwards: measured on a test oval banked at 30 degrees, the
+ * STRAIGHT in front of the corner came out tilted 2.2 degrees the wrong way --
+ * half a metre between the two edges of a 14 m road, hanging the wrong side,
+ * where every control point on it was set to nought -- and the corner itself
+ * reached 32.2. Neither figure is anywhere in what the author typed, and the
+ * banking slider does not even go that far.
+ *
+ * Fine for a width, where a metre of bulge between two points is what a road
+ * drawn by hand does anyway. Not fine for banking: reverse camber is a
+ * property of the surface a car is on, and it appeared where the author had
+ * asked for a flat road.
+ *
+ * So the tangents at the knots are limited the way Fritsch and Carlson
+ * limited them: flat wherever the values turn around, and never steeper than
+ * three times the smaller of the two slopes meeting there. The result is still
+ * a smooth cubic through exactly the same points -- it just cannot leave the
+ * span between the two it is travelling between. The one visible difference is
+ * the shape of the ramp: it now eases out of the flat and into the banking
+ * rather than dipping first, which is what an author drawing 0, 0, 30, 30
+ * meant by it.
+ *
+ * Costs one comparison and a square root over the plain form, on the four
+ * values it was reading anyway.
+ */
+function monotoneScalar(values: number[], closed: boolean, t: number): number {
+  const l = values.length;
+  if (l === 0) return 0;
+  if (l === 1) return values[0];
+
+  const p = (l - (closed ? 0 : 1)) * t;
+  let intPoint = Math.floor(p);
+  let weight = p - intPoint;
+
+  if (closed) {
+    intPoint += intPoint > 0 ? 0 : (Math.floor(Math.abs(intPoint) / l) + 1) * l;
+  } else if (weight === 0 && intPoint === l - 1) {
+    intPoint = l - 2;
+    weight = 1;
+  }
+
+  const at = (i: number) => {
+    if (closed) return values[((i % l) + l) % l];
+    return values[Math.min(Math.max(i, 0), l - 1)];
+  };
+
+  const v0 = at(intPoint - 1);
+  const v1 = at(intPoint);
+  const v2 = at(intPoint + 1);
+  const v3 = at(intPoint + 2);
+
+  // Slopes of the three chords around this span, and the plain Catmull-Rom
+  // tangents at its two ends before anything is done to them.
+  const d0 = v1 - v0;
+  const d1 = v2 - v1;
+  const d2 = v3 - v2;
+  let m1 = (d0 + d1) / 2;
+  let m2 = (d1 + d2) / 2;
+
+  if (d1 === 0) {
+    // Both ends the same value: the only curve through them that does not
+    // leave them is the flat one.
+    m1 = 0;
+    m2 = 0;
+  } else {
+    // A knot the values turn around at is a local high or low point, and the
+    // curve has to be flat there or it overshoots it.
+    if (d0 * d1 <= 0) m1 = 0;
+    if (d1 * d2 <= 0) m2 = 0;
+    const a = m1 / d1;
+    const b = m2 / d1;
+    const far = a * a + b * b;
+    if (far > 9) {
+      const tau = 3 / Math.sqrt(far);
+      m1 = tau * a * d1;
+      m2 = tau * b * d1;
+    }
+  }
+
+  const w2 = weight * weight;
+  const w3 = w2 * weight;
+  return (
+    (2 * w3 - 3 * w2 + 1) * v1 +
+    (w3 - 2 * w2 + weight) * m1 +
+    (-2 * w3 + 3 * w2) * v2 +
+    (w3 - w2) * m2
+  );
+}
+
 /** Nearest-node lookup for boolean attributes (kerb on / off). */
 function nearestBool(nodes: TrackNode[], closed: boolean, t: number, pick: (n: TrackNode) => boolean): boolean {
   const l = nodes.length;
@@ -221,7 +314,10 @@ export function computeFrames(path: PathData, samplesPerSegment: number): Frame[
     if (i > 0) dist += positions[i].distanceTo(positions[i - 1]);
 
     const fwd = tangents[i];
-    const bankRad = THREE.MathUtils.degToRad(catmullScalar(bank, closed, t));
+    // Monotone, not plain Catmull-Rom: see `monotoneScalar`. Banking is the
+    // one attribute where a curve that overshoots puts reverse camber on a
+    // straight the author set flat.
+    const bankRad = THREE.MathUtils.degToRad(monotoneScalar(bank, closed, t));
     // Negative because rotating the frame clockwise around fwd raises the
     // right hand edge, which is what a positive bank value should mean.
     const u = ups[i].clone().applyAxisAngle(fwd, -bankRad).normalize();

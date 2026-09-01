@@ -207,6 +207,26 @@ check(
     `max ${Math.max(...flat.map((f) => Math.abs(f.right.y))).toExponential(2)}`,
   );
 }
+{
+  /*
+   * Banking may not leave the values it was given.
+   *
+   * A plain Catmull-Rom through 0, 0, 30, 30 swings the other way before it
+   * climbs and sails past the far end afterwards: the STRAIGHT in front of a
+   * 30 degree corner came out tilted 2.2 degrees the wrong way, on control
+   * points every one of which was set to nought, and the corner itself
+   * reached 32.2. Half a metre of reverse camber across a 14 m road, in a
+   * place the author had drawn flat.
+   */
+  const ramp = { ...p.track, nodes: p.track.nodes.map((node, i) => ({ ...node, bank: i >= 3 && i <= 5 ? 30 : 0 })) };
+  const deg = computeFrames(ramp, p.road.samplesPerSegment).map(
+    (f) => (Math.asin(Math.max(-1, Math.min(1, f.right.y))) * 180) / Math.PI,
+  );
+  const lo = Math.min(...deg);
+  const hi = Math.max(...deg);
+  check('a flat straight beside a banked corner stays flat', lo > -0.01, `${lo.toFixed(2)} deg of reverse camber`);
+  check('and the corner does not bank itself past what it was set to', hi < 30.01, `${hi.toFixed(2)} deg, asked for 30`);
+}
 check('per node width is interpolated', Math.abs(frames[7 * spp].widthL - 11) < 0.6);
 
 const road = buildRoadMeshes(frames, true, p.road, pitFrames);
