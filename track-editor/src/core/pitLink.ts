@@ -321,7 +321,13 @@ export function attachRoadEnds(
       }
     }
 
-    if (!butted && nodes.length >= 3) {
+    /* Two points is the quickest way anyone draws an approach, and it must
+       dock exactly like a longer one: the ray below only READS the
+       neighbour, so it works from two nodes up. Only the parallel lead-in
+       further down moves the neighbour, and for a two-point road that
+       neighbour is the far end -- moving it would drag the whole road, so
+       that branch keeps its three-point floor. */
+    if (!butted && nodes.length >= 2) {
       const nb = list[neighbourIdx];
       const nbv = vec(nodes[neighbourIdx]);
       const endv = vec(nodes[endIdx]);
@@ -371,7 +377,7 @@ export function attachRoadEnds(
             prev = cur;
           }
         }
-      } else if (alongness > 0.7 && dl < 60) {
+      } else if (alongness > 0.7 && dl < 60 && nodes.length >= 3) {
         /*
          * Arriving ALONG the target -- a lane merging into a straight -- the
          * neighbour is pulled onto the edge a lead-in ahead so the spline
@@ -394,9 +400,13 @@ export function attachRoadEnds(
     }
     end.p = [endPos.x, endPos.y, endPos.z];
     // The last stretch takes the height of the road it joins, so the merge has
-    // a surface at the right level to glue.
-    const f2 = nearestFrame(trackFrames, vec(list[neighbourIdx]), index);
-    if (f2 && vec(list[neighbourIdx]).distanceTo(endPos) < 60) list[neighbourIdx].p[1] = f2.pos.y;
+    // a surface at the right level to glue. Not on a two-point road: there
+    // the neighbour IS the far end, and a road drawn down a hillside must
+    // not have its whole length levelled to the junction.
+    if (nodes.length >= 3) {
+      const f2 = nearestFrame(trackFrames, vec(list[neighbourIdx]), index);
+      if (f2 && vec(list[neighbourIdx]).distanceTo(endPos) < 60) list[neighbourIdx].p[1] = f2.pos.y;
+    }
     return;
   };
 

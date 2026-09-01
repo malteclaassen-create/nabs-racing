@@ -401,6 +401,31 @@ check('both roads have centre lines for the viewport',
     off < 0.3
       && Math.abs(Math.hypot(oend.p[0] - C3.x, oend.p[2] - C3.z) - (R3 + 3.2 + 3 - 0.25)) < 1.2,
     `${off.toFixed(2)} m off the drawn line`);
+
+  /* And the quickest approach of all: TWO points. It has to dock on the drawn
+     line exactly like a longer road, with the far end left alone entirely --
+     position and height. */
+  const two = {
+    closed: false,
+    nodes: [
+      mkn(C3.x + endD + 70, C3.z + 9, 'ta', 3),
+      mkn(C3.x + endD, C3.z + 1, 'tb', 3),
+    ],
+  };
+  two.nodes[0].p[1] = 7; // drawn down a slope: the far end keeps its height
+  const twoGlued = attachRoadEnds(two, ringFrames, 'last');
+  const tfar = twoGlued.nodes[0];
+  const tend = twoGlued.nodes[1];
+  const tvx = two.nodes[1].p[0] - two.nodes[0].p[0];
+  const tvz = two.nodes[1].p[2] - two.nodes[0].p[2];
+  const tvl = Math.hypot(tvx, tvz);
+  const toff = Math.abs(((tend.p[0] - two.nodes[0].p[0]) * tvz - (tend.p[2] - two.nodes[0].p[2]) * tvx) / tvl);
+  check('a two point road docks on its drawn line too',
+    toff < 0.3
+      && Math.abs(Math.hypot(tend.p[0] - C3.x, tend.p[2] - C3.z) - (R3 + 3.2 + 3 - 0.25)) < 1.2,
+    `${toff.toFixed(2)} m off the drawn line`);
+  check('and its far end is not touched at all',
+    tfar.p[0] === two.nodes[0].p[0] && tfar.p[1] === 7 && tfar.p[2] === two.nodes[0].p[2]);
 }
 
 /* --- a roundabout with four arms, drawn in every order ---------------- */
