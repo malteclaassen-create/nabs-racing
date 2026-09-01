@@ -777,7 +777,17 @@ export interface EditorState {
   deleteDecoRoad: (id: string) => void;
   updateDecoRoad: (id: string, patch: Partial<Pick<DecoRoad, 'name' | 'surface' | 'line'>>) => void;
   /** `scale` is per axis, for the ground patches that are sized in metres. */
-  addProp: (kind: string, at: THREE.Vector3, rotY?: number, scale?: [number, number, number]) => void;
+  addProp: (
+    kind: string,
+    at: THREE.Vector3,
+    rotY?: number,
+    scale?: [number, number, number],
+    /**
+     * False keeps the piece at the ABSOLUTE height in `at` instead of riding
+     * the terrain: how a bridge piece continues its neighbour's level.
+     */
+    ground?: boolean,
+  ) => void;
   /** Move terrain, track, pit lane and every object up or down together. */
   shiftDatum: (delta: number) => number;
   /** Settings the automatic braking boards are worked out with. */
@@ -1995,7 +2005,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
   },
 
-  addProp: (kind, at, rotY, scale) => {
+  addProp: (kind, at, rotY, scale, ground = true) => {
     propCounter += 1;
     const id = `p${Date.now().toString(36)}${propCounter.toString(36)}`;
     // A row of identical trees all facing the same way looks planted by a
@@ -2021,7 +2031,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       p: [at.x, at.y, at.z],
       r: [0, heading, 0],
       s,
-      ground: true,
+      ground,
     };
     get().commit((p) => {
       p.props.push(inst);

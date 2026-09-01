@@ -2162,10 +2162,14 @@ console.log('\nObject library');
     if (minY > 0.05) floating.push(`${d.key} ${minY.toFixed(2)}`);
     // Nature is allowed to sit half in the ground, and a ground pad reaches
     // below it on purpose so a slope shows no gap under the slab.
+    // The bridge kit's legs carry a 3 m foundation below the origin on
+    // purpose: a piece aligned with the BRIDGE can stand well above its own
+    // patch of ground, and the legs have to reach down to find it.
     const allowance =
       d.category === 'Nature' ? 0.6
-        : d.category === 'Ground' || d.key === 'bridge_road_ramp' ? 0.6
-          : 0.05;
+        : d.key.startsWith('bridge_road') ? 13.2
+          : d.category === 'Ground' ? 0.4
+            : 0.05;
     if (minY < -allowance) sunken.push(`${d.key} ${minY.toFixed(2)}`);
   }
   check('nothing hovers above the ground it is dropped on', floating.length === 0, floating.join(','));
