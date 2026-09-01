@@ -77,6 +77,7 @@ export type MaterialKey =
   | 'line_dashed'
   /* The yellow bar across the front of a start box */
   | 'line_yellow'
+  | 'pit_number'
   | 'asphalt_green'
   | 'asphalt_blue'
   | 'asphalt_red';

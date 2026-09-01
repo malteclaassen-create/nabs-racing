@@ -1623,6 +1623,19 @@ function RaceTab() {
         <Row label="Distance">
           <Slider value={pitCfg.boxOffset} min={0} max={20} step={0.25} unit=" m" digits={2} onChange={(v) => commit((p) => { p.pitCfg.boxOffset = v; })} />
         </Row>
+        <Row label="Markings">
+          <Check
+            label="Paint the stalls on the working lane"
+            checked={pitCfg.boxPaint !== false}
+            onChange={(v) => commit((p) => { p.pitCfg.boxPaint = v; })}
+          />
+        </Row>
+        <p className="hint">
+          What a real pit lane has in front of every garage: the two dividers between one box and
+          its neighbours, the line along the back of the working lane, and the box number painted
+          large enough to read from the fast lane. Open towards the fast lane, because the lane's
+          own edge line is already the boundary on that side. Paint only, so nothing drives on it.
+        </p>
         <Row label="Lane width">
           <Slider
             value={project.pit.nodes[0]?.widthL ?? 4}

@@ -33,7 +33,7 @@ import {
   type CorridorMask,
 } from '../core/terrain';
 import { buildAiLine, buildAllMarkers, type AiPoint, type MarkerSet } from '../core/markers';
-import { buildGridBoxes } from '../core/gridBoxes';
+import { buildGridBoxes, buildPitBoxes } from '../core/gridBoxes';
 import { buildStartGantry } from '../core/gantry';
 import {
   attachRoadEnds,
@@ -840,13 +840,22 @@ function compute(project: Project, interacting: boolean): Derived {
      grid and its own paint, so it gets none of ours -- the same rule its
      markers follow. */
   const sigGridBox = hash((h) => {
-    const { grid } = project;
+    const { grid, pitCfg } = project;
     h.bool(grid.boxes).num(grid.boxWidth).num(grid.boxLength).bool(grid.boxFrontLine);
+    /* The pit stalls are painted out of the lane's own three numbers -- how
+       wide the fast lane is, how much concrete is beside it and how far out
+       the box sits -- so widening the apron repaints them. The rest of what
+       they need is in sigMarkers already, because it is what puts the box
+       there in the first place. */
+    h.bool(pitCfg.boxPaint !== false).num(pitCfg.width).num(pitCfg.apron);
   });
   const gridMeshes = project.acImport
     ? EMPTY_MESHES
-    : slotGridMeshes(`${sigTrack}|${spp}|${sigMarkers}|${sigGridBox}`, () => {
-        const next = buildGridBoxes(trackFrames, project.track.closed, project.timing, project.grid);
+    : slotGridMeshes(`${sigTrack}|${sigPit}|${spp}|${sigMarkers}|${sigGridBox}`, () => {
+        const next = [
+          ...buildGridBoxes(trackFrames, project.track.closed, project.timing, project.grid),
+          ...buildPitBoxes(pitFrames, project.pit.closed, project.pitCfg),
+        ];
         retire(lastGrid, next);
         lastGrid = next;
         return next;

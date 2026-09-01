@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import type { GridSettings, TimingSettings } from '../types';
+import type { GridSettings, PitSettings, TimingSettings } from '../types';
 import type { MeshDef } from './road';
 import { frameAtDistance, pathLength, type Frame } from './spline';
+import { PIT_NUMBER_TILES } from './textures';
 
 /**
  * The painted start boxes -- the white C the cars line up in on the grid.
@@ -133,6 +134,37 @@ class Paint {
       this.pos.push(p.x, p.y, p.z);
       this.nor.push(up.x, up.y, up.z);
       this.uv.push(u, v);
+    }
+    this.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+  }
+
+  /**
+   * One quad off a texture sheet, its corners carrying their own coordinates.
+   *
+   * `quad` above hands u = 0 to whichever corner ends up first, and the
+   * winding flip can swap which one that is. On a line nobody can tell; on a
+   * digit it is the difference between a 2 and a mirrored one, so here the
+   * coordinates travel WITH their corners through the flip.
+   */
+  sheet(
+    a0: THREE.Vector3,
+    a1: THREE.Vector3,
+    b0: THREE.Vector3,
+    b1: THREE.Vector3,
+    up: THREE.Vector3,
+    uv: Array<[number, number]>,
+  ) {
+    const n = new THREE.Vector3()
+      .subVectors(a1, a0)
+      .cross(new THREE.Vector3().subVectors(b0, a0));
+    const corners = [a0, a1, b0, b1];
+    const order = n.dot(up) < 0 ? [1, 0, 3, 2] : [0, 1, 2, 3];
+    const base = this.pos.length / 3;
+    for (const k of order) {
+      const p = corners[k];
+      this.pos.push(p.x, p.y, p.z);
+      this.nor.push(up.x, up.y, up.z);
+      this.uv.push(uv[k][0], uv[k][1]);
     }
     this.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
   }
@@ -307,6 +339,185 @@ export function buildGridBoxes(
   }
   if (!yellow.empty) {
     out.push({ name: 'OBJ_grid_front_line', material: 'line_yellow', surface: null, geometry: yellow.finish(), castShadows: false });
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* The pit stalls                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The paint in front of each garage, and how it differs from a grid box.
+ *
+ * A grid box is a slot a car lines up IN: 2.7 m of clear width, six metres
+ * long, pointing down the road, and open at the back so the car can be rolled
+ * into it. A pit stall is the opposite shape. It is the working area in front
+ * of one garage, so it is as wide as the garage frontage -- the spacing
+ * between two boxes -- and only as deep as the working lane, and it lies
+ * ACROSS the lane rather than along it.
+ *
+ * It is open towards the fast lane, which is what a real one does. The lane's
+ * own edge line is already painted along that side, and a second line laid on
+ * top of it would be two coplanar quads fighting over the same pixels; on the
+ * circuits this is drawn off, the boundary a driver reads on that side IS the
+ * lane line. So the stall is drawn as its two dividers and the line along the
+ * back of it, and the fast lane closes the shape.
+ */
+export const PIT_BOX = {
+  /** Pit lane markings are drawn thinner than the 15 cm of a grid box. */
+  line: 0.12,
+  /** Bare concrete left between two stalls, metres. */
+  gap: 1.2,
+  /** A stall may not come out shallower than this across the lane. */
+  minDepth: 3,
+  /**
+   * Painted number: how tall one digit stands, metres.
+   *
+   * Sized to fit BEHIND the car rather than under it. The stall is only as
+   * deep as the working lane, a car is 1.9 m wide across the middle of it, and
+   * what is left between the car and the line along the back is about a metre:
+   * a taller digit reads better right up to the moment a car parks on it,
+   * which is the moment somebody wants to read the number.
+   */
+  digit: 0.7,
+  /** And how wide it is. Narrower than it is tall, the way a road number is. */
+  digitWidth: 0.44,
+  /** Clear concrete between the number and the line along the back. */
+  digitInset: 0.15,
+} as const;
+
+/**
+ * The painted stalls, one mesh for the whole pit lane.
+ *
+ * Named with NO LEADING DIGIT, the same as the grid paint and for the same
+ * reason: the digit is what hands a mesh to the physics, and this is paint. A
+ * car stops on it every time it comes in.
+ */
+export function buildPitBoxes(
+  pitFrames: Frame[],
+  pitClosed: boolean,
+  cfg: PitSettings,
+): MeshDef[] {
+  if (cfg.boxPaint === false || cfg.boxCount < 1) return [];
+  if (pitFrames.length < 2 && Object.keys(cfg.overrides).length === 0) return [];
+
+  const line = PIT_BOX.line;
+  // As wide as the garage it stands in front of, less the gap that keeps two
+  // neighbouring stalls from reading as one long rectangle.
+  const length = Math.min(Math.max(cfg.boxSpacing - PIT_BOX.gap, PIT_BOX.minDepth), 16);
+  const dir = cfg.boxSide;
+  /* Across the working lane, measured from the box centre the car stops on:
+     the near edge is where the fast lane ends, the far edge is where the
+     concrete does. Both fall out of the lane's own three numbers, so a wider
+     apron or a box moved further out repaints itself. */
+  const lane = dir * (cfg.width - cfg.boxOffset);
+  const garage = dir * (cfg.width + cfg.apron - cfg.boxOffset);
+  const short = Math.max(0, PIT_BOX.minDepth - Math.abs(garage - lane)) / 2;
+  const near = lane - Math.sign(lane - garage) * short;
+  const far = garage + Math.sign(garage - lane) * short;
+  const lo = Math.min(near, far);
+  const hi = Math.max(near, far);
+  /* The line along the back is laid just INSIDE the edge it marks, not
+     centred on it. Centred, half of it hangs over the end of the concrete and
+     lies on grass -- 6 cm of it, the length of the pit lane. */
+  const back = far - Math.sign(far - near) * (line / 2);
+
+  const white = new Paint();
+  const numbers = new Paint();
+  for (let i = 0; i < cfg.boxCount; i++) {
+    const override = cfg.overrides[i];
+    if (!override && pitFrames.length < 2) continue;
+    const at = crossFn(
+      pitFrames,
+      pitClosed,
+      cfg.startDist + i * cfg.boxSpacing,
+      dir * cfg.boxOffset,
+      override,
+    );
+    const front = length / 2;
+    const rear = -length / 2;
+
+    // The two dividers between this stall and its neighbours, edge to edge of
+    // the working lane. They reach the line along the back, which lies inside
+    // them, so all three corners close.
+    white.bar(at(rear), at(rear + line), lo, hi);
+    white.bar(at(front - line), at(front), lo, hi);
+
+    // The line along the back of the stall, sampled so it bends with the lane.
+    const crosses: Cross[] = [];
+    for (let k = 0; k <= SIDE_SAMPLES; k++) {
+      crosses.push(at(rear + (length * k) / SIDE_SAMPLES));
+    }
+    white.ribbon(crosses, back, line / 2, length / 2);
+
+    /*
+     * The number, painted at the back of the stall.
+     *
+     * At the BACK, against the garage, because that is the one part of the
+     * box a car does not stand on: painted in the middle it would be under
+     * the floor of the car it belongs to for the whole of a pit stop, which
+     * is exactly when somebody needs to read it.
+     *
+     * Laid to be read from the fast lane looking in, so the tops of the
+     * digits point at the garage. Drawn off one flat frame rather than
+     * followed round the lane: a number is a metre long and no pit lane bends
+     * enough over a metre for it to matter, and a digit that bends is a digit
+     * that reads as broken.
+     */
+    const label = String(i + 1);
+    const mid = at(0);
+    const toGarage = mid.right.clone().multiplyScalar(dir);
+    // Reading direction, for someone standing in the lane facing the garage.
+    const read = new THREE.Vector3().crossVectors(toGarage, mid.up).normalize();
+    const depthOut = cfg.width + cfg.apron - cfg.boxOffset + short;
+    const centre = mid.pos
+      .clone()
+      .addScaledVector(toGarage, depthOut - line - PIT_BOX.digitInset - PIT_BOX.digit / 2);
+    const w = PIT_BOX.digitWidth;
+    const h = PIT_BOX.digit;
+    for (let k = 0; k < label.length; k++) {
+      const d = label.charCodeAt(k) - 48;
+      const col = d % PIT_NUMBER_TILES;
+      const row = (d / PIT_NUMBER_TILES) | 0;
+      const u0 = col / PIT_NUMBER_TILES;
+      const u1 = (col + 1) / PIT_NUMBER_TILES;
+      // V runs up from the bottom of the texture, the tile grid reads down
+      // from the top -- the same flip the sign boards do.
+      const v0 = (PIT_NUMBER_TILES - 1 - row) / PIT_NUMBER_TILES;
+      const v1 = (PIT_NUMBER_TILES - row) / PIT_NUMBER_TILES;
+      const x = (k - (label.length - 1) / 2) * w;
+      const at2 = (dx: number, dy: number) =>
+        centre.clone().addScaledVector(read, x + dx).addScaledVector(toGarage, dy);
+      numbers.sheet(
+        at2(-w / 2, -h / 2),
+        at2(w / 2, -h / 2),
+        at2(-w / 2, h / 2),
+        at2(w / 2, h / 2),
+        mid.up,
+        [[u0, v0], [u1, v0], [u0, v1], [u1, v1]],
+      );
+    }
+  }
+
+  const out: MeshDef[] = [];
+  if (!white.empty) {
+    out.push({
+      name: 'OBJ_pit_box',
+      material: 'line_white',
+      surface: null,
+      geometry: white.finish(),
+      castShadows: false,
+    });
+  }
+  if (!numbers.empty) {
+    out.push({
+      name: 'OBJ_pit_box_number',
+      material: 'pit_number',
+      surface: null,
+      geometry: numbers.finish(),
+      castShadows: false,
+    });
   }
   return out;
 }

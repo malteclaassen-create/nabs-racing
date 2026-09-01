@@ -6697,6 +6697,122 @@ console.log('\nThe fold in a banked plate');
   console.log(`      road mesh ${verts(roadOf(banked))} verts as drawn, ${verts(roadOf(exported(banked)))} as exported`);
 }
 
+/* ------------------------------------------------------------------ */
+/* The painted pit stalls                                              */
+/* ------------------------------------------------------------------ */
+/*
+ * A pit box used to be an invisible thing: AC_PIT_7 is an empty in the model,
+ * so the working lane was bare concrete and nothing on the ground said where
+ * one box ended and the next began. The paint is what makes a pit lane look
+ * like one, the same argument the grid boxes were built on.
+ *
+ * The number is the part worth pinning down. It lies flat on the ground, so it
+ * can come out mirrored or upside down without anything else being wrong, and
+ * neither shows up in a vertex count. So it is checked the way a person checks
+ * it: stand in the fast lane, look at the box, and see whether the digits run
+ * to your right with their tops pointing away.
+ */
+console.log('\nThe painted pit stalls');
+{
+  const proj = defaultProject();
+  const d = getDerived(proj);
+  const cfg = proj.pitCfg;
+  const paint = d.gridMeshes.find((m) => m.name === 'OBJ_pit_box');
+  const number = d.gridMeshes.find((m) => m.name === 'OBJ_pit_box_number');
+  check('every pit box gets a stall painted on the lane', !!paint);
+  check('and its number', !!number);
+  check(
+    'the paint carries no leading digit, so AC gives it no surface',
+    [paint, number].every((m) => m && /^[A-Z]/.test(m.name)),
+    'a leading digit is what hands a mesh to the physics',
+  );
+
+  // The stall covers the working lane: from the edge of the fast lane out to
+  // the edge of the concrete, and no further -- paint hanging over the edge of
+  // the apron is paint lying on grass.
+  const lat = [];
+  const pos = paint.geometry.getAttribute('position');
+  const pitFrames = computeFrames(proj.pit, proj.road.samplesPerSegment);
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    let best = null;
+    for (const f of pitFrames) {
+      const dx = v.x - f.pos.x;
+      const dz = v.z - f.pos.z;
+      const along = Math.abs(dx * f.fwd.x + dz * f.fwd.z);
+      if (!best || along < best.a) best = { a: along, t: dx * f.right.x + dz * f.right.z };
+    }
+    lat.push(best.t * cfg.boxSide);
+  }
+  const inner = Math.min(...lat);
+  const outer = Math.max(...lat);
+  check(
+    'the stall starts at the edge of the fast lane',
+    Math.abs(inner - cfg.width) < 0.2,
+    `${inner.toFixed(2)} m out, the tarmac ends at ${cfg.width}`,
+  );
+  /* Five centimetres of slack, and it is the measurement's not the paint's:
+     each vertex is placed against the NEAREST cross section, and on a lane
+     that is turning that reads a centimetre or two wide. What is being caught
+     here is the half line width that used to hang over the end of the
+     concrete and lie on the grass, which is six times that. */
+  check(
+    'and stops at the edge of the concrete',
+    outer <= cfg.width + cfg.apron + 0.05,
+    `${outer.toFixed(2)} m out, the concrete ends at ${cfg.width + cfg.apron}`,
+  );
+
+  /* Reading the number: stand in the fast lane beside the box, look at it. */
+  const np = number.geometry.getAttribute('position');
+  const nuv = number.geometry.getAttribute('uv');
+  const nidx = number.geometry.getIndex();
+  const corner = [];
+  for (let k = 0; k < 4; k++) {
+    const id = nidx.getX(k < 2 ? k : k + 1);
+    corner.push({ p: new THREE.Vector3().fromBufferAttribute(np, id), u: nuv.getX(id), v: nuv.getY(id) });
+  }
+  const uLo = Math.min(...corner.map((c) => c.u));
+  const vLo = Math.min(...corner.map((c) => c.v));
+  const mean = (f) => {
+    const list = corner.filter(f);
+    return list.reduce((a, c) => a.clone().add(c.p), new THREE.Vector3()).multiplyScalar(1 / list.length);
+  };
+  const glyphRight = mean((c) => c.u > uLo + 1e-6).sub(mean((c) => c.u <= uLo + 1e-6)).normalize();
+  const glyphUp = mean((c) => c.v > vLo + 1e-6).sub(mean((c) => c.v <= vLo + 1e-6)).normalize();
+  const centre = corner.reduce((a, c) => a.add(c.p), new THREE.Vector3()).multiplyScalar(0.25);
+
+  const box = d.markers.pits[0].pos;
+  const f0 = pitFrames.reduce((best, f) => (f.pos.distanceTo(box) < best.pos.distanceTo(box) ? f : best), pitFrames[0]);
+  // Three metres into the fast lane, at eye height.
+  const eye = box.clone().addScaledVector(f0.right, -cfg.boxSide * 3).setY(box.y + 1.6);
+  const look = centre.clone().sub(eye).normalize();
+  const seenRight = new THREE.Vector3().crossVectors(look, new THREE.Vector3(0, 1, 0)).normalize();
+  const flat = look.clone().setY(0).normalize();
+  /* The eye is three metres to the side of what it is reading and a metre and
+     a half above it, on a lane that is turning, so the two directions are
+     never going to line up exactly. It is the SIGN that carries the answer:
+     a mirrored number comes back at about minus one. */
+  check(
+    'the number reads left to right from the fast lane',
+    glyphRight.dot(seenRight) > 0.8,
+    `${glyphRight.dot(seenRight).toFixed(2)}; a mirrored one reads about -1`,
+  );
+  check(
+    'with its tops pointing away from the reader',
+    glyphUp.dot(flat) > 0.9,
+    `${glyphUp.dot(flat).toFixed(2)}; negative means it is upside down`,
+  );
+
+  const off = paint.geometry.getAttribute('position').array;
+  let low = Infinity;
+  for (let i = 1; i < off.length; i += 3) low = Math.min(low, off[i]);
+  check('and all of it floats clear of the concrete', low > 0.004 && low < 0.02, `${(low * 1000).toFixed(1)} mm`);
+
+  console.log(`      ${cfg.boxCount} stalls, ${paint.geometry.getIndex().count / 3} triangles of paint`
+    + ` and ${number.geometry.getIndex().count / 3} of numbers`);
+}
+
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) failed.\n`);
 process.exit(failures === 0 ? 0 : 1);
 

@@ -268,6 +268,13 @@ export interface PitSettings {
   limitStart: number;
   /** The same at the other end, measured back from the end of the lane. */
   limitEnd: number;
+  /**
+   * Paint a stall on the working lane in front of every box.
+   *
+   * On by default, and undefined counts as on: a real pit lane has the
+   * markings and a project saved before they existed should get them.
+   */
+  boxPaint?: boolean;
   /** Manual per box overrides, keyed by box index. */
   overrides: Record<number, { p: Vec3; rot: number }>;
 }

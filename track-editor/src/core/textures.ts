@@ -654,6 +654,38 @@ function makeSignBoard(): HTMLCanvasElement {
   return c;
 }
 
+/**
+ * How the digit sheet is cut up. Four across is a 128 px tile out of the 512,
+ * which is as much resolution as a number painted on concrete has any use for.
+ */
+export const PIT_NUMBER_TILES = 4;
+
+/**
+ * The box numbers, as one sheet of digits.
+ *
+ * Ten tiles rather than forty numbers: a pit lane can hold forty boxes, and
+ * "12" is a one and a two laid side by side. Transparent everywhere the paint
+ * is not, so the concrete underneath shows through -- this is the one thing on
+ * the ground that is a shape rather than a rectangle, and a tile with a
+ * background of its own would be a white card lying in the box.
+ */
+function makePitNumbers(): HTMLCanvasElement {
+  const [c, ctx] = canvas();
+  const tile = SIZE / PIT_NUMBER_TILES;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `700 ${tile * 0.78}px Archivo, Inter, Arial, sans-serif`;
+  // Worn white, the same as every other marking on a circuit. Paint that is
+  // still showroom white has been down about one race weekend.
+  ctx.fillStyle = '#e9e9e4';
+  for (let d = 0; d < 10; d++) {
+    const x = (d % PIT_NUMBER_TILES) * tile;
+    const y = ((d / PIT_NUMBER_TILES) | 0) * tile;
+    ctx.fillText(String(d), x + tile / 2, y + tile / 2 + tile * 0.02);
+  }
+  return c;
+}
+
 /* ------------------------------------------------------------------ */
 /* The marshalling panels                                              */
 /* ------------------------------------------------------------------ */
@@ -1334,6 +1366,8 @@ export const ALPHA_TESTED: ReadonlySet<MaterialKey> = new Set<MaterialKey>([
   'chainlink',
   'grass_blades',
   'tree_card',
+  // The digits are a shape on the concrete, not a card lying in the box.
+  'pit_number',
 ]);
 
 /** Flat colour tile with a hint of grain, used by the prop materials. */
@@ -1398,6 +1432,7 @@ export const MATERIAL_COLORS: Record<MaterialKey, string> = {
   line_white: '#e6e6e2',
   line_dashed: '#e6e6e2',
   line_yellow: '#e8c53c',
+  pit_number: '#e6e6e2',
   asphalt_green: '#2f6a3f',
   asphalt_blue: '#2b5f9c',
   asphalt_red: '#9c3a33',
@@ -1433,6 +1468,7 @@ const builders: Record<MaterialKey, () => HTMLCanvasElement> = {
   line_white: makeLine,
   line_dashed: makeDashedLine,
   line_yellow: makeYellowLine,
+  pit_number: makePitNumbers,
   asphalt_green: makePaintedAsphalt('#2f6a3f', 71),
   asphalt_blue: makePaintedAsphalt('#2b5f9c', 72),
   asphalt_red: makePaintedAsphalt('#9c3a33', 73),
