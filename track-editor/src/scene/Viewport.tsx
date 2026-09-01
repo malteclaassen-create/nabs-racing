@@ -64,7 +64,7 @@ import {
 import { noteGroundPoint } from '../store/placement';
 import { instantiatePrefab, prefabOf } from '../core/prefabs';
 import { segmentStartId, type Frame } from '../core/spline';
-import { applyDrawHeight, FREEHAND_SPACING, planDraw, type DrawMode } from '../core/draw';
+import { applyDrawHeight, drawHeightOf, drawWidths, FREEHAND_SPACING, planDraw, type DrawMode } from '../core/draw';
 import { runLength } from '../core/barrierRun';
 import { PointIndex } from '../core/spatial';
 import { sectionIndices, sectionNodes, translateSection } from '../core/section';
@@ -195,6 +195,71 @@ function labelTexture(text: string, color = '#e9edf2'): THREE.CanvasTexture {
   t.colorSpace = THREE.SRGBColorSpace;
   labelCache.set(key, t);
   return t;
+}
+
+let checkBadge: THREE.CanvasTexture | null = null;
+
+/** A green disc with a white tick, drawn once: the "done here" button. */
+function checkBadgeTexture(): THREE.CanvasTexture {
+  if (checkBadge) return checkBadge;
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d')!;
+  ctx.clearRect(0, 0, 128, 128);
+  ctx.beginPath();
+  ctx.arc(64, 64, 56, 0, Math.PI * 2);
+  ctx.fillStyle = '#2f9e57';
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.stroke();
+  ctx.lineWidth = 14;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(38, 66);
+  ctx.lineTo(58, 86);
+  ctx.lineTo(92, 44);
+  ctx.stroke();
+  checkBadge = new THREE.CanvasTexture(c);
+  checkBadge.colorSpace = THREE.SRGBColorSpace;
+  return checkBadge;
+}
+
+/**
+ * The green tick over the last point of the road being drawn. Clicking it
+ * finishes the road on the spot -- same as the panel's Finish button, without
+ * the trip across the screen -- and hands the focus back: no active road, no
+ * selection, the next click starts a new one.
+ */
+function FinishRoadBadge({ path }: { path: PathId }) {
+  const nodes = useEditor((s) => pathDataOf(s.project, path)?.nodes ?? EMPTY_NODES);
+  const setActiveDeco = useEditor((s) => s.setActiveDeco);
+  const setStatus = useEditor((s) => s.setStatus);
+  const select = useEditor((s) => s.select);
+  const [hover, setHover] = useState(false);
+  useCursor(hover);
+  if (nodes.length < 2) return null;
+  const last = nodes[nodes.length - 1];
+  return (
+    <sprite
+      position={[last.p[0], last.p[1] + 7, last.p[2]]}
+      scale={hover ? [5.5, 5.5, 5.5] : [4.5, 4.5, 4.5]}
+      renderOrder={11}
+      material={spriteMaterial(checkBadgeTexture())}
+      onPointerOver={() => setHover(true)}
+      onPointerOut={() => setHover(false)}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        setHover(false);
+        setActiveDeco(null);
+        select(null);
+        setStatus('Road finished — the next click starts a new one');
+      }}
+    />
+  );
 }
 
 function Label({ text, position, color, size = 6 }: { text: string; position: THREE.Vector3; color?: string; size?: number }) {
@@ -1452,17 +1517,26 @@ function TerrainLayer({ derived }: { derived: Derived }) {
       // join instead of nearly joining.
       const snappedWall = snapToWallLine(point, derived, s.project.road.wallCuts ?? []);
       if (snappedWall) point.copy(snappedWall);
+      // No trackside wall in reach: an open end of a fence already standing
+      // will do -- a run started or ended there carries the existing one on.
+      const snappedRun = snappedWall
+        ? null
+        : snapToBarrierEnd(s.project.props, s.barrierKind, point.x, point.z);
+      if (snappedRun) point.copy(snappedRun);
+      const joined = snappedWall ?? snappedRun;
       const here: [number, number, number] = [point.x, point.y, point.z];
       if (draft.length === 0) {
         s.setBarrierDraft([here]);
         setStatus(snappedWall
           ? 'Barrier started on the trackside barrier. Click again to run it there; Esc ends the run.'
-          : 'Barrier started. Click again to run it there; Esc ends the run.');
+          : snappedRun
+            ? 'Barrier docked onto the standing run. Click again to carry it on; Esc ends the run.'
+            : 'Barrier started. Click again to run it there; Esc ends the run.');
         return;
       }
       // A leg aimed at the wall line must LAND on it: the heading and length
       // steps would round the endpoint back off the very line it snapped to.
-      const exact = e.nativeEvent.altKey || snappedWall !== null;
+      const exact = e.nativeEvent.altKey || joined !== null;
       const plan = planBarrierLeg(draft, point, drawMode, exact ? 0 : ANGLE_STEP,
         exact ? 0 : snap);
       const last = draft[draft.length - 1];
@@ -1475,14 +1549,14 @@ function TerrainLayer({ derived }: { derived: Derived }) {
        */
       const legPts = plan.map((p, k) => ({
         x: p.x,
-        y: snappedWall && k === plan.length - 1 ? point.y : groundAt(p.x, p.z),
+        y: joined && k === plan.length - 1 ? point.y : groundAt(p.x, p.z),
         z: p.z,
       }));
       const line = densifyRun([{ x: last[0], y: last[1], z: last[2] }, ...legPts], groundAt);
       // Anything standing clear of the ground was put there on purpose -- a
       // join to the barrier at either end -- and must not be sat back down on
       // the terrain the next time it is sculpted.
-      const lifted = snappedWall !== null
+      const lifted = joined !== null
         || Math.abs(last[1] - groundAt(last[0], last[2])) > 0.1;
       const n = s.addBarrierRun(line, !lifted);
       s.setBarrierDraft([...draft, ...line.slice(1).map((p) => [p.x, p.y, p.z] as [number, number, number])]);
@@ -1545,6 +1619,14 @@ function TerrainLayer({ derived }: { derived: Derived }) {
       exact={placeExact}
       groundAt={groundAt}
     />
+  );
+
+  /* The green tick floating over a road's last point: one click finishes the
+     road right there in the viewport, instead of a trip to the panel button.
+     Only for deco roads -- the circuit and the pit lane have no "finished",
+     they are simply drawn on. */
+  const finishBadge = tool === 'drawRoad' && previewPath && (
+    <FinishRoadBadge path={previewPath} />
   );
 
   const barrierPreview = freeBarrier && cursor && barrierDraft && (
@@ -1622,6 +1704,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
 
       {ghost}
       {drawPreview}
+      {finishBadge}
       {barrierPreview}
       {marqueeRect && <MarqueeBoxMesh box={marqueeRect} groundAt={groundAt} />}
       <MarkedProps terrain={project.terrain} heights={derived.terrainHeights} />
@@ -1820,6 +1903,68 @@ function wallPointAt(
  * that is not there any more, and a fence drawn to close a gap started in
  * mid-air a metre inside it.
  */
+/**
+ * The nearest OPEN END of a fence already standing, so a new free run docks
+ * onto it instead of starting a hand's width away.
+ *
+ * Barrier modules tile along their local Z, so each one offers its two row
+ * ends; an end with another module of the same kind already sitting in the
+ * next slot is the middle of a run, not an end, and offers nothing. What is
+ * returned is the END EDGE of the module -- the point a continuing run has to
+ * start from for the two fences to meet without a gap -- at the module's own
+ * height, because a barrier joined to one standing on a shoulder has to
+ * arrive at the shoulder, not at the field beside it.
+ */
+function snapToBarrierEnd(
+  props: ReadonlyArray<PropInstance>,
+  kind: string,
+  x: number,
+  z: number,
+): THREE.Vector3 | null {
+  const box = propTileBox(kind);
+  if (box.hz <= 0) return null;
+  const hz = box.hz;
+  const reach = Math.max(4, hz * 2.2);
+
+  // Every module's centre and row direction, once: the occupancy test below
+  // asks about all of them for each candidate end.
+  const mods = props
+    .filter((pr) => pr.kind === kind)
+    .map((pr) => {
+      const a = THREE.MathUtils.degToRad(pr.r[1]);
+      const dirX = Math.sin(a);
+      const dirZ = Math.cos(a);
+      const perpX = Math.cos(a);
+      const perpZ = -Math.sin(a);
+      return {
+        y: pr.p[1],
+        dirX,
+        dirZ,
+        cx: pr.p[0] + dirX * box.cz + perpX * box.cx,
+        cz: pr.p[2] + dirZ * box.cz + perpZ * box.cx,
+      };
+    });
+
+  let best: THREE.Vector3 | null = null;
+  let bestD = reach;
+  for (const m of mods) {
+    for (const sgn of [1, -1] as const) {
+      const ex = m.cx + m.dirX * hz * sgn;
+      const ez = m.cz + m.dirZ * hz * sgn;
+      const d = Math.hypot(x - ex, z - ez);
+      if (d >= bestD) continue;
+      // The slot beyond this end: another module there means it is no end.
+      const nx = m.cx + m.dirX * hz * 2 * sgn;
+      const nz = m.cz + m.dirZ * hz * 2 * sgn;
+      const taken = mods.some((o) => o !== m && Math.hypot(o.cx - nx, o.cz - nz) < hz);
+      if (taken) continue;
+      bestD = d;
+      best = new THREE.Vector3(ex, m.y, ez);
+    }
+  }
+  return best;
+}
+
 function snapToWallLine(
   point: THREE.Vector3,
   derived: Derived,
@@ -2118,6 +2263,55 @@ function BarrierRunPreview({
 /** Stable empty list, so the selector above keeps its identity. */
 const EMPTY_NODES: TrackNode[] = [];
 
+/* The see-through tarmac of the draw preview, shared and never disposed. */
+const ghostRoadMaterial = new THREE.MeshBasicMaterial({
+  color: '#8a9099',
+  transparent: true,
+  opacity: 0.4,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+
+/**
+ * A flat ribbon of the road's drawn width along a polyline, as a fresh
+ * geometry. Widths are measured flat in the ground plane, which is exactly
+ * what a preview of an unbanked, still-imaginary road should show.
+ */
+function ribbonGeometry(
+  pts: ReadonlyArray<{ x: number; y: number; z: number }>,
+  widthL: number,
+  widthR: number,
+): THREE.BufferGeometry | null {
+  const n = pts.length;
+  if (n < 2) return null;
+  const pos = new Float32Array(n * 2 * 3);
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)];
+    const b = pts[Math.min(n - 1, i + 1)];
+    let dx = b.x - a.x;
+    let dz = b.z - a.z;
+    const len = Math.hypot(dx, dz) || 1;
+    dx /= len;
+    dz /= len;
+    const p = pts[i];
+    pos[i * 6 + 0] = p.x - dz * widthL;
+    pos[i * 6 + 1] = p.y;
+    pos[i * 6 + 2] = p.z + dx * widthL;
+    pos[i * 6 + 3] = p.x + dz * widthR;
+    pos[i * 6 + 4] = p.y;
+    pos[i * 6 + 5] = p.z - dx * widthR;
+  }
+  const idx: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const a = i * 2;
+    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  return g;
+}
+
 function DrawPreview({
   path,
   cursor,
@@ -2133,15 +2327,32 @@ function DrawPreview({
   const drawMode = useEditor((s) => s.drawMode);
   const drawCfg = useEditor((s) => s.drawCfg);
   const snap = useEditor((s) => s.snap);
+  const widths = drawWidths(drawCfg, path);
 
-  const points = useMemo(() => {
-    if (nodes.length === 0) return null;
-    const last = nodes[nodes.length - 1];
+  const built = useMemo(() => {
     const target = cursor.clone();
     if (snap > 0 && !exact) {
       target.x = Math.round(target.x / snap) * snap;
       target.z = Math.round(target.z / snap) * snap;
     }
+    /* Nothing drawn yet: the ghost is the START -- a see-through slab of the
+       road's own width under the cursor, so the first click is aimed with the
+       road's real footprint rather than a bare point. */
+    if (nodes.length === 0) {
+      const y = drawHeightOf(drawCfg, groundAt(target.x, target.z)) + 0.4;
+      return {
+        points: null,
+        ribbon: ribbonGeometry(
+          [
+            { x: target.x, y, z: target.z - 4 },
+            { x: target.x, y, z: target.z + 4 },
+          ],
+          widths.widthL,
+          widths.widthR,
+        ),
+      };
+    }
+    const last = nodes[nodes.length - 1];
     const mode = drawMode === 'freehand' ? 'free' : drawMode;
     const plan = planDraw(mode, nodes, target, exact ? 0 : ANGLE_STEP, exact ? 0 : snap);
     // The preview has to show the height the click will actually store, or a
@@ -2150,16 +2361,38 @@ function DrawPreview({
     applyDrawHeight(plan.points, drawCfg, groundAt);
     const start = new THREE.Vector3(last.p[0], last.p[1], last.p[2]);
     // Lifted clear of the ground so it is not half buried in a slope.
-    return [start, ...plan.points].map((p) => new THREE.Vector3(p.x, p.y + 0.6, p.z));
-  }, [nodes, cursor, drawMode, drawCfg, snap, exact, groundAt]);
+    const points = [start, ...plan.points].map((p) => new THREE.Vector3(p.x, p.y + 0.6, p.z));
+    /* And under the line, the road itself, half transparent: the leg the next
+       click would lay, at the width it would really be built. */
+    const ribbon = ribbonGeometry(
+      points.map((p) => ({ x: p.x, y: p.y - 0.25, z: p.z })),
+      widths.widthL,
+      widths.widthR,
+    );
+    return { points, ribbon };
+  }, [nodes, cursor, drawMode, drawCfg, snap, exact, groundAt, widths.widthL, widths.widthR]);
 
-  if (!points || points.length < 2) return null;
+  // Fresh geometry per move; the old one has to give its buffers back.
+  useEffect(() => {
+    const g = built.ribbon;
+    return () => {
+      if (g) g.dispose();
+    };
+  }, [built.ribbon]);
+
   return (
     <>
-      <Line points={points} color="#ffd34d" lineWidth={2} dashed={false} raycast={() => null} />
-      <mesh position={points[points.length - 1]} raycast={() => null} material={basicMaterial('#ffd34d', 0.9, false)}>
-        <sphereGeometry args={[1.4, 10, 8]} />
-      </mesh>
+      {built.ribbon && (
+        <mesh geometry={built.ribbon} material={ghostRoadMaterial} raycast={() => null} renderOrder={3} />
+      )}
+      {built.points && built.points.length >= 2 && (
+        <>
+          <Line points={built.points} color="#ffd34d" lineWidth={2} dashed={false} raycast={() => null} />
+          <mesh position={built.points[built.points.length - 1]} raycast={() => null} material={basicMaterial('#ffd34d', 0.9, false)}>
+            <sphereGeometry args={[1.4, 10, 8]} />
+          </mesh>
+        </>
+      )}
     </>
   );
 }
