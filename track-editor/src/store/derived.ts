@@ -18,6 +18,7 @@ import {
   roadCorridor,
   terrainMesh,
   GROUND_KINDS,
+  paintCellSize,
   sampleGroundValue,
   sampleHeights,
   paintKind,
@@ -439,6 +440,9 @@ function compute(project: Project, interacting: boolean): Derived {
             const v = sampleGroundValue(project.terrain, project.terrain.paint, x, z);
             return v === 0 ? -1 : paintKind(v);
           },
+          // The paint's own sample spacing, so the strip is split exactly as
+          // finely as the paint can answer -- no finer, and no coarser.
+          cell: paintCellSize(project.terrain),
         }
       : undefined;
 

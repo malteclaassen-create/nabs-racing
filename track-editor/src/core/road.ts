@@ -164,11 +164,6 @@ const scratch = {
   /* The two rings of a single fold of the guardrail, refilled per fold. */
   wallLo: [] as THREE.Vector3[],
   wallHi: [] as THREE.Vector3[],
-  /* The inner and outer edge of one band across the run off, refilled per band.
-     The run off is split across its width so the ground brush can change what
-     it is made of part way over, not only from one cross section to the next. */
-  bandI: [] as THREE.Vector3[],
-  bandO: [] as THREE.Vector3[],
   v: [] as number[],
   zeros: [] as number[],
   ones: [] as number[],
@@ -196,7 +191,7 @@ const scratch = {
 
 function takeScratch(n: number) {
   if (scratch.size < n) {
-    for (const key of ['left', 'right', 'top', 'edgeL', 'edgeR', 'apronEL', 'apronER', 'outerL', 'outerR', 'lineL', 'lineR', 'cutA', 'cutB', 'wallBase', 'wallMid', 'wallTip', 'gateBase', 'gateMid', 'gateTop', 'gateTip', 'gateTmp', 'wallLo', 'wallHi', 'bandI', 'bandO'] as const) {
+    for (const key of ['left', 'right', 'top', 'edgeL', 'edgeR', 'apronEL', 'apronER', 'outerL', 'outerR', 'lineL', 'lineR', 'cutA', 'cutB', 'wallBase', 'wallMid', 'wallTip', 'gateBase', 'gateMid', 'gateTop', 'gateTip', 'gateTmp', 'wallLo', 'wallHi'] as const) {
       const arr = scratch[key];
       while (arr.length < n) arr.push(new THREE.Vector3());
     }
@@ -212,6 +207,46 @@ function takeScratch(n: number) {
   }
   return scratch;
 }
+
+/*
+ * The run off strip's own scratch, sized by its STATIONS rather than by the
+ * cross sections: the strip is subdivided along the track wherever the paint
+ * is finer than the plates, so its rings can outnumber every other ring in
+ * this file. Kept apart from the main scratch so growing it does not grow two
+ * dozen arrays nothing else needs at that length.
+ */
+const runoffScratch = {
+  size: 0,
+  /* The inner and outer edge of one band across the run off, refilled per
+     band. The strip is split across its width so the ground brush can change
+     what it is made of part way over, not only from one station to the next. */
+  bandI: [] as THREE.Vector3[],
+  bandO: [] as THREE.Vector3[],
+  v: [] as number[],
+  uA: [] as number[],
+  uB: [] as number[],
+  /** Interpolated run off width at each station. */
+  w: [] as number[],
+};
+
+function takeRunoffScratch(m: number) {
+  if (runoffScratch.size < m) {
+    for (const key of ['bandI', 'bandO'] as const) {
+      const arr = runoffScratch[key];
+      while (arr.length < m) arr.push(new THREE.Vector3());
+    }
+    for (const key of ['v', 'uA', 'uB', 'w'] as const) {
+      const arr = runoffScratch[key];
+      while (arr.length < m) arr.push(0);
+    }
+    runoffScratch.size = m;
+  }
+  return runoffScratch;
+}
+
+/* Station interpolation temporaries, so laying a band allocates nothing. */
+const tmpBandIn = new THREE.Vector3();
+const tmpBandOut = new THREE.Vector3();
 
 /** Repeats the first frame at the end so closed loops have no visible seam. */
 function expand(frames: Frame[], closed: boolean): Frame[] {
@@ -2316,6 +2351,12 @@ export interface RunoffGround {
   kinds: ReadonlyArray<{ surface: SurfaceKey; material: MaterialKey }>;
   /** Which of them the ground is at a point, or -1 where nobody has painted. */
   at: (x: number, z: number) => number;
+  /**
+   * Spacing of the paint samples in metres, so the strip can be split as
+   * finely as the paint can actually answer. Optional so a caller without a
+   * paint field to measure gets the old coarse split.
+   */
+  cell?: number;
 }
 
 /**
@@ -2639,7 +2680,18 @@ export function buildRoadMeshes(
     for (let i = 0; i < n; i++) {
       maxRunoff = Math.max(maxRunoff, profile.runoffL[i], profile.runoffR[i]);
     }
-    const bands = ground ? Math.max(1, Math.min(6, Math.round(maxRunoff / 4))) : 1;
+    /*
+     * How many bands: one per paint cell across the widest run off, so the
+     * strip resolves everything the paint field can actually say. The old
+     * fixed split -- six bands of four metres or more -- was COARSER than the
+     * paint (about two metres a sample at the default grid), so a stroke of
+     * the ground brush came out as blocks twice the size of what was painted,
+     * and there was no way to change the strip any finer than that. Capped
+     * all the same, because a very wide run off on a very fine grid must not
+     * turn the strip into thousands of quads per cross section.
+     */
+    const bandStep = ground ? Math.max(1, ground.cell ?? 4) : maxRunoff;
+    const bands = ground ? Math.max(1, Math.min(16, Math.round(maxRunoff / bandStep))) : 1;
     // The material the run off falls back to: what the road settings say, for
     // every band of every cross section the brush has never been over.
     // Every run off surface is also a ground material, so this always finds
@@ -2647,36 +2699,70 @@ export function buildRoadMeshes(
     const fallback = ground
       ? Math.max(0, ground.kinds.findIndex((k) => k.surface === road.runoffSurface))
       : -1;
-    const bandI = scratch.bandI;
-    const bandO = scratch.bandO;
+    /*
+     * ALONG the track the same rule, so the strip has its own stations: the
+     * material could only ever change from one cross section to the next, and
+     * a section is however long the road setting makes its plates -- often
+     * four to eight metres, against a two metre paint cell. Painting a fine
+     * edge onto that stepped in whole plates. The sections are subdivided
+     * until a station step is no coarser than a paint cell; the subdivided
+     * points lie on the plates' own chords, so the surface is geometrically
+     * the same one as before -- only the places where the material may change
+     * get denser. Without the brush in play sub is 1 and the stations ARE the
+     * cross sections, exactly as always.
+     */
+    const plateLen = n > 1 ? (fr[n - 1].dist - fr[0].dist) / (n - 1) : 0;
+    const sub = ground ? Math.max(1, Math.min(4, Math.round(plateLen / bandStep))) : 1;
+    const m = (n - 1) * sub + 1;
+    const rs = takeRunoffScratch(m);
+    const bandI = rs.bandI;
+    const bandO = rs.bandO;
+    const vS = rs.v;
+    const uAS = rs.uA;
+    const uBS = rs.uB;
+    const wS = rs.w;
+    /** Station s sits t of the way from section (s / sub | 0) to the next. */
+    const secOf = (s: number) => Math.min(n - 2, (s / sub) | 0);
+    const fracOf = (s: number, i: number) => (s - i * sub) / sub;
 
     for (const side of ['L', 'R'] as const) {
       const width = side === 'L' ? profile.runoffL : profile.runoffR;
       const inner = side === 'L' ? e.apronEL : e.apronER;
       const outer = side === 'L' ? e.outerL : e.outerR;
-      const wide = (i: number) => width[i] > 0.05;
+
+      for (let s = 0; s < m; s++) {
+        const i = secOf(s);
+        const t = fracOf(s, i);
+        wS[s] = width[i] + (width[i + 1] - width[i]) * t;
+        vS[s] = (fr[i].dist + (fr[i + 1].dist - fr[i].dist) * t) / 8;
+      }
+      const wide = (s: number) => wS[s] > 0.05;
 
       /*
-       * Which material each band is made of at each cross section, worked out
-       * once. It is then read by the run finder once per material as well as by
-       * the pass that decides which materials turn up at all, and the road is
+       * Which material each band is made of at each station, worked out once.
+       * It is then read by the run finder once per material as well as by the
+       * pass that decides which materials turn up at all, and the road is
        * rebuilt on every frame of a drag: asking the paint field again each
        * time is a hundred thousand lookups a frame for an answer that cannot
        * have changed since the top of the function.
        */
-      const table = ground ? new Int8Array(bands * n) : null;
+      const table = ground ? new Int8Array(bands * m) : null;
       if (ground && table) {
         for (let b = 0; b < bands; b++) {
-          const t = (b + 0.5) / bands;
-          for (let i = 0; i < n; i++) {
-            const x = inner[i].x + (outer[i].x - inner[i].x) * t;
-            const z = inner[i].z + (outer[i].z - inner[i].z) * t;
-            const k = ground.at(x, z);
-            table[b * n + i] = k < 0 ? fallback : k;
+          const tb = (b + 0.5) / bands;
+          for (let s = 0; s < m; s++) {
+            const i = secOf(s);
+            const t = fracOf(s, i);
+            const ix = inner[i].x + (inner[i + 1].x - inner[i].x) * t;
+            const iz = inner[i].z + (inner[i + 1].z - inner[i].z) * t;
+            const ox = outer[i].x + (outer[i + 1].x - outer[i].x) * t;
+            const oz = outer[i].z + (outer[i + 1].z - outer[i].z) * t;
+            const k = ground.at(ix + (ox - ix) * tb, iz + (oz - iz) * tb);
+            table[b * m + s] = k < 0 ? fallback : k;
           }
         }
       }
-      const kindAt = (b: number, i: number): number => (table ? table[b * n + i] : -1);
+      const kindAt = (b: number, s: number): number => (table ? table[b * m + s] : -1);
 
       /*
        * Fill the two edge rings and the two u coordinates of one band.
@@ -2694,35 +2780,38 @@ export function buildRoadMeshes(
         const t0 = b / bands;
         const t1 = (b + 1) / bands;
         const last = b === bands - 1;
-        for (let i = 0; i < n; i++) {
-          bandI[i].copy(inner[i]).lerp(outer[i], t0);
-          bandO[i].copy(inner[i]).lerp(outer[i], t1);
-          if (last && wide(i)) bandO[i].y -= EDGE_SINK;
-          v[i] = fr[i].dist / 8;
-          uA[i] = (width[i] * t0) / 8;
-          uB[i] = (width[i] * t1) / 8;
+        for (let s = 0; s < m; s++) {
+          const i = secOf(s);
+          const t = fracOf(s, i);
+          tmpBandIn.copy(inner[i]).lerp(inner[i + 1], t);
+          tmpBandOut.copy(outer[i]).lerp(outer[i + 1], t);
+          bandI[s].copy(tmpBandIn).lerp(tmpBandOut, t0);
+          bandO[s].copy(tmpBandIn).lerp(tmpBandOut, t1);
+          if (last && wide(s)) bandO[s].y -= EDGE_SINK;
+          uAS[s] = (wS[s] * t0) / 8;
+          uBS[s] = (wS[s] * t1) / 8;
         }
       };
 
       /*
-       * One stretch of one band, as cross sections [from, to].
+       * One stretch of one band, as stations [from, to].
        *
-       * Two cross sections in a row can be made of different things, and the
-       * plate BETWEEN them belongs to the one before: every run therefore
-       * reaches one section forward, and only the last of them stops short.
-       * Without that the transition from gravel to grass is a gap you can see
-       * the sky through.
+       * Two stations in a row can be made of different things, and the plate
+       * BETWEEN them belongs to the one before: every run therefore reaches
+       * one station forward, and only the last of them stops short. Without
+       * that the transition from gravel to grass is a gap you can see the sky
+       * through.
        *
-       * The same reach backwards, but only into a cross section with no run
-       * off at all. Beside the pit lane the strip is squeezed to nothing, and a
-       * run that stopped on its last wide section left the plate between that
-       * one and the empty one next to it belonging to nobody -- measured on the
+       * The same reach backwards, but only into a station with no run off at
+       * all. Beside the pit lane the strip is squeezed to nothing, and a run
+       * that stopped on its last wide station left the plate between that one
+       * and the empty one next to it belonging to nobody -- measured on the
        * demo circuit as 2.6 m of bare ground straight off the racing surface,
        * at both pit junctions.
        */
       const strip = (b: StripBuilder, from: number, to: number) => {
-        if (side === 'L') b.addStrip(bandO, bandI, uB, uA, v, from, to);
-        else b.addStrip(bandI, bandO, uA, uB, v, from, to);
+        if (side === 'L') b.addStrip(bandO, bandI, uBS, uAS, vS, from, to);
+        else b.addStrip(bandI, bandO, uAS, uBS, vS, from, to);
       };
 
       if (!ground) {
@@ -2737,8 +2826,8 @@ export function buildRoadMeshes(
           material,
           road.runoffSurface,
           (b) => {
-            for (const [a, z] of runs(n, wide)) {
-              strip(b, Math.max(0, a - 1), Math.min(n - 1, z + 1));
+            for (const [a, z] of runs(m, wide)) {
+              strip(b, Math.max(0, a - 1), Math.min(m - 1, z + 1));
             }
           },
         );
@@ -2749,7 +2838,7 @@ export function buildRoadMeshes(
       // the circuit does not use.
       const used = new Set<number>();
       for (let b = 0; b < bands; b++) {
-        for (let i = 0; i < n; i++) if (wide(i)) used.add(kindAt(b, i));
+        for (let s = 0; s < m; s++) if (wide(s)) used.add(kindAt(b, s));
       }
       used.delete(-1);
 
@@ -2763,18 +2852,18 @@ export function buildRoadMeshes(
           (sb) => {
             for (let b = 0; b < bands; b++) {
               let laid = false;
-              for (const [a, z] of runs(n, (i) => wide(i) && kindAt(b, i) === k)) {
+              for (const [a, z] of runs(m, (s) => wide(s) && kindAt(b, s) === k)) {
                 if (!laid) {
                   layBand(b);
                   laid = true;
                 }
                 const from = a > 0 && !wide(a - 1) ? a - 1 : a;
-                const to = Math.min(n - 1, z + 1);
+                const to = Math.min(m - 1, z + 1);
                 strip(sb, from, to);
               }
             }
           },
-          n * 2 * bands,
+          m * 2 * bands,
         );
       }
     }
