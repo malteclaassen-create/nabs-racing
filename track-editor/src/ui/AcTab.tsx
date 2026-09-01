@@ -75,7 +75,7 @@ function ModelList() {
       </div>
       {scene.models.some((m) => !m.editable) && (
         <p className="hint">
-          An amber dot means that model could not be read — almost always Custom Shaders Patch
+          An amber dot means that model could not be read, almost always Custom Shaders Patch
           encryption. It is copied across untouched on export, it just cannot be edited.
         </p>
       )}
@@ -131,7 +131,7 @@ function MeshBrowser() {
       </Row>
       <p className="hint">
         {shown.length} of {all.filter((m) => !surfacesOnly || m.surface !== null).length} shown.
-        Hiding a mesh removes it from the exported model completely — its collision goes with it.
+        Hiding a mesh removes it from the exported model completely, its collision goes with it.
       </p>
 
       <div className="list">
@@ -147,7 +147,7 @@ function MeshBrowser() {
               <span className="grow" style={{ textDecoration: gone ? 'line-through' : undefined }}>
                 {renamedTo ?? m.name}
               </span>
-              <span style={{ color: 'var(--text-faint)' }}>{m.surface ?? '—'}</span>
+              <span style={{ color: 'var(--text-faint)' }}>{m.surface ?? '-'}</span>
               <button
                 className="btn ghost"
                 style={{ padding: '1px 6px' }}
@@ -283,7 +283,7 @@ export function SelectedCopy() {
       </Row>
       {t.ribbon ? (
         <p className="hint">
-          Sideways · up · <b>along the lap</b> — this copy follows the corner. Drag the bar on
+          Sideways · up · <b>along the lap</b>, this copy follows the corner. Drag the bar on
           it in the viewport to slide it, or the end grips to cover more of the corner.
         </p>
       ) : (
@@ -381,7 +381,7 @@ export function MarkedGroup() {
   return (
     <Section title={`${marked.length} pieces picked`}>
       <p className="hint" style={{ marginTop: 0 }}>
-        Drag the gizmo to move, turn or resize them together — they swing about the middle of the
+        Drag the gizmo to move, turn or resize them together, they swing about the middle of the
         group, not each about itself. Shift-click adds and removes pieces.
         {models.size > 1 && ` They come from ${models.size} different models, which is fine.`}
       </p>
@@ -589,7 +589,7 @@ export function SelectedMesh() {
       </Row>
       {!t.ribbon && mesh.surface === 'KERB' && (
         <p className="hint">
-          This is a kerb, so the bar and end grips in the viewport already work — the first
+          This is a kerb, so the bar and end grips in the viewport already work, the first
           drag switches this on by itself and pins the kerb to the edge of the tarmac.
         </p>
       )}
@@ -684,7 +684,7 @@ export function SelectedMesh() {
       </Row>
       <p className="hint">
         {partition
-          ? `This mesh holds ${partition.parts.length} separate pieces — the modder merged them —
+          ? `This mesh holds ${partition.parts.length} separate pieces, the modder merged them,
              and only the one you clicked changes.`
           : 'This mesh is one connected object, so it changes as a whole.'}
         {' '}Without the texture option a wider kerb gets wider chequers and stops matching its
@@ -715,7 +715,7 @@ export function SelectedMesh() {
         </button>
       </div>
       <p className="hint">
-        Shift-click more pieces in the viewport to move a whole group at once — a car is several
+        Shift-click more pieces in the viewport to move a whole group at once, a car is several
         meshes, and a run of barriers is a dozen pieces.
       </p>
       <div style={{ display: 'none' }}>
@@ -828,7 +828,7 @@ export function AcTab() {
           <span>Source</span><b>{imported.slug}</b>
           <span>Layout</span><b>{imported.layout || 'the only one'}</b>
           <span>Models loaded</span><b>{scene?.models.length ?? 0}</b>
-          <span>Held in memory</span><b>{scene ? `${Math.round(scene.bytes / 1e6)} MB` : '—'}</b>
+          <span>Held in memory</span><b>{scene ? `${Math.round(scene.bytes / 1e6)} MB` : '-'}</b>
         </div>
         <Row label="Export as">
           <Text
@@ -855,7 +855,7 @@ export function AcTab() {
           </div>
         )}
         <p className="hint">
-          Click anything on the track to edit it — its size, position and material show up under
+          Click anything on the track to edit it, its size, position and material show up under
           <b> Properties</b>.
         </p>
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>

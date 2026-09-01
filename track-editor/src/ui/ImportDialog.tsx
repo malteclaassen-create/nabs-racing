@@ -138,7 +138,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
               that is ready to drive.
               <br />
               <br />
-              To edit an installed track — Hockenheim, Spa, one of ours — run the editor locally
+              To edit an installed track, Hockenheim, Spa, one of ours, run the editor locally
               with <code>start.cmd</code>. Same editor; it just has the game sitting next to it.
             </div>
           )}
@@ -175,7 +175,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
           {(phase === 'ready' || phase === 'loading' || (phase === 'error' && tracks.length > 0)) && (
             <>
               <p className="hint" style={{ marginTop: 0 }}>
-                Reading from <code>{root}</code> — {tracks.length} tracks. The original is opened
+                Reading from <code>{root}</code>, {tracks.length} tracks. The original is opened
                 read only and is never written to.
               </p>
 
@@ -219,14 +219,14 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
 
               {chosen && (
                 <div className="callout" style={{ marginTop: 10 }}>
-                  <b>{chosen.name}</b> — {chosen.fileCount} files, {megabytes(chosen.bytes)}.
+                  <b>{chosen.name}</b>, {chosen.fileCount} files, {megabytes(chosen.bytes)}.
                   {chosen.layouts.length > 1 && (
                     <> All {chosen.layouts.length} layouts are kept on export; only{' '}
                       <code>{layoutLabel(chosen.layouts.find((l) => l.id === layout) ?? chosen.layouts[0])}</code>{' '}
                       is loaded for editing.</>
                   )}
                   <br />
-                  Textures are loaded for the main model only — on a track this size that is the
+                  Textures are loaded for the main model only, on a track this size that is the
                   difference between a comfortable editor and a dead browser tab.
                 </div>
               )}

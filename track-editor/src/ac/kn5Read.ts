@@ -390,7 +390,7 @@ export function kn5Safety(file: Kn5File): Kn5Safety {
   if (file.trailing.length > TRAILING_MARKER_LIMIT) {
     return {
       editable: false,
-      reason: `${file.trailing.length} bytes of this model were not understood — `
+      reason: `${file.trailing.length} bytes of this model were not understood, `
         + 'it is almost certainly encrypted by Custom Shaders Patch. '
         + 'It will be copied across unchanged, but cannot be edited.',
     };

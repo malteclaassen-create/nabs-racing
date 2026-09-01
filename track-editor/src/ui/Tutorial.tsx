@@ -72,7 +72,7 @@ const STEPS: Step[] = [
   },
   {
     title: 'Making it a race track',
-    body: 'The Race tab holds the grid, the pit boxes, the timing sectors and the AI line — the things Assetto Corsa needs before it will start a session on the circuit.',
+    body: 'The Race tab holds the grid, the pit boxes, the timing sectors and the AI line, the things Assetto Corsa needs before it will start a session on the circuit.',
     tool: 'select',
     tab: 'race',
   },

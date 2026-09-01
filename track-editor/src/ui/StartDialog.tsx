@@ -84,7 +84,7 @@ export function StartDialog({
       try {
         const p = await loadShowcase();
         replaceProject(p);
-        setStatus(`${p.meta.name} loaded — an entire circuit to take apart.`);
+        setStatus(`${p.meta.name} loaded, an entire circuit to take apart.`);
       } catch (err) {
         setError((err as Error).message);
         setBusy(false);
@@ -99,7 +99,7 @@ export function StartDialog({
       replaceProject(emptyProject({ hills }));
       setStatus(
         hills
-          ? 'Open country. Draw a centre line with the Track tool (T) — it follows the ground.'
+          ? 'Open country. Draw a centre line with the Track tool (T), it follows the ground.'
           : 'Empty field. Draw a centre line with the Track tool (T).',
       );
     } else if (choice === 'generate') {
@@ -184,7 +184,7 @@ export function StartDialog({
           {opt(
             'showcase',
             'Open the showcase circuit',
-            'A finished 5 km circuit as it comes out of this editor: banked corners, a full pit complex with forty boxes, grandstands, and seven thousand trees over three square kilometres of sculpted ground. The fastest way to see what the tool can do — and everything in it can be dragged, repainted or deleted.',
+            'A finished 5 km circuit as it comes out of this editor: banked corners, a full pit complex with forty boxes, grandstands, and seven thousand trees over three square kilometres of sculpted ground. The fastest way to see what the tool can do, and everything in it can be dragged, repainted or deleted.',
           )}
           {opt('demo', 'Demo oval', 'The sample circuit: twelve points, a pit lane, somewhere to press every button.')}
 

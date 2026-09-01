@@ -329,7 +329,7 @@ function RoadOptions() {
             disabled={!active}
             onClick={() => {
               setActiveDeco(null);
-              setStatus('Road finished — the next click starts a new one');
+              setStatus('Road finished, the next click starts a new one');
             }}
           >
             {active ? `Finish "${active.name}"` : 'Click the ground to start a road'}
@@ -401,7 +401,7 @@ function RoadOptions() {
       <Section title="Crossing">
         <p className="hint" style={{ marginTop: 0 }}>
           A ready-made crossroads: two roads through one point, the junction already clean. Roads
-          drawn up to any of its four ends dock on, and every point of it stays editable — bend an
+          drawn up to any of its four ends dock on, and every point of it stays editable, bend an
           arm, stretch it, delete one for a T junction.
         </p>
         <Row label="Arm length">
@@ -436,7 +436,7 @@ function RoadOptions() {
       <Section title="Car parks">
         <p className="hint" style={{ marginTop: 0 }}>
           Build one yourself: drag an <b>asphalt patch</b> out with the Place tool, stamp{' '}
-          <b>Parking bays</b> onto it (Track furniture — rows latch flush against each other), and
+          <b>Parking bays</b> onto it (Track furniture, rows latch flush against each other), and
           end a road at the patch: it docks onto the edge, square and level, exactly like it docks
           onto the circuit.
         </p>
@@ -553,7 +553,7 @@ function NewPointSection({ path }: { path: PathId }) {
         {cfg.heightMode === 'level' &&
           `Every point lands at exactly this height; the terrain is blended to meet it. The setting for a flat circuit.`}
         {cfg.heightMode === 'offset' &&
-          'Points follow the ground but sit this far above it — an embankment at plus, a cutting at minus.'}
+          'Points follow the ground but sit this far above it, an embankment at plus, a cutting at minus.'}
       </p>
       <Row label="Apply to all">
         <div style={{ display: 'flex', gap: 6, width: '100%' }}>
@@ -571,7 +571,7 @@ function NewPointSection({ path }: { path: PathId }) {
             disabled={nodes.length === 0 || cfg.heightMode === 'ground'}
             title={
               cfg.heightMode === 'ground'
-                ? 'Pick Level or Above first — On ground has no height of its own to apply.'
+                ? 'Pick Level or Above first, On ground has no height of its own to apply.'
                 : `Move every existing ${what} point onto this height`
             }
             onClick={() => setStatus(`Height set on ${applyDrawLevel(path, groundAt)} ${what} points`)}
@@ -659,7 +659,7 @@ export function RoadShapeSection() {
         {plate > 0 && (
           <>
             One flat plate every <b>{plate.toFixed(1)} m</b>, <b>{sections}</b> cross sections in
-            all — all of them rebuilt per frame while you drag, so it sets the editor's pace too.{' '}
+            all, all of them rebuilt per frame while you drag, so it sets the editor's pace too.{' '}
           </>
         )}
         Everything between two cross sections is dead flat, so this is the facet you drive over.
@@ -781,7 +781,7 @@ function KerbOptions() {
             {shape.height < 0.005 && (
               <p className="hint" style={{ marginTop: 0 }}>
                 Flat: painted onto the road with no step to climb. It is still exported as kerb, so
-                it still rumbles and still counts as track — just nothing to unsettle a car mid
+                it still rumbles and still counts as track, just nothing to unsettle a car mid
                 corner.
               </p>
             )}
@@ -832,7 +832,7 @@ function KerbOptions() {
         )}
         <p className="hint">
           The ramp is the wedge each end runs out over. The tarmac strip is the coloured asphalt
-          outside the kerb — drivable, colour set below.
+          outside the kerb, drivable, colour set below.
         </p>
       </Section>
 
@@ -958,7 +958,7 @@ function FreeBarrierOptions() {
         </button>
       </Row>
       <p className="hint">
-        Click the ground to start, then click again for each leg — modules are laid end to end along
+        Click the ground to start, then click again for each leg, modules are laid end to end along
         the green line, {length.toFixed(1)} m at a time, following the ground as they go.{' '}
         <b>Straight</b> locks the heading to 15° steps and <b>Curve</b> bends away from the run in
         the direction it was already going, exactly as they do for the track. <b>Esc</b> ends the
@@ -1017,7 +1017,7 @@ function EdgeRowOptions() {
         <span className="val">{rowGap.toFixed(1)} m</span>
       </Row>
       <p className="hint">
-        Press on the roadside where the row should start and drag to where it ends — the
+        Press on the roadside where the row should start and drag to where it ends, the
         modules follow the edge of the built-up roadside at this distance, end to end round
         the corner. Negative puts them on the run off. What is laid down is ordinary
         objects: pick one up with Select if a single module needs nudging.
@@ -1081,7 +1081,7 @@ function BarrierCutOptions() {
                   style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between', gap: 8 }}
                 >
                   <span>
-                    {f.side < 0 ? 'Left' : 'Right'}, {f.metres.toFixed(0)} m — {faultReason(f.kind)}
+                    {f.side < 0 ? 'Left' : 'Right'}, {f.metres.toFixed(0)} m, {faultReason(f.kind)}
                   </span>
                 </div>
               ))}
@@ -1122,7 +1122,7 @@ function BarrierCutOptions() {
         </Row>
         <p className="hint" style={{ marginTop: 0 }}>
           Click the roadside band where the barrier should stop. Amber is barrier that stands,
-          brown is a stretch already taken out — clicking a brown one puts it back. Each click is
+          brown is a stretch already taken out, clicking a brown one puts it back. Each click is
           its own undo step.
         </p>
         <Row label="">
@@ -1181,7 +1181,7 @@ function BarrierOptions() {
           : mode === 'cut'
             ? 'Takes short pieces back out of the generated barrier, measured in metres rather than in control points.'
             : mode === 'edge'
-              ? 'Drags a row of modules along the edge of the roadside — tyres round a corner, armco down a straight — without tracing the curve by hand.'
+              ? 'Drags a row of modules along the edge of the roadside, tyres round a corner, armco down a straight, without tracing the curve by hand.'
               : 'Draws a run of barrier modules wherever you like, following the ground. Nothing to do with the track.'}
       </p>
     </Section>
@@ -1279,7 +1279,7 @@ function BarrierOptions() {
       <p className="hint">
         {road.wallStyle === 'fence'
           ? 'Catch fence: armco for its first ≈1 m whatever the height says, chain link above it, and the top metre angled back over the circuit so anything thrown at it drops back inside.'
-          : 'Armco: the steel beams themselves, stacked as many as the height takes — three of them at about a metre, which is what a circuit really has.'}
+          : 'Armco: the steel beams themselves, stacked as many as the height takes, three of them at about a metre, which is what a circuit really has.'}
       </p>
       </Section>
     </>
@@ -1595,12 +1595,12 @@ function GroundOptions() {
         <p className="hint">
           Pull a rectangle out corner to corner. Nothing is painted until you let go, and the snap
           above is what makes two of them meet exactly. <b>Corners</b> rounds the four corners into
-          circular fillets while the sides stay dead straight — how a real run off area ends.
+          circular fillets while the sides stay dead straight, how a real run off area ends.
         </p>
       )}
       {ground.mode === 'polygon' && (
         <p className="hint">
-          Click the corners of the area. Clicking the first one again — or <b>Enter</b> — closes it
+          Click the corners of the area. Clicking the first one again, or <b>Enter</b>, closes it
           and fills it in; <b>Esc</b> drops it. For a paddock or a run off area that is neither
           round nor square, which on a circuit is most of them.
         </p>
@@ -1609,7 +1609,7 @@ function GroundOptions() {
         <p className="hint">
           Click points along the line, <b>Enter</b> paints it; clicking the first point again joins
           it into a ring, <b>Esc</b> drops it. Dead straight between the points, or one continuous
-          curve through them with the toggle on — the precise way to lay a service road or a
+          curve through them with the toggle on, the precise way to lay a service road or a
           painted band, exactly where you put it.
         </p>
       )}
@@ -1833,7 +1833,7 @@ function PlaceOptions() {
     if (mb > MODEL_LIMIT_MB) {
       setNotice({
         tone: 'error',
-        text: `${file.name} is ${mb.toFixed(0)} MB. The limit is ${MODEL_LIMIT_MB} MB — a bigger `
+        text: `${file.name} is ${mb.toFixed(0)} MB. The limit is ${MODEL_LIMIT_MB} MB, a bigger `
           + 'one takes several copies of itself in memory while it is being saved. Reduce the mesh '
           + 'or the textures in the program it came from and import it again.',
       });
@@ -1872,13 +1872,13 @@ function PlaceOptions() {
       const measured = `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} m`;
       setNotice({
         tone: mb > AUTOSAVE_SAFE_MB ? 'warn' : 'ok',
-        text: `Imported ${file.name} — ${measured}. Click the ground to place it.`
+        text: `Imported ${file.name}, ${measured}. Click the ground to place it.`
           + (mb > AUTOSAVE_SAFE_MB
             ? ` At ${mb.toFixed(0)} MB it is past what this browser can autosave, so `
-              + '"Continue last session" will not bring it back — save the project to a file.'
+              + '"Continue last session" will not bring it back, save the project to a file.'
             : ''),
       });
-      setStatus(`Imported ${file.name} — ${measured}`);
+      setStatus(`Imported ${file.name}, ${measured}`);
     } finally {
       setBusy(false);
     }
@@ -1924,8 +1924,8 @@ function PlaceOptions() {
         {isGroundPad(placeKind) && (
           <p className="hint" style={{ marginTop: 0 }}>
             A patch is an object lying <i>on</i> the ground, with a height and a position of its
-            own. To make the ground itself asphalt or gravel — no grass underneath it, and the
-            sculpt brush moving it with the rest of the terrain — use the{' '}
+            own. To make the ground itself asphalt or gravel, no grass underneath it, and the
+            sculpt brush moving it with the rest of the terrain, use the{' '}
             <b>Ground tool (M)</b> instead.
           </p>
         )}
@@ -2056,7 +2056,7 @@ function EraseOptions() {
       </p>
       <p className="hint" style={{ marginTop: 0 }}>
         For picking a few specific things instead, use <b>Select</b> and drag a box over them on
-        empty ground — then Delete removes the lot.
+        empty ground, then Delete removes the lot.
       </p>
     </Section>
   );
@@ -2198,7 +2198,7 @@ function ScatterOptions() {
         {scatter.overRunoff ? 'the tarmac and its kerb' : 'the run off, at its far side'}, as built.{' '}
         {scatter.overRunoff
           ? 'Ground cover can therefore go right up to the kerb.'
-          : 'That keeps trees out of a run off, and ground cover with them — switch this on for grass.'}
+          : 'That keeps trees out of a run off, and ground cover with them, switch this on for grass.'}
       </p>
     </Section>
   );

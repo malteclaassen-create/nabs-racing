@@ -585,10 +585,16 @@ function makeGrassBlades(): HTMLCanvasElement {
     const w = SIZE * (0.004 + rnd() * 0.006);
     // Darker at the base, lighter at the tip: that gradient is most of what
     // makes a flat card read as something with depth in it.
+    //
+    // The base colours sit a shade ABOVE the ground texture's greens on
+    // purpose. In the game the tufts stand mostly in their own shadow side,
+    // and drawn at the ground's own value they read as dark speckles ON the
+    // lawn instead of blades OF it -- lighter here lands them at the texture
+    // once the lighting has had its say.
     const g = ctx.createLinearGradient(x, SIZE, x + lean, SIZE - h);
-    const tint = 0.72 + rnd() * 0.5;
-    g.addColorStop(0, `rgb(${Math.round(38 * tint)}, ${Math.round(70 * tint)}, ${Math.round(31 * tint)})`);
-    g.addColorStop(1, `rgb(${Math.round(104 * tint)}, ${Math.round(148 * tint)}, ${Math.round(62 * tint)})`);
+    const tint = 0.8 + rnd() * 0.5;
+    g.addColorStop(0, `rgb(${Math.round(50 * tint)}, ${Math.round(88 * tint)}, ${Math.round(40 * tint)})`);
+    g.addColorStop(1, `rgb(${Math.round(126 * tint)}, ${Math.round(172 * tint)}, ${Math.round(76 * tint)})`);
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(x - w, SIZE);
@@ -600,7 +606,7 @@ function makeGrassBlades(): HTMLCanvasElement {
   }
   // A hairline of root so a tuft is anchored rather than floating, thin enough
   // not to read as a green line when you are stood next to it.
-  ctx.fillStyle = 'rgba(46, 82, 38, 0.9)';
+  ctx.fillStyle = 'rgba(56, 96, 46, 0.9)';
   ctx.fillRect(0, SIZE - 2, SIZE, 2);
   return c;
 }
@@ -1383,7 +1389,7 @@ export const MATERIAL_COLORS: Record<MaterialKey, string> = {
   prop_yellow: '#e0b52c',
   prop_blue: '#2f5f9e',
   chainlink: '#b9c0c6',
-  grass_blades: '#4a7a33',
+  grass_blades: '#5a8c3e',
   tree_card: '#3d5f2c',
   sign_board: '#f2f2ef',
   led_flag: '#e6ebef',

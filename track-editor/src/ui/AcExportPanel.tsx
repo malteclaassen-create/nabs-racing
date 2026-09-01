@@ -98,7 +98,7 @@ export function AcExportPanel({ imported, onClose }: { imported: AcImport; onClo
           <div className="callout info">
             <b>Nothing is lost, by construction.</b> Every file of{' '}
             <code>{imported.slug}</code> is either rewritten because you changed it, or copied
-            across untouched — including the layouts you did not open, the Custom Shaders Patch
+            across untouched, including the layouts you did not open, the Custom Shaders Patch
             extension folder, and any model this editor could not read. The source folder is
             opened read only and is never written to.
           </div>

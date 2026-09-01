@@ -322,6 +322,26 @@ export interface PropInstance {
   s: Vec3;
   /** Keep the prop glued to the terrain height when the terrain changes. */
   ground: boolean;
+  /**
+   * Id of a ProjectImage drawn as a sponsor banner across this piece -- the
+   * side faces of a road bridge deck, the way a real circuit sells the space
+   * over the track. Only bridge deck pieces read it.
+   */
+  banner?: string;
+}
+
+/**
+ * A user supplied picture, stored inside the project file as base64 -- the
+ * same treatment the imported models get. Small by nature: sponsor banners,
+ * not photographs of the family.
+ */
+export interface ProjectImage {
+  id: string;
+  name: string;
+  /** e.g. 'image/png' or 'image/jpeg'. */
+  mime: string;
+  /** base64 without a data: prefix. */
+  data: string;
 }
 
 /** A user imported 3D model, stored inside the project file as base64. */
@@ -665,6 +685,8 @@ export interface Project {
   grid: GridSettings;
   timing: TimingSettings;
   props: PropInstance[];
+  /** Sponsor banner pictures, referenced by PropInstance.banner. */
+  images: ProjectImage[];
   assets: AssetFile[];
   terrain: TerrainSettings;
   /**

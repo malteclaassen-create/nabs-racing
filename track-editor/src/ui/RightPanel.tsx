@@ -7,6 +7,8 @@ import { assetIdOf, assetVersion, onAssetsChanged } from '../io/assetCache';
 import { Check, Num, Row, Seg, Section, Slider, Text } from './controls';
 import { IconCopy, IconTrash } from './icons';
 import { pathDataOf, pathLabelOf } from '../types';
+import { canCarryBanner } from '../core/banner';
+import { pickFile } from '../io/project';
 import type { PathData, PathId, Project, PropInstance, TrackNode } from '../types';
 import {
   applyToSection,
@@ -950,7 +952,7 @@ function PropProps({ id }: { id: string }) {
               Length × height × depth. Was {base.x.toFixed(1)} × {base.y.toFixed(1)} ×{' '}
               {base.z.toFixed(1)} m.{' '}
               {assetId !== null
-                ? 'The file came in at that size. Type what it should be — an import in the '
+                ? 'The file came in at that size. Type what it should be, an import in the '
                   + 'wrong unit is off by a factor of a hundred, not a few per cent.'
                 : 'Length is the side the front faces along, so a pit building grows down the '
                   + 'lane rather than back into the paddock.'}
@@ -978,7 +980,94 @@ function PropProps({ id }: { id: string }) {
             : 'Decoration only, cars drive through it.'}
         </p>
       </Section>
+
+      {canCarryBanner(inst.kind) && (
+        <BannerSection inst={inst} images={project.images} edit={edit} />
+      )}
     </>
+  );
+}
+
+/**
+ * The sponsor banner on a bridge deck segment: pick one of the project's
+ * pictures, upload a new one, or take it off. The picture is stretched over
+ * both side faces of THIS segment -- each segment carries its own, so a long
+ * bridge can read D-H-L one letterboard at a time or one sponsor per span.
+ */
+function BannerSection({
+  inst,
+  images,
+  edit,
+}: {
+  inst: PropInstance;
+  images: Project['images'];
+  edit: (fn: (i: PropInstance) => void) => void;
+}) {
+  const addProjectImage = useEditor((s) => s.addProjectImage);
+  const setStatus = useEditor((s) => s.setStatus);
+
+  const upload = async () => {
+    const file = await pickFile('image/png,image/jpeg,image/webp');
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+      setStatus('That picture is over 4 MB, banners want small files, they are stretched over 12 m anyway');
+      return;
+    }
+    const buf = await file.arrayBuffer();
+    let bin = '';
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    const id = addProjectImage(file.name, file.type || 'image/png', btoa(bin));
+    edit((i) => { i.banner = id; });
+    setStatus(`Banner "${file.name}" on this segment`);
+  };
+
+  const current = images.find((i) => i.id === inst.banner);
+  return (
+    <Section title="Sponsor banner">
+      <p className="hint" style={{ marginTop: 0 }}>
+        A picture across both side faces of this segment, the space over the track a real
+        circuit sells. Wide pictures work best: the face is about 12 × 2 m.
+      </p>
+      {current && (
+        <Row label="Showing">
+          <span className="badge">{current.name}</span>
+          <button
+            className="btn ghost icon"
+            title="Take the banner off this segment"
+            onClick={() => edit((i) => { i.banner = undefined; })}
+          >
+            <IconTrash />
+          </button>
+        </Row>
+      )}
+      <Row label="">
+        <button className="btn" style={{ width: '100%', justifyContent: 'center' }} onClick={upload}>
+          Upload a picture…
+        </button>
+      </Row>
+      {images.length > 0 && (
+        <div className="list">
+          {images.map((img) => (
+            <div
+              key={img.id}
+              className={`list-item ${img.id === inst.banner ? 'on' : ''}`}
+              onClick={() => edit((i) => { i.banner = img.id; })}
+              title="Show this picture on the selected segment"
+            >
+              <img
+                src={`data:${img.mime};base64,${img.data}`}
+                alt=""
+                style={{ width: 42, height: 16, objectFit: 'cover', borderRadius: 2 }}
+              />
+              <span className="grow">{img.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -1307,7 +1396,7 @@ function RaceTab() {
         <p className="hint" style={{ marginTop: 0 }}>
           Built over the S/F line rather than placed beside it: it follows the slider above and
           spans whatever the circuit is wide there. It appears once the track is a closed lap. The
-          five red lights are wired to the session — lit on the grid, out on the green flag.
+          five red lights are wired to the session, lit on the grid, out on the green flag.
         </p>
       </Section>
 

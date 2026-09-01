@@ -4,9 +4,10 @@ import type { SideProfile } from './road';
 import type { PitClip } from './pitLink';
 import {
   corridorSurfaceSampler,
+  paintCellSize,
   paintKind,
+  paintRes,
   roadCorridor,
-  sampleGroundValue,
   sampleHeights,
 } from './terrain';
 
@@ -73,8 +74,47 @@ const BEYOND = 6;
  * a full regeneration per brush frame is a stutter.
  */
 export function grass3dOnGrass(terrain: TerrainSettings, x: number, z: number): boolean {
-  const v = sampleGroundValue(terrain, terrain.paint, x, z);
-  return v <= 0 || paintKind(v) === 0;
+  const paint = terrain.paint;
+  if (!paint) return true;
+  /*
+   * All FOUR lattice points around the tuft, not the nearest one.
+   *
+   * The paint lives on a grid a couple of metres wide, and the drawn boundary
+   * runs THROUGH the cells (the edge field cuts them). Sampling only the
+   * nearest point let a tuft stand up to half a cell inside a gravel bed and
+   * still read the grass point behind it -- a picket line of grass along both
+   * edges of every painted patch, and nowhere else. Requiring all four
+   * corners to be grass can only err the other way: the tufts stop half a
+   * cell short of the paint instead, which reads as a tended edge.
+   */
+  /*
+   * A full lattice cell of margin, not just the cell's own corners.
+   *
+   * The painted shape's real boundary is drawn from the EDGE field, which
+   * remembers where the brush stroke actually ran -- up to a cell away from
+   * the lattice points that carry the material. The run off band is cut with
+   * the same field, so painted sand there can reach a whole cell past its
+   * nearest non-grass lattice point, and tufts cleared against the corners
+   * alone still stood on that overhang. Checking the surrounding ring too
+   * costs a strip of grass one cell wide around every painted patch, which
+   * reads as a tended edge; grass on the gravel reads as a bug.
+   */
+  const pw = paintRes(terrain.res);
+  const ps = paintCellSize(terrain);
+  const fx = (x - terrain.originX) / ps;
+  const fz = (z - terrain.originZ) / ps;
+  const x0 = Math.floor(fx);
+  const z0 = Math.floor(fz);
+  for (let dz = -1; dz <= 2; dz++) {
+    for (let dx = -1; dx <= 2; dx++) {
+      const px = x0 + dx;
+      const pz = z0 + dz;
+      if (px < 0 || pz < 0 || px >= pw || pz >= pw) continue;
+      const v = paint[pz * pw + px];
+      if (v > 0 && paintKind(v) !== 0) return false;
+    }
+  }
+  return true;
 }
 
 /**

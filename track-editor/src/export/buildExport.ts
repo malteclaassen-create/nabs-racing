@@ -3,7 +3,8 @@ import { zipSync, type Zippable } from 'fflate';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import type { Project, PropInstance, SurfaceKey, TerrainSettings } from '../types';
+import type { Project, ProjectImage, PropInstance, SurfaceKey, TerrainSettings } from '../types';
+import { bannerQuad, canCarryBanner } from '../core/banner';
 import type { Derived } from '../store/derived';
 import type { MaterialKey, MeshDef } from '../core/road';
 import { isGroundPad, propParts, propTileBox, LIBRARY_BY_KEY } from '../core/library';
@@ -11,7 +12,7 @@ import { propMatrix } from '../core/props';
 import { sampleHeights, splitByGroups } from '../core/terrain';
 import { grass3dBlockers, grass3dFor, grass3dOnGrass, grass3dOnPad } from '../core/grass3d';
 import { ALL_MATERIALS, ALPHA_TESTED, EMISSIVE, MATERIAL_COLORS, textureFileName, texturePngBytes, texturePngBytesFlipped } from '../core/textures';
-import { assetError, assetIdOf, getAsset } from '../io/assetCache';
+import { assetError, assetIdOf, base64ToArrayBuffer, getAsset } from '../io/assetCache';
 import { captureCanvas } from '../io/screenshot';
 import { buildFbx, hexToRgb, type FbxMaterialInput, type FbxMeshInput, type FbxNullInput } from './fbx';
 import { buildKn5, type Kn5MaterialInput, type Kn5MeshInput, type Kn5NullInput } from './kn5';
@@ -326,6 +327,55 @@ export function physicsNameFor(name: string, surface: SurfaceKey | null): string
 }
 
 /* ------------------------------------------------------------------ */
+/* Sponsor banners                                                     */
+/* ------------------------------------------------------------------ */
+
+/** File name a banner picture is recorded under in the kn5. */
+export function bannerFileName(img: ProjectImage): string {
+  const ext = img.mime === 'image/jpeg' ? 'jpg' : img.mime === 'image/webp' ? 'webp' : 'png';
+  return `${img.id}.${ext}`;
+}
+
+/**
+ * The sponsor banners, baked to world space quads -- the same quads the
+ * viewport draws (core/banner.ts). Scenery with no digit prefix, so AC gives
+ * them no collision: the parapet behind them already carries the wall.
+ *
+ * Each distinct picture becomes one material named `banner_<imageId>`; the
+ * material loops below recognise the prefix and embed the user's own bytes
+ * instead of a generated texture.
+ */
+function bannerMeshes(project: Project, heights: Float32Array): {
+  meshes: MeshDef[];
+  images: Map<string, ProjectImage>;
+} {
+  const meshes: MeshDef[] = [];
+  const images = new Map<string, ProjectImage>();
+  let n = 0;
+  for (const inst of project.props) {
+    if (!inst.banner || !canCarryBanner(inst.kind)) continue;
+    const img = project.images.find((i) => i.id === inst.banner);
+    if (!img) continue;
+    images.set(img.id, img);
+    const m = propMatrix(inst, project.terrain, heights);
+    for (const side of [1, -1] as const) {
+      const g = bannerQuad(side);
+      g.applyMatrix4(m);
+      // Rotated by the deck, so the normals turn with it.
+      g.computeVertexNormals();
+      n += 1;
+      meshes.push({
+        name: `banner_${n}`,
+        material: `banner_${img.id}` as MaterialKey,
+        surface: null,
+        geometry: g,
+      });
+    }
+  }
+  return { meshes, images };
+}
+
+/* ------------------------------------------------------------------ */
 /* Markers                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -389,7 +439,10 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
   const slug = (project.meta.slug || 'my_track').replace(/[^a-z0-9_]/gi, '_').toLowerCase();
 
   /* --- collect geometry ------------------------------------------- */
+  const banners = bannerMeshes(project, derived.terrainHeights);
+
   const meshes: MeshDef[] = [
+    ...banners.meshes,
     ...derived.roadMeshes,
     ...derived.pitMeshes,
     // The decorative roads, drivable like everything else: they carry ROAD or
@@ -423,7 +476,11 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
             derived.pitClip,
           )
         : new Float32Array(0),
-      project.terrain,
+      // The SHAPE-rendered paint, not the stored one: the viewport filters its
+      // tufts against derived.paintTerrain, and an export filtering against
+      // project.terrain shipped grass standing on every gravel bed drawn with
+      // the shape tool -- clean in the editor, wrong in the game.
+      derived.paintTerrain,
       derived.terrainHeights,
       project.props,
     ),
@@ -452,11 +509,16 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
 
   /* --- materials --------------------------------------------------- */
   const usedMaterials = new Set<MaterialKey>(meshes.map((m) => m.material as MaterialKey));
-  const materials: FbxMaterialInput[] = [...usedMaterials].map((key) => ({
-    name: key,
-    color: hexToRgb(MATERIAL_COLORS[key] ?? '#cccccc'),
-    texture: project.exportCfg.writeTextures ? `textures/${textureFileName(key)}` : undefined,
-  }));
+  const materials: FbxMaterialInput[] = [...usedMaterials].map((key) => {
+    const img = key.startsWith('banner_') ? banners.images.get(key.slice(7)) : undefined;
+    return {
+      name: key,
+      color: hexToRgb(MATERIAL_COLORS[key] ?? '#cccccc'),
+      texture: project.exportCfg.writeTextures
+        ? `textures/${img ? bannerFileName(img) : textureFileName(key)}`
+        : undefined,
+    };
+  });
 
   /* --- markers ----------------------------------------------------- */
   const markerList = derived.markers.all;
@@ -514,6 +576,19 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
   const kn5MaterialKeys = [...usedMaterials];
   const kn5Materials: Kn5MaterialInput[] = [];
   for (const key of kn5MaterialKeys) {
+    const img = key.startsWith('banner_') ? banners.images.get(key.slice(7)) : undefined;
+    if (img) {
+      /* The user's own picture, embedded as-is. The quad's V axis is authored
+         upside down (see core/banner.ts), which against unflipped bytes is
+         exactly what AC's texture orientation wants -- the same net result as
+         the flip every generated texture goes through below. */
+      kn5Materials.push({
+        name: key,
+        textureName: bannerFileName(img),
+        textureBytes: new Uint8Array(base64ToArrayBuffer(img.data)),
+      });
+      continue;
+    }
     kn5Materials.push({
       name: key,
       textureName: textureFileName(key),

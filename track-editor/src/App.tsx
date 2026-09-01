@@ -230,7 +230,7 @@ export default function App() {
           quotaReported = true;
           useEditor.getState().setStatus(
             'Autosave failed: the project is past what this browser can hold, usually an '
-            + 'imported model. Save it to a file — "Continue last session" will not have it.',
+            + 'imported model. Save it to a file, "Continue last session" will not have it.',
           );
         };
         if (typeof requestIdleCallback === 'function') {

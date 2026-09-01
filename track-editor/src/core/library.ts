@@ -549,6 +549,20 @@ const BRIDGE_STRUCT = 0.5;
 /** Where the drivable surface lies, relative to a piece's origin. */
 export const BRIDGE_DECK_TOP = BRIDGE_CLEAR + BRIDGE_STRUCT + BRIDGE_ASPHALT;
 const BRIDGE_FOOTING = 10;
+/** Parapet height. Tall enough to carry a sponsor banner along its face. */
+const BRIDGE_RAIL_H = 1.4;
+
+/**
+ * The face of a bridge deck that a sponsor banner covers, in the deck's own
+ * frame: from the underside of the span up over the parapet, the full 12 m of
+ * the segment, standing a hair outside the parapet's outer face.
+ */
+export const BRIDGE_BANNER = {
+  x: 4.03,
+  y0: BRIDGE_CLEAR,
+  y1: BRIDGE_DECK_TOP + BRIDGE_RAIL_H,
+  halfLen: 6,
+};
 
 /**
  * Height of a bridge piece's ROADWAY at one of its Z edges, relative to the
@@ -725,7 +739,9 @@ export const LIBRARY: PropDef[] = [
     surface: null,
     build: () =>
       group([
-        [[card(0.6, 0.34), card(0.6, 0.34, Math.PI / 2)], 'grass_blades'],
+        // Ankle high, not shin high: at 34 cm the verges read as a hay meadow
+        // from the cockpit, and mowed-verge height is what a circuit has.
+        [[card(0.6, 0.17), card(0.6, 0.17, Math.PI / 2)], 'grass_blades'],
       ]),
   },
   {
@@ -941,8 +957,9 @@ export const LIBRARY: PropDef[] = [
     const DECK_TOP = BRIDGE_DECK_TOP;
     const RAMP_LEN = 56;
     const FOOTING = BRIDGE_FOOTING;
+    const RAIL_HEIGHT = BRIDGE_RAIL_H;
     const SLOPE = DECK_TOP / RAMP_LEN;
-    const RAIL_H = 0.9;
+    const RAIL_H = RAIL_HEIGHT;
     const RAIL_W = 0.35;
     // y' = y + z * slope, spelled out row by row: makeShear's argument order
     // is easy to hold the wrong way round, and holding it the wrong way round

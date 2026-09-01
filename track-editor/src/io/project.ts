@@ -151,6 +151,16 @@ export function deserializeProject(json: string): Project {
     pit: normalizePath(raw.pit, base.pit),
     decoRoads: normalizeDecoRoads(raw.decoRoads),
     props: raw.props ?? [],
+    // Banner pictures. A file from before they existed has none; anything
+    // malformed is dropped rather than fed to a texture loader.
+    images: Array.isArray(raw.images)
+      ? raw.images.filter(
+          (i: unknown): i is Project['images'][number] =>
+            !!i && typeof (i as { id?: unknown }).id === 'string'
+            && typeof (i as { data?: unknown }).data === 'string'
+            && typeof (i as { mime?: unknown }).mime === 'string',
+        )
+      : [],
     assets: raw.assets ?? [],
     // Plain data, so it round trips as JSON; a file from before shapes
     // existed simply has none.

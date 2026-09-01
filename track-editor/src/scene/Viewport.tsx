@@ -51,6 +51,7 @@ interface MarqueeBox {
 /** Metres a marquee has to reach before it stops being a click. */
 const MIN_MARQUEE = 1.5;
 import { bridgeRoadwayAtEdge, GRASS_KINDS, isGroundPad, LIBRARY_BY_KEY, PAD_SIZE, propParts, propTileBox } from '../core/library';
+import { bannerQuad, canCarryBanner } from '../core/banner';
 import {
   clearanceAt,
   padScale,
@@ -256,7 +257,7 @@ function FinishRoadBadge({ path }: { path: PathId }) {
         setHover(false);
         setActiveDeco(null);
         select(null);
-        setStatus('Road finished — the next click starts a new one');
+        setStatus('Road finished, the next click starts a new one');
       }}
     />
   );
@@ -1500,7 +1501,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
         setStatus(
           hits.length === 0
             ? 'Nothing inside the box'
-            : `${hits.length} objects marked — Delete removes them`,
+            : `${hits.length} objects marked, Delete removes them`,
         );
         return;
       }
@@ -3402,6 +3403,63 @@ function PropsLayer({ derived }: { derived: Derived }) {
           onSelect={onSelect}
         />
       ))}
+      <BannerLayer derived={derived} />
+    </group>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sponsor banners on the road bridge                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * One texture and one material per picture, shared by every segment showing
+ * it -- ten DHL segments cost one texture, exactly like the prop materials.
+ * Keyed by image id; a replaced picture gets a new id, so nothing here ever
+ * has to be invalidated.
+ */
+const bannerMaterialCache = new Map<string, THREE.Material>();
+
+function bannerMaterial(img: { id: string; mime: string; data: string }): THREE.Material {
+  let m = bannerMaterialCache.get(img.id);
+  if (!m) {
+    const tex = new THREE.TextureLoader().load(`data:${img.mime};base64,${img.data}`);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    // The quad's V axis is authored in AC's top-down orientation; loading the
+    // preview unflipped makes the viewport agree with the game.
+    tex.flipY = false;
+    m = new THREE.MeshLambertMaterial({ map: tex });
+    bannerMaterialCache.set(img.id, m);
+  }
+  return m;
+}
+
+/**
+ * The banners themselves: a quad on each side face of every bridge deck that
+ * carries one. Separate from the prop items because a banner is per INSTANCE
+ * where every other prop look is per KIND.
+ */
+function BannerLayer({ derived }: { derived: Derived }) {
+  const props = useEditor((s) => s.project.props);
+  const images = useEditor((s) => s.project.images);
+  const terrain = useEditor((s) => s.project.terrain);
+  const quads = useMemo(() => [bannerQuad(1), bannerQuad(-1)], []);
+  return (
+    <group>
+      {props.map((inst) => {
+        if (!inst.banner || !canCarryBanner(inst.kind)) return null;
+        const img = images.find((i) => i.id === inst.banner);
+        if (!img) return null;
+        const m = propMatrix(inst, terrain, derived.terrainHeights);
+        const material = bannerMaterial(img);
+        return (
+          <group key={inst.id} matrixAutoUpdate={false} matrix={m}>
+            <mesh geometry={quads[0]} material={material} raycast={() => null} />
+            <mesh geometry={quads[1]} material={material} raycast={() => null} />
+          </group>
+        );
+      })}
     </group>
   );
 }

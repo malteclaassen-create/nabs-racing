@@ -165,6 +165,7 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
     track: { closed: true, nodes: track },
     pit: { closed: false, nodes: pit },
     decoRoads: [],
+    images: [],
     road: {
       // Editing detail only: dragging rebuilds every cross section per frame,
       // so the default keeps the editor fluid. The export ignores this and
@@ -755,6 +756,8 @@ export interface EditorState {
   setDecoSurface: (s: DecoSurface) => void;
   /** Create an empty deco road, make it the active one, return its id. */
   addDecoRoad: (surface: DecoSurface) => string;
+  /** Store a picture in the project (sponsor banners) and return its id. */
+  addProjectImage: (name: string, mime: string, data: string) => string;
   /** Armed: the next click on the ground drops a roundabout there. */
   roundaboutArm: boolean;
   setRoundaboutArm: (on: boolean) => void;
@@ -1980,6 +1983,15 @@ export const useEditor = create<EditorState>((set, get) => ({
       p.decoRoads = [...p.decoRoads, mkRoad('A', 1, 0, count), mkRoad('B', 0, 1, count)];
     });
     set({ crossingArm: false, activeDeco: null });
+  },
+
+  addProjectImage: (name, mime, data) => {
+    propCounter += 1;
+    const id = `img${Date.now().toString(36)}${propCounter.toString(36)}`;
+    get().commit((p) => {
+      p.images.push({ id, name, mime, data });
+    });
+    return id;
   },
 
   deleteDecoRoad: (id) => {

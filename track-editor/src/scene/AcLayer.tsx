@@ -933,7 +933,7 @@ function RibbonHandles() {
         d.copyCount = Math.max(0, Math.min(40, Math.round(past / Math.max(0.5, d.covered))));
         store.setStatus(d.copyCount === 0
           ? 'Alt-drag past the end to lay more sections'
-          : `${d.copyCount} more section(s), ${(d.copyCount * d.covered).toFixed(0)} m — release to lay them`);
+          : `${d.copyCount} more section(s), ${(d.copyCount * d.covered).toFixed(0)} m, release to lay them`);
         return;
       }
 

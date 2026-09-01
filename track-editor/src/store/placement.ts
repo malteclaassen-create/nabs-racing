@@ -155,13 +155,13 @@ export function alignPlacementToPath(at?: { x: number; z: number }): string {
     const flipped = (hit.rotY + 180) % 360;
     s.setPlaceRotation(flipped);
     lastAligned = flipped;
-    return `Turned round — facing the other way along the ${name} (${flipped.toFixed(1)}°)`;
+    return `Turned round, facing the other way along the ${name} (${flipped.toFixed(1)}°)`;
   }
   if (repeated && Math.abs(apart - 180) < 0.05) {
     // Standing on the flipped answer from the press before: back again.
     s.setPlaceRotation(hit.rotY);
     lastAligned = hit.rotY;
-    return `Turned round — facing the other way along the ${name} (${hit.rotY.toFixed(1)}°)`;
+    return `Turned round, facing the other way along the ${name} (${hit.rotY.toFixed(1)}°)`;
   }
 
   s.setPlaceRotation(hit.rotY);
