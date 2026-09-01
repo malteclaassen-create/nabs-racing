@@ -373,10 +373,11 @@ function GroundShapeProps({ id }: { id: string }) {
         </div>
       </Row>
       <p className="hint">
-        {shape.points.length} points. In the viewport, drag a point to move it and <b>Alt</b>-click
-        one to flip it between corner and curve — a border can be straight along one side and
-        curved along the next. The corner radius rounds the CORNER points; curved ones already
-        bend.
+        {shape.points.length} points. In the viewport, drag a point to move it, <b>Alt</b>-click
+        one to flip it between corner and curve, and <b>Del</b> takes the picked point out
+        (<b>Shift+Del</b> removes the whole shape). Click the border between two points to add a
+        point there; drag the border to move the whole shape. The corner radius rounds the CORNER
+        points; curved ones already bend.
       </p>
     </Section>
   );

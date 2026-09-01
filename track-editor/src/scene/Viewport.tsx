@@ -695,6 +695,21 @@ function TerrainLayer({ derived }: { derived: Derived }) {
   const groundAnchor = useRef<{ x: number; z: number } | null>(null);
   /** The ground shape point being dragged, while the button is down. */
   const groundShapeDrag = useRef<{ id: string; index: number } | null>(null);
+  /**
+   * A grab of the BORDER between two points: dragging it moves the whole
+   * shape, letting go without a drag puts a new point down where it was
+   * grabbed. Which of the two it is only becomes clear at the first real
+   * move, so the history entry waits for that too.
+   */
+  const groundShapeGrab = useRef<{
+    id: string;
+    index: number;
+    x: number;
+    z: number;
+    lastX: number;
+    lastZ: number;
+    active: boolean;
+  } | null>(null);
 
   /**
    * A click near an existing shape's point picks the shape up instead of
@@ -717,18 +732,56 @@ function TerrainLayer({ derived }: { derived: Derived }) {
         }
       });
     }
-    if (!best) return false;
-    const pick: { id: string; index: number } = best;
-    if (e.nativeEvent.altKey) {
-      s.toggleGroundShapePoint(pick.id, pick.index);
+    if (best) {
+      const pick: { id: string; index: number } = best;
+      if (e.nativeEvent.altKey) {
+        s.toggleGroundShapePoint(pick.id, pick.index);
+        s.select({ kind: 'ground', id: pick.id, point: pick.index });
+        setStatus('Point flipped between curve and corner');
+        return true;
+      }
       s.select({ kind: 'ground', id: pick.id, point: pick.index });
-      setStatus('Point flipped between curve and corner');
+      s.pushHistory();
+      groundShapeDrag.current = pick;
+      setStatus('Dragging the point · Alt-click flips curve/corner, Del removes the point');
       return true;
     }
-    s.select({ kind: 'ground', id: pick.id, point: pick.index });
-    s.pushHistory();
-    groundShapeDrag.current = pick;
-    setStatus('Dragging the point · Alt-click flips curve/corner, Del deletes the shape');
+
+    /* No point in reach: try the border itself. A drag from here moves the
+       whole shape; a click that never becomes a drag puts a new point into
+       the border right where it was clicked. */
+    let bestSeg: { id: string; index: number } | null = null;
+    let bestSegD = reach;
+    for (const shape of s.project.groundShapes) {
+      const pts = shape.points;
+      const closed = shape.type === 'area' ? true : shape.closed;
+      const segs = closed ? pts.length : pts.length - 1;
+      for (let i = 0; i < segs; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        const ex = b.x - a.x;
+        const ez = b.z - a.z;
+        const len2 = ex * ex + ez * ez;
+        let t = len2 > 1e-9 ? ((e.point.x - a.x) * ex + (e.point.z - a.z) * ez) / len2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const d = Math.hypot(e.point.x - (a.x + ex * t), e.point.z - (a.z + ez * t));
+        if (d < bestSegD) {
+          bestSegD = d;
+          bestSeg = { id: shape.id, index: i };
+        }
+      }
+    }
+    if (!bestSeg) return false;
+    s.select({ kind: 'ground', id: bestSeg.id });
+    groundShapeGrab.current = {
+      ...bestSeg,
+      x: e.point.x,
+      z: e.point.z,
+      lastX: e.point.x,
+      lastZ: e.point.z,
+      active: false,
+    };
+    setStatus('Drag to move the whole shape · let go to add a point here');
     return true;
   };
   /*
@@ -1154,6 +1207,20 @@ function TerrainLayer({ derived }: { derived: Derived }) {
         useEditor.getState().moveGroundShapePoint(drag.id, drag.index, at.x, at.z);
         return;
       }
+      const grab = groundShapeGrab.current;
+      if (grab) {
+        if (!grab.active) {
+          // Still a click until the pointer really travels; only then does
+          // the whole-shape move begin and earn its history entry.
+          if (Math.hypot(e.point.x - grab.x, e.point.z - grab.z) < 0.5) return;
+          useEditor.getState().pushHistory();
+          grab.active = true;
+        }
+        useEditor.getState().moveGroundShape(grab.id, e.point.x - grab.lastX, e.point.z - grab.lastZ);
+        grab.lastX = e.point.x;
+        grab.lastZ = e.point.z;
+        return;
+      }
       const anchor = groundAnchor.current;
       if (anchor) {
         const far = groundPoint(e.point.x, e.point.z);
@@ -1230,6 +1297,18 @@ function TerrainLayer({ derived }: { derived: Derived }) {
     sculpting.current = false;
     brushAt.current = null;
     groundShapeDrag.current = null;
+    {
+      const grab = groundShapeGrab.current;
+      groundShapeGrab.current = null;
+      if (grab && !grab.active) {
+        // The click that never became a drag: a new point, on the border,
+        // exactly where it was grabbed.
+        useEditor.getState().insertGroundShapePoint(grab.id, grab.index, grab.x, grab.z);
+        setStatus('Point added · drag it, Alt-click flips curve/corner');
+      } else if (grab) {
+        setStatus('Shape moved');
+      }
+    }
 
     /* A rectangle of ground becomes ground here, once, as one undo step. A
        drag that never grew past a metre was a click that wobbled and paints

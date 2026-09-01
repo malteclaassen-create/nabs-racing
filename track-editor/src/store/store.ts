@@ -708,6 +708,18 @@ export interface EditorState {
   moveGroundShapePoint: (id: string, index: number, x: number, z: number) => void;
   /** Flip one point between curve and corner. One undo step. */
   toggleGroundShapePoint: (id: string, index: number) => void;
+  /**
+   * Put a new point into the border AFTER `index`, at (x, z). It curves if
+   * the stretch it lands on curves. One undo step; selects the new point.
+   */
+  insertGroundShapePoint: (id: string, index: number, x: number, z: number) => void;
+  /**
+   * Take one point out of the border. A shape cut below what it needs to
+   * exist -- three corners for an area, two ends for a line -- goes with it.
+   */
+  deleteGroundShapePoint: (id: string, index: number) => void;
+  /** Shift every point of a shape at once. Live: `pushHistory` first. */
+  moveGroundShape: (id: string, dx: number, dz: number) => void;
   deleteGroundShape: (id: string) => void;
 
   /** How a click on the ground turns into track points. */
@@ -1662,6 +1674,50 @@ export const useEditor = create<EditorState>((set, get) => ({
         points[index] = { ...points[index], smooth: !points[index].smooth };
         return { ...s, points };
       });
+    });
+  },
+
+  insertGroundShapePoint: (id, index, x, z) => {
+    const shape = get().project.groundShapes.find((s) => s.id === id);
+    if (!shape || !shape.points[index]) return;
+    get().commit((p) => {
+      p.groundShapes = p.groundShapes.map((s) => {
+        if (s.id !== id) return s;
+        const a = s.points[index];
+        const b = s.points[(index + 1) % s.points.length] ?? a;
+        const points = s.points.slice();
+        // The stretch curves if either end curves -- the same rule the border
+        // itself is built by -- so the new point rides what it landed on.
+        points.splice(index + 1, 0, { x, z, smooth: a.smooth || b.smooth });
+        return { ...s, points };
+      });
+    });
+    set({ selection: { kind: 'ground', id, point: index + 1 } });
+  },
+
+  deleteGroundShapePoint: (id, index) => {
+    const shape = get().project.groundShapes.find((s) => s.id === id);
+    if (!shape || !shape.points[index]) return;
+    const least = shape.type === 'area' ? 3 : 2;
+    if (shape.points.length <= least) {
+      get().deleteGroundShape(id);
+      return;
+    }
+    get().commit((p) => {
+      p.groundShapes = p.groundShapes.map((s) =>
+        s.id === id ? { ...s, points: s.points.filter((_, i) => i !== index) } : s,
+      );
+    });
+    set({ selection: { kind: 'ground', id } });
+  },
+
+  moveGroundShape: (id, dx, dz) => {
+    get().live((p) => {
+      p.groundShapes = p.groundShapes.map((s) =>
+        s.id === id
+          ? { ...s, points: s.points.map((pt) => ({ ...pt, x: pt.x + dx, z: pt.z + dz })) }
+          : s,
+      );
     });
   },
 

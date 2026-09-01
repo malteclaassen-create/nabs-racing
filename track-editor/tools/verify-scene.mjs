@@ -6113,6 +6113,49 @@ console.log('\nPainted ground');
       && sampleGround(sd.paintTerrain, sd.paintTerrain.paint, 260, 330) === 0);
   }
 
+  /* --- reworking a shape: insert, delete, move as one ------------------ */
+  {
+    const gp2 = defaultProject();
+    gp2.groundShapes.push({
+      id: 'gsx', name: 'Trap', kind: 3, type: 'area', closed: true,
+      width: 6, cornerRadius: 0,
+      points: [
+        { x: 0, z: 0, smooth: false },
+        { x: 60, z: 0, smooth: false },
+        { x: 60, z: 40, smooth: true },
+        { x: 0, z: 40, smooth: true },
+      ],
+    });
+    useEditor.setState({ project: gp2, past: [], future: [], selection: null });
+    const ed = () => useEditor.getState();
+    const pts = () => ed().project.groundShapes[0]?.points ?? [];
+
+    ed().insertGroundShapePoint('gsx', 0, 30, -5);
+    check('a border click puts a new point between its neighbours',
+      pts().length === 5 && pts()[1].x === 30 && pts()[1].z === -5);
+    check('and it rides what it landed on: a straight stretch stays a corner',
+      pts()[1].smooth === false);
+    ed().insertGroundShapePoint('gsx', 3, 30, 45);
+    check('while a curved stretch makes it a curve point', pts()[3].smooth === true);
+
+    ed().deleteGroundShapePoint('gsx', 3);
+    ed().deleteGroundShapePoint('gsx', 1);
+    check('deleting a point takes just that point', pts().length === 4);
+
+    const before = pts().map((p) => ({ ...p }));
+    ed().pushHistory();
+    ed().moveGroundShape('gsx', 10, -20);
+    check('the whole shape moves as one piece',
+      pts().every((p, i) =>
+        Math.abs(p.x - (before[i].x + 10)) < 1e-9 && Math.abs(p.z - (before[i].z - 20)) < 1e-9));
+
+    // An area cut below three corners does not linger as a degenerate sliver.
+    ed().deleteGroundShapePoint('gsx', 0);
+    ed().deleteGroundShapePoint('gsx', 0);
+    check('cutting an area below three corners removes it',
+      ed().project.groundShapes.length === 0);
+  }
+
   /* --- the curve goes through the clicks ----------------------------- */
   {
     const pts = [

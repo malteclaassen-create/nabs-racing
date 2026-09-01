@@ -413,8 +413,15 @@ export default function App() {
           else if (sel.kind === 'prop') s.deleteProp(sel.id);
           else if (sel.kind === 'kerb') s.deleteKerb(sel.id);
           else if (sel.kind === 'ground') {
-            s.deleteGroundShape(sel.id);
-            s.setStatus('Ground shape removed');
+            // Del takes the picked point out of the border; Shift+Del, or a
+            // shape selected without a point, takes the whole shape.
+            if (sel.point !== undefined && !e.shiftKey) {
+              s.deleteGroundShapePoint(sel.id, sel.point);
+              s.setStatus('Point removed · Shift+Del removes the whole shape');
+            } else {
+              s.deleteGroundShape(sel.id);
+              s.setStatus('Ground shape removed');
+            }
           }
           else if (sel.kind === 'section') {
             s.commit((p) => {
