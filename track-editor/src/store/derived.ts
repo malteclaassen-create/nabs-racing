@@ -616,14 +616,16 @@ function compute(project: Project, interacting: boolean): Derived {
         let merged = mergePitFrames(frames, trackFrames, 1.5, 0, { from, to });
         frames = merged.frames;
         const weight = merged.weight.slice();
-        const clip = pitRoadClip(frames, trackFrames, project.track.closed, undefined, undefined, 0, { from, to });
+        // keepCrossings: a deco road running ACROSS the circuit or another
+        // road is an intersection, not a merge -- only its ends make wedges.
+        const clip = pitRoadClip(frames, trackFrames, project.track.closed, undefined, undefined, 0, { from, to }, true);
         for (const prev of built) {
           const m2 = mergePitFrames(frames, prev.frames, 1.5, 0, { from, to });
           frames = m2.frames;
           for (let i = 0; i < weight.length; i++) {
             if (m2.weight[i] > weight[i]) weight[i] = m2.weight[i];
           }
-          const c2 = pitRoadClip(frames, prev.frames, prev.closed, undefined, undefined, 0, { from, to });
+          const c2 = pitRoadClip(frames, prev.frames, prev.closed, undefined, undefined, 0, { from, to }, true);
           for (let i = 0; i < clip.lo.length; i++) {
             if (c2.lo[i] > clip.lo[i]) clip.lo[i] = c2.lo[i];
             if (c2.hi[i] < clip.hi[i]) clip.hi[i] = c2.hi[i];

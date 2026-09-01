@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { defaultProject } from '../src/store/store.ts';
 import { getDerived } from '../src/store/derived.ts';
 import { computeFrames } from '../src/core/spline.ts';
-import { attachRoadEnds } from '../src/core/pitLink.ts';
+import { attachRoadEnds, pitRoadClip } from '../src/core/pitLink.ts';
 import { sampleHeights } from '../src/core/terrain.ts';
 import { serializeProject, deserializeProject } from '../src/io/project.ts';
 
@@ -186,23 +186,14 @@ check('both roads have centre lines for the viewport',
   const meshB = d2.decoMeshes.find((m) => m.name === '1ROAD_deco_1');
   check('both crossing roads still build', !!meshA && !!meshB);
   /*
-   * A KNOWN GAP, written down here so it is a decision rather than a surprise.
-   *
-   * Two roads that MEET are handled, and are checked above: an end brought
-   * near another road is glued onto its edge, which is the T junction and the
-   * roundabout below. Two roads that CROSS at a large angle are NOT. The clip
-   * works by casting rays sideways out of one ribbon's centre line and
-   * stopping them at the other's edge -- sound while the two run roughly
-   * parallel, which is what it was written for, and degenerate at a right
-   * angle, where those rays set off ALONG the road they are meant to be
-   * stopped by and only ever meet it at its far ends. Measured on this pair:
-   * B runs across the middle of A completely uncut, so the two are coplanar
-   * where they cross and will fight for the pixels.
-   *
-   * Not asserted either way. A check that pinned the CURRENT behaviour would
-   * be a check defending a fault, and one that demanded the right behaviour
-   * would sit red until somebody rewrites the clip to work off containment
-   * rather than off sideways rays. This note is the honest middle.
+   * Two roads that MEET are handled and checked above: an end brought near
+   * another road is glued onto its edge -- the T junction and the roundabout
+   * below. Two roads that CROSS keep going: the clip runs with keepCrossings,
+   * so an on-tarmac stretch in the middle of a ribbon is treated as an
+   * intersection and its band is given back whole, while mergePitFrames has
+   * already glued its heights onto the other road's plane a few millimetres
+   * under it -- so the crossing is level and one surface owns the pixels.
+   * The direct clip behaviour is asserted on its own further down.
    */
 
   /* The roundabout ring builds as a closed loop, and the approach docked. */
@@ -220,6 +211,48 @@ check('both roads have centre lines for the viewport',
   }
   check('an approach road docks onto the ring like it docks onto the circuit',
     dockGap < 1.5, `${dockGap.toFixed(1)} m off the ring's edge`);
+}
+
+/* --- a crossing keeps its surface ----------------------------------- */
+
+{
+  /* Two straight ribbons crossing obliquely, run through the clip alone.
+     Without keepCrossings the crossing severed the lower road -- the band
+     collapsed to one side of the other road's edge. With it, the crossing
+     stretch keeps its full band, and only the ends could ever make wedges. */
+  const mkPath = (pts) => ({ closed: false, nodes: pts.map(([x, z], i) => node(x, z, 600 + i)) });
+  const A = computeFrames(mkPath([[0, -80], [0, 0], [0, 80]]), 8);
+  const B = computeFrames(mkPath([[-80, -60], [0, 0], [80, 60]]), 8);
+  const lead = { from: 0, to: B.length - 1 };
+  const cut = pitRoadClip(B, A, false, undefined, undefined, 0, lead);
+  const kept = pitRoadClip(B, A, false, undefined, undefined, 0, lead, true);
+  let severed = false;
+  let narrowest = Infinity;
+  for (let i = 0; i < B.length; i++) {
+    if (cut.hi[i] - cut.lo[i] < 1) severed = true;
+    narrowest = Math.min(narrowest, kept.hi[i] - kept.lo[i]);
+  }
+  check('the plain clip cuts an oblique crossing (so keepCrossings has a job)', severed);
+  check('keepCrossings carries the road whole across the other',
+    narrowest > 5.9, `narrowest band ${narrowest.toFixed(2)} m of 6`);
+}
+
+/* --- a road drawn PAST the circuit stays where it was drawn ---------- */
+
+{
+  /* The snap used to reach 30 m: a road sketched well clear of the tarmac was
+     still yanked onto it. Twelve metres off now means twelve metres off. */
+  const p5 = defaultProject();
+  const tf5 = computeFrames(p5.track, p5.road.samplesPerSegment);
+  const f5 = tf5[Math.floor(tf5.length * 0.5)];
+  const off5 = (d, along = 0) => ({
+    x: f5.pos.x + f5.right.x * (f5.widthR + d) + f5.fwd.x * along,
+    z: f5.pos.z + f5.right.z * (f5.widthR + d) + f5.fwd.z * along,
+  });
+  const drawn = [off5(12, -40), off5(12, 0), off5(12, 40)].map((p, i) => node(p.x, p.z, 700 + i));
+  const untouched = attachRoadEnds({ closed: false, nodes: drawn }, tf5);
+  check('an end 12 m off the tarmac is NOT dragged onto it',
+    untouched.nodes === drawn || (untouched.nodes[0].p[0] === drawn[0].p[0] && untouched.nodes[0].p[2] === drawn[0].p[2]));
 }
 
 /* --- docking onto a car park pad ------------------------------------ */

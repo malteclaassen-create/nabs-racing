@@ -168,10 +168,15 @@ export function attachPitLane(
 
 /**
  * How close a deco road's end has to come to the tarmac before it is counted
- * as "meant to join". Generous on purpose: the point of the automatic attach
- * is that a road ended roughly at the circuit snaps cleanly onto it.
+ * as "meant to join". Tight on purpose: the attach exists to make a join that
+ * was clearly AIMED come out clean, not to reach out and grab roads. At the
+ * old 30 m a road sketched past a roundabout was yanked onto it from a third
+ * of a football pitch away, and around a ring with several approaches an end
+ * could sit inside three different capture zones at once -- which one won
+ * looked arbitrary. Within a couple of road widths the intent is unambiguous;
+ * beyond that the road stays exactly where it was drawn.
  */
-const ROAD_SNAP = 30;
+const ROAD_SNAP = 8;
 
 /**
  * Glue whichever ENDS of a deco road lie near the circuit onto its edge.
@@ -307,8 +312,11 @@ export interface PadRect {
   y: number;
 }
 
-/** How close a road end has to come to a pad before it means "park here". */
-const PAD_SNAP = 20;
+/** How close a road end has to come to a pad before it means "park here".
+    Tight for the same reason as ROAD_SNAP: an end a stone's throw from a car
+    park is not necessarily going there, and being dragged 20 m sideways made
+    the attach feel like the road had a mind of its own. */
+const PAD_SNAP = 10;
 
 /** How far the end tucks in over the pad, so no hairline of ground shows. */
 const PAD_BURY = 0.4;
@@ -780,6 +788,22 @@ export function pitRoadClip(
    * the lead-out, and they are tidied at the end: see closeLead.
    */
   lead?: { from: number; to: number },
+  /**
+   * Keep the ribbon where it CROSSES the other surface instead of cutting it.
+   *
+   * The clip was written for a pit lane, which only ever meets the circuit at
+   * its two ends -- so "the centre line is on the tarmac" always meant "this
+   * is the junction, take the band back to a wedge". A deco road that runs
+   * ACROSS another one is a different thing entirely: cutting it there
+   * severed every crossing in the middle, so an X junction came out as one
+   * road with a bite taken out of it instead of two roads meeting. With this
+   * set, an on-tarmac stretch that lies in the middle of the ribbon -- both
+   * neighbours off the tarmac, nowhere near either end -- is a crossing, and
+   * its band is given back whole. The heights are already glued to the other
+   * surface by mergePitFrames, so what comes out is a level intersection.
+   * The ends still merge as wedges exactly as before.
+   */
+  keepCrossings = false,
 ): PitClip {
   const n = pitFrames.length;
   const lo = new Float32Array(n);
@@ -1018,6 +1042,7 @@ export function pitRoadClip(
     }
   }
 
+  const onTrackAt = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     if (flatOf[i] < 1e-6) continue;
     const rightHit = hitR[i] === 1;
@@ -1040,6 +1065,8 @@ export function pitRoadClip(
       continue;
     }
 
+    onTrackAt[i] = 1;
+
     /* On the tarmac: the circuit runs from the left exit to the right one, and
        what is drawable is whichever of the two leftovers is wider. Picking one
        rather than keeping both is what makes the junction a wedge: the acute
@@ -1055,6 +1082,44 @@ export function pitRoadClip(
       hi[i] = leftEdge;
     } else {
       lo[i] = rightEdge;
+    }
+  }
+
+  if (keepCrossings) {
+    /* Runs of on-tarmac cross sections that sit in the MIDDLE of the ribbon
+       are crossings, not junctions: a road passing over another one, or over
+       the ring of a roundabout. Their band comes back whole. A run that
+       reaches the first or last lane section belongs to an end merge and is
+       left to the wedge machinery.
+
+       The widening over the clipped flanks matters as much as the run
+       itself: the sections just before and after a crossing are off the
+       tarmac but had their band cut back to the other road's edge, which
+       left a pinch at every corner of the X. That cut came from the same
+       overlap, so it goes with it. */
+    const from = lead ? Math.max(0, lead.from) : 0;
+    const to = lead ? Math.min(n - 1, lead.to) : n - 1;
+    const clipped = (i: number) =>
+      hi[i] < wholeHi[i] - 1e-3 || lo[i] > wholeLo[i] + 1e-3;
+    let i = from;
+    while (i <= to) {
+      if (!onTrackAt[i]) {
+        i += 1;
+        continue;
+      }
+      let b = i;
+      while (b + 1 <= to && onTrackAt[b + 1]) b += 1;
+      if (i > from && b < to) {
+        let s = i;
+        let e = b;
+        while (s - 1 > from && !onTrackAt[s - 1] && clipped(s - 1)) s -= 1;
+        while (e + 1 < to && !onTrackAt[e + 1] && clipped(e + 1)) e += 1;
+        for (let k = s; k <= e; k++) {
+          lo[k] = wholeLo[k];
+          hi[k] = wholeHi[k];
+        }
+      }
+      i = b + 1;
     }
   }
 
