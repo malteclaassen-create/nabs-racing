@@ -24,7 +24,8 @@ import {
   spanMetres,
   tAtDist,
 } from '../core/kerbs';
-import { GROUND_KINDS, makeTerrainRaycast, roundOutline, sampleHeights, smoothOutline, type GroundRect } from '../core/terrain';
+import { GROUND_KINDS, makeTerrainRaycast, roundOutline, sampleHeights, shapeOutline, smoothOutline, type GroundRect } from '../core/terrain';
+import type { GroundShape } from '../types';
 
 /* Alt while painting the ground rubs it out. Not the same as painting grass:
    grass is a material laid over whatever was there, the eraser hands the patch
@@ -692,6 +693,44 @@ function TerrainLayer({ derived }: { derived: Derived }) {
   const groundDraft = useEditor((s) => s.groundDraft);
   /** The first corner of a ground rectangle being pulled out, world XZ. */
   const groundAnchor = useRef<{ x: number; z: number } | null>(null);
+  /** The ground shape point being dragged, while the button is down. */
+  const groundShapeDrag = useRef<{ id: string; index: number } | null>(null);
+
+  /**
+   * A click near an existing shape's point picks the shape up instead of
+   * starting a new one: plain click grabs the point for a drag, Alt flips it
+   * between curve and corner. Only with no draft in progress -- while one is
+   * being collected every click is a new point of THAT.
+   */
+  const tryPickGroundShape = (e: ThreeEvent<PointerEvent>): boolean => {
+    const s = useEditor.getState();
+    if (s.groundDraft.length > 0) return false;
+    const reach = closeReach(s.ground.radius);
+    let best: { id: string; index: number } | null = null;
+    let bestD = reach;
+    for (const shape of s.project.groundShapes) {
+      shape.points.forEach((p, i) => {
+        const d = Math.hypot(p.x - e.point.x, p.z - e.point.z);
+        if (d < bestD) {
+          bestD = d;
+          best = { id: shape.id, index: i };
+        }
+      });
+    }
+    if (!best) return false;
+    const pick: { id: string; index: number } = best;
+    if (e.nativeEvent.altKey) {
+      s.toggleGroundShapePoint(pick.id, pick.index);
+      s.select({ kind: 'ground', id: pick.id, point: pick.index });
+      setStatus('Point flipped between curve and corner');
+      return true;
+    }
+    s.select({ kind: 'ground', id: pick.id, point: pick.index });
+    s.pushHistory();
+    groundShapeDrag.current = pick;
+    setStatus('Dragging the point · Alt-click flips curve/corner, Del deletes the shape');
+    return true;
+  };
   /*
    * The rectangle lives in a ref AND in state, for the same reason the ground
    * patch drag does: the state is what draws the preview, and the ref is what
@@ -982,6 +1021,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
          is what every drawing program does and what the shape looks like it
          wants. */
       if (ground.mode === 'polygon') {
+        if (tryPickGroundShape(e)) return;
         const at = groundPoint(e.point.x, e.point.z);
         const s = useEditor.getState();
         const draft = s.groundDraft;
@@ -989,12 +1029,17 @@ function TerrainLayer({ derived }: { derived: Derived }) {
         const closing = draft.length >= 3 && first
           && Math.hypot(at.x - first[0], at.z - first[1]) < closeReach(ground.radius);
         if (closing) {
-          const painted = s.paintGroundPolygon(
-            draft.map(([x, z]) => ({ x, z })),
-            e.nativeEvent.altKey ? GROUND_ERASE : s.ground.kind,
-          );
+          if (e.nativeEvent.altKey) {
+            // The eraser stays a one-shot into the raster: it takes paint
+            // away, it is not a shape of its own.
+            const painted = s.paintGroundPolygon(draft.map(([x, z]) => ({ x, z })), GROUND_ERASE);
+            s.setGroundDraft([]);
+            setStatus(painted ? 'Ground erased' : 'That outline covered nothing');
+            return;
+          }
+          s.addGroundShape(draft.map(([x, z]) => ({ x, z })), 'area', true);
           s.setGroundDraft([]);
-          setStatus(painted ? 'Ground area painted' : 'That outline covered nothing');
+          setStatus('Ground area laid · click a point to reshape it, Alt-click flips curve/corner');
           return;
         }
         s.setGroundDraft([...draft, [at.x, at.z]]);
@@ -1010,6 +1055,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
          paints the open stroke, and clicking the first point again joins it
          into a ring instead of closing an area. */
       if (ground.mode === 'path') {
+        if (tryPickGroundShape(e)) return;
         const at = groundPoint(e.point.x, e.point.z);
         const s = useEditor.getState();
         const draft = s.groundDraft;
@@ -1017,13 +1063,15 @@ function TerrainLayer({ derived }: { derived: Derived }) {
         const ringing = draft.length >= 3 && first
           && Math.hypot(at.x - first[0], at.z - first[1]) < closeReach(ground.radius);
         if (ringing) {
-          const painted = s.paintGroundPath(
-            draft.map(([x, z]) => ({ x, z })),
-            e.nativeEvent.altKey ? GROUND_ERASE : s.ground.kind,
-            true,
-          );
+          if (e.nativeEvent.altKey) {
+            const painted = s.paintGroundPath(draft.map(([x, z]) => ({ x, z })), GROUND_ERASE, true);
+            s.setGroundDraft([]);
+            setStatus(painted ? 'Ground erased along the ring' : 'That line covered nothing');
+            return;
+          }
+          s.addGroundShape(draft.map(([x, z]) => ({ x, z })), 'line', true);
           s.setGroundDraft([]);
-          setStatus(painted ? 'Ground line painted as a ring' : 'That line covered nothing');
+          setStatus('Ring laid · click a point to reshape it, Alt-click flips curve/corner');
           return;
         }
         s.setGroundDraft([...draft, [at.x, at.z]]);
@@ -1100,6 +1148,12 @@ function TerrainLayer({ derived }: { derived: Derived }) {
       // A live modifier, the same way it is for the plant brush: let go of Alt
       // mid sweep and the rest of the sweep is the material again.
       erasing.current = e.nativeEvent.altKey;
+      const drag = groundShapeDrag.current;
+      if (drag) {
+        const at = groundPoint(e.point.x, e.point.z);
+        useEditor.getState().moveGroundShapePoint(drag.id, drag.index, at.x, at.z);
+        return;
+      }
       const anchor = groundAnchor.current;
       if (anchor) {
         const far = groundPoint(e.point.x, e.point.z);
@@ -1175,6 +1229,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
     down.current = null;
     sculpting.current = false;
     brushAt.current = null;
+    groundShapeDrag.current = null;
 
     /* A rectangle of ground becomes ground here, once, as one undo step. A
        drag that never grew past a metre was a click that wobbled and paints
@@ -1444,6 +1499,19 @@ function TerrainLayer({ derived }: { derived: Derived }) {
     />
   );
 
+  /* The editable ground shapes, with their points, while the tool that can
+     grab them is up. The selected one gets the fat outline and handles. */
+  const groundSelection = useEditor((s) => s.selection);
+  const groundShapesOverlay = tool === 'ground'
+    && (ground.mode === 'polygon' || ground.mode === 'path')
+    && project.groundShapes.length > 0 && (
+    <GroundShapesOverlay
+      shapes={project.groundShapes}
+      selectedId={groundSelection?.kind === 'ground' ? groundSelection.id : null}
+      groundAt={groundAt}
+    />
+  );
+
   // Without the ground there is nothing for the pointer to land on, so drawing
   // and placing would silently do nothing. A flat plane stands in for it.
   if (!geo) {
@@ -1480,6 +1548,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
       <MarkedProps terrain={project.terrain} heights={derived.terrainHeights} />
 
       {groundPreview}
+      {groundShapesOverlay}
 
       {(tool === 'terrain' || tool === 'scatter' || tool === 'erase'
         || (tool === 'ground' && ground.mode === 'brush')) && cursor && (
@@ -1773,6 +1842,59 @@ function densifyRun(
  * says nothing about where the gravel will actually end up. Every edge is
  * walked in short steps and each step put on the ground under it.
  */
+/**
+ * Every editable ground shape as a line on the ground, plus a handle per
+ * point: a sphere where the border curves through, a cube where it turns a
+ * corner. Purely display -- picking runs off distances in the pointer
+ * handlers, so none of this may swallow a raycast.
+ */
+function GroundShapesOverlay({
+  shapes,
+  selectedId,
+  groundAt,
+}: {
+  shapes: GroundShape[];
+  selectedId: string | null;
+  groundAt: (x: number, z: number) => number;
+}) {
+  const rendered = useMemo(() => shapes.map((s) => {
+    const closed = s.type === 'area' ? true : s.closed;
+    const dense = shapeOutline(s.points, closed, s.cornerRadius, 2);
+    if (closed && dense.length > 1) dense.push(dense[0]);
+    const line = dense.map((p) => new THREE.Vector3(p.x, groundAt(p.x, p.z) + 0.25, p.z));
+    return { shape: s, line };
+  }), [shapes, groundAt]);
+
+  return (
+    <>
+      {rendered.map(({ shape, line }) => {
+        const sel = shape.id === selectedId;
+        const colour = MATERIAL_COLORS[GROUND_KINDS[shape.kind]?.material] ?? '#ffb02e';
+        return (
+          <group key={shape.id}>
+            {line.length >= 2 && (
+              <Line points={line} color={colour} lineWidth={sel ? 3.5 : 1.5} raycast={() => null} />
+            )}
+            {shape.points.map((p, i) => (
+              <mesh
+                key={i}
+                position={[p.x, groundAt(p.x, p.z) + 0.4, p.z]}
+                scale={sel ? 1.5 : 1}
+                material={basicMaterial(sel ? '#ffffff' : colour, 0.95, false)}
+                raycast={() => null}
+              >
+                {p.smooth
+                  ? <sphereGeometry args={[0.8, 10, 10]} />
+                  : <boxGeometry args={[1.3, 1.3, 1.3]} />}
+              </mesh>
+            ))}
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
 function GroundShapePreview({
   rect,
   draft,
@@ -2627,7 +2749,9 @@ function Grass3DLayer({ derived }: { derived: Derived }) {
     const timer = window.setTimeout(() => {
       setData(
         grass3dFor(
-          terrain,
+          // The composed terrain: ground shapes count as painted ground here
+          // exactly as brush strokes do.
+          derived.paintTerrain,
           derived.terrainHeights,
           road,
           derived.trackFrames,
@@ -2640,7 +2764,7 @@ function Grass3DLayer({ derived }: { derived: Derived }) {
       );
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [terrain, road, trackClosed, acImport, derived.trackFrames, derived.profile, derived.pitDrawFrames]);
+  }, [terrain, road, trackClosed, acImport, derived.paintTerrain, derived.trackFrames, derived.profile, derived.pitDrawFrames]);
 
   const heights = derived.terrainHeights;
   const count = data.length / GRASS3D_STRIDE;
@@ -2662,7 +2786,8 @@ function Grass3DLayer({ derived }: { derived: Derived }) {
       // Tufts standing on ground painted to something other than grass, or on
       // a placed ground pad, are simply not drawn; the generator knows about
       // neither, so a brush dab or a dragged pad never regrows the lawn.
-      if (!grass3dOnGrass(terrain, data[o], data[o + 1])) continue;
+      // Against the COMPOSED paint, so grass keeps off ground shapes too.
+      if (!grass3dOnGrass(derived.paintTerrain, data[o], data[o + 1])) continue;
       if (grass3dOnPad(blockers, data[o], data[o + 1])) continue;
       q.setFromAxisAngle(UP_AXIS, data[o + 2]);
       p.set(data[o], sampleHeights(terrain, heights, data[o], data[o + 1]) + data[o + 4], data[o + 1]);
@@ -2673,7 +2798,7 @@ function Grass3DLayer({ derived }: { derived: Derived }) {
     }
     mesh.count = wi;
     mesh.instanceMatrix.needsUpdate = true;
-  }, [data, count, terrain, heights, blockers]);
+  }, [data, count, terrain, heights, blockers, derived.paintTerrain]);
 
   if (!view.props || count === 0 || !part) return null;
   return (

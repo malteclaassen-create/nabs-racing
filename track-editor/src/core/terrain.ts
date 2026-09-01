@@ -698,6 +698,95 @@ export function roundOutline(
   return out;
 }
 
+/**
+ * The border a ground SHAPE describes, densified into a polyline.
+ *
+ * Each point says for itself whether the border curves through it or turns a
+ * corner at it, so one outline can be straight along the kerb, filleted at
+ * the square end and curved along the wall -- which is what a real run off
+ * area looks like, and what neither "all corners" nor "all curve" could draw.
+ *
+ * Two passes. Corners with a radius are filleted FIRST, on the raw points,
+ * where the neighbouring sides are still long enough to carry a real radius.
+ * Then every stretch is densified: a segment between two corner points is the
+ * straight chord it always was, and a segment touching a smooth point becomes
+ * a Catmull-Rom piece -- with a corner endpoint doubled as its own control
+ * point, so the curve arrives ALONG the chord and the corner stays a corner.
+ */
+export function shapeOutline(
+  points: ReadonlyArray<{ x: number; z: number; smooth: boolean }>,
+  closed: boolean,
+  cornerRadius = 0,
+  step = 0.75,
+): Array<{ x: number; z: number }> {
+  let pts = points.map((p) => ({ x: p.x, z: p.z, smooth: p.smooth }));
+  const n0 = pts.length;
+  if (n0 < 2) return pts.map((p) => ({ x: p.x, z: p.z }));
+
+  if (cornerRadius > 0 && n0 >= 3) {
+    const out: Array<{ x: number; z: number; smooth: boolean }> = [];
+    const first = closed ? 0 : 1;
+    const last = closed ? n0 - 1 : n0 - 2;
+    if (!closed) out.push(pts[0]);
+    for (let i = first; i <= last; i++) {
+      const B = pts[i];
+      if (B.smooth) {
+        out.push(B);
+        continue;
+      }
+      // One corner's fillet, via roundOutline on just this corner and its
+      // neighbours: same maths, no second implementation to keep honest.
+      const A = pts[(i - 1 + n0) % n0];
+      const C = pts[(i + 1) % n0];
+      const arc = roundOutline([A, B, C], cornerRadius, false, step);
+      // roundOutline hands back A, the arc, C: keep the arc alone. Its points
+      // are corners of a dense polyline, not curve controls.
+      for (let k = 1; k < arc.length - 1; k++) out.push({ ...arc[k], smooth: false });
+      if (arc.length <= 2) out.push(B);
+    }
+    if (!closed) out.push(pts[n0 - 1]);
+    pts = out;
+  }
+
+  const n = pts.length;
+  if (n < 3) return pts.map((p) => ({ x: p.x, z: p.z }));
+  const anySmooth = pts.some((p) => p.smooth);
+  if (!anySmooth) return pts.map((p) => ({ x: p.x, z: p.z }));
+
+  const at = (i: number) => pts[closed ? ((i % n) + n) % n : i < 0 ? 0 : i >= n ? n - 1 : i];
+  const dense: Array<{ x: number; z: number }> = [];
+  const segs = closed ? n : n - 1;
+  for (let i = 0; i < segs; i++) {
+    const p1 = at(i);
+    const p2 = at(i + 1);
+    if (!p1.smooth && !p2.smooth) {
+      dense.push({ x: p1.x, z: p1.z });
+      continue;
+    }
+    // A corner endpoint acts as its own neighbour, which pins the curve's
+    // tangent to the chord: the border leaves the corner straight and only
+    // then begins to bend towards the smooth point.
+    const p0 = p1.smooth ? at(i - 1) : p1;
+    const p3 = p2.smooth ? at(i + 2) : p2;
+    const steps = Math.max(1, Math.ceil(Math.hypot(p2.x - p1.x, p2.z - p1.z) / step));
+    for (let s = 0; s < steps; s++) {
+      const u = s / steps;
+      const u2 = u * u;
+      const u3 = u2 * u;
+      dense.push({
+        x: 0.5 * (2 * p1.x + (p2.x - p0.x) * u
+          + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * u2
+          + (3 * p1.x - p0.x - 3 * p2.x + p3.x) * u3),
+        z: 0.5 * (2 * p1.z + (p2.z - p0.z) * u
+          + (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * u2
+          + (3 * p1.z - p0.z - 3 * p2.z + p3.z) * u3),
+      });
+    }
+  }
+  if (!closed) dense.push({ x: pts[n - 1].x, z: pts[n - 1].z });
+  return dense;
+}
+
 /** Carry a paint field onto a different grid, by world position. */
 export function resamplePaint(
   from: TerrainSettings,

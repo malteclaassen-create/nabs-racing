@@ -367,19 +367,18 @@ export default function App() {
         // near the first one on screen.
         case 'enter': {
           // A line only needs two points; an outline needs three corners.
+          // Both go down as SHAPES, so they stay editable afterwards.
           if (s.ground.mode === 'path') {
             if (s.groundDraft.length < 2) break;
-            const points = s.groundDraft.map(([x, z]) => ({ x, z }));
-            const painted = s.paintGroundPath(points, s.ground.kind);
+            s.addGroundShape(s.groundDraft.map(([x, z]) => ({ x, z })), 'line', false);
             s.setGroundDraft([]);
-            s.setStatus(painted ? 'Ground line painted' : 'That line covered nothing');
+            s.setStatus('Line laid · click a point to reshape it');
             break;
           }
           if (s.groundDraft.length < 3) break;
-          const points = s.groundDraft.map(([x, z]) => ({ x, z }));
-          const painted = s.paintGroundPolygon(points, s.ground.kind);
+          s.addGroundShape(s.groundDraft.map(([x, z]) => ({ x, z })), 'area', true);
           s.setGroundDraft([]);
-          s.setStatus(painted ? 'Ground area painted' : 'That outline covered nothing');
+          s.setStatus('Ground area laid · click a point to reshape it');
           break;
         }
         case 'escape': {
@@ -413,6 +412,10 @@ export default function App() {
           if (sel.kind === 'node') s.deleteNode(sel.path, sel.id);
           else if (sel.kind === 'prop') s.deleteProp(sel.id);
           else if (sel.kind === 'kerb') s.deleteKerb(sel.id);
+          else if (sel.kind === 'ground') {
+            s.deleteGroundShape(sel.id);
+            s.setStatus('Ground shape removed');
+          }
           else if (sel.kind === 'section') {
             s.commit((p) => {
               const data = pathDataOf(p, sel.path);

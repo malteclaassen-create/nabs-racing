@@ -1460,8 +1460,7 @@ function GroundOptions() {
   const terrain = useEditor((s) => s.project.terrain);
   const draft = useEditor((s) => s.groundDraft);
   const setGroundDraft = useEditor((s) => s.setGroundDraft);
-  const paintGroundPolygon = useEditor((s) => s.paintGroundPolygon);
-  const paintGroundPath = useEditor((s) => s.paintGroundPath);
+  const addGroundShape = useEditor((s) => s.addGroundShape);
   const clearGroundPaint = useEditor((s) => s.clearGroundPaint);
   const fillGround = useEditor((s) => s.fillGround);
   const setStatus = useEditor((s) => s.setStatus);
@@ -1583,9 +1582,9 @@ function GroundOptions() {
               style={{ flex: 1, justifyContent: 'center' }}
               disabled={draft.length < 2}
               onClick={() => {
-                const ok = paintGroundPath(draft.map(([x, z]) => ({ x, z })), ground.kind);
+                addGroundShape(draft.map(([x, z]) => ({ x, z })), 'line', false);
                 setGroundDraft([]);
-                setStatus(ok ? 'Ground line painted' : 'That line covered nothing');
+                setStatus('Line laid · click a point to reshape it');
               }}
             >
               Paint {draft.length} points
@@ -1611,9 +1610,9 @@ function GroundOptions() {
               style={{ flex: 1, justifyContent: 'center' }}
               disabled={draft.length < 3}
               onClick={() => {
-                const ok = paintGroundPolygon(draft.map(([x, z]) => ({ x, z })), ground.kind);
+                addGroundShape(draft.map(([x, z]) => ({ x, z })), 'area', true);
                 setGroundDraft([]);
-                setStatus(ok ? 'Ground area painted' : 'That outline covered nothing');
+                setStatus('Ground area laid · click a point to reshape it');
               }}
             >
               Close {draft.length} corners

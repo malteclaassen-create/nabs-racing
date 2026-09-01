@@ -152,6 +152,9 @@ export function deserializeProject(json: string): Project {
     decoRoads: normalizeDecoRoads(raw.decoRoads),
     props: raw.props ?? [],
     assets: raw.assets ?? [],
+    // Plain data, so it round trips as JSON; a file from before shapes
+    // existed simply has none.
+    groundShapes: Array.isArray(raw.groundShapes) ? raw.groundShapes : [],
     terrain: { ...base.terrain, ...terrainRaw, heights, paint, paintEdge },
     acImport: normalizeAcImport(raw.acImport),
   };

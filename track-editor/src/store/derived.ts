@@ -18,11 +18,17 @@ import {
   roadCorridor,
   terrainMesh,
   GROUND_KINDS,
+  createPaint,
+  createPaintEdge,
   cutSubCell,
   paintCellSize,
+  paintGroundPath,
+  paintGroundPolygon,
+  paintValue,
   sampleGroundValueSmooth,
   sampleHeights,
   paintKind,
+  shapeOutline,
   type Corridor,
   type CorridorMask,
 } from '../core/terrain';
@@ -75,6 +81,12 @@ export interface Derived {
    */
   gantryMeshes: MeshDef[];
   terrainHeights: Float32Array;
+  /**
+   * The terrain with the ground shapes rendered into its paint. What anything
+   * reading the PAINT has to use -- the stored terrain only carries the hand
+   * raster. Identical to project.terrain while there are no shapes.
+   */
+  paintTerrain: TerrainSettings;
   terrainDef: MeshDef | null;
   markers: MarkerSet;
   ai: AiPoint[];
@@ -249,6 +261,7 @@ const slotProfile = memoSlot<SideProfile>();
 const slotMask = memoSlot<CorridorMask>();
 const slotHeights = memoSlot<Float32Array>();
 const slotTerrainDef = memoSlotReusing<MeshDef | null>();
+const slotPaintFx = memoSlot<TerrainSettings>();
 const slotMarkers = memoSlot<MarkerSet>();
 const slotGridMeshes = memoSlot<MeshDef[]>();
 const slotGantryMeshes = memoSlot<MeshDef[]>();
@@ -421,9 +434,54 @@ function compute(project: Project, interacting: boolean): Derived {
     pitTrackLines(pitDraw.raw, pitClip, trackFrames, project.track.closed, apron),
   );
 
+  /*
+   * The ground SHAPES rendered over the hand-painted field.
+   *
+   * Shapes are the editable half of the painted ground: their points can be
+   * moved and reshaped afterwards, so they cannot be baked into the stored
+   * paint the way a brush stroke is. Instead the effective field is composed
+   * here on every change -- the raster the brush made, with every shape drawn
+   * on top of it in order -- and EVERYTHING downstream reads this composed
+   * terrain: the mesh, the run off strip, the 3D grass. Without shapes it IS
+   * the stored terrain, identity and all, so nothing pays for the feature
+   * while it is unused.
+   */
+  const shapes = project.groundShapes;
+  const sigShapes = hash((h) => {
+    h.num(shapes.length);
+    for (const s of shapes) {
+      h.str(s.id).str(s.type).num(s.kind).num(s.width).num(s.cornerRadius).bool(s.closed);
+      h.num(s.points.length);
+      for (const p of s.points) h.num(p.x).num(p.z).bool(p.smooth);
+    }
+  });
+  const basePaintId = project.terrain.paint ? idOf(project.terrain.paint) : 0;
+  const baseEdgeId = project.terrain.paintEdge ? idOf(project.terrain.paintEdge) : 0;
+  const paintTerrain =
+    shapes.length === 0 || !project.terrain.enabled
+      ? project.terrain
+      : slotPaintFx(`${basePaintId}|${baseEdgeId}|${sigShapes}|${sigTerrain}`, () => {
+          const t = project.terrain;
+          const paint = t.paint ? new Uint8Array(t.paint) : createPaint(t.res);
+          const edge =
+            t.paintEdge && t.paintEdge.length === paint.length
+              ? new Int8Array(t.paintEdge)
+              : createPaintEdge(t.res);
+          for (const s of shapes) {
+            const outline = shapeOutline(s.points, s.type === 'area' ? true : s.closed, s.cornerRadius);
+            const value = paintValue(s.kind);
+            if (s.type === 'area') {
+              paintGroundPolygon(t, paint, edge, outline, value);
+            } else {
+              paintGroundPath(t, paint, edge, outline, s.width, value, false, s.closed);
+            }
+          }
+          return { ...t, paint, paintEdge: edge };
+        });
+
   // The paint field is shared by reference and copied on write, exactly like
   // the height field, so its identity is a sound cache key too.
-  const paintId = project.terrain.paint ? idOf(project.terrain.paint) : 0;
+  const paintId = paintTerrain.paint ? idOf(paintTerrain.paint) : 0;
 
   /*
    * The ground brush's say over the run off, or nothing at all.
@@ -434,7 +492,7 @@ function compute(project: Project, interacting: boolean): Derived {
    * always did, out of one material, in one mesh per side.
    */
   const runoffGround =
-    project.road.runoffPaint && project.terrain.enabled && project.terrain.paint
+    project.road.runoffPaint && project.terrain.enabled && paintTerrain.paint
       ? {
           kinds: GROUND_KINDS,
           // The edge-aware sampler, so the strip sees the boundary where the
@@ -442,9 +500,9 @@ function compute(project: Project, interacting: boolean): Derived {
           // along -- rather than the nearest-sample staircase.
           at: (x: number, z: number) => {
             const v = sampleGroundValueSmooth(
-              project.terrain,
-              project.terrain.paint,
-              project.terrain.paintEdge,
+              paintTerrain,
+              paintTerrain.paint,
+              paintTerrain.paintEdge,
               x,
               z,
             );
@@ -732,9 +790,9 @@ function compute(project: Project, interacting: boolean): Derived {
             : undefined;
         lastTerrainBuild = { sculpted: project.terrain.heights, mask };
         return terrainMesh(
-          project.terrain,
+          paintTerrain,
           terrainHeights,
-          project.terrain.paint,
+          paintTerrain.paint,
           previous?.geometry,
           patch,
         );
@@ -839,6 +897,7 @@ function compute(project: Project, interacting: boolean): Derived {
     gridMeshes,
     gantryMeshes,
     terrainHeights,
+    paintTerrain,
     terrainDef,
     markers,
     ai,

@@ -83,6 +83,7 @@ import {
   paintGroundPolygon,
   paintGroundRect,
   roundOutline,
+  shapeOutline,
   smoothOutline,
   paintValue,
   paintRes,
@@ -6042,6 +6043,74 @@ console.log('\nPainted ground');
     check('and cuts the corner back by the radius',
       Math.abs(nearestToCorner - 8 * (Math.SQRT2 - 1)) < 0.2,
       `${nearestToCorner.toFixed(2)} m vs ${(8 * (Math.SQRT2 - 1)).toFixed(2)} m`);
+  }
+
+  /* --- editable ground shapes ----------------------------------------- */
+  {
+    /* A shape with a MIXED border: two corner points, two curved ones. The
+       side between the corners has to stay exactly the straight chord, the
+       curved points have to lie on the border, and the corners must not have
+       moved -- which is the whole promise of per-point smoothness. */
+    const mixed = [
+      { x: 0, z: 0, smooth: false },
+      { x: 60, z: 0, smooth: false },
+      { x: 70, z: 40, smooth: true },
+      { x: -10, z: 40, smooth: true },
+    ];
+    const border = shapeOutline(mixed, true);
+    let onChord = true;
+    for (const p of border) {
+      // Points along the bottom side (between the two corners) must sit ON it.
+      if (p.z > -0.01 && p.z < 0.01 && (p.x < -0.01 || p.x > 60.01)) onChord = false;
+    }
+    const hits = (x, z) => border.some((p) => Math.hypot(p.x - x, p.z - z) < 0.6);
+    check('a mixed border keeps its corners and its straight side',
+      hits(0, 0) && hits(60, 0) && onChord);
+    check('and still curves through every smooth point', hits(70, 40) && hits(-10, 40));
+    // The straight side really is straight: every border point with 0<x<60
+    // near z=0 lies within a hair of the chord.
+    let straight = true;
+    for (let i = 0; i < border.length; i++) {
+      const a = border[i];
+      const b = border[(i + 1) % border.length];
+      if (a.z < 1 && b.z < 1 && a.x > 1 && a.x < 59) {
+        if (Math.abs(a.z) > 0.02) straight = false;
+      }
+    }
+    check('the side between two corners is a dead straight line', straight);
+
+    /* And through the derived pipeline: a shape is rendered into the paint the
+       terrain and run off read, and moving one point moves the ground. */
+    const sp = defaultProject();
+    const sand2 = GROUND_KINDS.findIndex((k) => k.surface === 'SAND');
+    sp.groundShapes.push({
+      id: 'gs1', name: 'Trap', kind: sand2, type: 'area', closed: true,
+      width: 6, cornerRadius: 0,
+      points: [
+        { x: 300, z: 300, smooth: false },
+        { x: 380, z: 300, smooth: false },
+        { x: 380, z: 360, smooth: true },
+        { x: 300, z: 360, smooth: true },
+      ],
+    });
+    const sd = getDerived(sp);
+    check('a ground shape is rendered into the paint everything reads',
+      sampleGround(sd.paintTerrain, sd.paintTerrain.paint, 340, 330) === sand2
+      && sampleGround(sd.paintTerrain, sd.paintTerrain.paint, 340, 260) === 0);
+    // Move the whole west side 60 m out and the gravel follows. A fresh
+    // project object, the way the store hands one out: derived caches on
+    // identity.
+    const sp2 = {
+      ...sp,
+      groundShapes: [{
+        ...sp.groundShapes[0],
+        points: sp.groundShapes[0].points.map((p) => (p.x === 300 ? { ...p, x: 240 } : p)),
+      }],
+    };
+    const sd2 = getDerived(sp2);
+    check('and reshaping the shape reshapes the ground',
+      sampleGround(sd2.paintTerrain, sd2.paintTerrain.paint, 260, 330) === sand2
+      && sampleGround(sd.paintTerrain, sd.paintTerrain.paint, 260, 330) === 0);
   }
 
   /* --- the curve goes through the clicks ----------------------------- */

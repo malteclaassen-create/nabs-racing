@@ -654,7 +654,47 @@ export interface Project {
   props: PropInstance[];
   assets: AssetFile[];
   terrain: TerrainSettings;
+  /**
+   * Painted ground kept as SHAPES rather than pixels: a gravel trap whose
+   * border is part straight, part curved, a service road drawn as a line.
+   * They are rendered into the paint field on every rebuild, on top of
+   * whatever the brush painted by hand -- which is what makes them editable
+   * afterwards: move a point, flip it between corner and curve, and the
+   * ground follows. The brush's own strokes stay pixels, exactly as before.
+   */
+  groundShapes: GroundShape[];
   exportCfg: ExportSettings;
+}
+
+/** One point of a ground shape. `smooth` bends the border through it. */
+export interface GroundShapePoint {
+  x: number;
+  z: number;
+  /**
+   * Curved through this point, or a corner at it. Mixed freely within one
+   * shape: a run off that ends square at the kerb and curves along the wall
+   * is half of each.
+   */
+  smooth: boolean;
+}
+
+/**
+ * A painted ground area or line, kept editable.
+ *
+ * `kind` indexes GROUND_KINDS. An `area` fills its outline; a `line` is a
+ * stroke of `width` metres along its points, ring closed or open ended.
+ * `cornerRadius` rounds the SHARP corners into circular fillets -- smooth
+ * points are already curves and ignore it.
+ */
+export interface GroundShape {
+  id: string;
+  name: string;
+  kind: number;
+  type: 'area' | 'line';
+  closed: boolean;
+  width: number;
+  cornerRadius: number;
+  points: GroundShapePoint[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -694,6 +734,8 @@ export type Selection =
   | { kind: 'section'; path: PathId; fromId: string; toId: string }
   | { kind: 'kerb'; id: string }
   | { kind: 'prop'; id: string }
+  /** One editable painted ground shape, with the point being handled. */
+  | { kind: 'ground'; id: string; point?: number }
   | { kind: 'grid'; index: number }
   | { kind: 'pitbox'; index: number }
   | { kind: 'gate'; index: number }

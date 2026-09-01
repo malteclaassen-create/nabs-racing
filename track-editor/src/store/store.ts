@@ -5,6 +5,7 @@ import type {
   AcMarkerEdit,
   BrushSettings,
   DecoRoad,
+  GroundShape,
   KerbSpan,
   KerbStyle,
   PathId,
@@ -33,6 +34,7 @@ import {
   createHeights,
   createPaint,
   createPaintEdge,
+  GROUND_KINDS,
   heightsDelta,
   paintValue,
   paintGroundDisc as discPaint,
@@ -273,6 +275,7 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
       paint: null,
       paintEdge: null,
     },
+    groundShapes: [],
     exportCfg: {
       markerAsMesh: false,
       markerForward: '+Z',
@@ -688,6 +691,24 @@ export interface EditorState {
   liveKerbs: (list: KerbSpan[]) => void;
   updateKerb: (id: string, patch: Partial<KerbSpan>) => void;
   deleteKerb: (id: string) => void;
+
+  /**
+   * Lay a painted ground SHAPE: an area or a line kept editable afterwards.
+   * Points arrive as clicked; their smoothness starts from the tool's curve
+   * toggle and can be flipped per point later. Selects the new shape.
+   */
+  addGroundShape: (
+    points: ReadonlyArray<{ x: number; z: number }>,
+    type: 'area' | 'line',
+    closed: boolean,
+  ) => void;
+  /** Patch one shape (material, width, radius ...). One undo step. */
+  updateGroundShape: (id: string, patch: Partial<GroundShape>) => void;
+  /** Move one point of a shape. Live during a drag: `pushHistory` first. */
+  moveGroundShapePoint: (id: string, index: number, x: number, z: number) => void;
+  /** Flip one point between curve and corner. One undo step. */
+  toggleGroundShapePoint: (id: string, index: number) => void;
+  deleteGroundShape: (id: string) => void;
 
   /** How a click on the ground turns into track points. */
   drawMode: DrawMode;
@@ -1593,6 +1614,62 @@ export const useEditor = create<EditorState>((set, get) => ({
       p.road.kerbs = p.road.kerbs.filter((x) => x.id !== id);
     });
     if (get().selection?.kind === 'kerb') set({ selection: null });
+  },
+
+  addGroundShape: (points, type, closed) => {
+    if (points.length < (type === 'area' ? 3 : 2)) return;
+    const g = get().ground;
+    const id = crypto.randomUUID();
+    const kindDef = GROUND_KINDS[g.kind];
+    const shape: GroundShape = {
+      id,
+      name: `${kindDef?.label ?? 'Ground'} ${type === 'area' ? 'area' : 'line'}`,
+      kind: g.kind,
+      type,
+      closed: type === 'area' ? true : closed,
+      width: g.pathWidth,
+      cornerRadius: g.curve ? 0 : g.cornerRadius,
+      points: points.map((p) => ({ x: p.x, z: p.z, smooth: g.curve })),
+    };
+    get().commit((p) => {
+      p.groundShapes = [...p.groundShapes, shape];
+    });
+    set({ selection: { kind: 'ground', id } });
+  },
+
+  updateGroundShape: (id, patch) => {
+    get().commit((p) => {
+      p.groundShapes = p.groundShapes.map((s) => (s.id === id ? { ...s, ...patch, id } : s));
+    });
+  },
+
+  moveGroundShapePoint: (id, index, x, z) => {
+    get().live((p) => {
+      p.groundShapes = p.groundShapes.map((s) => {
+        if (s.id !== id || !s.points[index]) return s;
+        const points = s.points.slice();
+        points[index] = { ...points[index], x, z };
+        return { ...s, points };
+      });
+    });
+  },
+
+  toggleGroundShapePoint: (id, index) => {
+    get().commit((p) => {
+      p.groundShapes = p.groundShapes.map((s) => {
+        if (s.id !== id || !s.points[index]) return s;
+        const points = s.points.slice();
+        points[index] = { ...points[index], smooth: !points[index].smooth };
+        return { ...s, points };
+      });
+    });
+  },
+
+  deleteGroundShape: (id) => {
+    get().commit((p) => {
+      p.groundShapes = p.groundShapes.filter((s) => s.id !== id);
+    });
+    if (get().selection?.kind === 'ground') set({ selection: null });
   },
 
   drawMode: 'free',

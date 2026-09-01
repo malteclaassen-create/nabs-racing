@@ -23,6 +23,7 @@ import {
   subdivideSection,
 } from '../core/section';
 import { attachPitLane, nodesAlongPitLane } from '../core/pitLink';
+import { GROUND_KINDS } from '../core/terrain';
 import { BRAKE_MARKER_KINDS, findCorners, planBrakeMarkers } from '../core/brakeMarkers';
 import { SIGN_DISTANCES } from '../core/textures';
 import {
@@ -307,10 +308,78 @@ function PropertiesTab() {
   }
   if (selection.kind === 'node') return <NodeProps path={selection.path} id={selection.id} />;
   if (selection.kind === 'kerb') return <KerbProps id={selection.id} />;
+  if (selection.kind === 'ground') return <GroundShapeProps id={selection.id} />;
   if (selection.kind === 'prop') return <PropProps id={selection.id} />;
   if (selection.kind === 'grid') return <SlotProps kind="grid" index={selection.index} />;
   if (selection.kind === 'pitbox') return <SlotProps kind="pitbox" index={selection.index} />;
   return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* One editable painted ground shape                                   */
+/* ------------------------------------------------------------------ */
+
+function GroundShapeProps({ id }: { id: string }) {
+  const shape = useEditor((s) => s.project.groundShapes.find((g) => g.id === id));
+  const updateGroundShape = useEditor((s) => s.updateGroundShape);
+  const deleteGroundShape = useEditor((s) => s.deleteGroundShape);
+  const commit = useEditor((s) => s.commit);
+  if (!shape) {
+    return (
+      <Section title="Ground shape">
+        <p className="hint">That shape is gone. Pick another one with the Ground tool.</p>
+      </Section>
+    );
+  }
+  /** Set every point's smoothness at once, for the two whole-shape moods. */
+  const allSmooth = (smooth: boolean) =>
+    commit((p) => {
+      p.groundShapes = p.groundShapes.map((s) =>
+        s.id === id ? { ...s, points: s.points.map((pt) => ({ ...pt, smooth })) } : s,
+      );
+    });
+  return (
+    <Section
+      title={shape.type === 'area' ? 'Ground area' : 'Ground line'}
+      right={
+        <button className="btn ghost icon" title="Delete this shape (Del)" onClick={() => deleteGroundShape(id)}>
+          <IconTrash />
+        </button>
+      }
+    >
+      <Row label="Material">
+        <Seg
+          value={shape.kind}
+          options={GROUND_KINDS.map((k, i) => ({ value: i, label: k.label }))}
+          onChange={(v) => updateGroundShape(id, { kind: v })}
+        />
+      </Row>
+      {shape.type === 'line' && (
+        <Row label="Width">
+          <Slider value={shape.width} min={1} max={30} step={0.5} digits={1} unit=" m" onChange={(v) => updateGroundShape(id, { width: v })} />
+        </Row>
+      )}
+      <Row label="Corners">
+        <Slider value={shape.cornerRadius} min={0} max={25} step={0.5} digits={1} unit=" m" onChange={(v) => updateGroundShape(id, { cornerRadius: v })} />
+      </Row>
+      <Row label="">
+        <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+          <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={() => allSmooth(true)}>
+            All curved
+          </button>
+          <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={() => allSmooth(false)}>
+            All corners
+          </button>
+        </div>
+      </Row>
+      <p className="hint">
+        {shape.points.length} points. In the viewport, drag a point to move it and <b>Alt</b>-click
+        one to flip it between corner and curve — a border can be straight along one side and
+        curved along the next. The corner radius rounds the CORNER points; curved ones already
+        bend.
+      </p>
+    </Section>
+  );
 }
 
 function NodeProps({ path, id }: { path: PathId; id: string }) {
