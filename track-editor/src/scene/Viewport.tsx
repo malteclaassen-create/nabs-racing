@@ -751,6 +751,10 @@ function TerrainLayer({ derived }: { derived: Derived }) {
   const drawCfg = useEditor((s) => s.drawCfg);
   // Subscribed here so the Road tool's preview follows the active road.
   useEditor((s) => s.activeDeco);
+  const roundaboutArm = useEditor((s) => s.roundaboutArm);
+  const roundaboutRadius = useEditor((s) => s.roundaboutRadius);
+  const crossingArm = useEditor((s) => s.crossingArm);
+  const crossingSize = useEditor((s) => s.crossingSize);
   const barrierMode = useEditor((s) => s.barrierMode);
   const barrierDraft = useEditor((s) => s.barrierDraft);
   const eraseRadius = useEditor((s) => s.eraseRadius);
@@ -1466,6 +1470,9 @@ function TerrainLayer({ derived }: { derived: Derived }) {
       // Armed from the Roads panel: this click IS the roundabout's centre.
       useEditor.getState().addRoundabout({ x: point.x, y: point.y, z: point.z });
       setStatus('Roundabout laid down. Roads drawn from here dock onto its edge.');
+    } else if (tool === 'drawRoad' && useEditor.getState().crossingArm) {
+      useEditor.getState().addCrossing({ x: point.x, y: point.y, z: point.z });
+      setStatus('Crossing laid down. Roads drawn up to its four ends dock on.');
     } else if (isDrawTool(tool)) {
       const path = drawTargetPath(tool);
       // Freehand puts its points down while the pointer moves, so a plain
@@ -1612,7 +1619,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
       : { onPointerDown, onPointerUp };
 
   const previewPath = isDrawTool(tool) ? drawPreviewPath(tool) : null;
-  const drawPreview = previewPath && cursor && (
+  const drawPreview = previewPath && cursor && !roundaboutArm && !crossingArm && (
     <DrawPreview
       path={previewPath}
       cursor={cursor}
@@ -1627,6 +1634,30 @@ function TerrainLayer({ derived }: { derived: Derived }) {
      they are simply drawn on. */
   const finishBadge = tool === 'drawRoad' && previewPath && (
     <FinishRoadBadge path={previewPath} />
+  );
+
+  /* The armed placers get the same courtesy the draw tools get: the thing
+     the click will drop, half transparent under the cursor, at its real
+     size -- a ring for the roundabout, two crossed slabs for the crossing. */
+  const placerGhost = tool === 'drawRoad' && cursor && (roundaboutArm || crossingArm) && (
+    <group position={[cursor.x, groundAt(cursor.x, cursor.z) + 0.35, cursor.z]}>
+      {roundaboutArm ? (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} material={ghostRoadMaterial} raycast={() => null} renderOrder={3}>
+          <ringGeometry args={[Math.max(0.5, roundaboutRadius - 3.2), roundaboutRadius + 3.2, 48]} />
+        </mesh>
+      ) : (
+        <>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} material={ghostRoadMaterial} raycast={() => null} renderOrder={3}>
+            <planeGeometry args={[crossingSize * 2, 6]} />
+          </mesh>
+          <group rotation={[0, Math.PI / 2, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} material={ghostRoadMaterial} raycast={() => null} renderOrder={3}>
+              <planeGeometry args={[crossingSize * 2, 6]} />
+            </mesh>
+          </group>
+        </>
+      )}
+    </group>
   );
 
   const barrierPreview = freeBarrier && cursor && barrierDraft && (
@@ -1704,6 +1735,7 @@ function TerrainLayer({ derived }: { derived: Derived }) {
 
       {ghost}
       {drawPreview}
+      {placerGhost}
       {finishBadge}
       {barrierPreview}
       {marqueeRect && <MarqueeBoxMesh box={marqueeRect} groundAt={groundAt} />}

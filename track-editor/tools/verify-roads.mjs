@@ -374,6 +374,33 @@ check('both roads have centre lines for the viewport',
   const legAng = (Math.atan2(end.p[2] - nb.p[2], end.p[0] - nb.p[0]) * 180) / Math.PI;
   check('so the road runs dead straight into the roundabout',
     Math.abs(((legAng % 360) + 360) % 360 - 180) < 3, `leg at ${legAng.toFixed(1)} deg`);
+
+  /* An OBLIQUE arrival: aimed at the ring but not at its centre. The end has
+     to land exactly ON the drawn line -- where that line crosses the ring's
+     edge -- not at the foot of whichever cross section happens to be
+     nearest, which is what bent the last metres sideways towards points
+     nobody drew. */
+  const ob = {
+    closed: false,
+    nodes: [
+      mkn(C3.x + 95, C3.z + 34, 'oa', 3),
+      mkn(C3.x + 55, C3.z + 20, 'ob', 3),
+      mkn(C3.x + 28, C3.z + 6, 'oc', 3),
+    ],
+  };
+  const obGlued = attachRoadEnds(ob, ringFrames, 'last');
+  const onb = obGlued.nodes[1];
+  const oend = obGlued.nodes[2];
+  check('an oblique arrival leaves its second point alone too',
+    onb.p[0] === ob.nodes[1].p[0] && onb.p[2] === ob.nodes[1].p[2]);
+  const vx = ob.nodes[2].p[0] - ob.nodes[1].p[0];
+  const vz = ob.nodes[2].p[2] - ob.nodes[1].p[2];
+  const vl = Math.hypot(vx, vz);
+  const off = Math.abs(((oend.p[0] - ob.nodes[1].p[0]) * vz - (oend.p[2] - ob.nodes[1].p[2]) * vx) / vl);
+  check('and its end sits ON the drawn line, where it crosses the edge',
+    off < 0.3
+      && Math.abs(Math.hypot(oend.p[0] - C3.x, oend.p[2] - C3.z) - (R3 + 3.2 + 3 - 0.25)) < 1.2,
+    `${off.toFixed(2)} m off the drawn line`);
 }
 
 /* --- a roundabout with four arms, drawn in every order ---------------- */

@@ -762,6 +762,18 @@ export interface EditorState {
   roundaboutRadius: number;
   setRoundaboutRadius: (r: number) => void;
   addRoundabout: (at: { x: number; y: number; z: number }) => string;
+  /** Armed: the next click on the ground drops a crossroads there. */
+  crossingArm: boolean;
+  setCrossingArm: (on: boolean) => void;
+  /** Half length of each of the crossing's four arms, metres. */
+  crossingSize: number;
+  setCrossingSize: (m: number) => void;
+  /**
+   * Two roads crossing at the click: a ready-made junction. Each arm's open
+   * end is an ordinary road end, so roads drawn afterwards dock onto them
+   * exactly as they dock onto the roundabout's edge.
+   */
+  addCrossing: (at: { x: number; y: number; z: number }) => void;
   deleteDecoRoad: (id: string) => void;
   updateDecoRoad: (id: string, patch: Partial<Pick<DecoRoad, 'name' | 'surface' | 'line'>>) => void;
   /** `scale` is per axis, for the ground patches that are sized in metres. */
@@ -1852,7 +1864,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   roundaboutArm: false,
-  setRoundaboutArm: (roundaboutArm) => set({ roundaboutArm }),
+  // Arming one placer disarms the other: two ghosts under one cursor, both
+  // waiting for the same click, is a coin toss nobody meant to flip.
+  setRoundaboutArm: (roundaboutArm) =>
+    set(roundaboutArm ? { roundaboutArm, crossingArm: false } : { roundaboutArm }),
   roundaboutRadius: 14,
   setRoundaboutRadius: (roundaboutRadius) =>
     set({ roundaboutRadius: Math.min(30, Math.max(8, roundaboutRadius)) }),
@@ -1900,6 +1915,61 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
     set({ roundaboutArm: false, activeDeco: null });
     return id;
+  },
+
+  crossingArm: false,
+  setCrossingArm: (crossingArm) =>
+    set(crossingArm ? { crossingArm, roundaboutArm: false } : { crossingArm }),
+  crossingSize: 30,
+  setCrossingSize: (crossingSize) =>
+    set({ crossingSize: Math.min(80, Math.max(12, crossingSize)) }),
+
+  addCrossing: (at) => {
+    const L = get().crossingSize;
+    const mkNode = (x: number, z: number): TrackNode => {
+      decoCounter += 1;
+      return {
+        id: `cx${Date.now().toString(36)}${decoCounter.toString(36)}`,
+        p: [x, at.y, z],
+        widthL: 3,
+        widthR: 3,
+        bank: 0,
+        wallL: false,
+        wallR: false,
+        runoffL: 0,
+        runoffR: 0,
+        wallGapL: 0,
+        wallGapR: 0,
+        aiOffset: 0,
+      };
+    };
+    /* Two straight roads through the click, one per direction. Three points
+       each rather than two, so the crossing's centre is a handle of its own
+       and either arm can be bent later without redrawing the junction. They
+       are ordinary roads in every other way: the clip keeps them whole where
+       they cross, and ends drawn up to any of the four arms dock on. */
+    const mkRoad = (suffix: string, dx: number, dz: number, count: number): DecoRoad => {
+      decoCounter += 1;
+      return {
+        id: `dr${Date.now().toString(36)}${decoCounter.toString(36)}`,
+        name: `Crossing ${count} ${suffix}`,
+        surface: 'asphalt',
+        line: true,
+        path: {
+          closed: false,
+          nodes: [
+            mkNode(at.x - dx * L, at.z - dz * L),
+            mkNode(at.x, at.z),
+            mkNode(at.x + dx * L, at.z + dz * L),
+          ],
+        },
+      };
+    };
+    get().commit((p) => {
+      const count = Math.floor(p.decoRoads.length / 2) + 1;
+      p.decoRoads = [...p.decoRoads, mkRoad('A', 1, 0, count), mkRoad('B', 0, 1, count)];
+    });
+    set({ crossingArm: false, activeDeco: null });
   },
 
   deleteDecoRoad: (id) => {

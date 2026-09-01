@@ -272,6 +272,10 @@ function RoadOptions() {
   const setRoundaboutArm = useEditor((s) => s.setRoundaboutArm);
   const roundaboutRadius = useEditor((s) => s.roundaboutRadius);
   const setRoundaboutRadius = useEditor((s) => s.setRoundaboutRadius);
+  const crossingArm = useEditor((s) => s.crossingArm);
+  const setCrossingArm = useEditor((s) => s.setCrossingArm);
+  const crossingSize = useEditor((s) => s.crossingSize);
+  const setCrossingSize = useEditor((s) => s.setCrossingSize);
 
   const active = roads.find((r) => r.id === activeDeco) ?? null;
   const surface = active ? active.surface : decoSurface;
@@ -390,6 +394,41 @@ function RoadOptions() {
             }}
           >
             {roundaboutArm ? 'Click the ground (or click here to cancel)' : 'Place a roundabout'}
+          </button>
+        </Row>
+      </Section>
+
+      <Section title="Crossing">
+        <p className="hint" style={{ marginTop: 0 }}>
+          A ready-made crossroads: two roads through one point, the junction already clean. Roads
+          drawn up to any of its four ends dock on, and every point of it stays editable — bend an
+          arm, stretch it, delete one for a T junction.
+        </p>
+        <Row label="Arm length">
+          <input
+            type="range"
+            min={12}
+            max={80}
+            step={1}
+            value={crossingSize}
+            onChange={(e) => setCrossingSize(Number(e.target.value))}
+          />
+          <span className="num">{crossingSize} m</span>
+        </Row>
+        <Row label="">
+          <button
+            className={`btn ${crossingArm ? 'primary' : ''}`}
+            style={{ width: '100%', justifyContent: 'center' }}
+            onClick={() => {
+              setCrossingArm(!crossingArm);
+              setStatus(
+                crossingArm
+                  ? 'Crossing cancelled'
+                  : 'Click the ground where the crossing centre should be',
+              );
+            }}
+          >
+            {crossingArm ? 'Click the ground (or click here to cancel)' : 'Place a crossing'}
           </button>
         </Row>
       </Section>

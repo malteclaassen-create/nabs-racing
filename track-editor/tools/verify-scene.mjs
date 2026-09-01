@@ -52,7 +52,7 @@ import {
   drawHeightOf,
   drawWidths,
 } from '../src/core/draw.ts';
-import { attachPitLane, mergePitFrames, pitLaneSide, nodesAlongPitLane } from '../src/core/pitLink.ts';
+import { attachPitLane, attachRoadEnds, mergePitFrames, pitLaneSide, nodesAlongPitLane } from '../src/core/pitLink.ts';
 import { PointIndex } from '../src/core/spatial.ts';
 import { getDerived } from '../src/store/derived.ts';
 import { alignmentAt, alignPlacementToPath, clearPlantsOffTrack } from '../src/store/placement.ts';
@@ -6154,6 +6154,45 @@ console.log('\nPainted ground');
     ed().deleteGroundShapePoint('gsx', 0);
     check('cutting an area below three corners removes it',
       ed().project.groundShapes.length === 0);
+  }
+
+  /* --- the ready-made crossing ----------------------------------------- */
+  {
+    const cp = defaultProject();
+    useEditor.setState({ project: cp, past: [], future: [], selection: null });
+    useEditor.getState().setCrossingSize(30);
+    useEditor.getState().addCrossing({ x: 500, y: 0, z: -500 });
+    const pr = useEditor.getState().project;
+    const roads = pr.decoRoads;
+    check('a placed crossing is two roads through one point',
+      roads.length === 2
+      && roads.every((r) => r.path.nodes.length === 3
+        && r.path.nodes[1].p[0] === 500 && r.path.nodes[1].p[2] === -500));
+    const a = roads[0].path.nodes;
+    const b = roads[1].path.nodes;
+    check('with four arm ends 30 m out on the two axes',
+      a[0].p[0] === 470 && a[2].p[0] === 530 && b[0].p[2] === -530 && b[2].p[2] === -470);
+    const der = getDerived(pr);
+    check('and both arms build as roads with the junction kept whole',
+      der.decoLines.length === 2 && der.decoMeshes.some((m) => m.name.startsWith('1ROAD_deco')));
+
+    // A road ended 4 m past one arm's end docks onto that arm.
+    const armFrames = computeFrames(roads[0].path, 8);
+    const approach = {
+      closed: false,
+      nodes: [534, 560, 590].map((x, i) => ({
+        id: `ap${i}`, p: [x, 0, -500], widthL: 3, widthR: 3, bank: 0,
+        wallL: false, wallR: false, runoffL: 0, runoffR: 0, wallGapL: 0, wallGapR: 0, aiOffset: 0,
+      })).reverse(),
+    };
+    const glued = attachRoadEnds(approach, armFrames, 'last', true);
+    const end = glued.nodes[glued.nodes.length - 1];
+    // Arriving end-on it BUTTS onto the arm's end: on the centreline, tucked
+    // a shade inside, carrying the arm straight on -- not folded sideways
+    // onto the arm's edge.
+    check('and a road drawn up to an arm carries it straight on',
+      Math.abs(end.p[0] - 529.75) < 0.6 && Math.abs(end.p[2] - -500) < 0.5,
+      `end at (${end.p[0].toFixed(1)}, ${end.p[2].toFixed(1)})`);
   }
 
   /* --- the curve goes through the clicks ----------------------------- */

@@ -641,22 +641,28 @@ function compute(project: Project, interacting: boolean): Derived {
            whatever else happened to lie within thirty metres of it, and which
            that was depended on draw order. It looked like the attach working
            sometimes and not others, and sometimes onto the far side. */
-        const targets: Array<{ frames: Frame[] }> = [{ frames: trackFrames }];
+        const targets: Array<{ frames: Frame[]; open: boolean }> = [
+          { frames: trackFrames, open: !project.track.closed },
+        ];
         drawnRaw.forEach((fr, j) => {
-          if (j !== ri && fr && fr.length >= 2) targets.push({ frames: fr });
+          if (j !== ri && fr && fr.length >= 2) {
+            // An open road offers its two ends to butt onto; a closed ring's
+            // terminal frames are the seam of the loop, not an end.
+            targets.push({ frames: fr, open: !project.decoRoads[j].path.closed });
+          }
         });
         let attached = r.path;
         if (!r.path.closed) {
           for (const which of ['first', 'last'] as const) {
             const nodeIdx = which === 'first' ? 0 : attached.nodes.length - 1;
             const at = attached.nodes[nodeIdx].p;
-            let best: Frame[] | null = null;
+            let best: { frames: Frame[]; open: boolean } | null = null;
             let bestGap = Infinity;
             for (const t of targets) {
               const g = roadEndGap(t.frames, at);
-              if (g < bestGap) { bestGap = g; best = t.frames; }
+              if (g < bestGap) { bestGap = g; best = t; }
             }
-            if (best) attached = attachRoadEnds(attached, best, which);
+            if (best) attached = attachRoadEnds(attached, best.frames, which, best.open);
           }
         }
         // Pads come last: an end the circuit or another road has claimed --

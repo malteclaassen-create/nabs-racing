@@ -238,6 +238,12 @@ export function attachRoadEnds(
    * says which end it means.
    */
   which: 'both' | 'first' | 'last' = 'both',
+  /**
+   * Whether the target's two terminal frames are real OPEN ENDS a road may
+   * butt onto. False for a closed loop -- circuit or ring -- where they are
+   * merely the seam.
+   */
+  targetOpen = false,
 ): PathData {
   if (road.closed || road.nodes.length < 2 || trackFrames.length < 2) return road;
   const index = new PointIndex(trackFrames.map((f) => f.pos), 30);
@@ -268,42 +274,114 @@ export function attachRoadEnds(
       const roadHalf = hit.side < 0 ? n.widthR : n.widthL;
       return f.pos.clone().addScaledVector(f.right, hit.side * (half + roadHalf - Math.min(BURY, roadHalf)));
     };
-    const endPos = edgePoint(hit.f, end);
-    end.p = [endPos.x, endPos.y, endPos.z];
-    if (nodes.length >= 3) {
+    /*
+     * How far outside the target's drivable edge a point along the drawn
+     * approach lies -- zero exactly where a docked end should sit, its own
+     * half width less the bury inside the tarmac edge. Used to land the end
+     * ON the drawn line rather than at the foot of the nearest cross
+     * section, which is what made a docked road look glued to arbitrary
+     * "special points" and bent its last metres sideways to reach them.
+     */
+    const clearOnRay = (px: number, pz: number) => {
+      const f = nearestFrame(trackFrames, new THREE.Vector3(px, 0, pz), index);
+      if (!f) return null;
+      const lat = (px - f.pos.x) * f.right.x + (pz - f.pos.z) * f.right.z;
+      const half = lat < 0 ? f.widthL : f.widthR;
+      const roadHalf = lat < 0 ? end.widthR : end.widthL;
+      return { g: Math.abs(lat) - (half + roadHalf - Math.min(BURY, roadHalf)), f };
+    };
+
+    let endPos = edgePoint(hit.f, end);
+
+    /*
+     * An end drawn just PAST an OPEN end of the target -- a road continuing
+     * where another one stops, the way an approach carries on from a
+     * crossing's arm -- is a butt joint: the end lands on the target's end
+     * centreline, tucked a bury in, so the two carriageways continue each
+     * other instead of the new road being folded sideways onto the old one's
+     * edge. Only where the caller says the target HAS open ends: on a closed
+     * ring the first and last frames are the seam of the loop, not an end.
+     */
+    let butted = false;
+    if (targetOpen && trackFrames.length >= 2) {
+      const endv0 = vec(nodes[endIdx]);
+      const caps: Array<[Frame, number]> = [
+        [trackFrames[0], -1],
+        [trackFrames[trackFrames.length - 1], 1],
+      ];
+      for (const [f, s] of caps) {
+        const along = ((endv0.x - f.pos.x) * f.fwd.x + (endv0.z - f.pos.z) * f.fwd.z) * s;
+        const lat = sideOf(f, endv0);
+        const half = lat < 0 ? f.widthL : f.widthR;
+        if (along > -0.5 && along < ROAD_SNAP && Math.abs(lat) < half + 1) {
+          endPos = f.pos.clone().addScaledVector(f.fwd, -s * BURY);
+          butted = true;
+          break;
+        }
+      }
+    }
+
+    if (!butted && nodes.length >= 3) {
       const nb = list[neighbourIdx];
       const nbv = vec(nodes[neighbourIdx]);
-      /*
-       * Whether the neighbour is led along the target at all depends on HOW
-       * the road arrives. Arriving roughly ALONG the target -- a lane merging
-       * into a straight -- the neighbour is pulled onto the edge ahead so the
-       * spline leaves parallel, which is the join this construction was built
-       * for. Arriving ACROSS it -- an approach road running radially into a
-       * roundabout -- that same pull is exactly wrong: 25 m "ahead" on a
-       * small ring is a quarter of the way round the circle, so the second
-       * point was yanked onto the far side of the kerb and the road arrived
-       * as an S hooked around a point nobody drew. A transversal arrival
-       * keeps the neighbour precisely where it was drawn: the road meets the
-       * edge dead straight, at the angle it was aimed, and the junction
-       * machinery cuts the wedge.
-       */
-      const ax = nbv.x - endPos.x;
-      const az = nbv.z - endPos.z;
-      const al = Math.hypot(ax, az);
-      const alongness = al > 1e-6
-        ? Math.abs((ax * hit.f.fwd.x + az * hit.f.fwd.z) / al)
-        : 0;
-      if (alongness > 0.7 && al < 60) {
-        let d = leadIn(nbv.distanceTo(vec(nodes[endIdx])));
-        // Which way along the track the road leaves: towards the side its
-        // second point already lies on, so the join bends as little as
-        // possible.
-        const along = ax * hit.f.fwd.x + az * hit.f.fwd.z;
+      const endv = vec(nodes[endIdx]);
+      const dx0 = endv.x - nbv.x;
+      const dz0 = endv.z - nbv.z;
+      const dl = Math.hypot(dx0, dz0);
+      const alongness = dl > 1e-6
+        ? Math.abs((dx0 * hit.f.fwd.x + dz0 * hit.f.fwd.z) / dl)
+        : 1;
+
+      if (alongness <= 0.7 && dl > 1e-6) {
+        /*
+         * A transversal arrival -- an approach road aimed at a roundabout --
+         * docks where THE DRAWN LINE crosses the edge: march the ray from
+         * the second-to-last point through the drawn end until the clearance
+         * runs out, then bisect onto the crossing. The last leg stays
+         * exactly the straight line that was drawn, and the neighbour is
+         * never touched. Only when the ray misses the edge entirely does the
+         * nearest-foot fallback place the end, so a drag that merely brushes
+         * past the ring still docks somewhere sensible.
+         */
+        const dx = dx0 / dl;
+        const dz = dz0 / dl;
+        const tMax = dl + ROAD_SNAP + Math.max(end.widthL, end.widthR) + 6;
+        let prevT = 0;
+        let prev = clearOnRay(nbv.x, nbv.z);
+        if (prev && prev.g > 0) {
+          for (let t = 1; t <= tMax; t += 1) {
+            const cur = clearOnRay(nbv.x + dx * t, nbv.z + dz * t);
+            if (!cur) break;
+            if (cur.g <= 0) {
+              let lo = prevT;
+              let hi = t;
+              for (let it = 0; it < 12; it++) {
+                const mid = (lo + hi) / 2;
+                const pm = clearOnRay(nbv.x + dx * mid, nbv.z + dz * mid);
+                if (!pm) break;
+                if (pm.g > 0) lo = mid;
+                else hi = mid;
+              }
+              const ts = (lo + hi) / 2;
+              const fm = clearOnRay(nbv.x + dx * ts, nbv.z + dz * ts)?.f ?? hit.f;
+              endPos = new THREE.Vector3(nbv.x + dx * ts, fm.pos.y, nbv.z + dz * ts);
+              break;
+            }
+            prevT = t;
+            prev = cur;
+          }
+        }
+      } else if (alongness > 0.7 && dl < 60) {
+        /*
+         * Arriving ALONG the target -- a lane merging into a straight -- the
+         * neighbour is pulled onto the edge a lead-in ahead so the spline
+         * leaves parallel; capped where the target curves away, so even a
+         * tangential join to a tight ring cannot reach around it.
+         */
+        let d = leadIn(dl);
+        const along = (nbv.x - hit.f.pos.x) * hit.f.fwd.x + (nbv.z - hit.f.pos.z) * hit.f.fwd.z;
         const sign = along >= 0 ? 1 : -1;
         let f2 = frameAlong(trackFrames, hit.f, sign * d);
-        // Capped where the target curves away: on a tight ring the frame a
-        // lead-in ahead already points somewhere else entirely, and pinning
-        // the neighbour to it is the same S hook by another route.
         const turn = Math.acos(Math.max(-1, Math.min(1,
           f2.fwd.x * hit.f.fwd.x + f2.fwd.z * hit.f.fwd.z)));
         if (turn > 0.5) {
@@ -314,6 +392,7 @@ export function attachRoadEnds(
         nb.p = [target.x, nb.p[1], target.z];
       }
     }
+    end.p = [endPos.x, endPos.y, endPos.z];
     // The last stretch takes the height of the road it joins, so the merge has
     // a surface at the right level to glue.
     const f2 = nearestFrame(trackFrames, vec(list[neighbourIdx]), index);
