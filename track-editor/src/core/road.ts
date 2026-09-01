@@ -248,6 +248,19 @@ function takeRunoffScratch(m: number) {
 const tmpBandIn = new THREE.Vector3();
 const tmpBandOut = new THREE.Vector3();
 
+/* The four corner nodes of one cut cell, and the ring being fanned out of it.
+   Preallocated: cut cells are visited once per material on every rebuild of a
+   drag, and a ring is never more than six points. */
+const cutC0 = new THREE.Vector3();
+const cutC1 = new THREE.Vector3();
+const cutC2 = new THREE.Vector3();
+const cutC3 = new THREE.Vector3();
+const fanX = new Array<number>(8).fill(0);
+const fanY = new Array<number>(8).fill(0);
+const fanZ = new Array<number>(8).fill(0);
+const fanU = new Array<number>(8).fill(0);
+const fanV = new Array<number>(8).fill(0);
+
 /** Repeats the first frame at the end so closed loops have no visible seam. */
 function expand(frames: Frame[], closed: boolean): Frame[] {
   if (!closed || frames.length < 3) return frames;
@@ -380,6 +393,57 @@ class StripBuilder {
       this.accumulate(a + 1, a + 3, a + 2);
     }
     this.v += n * 2;
+  }
+
+  /**
+   * One convex polygon, fanned from its first point.
+   *
+   * For the pieces a cut cell of the run off keeps: they are rings, not pairs
+   * of rails, so addStrip cannot draw them. Winding is fixed here by the ring's
+   * signed area in the ground plane, because the cutter hands rings back in
+   * its own parameter order and which way that faces in the world depends on
+   * which side of the road the strip is on.
+   */
+  addFan(
+    px: number[],
+    py: number[],
+    pz: number[],
+    us: number[],
+    vs: number[],
+    count: number,
+  ) {
+    if (count < 3) return;
+    this.ensure();
+    if (this.v + count > this.capacity) return;
+    if (this.i + (count - 2) * 3 > this.idx.length) return;
+
+    // Shoelace in the ground plane: positive means the computed face normal
+    // would point down, so the ring is written reversed.
+    let area = 0;
+    for (let k = 0; k < count; k++) {
+      const j = (k + 1) % count;
+      area += px[k] * pz[j] - px[j] * pz[k];
+    }
+    const flip = area > 0;
+
+    const base = this.v;
+    for (let k = 0; k < count; k++) {
+      const s = flip ? count - 1 - k : k;
+      const a = (base + k) * 3;
+      this.pos[a + 0] = px[s];
+      this.pos[a + 1] = py[s];
+      this.pos[a + 2] = pz[s];
+      const b = (base + k) * 2;
+      this.uv[b + 0] = us[s];
+      this.uv[b + 1] = vs[s];
+    }
+    for (let k = 1; k < count - 1; k++) {
+      this.idx[this.i++] = base;
+      this.idx[this.i++] = base + k;
+      this.idx[this.i++] = base + k + 1;
+      this.accumulate(base, base + k, base + k + 1);
+    }
+    this.v += count;
   }
 
   /** Face normal of one triangle, added to each of its three vertices. */
@@ -2357,6 +2421,21 @@ export interface RunoffGround {
    * paint field to measure gets the old coarse split.
    */
   cell?: number;
+  /**
+   * The terrain's sub-cell cutter: given the materials at the four corners of
+   * one cell, hands back the ring(s) each material keeps, on the half-step
+   * lattice terrain.ts documents (0 and 2 are corners, 1 a crossing point).
+   * Handed in as a callback because terrain.ts already imports this module,
+   * so this module cannot import it back. Without it a mixed cell falls to
+   * the material of its low corner, which is the old blocky behaviour.
+   */
+  cutCell?: (
+    m0: number,
+    m1: number,
+    m2: number,
+    m3: number,
+    emit: (kind: number, ring: number[]) => void,
+  ) => void;
 }
 
 /**
@@ -2739,17 +2818,24 @@ export function buildRoadMeshes(
       const wide = (s: number) => wS[s] > 0.05;
 
       /*
-       * Which material each band is made of at each station, worked out once.
-       * It is then read by the run finder once per material as well as by the
-       * pass that decides which materials turn up at all, and the road is
-       * rebuilt on every frame of a drag: asking the paint field again each
-       * time is a hundred thousand lookups a frame for an answer that cannot
-       * have changed since the top of the function.
+       * The material at every NODE of the strip's grid: (bands + 1) rows of
+       * stations, the rows lying on the band edges rather than through their
+       * middles. Nodes rather than midpoints because the grid is now cut like
+       * the terrain's: a cell whose four corners agree is that material, and a
+       * cell they disagree over is split along the real boundary instead of
+       * being handed whole to whichever material its midpoint sampled.
+       *
+       * Worked out once: it is read by the run finder once per material as
+       * well as by the classifier, and the road is rebuilt on every frame of
+       * a drag -- asking the paint field again each time is a hundred
+       * thousand lookups a frame for an answer that cannot have changed since
+       * the top of the function.
        */
-      const table = ground ? new Int8Array(bands * m) : null;
-      if (ground && table) {
-        for (let b = 0; b < bands; b++) {
-          const tb = (b + 0.5) / bands;
+      const rows = bands + 1;
+      const nodeK = ground ? new Int8Array(rows * m) : null;
+      if (ground && nodeK) {
+        for (let r = 0; r < rows; r++) {
+          const tb = r / bands;
           for (let s = 0; s < m; s++) {
             const i = secOf(s);
             const t = fracOf(s, i);
@@ -2758,11 +2844,10 @@ export function buildRoadMeshes(
             const ox = outer[i].x + (outer[i + 1].x - outer[i].x) * t;
             const oz = outer[i].z + (outer[i + 1].z - outer[i].z) * t;
             const k = ground.at(ix + (ox - ix) * tb, iz + (oz - iz) * tb);
-            table[b * m + s] = k < 0 ? fallback : k;
+            nodeK[r * m + s] = k < 0 ? fallback : k;
           }
         }
       }
-      const kindAt = (b: number, s: number): number => (table ? table[b * m + s] : -1);
 
       /*
        * Fill the two edge rings and the two u coordinates of one band.
@@ -2834,13 +2919,142 @@ export function buildRoadMeshes(
         continue;
       }
 
+      const K = nodeK!;
+
+      /*
+       * Classify every CELL of the grid: uniform cells belong to their
+       * material and are laid as strips, exactly as before. A cell whose
+       * corners disagree has the boundary running through it, and is CUT
+       * along it -- the same construction the terrain mesh uses, which is
+       * what makes a painted edge one straight line where it leaves the
+       * terrain and crosses the strip, instead of a staircase of bands.
+       *
+       * A mixed cell that is pinched to nothing (neither station wide) falls
+       * to its low corner's material: there is no visible ground there to
+       * cut, and a sliver polygon is a crack waiting to happen.
+       */
+      const CUT = -2;
+      const cellCount = m - 1;
+      const cellK = new Int8Array(bands * cellCount);
+      let cuts = 0;
+      for (let b = 0; b < bands; b++) {
+        for (let cs = 0; cs < cellCount; cs++) {
+          const k0 = K[b * m + cs];
+          const k1 = K[b * m + cs + 1];
+          const k2 = K[(b + 1) * m + cs + 1];
+          const k3 = K[(b + 1) * m + cs];
+          let k = k0;
+          if ((k0 !== k1 || k1 !== k2 || k2 !== k3) && ground.cutCell && wide(cs) && wide(cs + 1)) {
+            k = CUT;
+            cuts += 1;
+          }
+          cellK[b * cellCount + cs] = k;
+        }
+      }
+
       // Which materials actually turn up, so nothing is built for the three
       // the circuit does not use.
       const used = new Set<number>();
       for (let b = 0; b < bands; b++) {
-        for (let s = 0; s < m; s++) if (wide(s)) used.add(kindAt(b, s));
+        for (let cs = 0; cs < cellCount; cs++) {
+          if (!wide(cs) && !wide(cs + 1)) continue;
+          const k = cellK[b * cellCount + cs];
+          if (k !== CUT) {
+            used.add(k);
+            continue;
+          }
+          used.add(K[b * m + cs]);
+          used.add(K[b * m + cs + 1]);
+          used.add(K[(b + 1) * m + cs + 1]);
+          used.add(K[(b + 1) * m + cs]);
+        }
       }
       used.delete(-1);
+
+      /** One node of the grid, in the world, matching layBand exactly. */
+      const nodeAt = (r: number, s: number, out: THREE.Vector3) => {
+        const i = secOf(s);
+        const t = fracOf(s, i);
+        tmpBandIn.copy(inner[i]).lerp(inner[i + 1], t);
+        tmpBandOut.copy(outer[i]).lerp(outer[i + 1], t);
+        out.copy(tmpBandIn).lerp(tmpBandOut, r / bands);
+        if (r === bands && wide(s)) out.y -= EDGE_SINK;
+        return out;
+      };
+
+      const kindAtXZ = (x: number, z: number) => {
+        const k = ground.at(x, z);
+        return k < 0 ? fallback : k;
+      };
+
+      /*
+       * Where the boundary crosses the segment between two nodes of different
+       * materials, as a fraction from the first. A short bisection against
+       * the sampler, which is edge-aware, so this converges onto the line the
+       * shape actually drew. Nudged off the ends the same way the terrain's
+       * crossings are: a cut exactly on a corner is a triangle of no area.
+       */
+      const crossOn = (a: THREE.Vector3, ka: number, b: THREE.Vector3): number => {
+        let lo = 0;
+        let hi = 1;
+        for (let it = 0; it < 7; it++) {
+          const mid = (lo + hi) / 2;
+          if (kindAtXZ(a.x + (b.x - a.x) * mid, a.z + (b.z - a.z) * mid) === ka) lo = mid;
+          else hi = mid;
+        }
+        const f = (lo + hi) / 2;
+        return f < 0.04 ? 0.04 : f > 0.96 ? 0.96 : f;
+      };
+
+      /**
+       * The pieces one cut cell hands to `want`, as fans.
+       *
+       * Corner order and the half-step ring lattice are cutCell's own (see
+       * terrain.ts): corners at even coordinates, crossing points at the odd
+       * ones, which are moved onto the measured crossings here. The two axes
+       * are the band direction (rows b and b + 1) and the station direction
+       * (stations cs and cs + 1); a ring point is bilinearly placed between
+       * the four corner nodes, so a cut cell's border agrees with the strips
+       * beside it to the last bit and the mesh stays crack free.
+       */
+      const emitCutCell = (sb: StripBuilder, want: number, b: number, cs: number) => {
+        const k0 = K[b * m + cs];
+        const k1 = K[b * m + cs + 1];
+        const k2 = K[(b + 1) * m + cs + 1];
+        const k3 = K[(b + 1) * m + cs];
+        if (want !== k0 && want !== k1 && want !== k2 && want !== k3) return;
+        nodeAt(b, cs, cutC0);
+        nodeAt(b, cs + 1, cutC1);
+        nodeAt(b + 1, cs + 1, cutC2);
+        nodeAt(b + 1, cs, cutC3);
+        const f0 = k0 !== k1 ? crossOn(cutC0, k0, cutC1) : 0.5;
+        const f1 = k1 !== k2 ? crossOn(cutC1, k1, cutC2) : 0.5;
+        const f2 = k3 !== k2 ? crossOn(cutC3, k3, cutC2) : 0.5;
+        const f3 = k0 !== k3 ? crossOn(cutC0, k0, cutC3) : 0.5;
+        ground.cutCell!(k0, k1, k2, k3, (kind, ring) => {
+          if (kind !== want) return;
+          const cnt = ring.length / 2;
+          for (let p = 0; p < cnt; p++) {
+            const hb = ring[p * 2];
+            const hs = ring[p * 2 + 1];
+            const tb = hb === 1 ? (hs === 0 ? f3 : hs === 2 ? f1 : 0.5) : hb / 2;
+            const u = hs === 1 ? (hb === 0 ? f0 : hb === 2 ? f2 : 0.5) : hs / 2;
+            const lx = cutC0.x + (cutC1.x - cutC0.x) * u;
+            const ly = cutC0.y + (cutC1.y - cutC0.y) * u;
+            const lz = cutC0.z + (cutC1.z - cutC0.z) * u;
+            const ux = cutC3.x + (cutC2.x - cutC3.x) * u;
+            const uy = cutC3.y + (cutC2.y - cutC3.y) * u;
+            const uz = cutC3.z + (cutC2.z - cutC3.z) * u;
+            fanX[p] = lx + (ux - lx) * tb;
+            fanY[p] = ly + (uy - ly) * tb;
+            fanZ[p] = lz + (uz - lz) * tb;
+            const w = wS[cs] + (wS[cs + 1] - wS[cs]) * u;
+            fanU[p] = (w * ((b + tb) / bands)) / 8;
+            fanV[p] = vS[cs] + (vS[cs + 1] - vS[cs]) * u;
+          }
+          sb.addFan(fanX, fanY, fanZ, fanU, fanV, cnt);
+        });
+      };
 
       for (const k of used) {
         const kind = ground.kinds[k];
@@ -2852,18 +3066,40 @@ export function buildRoadMeshes(
           (sb) => {
             for (let b = 0; b < bands; b++) {
               let laid = false;
-              for (const [a, z] of runs(m, (s) => wide(s) && kindAt(b, s) === k)) {
+              /* Runs of whole cells of this material. A run of one cell is
+                 two stations and therefore already a drawable strip, so no
+                 widening -- growing into a neighbour here would lay this
+                 material over a cut cell that is already drawing its own
+                 pieces. */
+              let cs = 0;
+              while (cs < cellCount) {
+                const mine =
+                  cellK[b * cellCount + cs] === k && (wide(cs) || wide(cs + 1));
+                if (!mine) {
+                  cs += 1;
+                  continue;
+                }
+                let z = cs;
+                while (
+                  z + 1 < cellCount &&
+                  cellK[b * cellCount + z + 1] === k &&
+                  (wide(z + 1) || wide(z + 2))
+                ) {
+                  z += 1;
+                }
                 if (!laid) {
                   layBand(b);
                   laid = true;
                 }
-                const from = a > 0 && !wide(a - 1) ? a - 1 : a;
-                const to = Math.min(m - 1, z + 1);
-                strip(sb, from, to);
+                strip(sb, cs, z + 1);
+                cs = z + 1;
+              }
+              for (let c2 = 0; c2 < cellCount; c2++) {
+                if (cellK[b * cellCount + c2] === CUT) emitCutCell(sb, k, b, c2);
               }
             }
           },
-          m * 2 * bands,
+          m * 2 * bands + cuts * 12,
         );
       }
     }

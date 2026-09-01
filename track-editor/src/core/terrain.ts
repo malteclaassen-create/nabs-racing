@@ -159,6 +159,79 @@ export function sampleGroundValue(
 }
 
 /**
+ * The raw byte at a world point, decided against the boundary the shape
+ * actually drew rather than against the lattice.
+ *
+ * `sampleGroundValue` answers with the NEAREST sample, so the region it
+ * describes is a union of little squares: everything within half a cell of a
+ * painted sample "is" that material. The terrain mesh does not draw that
+ * region -- it cuts each cell where the recorded edge distances say the shape
+ * really crossed -- so anything else that asks the nearest-sample question
+ * paints a staircase right next to the terrain's straight edge. This sampler
+ * asks the same question the mesh answers: interpolate the signed distances
+ * across the cell the point falls in, and the sign says which side of the
+ * drawn edge the point is on.
+ *
+ * Falls back to the nearest sample whenever the distances cannot be trusted:
+ * no edge field, a corner never written, corners whose signs disagree with
+ * their materials (two different shapes remembered), or more than two
+ * materials in the cell.
+ */
+export function sampleGroundValueSmooth(
+  t: TerrainSettings,
+  paint: Uint8Array | null | undefined,
+  edge: Int8Array | null | undefined,
+  x: number,
+  z: number,
+): number {
+  if (!paint) return PAINT_NONE;
+  const pw = paintRes(t.res);
+  const ps = paintCellSize(t);
+  const fx = (x - t.originX) / ps;
+  const fz = (z - t.originZ) / ps;
+  const ix = Math.floor(fx);
+  const iz = Math.floor(fz);
+  if (ix < 0 || iz < 0 || ix >= pw - 1 || iz >= pw - 1) {
+    return sampleGroundValue(t, paint, x, z);
+  }
+  const k = iz * pw + ix;
+  const v00 = paint[k];
+  const v10 = paint[k + 1];
+  const v01 = paint[k + pw];
+  const v11 = paint[k + pw + 1];
+  if (v00 === v10 && v00 === v01 && v00 === v11) return v00;
+  if (!edge || edge.length !== paint.length) return sampleGroundValue(t, paint, x, z);
+  const d00 = edge[k];
+  const d10 = edge[k + 1];
+  const d01 = edge[k + pw];
+  const d11 = edge[k + pw + 1];
+  if (d00 === EDGE_UNKNOWN || d10 === EDGE_UNKNOWN || d01 === EDGE_UNKNOWN || d11 === EDGE_UNKNOWN) {
+    return sampleGroundValue(t, paint, x, z);
+  }
+  // The corners have to split into ONE value inside the remembered shape and
+  // ONE outside it; anything else means the distances were written by
+  // different shapes and cannot place this boundary.
+  let inV = -1;
+  let outV = -1;
+  const vals = [v00, v10, v01, v11];
+  const ds = [d00, d10, d01, d11];
+  for (let c = 0; c < 4; c++) {
+    if (ds[c] <= 0) {
+      if (inV < 0) inV = vals[c];
+      else if (inV !== vals[c]) return sampleGroundValue(t, paint, x, z);
+    } else {
+      if (outV < 0) outV = vals[c];
+      else if (outV !== vals[c]) return sampleGroundValue(t, paint, x, z);
+    }
+  }
+  if (inV < 0 || outV < 0) return sampleGroundValue(t, paint, x, z);
+  const u = fx - ix;
+  const w = fz - iz;
+  const d = (d00 * (1 - u) + d10 * u) * (1 - w) + (d01 * (1 - u) + d11 * u) * w;
+  return d <= 0 ? inV : outV;
+}
+
+/**
  * How far each paint sample sits from the edge of the last shape drawn near
  * it, in 64ths of a paint cell and negative on the inside.
  *
@@ -1327,7 +1400,12 @@ interface TerrainExtras {
  * can draw comes near this, and it stops a pathological paint field from
  * turning a 66000 vertex grid into a million vertex one.
  */
-const MAX_SPLIT_CELLS = 4000;
+/* Raised from 4000: a long circuit with painted verges the whole way round
+   ran out of budget, and every cell past it fell back to its dominant
+   material -- blocks the full size of a height grid cell, which is the very
+   staircase the cut exists to remove, appearing only on big projects where
+   nobody was looking for it. */
+const MAX_SPLIT_CELLS = 12000;
 
 /**
  * One material per grid cell: the index into GROUND_KINDS, or -1 when the paint
@@ -1402,7 +1480,7 @@ function dominantKind(t: TerrainSettings, kinds: Uint8Array, ci: number, cj: num
  * `half` addresses the half-step lattice: (0,0) is the sub-cell's low corner,
  * (2,2) the far one, and the odd numbers in between are the crossing points.
  */
-function cutSubCell(
+export function cutSubCell(
   m0: number, m1: number, m2: number, m3: number,
   emit: (kind: number, ring: number[]) => void,
 ) {
@@ -1620,7 +1698,7 @@ export function buildTerrainGeometry(
   // material most of it is made of instead. The budget is counted in vertices
   // rather than cells, because that is what actually costs: a cut cell carries
   // far more of them on a coarse grid, where each one covers more ground.
-  const maxSplit = Math.max(64, Math.min(MAX_SPLIT_CELLS, Math.floor(200000 / perCell)));
+  const maxSplit = Math.max(64, Math.min(MAX_SPLIT_CELLS, Math.floor(500000 / perCell)));
   const split: number[] = [];
   if (kind) {
     for (let c = 0; c < kind.length; c++) {

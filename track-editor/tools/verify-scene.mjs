@@ -73,6 +73,7 @@ import {
   buildTerrainGeometry,
   cellSize,
   createPaint,
+  cutSubCell,
   GROUND_KINDS,
   makeTerrainRaycast,
   paintCellSize,
@@ -6163,6 +6164,33 @@ console.log('\nThe brush reaches the run off');
   check('down to the last square metre of it',
     Math.abs(runoffArea(untouched) - before) / before < 0.01,
     `${Math.round(runoffArea(untouched))} m2 against ${Math.round(before)} m2`);
+
+  /* With the cell cutter handed in, the strip is CUT on the boundary instead
+     of being tiled up to it: the gravel stops within centimetres of the line
+     the paint drew, not a whole grid cell past it. The boundary here is the
+     plane x = 0, so the test is simply how far any gravel vertex strays onto
+     the grass side. */
+  {
+    const cutPainted = buildRoadMeshes(rf, true, rp.road, [], undefined, undefined, [], {
+      kinds: GROUND_KINDS,
+      at: (x) => (x > 0 ? sand : -1),
+      cell: 2,
+      cutCell: cutSubCell,
+    });
+    let minX = Infinity;
+    for (const def of cutPainted) {
+      if (def.surface !== 'SAND' || !def.name.includes('_runoff')) continue;
+      const pos = def.geometry.getAttribute('position').array;
+      const count = def.geometry.getAttribute('position').count;
+      for (let i = 0; i < count; i++) minX = Math.min(minX, pos[i * 3]);
+    }
+    check('with the cutter the gravel stops ON the painted line',
+      minX > -0.6, `strays ${(-minX).toFixed(2)} m over it`);
+    const cutArea = runoffArea(cutPainted);
+    check('and the cut strip is still the whole strip',
+      Math.abs(cutArea - before) / before < 0.01,
+      `${Math.round(cutArea)} m2 against ${Math.round(before)} m2`);
+  }
 }
 
 /*

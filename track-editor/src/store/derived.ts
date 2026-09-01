@@ -18,8 +18,9 @@ import {
   roadCorridor,
   terrainMesh,
   GROUND_KINDS,
+  cutSubCell,
   paintCellSize,
-  sampleGroundValue,
+  sampleGroundValueSmooth,
   sampleHeights,
   paintKind,
   type Corridor,
@@ -436,13 +437,25 @@ function compute(project: Project, interacting: boolean): Derived {
     project.road.runoffPaint && project.terrain.enabled && project.terrain.paint
       ? {
           kinds: GROUND_KINDS,
+          // The edge-aware sampler, so the strip sees the boundary where the
+          // shape actually drew it -- the same line the terrain mesh cuts
+          // along -- rather than the nearest-sample staircase.
           at: (x: number, z: number) => {
-            const v = sampleGroundValue(project.terrain, project.terrain.paint, x, z);
+            const v = sampleGroundValueSmooth(
+              project.terrain,
+              project.terrain.paint,
+              project.terrain.paintEdge,
+              x,
+              z,
+            );
             return v === 0 ? -1 : paintKind(v);
           },
           // The paint's own sample spacing, so the strip is split exactly as
           // finely as the paint can answer -- no finer, and no coarser.
           cell: paintCellSize(project.terrain),
+          // Handed through rather than imported: terrain.ts already reads
+          // road.ts, so road.ts cannot read it back.
+          cutCell: cutSubCell,
         }
       : undefined;
 
