@@ -862,10 +862,23 @@ function compute(project: Project, interacting: boolean): Derived {
        there in the first place. */
     h.bool(pitCfg.boxPaint !== false).num(pitCfg.width).num(pitCfg.apron);
   });
+  /* Keyed on the lane's frames themselves rather than on the track and lane
+     signatures: a track node dragged on the far side of the lap changes the
+     track signature every frame and the lane not at all, and twenty
+     milliseconds of garages rebuilt for nothing is a dropped frame. */
   const sigPitBuilding = hash((h) => {
     const c = project.pitCfg;
     h.bool(c.building !== false).num(c.boxCount).num(c.boxSpacing).num(c.boxSide).num(c.boxOffset)
       .num(c.startDist).num(c.width).num(c.apron).num(c.limitStart).num(c.limitEnd);
+    // Only the stretch the complex stands on: the junctions at either end
+    // re-merge whenever the track beside them moves, the box run does not.
+    const lo = c.startDist - c.boxSpacing;
+    const hi = c.startDist + c.boxCount * c.boxSpacing;
+    h.num(pitFrames.length);
+    for (const f of pitFrames) {
+      if (f.dist < lo || f.dist > hi) continue;
+      h.num(f.pos.x).num(f.pos.y).num(f.pos.z).num(f.right.x).num(f.right.z);
+    }
   });
   const pitBuildingMeshes = project.acImport
     ? EMPTY_MESHES
@@ -873,7 +886,7 @@ function compute(project: Project, interacting: boolean): Derived {
       ? // Held through a drag like the gantry: forty garages of merged boxes
         // are not something to rebuild sixty times a second under the mouse.
         lastPitBuilding
-      : slotPitBuilding(`${sigTrack}|${sigPit}|${spp}|${sigPitBuilding}`, () => {
+      : slotPitBuilding(`${sigPitBuilding}`, () => {
         const next = buildPitBuilding(pitFrames, project.pit.closed, project.pitCfg);
         retire(lastPitBuilding, next);
         lastPitBuilding = next;
