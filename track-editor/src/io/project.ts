@@ -1,5 +1,5 @@
 import { unzlibSync, zlibSync } from 'fflate';
-import type { AcEdits, AcImport, BarrierCut, DecoRoad, KerbSpan, PathData, Project, RoadSettings } from '../types';
+import type { AcEdits, AcImport, BarrierCut, DecoRoad, KerbSpan, PathData, Project, PropInstance, RoadSettings } from '../types';
 import { defaultProject } from '../store/store';
 import { normalizeNode } from '../core/spline';
 import { GROUND_KINDS, paintRes } from '../core/terrain';
@@ -150,7 +150,16 @@ export function deserializeProject(json: string): Project {
     track: normalizePath(raw.track, base.track),
     pit: normalizePath(raw.pit, base.pit),
     decoRoads: normalizeDecoRoads(raw.decoRoads),
-    props: raw.props ?? [],
+    // The generator used to drop garage modules behind the boxes; the pit
+    // complex is built along them now, so those stand inside it. A project
+    // that switched the built complex off keeps them.
+    props: ((raw.props ?? []) as PropInstance[]).filter(
+      (pr) =>
+        !(raw.pitCfg?.building !== false
+          && typeof pr.id === 'string'
+          && pr.id.startsWith('genpad_')
+          && (pr.kind === 'garage_bay' || pr.kind === 'pit_building')),
+    ),
     // Replay cameras. Absent in every file from before they existed.
     cameras: Array.isArray(raw.cameras)
       ? raw.cameras.filter(

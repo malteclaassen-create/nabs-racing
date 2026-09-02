@@ -269,6 +269,12 @@ export interface PitSettings {
   /** The same at the other end, measured back from the end of the lane. */
   limitEnd: number;
   /**
+   * Build the pit complex along the boxes: a garage behind every box, the
+   * floor and roof terrace over them, the canopy over the working lane, the
+   * stands on the pit wall and the lane's boards. Undefined counts as on.
+   */
+  building?: boolean;
+  /**
    * Paint a stall on the working lane in front of every box.
    *
    * On by default, and undefined counts as on: a real pit lane has the

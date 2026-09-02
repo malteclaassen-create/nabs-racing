@@ -1625,6 +1625,20 @@ function RaceTab() {
         <Row label="Distance">
           <Slider value={pitCfg.boxOffset} min={0} max={20} step={0.25} unit=" m" digits={2} onChange={(v) => commit((p) => { p.pitCfg.boxOffset = v; })} />
         </Row>
+        <Row label="Complex">
+          <Check
+            label="Build the pit complex along the boxes"
+            checked={pitCfg.building !== false}
+            onChange={(v) => commit((p) => { p.pitCfg.building = v; })}
+          />
+        </Row>
+        <p className="hint">
+          A garage behind every box, one per box at the box pitch, with the hospitality floor and
+          the roof terrace over them, the canopy out over the working lane, the engineers' stands on
+          the pit wall, the speed limit board and the exit light. It follows the boxes: move them,
+          change their spacing or their count, and the building follows. Switch it off to place
+          buildings of your own from the library.
+        </p>
         <Row label="Markings">
           <Check
             label="Paint the stalls on the working lane"

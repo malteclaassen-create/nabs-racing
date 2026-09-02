@@ -452,6 +452,9 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
     // The paint on the starting grid. Visual only, like the limiter line: it
     // is named out of the physics namespace so AC gives it no collision.
     ...derived.gridMeshes,
+    // The pit complex: its walls and garage floors carry surfaces, the
+    // rails, glass and furniture are scenery.
+    ...derived.pitBuildingMeshes,
     // The bridge over the line. Scenery too: the barrier in front of its legs
     // is what a car can actually reach, so it carries no surface of its own.
     ...derived.gantryMeshes,

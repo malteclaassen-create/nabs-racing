@@ -35,6 +35,7 @@ import {
 } from '../core/terrain';
 import { buildAiLine, buildAllMarkers, type AiPoint, type MarkerSet } from '../core/markers';
 import { buildGridBoxes, buildPitBoxes } from '../core/gridBoxes';
+import { buildPitBuilding } from '../core/pitBuilding';
 import { buildStartGantry } from '../core/gantry';
 import {
   attachRoadEnds,
@@ -75,6 +76,8 @@ export interface Derived {
    * widening a box must not cost a road rebuild.
    */
   gridMeshes: MeshDef[];
+  /** The pit complex built along the boxes: garages, canopy, pit wall stands. */
+  pitBuildingMeshes: MeshDef[];
   /**
    * The bridge over the start/finish line. Its own list for the same reason as
    * the grid paint: it follows the timing line and the width of the circuit
@@ -273,6 +276,7 @@ const slotTerrainDef = memoSlotReusing<MeshDef | null>();
 const slotPaintFx = memoSlot<TerrainSettings>();
 const slotMarkers = memoSlot<MarkerSet>();
 const slotGridMeshes = memoSlot<MeshDef[]>();
+const slotPitBuilding = memoSlot<MeshDef[]>();
 const slotGantryMeshes = memoSlot<MeshDef[]>();
 const slotAi = memoSlot<AiPoint[]>();
 /** Full-grid min scan, so typing in the name field does not pay for it. */
@@ -303,6 +307,7 @@ let lastWindows: CameraWindow[] = [];
 let lastPit: MeshDef[] = [];
 let lastDeco: MeshDef[] = [];
 let lastGrid: MeshDef[] = [];
+let lastPitBuilding: MeshDef[] = [];
 let lastGantry: MeshDef[] = [];
 
 /**
@@ -857,6 +862,23 @@ function compute(project: Project, interacting: boolean): Derived {
        there in the first place. */
     h.bool(pitCfg.boxPaint !== false).num(pitCfg.width).num(pitCfg.apron);
   });
+  const sigPitBuilding = hash((h) => {
+    const c = project.pitCfg;
+    h.bool(c.building !== false).num(c.boxCount).num(c.boxSpacing).num(c.boxSide).num(c.boxOffset)
+      .num(c.startDist).num(c.width).num(c.apron).num(c.limitStart).num(c.limitEnd);
+  });
+  const pitBuildingMeshes = project.acImport
+    ? EMPTY_MESHES
+    : interacting && lastPitBuilding.length > 0
+      ? // Held through a drag like the gantry: forty garages of merged boxes
+        // are not something to rebuild sixty times a second under the mouse.
+        lastPitBuilding
+      : slotPitBuilding(`${sigTrack}|${sigPit}|${spp}|${sigPitBuilding}`, () => {
+        const next = buildPitBuilding(pitFrames, project.pit.closed, project.pitCfg);
+        retire(lastPitBuilding, next);
+        lastPitBuilding = next;
+        return next;
+      });
   const gridMeshes = project.acImport
     ? EMPTY_MESHES
     : slotGridMeshes(`${sigTrack}|${sigPit}|${spp}|${sigMarkers}|${sigGridBox}`, () => {
@@ -924,6 +946,7 @@ function compute(project: Project, interacting: boolean): Derived {
     roadMeshes: project.acImport ? roadMeshes.filter((m) => belongsOnImport(m.name)) : roadMeshes,
     pitMeshes: project.acImport ? pitMeshes.filter((m) => belongsOnImport(m.name)) : pitMeshes,
     gridMeshes,
+    pitBuildingMeshes,
     gantryMeshes,
     terrainHeights,
     paintTerrain,

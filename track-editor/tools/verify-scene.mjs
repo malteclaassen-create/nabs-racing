@@ -5599,8 +5599,10 @@ console.log('\nWays to start');
       const c = generateCircuit('medium', 7, 129, 12, rng, { paddock: true });
       const cf = computeFrames({ closed: true, nodes: c.track }, 12);
       const kinds = new Set(c.props.map((p) => p.kind));
-      check('the paddock comes built: garages, race control, stands, cars',
-        kinds.has('pit_building') && kinds.has('control_tower') && kinds.has('garage_bay')
+      // The garages are no longer props: the pit complex is built along the
+      // boxes (see below). Race control, the stands and the cars still are.
+      check('the paddock comes built: race control, stands, cars, and no loose garages',
+        kinds.has('control_tower') && !kinds.has('garage_bay') && !kinds.has('pit_building')
         && kinds.has('grandstand') && kinds.has('car_small'),
         [...kinds].join(','));
       let nearest = Infinity;
@@ -6834,6 +6836,57 @@ console.log('\nThe painted pit stalls');
 }
 
 /* ------------------------------------------------------------------ */
+/* The pit complex                                                     */
+/* ------------------------------------------------------------------ */
+
+console.log('\nThe pit complex');
+{
+  const proj = generatedProject('medium', { trees: false, paddock: true });
+  const d = getDerived(proj);
+  const cfg = proj.pitCfg;
+  const pb = d.pitBuildingMeshes;
+  check('a generated lap gets the pit complex built along its boxes', pb.length >= 6, `${pb.length} meshes`);
+  check('its walls carry the WALL surface and its garage floors CONCRETE',
+    pb.some((m) => /^1WALL_pit_garages_/.test(m.name) && m.surface === 'WALL')
+    && pb.some((m) => m.name === '1CONCRETE_pit_garage_floor' && m.surface === 'CONCRETE'));
+  check('and its rails, glass and furniture are scenery only',
+    pb.filter((m) => /^OBJ_/.test(m.name)).every((m) => m.surface === null));
+  const scene = new THREE.Scene();
+  for (const m of pb) scene.add(new THREE.Mesh(m.geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })));
+  const ray = new THREE.Raycaster();
+  /* Every box has a garage behind it: from the box centre, straight out
+     across the apron, the ray meets the building past the concrete; and the
+     fast lane stays clear -- a ray down the lane at bonnet height, over the
+     whole box run, hits nothing. */
+  let noGarage = 0;
+  let inLane = 0;
+  for (let i = 0; i < cfg.boxCount; i++) {
+    const f = frameAtDistance(d.pitFrames, proj.pit.closed, cfg.startDist + i * cfg.boxSpacing);
+    const out = new THREE.Vector3(f.right.x, 0, f.right.z).normalize().multiplyScalar(cfg.boxSide);
+    // At lintel height: the door below it stands open, and a ray through an
+    // open door meets the back wall fourteen metres on, not the front.
+    const o = new THREE.Vector3(f.pos.x, f.pos.y + 4.6, f.pos.z).addScaledVector(out, cfg.boxOffset);
+    ray.set(o, out);
+    ray.far = 30;
+    const hits = ray.intersectObjects(scene.children, false);
+    const wall = hits.find((h) => h.distance > cfg.width + cfg.apron - cfg.boxOffset - 0.5);
+    if (!wall || wall.distance > cfg.width + cfg.apron - cfg.boxOffset + 2) noGarage++;
+    // Down the fast lane, from this box to the next.
+    const fwd = new THREE.Vector3(f.fwd.x, 0, f.fwd.z).normalize();
+    ray.set(new THREE.Vector3(f.pos.x, f.pos.y + 0.8, f.pos.z), fwd);
+    ray.far = cfg.boxSpacing;
+    if (ray.intersectObjects(scene.children, false).length > 0) inLane++;
+  }
+  check('every box has a garage straight behind it, at the back of the apron', noGarage === 0, `${noGarage} of ${cfg.boxCount} without`);
+  check('and the fast lane stays clear of it', inLane === 0, `${inLane} boxes with something in the lane`);
+  // Switched off, nothing is built and the setting round trips.
+  const off = { ...proj, pitCfg: { ...proj.pitCfg, building: false } };
+  check('switched off, no complex is built', getDerived(off).pitBuildingMeshes.length === 0);
+  const back = deserializeProject(serializeProject(off));
+  check('and the switch survives a save and reload', back.pitCfg.building === false);
+}
+
+/* ------------------------------------------------------------------ */
 /* Replay cameras                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -6878,6 +6931,10 @@ console.log('\nReplay cameras');
       if (!b && inBend) {
         inBend = false;
         if (f.dist - from < 30) continue;
+        // A corner running through the seam is judged as one bend by the
+        // stations, which puts its window on whichever side of the seam its
+        // middle falls; this walk sees two halves. Leave those out.
+        if (from < 1 || f.dist > d.trackLength - 1) continue;
         corners++;
         // A shared station (a chicane's) sits up to half the minimum gap off
         // either bend, and the gate clearance can move it a little more.

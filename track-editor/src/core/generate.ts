@@ -33,7 +33,7 @@ import { attachPitLane } from './pitLink';
 import { cellSize, createHeights, sampleHeights } from './terrain';
 import { PointIndex } from './spatial';
 import { PREFABS_BY_KEY, instantiatePrefab } from './prefabs';
-import { propTileBox } from './library';
+import { LIBRARY_BY_KEY, propTileBox } from './library';
 import { createPaint, createPaintEdge, paintGroundRect, paintValue, GROUND_KINDS } from './terrain';
 import type { PitSettings, PropInstance, TerrainSettings, TrackNode } from '../types';
 
@@ -844,7 +844,7 @@ function buildPaddock(
    */
   const place = (key: string, along: number, lateral: number, face: 1 | -1) => {
     const def = PREFABS_BY_KEY.get(key);
-    if (!def) return;
+    if (!def && !LIBRARY_BY_KEY.has(key)) return;
     const at = {
       x: pad.ax + pad.dirX * along + pad.rightX * lateral,
       y,
@@ -852,7 +852,19 @@ function buildPaddock(
     };
     serial += 1;
     const mine = serial;
-    const parts = instantiatePrefab(def, at, headingTo(pad.rightX * face, pad.rightZ * face), (i) => `genpad_${mine}_${i}`);
+    const heading = headingTo(pad.rightX * face, pad.rightZ * face);
+    // A prefab, or a single object from the library standing on its own.
+    const parts: PropInstance[] = def
+      ? instantiatePrefab(def, at, heading, (i) => `genpad_${mine}_${i}`)
+      : [{
+          id: `genpad_${mine}_0`,
+          kind: key,
+          name: key,
+          p: [at.x, at.y, at.z],
+          r: [0, heading, 0],
+          s: [1, 1, 1],
+          ground: true,
+        }];
     // Nothing may stand on or beside the racing surface. On most laps the
     // country across the straight is open; on a tight one another stretch of
     // track can fold back past it, and then the prefab simply stays unbuilt.
@@ -883,23 +895,15 @@ function buildPaddock(
   // carrying the building line on either side of them.
   // Measured to the front of the BAYS, which are the front of the complex now
   // that they stand on the lane side of the building rather than behind it.
+  // The garages themselves are BUILT along the boxes (see core/pitBuilding),
+  // so the only thing placed here is race control, behind the building line
+  // on the timing line, where it looks down the whole straight.
   place(
-    'pit_complex_tower',
+    'control_tower',
     mid,
-    front + propTileBox('pit_building').hz + propTileBox('garage_bay').hz * 2,
+    front + propTileBox('pit_building').hz + propTileBox('garage_bay').hz * 2 + 4,
     -1,
   );
-  place('garage_row', mid - 46, front + propTileBox('garage_bay').hz, -1);
-  place('garage_row', mid + 52, front + propTileBox('garage_bay').hz, -1);
-  // And the line carried on down the lane: forty boxes span ~350 m of it, and
-  // a building line a hundred metres long beside that read as a village hall
-  // next to an airfield. Rows every 26 m -- the 24 m prefab and a walkway --
-  // roughly cover the box run without the wall-to-wall monotony of one
-  // continuous shed.
-  for (let k = 1; k <= 4; k++) {
-    place('garage_row', mid - 46 - k * 26, front + propTileBox('garage_bay').hz, -1);
-    place('garage_row', mid + 52 + k * 26, front + propTileBox('garage_bay').hz, -1);
-  }
 
   // The stands across the straight, looking at the pit fight, and the car
   // park that serves them tucked in behind. A stand's seating CLIMBS towards

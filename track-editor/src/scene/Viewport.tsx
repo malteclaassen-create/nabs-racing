@@ -347,6 +347,9 @@ function TrackSurfaces({ derived }: { derived: Derived }) {
       {derived.gridMeshes.map((d) => (
         <SurfaceMesh key={d.name} def={d} wireframe={view.wireframe} cheap={cheap} />
       ))}
+      {derived.pitBuildingMeshes.map((d) => (
+        <SurfaceMesh key={d.name} def={d} wireframe={view.wireframe} cheap={cheap} />
+      ))}
       {derived.gantryMeshes.map((d) => (
         <SurfaceMesh key={d.name} def={d} wireframe={view.wireframe} cheap={cheap} />
       ))}
