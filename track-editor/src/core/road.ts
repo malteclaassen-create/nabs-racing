@@ -790,13 +790,13 @@ export const CAMERA_WINDOW_BOTTOM = 1.6;
 export const CAMERA_WINDOW_TOP = 2.6;
 /**
  * The frame round the opening, the way a real one is made: flat galvanised
- * steel, a hand wide, screwed onto the mesh on the outside, the two uprights
- * running past the top and bottom rails by a little. Width of the face,
- * its thickness, and how far the uprights overshoot.
+ * steel, a hand wide, screwed onto the mesh on the outside, closed into a
+ * plain rectangle. Width of the face, its thickness, and how far the
+ * uprights run past the rails (none: the corners meet).
  */
 const WINDOW_FRAME_FACE = 0.15;
 const WINDOW_FRAME_THICK = 0.05;
-const WINDOW_FRAME_OVERSHOOT = 0.12;
+const WINDOW_FRAME_OVERSHOOT = 0;
 /** The regular fence posts either side stand this far off the frame. */
 const WINDOW_POST_CLEAR = 0.35;
 /** Two windows never come closer than this, metres of lap. */
@@ -3905,8 +3905,11 @@ export function buildRoadMeshes(
             const y = upright
               ? new THREE.Vector3(0, len, 0)
               : frAlong.clone().multiplyScalar(len);
+            // Minus along for the uprights: (out, up, along) is the mirror
+            // image of (out, along, up), and a mirrored box shows its inside
+            // faces, which read darker than the rails beside it.
             const z = upright
-              ? frAlong.clone().multiplyScalar(WINDOW_FRAME_FACE)
+              ? frAlong.clone().multiplyScalar(-WINDOW_FRAME_FACE)
               : new THREE.Vector3(0, WINDOW_FRAME_FACE, 0);
             m.makeBasis(x, y, z);
             m.setPosition(

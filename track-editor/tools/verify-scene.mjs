@@ -117,7 +117,7 @@ import { PREFABS, PREFABS_BY_KEY, instantiatePrefab, prefabOf } from '../src/cor
 import { propMeshes, physicsNameFor, trimToDrawRange } from '../src/export/buildExport.ts';
 import { surfacesIni } from '../src/export/ini.ts';
 import { frameAtDistance } from '../src/core/spline.ts';
-import { autoCameras, camerasIni, coverage, covers, stretchAround } from '../src/core/cameras.ts';
+import { autoCameras, BEHIND_FENCE, camerasIni, coverage, covers, stretchAround } from '../src/core/cameras.ts';
 import { CAMERA_WINDOW_MAX_GAP, CAMERA_WINDOW_MIN_GAP, cameraWindowStations } from '../src/core/road.ts';
 import { propMatrix } from '../src/core/props.ts';
 
@@ -6908,10 +6908,12 @@ console.log('\nReplay cameras');
   cams.forEach((c, k) => {
     const f = frameAtDistance(d.trackFrames, closed, stations[k]);
     const dd = Math.hypot(f.pos.x - c.p[0], f.pos.z - c.p[2]);
-    if (dd < 12) onRoad++;
+    // Off the tarmac by a clear margin: the lens is pushed through the
+    // window, so it stands at the barrier line, not out in the field.
+    if (dd < Math.max(f.widthL, f.widthR) + 2) onRoad++;
     if (c.p[1] - f.pos.y < 1.2) low++;
   });
-  check('every camera stands clear of the tarmac', onRoad === 0, `${onRoad} within 12 m of the centre line`);
+  check('every camera stands clear of the tarmac', onRoad === 0, `${onRoad} within 2 m of the road edge`);
   check('and at eye level above it', low === 0, `${low} less than 1.2 m above the road`);
   /* On the barrier line: a generated lap is fenced all the way round, so
      every camera has to stand just behind the fence, not out in the field. */
@@ -6926,8 +6928,8 @@ console.log('\nReplay cameras');
     const side = lat < 0 ? -1 : 1;
     const hasWall = (side < 0 ? d.profile.wallL[i] : d.profile.wallR[i]) === 1;
     const wall = side < 0
-      ? f.widthL + d.profile.kerbWL[i] + d.profile.apronL[i] + d.profile.runoffL[i] + (hasWall ? d.profile.wallGapL[i] + 0.8 : 4)
-      : f.widthR + d.profile.kerbWR[i] + d.profile.apronR[i] + d.profile.runoffR[i] + (hasWall ? d.profile.wallGapR[i] + 0.8 : 4);
+      ? f.widthL + d.profile.kerbWL[i] + d.profile.apronL[i] + d.profile.runoffL[i] + (hasWall ? d.profile.wallGapL[i] + BEHIND_FENCE : 4)
+      : f.widthR + d.profile.kerbWR[i] + d.profile.apronR[i] + d.profile.runoffR[i] + (hasWall ? d.profile.wallGapR[i] + BEHIND_FENCE : 4);
     if (Math.abs(Math.abs(lat) - wall) > 1.0) offLine++;
   });
   check('and stands at the fence, its lens just behind the window', offLine === 0, `${offLine} off the fence line`);

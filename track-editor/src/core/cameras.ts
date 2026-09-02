@@ -32,8 +32,12 @@ import {
 export const CAMERA_FOV_MIN = 8;
 export const CAMERA_FOV_MAX = 40;
 
-/** How far behind the fence line the lens sits: the tripod on the far side. */
-const BEHIND_FENCE = 0.8;
+/**
+ * Where the lens sits against the fence line: a little INSIDE it, towards
+ * the track, the way a lens is pushed through the window. Behind the line
+ * the picture had the frame and the mesh in it whenever the camera panned.
+ */
+export const BEHIND_FENCE = -0.4;
 /** Lens height above the barrier's foot: the middle of the window. */
 export const LENS_HEIGHT = (CAMERA_WINDOW_BOTTOM + CAMERA_WINDOW_TOP) / 2;
 /** Where a camera goes on a side with no barrier: beside the run off. */
