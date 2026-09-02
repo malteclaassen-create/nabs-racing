@@ -6879,7 +6879,10 @@ console.log('\nReplay cameras');
         inBend = false;
         if (f.dist - from < 30) continue;
         corners++;
-        if (!stations.some((st) => st >= from - 60 && st <= f.dist + 60)) missed++;
+        // A shared station (a chicane's) sits up to half the minimum gap off
+        // either bend, and the gate clearance can move it a little more.
+        const reach = CAMERA_WINDOW_MIN_GAP / 2 + 20;
+        if (!stations.some((st) => st >= from - reach && st <= f.dist + reach)) missed++;
       }
     }
     check('and every corner has a window at it', corners >= 3 && missed === 0, `${missed} of ${corners} corners without one`);

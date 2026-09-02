@@ -784,10 +784,21 @@ export function gateStations(lap: number): number[] {
  * along it so no stretch goes unwatched. The stations keep clear of the
  * marshals' gates, and the flag panels keep clear of the stations.
  */
-export const CAMERA_WINDOW_WIDTH = 2.0;
+export const CAMERA_WINDOW_WIDTH = 1.4;
 /** Bottom and top of the opening, metres above the barrier's foot. */
-export const CAMERA_WINDOW_BOTTOM = 1.4;
+export const CAMERA_WINDOW_BOTTOM = 1.6;
 export const CAMERA_WINDOW_TOP = 2.6;
+/**
+ * The frame round the opening, the way a real one is made: flat galvanised
+ * steel, a hand wide, screwed onto the mesh on the outside, the two uprights
+ * running past the top and bottom rails by a little. Width of the face,
+ * its thickness, and how far the uprights overshoot.
+ */
+const WINDOW_FRAME_FACE = 0.15;
+const WINDOW_FRAME_THICK = 0.05;
+const WINDOW_FRAME_OVERSHOOT = 0.12;
+/** The regular fence posts either side stand this far off the frame. */
+const WINDOW_POST_CLEAR = 0.35;
 /** Two windows never come closer than this, metres of lap. */
 export const CAMERA_WINDOW_MIN_GAP = 120;
 /** A stretch without a window is never longer than this. */
@@ -3859,32 +3870,60 @@ export function buildRoadMeshes(
           kinds.push(1);
         };
         /**
-         * A horizontal bar across a camera window, from the post at `s0` to
-         * the post at `s1`, `h` metres above the foot: the frame of the
-         * opening. Built from a unit box stretched along the barrier.
+         * The frame of a camera window: four flat bars of steel on the
+         * outside of the mesh, from a unit box the basis stretches. `along`
+         * is the horizontal run of the barrier across the window, `mid` its
+         * centre at foot height; the bars are laid out around the opening.
          */
-        const barA = new THREE.Vector3();
-        const barB = new THREE.Vector3();
-        const barAlong = new THREE.Vector3();
-        const barOut = new THREE.Vector3();
-        const barUp = new THREE.Vector3(0, 0.12, 0);
-        const barAt = (s0: number, s1: number, h: number, setBack: number) => {
-          footAt(s0, setBack);
-          barA.copy(at);
-          footAt(s1, setBack);
-          barB.copy(at);
-          barAlong.subVectors(barB, barA);
-          barAlong.y = 0;
-          if (barAlong.length() < 0.2) return;
-          barOut.copy(ax).multiplyScalar(0.14);
-          barOut.y = 0;
-          // X across the bar (thickness), Y along it (the template's unit
-          // length becomes the span), Z up (thickness); the basis is
-          // orthogonal, only scaled, so the normals still come out right.
-          m.makeBasis(barOut, barAlong, barUp);
-          m.setPosition((barA.x + barB.x) / 2, (barA.y + barB.y) / 2 + h, (barA.z + barB.z) / 2);
-          mats.push(m.clone());
-          kinds.push(2);
+        const frA = new THREE.Vector3();
+        const frB = new THREE.Vector3();
+        const frAlong = new THREE.Vector3();
+        const frOut = new THREE.Vector3();
+        const frMid = new THREE.Vector3();
+        const frameAt = (w0: number, w1: number, setBack: number) => {
+          footAt(w0, setBack);
+          frA.copy(at);
+          footAt(w1, setBack);
+          frB.copy(at);
+          frAlong.subVectors(frB, frA);
+          frAlong.y = 0;
+          const width = frAlong.length();
+          if (width < 0.3) return;
+          frAlong.multiplyScalar(1 / width);
+          frOut.copy(ax);
+          frOut.y = 0;
+          frOut.normalize();
+          frMid.addVectors(frA, frB).multiplyScalar(0.5);
+          // Just outside the mesh plane, where the posts stand too.
+          frMid.addScaledVector(frOut, away * (WINDOW_FRAME_THICK / 2 + 0.005));
+          const height = CAMERA_WINDOW_TOP - CAMERA_WINDOW_BOTTOM;
+          const bar = (cx: number, cy: number, len: number, upright: boolean) => {
+            // X out of the fence (thickness); Y and Z the bar's length and
+            // face, swapped for the uprights. Orthogonal, only scaled, so the
+            // normals go through the same matrix.
+            const x = frOut.clone().multiplyScalar(WINDOW_FRAME_THICK);
+            const y = upright
+              ? new THREE.Vector3(0, len, 0)
+              : frAlong.clone().multiplyScalar(len);
+            const z = upright
+              ? frAlong.clone().multiplyScalar(WINDOW_FRAME_FACE)
+              : new THREE.Vector3(0, WINDOW_FRAME_FACE, 0);
+            m.makeBasis(x, y, z);
+            m.setPosition(
+              frMid.x + frAlong.x * cx,
+              frMid.y + cy,
+              frMid.z + frAlong.z * cx,
+            );
+            mats.push(m.clone());
+            kinds.push(2);
+          };
+          const half = width / 2 + WINDOW_FRAME_FACE / 2;
+          const rails = width + WINDOW_FRAME_FACE * 2;
+          const posts = height + WINDOW_FRAME_FACE * 2 + WINDOW_FRAME_OVERSHOOT * 2;
+          bar(0, CAMERA_WINDOW_BOTTOM - WINDOW_FRAME_FACE / 2, rails, false);
+          bar(0, CAMERA_WINDOW_TOP + WINDOW_FRAME_FACE / 2, rails, false);
+          bar(-half, (CAMERA_WINDOW_BOTTOM + CAMERA_WINDOW_TOP) / 2, posts, true);
+          bar(half, (CAMERA_WINDOW_BOTTOM + CAMERA_WINDOW_TOP) / 2, posts, true);
         };
         const posted: Array<{ lo: number; hi: number; sb: (s: number) => number }> = [
           ...front.map(([lo, hi]) => ({ lo, hi, sb: () => 0 })),
@@ -3945,15 +3984,15 @@ export function buildRoadMeshes(
            * where the frame bars meet them.
            */
           const inRun = windows.filter(([w0, w1]) => w0 > run.lo && w1 < run.hi);
+          const clear = WINDOW_FRAME_FACE + WINDOW_POST_CLEAR;
           for (const s of stations) {
-            if (inRun.some(([w0, w1]) => s > w0 - 0.5 && s < w1 + 0.5)) continue;
+            if (inRun.some(([w0, w1]) => s > w0 - clear - 0.3 && s < w1 + clear + 0.3)) continue;
             postAt(s, run.sb(s));
           }
           for (const [w0, w1] of inRun) {
-            postAt(w0 - 0.15, run.sb(w0));
-            postAt(w1 + 0.15, run.sb(w1));
-            barAt(w0 - 0.15, w1 + 0.15, CAMERA_WINDOW_BOTTOM - 0.06, run.sb((w0 + w1) / 2));
-            barAt(w0 - 0.15, w1 + 0.15, CAMERA_WINDOW_TOP + 0.06, run.sb((w0 + w1) / 2));
+            postAt(w0 - clear, run.sb(w0));
+            postAt(w1 + clear, run.sb(w1));
+            frameAt(w0, w1, run.sb((w0 + w1) / 2));
           }
         }
         /*
