@@ -48,7 +48,7 @@ import {
 } from '../core/terrain';
 import { makeNode, pathLength, type Frame } from '../core/spline';
 import { autoCameras, CAMERA_FOV_MAX, CAMERA_FOV_MIN, stretchAround } from '../core/cameras';
-import type { SideProfile } from '../core/road';
+import type { CameraWindow, SideProfile } from '../core/road';
 import { STYLE_HEIGHT } from '../core/kerbs';
 import { F1_GRID_BOX } from '../core/gridBoxes';
 import { generateCircuit, rollingHeights, PIT_APRON_WIDTH, PIT_BOX_OFFSET, PIT_OFFSET, type CircuitSize } from '../core/generate';
@@ -770,7 +770,7 @@ export interface EditorState {
   addCamera: (p: [number, number, number], trackFrames: Frame[]) => string;
   updateCamera: (id: string, patch: Partial<TrackCamera>) => void;
   deleteCamera: (id: string) => void;
-  autoCameras: (trackFrames: Frame[], profile: SideProfile) => number;
+  autoCameras: (trackFrames: Frame[], profile: SideProfile, windows?: readonly CameraWindow[]) => number;
   clearCameras: () => number;
   /** Armed: the next click on the ground drops a roundabout there. */
   roundaboutArm: boolean;
@@ -2039,12 +2039,18 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
   },
 
-  autoCameras: (trackFrames, profile) => {
+  autoCameras: (trackFrames, profile, windows) => {
     const closed = get().project.track.closed;
-    const cams = autoCameras(trackFrames, closed, profile, () => {
-      propCounter += 1;
-      return `cam${Date.now().toString(36)}${propCounter.toString(36)}`;
-    });
+    const cams = autoCameras(
+      trackFrames,
+      closed,
+      profile,
+      () => {
+        propCounter += 1;
+        return `cam${Date.now().toString(36)}${propCounter.toString(36)}`;
+      },
+      windows,
+    );
     get().commit((p) => {
       p.cameras = cams;
     });

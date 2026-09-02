@@ -5519,6 +5519,22 @@ export function getViewportCameraPose(): { pos: THREE.Vector3; dir: THREE.Vector
 
 function CameraProbe() {
   const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls) as { target?: THREE.Vector3; update?: () => void } | null;
+  useEffect(() => {
+    if (!import.meta.env?.DEV) return;
+    // Dev console hook: fly the editor's own camera somewhere exact.
+    (window as unknown as { __lookFrom?: unknown }).__lookFrom = (
+      from: [number, number, number],
+      at: [number, number, number],
+    ) => {
+      camera.position.set(from[0], from[1], from[2]);
+      camera.lookAt(at[0], at[1], at[2]);
+      if (controls?.target) {
+        controls.target.set(at[0], at[1], at[2]);
+        controls.update?.();
+      }
+    };
+  }, [camera, controls]);
   useFrame(() => {
     viewPose.pos.copy(camera.position);
     camera.getWorldDirection(viewPose.dir);

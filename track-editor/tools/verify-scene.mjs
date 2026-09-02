@@ -118,7 +118,7 @@ import { propMeshes, physicsNameFor, trimToDrawRange } from '../src/export/build
 import { surfacesIni } from '../src/export/ini.ts';
 import { frameAtDistance } from '../src/core/spline.ts';
 import { autoCameras, camerasIni, coverage, covers, stretchAround } from '../src/core/cameras.ts';
-import { CAMERA_WINDOW_SPACING, cameraWindowStations } from '../src/core/road.ts';
+import { CAMERA_WINDOW_MAX_GAP, CAMERA_WINDOW_MIN_GAP, cameraWindowStations } from '../src/core/road.ts';
 import { propMatrix } from '../src/core/props.ts';
 
 let failures = 0;
@@ -6842,10 +6842,11 @@ console.log('\nReplay cameras');
   const proj = generatedProject('medium', { trees: false, paddock: false });
   const d = getDerived(proj);
   const closed = proj.track.closed;
-  const cams = autoCameras(d.trackFrames, closed, d.profile, (i) => `c${i}`);
-  // One at every camera window in the fence, every CAMERA_WINDOW_SPACING
-  // metres round the lap.
-  const windowCount = cameraWindowStations(d.trackFrames[d.trackFrames.length - 1].dist).length;
+  const cams = autoCameras(d.trackFrames, closed, d.profile, (i) => `c${i}`, d.cameraWindows);
+  // One at every camera window in the fence: one per corner, and along the
+  // straights at most CAMERA_WINDOW_MAX_GAP metres apart.
+  const stations = cameraWindowStations(d.trackFrames, closed);
+  const windowCount = stations.length;
   check('a generated lap gets a camera at every fence window',
     cams.length === windowCount && windowCount >= 4, `${cams.length} cameras for ${windowCount} windows`);
   {
@@ -6859,8 +6860,29 @@ console.log('\nReplay cameras');
       return at;
     }).sort((a, b) => a - b);
     let uneven = 0;
-    for (let i = 1; i < dists.length; i++) if (Math.abs(dists[i] - dists[i - 1] - CAMERA_WINDOW_SPACING) > 25) uneven++;
-    check('and they stand a window spacing apart', uneven === 0, `${uneven} gaps off ${CAMERA_WINDOW_SPACING} m`);
+    for (let i = 0; i < dists.length; i++) {
+      const gap = i + 1 < dists.length ? dists[i + 1] - dists[i] : dists[0] + d.trackLength - dists[i];
+      if (gap < CAMERA_WINDOW_MIN_GAP - 30 || gap > CAMERA_WINDOW_MAX_GAP + 60) uneven++;
+    }
+    check('and no two stand closer than the minimum or further than the maximum gap',
+      uneven === 0, `${uneven} gaps outside ${CAMERA_WINDOW_MIN_GAP}..${CAMERA_WINDOW_MAX_GAP} m`);
+    // Every real corner has one: a window within the bend or just past it.
+    const bendR = 1 / 220;
+    let missed = 0;
+    let corners = 0;
+    let inBend = false;
+    let from = 0;
+    for (const f of d.trackFrames) {
+      const b = Math.abs(f.curvature) > bendR;
+      if (b && !inBend) { inBend = true; from = f.dist; }
+      if (!b && inBend) {
+        inBend = false;
+        if (f.dist - from < 30) continue;
+        corners++;
+        if (!stations.some((st) => st >= from - 60 && st <= f.dist + 60)) missed++;
+      }
+    }
+    check('and every corner has a window at it', corners >= 3 && missed === 0, `${missed} of ${corners} corners without one`);
   }
   // The stretches partition the lap: every fraction of it is watched by
   // exactly one camera, seam included.
@@ -6878,7 +6900,6 @@ console.log('\nReplay cameras');
   // against the cross section of ITS gate: the nearest cross section by
   // distance is a different one for a camera standing outside a bend, and on
   // a hilly lap that one can be a metre higher or lower.
-  const stations = cameraWindowStations(d.trackFrames[d.trackFrames.length - 1].dist);
   let onRoad = 0;
   let low = 0;
   cams.forEach((c, k) => {
@@ -6911,7 +6932,8 @@ console.log('\nReplay cameras');
      passes clean through the fence at a camera station, and is stopped by
      the mesh a few metres further along where there is no window. */
   {
-    const meshes = d.roadMeshes.filter((m) => /^1WALL_(left|right)_mesh/.test(m.name));
+    // The posts too: a post standing in the opening would spoil the shot.
+    const meshes = d.roadMeshes.filter((m) => /^1WALL_(left|right)_mesh/.test(m.name) || /^OBJ_fencepost_/.test(m.name));
     check('the fence mesh is cut into bands around the windows',
       meshes.some((m) => m.name.endsWith('_mesh_mid')));
     const scene = new THREE.Scene();

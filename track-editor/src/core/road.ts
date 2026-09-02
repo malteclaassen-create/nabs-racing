@@ -772,25 +772,125 @@ export function gateStations(lap: number): number[] {
  * Camera windows.
  *
  * A catch fence on a real circuit has square openings cut into its mesh at
- * intervals: the TV positions, where a camera on the far side films through
- * the fence instead of over it. They are cut into the mesh band only -- the
- * armco below and the lean above stay as they are -- and the replay cameras
- * the editor writes stand at exactly these openings (see core/cameras.ts).
+ * the TV positions, where a camera on the far side films through the fence
+ * instead of over it. They are cut into the mesh band only -- the armco
+ * below and the lean above stay as they are -- and the replay cameras the
+ * editor writes stand at exactly these openings (see core/cameras.ts).
  *
- * The rhythm is like the gates', but on its own grid and offset from it, so
- * a window never lands in a gate's opening.
+ * Where they go follows the circuit, not a tape measure: one at every
+ * corner, in the middle of the bend, where a camera sees the cars brake in
+ * and turn; a chicane whose bends come closer than CAMERA_WINDOW_MIN_GAP
+ * shares one; and a straight longer than CAMERA_WINDOW_MAX_GAP gets windows
+ * along it so no stretch goes unwatched. The stations keep clear of the
+ * marshals' gates, and the flag panels keep clear of the stations.
  */
-export const CAMERA_WINDOW_SPACING = 500;
 export const CAMERA_WINDOW_WIDTH = 2.0;
 /** Bottom and top of the opening, metres above the barrier's foot. */
 export const CAMERA_WINDOW_BOTTOM = 1.4;
 export const CAMERA_WINDOW_TOP = 2.6;
+/** Two windows never come closer than this, metres of lap. */
+export const CAMERA_WINDOW_MIN_GAP = 120;
+/** A stretch without a window is never longer than this. */
+export const CAMERA_WINDOW_MAX_GAP = 350;
+/** Tighter than this radius (metres) and the road counts as a corner. */
+const CAMERA_BEND_RADIUS = 220;
+/** How far a station moves to get out from under a gate. */
+const CAMERA_GATE_CLEAR = GATE_WIDTH / 2 + 6;
+
+/** A camera window the fence was actually cut with: lap metres and side. */
+export interface CameraWindow {
+  dist: number;
+  /** -1 left of the road, 1 right. */
+  side: -1 | 1;
+}
 
 /** Where the fence opens a camera window, as distances into the lap. */
-export function cameraWindowStations(lap: number): number[] {
+export function cameraWindowStations(frames: Frame[], closed: boolean): number[] {
+  const n = frames.length;
+  if (n < 4) return [];
+  // The full lap, seam included, so the builder's expanded ring and the
+  // camera module's raw frames agree on every station.
+  const lap = pathLength(frames, closed);
+  if (lap < CAMERA_WINDOW_MIN_GAP) return [];
+  const bend = 1 / CAMERA_BEND_RADIUS;
+
+  /* The corners: every run of cross sections bent tighter than the limit. */
+  const corners: Array<[number, number]> = [];
+  let start = -1;
+  for (let i = 0; i <= n; i++) {
+    const isBend = i < n && Math.abs(frames[i].curvature) > bend;
+    if (isBend && start < 0) start = i;
+    if (!isBend && start >= 0) {
+      if (frames[i - 1].dist - frames[start].dist >= 8) corners.push([frames[start].dist, frames[i - 1].dist]);
+      start = -1;
+    }
+  }
+  // A closed lap whose seam falls inside a corner: the two halves are one.
+  if (closed && corners.length >= 2 && corners[0][0] < 1 && corners[corners.length - 1][1] > lap - 1) {
+    const last = corners.pop()!;
+    corners[0] = [last[0] - lap, corners[0][1]];
+  }
+
+  /* One station per corner, in its middle; a long sweep gets more. */
+  let stations: number[] = [];
+  for (const [a, b] of corners) {
+    const len = b - a;
+    const parts = Math.max(1, Math.round(len / CAMERA_WINDOW_MAX_GAP));
+    for (let k = 0; k < parts; k++) stations.push(a + (len * (k + 0.5)) / parts);
+  }
+  stations = stations.map((v) => ((v % lap) + lap) % lap).sort((x, y) => x - y);
+
+  /* Bends closer than the minimum gap -- a chicane, an S -- share one. */
+  const merged: number[] = [];
+  for (const v of stations) {
+    if (merged.length > 0 && v - merged[merged.length - 1] < CAMERA_WINDOW_MIN_GAP) {
+      merged[merged.length - 1] = (merged[merged.length - 1] + v) / 2;
+    } else merged.push(v);
+  }
+  if (closed && merged.length >= 2 && merged[0] + lap - merged[merged.length - 1] < CAMERA_WINDOW_MIN_GAP) {
+    const last = merged.pop()!;
+    merged[0] = ((((merged[0] + last + lap) / 2) % lap) + lap) % lap;
+  }
+
+  /* The straights: fill every long gap so none is longer than the maximum. */
   const out: number[] = [];
-  for (let k = 0; (k + 0.5) * CAMERA_WINDOW_SPACING < lap; k++) out.push((k + 0.5) * CAMERA_WINDOW_SPACING);
-  return out;
+  if (merged.length === 0) {
+    const count = Math.max(1, Math.round(lap / CAMERA_WINDOW_MAX_GAP));
+    for (let k = 0; k < count; k++) out.push((lap * (k + 0.5)) / count);
+  } else {
+    const m = merged.length;
+    for (let k = 0; k < m; k++) {
+      out.push(merged[k]);
+      const isLast = k === m - 1;
+      if (isLast && !closed) break;
+      const next = isLast ? merged[0] + lap : merged[k + 1];
+      const gap = next - merged[k];
+      const parts = Math.ceil(gap / CAMERA_WINDOW_MAX_GAP - 0.05);
+      for (let j = 1; j < parts; j++) out.push(merged[k] + (gap * j) / parts);
+    }
+    if (!closed) {
+      // The run in to the first corner and out of the last one.
+      const head = merged[0];
+      const hp = Math.ceil(head / CAMERA_WINDOW_MAX_GAP - 0.05);
+      for (let j = 1; j < hp; j++) out.push((head * j) / hp);
+      const tail = lap - merged[m - 1];
+      const tp = Math.ceil(tail / CAMERA_WINDOW_MAX_GAP - 0.05);
+      for (let j = 1; j < tp; j++) out.push(merged[m - 1] + (tail * j) / tp);
+    }
+  }
+
+  /* Out from under the gates, and never off the end of the lap. */
+  const gates = gateStations(lap);
+  const clear = out.map((v) => {
+    let s = ((v % lap) + lap) % lap;
+    for (const g of gates) {
+      if (Math.abs(s - g) < CAMERA_GATE_CLEAR) s = g + (s >= g ? CAMERA_GATE_CLEAR : -CAMERA_GATE_CLEAR);
+    }
+    return Math.round(s * 10) / 10;
+  });
+  return clear
+    .filter((s) => s > CAMERA_WINDOW_WIDTH + 4 && s < lap - CAMERA_WINDOW_WIDTH - 4)
+    .sort((x, y) => x - y);
 }
 
 /**
@@ -2629,6 +2729,8 @@ export function buildRoadMeshes(
   pitLines: PitTrackLine[] = [],
   /** The ground brush's say over the run off. Undefined leaves it one material. */
   ground?: RunoffGround,
+  /** Filled with the camera windows the fence was cut with, if given. */
+  windowsOut?: CameraWindow[],
 ): MeshDef[] {
   if (frames.length < 2) return [];
   const fr = expand(frames, closed);
@@ -3504,10 +3606,13 @@ export function buildRoadMeshes(
       // Both heights are measured from the barrier's foot, so the fence only
       // has to reach past the top of the window itself.
       if (fence && road.wallHeight > CAMERA_WINDOW_TOP + 0.05) {
-        for (const station of cameraWindowStations(fr[n - 1].dist)) {
+        for (const station of cameraWindowStations(fr, closed)) {
           const w0 = station - CAMERA_WINDOW_WIDTH / 2;
           const w1 = station + CAMERA_WINDOW_WIDTH / 2;
-          if (front.some(([lo, hi]) => w0 - 2 >= lo && w1 + 2 <= hi)) windows.push([w0, w1]);
+          if (front.some(([lo, hi]) => w0 - 2 >= lo && w1 + 2 <= hi)) {
+            windows.push([w0, w1]);
+            windowsOut?.push({ dist: station, side: away });
+          }
         }
       }
       const windowEdges = windows.flatMap(([w0, w1]) => [w0, w1]);
@@ -3705,6 +3810,8 @@ export function buildRoadMeshes(
        */
       if (fence && road.wallHeight > solid + 0.05) {
         const mats: THREE.Matrix4[] = [];
+        /** Template per matrix: 0 post, 1 arm, 2 window frame bar. */
+        const kinds: number[] = [];
         const m = new THREE.Matrix4();
         const ax = new THREE.Vector3();
         const ay = new THREE.Vector3(0, 1, 0);
@@ -3732,6 +3839,7 @@ export function buildRoadMeshes(
           m.makeBasis(ax, ay, az);
           m.setPosition(at.x, at.y + road.wallHeight / 2, at.z);
           mats.push(m.clone());
+          kinds.push(0);
           // The arm: from the top of the post along the lean, carrying the
           // top of the mesh back over the circuit -- the same 34 degrees the
           // strip above folds to, because it is the same member.
@@ -3748,6 +3856,35 @@ export function buildRoadMeshes(
             at.z + leanY.z * (armLen / 2 - 0.16),
           );
           mats.push(m.clone());
+          kinds.push(1);
+        };
+        /**
+         * A horizontal bar across a camera window, from the post at `s0` to
+         * the post at `s1`, `h` metres above the foot: the frame of the
+         * opening. Built from a unit box stretched along the barrier.
+         */
+        const barA = new THREE.Vector3();
+        const barB = new THREE.Vector3();
+        const barAlong = new THREE.Vector3();
+        const barOut = new THREE.Vector3();
+        const barUp = new THREE.Vector3(0, 0.12, 0);
+        const barAt = (s0: number, s1: number, h: number, setBack: number) => {
+          footAt(s0, setBack);
+          barA.copy(at);
+          footAt(s1, setBack);
+          barB.copy(at);
+          barAlong.subVectors(barB, barA);
+          barAlong.y = 0;
+          if (barAlong.length() < 0.2) return;
+          barOut.copy(ax).multiplyScalar(0.14);
+          barOut.y = 0;
+          // X across the bar (thickness), Y along it (the template's unit
+          // length becomes the span), Z up (thickness); the basis is
+          // orthogonal, only scaled, so the normals still come out right.
+          m.makeBasis(barOut, barAlong, barUp);
+          m.setPosition((barA.x + barB.x) / 2, (barA.y + barB.y) / 2 + h, (barA.z + barB.z) / 2);
+          mats.push(m.clone());
+          kinds.push(2);
         };
         const posted: Array<{ lo: number; hi: number; sb: (s: number) => number }> = [
           ...front.map(([lo, hi]) => ({ lo, hi, sb: () => 0 })),
@@ -3794,13 +3931,29 @@ export function buildRoadMeshes(
           if (acc < 0.3) continue;
           const count = Math.max(1, Math.round(acc / FENCE_POST_SPACING));
           let cursor = 0;
+          const stations: number[] = [];
           for (let k = 0; k <= count; k++) {
             const want = (acc * k) / count;
             while (cursor + 2 < lens.length && lens[cursor + 1] < want) cursor += 1;
             const span = lens[cursor + 1] - lens[cursor];
             const t = span > 1e-9 ? (want - lens[cursor]) / span : 0;
-            const s = laps[cursor] + (laps[cursor + 1] - laps[cursor]) * t;
+            stations.push(laps[cursor] + (laps[cursor + 1] - laps[cursor]) * t);
+          }
+          /*
+           * A camera window is framed, not fenced: no post stands in the
+           * opening, and the two either side of it stand hard on its edges,
+           * where the frame bars meet them.
+           */
+          const inRun = windows.filter(([w0, w1]) => w0 > run.lo && w1 < run.hi);
+          for (const s of stations) {
+            if (inRun.some(([w0, w1]) => s > w0 - 0.5 && s < w1 + 0.5)) continue;
             postAt(s, run.sb(s));
+          }
+          for (const [w0, w1] of inRun) {
+            postAt(w0 - 0.15, run.sb(w0));
+            postAt(w1 + 0.15, run.sb(w1));
+            barAt(w0 - 0.15, w1 + 0.15, CAMERA_WINDOW_BOTTOM - 0.06, run.sb((w0 + w1) / 2));
+            barAt(w0 - 0.15, w1 + 0.15, CAMERA_WINDOW_TOP + 0.06, run.sb((w0 + w1) / 2));
           }
         }
         /*
@@ -3814,12 +3967,17 @@ export function buildRoadMeshes(
         if (mats.length > 0) {
           const tPost = new THREE.BoxGeometry(0.14, road.wallHeight, 0.14);
           const tArm = new THREE.BoxGeometry(0.12, armLen, 0.12);
-          const templates = [tPost, tArm];
+          // The bar is a unit box: its basis carries the length and thickness.
+          const tBar = new THREE.BoxGeometry(1, 1, 1);
+          const templates = [tPost, tArm, tBar];
           const vPer = templates.map((t) => t.getAttribute('position').count);
           const iPer = templates.map((t) => t.getIndex()!.count);
-          const pairs = mats.length / 2;
-          const vTotal = pairs * (vPer[0] + vPer[1]);
-          const iTotal = pairs * (iPer[0] + iPer[1]);
+          let vTotal = 0;
+          let iTotal = 0;
+          for (const k of kinds) {
+            vTotal += vPer[k];
+            iTotal += iPer[k];
+          }
           const pos = new Float32Array(vTotal * 3);
           const nrm = new Float32Array(vTotal * 3);
           const uv = new Float32Array(vTotal * 2);
@@ -3828,7 +3986,7 @@ export function buildRoadMeshes(
           let vAt = 0;
           let iAt = 0;
           for (let k = 0; k < mats.length; k++) {
-            const t = templates[k % 2];
+            const t = templates[kinds[k]];
             const tm = mats[k];
             const tp = t.getAttribute('position');
             const tn = t.getAttribute('normal');
@@ -3840,8 +3998,9 @@ export function buildRoadMeshes(
               pos[(vAt + j) * 3] = v.x;
               pos[(vAt + j) * 3 + 1] = v.y;
               pos[(vAt + j) * 3 + 2] = v.z;
-              // The basis is orthonormal -- rotation only -- so the normals
-              // go through the same matrix without a normal matrix of their own.
+              // The basis is orthogonal -- a rotation, at most scaled along
+              // its own axes -- so the normals go through the same matrix,
+              // renormalised, without a normal matrix of their own.
               v.fromBufferAttribute(tn, j).transformDirection(tm);
               nrm[(vAt + j) * 3] = v.x;
               nrm[(vAt + j) * 3 + 1] = v.y;
@@ -3853,6 +4012,7 @@ export function buildRoadMeshes(
           }
           tPost.dispose();
           tArm.dispose();
+          tBar.dispose();
           const g = new THREE.BufferGeometry();
           g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
           g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
@@ -3907,6 +4067,8 @@ export function buildRoadMeshes(
           // 400 m marks they were asked for: an opening is centred in the
           // plate it falls in, which can be half a plate off the mark.
           if (openings.some((c) => Math.abs(s - c) < GATE_WIDTH / 2 + PANEL_W)) continue;
+          // Nor over a camera window: a panel hung there hides the opening.
+          if (windows.some(([w0, w1]) => s > w0 - PANEL_W - 0.5 && s < w1 + PANEL_W + 0.5)) continue;
           // Up at the knee of the fence, where the vertical mesh folds into
           // the lean: eye height for a following car. On a barrier too low to
           // reach up there -- plain armco, or a fence wound right down -- the

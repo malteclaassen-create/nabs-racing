@@ -8,6 +8,7 @@ import {
   buildRoadMeshes,
   sideProfile,
   type MeshDef,
+  type CameraWindow,
   type SideProfile,
 } from '../core/road';
 import {
@@ -127,6 +128,8 @@ export interface Derived {
    * ones that were asked for.
    */
   profile: SideProfile;
+  /** The camera windows cut into the fence, where the replay cameras stand. */
+  cameraWindows: CameraWindow[];
   /** Lowest point of the ground, so the reference grid can sit below it. */
   terrainMinY: number;
   /** The decorative roads, drawn and glued to the circuit where they meet it. */
@@ -295,6 +298,8 @@ function retire(previous: MeshDef[], next: MeshDef[]) {
 }
 
 let lastRoad: MeshDef[] = [];
+/** The camera windows the last road build cut into its fence. */
+let lastWindows: CameraWindow[] = [];
 let lastPit: MeshDef[] = [];
 let lastDeco: MeshDef[] = [];
 let lastGrid: MeshDef[] = [];
@@ -526,6 +531,7 @@ function compute(project: Project, interacting: boolean): Derived {
   const roadMeshes = slotRoadMeshes(
     `${sigTrack}|${sigPit}|${spp}|${sigRoad}|${runoffGround ? paintId : 0}`,
     () => {
+    const windows: CameraWindow[] = [];
     const next = buildRoadMeshes(
       trackFrames,
       project.track.closed,
@@ -535,9 +541,11 @@ function compute(project: Project, interacting: boolean): Derived {
       profile,
       pitLines,
       runoffGround,
+      windows,
     );
     retire(lastRoad, next);
     lastRoad = next;
+    lastWindows = windows;
     return next;
   },
   );
@@ -935,6 +943,7 @@ function compute(project: Project, interacting: boolean): Derived {
     // Falls out of the side profile for free, no second sweep needed.
     pitSide: profile.pitSide,
     profile,
+    cameraWindows: lastWindows,
     terrainMinY: slotMinY(String(idOf(terrainHeights)), () => minOf(terrainHeights)),
   };
 }

@@ -1723,9 +1723,9 @@ function CamerasSection() {
     >
       <p className="hint" style={{ marginTop: 0 }}>
         TV cameras for replays and streams, written to <code>data/cameras.ini</code>. The catch
-        fence has a camera window cut into its mesh every {CAMERA_SPACING} m; the full set puts a
-        camera at every window, filming through it, each following the car through its stretch of
-        the lap. Fly the view to where a camera should stand and take it from there, or place the
+        fence has a camera window cut into its mesh at every corner and every {CAMERA_SPACING} m
+        along a straight; the full set puts a camera at every window, filming through it, each
+        following the car through its stretch of the lap. Fly the view to where a camera should stand and take it from there, or place the
         full set at once.
       </p>
       <Row label="">
@@ -1749,7 +1749,7 @@ function CamerasSection() {
             disabled={derived.trackFrames.length < 8}
             title="One camera at every window in the fence, on the side the cars come towards, the stretches joined end to end. Replaces the set."
             onClick={() => {
-              const n = autoCams(derived.trackFrames, derived.profile);
+              const n = autoCams(derived.trackFrames, derived.profile, derived.cameraWindows);
               setStatus(`${n} cameras placed, one at every window in the fence`);
             }}
           >

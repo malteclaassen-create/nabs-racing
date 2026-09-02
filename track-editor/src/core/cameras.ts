@@ -3,9 +3,10 @@ import type { TrackCamera } from '../types';
 import { frameAtDistance, pathLength, type Frame } from './spline';
 import {
   CAMERA_WINDOW_BOTTOM,
-  CAMERA_WINDOW_SPACING,
+  CAMERA_WINDOW_MAX_GAP,
   CAMERA_WINDOW_TOP,
   cameraWindowStations,
+  type CameraWindow,
   type SideProfile,
 } from './road';
 
@@ -20,9 +21,9 @@ import {
  * fraction here is simply distance along the lap over its length.
  *
  * The cameras live IN the fence, the way they do on a real circuit: the
- * catch fence has a square window cut into its mesh every
- * CAMERA_WINDOW_SPACING metres (see road.ts), and the operator on the far
- * side films through it. So the automatic set puts one camera at every
+ * catch fence has a square window cut into its mesh at every corner and
+ * along the long straights (see cameraWindowStations in road.ts), and the
+ * operator on the far side films through it. So the automatic set puts one camera at every
  * window, on the side the action is on, with its lens in the middle of the
  * opening. There is no model: the window is the camera position.
  */
@@ -133,8 +134,9 @@ export function cameraStand(
 
 /**
  * The lap's camera positions: one at every camera window in the fence,
- * every CAMERA_WINDOW_SPACING metres -- the rhythm a real circuit's TV
- * positions follow. The side is the outside of the bend at that point,
+ * which is one per corner and one every CAMERA_WINDOW_MAX_GAP metres of
+ * straight -- where a real circuit's TV positions are. The side is the
+ * outside of the bend at that point,
  * where the cars come towards the lens; on a straight the sides alternate,
  * so a long straight is covered from both banks in turn.
  */
@@ -142,11 +144,18 @@ export function cameraSpots(
   frames: Frame[],
   closed: boolean,
   profile: SideProfile,
+  /**
+   * The windows the fence was actually cut with. A station can be fenced on
+   * paper and still have no window -- the run is broken by a gate, a pit
+   * junction or a cut the author made -- and a camera belongs where the
+   * opening is. Without the list the sides are judged from the profile alone.
+   */
+  windows?: readonly CameraWindow[],
 ): Array<{ dist: number; side: -1 | 1 }> {
   if (frames.length < 8) return [];
   const total = pathLength(frames, closed);
   const n = frames.length;
-  const stations = cameraWindowStations(frames[n - 1].dist);
+  const stations = cameraWindowStations(frames, closed);
   const out: Array<{ dist: number; side: -1 | 1 }> = [];
   let flip: -1 | 1 = -1;
   for (const dist of stations) {
@@ -170,6 +179,10 @@ export function cameraSpots(
     const i = Math.round(lapFraction(dist, total) * n) % n;
     const walled = (sd: -1 | 1) => (sd < 0 ? profile.wallL[i] : profile.wallR[i]) === 1;
     if (!walled(side) && walled(-side as -1 | 1)) side = -side as -1 | 1;
+    if (windows) {
+      const open = (sd: -1 | 1) => windows.some((w) => w.side === sd && Math.abs(w.dist - dist) < 1);
+      if (!open(side) && open(-side as -1 | 1)) side = -side as -1 | 1;
+    }
     out.push({ dist, side });
   }
   return out;
@@ -186,10 +199,11 @@ export function autoCameras(
   closed: boolean,
   profile: SideProfile,
   idFor: (i: number) => string,
+  windows?: readonly CameraWindow[],
 ): TrackCamera[] {
   const total = pathLength(frames, closed);
   if (frames.length < 8 || total <= 0) return [];
-  const spots = cameraSpots(frames, closed, profile);
+  const spots = cameraSpots(frames, closed, profile, windows);
   const out: TrackCamera[] = [];
   const n = spots.length;
   for (let k = 0; k < n; k++) {
@@ -263,5 +277,5 @@ export function camerasIni(cameras: readonly TrackCamera[], frames: Frame[], clo
   return lines.join('\n');
 }
 
-/** The window rhythm, re-exported for the panel's wording. */
-export const CAMERA_SPACING = CAMERA_WINDOW_SPACING;
+/** The longest stretch without a window, re-exported for the panel's wording. */
+export const CAMERA_SPACING = CAMERA_WINDOW_MAX_GAP;
