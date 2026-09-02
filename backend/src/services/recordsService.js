@@ -30,6 +30,21 @@ export function invalidateRecordsCache() {
   cache.clear();
 }
 
+// A season row's points WITHOUT the drop rule: the official/computed total the
+// standings show, plus the points the drop rule took off it again. Built that
+// way round on purpose — for an archived season the total comes from the
+// league's official sheet, so starting there keeps the gross figure anchored to
+// the number the league published and it can never come out BELOW it. Rounds a
+// driver didn't score in drop first and add nothing back. Pure, exported for
+// the test.
+export function seasonPointsBeforeDrop(row) {
+  const dropped = (row.droppedRounds || []).reduce(
+    (sum, num) => sum + (row.perRace?.[num]?.points || 0),
+    0
+  );
+  return (row.total || 0) + dropped;
+}
+
 const pickPerson = (p) => ({
   driverId: p.driverId, // newest row = the career profile link
   name: p.name,
@@ -87,7 +102,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     let b = persons.get(personId);
     if (!b) {
       b = {
-        points: 0, starts: 0, wins: 0, podiums: 0, top5: 0, seasons: 0,
+        points: 0, pointsBeforeDrop: 0, starts: 0, wins: 0, podiums: 0, top5: 0, seasons: 0,
         bestFinish: null, bestSeason: null, // { position, seasonNumber }
         newestSeason: -1, identity: null,
       };
@@ -103,6 +118,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
       const finished = results.filter((r) => r.status === "FINISHED" && r.position != null);
       const b = bucketFor(personOf(row.driverId));
       b.points += row.total || 0;
+      b.pointsBeforeDrop += seasonPointsBeforeDrop(row);
       b.starts += started.length;
       b.wins += finished.filter((r) => r.position === 1).length;
       b.podiums += finished.filter((r) => r.position <= 3).length;
@@ -254,6 +270,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     topList("wins", "Most wins", "championship rounds won", (b) => b.wins, { unit: "wins" }),
     topList("podiums", "Most podiums", "top-3 finishes", (b) => b.podiums, { unit: "podiums" }),
     topList("points", "Most career points", "official season totals, drop rules applied", (b) => b.points, { unit: "pts" }),
+    topList("pointsAll", "Most points ever", "every round counted, nothing dropped", (b) => b.pointsBeforeDrop, { unit: "pts" }),
     topList("starts", "Most starts", "championship rounds started", (b) => b.starts, { unit: "starts" }),
     topList("poles", "Most pole positions", "where the pole is on record", (b, id) => poles.get(id) || 0, { unit: "poles" }),
     topList("fastestLaps", "Most fastest laps", "best race lap of a round", (b, id) => fastestLaps.get(id) || 0, { unit: "laps" }),
