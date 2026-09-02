@@ -1625,6 +1625,30 @@ function RaceTab() {
         <Row label="Distance">
           <Slider value={pitCfg.boxOffset} min={0} max={20} step={0.25} unit=" m" digits={2} onChange={(v) => commit((p) => { p.pitCfg.boxOffset = v; })} />
         </Row>
+        <Row label="Working lane">
+          <Slider
+            value={pitCfg.apron}
+            min={0}
+            max={15}
+            step={0.5}
+            digits={1}
+            unit=" m"
+            onChange={(v) =>
+              commit((p) => {
+                // The boxes stay in front of their garages: they move out with
+                // the concrete, so a wider lane is room between the fast lane
+                // and the cars, not a stall left in the middle of it.
+                p.pitCfg.boxOffset = Math.max(0, Math.round((p.pitCfg.boxOffset + (v - p.pitCfg.apron)) * 4) / 4);
+                p.pitCfg.apron = v;
+              })
+            }
+          />
+        </Row>
+        <p className="hint">
+          The concrete between the fast lane and the garages. Widen it for more room between the
+          cars in the fast lane and the ones being worked on: the boxes, the garages, the pit wall
+          and the stands on it all move out with it.
+        </p>
         <Row label="Complex">
           <Check
             label="Build the pit complex along the boxes"

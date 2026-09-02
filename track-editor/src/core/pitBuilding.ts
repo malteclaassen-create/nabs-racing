@@ -48,11 +48,20 @@ const SETBACK = 1.4;
 const CANOPY_REACH = 0.7;
 /** Rail heights on the balcony and the roof terrace. */
 const RAIL_H = 1.1;
-/** The pit wall stand: every second box gets one. */
+/**
+ * The pit wall stand: the team's gantry on the wall, one per two boxes. A
+ * platform at chest height with the desk, the monitors and the seats, a
+ * sunroof over it, the stairs at one end. In front of it, on the track side,
+ * runs the pit wall itself with its advertising band.
+ */
 const STAND_EVERY = 2;
-const STAND_W = 3.0;
-const STAND_D = 1.5;
-const STAND_H = 1.0;
+const STAND_W = 5.0;
+const STAND_D = 1.7;
+const STAND_H = 1.15;
+const STAND_ROOF_H = 3.3;
+/** The pit wall: a low concrete wall along the track side of the apron. */
+const PIT_WALL_T = 0.35;
+const PIT_WALL_H = 1.0;
 
 /* ------------------------------------------------------------------ */
 /* Building                                                            */
@@ -178,7 +187,9 @@ export function buildPitBuilding(
     W.box('prop_white', WALL_T, FLOOR_1 - 0.1, pitch, F + D - WALL_T / 2, 0.06, 0);
     O.box('prop_dark', 0.08, 2.1, 1.0, F + D - WALL_T - 0.04, 0.06, pitch / 2 - 1.4);
     // Ceiling, dark: the services and the lighting rails hang under it.
-    O.box('prop_dark', D, 0.3, pitch, F + D / 2, DOOR_H + 0.2, 0);
+    // Inside the walls, short of the back wall and the party walls, so it
+    // never shares a face with them.
+    O.box('prop_dark', D - WALL_T - 0.1, 0.3, pitch - 0.3, F + (D - WALL_T - 0.1) / 2, DOOR_H + 0.2, 0);
     // Tool wall along the back: the cabinets every garage has.
     O.box('prop_metal', 0.7, 1.9, Math.max(1, pitch - 3.0), F + D - WALL_T - 0.35, 0.06, -0.6);
     O.box('prop_dark', 0.5, 0.9, Math.max(1, pitch - 3.0), F + D - WALL_T - 0.25, 1.96, -0.6);
@@ -197,9 +208,12 @@ export function buildPitBuilding(
     // The shutter, rolled up under the lintel: a drum just inside the opening.
     O.box('prop_metal', 0.5, 0.42, door, F + WALL_T + 0.25, DOOR_H - 0.42, 0);
 
-    /* --- the canopy over the working lane and the balcony -------------- */
-    // One slab from the canopy's front edge back to the upper floor's face.
-    O.box('prop_light', canopy + F + SETBACK, 0.35, pitch, (F + SETBACK - canopy) / 2, FLOOR_1, 0);
+    /* --- the first floor slab: canopy, balcony and floor in one --------- */
+    // From the canopy's front edge over the working lane all the way to the
+    // back wall: the same slab is the canopy, the balcony and the floor of
+    // the storey above, and it closes the joint between the two storeys on
+    // every side. It used to start at the lane's centre line by mistake.
+    O.box('prop_light', canopy + D + 0.3, 0.35, pitch, F - canopy + (canopy + D + 0.3) / 2, FLOOR_1, 0);
     // The fascia on its front edge, dark, the advertising band.
     O.box('prop_dark', 0.25, 0.9, pitch, -canopy + F + 0.125, FLOOR_1 - 0.1, 0);
     // The balcony rail, on the front edge of the slab above the doors.
@@ -219,34 +233,73 @@ export function buildPitBuilding(
     // Plant on the roof: the air handling unit every second bay carries.
     if (i % 2 === 1) O.box('prop_metal', 2.2, 1.3, 1.6, F + D - 3.5, FLOOR_2 + ROOF_T, 0);
 
-    /* --- the pit wall stand across the lane ---------------------------- */
-    // On the track side of the lane, against the wall, every second box: a
-    // steel platform with the desk and the monitors the engineers sit at.
+    /* --- the pit wall and the team stands across the lane -------------- */
+    // The wall itself runs the whole box run along the track side of the
+    // concrete, with the advertising band every pit wall in the world
+    // carries. Every second box gets the team's gantry behind it.
+    {
+      const xw = -(apronEdge - PIT_WALL_T / 2 - 0.05);
+      O.box('prop_light', PIT_WALL_T, PIT_WALL_H, pitch, xw, 0, 0);
+      O.box('prop_red', PIT_WALL_T + 0.04, 0.45, pitch, xw, 0.5, 0);
+    }
     if (i % STAND_EVERY === 0) {
-      const x = -(apronEdge - STAND_D / 2 - 0.3);
-      O.box('prop_metal', STAND_D, 0.12, STAND_W, x, STAND_H, 0);
-      for (const dz of [-STAND_W / 2 + 0.1, STAND_W / 2 - 0.1]) {
-        O.box('prop_metal', 0.08, STAND_H, 0.08, x - STAND_D / 2 + 0.06, 0, dz);
-        O.box('prop_metal', 0.08, STAND_H, 0.08, x + STAND_D / 2 - 0.06, 0, dz);
+      // The platform, on the concrete just inside the wall.
+      const x = -(apronEdge - PIT_WALL_T - 0.1 - STAND_D / 2);
+      const xWall = x - STAND_D / 2;
+      const xLane = x + STAND_D / 2;
+      O.box('prop_metal', STAND_D, 0.1, STAND_W, x, STAND_H, 0);
+      O.box('prop_dark', STAND_D - 0.1, 0.03, STAND_W - 0.1, x, STAND_H + 0.1, 0);
+      for (const dz of [-STAND_W / 2 + 0.1, 0, STAND_W / 2 - 0.1]) {
+        O.box('prop_metal', 0.08, STAND_H, 0.08, xWall + 0.06, 0, dz);
+        O.box('prop_metal', 0.08, STAND_H, 0.08, xLane - 0.06, 0, dz);
       }
-      // The desk along the wall side, the monitors on it, the rail behind.
-      O.box('prop_dark', 0.5, 0.75, STAND_W - 0.2, x - STAND_D / 2 + 0.3, STAND_H + 0.12, 0);
-      O.box('prop_dark', 0.06, 0.45, 0.7, x - STAND_D / 2 + 0.2, STAND_H + 0.95, -0.8);
-      O.box('prop_dark', 0.06, 0.45, 0.7, x - STAND_D / 2 + 0.2, STAND_H + 0.95, 0.8);
-      O.box('prop_metal', 0.05, RAIL_H, STAND_W, x + STAND_D / 2 - 0.03, STAND_H + 0.12, 0);
-      // The steps up, on the lane side.
-      O.box('prop_metal', 0.9, 0.5, 0.8, x + STAND_D / 2 + 0.45, 0, STAND_W / 2 - 0.5);
+      // The desk along the wall side, its top a shelf for the monitors:
+      // four screens in a row, and the timing screen above them.
+      O.box('prop_dark', 0.55, 0.72, STAND_W - 0.3, xWall + 0.3, STAND_H + 0.13, 0);
+      O.box('prop_light', 0.6, 0.04, STAND_W - 0.3, xWall + 0.3, STAND_H + 0.85, 0);
+      for (let k = 0; k < 4; k++) {
+        const dz = -STAND_W / 2 + 0.85 + k * ((STAND_W - 1.7) / 3);
+        O.box('prop_dark', 0.05, 0.42, 0.7, xWall + 0.12, STAND_H + 0.92, dz);
+        O.box('prop_blue', 0.02, 0.36, 0.64, xWall + 0.15, STAND_H + 0.95, dz);
+      }
+      O.box('prop_dark', 0.05, 0.36, 1.4, xWall + 0.1, STAND_H + 1.55, 0);
+      O.box('prop_blue', 0.02, 0.3, 1.34, xWall + 0.13, STAND_H + 1.58, 0);
+      // Three seats facing the track.
+      for (const dz of [-1.5, 0, 1.5]) {
+        O.box('prop_dark', 0.5, 0.06, 0.5, xWall + 1.05, STAND_H + 0.58, dz);
+        O.box('prop_dark', 0.08, 0.5, 0.5, xWall + 1.3, STAND_H + 0.6, dz);
+        O.box('prop_metal', 0.06, 0.45, 0.06, xWall + 1.05, STAND_H + 0.13, dz);
+      }
+      // The sunroof on four slim posts, its fascia dark for the team's name.
+      for (const dz of [-STAND_W / 2 + 0.15, STAND_W / 2 - 0.15]) {
+        O.box('prop_metal', 0.06, STAND_ROOF_H - STAND_H, 0.06, xWall + 0.1, STAND_H + 0.1, dz);
+        O.box('prop_metal', 0.06, STAND_ROOF_H - STAND_H, 0.06, xLane - 0.1, STAND_H + 0.1, dz);
+      }
+      O.box('prop_light', STAND_D + 0.6, 0.08, STAND_W + 0.4, x, STAND_ROOF_H, 0);
+      O.box('prop_dark', 0.06, 0.3, STAND_W + 0.4, xLane + 0.3, STAND_ROOF_H - 0.3, 0);
+      // The rail along the lane side, and the stairs down at one end.
+      O.box('prop_metal', 0.04, RAIL_H, STAND_W, xLane - 0.02, STAND_H + 0.1, 0);
+      O.box('prop_metal', 0.04, RAIL_H, STAND_D, x, STAND_H + 0.1, -STAND_W / 2 + 0.02);
+      for (let k = 0; k < 4; k++) {
+        O.box('prop_metal', 0.8, 0.05, 0.28, x, (STAND_H * (k + 1)) / 5 - 0.05, STAND_W / 2 + 0.16 + (3 - k) * 0.28);
+      }
     }
   }
 
   /* --- the end walls of the row -------------------------------------- */
+  // Two walls at each end, one per storey, each exactly as deep as its
+  // storey: the ground floor from the garage line to the back wall, the
+  // upper floor from its set back face to the back wall. One wall the full
+  // depth of both used to stick out past the back of the building.
   for (const [s, dz] of [
     [first, -pitch / 2],
     [last, pitch / 2],
   ] as Array<[number, number]>) {
     const f = frameAtDistance(pitFrames, pitClosed, s);
     const W = new Local(walls, f, side);
-    W.box('prop_light', D + SETBACK, FLOOR_2 + ROOF_T, WALL_T, F + (D - SETBACK) / 2 + SETBACK, 0, dz + (dz < 0 ? -WALL_T / 2 : WALL_T / 2));
+    const z = dz + (dz < 0 ? -WALL_T / 2 : WALL_T / 2);
+    W.box('prop_light', D, FLOOR_1, WALL_T, F + D / 2, 0, z);
+    W.box('prop_light', D - SETBACK, FLOOR_2 - FLOOR_1, WALL_T, F + SETBACK + (D - SETBACK) / 2, FLOOR_1, z);
   }
 
   /* --- the lane's furniture ------------------------------------------ */
