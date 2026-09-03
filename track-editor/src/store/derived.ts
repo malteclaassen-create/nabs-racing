@@ -36,7 +36,7 @@ import {
 import { buildAiLine, buildAllMarkers, type AiPoint, type MarkerSet } from '../core/markers';
 import { buildGridBoxes, buildPitBoxes } from '../core/gridBoxes';
 import { buildPitBuilding } from '../core/pitBuilding';
-import { buildHorizon, wantsHorizon } from '../core/horizon';
+import { buildHorizon, horizonEdgeKey, wantsHorizon } from '../core/horizon';
 import { buildStartGantry } from '../core/gantry';
 import {
   attachRoadEnds,
@@ -921,12 +921,16 @@ function compute(project: Project, interacting: boolean): Derived {
    * Keyed on the shape signature because the legs stand behind the barrier,
    * which is as far out as the kerb, the run off and the wall gap put it.
    */
-  // The country round the map. Keyed on the terrain square alone: sculpting
-  // inside it changes nothing out there.
+  // The country round the map. Keyed on the terrain square and the heights
+  // along its border, where the ring starts: sculpting inside changes
+  // nothing out there.
   const t = project.terrain;
   const horizonMeshes = project.acImport || !wantsHorizon(t)
     ? EMPTY_MESHES
-    : slotHorizonMeshes(`${t.size}|${t.originX}|${t.originZ}|${t.base}`, () => buildHorizon(t));
+    : slotHorizonMeshes(
+        `${t.size}|${t.originX}|${t.originZ}|${t.base}|${t.res}|${horizonEdgeKey(t, terrainHeights)}`,
+        () => buildHorizon(t, terrainHeights),
+      );
 
   const wantGantry =
     project.timing.gantry && !project.acImport && project.track.closed && project.track.nodes.length >= 3;

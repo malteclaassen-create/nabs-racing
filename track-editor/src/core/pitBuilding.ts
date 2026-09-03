@@ -4,6 +4,7 @@ import type { PitSettings } from '../types';
 import type { SurfaceKey } from '../types';
 import type { MaterialKey, MeshDef } from './road';
 import { frameAtDistance, pathLength, type Frame } from './spline';
+import { EDGE_SINK, PIT_APRON_DROP } from './road';
 
 /**
  * The pit complex: the garages the boxes stand in front of, the floor over
@@ -28,6 +29,13 @@ import { frameAtDistance, pathLength, type Frame } from './spline';
 
 /** The building's front stands this far behind the edge of the concrete. */
 const THRESHOLD = 0.3;
+/**
+ * How far the outer edge of the concrete lies under the lane's centre line:
+ * the apron falls away across its width and bevels down to the ground at
+ * its edge (see buildPitMeshes). Everything here stands at THAT height, so
+ * a garage floor meets the concrete flush and a car rolls in over no lip.
+ */
+const APRON_EDGE_DROP = PIT_APRON_DROP + EDGE_SINK;
 /** How deep a garage goes. Room for the car, the tool walls and a rear door. */
 const GARAGE_DEPTH = 14;
 /** Ground floor: the garage opening and the lintel over it. */
@@ -104,8 +112,18 @@ class Local {
    */
   private dir: 1 | -1;
   private buckets: Bucket;
-  constructor(buckets: Bucket, f: Frame, side: -1 | 1) {
+  /**
+   * The fall of the lane either side of the station, metres per metre in
+   * the driving direction. Everything a bay builds is sheared to it, so a
+   * bay on a sloping lane meets its neighbours at the seam instead of
+   * standing a step above or below them; the ends of the row use one slope.
+   */
+  private slopeBefore: number;
+  private slopeAfter: number;
+  constructor(buckets: Bucket, f: Frame, side: -1 | 1, y0 = f.pos.y, slopeBefore = 0, slopeAfter = slopeBefore) {
     this.buckets = buckets;
+    this.slopeBefore = slopeBefore;
+    this.slopeAfter = slopeAfter;
     const x = new THREE.Vector3(f.right.x, 0, f.right.z).normalize().multiplyScalar(side);
     const y = new THREE.Vector3(0, 1, 0);
     const z = new THREE.Vector3().crossVectors(y, x).normalize();
@@ -113,9 +131,16 @@ class Local {
     if (new THREE.Vector3().crossVectors(x, y).dot(z) < 0) z.negate();
     const fwd = new THREE.Vector3(f.fwd.x, 0, f.fwd.z);
     this.dir = z.dot(fwd) >= 0 ? 1 : -1;
-    this.m.makeBasis(x, y, z).setPosition(f.pos.x, f.pos.y, f.pos.z);
+    this.m.makeBasis(x, y, z).setPosition(f.pos.x, y0, f.pos.z);
   }
   private keep(mat: MaterialKey, g: THREE.BufferGeometry) {
+    if (this.slopeBefore !== 0 || this.slopeAfter !== 0) {
+      const a = g.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < a.count; i++) {
+        const along = a.getZ(i) * this.dir;
+        a.setY(i, a.getY(i) + along * (along > 0 ? this.slopeAfter : this.slopeBefore));
+      }
+    }
     g.applyMatrix4(this.m);
     let list = this.buckets.get(mat);
     if (!list) {
@@ -221,32 +246,52 @@ export function buildPitBuilding(
   const deco: Bucket = new Map();
   const floors: Bucket = new Map();
 
+  // The lane's height at every station, and the fall between neighbours:
+  // the whole row follows the lane's grade continuously, with every bay
+  // sheared to meet the next at the seam. The row stands at the height of
+  // the concrete's OUTER edge, which is where a garage floor has to be.
+  const frames: Frame[] = [];
+  const level: number[] = [];
   for (let i = 0; i < n; i++) {
-    const s = first + i * pitch;
-    const f = frameAtDistance(pitFrames, pitClosed, s);
-    const W = new Local(walls, f, side);
-    const O = new Local(deco, f, side);
-    const G = new Local(floors, f, side);
+    const f = frameAtDistance(pitFrames, pitClosed, first + i * pitch);
+    frames.push(f);
+    level.push(f.pos.y - APRON_EDGE_DROP);
+  }
+  const slope = (i: number) => (i < 0 || i >= n - 1 ? 0 : (level[i + 1] - level[i]) / pitch);
+  const slopes = (i: number): [number, number] => {
+    const before = i > 0 ? slope(i - 1) : slope(i);
+    const after = i < n - 1 ? slope(i) : slope(i - 1);
+    return [before, after];
+  };
+
+  for (let i = 0; i < n; i++) {
+    const f = frames[i];
+    const [sb, sa] = slopes(i);
+    const W = new Local(walls, f, side, level[i], sb, sa);
+    const O = new Local(deco, f, side, level[i], sb, sa);
+    const G = new Local(floors, f, side, level[i], sb, sa);
 
     /* --- the garage: floor, side walls, back wall, ceiling ------------- */
-    // A real garage floor is a step up from the apron, painted and swept.
-    G.box('concrete', D + THRESHOLD, 0.06, pitch, F - THRESHOLD + (D + THRESHOLD) / 2, 0.0, 0);
+    // Flush with the concrete outside it: the slab's top is the apron's
+    // edge height, and it goes DOWN from there, so a car rolls in over no
+    // lip. It used to be a 6 cm step up.
+    G.box('concrete', D + THRESHOLD, 0.12, pitch, F - THRESHOLD + (D + THRESHOLD) / 2, -0.12, 0);
     // The party wall on the bay's near side; the last bay closes the far side.
-    W.box('prop_white', D, FLOOR_1 - 0.1, 0.25, F + D / 2, 0.06, -pitch / 2);
-    if (i === n - 1) W.box('prop_white', D, FLOOR_1 - 0.1, 0.25, F + D / 2, 0.06, pitch / 2);
+    W.box('prop_white', D, FLOOR_1 - 0.1, 0.25, F + D / 2, 0, -pitch / 2);
+    if (i === n - 1) W.box('prop_white', D, FLOOR_1 - 0.1, 0.25, F + D / 2, 0, pitch / 2);
     // Back wall, with the personnel door out to the paddock.
-    W.box('prop_white', WALL_T, FLOOR_1 - 0.1, pitch, F + D - WALL_T / 2, 0.06, 0);
-    O.box('prop_dark', 0.08, 2.1, 1.0, F + D - WALL_T - 0.04, 0.06, pitch / 2 - 1.4);
+    W.box('prop_white', WALL_T, FLOOR_1 - 0.1, pitch, F + D - WALL_T / 2, 0, 0);
+    O.box('prop_dark', 0.08, 2.1, 1.0, F + D - WALL_T - 0.04, 0, pitch / 2 - 1.4);
     // Ceiling, dark: the services and the lighting rails hang under it.
     // Inside the walls, short of the back wall and the party walls, so it
     // never shares a face with them.
     O.box('prop_dark', D - WALL_T - 0.1, 0.3, pitch - 0.3, F + (D - WALL_T - 0.1) / 2, DOOR_H + 0.2, 0);
     // Tool wall along the back: the cabinets every garage has.
-    O.box('prop_metal', 0.7, 1.9, Math.max(1, pitch - 3.0), F + D - WALL_T - 0.35, 0.06, -0.6);
+    O.box('prop_metal', 0.7, 1.9, Math.max(1, pitch - 3.0), F + D - WALL_T - 0.35, 0, -0.6);
     O.box('prop_dark', 0.5, 0.9, Math.max(1, pitch - 3.0), F + D - WALL_T - 0.25, 1.96, -0.6);
     // Two tyre racks against the party wall.
-    O.box('prop_metal', 1.6, 1.8, 0.45, F + 4.0, 0.06, -pitch / 2 + 0.36);
-    O.box('prop_metal', 1.6, 1.8, 0.45, F + 6.2, 0.06, -pitch / 2 + 0.36);
+    O.box('prop_metal', 1.6, 1.8, 0.45, F + 4.0, 0, -pitch / 2 + 0.36);
+    O.box('prop_metal', 1.6, 1.8, 0.45, F + 6.2, 0, -pitch / 2 + 0.36);
 
     /* --- the front: pillars, lintel, roller shutter box ---------------- */
     // The pillars straddle the bay edge: half on this bay, half on the next.
@@ -376,12 +421,13 @@ export function buildPitBuilding(
   // storey: the ground floor from the garage line to the back wall, the
   // upper floor from its set back face to the back wall. One wall the full
   // depth of both used to stick out past the back of the building.
-  for (const [s, dz] of [
-    [first, -pitch / 2],
-    [last, pitch / 2],
+  for (const [i, dz] of [
+    [0, -pitch / 2],
+    [n - 1, pitch / 2],
   ] as Array<[number, number]>) {
-    const f = frameAtDistance(pitFrames, pitClosed, s);
-    const W = new Local(walls, f, side);
+    const f = frames[i];
+    const [sb, sa] = slopes(i);
+    const W = new Local(walls, f, side, level[i], sb, sa);
     const z = dz + (dz < 0 ? -WALL_T / 2 : WALL_T / 2);
     W.box('prop_light', D, FLOOR_1, WALL_T, F + D / 2, 0, z);
     W.box('prop_light', D - SETBACK, FLOOR_2 - FLOOR_1, WALL_T, F + SETBACK + (D - SETBACK) / 2, FLOOR_1, z);

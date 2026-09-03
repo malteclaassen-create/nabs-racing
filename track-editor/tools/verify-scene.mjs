@@ -6938,7 +6938,15 @@ console.log('\nThe pit complex, both ways round');
     const ys = new Set();
     const cp = byName['1WALL_pit_garages_concrete'].geometry.attributes.position;
     for (let i = 0; i < cp.count; i++) ys.add(+cp.getY(i).toFixed(3));
-    check('with steps up to it in even treads', ys.size === 5 && ys.has(0.75), [...ys].sort((a, b) => a - b).join(' '));
+    // The row stands at the concrete's outer edge, 9 cm under the lane's
+    // centre line (its fall plus the edge bevel), and the deck is 0.75 m
+    // above that.
+    const sorted = [...ys].sort((a, b) => a - b);
+    check('with steps up to it in even treads', ys.size === 5 && Math.abs(sorted[4] - (0.75 - 0.09)) < 0.005 && Math.abs(sorted[0] + 0.09) < 0.005, sorted.join(' '));
+    // The garage floor is flush with that edge: nothing stands above it at
+    // the threshold.
+    const floor = bb(byName['1CONCRETE_pit_garage_floor']);
+    check('and the garage floor is flush with the concrete outside', Math.abs(floor.max.y + 0.09) < 0.005, `top at ${floor.max.y.toFixed(3)}`);
     // The exit light faces the car coming down the lane: its lamps sit on the
     // near side of the housing.
     const green = bb(byName['OBJ_pit_complex_prop_green']);

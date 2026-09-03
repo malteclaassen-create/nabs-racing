@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { TerrainSettings } from '../types';
 import type { MeshDef } from './road';
+import { sampleHeights } from './terrain';
 
 /**
  * The country beyond the map: rolling hills a kilometre or two out, and a
@@ -8,25 +9,27 @@ import type { MeshDef } from './road';
  *
  * A circuit with nothing past the edge of its terrain ends in a line of sky
  * at ground level, which no real place does. This is the cheapest thing that
- * fixes it: one ring of triangles around the terrain, its inner rings flat
- * at ground level so the terrain lies over them, its outer rings lifted into
- * two ridges whose height wanders around the compass. It is scenery only --
- * a car can never reach it -- and it is drawn with a texture that fades from
- * grass at the foot to haze at the peaks, so the far range reads as far.
+ * fixes it: one ring of triangles round the terrain square, starting ON its
+ * edge at the terrain's own height there, easing down to the base level a
+ * little way out, then lifted into two ridges whose height wanders around
+ * the compass. It is scenery only -- a car can never reach it -- and it is
+ * drawn with a texture that fades from grass at the foot to haze at the
+ * peaks, so the far range reads as far.
  *
- * Everything is measured off the terrain square: the ridges stand at fixed
- * multiples of its side and their heights scale with it, so a small map
- * gets low hills close in and a large one gets a proper range.
+ * It begins at the square's edge and nowhere inside it: a disc under the
+ * terrain used to show through wherever the ground had been sculpted below
+ * the base level, and it moves with the square when that is resized.
  */
 
 /** Angular steps round the ring. 2.5 degrees is a ridge with some shape in it. */
 const SEGMENTS = 144;
 
 /**
- * The rings: how far past the terrain's corner each stands, in metres, and
+ * The rings: how far past the terrain's edge each stands, in metres, and
  * how much of each ridge height it carries -- the near hills (h1), the
- * middle ridge (h2) and the mountains (h3). The first ring is the centre of
- * the map, the second its corner: both flat, both under the terrain.
+ * middle ridge (h2) and the mountains (h3). The first ring is the edge of
+ * the terrain itself, at the terrain's height; the second is flat ground at
+ * base level.
  *
  * Metres rather than multiples of the map, because the eye judges a hill by
  * how far away it is and the viewport's fog thins everything past about
@@ -34,7 +37,6 @@ const SEGMENTS = 144;
  * map was out in the haze where nobody saw it.
  */
 const RINGS: ReadonlyArray<[number, number, number, number]> = [
-  [-1, 0, 0, 0],
   [0, 0, 0, 0],
   [250, 0, 0, 0],
   [700, 1, 0, 0],
@@ -49,6 +51,8 @@ const RINGS: ReadonlyArray<[number, number, number, number]> = [
 const H1 = 70;
 const H2 = 180;
 const H3 = 450;
+/** By this far out the rings have rounded off from the square into a circle. */
+const ROUND_BY = 3200;
 
 /**
  * A ridge line: a height that wanders round the compass, between 0 and 1.
@@ -79,15 +83,28 @@ export function wantsHorizon(terrain: TerrainSettings): boolean {
   return terrain.enabled && terrain.horizon !== false;
 }
 
-export function buildHorizon(terrain: TerrainSettings): MeshDef[] {
+/**
+ * A cheap signature of the terrain's border heights: the ring starts at
+ * them, so it has to be rebuilt when they change, and only then.
+ */
+export function horizonEdgeKey(terrain: TerrainSettings, heights: Float32Array): number {
+  const res = terrain.res;
+  if (heights.length < res * res) return 0;
+  let h = 0;
+  for (let i = 0; i < res; i++) {
+    h = h * 31 + heights[i] * 1000 + heights[(res - 1) * res + i] * 7 + heights[i * res] * 13 + heights[i * res + res - 1] * 17;
+    h %= 1e9;
+  }
+  return Math.round(h);
+}
+
+export function buildHorizon(terrain: TerrainSettings, heights: Float32Array): MeshDef[] {
   if (!wantsHorizon(terrain)) return [];
   const S = terrain.size;
-  const cx = terrain.originX + S / 2;
-  const cz = terrain.originZ + S / 2;
-  // Just under the untouched ground, so the terrain lies over the inner rings.
+  const half = S / 2;
+  const cx = terrain.originX + half;
+  const cz = terrain.originZ + half;
   const foot = terrain.base - 0.3;
-  // The corner of the terrain square is where the country starts.
-  const R0 = (S / 2) * Math.SQRT2 + 10;
 
   const rings = RINGS.length;
   const cols = SEGMENTS + 1;
@@ -95,19 +112,34 @@ export function buildHorizon(terrain: TerrainSettings): MeshDef[] {
   const uv = new Float32Array(rings * cols * 2);
   for (let j = 0; j < rings; j++) {
     const [dr, a1, a2, a3] = RINGS[j];
-    const r = dr < 0 ? 0 : R0 + dr;
+    // From the square's edge near in to a circle far out.
+    const round = Math.min(1, dr / ROUND_BY);
     for (let i = 0; i < cols; i++) {
       const t = (i / SEGMENTS) * Math.PI * 2;
-      const y =
-        foot +
-        a1 * H1 * (0.5 + ridge(t, 1)) +
-        a2 * H2 * (0.6 + ridge(t, 2)) +
-        // Peakier than the hills: a range is not a swell.
-        a3 * H3 * (0.7 + Math.pow(ridge(t, 3), 1.6) * 1.2);
+      const c = Math.cos(t);
+      const s = Math.sin(t);
+      const rSquare = half / Math.max(Math.abs(c), Math.abs(s));
+      const rCircle = half * Math.SQRT2;
+      const r = rSquare + (rCircle - rSquare) * round + dr;
+      let y: number;
+      if (j === 0) {
+        // On the edge, at the terrain's own height there, a hair inside the
+        // grid so the sample never falls off it.
+        const x = cx + c * (rSquare - 0.01);
+        const z = cz + s * (rSquare - 0.01);
+        y = sampleHeights(terrain, heights, x, z) - 0.02;
+      } else {
+        y =
+          foot +
+          a1 * H1 * (0.5 + ridge(t, 1)) +
+          a2 * H2 * (0.6 + ridge(t, 2)) +
+          // Peakier than the hills: a range is not a swell.
+          a3 * H3 * (0.7 + Math.pow(ridge(t, 3), 1.6) * 1.2);
+      }
       const o = (j * cols + i) * 3;
-      pos[o] = cx + Math.cos(t) * r;
+      pos[o] = cx + c * r;
       pos[o + 1] = y;
-      pos[o + 2] = cz + Math.sin(t) * r;
+      pos[o + 2] = cz + s * r;
       const u = (j * cols + i) * 2;
       uv[u] = (i / SEGMENTS) * 12;
       uv[u + 1] = j / (rings - 1);
