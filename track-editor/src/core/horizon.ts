@@ -260,14 +260,22 @@ function buildWoods(terrain: TerrainSettings): MeshDef | null {
       const a = tr.ry + (k * Math.PI) / 2;
       const dx = Math.cos(a) * tr.w * 0.5;
       const dz = Math.sin(a) * tr.w * 0.5;
+      // The front face looks this way; the back copy stands 3 cm behind it.
+      // Exactly coincident, the two fought for the depth buffer and the
+      // material is double sided, so whichever lost had its normal turned
+      // away from the sun: every other tree came out black from one side.
+      const nx = -Math.sin(a);
+      const nz = Math.cos(a);
       for (let back = 0; back < 2; back++) {
         const v0 = q * 4;
+        const ox = back ? -nx * 0.03 : 0;
+        const oz = back ? -nz * 0.03 : 0;
         // Corners: left-bottom, right-bottom, right-top, left-top.
         const corners = [
-          [tr.x - dx, tr.y, tr.z - dz, 0, 0],
-          [tr.x + dx, tr.y, tr.z + dz, 1, 0],
-          [tr.x + dx, tr.y + tr.h, tr.z + dz, 1, 1],
-          [tr.x - dx, tr.y + tr.h, tr.z - dz, 0, 1],
+          [tr.x - dx + ox, tr.y, tr.z - dz + oz, 0, 0],
+          [tr.x + dx + ox, tr.y, tr.z + dz + oz, 1, 0],
+          [tr.x + dx + ox, tr.y + tr.h, tr.z + dz + oz, 1, 1],
+          [tr.x - dx + ox, tr.y + tr.h, tr.z - dz + oz, 0, 1],
         ];
         for (let i = 0; i < 4; i++) {
           const [x, y, z, u, v] = corners[i];
