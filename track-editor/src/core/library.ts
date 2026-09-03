@@ -1212,15 +1212,16 @@ export const LIBRARY: PropDef[] = [
     category: 'Track furniture' as const,
     surface: null,
     /*
-     * The bare panel, lifted 30 cm off its origin and nothing under it. It sat
-     * with its bottom edge AT the origin, and on any cross slope, a banked run
-     * off, a grass bank, the downhill corner of the number sank into the
-     * ground. Posts were tried and taken out again on Malte's word: the board
-     * is the number, and the number is what has to be in view. The lift is
-     * what the 3D grass and a slope can eat without touching the paint.
+     * The bare panel standing on its origin, nothing under it. Posts were
+     * tried and taken out again on Malte's word: the board is the number, and
+     * the number is what has to be in view. It used to be lifted 30 cm so a
+     * cross slope could not sink its downhill corner; now that the planner
+     * sets it on the built run off (settleBrakeMarkers) the lift only showed
+     * as a board floating over the grass, so it is down to the few
+     * centimetres a mild cross slope and the grass paint can eat.
      */
     build: () =>
-      group([[[atlasTile(box(SIGN_W, SIGN_H, 0.09, 0, 0.3), i)], 'sign_board' as MaterialKey]]),
+      group([[[atlasTile(box(SIGN_W, SIGN_H, 0.09, 0, 0.08), i)], 'sign_board' as MaterialKey]]),
   })),
   /*
    * There is no marshalling panel in this list on purpose. A panel is not a

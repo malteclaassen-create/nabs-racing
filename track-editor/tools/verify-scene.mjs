@@ -2190,8 +2190,8 @@ console.log('\nObject library');
     // span between two supports, and the whole point of it is the air under
     // it. Its ramp buries its foot the way a pad does, a slab thickness deep.
     if (d.key === 'bridge_road_deck') continue;
-    // The braking boards hover 30 cm on purpose: see the library note.
-    const hover = d.key.startsWith('brake_') || d.key === 'marker_board' ? 0.35 : 0.05;
+    // The braking boards stand a few centimetres up on purpose: see the library note.
+    const hover = d.key.startsWith('brake_') || d.key === 'marker_board' ? 0.12 : 0.05;
     if (minY > hover) floating.push(`${d.key} ${minY.toFixed(2)}`);
     // Nature is allowed to sit half in the ground, and a ground pad reaches
     // below it on purpose so a slope shows no gap under the slab.
@@ -5320,8 +5320,8 @@ console.log('\nBraking boards');
       parts.length === 1 && parts[0].material === 'sign_board');
     parts[0].geometry.computeBoundingBox();
     const bb = parts[0].geometry.boundingBox;
-    check(`and the panel floats a little clear of the ground`,
-      bb.min.y > 0.2 && bb.min.y < 0.4 && bb.max.y > 1.4 && bb.max.y < 1.7,
+    check(`and the panel stands a few centimetres clear of the ground`,
+      bb.min.y > 0.04 && bb.min.y < 0.15 && bb.max.y > 1.2 && bb.max.y < 1.5,
       `${bb.min.y.toFixed(2)} .. ${bb.max.y.toFixed(2)} m`);
     // Each board reads its own quarter of the shared sheet.
     const uv = parts[0].geometry.getAttribute('uv');
