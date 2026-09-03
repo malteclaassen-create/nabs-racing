@@ -44,9 +44,9 @@ const SEGMENTS = 240;
  */
 const RINGS: ReadonlyArray<[number, number, number, number, number]> = [
   [0, 0, 0, 0, 0],
-  [250, 0, 0, 0, 0],
-  [700, 1, 0, 0, 1],
-  [1100, 0.35, 0, 0, 1.4],
+  [500, 0, 0, 0, 0],
+  [900, 1, 0, 0, 1],
+  [1200, 0.35, 0, 0, 1.4],
   [1500, 0, 1, 0, 2],
   [1900, 0.2, 0.4, 0, 2.6],
   [2300, 0, 0.3, 0.3, 3],
@@ -106,14 +106,42 @@ function ridge(theta: number, seed: number): number {
   return 0.5 + (0.5 * v) / norm;
 }
 
+/**
+ * What kind of country lies in a direction: a slow wander round the
+ * compass sorts it into plain, hill country and mountains, so that one
+ * side of the circuit looks across flat farmland, another over rolling
+ * hills, and only some of it up at a range. Everything the same all the
+ * way round -- a wall of peaks -- looked like a crater.
+ *
+ * `mount` is 1 where the range stands and 0 where it does not; `plain` is
+ * 1 on the flats. Both are soft, so the range runs out into foothills and
+ * the hills die away into the plain over a good stretch of the compass.
+ */
+function country(t: number): { mount: number; plain: number } {
+  const w =
+    0.5 +
+    (0.5 * (0.6 * Math.sin(t + 0.9) + 0.3 * Math.sin(2 * t + 2.7) + 0.2 * Math.sin(3 * t + 1.3))) / 1.1;
+  const step = (lo: number, hi: number, x: number) => {
+    const f = Math.min(1, Math.max(0, (x - lo) / (hi - lo)));
+    return f * f * (3 - 2 * f);
+  };
+  return { mount: step(0.55, 0.78, w), plain: 1 - step(0.22, 0.45, w) };
+}
+
 /** The lift of one ring at a bearing. */
 function ringLift(j: number, t: number): number {
   const [, a1, a2, a3, seed] = RINGS[j];
+  const { mount, plain } = country(t);
   return (
-    a1 * H1 * (0.5 + ridge(t, seed)) +
-    a2 * H2 * (0.6 + ridge(t, seed + 0.5)) +
-    // Peakier than the hills: a range is not a swell.
-    a3 * H3 * (0.7 + Math.pow(ridge(t, seed + 1), 1.6) * 1.2)
+    // The near hills flatten out on the plain.
+    a1 * H1 * (0.5 + ridge(t, seed)) * (1 - 0.75 * plain) +
+    // The middle ridge is foothills under the range, low hills elsewhere,
+    // and next to nothing on the plain.
+    a2 * H2 * (0.6 + ridge(t, seed + 0.5)) * (0.35 + 0.65 * mount) * (1 - 0.7 * plain) +
+    // The range itself, peakier than the hills: a range is not a swell.
+    // Where there is none, the far rings are a last low swell of hills.
+    a3 * H3 * (0.7 + Math.pow(ridge(t, seed + 1), 1.6) * 1.2) * mount +
+    a3 * H3 * 0.18 * (0.5 + ridge(t, seed + 2)) * (1 - mount) * (1 - 0.8 * plain)
   );
 }
 
@@ -128,7 +156,9 @@ function jog(j: number, i: number): number {
   const a3 = RINGS[j][3];
   if (a3 < 0.5) return 0;
   const h = Math.sin((i % SEGMENTS) * 12.9898 + j * 78.233) * 43758.5453;
-  return (h - Math.floor(h) - 0.5) * a3 * H3 * 0.3;
+  // Rough where the range stands, a gentle swell where it does not.
+  const { mount } = country((i / SEGMENTS) * Math.PI * 2);
+  return (h - Math.floor(h) - 0.5) * a3 * H3 * 0.3 * (0.15 + 0.85 * mount);
 }
 
 /** The lift of one vertex of the grid. */
@@ -273,6 +303,21 @@ function buildBand(
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   g.setIndex(index);
   g.computeVertexNormals();
+  if (kind === 'grass') {
+    // Lit like the flat ground it continues, whatever its slope: where the
+    // terrain's edge stood on a hill, the ring dropped away from it as a
+    // slope turned from the sun, and the same grass came out a different,
+    // darker green on the far side of the edge. Mostly up, a little of the
+    // real slope left in so the near hills still have some relief.
+    const n = g.getAttribute('normal') as THREE.BufferAttribute;
+    for (let i = 0; i < n.count; i++) {
+      const x = n.getX(i) * 0.25;
+      const y = n.getY(i) * 0.25 + 0.75;
+      const z = n.getZ(i) * 0.25;
+      const l = Math.hypot(x, y, z) || 1;
+      n.setXYZ(i, x / l, y / l, z / l);
+    }
+  }
   g.computeBoundingSphere();
   return kind === 'grass'
     ? { name: 'OBJ_horizon', material: 'terrain', surface: null, geometry: g }
