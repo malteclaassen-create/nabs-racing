@@ -353,6 +353,9 @@ function TrackSurfaces({ derived }: { derived: Derived }) {
       {derived.gantryMeshes.map((d) => (
         <SurfaceMesh key={d.name} def={d} wireframe={view.wireframe} cheap={cheap} />
       ))}
+      {derived.horizonMeshes.map((d) => (
+        <SurfaceMesh key={d.name} def={d} wireframe={view.wireframe} cheap={cheap} />
+      ))}
     </group>
   );
 }

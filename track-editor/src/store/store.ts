@@ -274,6 +274,7 @@ function baseProject(track: TrackNode[], pit: TrackNode[]): Project {
       base: 0,
       blend: 22,
       grass3d: true,
+      horizon: true,
       heights: createHeights(res, 0),
       // All grass until the ground brush says otherwise, and no field at all
       // until then either.

@@ -458,6 +458,8 @@ export async function buildExport(project: Project, derived: Derived): Promise<E
     // The bridge over the line. Scenery too: the barrier in front of its legs
     // is what a car can actually reach, so it carries no surface of its own.
     ...derived.gantryMeshes,
+    // The hills and mountains round the map. Scenery: nothing drives there.
+    ...derived.horizonMeshes,
     // Painted ground is one geometry with a run of triangles per material in
     // the viewport; here it becomes a mesh per material, because that is how
     // Assetto Corsa is told what a car is driving on.

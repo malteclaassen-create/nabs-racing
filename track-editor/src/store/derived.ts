@@ -36,6 +36,7 @@ import {
 import { buildAiLine, buildAllMarkers, type AiPoint, type MarkerSet } from '../core/markers';
 import { buildGridBoxes, buildPitBoxes } from '../core/gridBoxes';
 import { buildPitBuilding } from '../core/pitBuilding';
+import { buildHorizon, wantsHorizon } from '../core/horizon';
 import { buildStartGantry } from '../core/gantry';
 import {
   attachRoadEnds,
@@ -84,6 +85,8 @@ export interface Derived {
    * under it, and dragging the line along the lap must not rebuild the road.
    */
   gantryMeshes: MeshDef[];
+  /** The hills and mountains round the map. Scenery, keyed on the terrain square. */
+  horizonMeshes: MeshDef[];
   terrainHeights: Float32Array;
   /**
    * The terrain with the ground shapes rendered into its paint. What anything
@@ -278,6 +281,7 @@ const slotMarkers = memoSlot<MarkerSet>();
 const slotGridMeshes = memoSlot<MeshDef[]>();
 const slotPitBuilding = memoSlot<MeshDef[]>();
 const slotGantryMeshes = memoSlot<MeshDef[]>();
+const slotHorizonMeshes = memoSlot<MeshDef[]>();
 const slotAi = memoSlot<AiPoint[]>();
 /** Full-grid min scan, so typing in the name field does not pay for it. */
 const slotMinY = memoSlot<number>();
@@ -917,6 +921,13 @@ function compute(project: Project, interacting: boolean): Derived {
    * Keyed on the shape signature because the legs stand behind the barrier,
    * which is as far out as the kerb, the run off and the wall gap put it.
    */
+  // The country round the map. Keyed on the terrain square alone: sculpting
+  // inside it changes nothing out there.
+  const t = project.terrain;
+  const horizonMeshes = project.acImport || !wantsHorizon(t)
+    ? EMPTY_MESHES
+    : slotHorizonMeshes(`${t.size}|${t.originX}|${t.originZ}|${t.base}`, () => buildHorizon(t));
+
   const wantGantry =
     project.timing.gantry && !project.acImport && project.track.closed && project.track.nodes.length >= 3;
   const gantryMeshes = !wantGantry
@@ -961,6 +972,7 @@ function compute(project: Project, interacting: boolean): Derived {
     gridMeshes,
     pitBuildingMeshes,
     gantryMeshes,
+    horizonMeshes,
     terrainHeights,
     paintTerrain,
     terrainDef,

@@ -408,6 +408,11 @@ export interface TerrainSettings {
    * stored: the tufts follow the track and the ground paint by themselves.
    */
   grass3d: boolean;
+  /**
+   * The country beyond the map: hills and a mountain range round the whole
+   * terrain. Derived, not stored, and undefined counts as on.
+   */
+  horizon?: boolean;
   /** res * res height values. Held as a Float32Array at runtime. */
   heights: Float32Array;
   /**

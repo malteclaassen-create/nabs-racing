@@ -1418,6 +1418,24 @@ function TerrainOptions() {
             itself and is baked into the export.
           </p>
         )}
+        <Row label="Horizon">
+          <Check
+            label="Hills and mountains round the map"
+            checked={terrain.horizon !== false}
+            onChange={(v) =>
+              commit((p) => {
+                p.terrain.horizon = v;
+              })
+            }
+          />
+        </Row>
+        {terrain.horizon !== false && (
+          <p className="hint" style={{ marginTop: 0 }}>
+            The country beyond the edge of the terrain: rolling hills a little
+            way out and a range behind them, all the way round, so the map does
+            not end in a line of sky. Scenery only, exported with the track.
+          </p>
+        )}
         <Row label="Size">
           <Num
             value={terrain.size}

@@ -696,6 +696,28 @@ function makeSpeedSign(): HTMLCanvasElement {
 }
 
 /**
+ * The country beyond the map, as a gradient up the sheet: meadow green at the
+ * foot, the darker green of wooded hills in the middle, and the blue grey of
+ * a range seen through a few kilometres of air at the top. The horizon mesh
+ * maps its rings up V, so "up the sheet" is "further away", which is what
+ * makes a flat colour read as distance.
+ */
+function makeHorizon(): HTMLCanvasElement {
+  const [c, ctx] = canvas();
+  const grad = ctx.createLinearGradient(0, SIZE, 0, 0);
+  grad.addColorStop(0.0, '#6f9a5c');
+  grad.addColorStop(0.22, '#5f8a52');
+  grad.addColorStop(0.45, '#4d7348');
+  grad.addColorStop(0.62, '#5b7a6a');
+  grad.addColorStop(0.8, '#7f92a0');
+  grad.addColorStop(1.0, '#a3b3c2');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  noise(ctx, 10, 9127);
+  return c;
+}
+
+/**
  * How the digit sheet is cut up. Four across is a 128 px tile out of the 512,
  * which is as much resolution as a number painted on concrete has any use for.
  */
@@ -1468,6 +1490,7 @@ export const MATERIAL_COLORS: Record<MaterialKey, string> = {
   tree_card: '#3d5f2c',
   sign_board: '#f2f2ef',
   sign_speed: '#f2f2ef',
+  horizon: '#6f8f6a',
   led_flag: '#e6ebef',
   led_start: '#d81a12',
   start_banner: '#141a22',
@@ -1505,6 +1528,7 @@ const builders: Record<MaterialKey, () => HTMLCanvasElement> = {
   tree_card: makeTreeCards,
   sign_board: makeSignBoard,
   sign_speed: makeSpeedSign,
+  horizon: makeHorizon,
   led_flag: makeFlagPanel,
   led_start: makeStartLens,
   start_banner: makeStartBanner,

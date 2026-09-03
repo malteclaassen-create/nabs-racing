@@ -66,7 +66,9 @@ const PIT_WALL_H = 1.4;
 /** The steps: three treads up to the deck, in a strip along the lane edge. */
 const STAIR_STEPS = 3;
 const STAIR_TREAD = 0.32;
-const STAIR_W = 1.0;
+const STAIR_W = 1.1;
+/** The landing at the foot of the steps: room to stand before the first tread. */
+const STAIR_LANDING = 0.9;
 /**
  * The team stand on the deck, one per two boxes: a mat with the desk, the
  * monitors and the seats, a sunroof over it on four slim posts.
@@ -288,33 +290,38 @@ export function buildPitBuilding(
     // wall in the world carries. Both collide: a car does not drive up a
     // kerb of concrete or through the wall behind it.
     {
-      const xOut = -(apronEdge - 0.08);
+      const xOut = -(apronEdge - 0.05);
       const xIn = xOut + plinthD;
-      const xw = -(apronEdge - PIT_WALL_T / 2 - 0.05);
-      W.box('prop_light', PIT_WALL_T, PIT_WALL_H, pitch, xw, 0, 0);
+      // The barrier stands on the deck, set 15 cm in from its outer edge so
+      // the concrete shows as a ledge under it: two faces a few centimetres
+      // apart used to flicker into each other from down the lane.
+      const xw = xOut + 0.15 + PIT_WALL_T / 2;
+      W.box('prop_light', PIT_WALL_T, PIT_WALL_H - PLINTH_H + 0.05, pitch, xw, PLINTH_H - 0.05, 0);
       O.box('prop_red', PIT_WALL_T + 0.04, 0.45, pitch, xw, PIT_WALL_H - 0.55, 0);
       const stairs = i % STAND_EVERY === 1 && i < n - 1;
       const run = STAIR_STEPS * STAIR_TREAD;
+      // The cut in the deck: a landing at ground level, then the steps.
+      const notch = STAIR_LANDING + run;
       if (!stairs) {
         W.box('concrete', plinthD, PLINTH_H, pitch, (xOut + xIn) / 2, 0, 0);
       } else {
         // The wall side of the deck is solid; the lane side is cut away
-        // over the length of the steps, which rise along the lane.
+        // for the landing and the steps, which rise along the lane.
         const back = plinthD - STAIR_W;
         W.box('concrete', back, PLINTH_H, pitch, xOut + back / 2, 0, 0);
         const xs = xIn - STAIR_W / 2;
-        const rest = pitch / 2 - run / 2;
-        W.box('concrete', STAIR_W, PLINTH_H, rest, xs, 0, -(run / 2 + rest / 2));
-        W.box('concrete', STAIR_W, PLINTH_H, rest, xs, 0, run / 2 + rest / 2);
+        const rest = pitch / 2 - notch / 2;
+        W.box('concrete', STAIR_W, PLINTH_H, rest, xs, 0, -(notch / 2 + rest / 2));
+        W.box('concrete', STAIR_W, PLINTH_H, rest, xs, 0, notch / 2 + rest / 2);
         const rise = PLINTH_H / (STAIR_STEPS + 1);
         for (let k = 0; k < STAIR_STEPS; k++) {
-          W.box('concrete', STAIR_W, rise * (k + 1), STAIR_TREAD, xs, 0, -run / 2 + STAIR_TREAD * (k + 0.5));
+          W.box('concrete', STAIR_W, rise * (k + 1), STAIR_TREAD, xs, 0, -notch / 2 + STAIR_LANDING + STAIR_TREAD * (k + 0.5));
         }
       }
       // The handrail along the lane edge of the deck, broken at the steps.
       const xr = xIn - 0.05;
       const spans: Array<[number, number]> = stairs
-        ? [[-pitch / 2, -run / 2 - 0.2], [run / 2 + 0.2, pitch / 2]]
+        ? [[-pitch / 2, -notch / 2 - 0.2], [notch / 2 + 0.2, pitch / 2]]
         : [[-pitch / 2, pitch / 2]];
       for (const [z0, z1] of spans) {
         O.box('prop_metal', 0.04, 0.04, z1 - z0, xr, PLINTH_H + RAIL_H - 0.04, (z0 + z1) / 2);
@@ -336,6 +343,9 @@ export function buildPitBuilding(
       const xLane = x + standD / 2;
       const deck = PLINTH_H + 0.03;
       O.box('prop_dark', standD, 0.03, STAND_W, x, PLINTH_H, 0);
+      // The back of the stand, wall side, up to the roof: the monitors hang
+      // on it rather than in the air over the barrier.
+      O.box('prop_dark', 0.06, STAND_ROOF_H - PLINTH_H, STAND_W, xWall + 0.03, PLINTH_H, 0);
       O.box('prop_dark', 0.55, 0.72, STAND_W - 0.3, xWall + 0.3, deck, 0);
       O.box('prop_light', 0.6, 0.04, STAND_W - 0.3, xWall + 0.3, deck + 0.72, 0);
       for (let k = 0; k < 4; k++) {
