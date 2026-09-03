@@ -694,6 +694,63 @@ function makeSpeedSign(): HTMLCanvasElement {
 }
 
 /**
+ * The range round the map, as bands up the sheet by HEIGHT: meadow at the
+ * foot (the terrain's own green, so the seam with the grass band is only a
+ * change of grain), the darker green of forest, then a belt of scree and
+ * bare rock, then snow on the peaks. The horizon mesh maps its V from the
+ * base level to the tallest peak, so the same sheet dresses every range.
+ *
+ * The band edges wander across the sheet rather than running dead level,
+ * and the whole thing is grained and speckled: a flat colour changing at a
+ * fixed height reads as a painted stripe, a ragged one as a tree line.
+ */
+function makeMountain(): HTMLCanvasElement {
+  const [c, ctx] = canvas();
+  const stops: Array<[number, [number, number, number]]> = [
+    [0.0, [63, 107, 52]],
+    [0.12, [58, 96, 48]],
+    [0.2, [46, 78, 40]],
+    [0.34, [42, 70, 38]],
+    [0.42, [92, 88, 70]],
+    [0.52, [118, 114, 104]],
+    [0.66, [140, 140, 138]],
+    [0.74, [200, 204, 206]],
+    [0.82, [238, 241, 243]],
+    [1.0, [250, 251, 252]],
+  ];
+  const img = ctx.createImageData(SIZE, SIZE);
+  const d = img.data;
+  let seed = 4111;
+  const rnd = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  for (let x = 0; x < SIZE; x++) {
+    // How far the bands are pushed up or down in this column: a slow wander
+    // that meets itself at the wrap, plus a little jitter.
+    const u = (x / SIZE) * Math.PI * 2;
+    const wander = 0.045 * Math.sin(u * 3 + 1.1) + 0.03 * Math.sin(u * 7 + 2.3) + 0.02 * Math.sin(u * 13 + 0.4) + 0.012 * Math.sin(u * 29 + 1.9);
+    for (let y = 0; y < SIZE; y++) {
+      // V runs up from the bottom of the sheet.
+      const v = 1 - y / SIZE + wander + (rnd() - 0.5) * 0.06;
+      let k = 0;
+      while (k < stops.length - 2 && v > stops[k + 1][0]) k++;
+      const [v0, c0] = stops[k];
+      const [v1, c1] = stops[k + 1];
+      const f = Math.min(1, Math.max(0, (v - v0) / (v1 - v0)));
+      const g = 0.92 + rnd() * 0.16;
+      const o = (y * SIZE + x) * 4;
+      d[o] = (c0[0] + (c1[0] - c0[0]) * f) * g;
+      d[o + 1] = (c0[1] + (c1[1] - c0[1]) * f) * g;
+      d[o + 2] = (c0[2] + (c1[2] - c0[2]) * f) * g;
+      d[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+/**
  * How the digit sheet is cut up. Four across is a 128 px tile out of the 512,
  * which is as much resolution as a number painted on concrete has any use for.
  */
@@ -1466,6 +1523,7 @@ export const MATERIAL_COLORS: Record<MaterialKey, string> = {
   tree_card: '#3d5f2c',
   sign_board: '#f2f2ef',
   sign_speed: '#f2f2ef',
+  mountain: '#5f7a55',
   led_flag: '#e6ebef',
   led_start: '#d81a12',
   start_banner: '#141a22',
@@ -1503,6 +1561,7 @@ const builders: Record<MaterialKey, () => HTMLCanvasElement> = {
   tree_card: makeTreeCards,
   sign_board: makeSignBoard,
   sign_speed: makeSpeedSign,
+  mountain: makeMountain,
   led_flag: makeFlagPanel,
   led_start: makeStartLens,
   start_banner: makeStartBanner,

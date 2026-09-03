@@ -65,6 +65,8 @@ export type MaterialKey =
   | 'sign_board'
   /* The pit lane speed limit board: a white card with the limit in a red ring. */
   | 'sign_speed'
+  /* The range round the map: meadow, forest, rock and snow up the sheet by height. */
+  | 'mountain'
   /* The lamp wall of a marshalling panel, colourless: Custom Shaders Patch
      paints it from the session flag. See extConfigIni() in export/ini.ts. */
   | 'led_flag'
