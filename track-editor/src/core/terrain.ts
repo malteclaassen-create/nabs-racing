@@ -1855,7 +1855,7 @@ export function cutSubCell(
  * 1024 px (see GRASS_SIZE in textures.ts), so 8 m is 128 px/m, in the middle
  * of the 100-200 px/m band measured off imola, magione and fn_imola.
  */
-const TEX_TILE_M = 8;
+export const TEX_TILE_M = 8;
 
 /** Position, normal and UV of the appended vertices in [from, to). */
 function writeExtras(

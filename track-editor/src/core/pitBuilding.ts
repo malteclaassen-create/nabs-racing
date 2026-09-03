@@ -440,10 +440,10 @@ export function buildPitBuilding(
   if (cfg.limitStart > 2 && cfg.limitStart < total) {
     const f = frameAtDistance(pitFrames, pitClosed, cfg.limitStart);
     const O = new Local(deco, f, side);
+    // A board standing on the concrete itself, no post: like a braking
+    // board, one less thing to hit.
     for (const x of [cfg.width + 0.7, -(cfg.width + 0.7)]) {
-      O.cyl('prop_metal', 0.025, 0.55, x, 0, -0.26);
-      O.cyl('prop_metal', 0.025, 0.55, x, 0, 0.26);
-      O.board('sign_speed', 0.72, 0.8, 0.05, x, 0.5, 0);
+      O.board('sign_speed', 0.7, 0.7, 0.08, x, 0, 0);
     }
   }
   // The exit light at the end of the lane, on the box side: a panel on a

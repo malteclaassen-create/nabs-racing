@@ -658,11 +658,11 @@ function makeSignBoard(): HTMLCanvasElement {
 export const PIT_SPEED_LIMIT = 80;
 
 /**
- * The pit lane speed limit board: the limit in the red ring of a road sign,
- * "km/h" under it, on a white card. The card stands knee high either side of
- * the lane where the limiter comes on, so the number is drawn to fill the
- * ring and the ring to fill the card -- it is read from a car at speed, not
- * from beside it.
+ * The pit lane speed limit board: the limit in the red ring of a road sign
+ * on a white card, and nothing else. The card stands on the ground either
+ * side of the lane where the limiter comes on, so the number is drawn to
+ * fill the ring and the ring to fill the card -- it is read from a car at
+ * speed, not from beside it.
  */
 function makeSpeedSign(): HTMLCanvasElement {
   const [c, ctx] = canvas();
@@ -674,8 +674,8 @@ function makeSpeedSign(): HTMLCanvasElement {
   ctx.strokeRect(ctx.lineWidth, ctx.lineWidth, SIZE - ctx.lineWidth * 2, SIZE - ctx.lineWidth * 2);
   // The ring, the sign's red, thick the way the real ones are.
   const cx = SIZE / 2;
-  const cy = SIZE * 0.42;
-  const r = SIZE * 0.33;
+  const cy = SIZE / 2;
+  const r = SIZE * 0.42;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = '#c8232a';
@@ -687,33 +687,9 @@ function makeSpeedSign(): HTMLCanvasElement {
   ctx.fillStyle = '#15181c';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `700 ${r * 0.98}px Archivo, Inter, Arial, sans-serif`;
+  ctx.font = `700 ${r * 1.0}px Archivo, Inter, Arial, sans-serif`;
   ctx.fillText(String(PIT_SPEED_LIMIT), cx, cy + r * 0.05);
-  ctx.font = `700 ${SIZE * 0.13}px Archivo, Inter, Arial, sans-serif`;
-  ctx.fillText('km/h', cx, SIZE * 0.87);
   noise(ctx, 6, 8321);
-  return c;
-}
-
-/**
- * The country beyond the map, as a gradient up the sheet: meadow green at the
- * foot, the darker green of wooded hills in the middle, and the blue grey of
- * a range seen through a few kilometres of air at the top. The horizon mesh
- * maps its rings up V, so "up the sheet" is "further away", which is what
- * makes a flat colour read as distance.
- */
-function makeHorizon(): HTMLCanvasElement {
-  const [c, ctx] = canvas();
-  const grad = ctx.createLinearGradient(0, SIZE, 0, 0);
-  grad.addColorStop(0.0, '#6f9a5c');
-  grad.addColorStop(0.22, '#5f8a52');
-  grad.addColorStop(0.45, '#4d7348');
-  grad.addColorStop(0.62, '#5b7a6a');
-  grad.addColorStop(0.8, '#7f92a0');
-  grad.addColorStop(1.0, '#a3b3c2');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-  noise(ctx, 10, 9127);
   return c;
 }
 
@@ -1490,7 +1466,6 @@ export const MATERIAL_COLORS: Record<MaterialKey, string> = {
   tree_card: '#3d5f2c',
   sign_board: '#f2f2ef',
   sign_speed: '#f2f2ef',
-  horizon: '#6f8f6a',
   led_flag: '#e6ebef',
   led_start: '#d81a12',
   start_banner: '#141a22',
@@ -1528,7 +1503,6 @@ const builders: Record<MaterialKey, () => HTMLCanvasElement> = {
   tree_card: makeTreeCards,
   sign_board: makeSignBoard,
   sign_speed: makeSpeedSign,
-  horizon: makeHorizon,
   led_flag: makeFlagPanel,
   led_start: makeStartLens,
   start_banner: makeStartBanner,
