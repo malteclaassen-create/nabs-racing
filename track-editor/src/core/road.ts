@@ -63,6 +63,8 @@ export type MaterialKey =
   | 'tree_card'
   /* Four braking boards on one sheet, picked between by UV. See signTile(). */
   | 'sign_board'
+  /* The pit lane speed limit board: a white card with the limit in a red ring. */
+  | 'sign_speed'
   /* The lamp wall of a marshalling panel, colourless: Custom Shaders Patch
      paints it from the session flag. See extConfigIni() in export/ini.ts. */
   | 'led_flag'

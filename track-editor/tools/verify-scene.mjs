@@ -117,6 +117,7 @@ import { PREFABS, PREFABS_BY_KEY, instantiatePrefab, prefabOf } from '../src/cor
 import { propMeshes, physicsNameFor, trimToDrawRange } from '../src/export/buildExport.ts';
 import { surfacesIni } from '../src/export/ini.ts';
 import { frameAtDistance } from '../src/core/spline.ts';
+import { buildPitBuilding } from '../src/core/pitBuilding.ts';
 import { autoCameras, BEHIND_FENCE, camerasIni, coverage, covers, stretchAround } from '../src/core/cameras.ts';
 import { CAMERA_WINDOW_MAX_GAP, CAMERA_WINDOW_MIN_GAP, cameraWindowStations } from '../src/core/road.ts';
 import { propMatrix } from '../src/core/props.ts';
@@ -6884,6 +6885,71 @@ console.log('\nThe pit complex');
   check('switched off, no complex is built', getDerived(off).pitBuildingMeshes.length === 0);
   const back = deserializeProject(serializeProject(off));
   check('and the switch survives a save and reload', back.pitCfg.building === false);
+}
+
+/* On a dead straight lane every part of the complex has a place that can be
+   worked out on paper, and the same place whichever side the boxes are on.
+   The bay frame used to run with the lane on one side and against it on the
+   other, so the "end wall" of the first bay stood inside the building and the
+   first garage was open to the lane. */
+console.log('\nThe pit complex, both ways round');
+{
+  const straight = (len) => {
+    const frames = [];
+    for (let d = 0; d <= len; d += 5) {
+      frames.push({
+        pos: new THREE.Vector3(d, 0, 0), fwd: new THREE.Vector3(1, 0, 0), right: new THREE.Vector3(0, 0, 1), up: new THREE.Vector3(0, 1, 0),
+        widthL: 4, widthR: 4, wallL: false, wallR: false, runoffL: 0, runoffR: 0, wallGapL: 0, wallGapR: 0, aiOffset: 0, curvature: 0, dist: d, t: d / len,
+      });
+    }
+    return frames;
+  };
+  const cfg = { width: 4, apron: 5, boxCount: 4, boxSpacing: 9, boxOffset: 7, startDist: 40, limitStart: 20, limitEnd: 20, overrides: {} };
+  const F = cfg.width + cfg.apron + 0.3;
+  const first = cfg.startDist - cfg.boxSpacing / 2;
+  const last = cfg.startDist + (cfg.boxCount - 1) * cfg.boxSpacing + cfg.boxSpacing / 2;
+  for (const boxSide of [1, -1]) {
+    const meshes = buildPitBuilding(straight(120), false, { ...cfg, boxSide });
+    const byName = Object.fromEntries(meshes.map((m) => [m.name, m]));
+    const bb = (m) => new THREE.Box3().setFromBufferAttribute(m.geometry.attributes.position);
+    // The end walls: light wall vertices deep in the garage row, in a slab
+    // just outside the first bay and just outside the last.
+    const p = byName['1WALL_pit_garages_prop_light'].geometry.attributes.position;
+    let front = 0;
+    let back = 0;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i);
+      const z = Math.abs(p.getZ(i));
+      if (z < F + 1 || z > F + 13) continue;
+      if (x > first - 0.45 && x < first + 0.05) front++;
+      if (x > last - 0.05 && x < last + 0.45) back++;
+    }
+    check(`boxes on side ${boxSide}: the first garage has its end wall`, front >= 8, `${front} vertices`);
+    check(`and so does the last`, back >= 8, `${back} vertices`);
+    // The pit wall deck: on the other side of the lane, the whole box run,
+    // and never in the fast lane.
+    const deck = bb(byName['1WALL_pit_garages_concrete']);
+    const inner = Math.min(Math.abs(deck.min.z), Math.abs(deck.max.z));
+    const sideOf = Math.sign(deck.min.z + deck.max.z);
+    check('the pit wall deck stands across the lane from the boxes', sideOf === -boxSide);
+    check('over the whole box run', Math.abs(deck.min.x - first) < 0.01 && Math.abs(deck.max.x - last) < 0.01, `${deck.min.x.toFixed(1)}..${deck.max.x.toFixed(1)}`);
+    check('clear of the fast lane', inner > cfg.width + 1, `${inner.toFixed(2)} m out`);
+    // Its steps: solid concrete, rising to the deck in even treads.
+    const ys = new Set();
+    const cp = byName['1WALL_pit_garages_concrete'].geometry.attributes.position;
+    for (let i = 0; i < cp.count; i++) ys.add(+cp.getY(i).toFixed(3));
+    check('with steps up to it in even treads', ys.size === 5 && ys.has(0.75), [...ys].sort((a, b) => a - b).join(' '));
+    // The exit light faces the car coming down the lane: its lamps sit on the
+    // near side of the housing.
+    const green = bb(byName['OBJ_pit_complex_prop_green']);
+    const exitAt = 120 - cfg.limitEnd;
+    check('the exit light shows its lamps to the lane', green.max.x < exitAt - 0.1 && green.min.x > exitAt - 0.3, `${green.min.x.toFixed(2)}..${green.max.x.toFixed(2)} at ${exitAt}`);
+    // The speed limit boards, one each side of the lane, knee high.
+    const signs = bb(byName['OBJ_pit_complex_sign_speed']);
+    check('a speed limit board stands either side where the limiter comes on',
+      signs.min.z < -cfg.width && signs.max.z > cfg.width && Math.abs((signs.min.x + signs.max.x) / 2 - cfg.limitStart) < 0.01 && signs.max.y < 1.5,
+      `z ${signs.min.z.toFixed(1)}..${signs.max.z.toFixed(1)} y ${signs.max.y.toFixed(2)}`);
+  }
 }
 
 /* ------------------------------------------------------------------ */

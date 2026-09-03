@@ -49,19 +49,34 @@ const CANOPY_REACH = 0.7;
 /** Rail heights on the balcony and the roof terrace. */
 const RAIL_H = 1.1;
 /**
- * The pit wall stand: the team's gantry on the wall, one per two boxes. A
- * platform at chest height with the desk, the monitors and the seats, a
- * sunroof over it, the stairs at one end. In front of it, on the track side,
- * runs the pit wall itself with its advertising band.
+ * The pit wall: not a wall on the concrete but a raised kerb of concrete
+ * along the track side of the apron, the way every real pit lane has it,
+ * with the barrier wall on its outer edge and the teams' gantries standing on
+ * top. The deck is high enough that the engineers look over the wall and low
+ * enough that a set of three steps gets you up; the steps are cut into its
+ * lane-side edge between every two stands, so nothing pokes out into the
+ * working lane and nothing floats.
+ */
+const PLINTH_H = 0.75;
+const PLINTH_D_MAX = 2.6;
+const PLINTH_D_MIN = 1.8;
+/** The barrier on the deck's outer edge, measured from the ground. */
+const PIT_WALL_T = 0.35;
+const PIT_WALL_H = 1.4;
+/** The steps: three treads up to the deck, in a strip along the lane edge. */
+const STAIR_STEPS = 3;
+const STAIR_TREAD = 0.32;
+const STAIR_W = 1.0;
+/**
+ * The team stand on the deck, one per two boxes: a mat with the desk, the
+ * monitors and the seats, a sunroof over it on four slim posts.
  */
 const STAND_EVERY = 2;
 const STAND_W = 5.0;
 const STAND_D = 1.7;
-const STAND_H = 1.15;
 const STAND_ROOF_H = 3.3;
-/** The pit wall: a low concrete wall along the track side of the apron. */
-const PIT_WALL_T = 0.35;
-const PIT_WALL_H = 1.0;
+/** The pit exit light: the pole its panel sits on. */
+const LIGHT_POLE_H = 3.2;
 
 /* ------------------------------------------------------------------ */
 /* Building                                                            */
@@ -76,6 +91,16 @@ type Bucket = Map<MaterialKey, THREE.BufferGeometry[]>;
  */
 class Local {
   private m = new THREE.Matrix4();
+  /**
+   * Which way the basis' Z runs against the lane: +1 along the driving
+   * direction, -1 against it. A right handed basis with X pointing out
+   * towards the boxes has Z along the lane on one side and against it on
+   * the other, and every box used to be placed in whichever it was -- so
+   * the "end wall" of the first bay stood inside the building on one side.
+   * All the Z figures given to box() and friends are in the driving
+   * direction; this flips them into the basis.
+   */
+  private dir: 1 | -1;
   private buckets: Bucket;
   constructor(buckets: Bucket, f: Frame, side: -1 | 1) {
     this.buckets = buckets;
@@ -84,31 +109,52 @@ class Local {
     const z = new THREE.Vector3().crossVectors(y, x).normalize();
     // (x, y, z) has to be right handed or every box comes out inside out.
     if (new THREE.Vector3().crossVectors(x, y).dot(z) < 0) z.negate();
+    const fwd = new THREE.Vector3(f.fwd.x, 0, f.fwd.z);
+    this.dir = z.dot(fwd) >= 0 ? 1 : -1;
     this.m.makeBasis(x, y, z).setPosition(f.pos.x, f.pos.y, f.pos.z);
+  }
+  private keep(mat: MaterialKey, g: THREE.BufferGeometry) {
+    g.applyMatrix4(this.m);
+    let list = this.buckets.get(mat);
+    if (!list) {
+      list = [];
+      this.buckets.set(mat, list);
+    }
+    list.push(g);
   }
   /** A box `w` across X, `h` tall from `y` up, `d` along Z, centred on (x, z). */
   box(mat: MaterialKey, w: number, h: number, d: number, x: number, y: number, z: number) {
     if (w <= 0 || h <= 0 || d <= 0) return;
     const g = new THREE.BoxGeometry(w, h, d);
-    g.translate(x, y + h / 2, z);
-    g.applyMatrix4(this.m);
-    let list = this.buckets.get(mat);
-    if (!list) {
-      list = [];
-      this.buckets.set(mat, list);
-    }
-    list.push(g);
+    g.translate(x, y + h / 2, z * this.dir);
+    this.keep(mat, g);
   }
+  /** An upright cylinder, `h` tall from `y` up. */
   cyl(mat: MaterialKey, r: number, h: number, x: number, y: number, z: number) {
     const g = new THREE.CylinderGeometry(r, r, h, 8);
-    g.translate(x, y + h / 2, z);
-    g.applyMatrix4(this.m);
-    let list = this.buckets.get(mat);
-    if (!list) {
-      list = [];
-      this.buckets.set(mat, list);
-    }
-    list.push(g);
+    g.translate(x, y + h / 2, z * this.dir);
+    this.keep(mat, g);
+  }
+  /** A disc lying across the lane, `len` thick along Z, centred on (x, y, z). */
+  disc(mat: MaterialKey, r: number, len: number, x: number, y: number, z: number) {
+    const g = new THREE.CylinderGeometry(r, r, len, 16);
+    g.rotateX(Math.PI / 2);
+    g.translate(x, y, z * this.dir);
+    this.keep(mat, g);
+  }
+  /**
+   * A board facing along the lane: a thin box whose two big faces carry the
+   * whole texture and whose edges are pushed onto its blank corner, so the
+   * printed side does not smear round the rim.
+   */
+  board(mat: MaterialKey, w: number, h: number, t: number, x: number, y: number, z: number) {
+    const g = new THREE.BoxGeometry(w, h, t);
+    const uv = g.attributes.uv as THREE.BufferAttribute;
+    // Faces in BoxGeometry order: +X, -X, +Y, -Y, +Z, -Z, four corners each.
+    for (let i = 0; i < 16; i++) uv.setXY(i, 0.02, 0.98);
+    uv.needsUpdate = true;
+    g.translate(x, y + h / 2, z * this.dir);
+    this.keep(mat, g);
   }
 }
 
@@ -165,6 +211,9 @@ export function buildPitBuilding(
   const door = Math.min(DOOR_MAX, pitch - PILLAR_MIN);
   const pillar = pitch - door;
   const canopy = cfg.apron * CANOPY_REACH;
+  // The deck takes half the apron on the track side, within reason: the
+  // rest is the walkway between it and the working lane.
+  const plinthD = Math.min(PLINTH_D_MAX, Math.max(PLINTH_D_MIN, cfg.apron * 0.52));
 
   const walls: Bucket = new Map();
   const deco: Bucket = new Map();
@@ -233,56 +282,82 @@ export function buildPitBuilding(
     // Plant on the roof: the air handling unit every second bay carries.
     if (i % 2 === 1) O.box('prop_metal', 2.2, 1.3, 1.6, F + D - 3.5, FLOOR_2 + ROOF_T, 0);
 
-    /* --- the pit wall and the team stands across the lane -------------- */
-    // The wall itself runs the whole box run along the track side of the
-    // concrete, with the advertising band every pit wall in the world
-    // carries. Every second box gets the team's gantry behind it.
+    /* --- the pit wall: the deck, the barrier, the steps, the stands ---- */
+    // The deck runs the whole box run along the track side of the concrete,
+    // the barrier on its outer edge with the advertising band every pit
+    // wall in the world carries. Both collide: a car does not drive up a
+    // kerb of concrete or through the wall behind it.
     {
+      const xOut = -(apronEdge - 0.08);
+      const xIn = xOut + plinthD;
       const xw = -(apronEdge - PIT_WALL_T / 2 - 0.05);
-      O.box('prop_light', PIT_WALL_T, PIT_WALL_H, pitch, xw, 0, 0);
-      O.box('prop_red', PIT_WALL_T + 0.04, 0.45, pitch, xw, 0.5, 0);
+      W.box('prop_light', PIT_WALL_T, PIT_WALL_H, pitch, xw, 0, 0);
+      O.box('prop_red', PIT_WALL_T + 0.04, 0.45, pitch, xw, PIT_WALL_H - 0.55, 0);
+      const stairs = i % STAND_EVERY === 1 && i < n - 1;
+      const run = STAIR_STEPS * STAIR_TREAD;
+      if (!stairs) {
+        W.box('concrete', plinthD, PLINTH_H, pitch, (xOut + xIn) / 2, 0, 0);
+      } else {
+        // The wall side of the deck is solid; the lane side is cut away
+        // over the length of the steps, which rise along the lane.
+        const back = plinthD - STAIR_W;
+        W.box('concrete', back, PLINTH_H, pitch, xOut + back / 2, 0, 0);
+        const xs = xIn - STAIR_W / 2;
+        const rest = pitch / 2 - run / 2;
+        W.box('concrete', STAIR_W, PLINTH_H, rest, xs, 0, -(run / 2 + rest / 2));
+        W.box('concrete', STAIR_W, PLINTH_H, rest, xs, 0, run / 2 + rest / 2);
+        const rise = PLINTH_H / (STAIR_STEPS + 1);
+        for (let k = 0; k < STAIR_STEPS; k++) {
+          W.box('concrete', STAIR_W, rise * (k + 1), STAIR_TREAD, xs, 0, -run / 2 + STAIR_TREAD * (k + 0.5));
+        }
+      }
+      // The handrail along the lane edge of the deck, broken at the steps.
+      const xr = xIn - 0.05;
+      const spans: Array<[number, number]> = stairs
+        ? [[-pitch / 2, -run / 2 - 0.2], [run / 2 + 0.2, pitch / 2]]
+        : [[-pitch / 2, pitch / 2]];
+      for (const [z0, z1] of spans) {
+        O.box('prop_metal', 0.04, 0.04, z1 - z0, xr, PLINTH_H + RAIL_H - 0.04, (z0 + z1) / 2);
+        const posts = Math.max(1, Math.round((z1 - z0) / 1.8));
+        for (let k = 0; k <= posts; k++) {
+          const z = z0 + ((z1 - z0) * k) / posts;
+          // The post on the bay edge belongs to the next bay, except at the end.
+          if (k === posts && z1 === pitch / 2 && i < n - 1) continue;
+          O.box('prop_metal', 0.04, RAIL_H, 0.04, xr, PLINTH_H, z);
+        }
+      }
     }
     if (i % STAND_EVERY === 0) {
-      // The platform, on the concrete just inside the wall.
-      const x = -(apronEdge - PIT_WALL_T - 0.1 - STAND_D / 2);
-      const xWall = x - STAND_D / 2;
-      const xLane = x + STAND_D / 2;
-      O.box('prop_metal', STAND_D, 0.1, STAND_W, x, STAND_H, 0);
-      O.box('prop_dark', STAND_D - 0.1, 0.03, STAND_W - 0.1, x, STAND_H + 0.1, 0);
-      for (const dz of [-STAND_W / 2 + 0.1, 0, STAND_W / 2 - 0.1]) {
-        O.box('prop_metal', 0.08, STAND_H, 0.08, xWall + 0.06, 0, dz);
-        O.box('prop_metal', 0.08, STAND_H, 0.08, xLane - 0.06, 0, dz);
-      }
-      // The desk along the wall side, its top a shelf for the monitors:
-      // four screens in a row, and the timing screen above them.
-      O.box('prop_dark', 0.55, 0.72, STAND_W - 0.3, xWall + 0.3, STAND_H + 0.13, 0);
-      O.box('prop_light', 0.6, 0.04, STAND_W - 0.3, xWall + 0.3, STAND_H + 0.85, 0);
+      // The stand on the deck, against the wall: a mat, the desk with its
+      // shelf of monitors and the timing screen above, three seats.
+      const standD = Math.min(STAND_D, plinthD - PIT_WALL_T - 0.4);
+      const x = -(apronEdge - PIT_WALL_T - 0.1 - standD / 2);
+      const xWall = x - standD / 2;
+      const xLane = x + standD / 2;
+      const deck = PLINTH_H + 0.03;
+      O.box('prop_dark', standD, 0.03, STAND_W, x, PLINTH_H, 0);
+      O.box('prop_dark', 0.55, 0.72, STAND_W - 0.3, xWall + 0.3, deck, 0);
+      O.box('prop_light', 0.6, 0.04, STAND_W - 0.3, xWall + 0.3, deck + 0.72, 0);
       for (let k = 0; k < 4; k++) {
         const dz = -STAND_W / 2 + 0.85 + k * ((STAND_W - 1.7) / 3);
-        O.box('prop_dark', 0.05, 0.42, 0.7, xWall + 0.12, STAND_H + 0.92, dz);
-        O.box('prop_blue', 0.02, 0.36, 0.64, xWall + 0.15, STAND_H + 0.95, dz);
+        O.box('prop_dark', 0.05, 0.42, 0.7, xWall + 0.12, deck + 0.79, dz);
+        O.box('prop_blue', 0.02, 0.36, 0.64, xWall + 0.15, deck + 0.82, dz);
       }
-      O.box('prop_dark', 0.05, 0.36, 1.4, xWall + 0.1, STAND_H + 1.55, 0);
-      O.box('prop_blue', 0.02, 0.3, 1.34, xWall + 0.13, STAND_H + 1.58, 0);
+      O.box('prop_dark', 0.05, 0.36, 1.4, xWall + 0.1, deck + 1.42, 0);
+      O.box('prop_blue', 0.02, 0.3, 1.34, xWall + 0.13, deck + 1.45, 0);
       // Three seats facing the track.
       for (const dz of [-1.5, 0, 1.5]) {
-        O.box('prop_dark', 0.5, 0.06, 0.5, xWall + 1.05, STAND_H + 0.58, dz);
-        O.box('prop_dark', 0.08, 0.5, 0.5, xWall + 1.3, STAND_H + 0.6, dz);
-        O.box('prop_metal', 0.06, 0.45, 0.06, xWall + 1.05, STAND_H + 0.13, dz);
+        O.box('prop_dark', 0.5, 0.06, 0.5, xWall + 1.05, deck + 0.45, dz);
+        O.box('prop_dark', 0.08, 0.5, 0.5, xWall + 1.3, deck + 0.47, dz);
+        O.box('prop_metal', 0.06, 0.45, 0.06, xWall + 1.05, deck, dz);
       }
       // The sunroof on four slim posts, its fascia dark for the team's name.
       for (const dz of [-STAND_W / 2 + 0.15, STAND_W / 2 - 0.15]) {
-        O.box('prop_metal', 0.06, STAND_ROOF_H - STAND_H, 0.06, xWall + 0.1, STAND_H + 0.1, dz);
-        O.box('prop_metal', 0.06, STAND_ROOF_H - STAND_H, 0.06, xLane - 0.1, STAND_H + 0.1, dz);
+        O.box('prop_metal', 0.06, STAND_ROOF_H - PLINTH_H, 0.06, xWall + 0.1, PLINTH_H, dz);
+        O.box('prop_metal', 0.06, STAND_ROOF_H - PLINTH_H, 0.06, xLane - 0.1, PLINTH_H, dz);
       }
-      O.box('prop_light', STAND_D + 0.6, 0.08, STAND_W + 0.4, x, STAND_ROOF_H, 0);
+      O.box('prop_light', standD + 0.6, 0.08, STAND_W + 0.4, x, STAND_ROOF_H, 0);
       O.box('prop_dark', 0.06, 0.3, STAND_W + 0.4, xLane + 0.3, STAND_ROOF_H - 0.3, 0);
-      // The rail along the lane side, and the stairs down at one end.
-      O.box('prop_metal', 0.04, RAIL_H, STAND_W, xLane - 0.02, STAND_H + 0.1, 0);
-      O.box('prop_metal', 0.04, RAIL_H, STAND_D, x, STAND_H + 0.1, -STAND_W / 2 + 0.02);
-      for (let k = 0; k < 4; k++) {
-        O.box('prop_metal', 0.8, 0.05, 0.28, x, (STAND_H * (k + 1)) / 5 - 0.05, STAND_W / 2 + 0.16 + (3 - k) * 0.28);
-      }
     }
   }
 
@@ -303,28 +378,37 @@ export function buildPitBuilding(
   }
 
   /* --- the lane's furniture ------------------------------------------ */
-  // The speed limit board where the limiter comes on, on the box side.
+  // The speed limit where the limiter comes on: a small board either side
+  // of the lane, standing on the concrete, the limit printed on it. Real
+  // ones are exactly that -- knee high, one each side, nothing overhead.
   if (cfg.limitStart > 2 && cfg.limitStart < total) {
     const f = frameAtDistance(pitFrames, pitClosed, cfg.limitStart);
     const O = new Local(deco, f, side);
-    const x = cfg.width + 0.6;
-    O.cyl('prop_metal', 0.04, 2.3, x, 0, 0);
-    O.box('prop_white', 0.06, 0.8, 0.8, x, 2.3, 0);
-    O.box('prop_red', 0.07, 0.1, 0.8, x, 2.3, 0);
-    O.box('prop_red', 0.07, 0.1, 0.8, x, 3.0, 0);
-    O.box('prop_red', 0.07, 0.8, 0.1, x, 2.3, -0.35);
-    O.box('prop_red', 0.07, 0.8, 0.1, x, 2.3, 0.35);
+    for (const x of [cfg.width + 0.7, -(cfg.width + 0.7)]) {
+      O.cyl('prop_metal', 0.025, 0.55, x, 0, -0.26);
+      O.cyl('prop_metal', 0.025, 0.55, x, 0, 0.26);
+      O.board('sign_speed', 0.72, 0.8, 0.05, x, 0.5, 0);
+    }
   }
-  // The exit light at the end of the lane, on the same side.
+  // The exit light at the end of the lane, on the box side: a panel on a
+  // pole, its lamps hooded and facing the car that is about to leave.
   const exitAt = total - cfg.limitEnd;
   if (exitAt > last + pitch && exitAt < total) {
     const f = frameAtDistance(pitFrames, pitClosed, exitAt);
     const O = new Local(deco, f, side);
     const x = cfg.width + 0.6;
-    O.cyl('prop_metal', 0.06, 4.0, x, 0, 0);
-    O.box('prop_dark', 0.3, 1.0, 0.4, x, 4.0, 0);
-    O.box('prop_red', 0.32, 0.3, 0.3, x, 4.6, 0);
-    O.box('prop_green', 0.32, 0.3, 0.3, x, 4.15, 0);
+    O.cyl('prop_metal', 0.06, LIGHT_POLE_H, x, 0, 0);
+    O.box('prop_metal', 0.5, 0.06, 0.5, x, 0, 0);
+    const top = LIGHT_POLE_H;
+    O.box('prop_dark', 0.5, 1.35, 0.3, x, top, 0);
+    for (const [mat, y] of [
+      ['prop_red', top + 0.98],
+      ['prop_green', top + 0.4],
+    ] as Array<[MaterialKey, number]>) {
+      O.disc('prop_dark', 0.2, 0.04, x, y, -0.16);
+      O.disc(mat, 0.16, 0.08, x, y, -0.19);
+      O.box('prop_dark', 0.44, 0.04, 0.3, x, y + 0.2, -0.3);
+    }
   }
 
   return [

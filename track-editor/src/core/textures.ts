@@ -654,6 +654,47 @@ function makeSignBoard(): HTMLCanvasElement {
   return c;
 }
 
+/** The pit lane speed limit, km/h: what the game enforces unless a server says otherwise. */
+export const PIT_SPEED_LIMIT = 80;
+
+/**
+ * The pit lane speed limit board: the limit in the red ring of a road sign,
+ * "km/h" under it, on a white card. The card stands knee high either side of
+ * the lane where the limiter comes on, so the number is drawn to fill the
+ * ring and the ring to fill the card -- it is read from a car at speed, not
+ * from beside it.
+ */
+function makeSpeedSign(): HTMLCanvasElement {
+  const [c, ctx] = canvas();
+  ctx.fillStyle = '#f2f2ef';
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  // A hairline border so the card has an edge against the concrete.
+  ctx.strokeStyle = '#20242a';
+  ctx.lineWidth = SIZE / 96;
+  ctx.strokeRect(ctx.lineWidth, ctx.lineWidth, SIZE - ctx.lineWidth * 2, SIZE - ctx.lineWidth * 2);
+  // The ring, the sign's red, thick the way the real ones are.
+  const cx = SIZE / 2;
+  const cy = SIZE * 0.42;
+  const r = SIZE * 0.33;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#c8232a';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.78, 0, Math.PI * 2);
+  ctx.fillStyle = '#f7f7f4';
+  ctx.fill();
+  ctx.fillStyle = '#15181c';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `700 ${r * 0.98}px Archivo, Inter, Arial, sans-serif`;
+  ctx.fillText(String(PIT_SPEED_LIMIT), cx, cy + r * 0.05);
+  ctx.font = `700 ${SIZE * 0.13}px Archivo, Inter, Arial, sans-serif`;
+  ctx.fillText('km/h', cx, SIZE * 0.87);
+  noise(ctx, 6, 8321);
+  return c;
+}
+
 /**
  * How the digit sheet is cut up. Four across is a 128 px tile out of the 512,
  * which is as much resolution as a number painted on concrete has any use for.
@@ -1426,6 +1467,7 @@ export const MATERIAL_COLORS: Record<MaterialKey, string> = {
   grass_blades: '#699e4a',
   tree_card: '#3d5f2c',
   sign_board: '#f2f2ef',
+  sign_speed: '#f2f2ef',
   led_flag: '#e6ebef',
   led_start: '#d81a12',
   start_banner: '#141a22',
@@ -1462,6 +1504,7 @@ const builders: Record<MaterialKey, () => HTMLCanvasElement> = {
   grass_blades: makeGrassBlades,
   tree_card: makeTreeCards,
   sign_board: makeSignBoard,
+  sign_speed: makeSpeedSign,
   led_flag: makeFlagPanel,
   led_start: makeStartLens,
   start_banner: makeStartBanner,
