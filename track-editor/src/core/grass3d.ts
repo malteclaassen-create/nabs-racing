@@ -587,18 +587,38 @@ export function generateGrass3d(
             if (taken(px, pz)) continue;
             if (pitBlocked(px, pz)) continue;
 
-            // Off the circuit's tarmac: whoever is nearest decides, exactly
-            // as in the main pass.
+            /*
+             * Off the circuit's tarmac. Measured to the circuit's SEGMENTS,
+             * not to its sampled points: at a junction mouth the sections
+             * are a dozen metres apart, and a tuft half way between two of
+             * them stood eight metres from the nearest point while it was
+             * only five from the centre line, well inside the seven metres
+             * of tarmac. That was the grass on the track at the pit exit.
+             */
             near(trackMap, trackPts, px, pz, reach, scratch);
             let bad = false;
             for (const j of scratch) {
-              const np = trackPts[j];
-              const dx = px - np.x;
-              const dz = pz - np.z;
-              const nd = Math.hypot(dx, dz);
-              const fr = trackFrames[j];
-              const left = dx * fr.right.x + dz * fr.right.z < 0;
-              if (nd < hardEdge(j, left) + KEEP) { bad = true; break; }
+              for (const k of [j - 1, j]) {
+                const j0 = k < 0 ? (trackClosed ? n - 1 : -1) : k;
+                if (j0 < 0) continue;
+                const j1 = (j0 + 1) % n;
+                if (j1 === 0 && !trackClosed) continue;
+                const pa = trackPts[j0];
+                const pb = trackPts[j1];
+                const ex = pb.x - pa.x;
+                const ez = pb.z - pa.z;
+                const len2 = ex * ex + ez * ez;
+                if (len2 < 1e-9) continue;
+                let t = ((px - pa.x) * ex + (pz - pa.z) * ez) / len2;
+                t = t < 0 ? 0 : t > 1 ? 1 : t;
+                const dx = px - (pa.x + ex * t);
+                const dz = pz - (pa.z + ez * t);
+                const nd = Math.hypot(dx, dz);
+                const fr = trackFrames[t < 0.5 ? j0 : j1];
+                const left = dx * fr.right.x + dz * fr.right.z < 0;
+                if (nd < hardEdge(t < 0.5 ? j0 : j1, left) + KEEP) { bad = true; break; }
+              }
+              if (bad) break;
             }
             if (bad) continue;
 
