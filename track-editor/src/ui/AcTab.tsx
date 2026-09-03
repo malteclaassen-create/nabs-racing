@@ -75,8 +75,8 @@ function ModelList() {
       </div>
       {scene.models.some((m) => !m.editable) && (
         <p className="hint">
-          An amber dot means that model could not be read, almost always Custom Shaders Patch
-          encryption. It is copied across untouched on export, it just cannot be edited.
+          An amber dot means the model could not be read, usually CSP encryption. It is copied
+          across untouched on export.
         </p>
       )}
     </Section>
@@ -131,7 +131,7 @@ function MeshBrowser() {
       </Row>
       <p className="hint">
         {shown.length} of {all.filter((m) => !surfacesOnly || m.surface !== null).length} shown.
-        Hiding a mesh removes it from the exported model completely, its collision goes with it.
+        Hiding a mesh removes it from the export, collision included.
       </p>
 
       <div className="list">
@@ -167,8 +167,7 @@ function MeshBrowser() {
         Redraw with the current changes
       </button>
       <p className="hint">
-        Hiding and renaming take effect in the exported track straight away; this redraws the
-        viewport to match.
+        Hiding and renaming already apply to the export, this redraws the viewport to match.
       </p>
     </Section>
   );
@@ -283,8 +282,8 @@ export function SelectedCopy() {
       </Row>
       {t.ribbon ? (
         <p className="hint">
-          Sideways · up · <b>along the lap</b>, this copy follows the corner. Drag the bar on
-          it in the viewport to slide it, or the end grips to cover more of the corner.
+          Sideways · up · <b>along the lap</b>. Drag the bar in the viewport to slide it, the end
+          grips to cover more of the corner.
         </p>
       ) : (
         <Row label="Turn (°)">
@@ -292,8 +291,7 @@ export function SelectedCopy() {
         </Row>
       )}
       <p className="hint">
-        A copy is a new mesh in the exported model, sharing the original&apos;s material and its
-        physics surface. The original is not touched.
+        A copy is a new mesh in the export, sharing the original&apos;s material and surface.
       </p>
       <div style={{ display: 'flex', gap: 6 }}>
         <button
@@ -350,8 +348,7 @@ export function SelectedMarker() {
           onChange={(v) => move([marker.pos.x, marker.pos.y, marker.pos.z], v)} />
       </Row>
       <p className="hint">
-        Numbering is repaired across every model on export, so deleting one closes the gap rather
-        than cutting the rest off.
+        Numbering is repaired across every model on export, so deleting one closes the gap.
       </p>
       <button
         className="btn ghost"
@@ -381,9 +378,9 @@ export function MarkedGroup() {
   return (
     <Section title={`${marked.length} pieces picked`}>
       <p className="hint" style={{ marginTop: 0 }}>
-        Drag the gizmo to move, turn or resize them together, they swing about the middle of the
-        group, not each about itself. Shift-click adds and removes pieces.
-        {models.size > 1 && ` They come from ${models.size} different models, which is fine.`}
+        The gizmo moves, turns or resizes them together about the middle of the group. Shift-click
+        adds and removes pieces.
+        {models.size > 1 && ` From ${models.size} different models.`}
       </p>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <button
@@ -589,8 +586,7 @@ export function SelectedMesh() {
       </Row>
       {!t.ribbon && mesh.surface === 'KERB' && (
         <p className="hint">
-          This is a kerb, so the bar and end grips in the viewport already work, the first
-          drag switches this on by itself and pins the kerb to the edge of the tarmac.
+          This is a kerb, so the first drag of the bar or end grips switches this on by itself.
         </p>
       )}
 
@@ -605,19 +601,14 @@ export function SelectedMesh() {
               onChange={(v) => edit({ ribbon: { ...t.ribbon!, length: safeScale(v, ribbonSize.length) } })} />
           </Row>
           <p className="hint">
-            Across × up × <b>along the track</b>. Was {ribbonSize.width.toFixed(2)} ×{' '}
-            {ribbonSize.height.toFixed(2)} × {ribbonSize.length.toFixed(2)} m. Making it longer
-            covers more of the corner instead of stretching a straight line through it.
-            Or skip the numbers: drag the bar on it in the viewport to slide it along the
-            lap (Shift = sideways), and drag either end grip to cover more or less of
-            the corner.
+            Across × up × <b>along the track</b>, was {ribbonSize.width.toFixed(2)} ×{' '}
+            {ribbonSize.height.toFixed(2)} × {ribbonSize.length.toFixed(2)} m. Or drag the bar in
+            the viewport to slide it (Shift = sideways) and the end grips to cover more of the
+            corner.
           </p>
           <p className="hint">
-            <b>Dark gaps after stretching?</b> The modder cut a hole in the ground exactly
-            under this piece, and a stretched or slid kerb walks off that hole and shows it.
-            To cover more of the corner cleanly, <b>hold Alt and drag an end grip</b>: the
-            distance is filled with seamless copies on intact ground and the original never
-            moves.
+            <b>Dark gaps after stretching?</b> <b>Hold Alt and drag an end grip</b> instead, the
+            gap is filled with copies on intact ground.
           </p>
         </>
       )}
@@ -684,12 +675,10 @@ export function SelectedMesh() {
       </Row>
       <p className="hint">
         {partition
-          ? `This mesh holds ${partition.parts.length} separate pieces, the modder merged them,
-             and only the one you clicked changes.`
-          : 'This mesh is one connected object, so it changes as a whole.'}
-        {' '}Without the texture option a wider kerb gets wider chequers and stops matching its
-        neighbours; with it, the pattern keeps its size and there is simply more of it. It only
-        applies where the texture actually repeats.
+          ? `This mesh holds ${partition.parts.length} separate pieces, only the one you clicked changes.`
+          : 'This mesh is one connected object.'}
+        {' '}With the texture option the pattern keeps its size, without it a wider kerb gets
+        wider chequers.
       </p>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -715,8 +704,7 @@ export function SelectedMesh() {
         </button>
       </div>
       <p className="hint">
-        Shift-click more pieces in the viewport to move a whole group at once, a car is several
-        meshes, and a run of barriers is a dozen pieces.
+        Shift-click more pieces in the viewport to move a group at once.
       </p>
       <div style={{ display: 'none' }}>
       </div>
@@ -768,8 +756,8 @@ function MarkerGroups() {
         <div className="list-group" style={{ marginTop: 10 }}>
           <h4>{selected.name}</h4>
           <p className="hint">
-            In <code>{selected.model}</code>. Drag it with the gizmo; the numbering is repaired
-            across every model on export.
+            In <code>{selected.model}</code>. Drag it with the gizmo, the numbering is repaired on
+            export.
           </p>
           <button
             className="btn"
@@ -814,8 +802,7 @@ export function AcTab() {
       <Section title="No imported track">
         <p className="hint">
           Use <b>Import track</b> in the toolbar to open a circuit from your Assetto Corsa
-          installation and edit it. The original is opened read only; exporting writes a new
-          track folder beside it.
+          installation. The original stays read only, exporting writes a new folder beside it.
         </p>
       </Section>
     );
@@ -855,8 +842,7 @@ export function AcTab() {
           </div>
         )}
         <p className="hint">
-          Click anything on the track to edit it, its size, position and material show up under
-          <b> Properties</b>.
+          Click anything on the track to edit it under <b>Properties</b>.
         </p>
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
           <button className="btn" onClick={() => reload()}>Reload</button>

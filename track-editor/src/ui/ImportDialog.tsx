@@ -132,22 +132,18 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
           */}
           {phase === 'no-bridge' && !import.meta.env.DEV && (
             <div className="callout info">
-              <b>This is the online edition.</b> Opening a track from Assetto Corsa means reading
-              files off your own machine, and a web page is not allowed to do that. Everything
-              else works: draw a circuit, shape the ground, place the paddock, and export a ZIP
-              that is ready to drive.
+              <b>This is the online edition.</b> A web page cannot read files off your machine, so
+              importing is not available here.
               <br />
               <br />
-              To edit an installed track, Hockenheim, Spa, one of ours, run the editor locally
-              with <code>start.cmd</code>. Same editor; it just has the game sitting next to it.
+              To edit an installed track, run the editor locally with <code>start.cmd</code>.
             </div>
           )}
 
           {phase === 'no-bridge' && import.meta.env.DEV && (
             <>
               <div className="callout info">
-                <b>No Assetto Corsa installation found.</b> The editor looked through the usual
-                Steam folders and came up empty. Point it at the game by hand:
+                <b>No Assetto Corsa installation found.</b> Point the editor at the game folder by hand:
               </div>
               <div className="row" style={{ marginTop: 10 }}>
                 <label>Game folder</label>
@@ -175,8 +171,8 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
           {(phase === 'ready' || phase === 'loading' || (phase === 'error' && tracks.length > 0)) && (
             <>
               <p className="hint" style={{ marginTop: 0 }}>
-                Reading from <code>{root}</code>, {tracks.length} tracks. The original is opened
-                read only and is never written to.
+                Reading from <code>{root}</code>, {tracks.length} tracks. The original is never
+                written to.
               </p>
 
               <div className="row">
@@ -221,13 +217,12 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
                 <div className="callout" style={{ marginTop: 10 }}>
                   <b>{chosen.name}</b>, {chosen.fileCount} files, {megabytes(chosen.bytes)}.
                   {chosen.layouts.length > 1 && (
-                    <> All {chosen.layouts.length} layouts are kept on export; only{' '}
+                    <> All {chosen.layouts.length} layouts are kept on export, only{' '}
                       <code>{layoutLabel(chosen.layouts.find((l) => l.id === layout) ?? chosen.layouts[0])}</code>{' '}
-                      is loaded for editing.</>
+                      is loaded.</>
                   )}
                   <br />
-                  Textures are loaded for the main model only, on a track this size that is the
-                  difference between a comfortable editor and a dead browser tab.
+                  Textures are loaded for the main model only.
                 </div>
               )}
 

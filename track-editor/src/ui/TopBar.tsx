@@ -51,7 +51,10 @@ export function TopBar({
 
   return (
     <div className="topbar">
-      <div className="brand">
+      {/* The mark is the way back to the league site: a real link, since the
+          editor is its own page under /track-editor and the home page is the
+          site's, not this app's. */}
+      <a className="brand" href="/" title="Back to NABS Racing">
         {/* The league's own mark, the pink one meant for dark backgrounds
             (nabs-racing/frontend/public/logo-dark.png).
 
@@ -70,7 +73,7 @@ export function TopBar({
         <div className="brand-name">
           <span className="brand-league">NABS</span> Track Editor
         </div>
-      </div>
+      </a>
 
       <button className="btn ghost icon" title="New project" onClick={onNew}>
         <IconNew />
@@ -154,7 +157,7 @@ export function TopBar({
 
       <div
         className="viewtoggles"
-        title="Render quality. Lower it if the viewport feels sluggish. Draft also drops the grid and the AI line; for the very fastest editing, switch the terrain off in the Sculpt panel as well."
+        title="Render quality, lower it if the viewport feels sluggish. Draft also drops the grid and the AI line."
       >
         {(
           [

@@ -377,11 +377,9 @@ function GroundShapeProps({ id }: { id: string }) {
         </div>
       </Row>
       <p className="hint">
-        {shape.points.length} points. In the viewport, drag a point to move it, <b>Alt</b>-click
-        one to flip it between corner and curve, and <b>Del</b> takes the picked point out
-        (<b>Shift+Del</b> removes the whole shape). Click the border between two points to add a
-        point there; drag the border to move the whole shape. The corner radius rounds the CORNER
-        points; curved ones already bend.
+        {shape.points.length} points: drag one to move it, <b>Alt</b>-click flips it between corner
+        and curve, <b>Del</b> removes it, <b>Shift+Del</b> the whole shape. Click the border to add
+        a point, drag it to move the whole shape.
       </p>
     </Section>
   );
@@ -566,7 +564,7 @@ function KerbProps({ id }: { id: string }) {
         )}
         <p className="hint">
           Measured along the centre line from the start/finish line.
-          {whole && ' This one goes all the way round, so it has no ends to ramp.'}
+          {whole && ' This one goes all the way round.'}
         </p>
       </Section>
 
@@ -597,9 +595,8 @@ function KerbProps({ id }: { id: string }) {
           </Row>
         )}
         <p className="hint">
-          The ramp is the wedge at each end. A kerb narrowed by a tight bend loses its height in
-          step with its width, so it runs out rather than leaving a lip.
-          {span.apron > 0 && ' The strip colour is shared by every kerb on the circuit.'}
+          The ramp is the wedge at each end.
+          {span.apron > 0 && ' The strip colour is shared by every kerb.'}
         </p>
       </Section>
     </>
@@ -685,8 +682,8 @@ function SectionProps({ path, fromId, toId }: { path: PathId; fromId: string; to
         right={<span className="badge">{nodes.length} points</span>}
       >
         <p className="hint" style={{ marginTop: 0 }}>
-          Everything here applies to all {nodes.length} points at once. The run goes forwards from
-          {' '}{from + 1} to {to + 1}; picking them the other way round takes the other side of the lap.
+          Applies to all {nodes.length} points at once. The run goes forwards from
+          {' '}{from + 1} to {to + 1}, the other way round takes the other side of the lap.
         </p>
         <Row label="">
           <button className="btn" style={btn} onClick={() => select({ kind: 'node', path, id: fromId })}>
@@ -771,9 +768,8 @@ function SectionProps({ path, fromId, toId }: { path: PathId; fromId: string; to
           <Slider value={avgRunoffR} min={0} max={2} step={0.05} digits={2} unit="x" onChange={(v) => setAll((n) => { n.runoffR = v; })} />
         </Row>
         <p className="hint">
-          Run off is a factor of the global width in the Track tab. Set it to 0 and the grass strip
-          on that side disappears completely, which is what you want where the pit lane runs. The
-          barrier gap moves the barrier off that edge: out into the grass, or back in over it.
+          Run off is a factor of the width in the Track tab, 0 removes it on that side. The barrier
+          gap moves the barrier off the edge.
         </p>
       </Section>
 
@@ -783,7 +779,7 @@ function SectionProps({ path, fromId, toId }: { path: PathId; fromId: string; to
             className="btn"
             style={btn}
             onClick={() => run((_, d) => { subdivideSection(d, fromId, toId); })}
-            title="Add a control point between every pair, so you can shape the section in more detail"
+            title="Add a control point between every pair"
           >
             Add points in between ({indices.length - 1} new)
           </button>
@@ -951,13 +947,11 @@ function PropProps({ id }: { id: string }) {
               />
             </Row>
             <p className="hint">
-              Length × height × depth. Was {base.x.toFixed(1)} × {base.y.toFixed(1)} ×{' '}
+              Length × height × depth, was {base.x.toFixed(1)} × {base.y.toFixed(1)} ×{' '}
               {base.z.toFixed(1)} m.{' '}
               {assetId !== null
-                ? 'The file came in at that size. Type what it should be, an import in the '
-                  + 'wrong unit is off by a factor of a hundred, not a few per cent.'
-                : 'Length is the side the front faces along, so a pit building grows down the '
-                  + 'lane rather than back into the paddock.'}
+                ? 'The file came in at that size, type what it should be.'
+                : 'Length runs along the front, so a pit building grows down the lane.'}
             </p>
           </>
         ) : (
@@ -977,8 +971,7 @@ function PropProps({ id }: { id: string }) {
           Exported as{' '}
           <code>{def?.surface ? `1PROP_${def.surface}_` : 'OBJ_'}{inst.name}</code>.{' '}
           {def?.surface
-            ? `Cars ${def.surface === 'WALL' ? 'collide with it' : `drive on it as ${def.surface}`} `
-              + `(invisible 1${def.surface}_ copy in the kn5).`
+            ? `Cars ${def.surface === 'WALL' ? 'collide with it' : `drive on it as ${def.surface}`}.`
             : 'Decoration only, cars drive through it.'}
         </p>
       </Section>
@@ -1012,7 +1005,7 @@ function BannerSection({
     const file = await pickFile('image/png,image/jpeg,image/webp');
     if (!file) return;
     if (file.size > 4 * 1024 * 1024) {
-      setStatus('That picture is over 4 MB, banners want small files, they are stretched over 12 m anyway');
+      setStatus('That picture is over 4 MB, use a smaller file');
       return;
     }
     const buf = await file.arrayBuffer();
@@ -1030,8 +1023,8 @@ function BannerSection({
   return (
     <Section title="Sponsor banner">
       <p className="hint" style={{ marginTop: 0 }}>
-        A picture across both side faces of this segment, the space over the track a real
-        circuit sells. Wide pictures work best: the face is about 12 × 2 m.
+        A picture across both side faces of this segment. Wide pictures work best, the face is
+        about 12 × 2 m.
       </p>
       {current && (
         <Row label="Showing">
@@ -1115,8 +1108,7 @@ function SlotProps({ kind, index }: { kind: 'grid' | 'pitbox'; index: number }) 
         </>
       ) : (
         <p className="hint">
-          Placed automatically from the settings in the Race tab. Drag it in the viewport to override
-          just this one, the rest stays automatic.
+          Placed automatically from the Race tab. Drag it in the viewport to override just this one.
         </p>
       )}
     </Section>
@@ -1227,7 +1219,7 @@ function BrakeMarkerSection() {
     <Section title="Braking boards" right={<span className="badge">{down} down</span>}>
       <p className="hint" style={{ marginTop: 0 }}>
         {corners.length === 0
-          ? 'No corner on this track turns far enough to be worth signing yet. Draw some more of it, or loosen the two settings below.'
+          ? 'No corner turns far enough yet. Loosen the two settings below.'
           : `${corners.length} corner${corners.length === 1 ? '' : 's'} found, tightest ${Math.round(
               Math.min(...corners.map((c) => c.radius)),
             )} m radius.`}
@@ -1323,9 +1315,8 @@ function BrakeMarkerSection() {
         </div>
       </Row>
       <p className="hint">
-        Distances are measured back along the <b>arc</b>, so 100 m is a hundred metres of driving.
-        Boards land on the outside of the bend facing the oncoming car. <b>Place them</b> replaces
-        every board, so it can be pressed again after the track is reshaped.
+        Distances are measured back along the <b>arc</b>. <b>Place them</b> replaces every board,
+        so it can be pressed again after reshaping.
       </p>
     </Section>
   );
@@ -1401,9 +1392,8 @@ function RaceTab() {
           />
         </Row>
         <p className="hint" style={{ marginTop: 0 }}>
-          Built over the S/F line rather than placed beside it: it follows the slider above and
-          spans whatever the circuit is wide there. It appears once the track is a closed lap. The
-          five red lights are wired to the session, lit on the grid, out on the green flag.
+          Built over the S/F line once the track is a closed lap. The five red lights are wired to
+          the session.
         </p>
       </Section>
 
@@ -1503,18 +1493,15 @@ function RaceTab() {
           />
         </Row>
         <p className="hint" style={{ marginTop: 0 }}>
-          The concrete either side of the lane's tarmac, which is where the work happens: the pit
-          wall on the track side, the garages and the boxes on the other. Inside the limiter window
-          it is exported as pit lane, so a car with two wheels on it still has its limiter on. Add
-          more of it with the <b>Ground tool (G)</b> and its <b>Pit lane</b> material, which is the
-          same concrete with the same surface.
+          The concrete either side of the lane, exported as pit lane inside the limiter window. Add
+          more with the <b>Ground tool (M)</b> and its <b>Pit lane</b> material.
         </p>
         <Row label="">
           <button
             className="btn"
             style={{ width: '100%', justifyContent: 'center' }}
             disabled={project.pit.nodes.length < 2}
-            title="Puts the first and last pit lane point on the edge of the track, lines the join up with the driving direction and levels the lane with the track"
+            title="Joins the first and last pit lane point onto the track edge, aligned and level"
             onClick={() =>
               commit((p) => {
                 const res = attachPitLane(p.pit, derived.trackFrames, true);
@@ -1530,7 +1517,7 @@ function RaceTab() {
             className="btn"
             style={{ width: '100%', justifyContent: 'center' }}
             disabled={project.pit.nodes.length < 2}
-            title="Switches the barrier off on every track point the pit lane runs past, and takes the run off away on that side"
+            title="Removes barrier and run off on the track points the pit lane runs past"
             onClick={() =>
               commit((p) => {
                 const reach =
@@ -1570,9 +1557,8 @@ function RaceTab() {
           />
         </Row>
         <p className="hint">
-          With auto clearance on, the run off stops short of the pit lane and the barrier steps
-          aside wherever the two run close together, without changing any of your control points.
-          The button above does the same thing permanently, so you can then fine tune it by hand.
+          With auto clearance on, run off and barrier step aside wherever the pit lane runs close.
+          The button above does the same permanently.
         </p>
       </Section>
 
@@ -1604,13 +1590,11 @@ function RaceTab() {
           />
         </Row>
         <p className="hint">
-          The limiter comes on where the pit surface starts. Before that point the lane is exported
-          as ordinary road, so rolling in off the track is still free; the second figure does the
-          same at the other end, measured back from where the lane rejoins.{' '}
+          The limiter comes on where the pit surface starts and goes off the second figure before
+          the lane rejoins.{' '}
           {pitCfg.limitStart >= pitCfg.startDist && pitCfg.startDist > 0 && (
             <b>
-              It currently starts at or after the first box, so the first cars would reach their box
-              with no limiter. Pull it below {pitCfg.startDist} m.
+              It starts at or after the first box. Pull it below {pitCfg.startDist} m.
             </b>
           )}
         </p>
@@ -1650,9 +1634,8 @@ function RaceTab() {
           />
         </Row>
         <p className="hint">
-          The concrete between the fast lane and the garages. Widen it for more room between the
-          cars in the fast lane and the ones being worked on: the boxes, the garages, the pit wall
-          and the stands on it all move out with it.
+          The concrete between the fast lane and the garages. Boxes, garages and pit wall move out
+          with it.
         </p>
         <Row label="Complex">
           <Check
@@ -1662,11 +1645,8 @@ function RaceTab() {
           />
         </Row>
         <p className="hint">
-          A garage behind every box, one per box at the box pitch, with the hospitality floor and
-          the roof terrace over them, the canopy out over the working lane, the engineers' stands on
-          the pit wall, the speed limit board and the exit light. It follows the boxes: move them,
-          change their spacing or their count, and the building follows. Switch it off to place
-          buildings of your own from the library.
+          Garages, hospitality floor, canopy, pit wall stands, speed limit board and exit light,
+          following the boxes. Switch it off to place buildings of your own.
         </p>
         <Row label="Markings">
           <Check
@@ -1676,10 +1656,8 @@ function RaceTab() {
           />
         </Row>
         <p className="hint">
-          What a real pit lane has in front of every garage: the two dividers between one box and
-          its neighbours, the line along the back of the working lane, and the box number painted
-          large enough to read from the fast lane. Open towards the fast lane, because the lane's
-          own edge line is already the boundary on that side. Paint only, so nothing drives on it.
+          Box dividers, back line and box numbers in front of every garage. Paint only, nothing
+          drives on it.
         </p>
         <Row label="Lane width">
           <Slider
@@ -1713,8 +1691,7 @@ function RaceTab() {
           {grid.count} grid slots.
         </p>
         <p className="hint">
-          The game itself stands its pit crew -- the man with the board -- at every occupied box,
-          on any track whose boxes are placed. Nothing needs adding here for that.
+          The game places its own pit crew at every occupied box.
         </p>
       </Section>
 
@@ -1731,8 +1708,8 @@ function RaceTab() {
           />
         </Row>
         <p className="hint">
-          {derived.ai.length} points. Shape the line with the AI offset on each track control point.
-          Written to <code>ai/fast_lane.ai</code>.
+          {derived.ai.length} points, shaped by the AI offset on each control point. Written to{' '}
+          <code>ai/fast_lane.ai</code>.
         </p>
       </Section>
 
@@ -1765,11 +1742,9 @@ function CamerasSection() {
       right={cameras.length > 0 ? <span className="badge">{cameras.length}</span> : undefined}
     >
       <p className="hint" style={{ marginTop: 0 }}>
-        TV cameras for replays and streams, written to <code>data/cameras.ini</code>. The catch
-        fence has a camera window cut into its mesh at every corner and every {CAMERA_SPACING} m
-        along a straight; the full set puts a camera at every window, filming through it, each
-        following the car through its stretch of the lap. Fly the view to where a camera should stand and take it from there, or place the
-        full set at once.
+        TV cameras for replays, written to <code>data/cameras.ini</code>. Fly the view to where a
+        camera should stand and take it from there, or place one at every fence window
+        ({CAMERA_SPACING} m apart on straights).
       </p>
       <Row label="">
         <div style={{ display: 'flex', gap: 6, width: '100%' }}>
@@ -1781,7 +1756,7 @@ function CamerasSection() {
               const pose = getViewportCameraPose();
               if (!pose) return;
               addCamera([pose.pos.x, pose.pos.y, pose.pos.z], derived.trackFrames);
-              setStatus('Camera placed where the view is; it watches the road running up to the nearest point');
+              setStatus('Camera placed where the view is');
             }}
           >
             Camera from this view
@@ -1790,7 +1765,7 @@ function CamerasSection() {
             className="btn"
             style={{ flex: 1, justifyContent: 'center' }}
             disabled={derived.trackFrames.length < 8}
-            title="One camera at every window in the fence, on the side the cars come towards, the stretches joined end to end. Replaces the set."
+            title="One camera at every window in the fence. Replaces the set."
             onClick={() => {
               const n = autoCams(derived.trackFrames, derived.profile, derived.cameraWindows);
               setStatus(`${n} cameras placed, one at every window in the fence`);
@@ -1856,11 +1831,9 @@ function CamerasSection() {
         </Row>
       )}
       <p className="hint">
-        In and Out are metres along the lap from the first track point, the same datum the AI line
-        uses; a stretch may run across the start line. The camera is aimed at the middle of its
-        stretch and the game turns it onto the car from there. Without any cameras the game uses its
-        own default ones, so an empty list is fine too.
-        {closed ? '' : ' Cameras want a closed lap to be worth much.'}
+        In and Out are metres along the lap from the first track point. Without any cameras the
+        game uses its own defaults.
+        {closed ? '' : ' Cameras want a closed lap.'}
       </p>
     </Section>
   );
@@ -1906,8 +1879,7 @@ function ExportTab({ onExport }: { onExport: () => void }) {
           />
         </Row>
         <p className="hint" style={{ marginTop: 0 }}>
-          AC_* markers are FBX null objects by default, which is what ksEditor expects. If they do not
-          show up after importing, switch to tiny meshes: those always survive.
+          Empties are what ksEditor expects. If markers do not show up, switch to tiny meshes.
         </p>
         <Row label="Forward axis">
           <Seg
@@ -1922,8 +1894,7 @@ function ExportTab({ onExport }: { onExport: () => void }) {
           />
         </Row>
         <p className="hint" style={{ marginTop: 0 }}>
-          Assetto Corsa spawns cars along the local +Z of a marker. If cars face the wrong way in game,
-          flip this to -Z and export again.
+          Cars spawn along the local +Z of a marker. If they face the wrong way, flip this to -Z.
         </p>
         <Row label="Fallback">
           <Check
@@ -1942,9 +1913,8 @@ function ExportTab({ onExport }: { onExport: () => void }) {
           </Row>
         )}
         <p className="hint" style={{ marginTop: 0 }}>
-          The editor writes the finished <code>.kn5</code> itself; FBX and glTF are only for the
-          manual ksEditor route, and each holds another full copy of the track in memory. Leave off
-          unless you want the track in Blender.
+          The editor writes the <code>.kn5</code> itself. FBX and glTF are only for Blender or the
+          manual ksEditor route.
         </p>
       </Section>
 
@@ -1953,9 +1923,8 @@ function ExportTab({ onExport }: { onExport: () => void }) {
           Export track ZIP
         </button>
         <p className="hint">
-          The complete <code>content/tracks/…</code> folder: <code>.kn5</code> with textures baked
-          in, surfaces.ini, AI line, minimap, UI files. Drop it into Assetto Corsa and drive.
-          {cfg.sourceFiles && ' The FBX and glTF go in beside it under source/.'}
+          The complete <code>content/tracks/…</code> folder, ready to drop into Assetto Corsa.
+          {cfg.sourceFiles && ' FBX and glTF go beside it under source/.'}
         </p>
       </Section>
     </>

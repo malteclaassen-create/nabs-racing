@@ -97,10 +97,8 @@ export function AcExportPanel({ imported, onClose }: { imported: AcImport; onClo
         <div className="body">
           <div className="callout info">
             <b>Nothing is lost, by construction.</b> Every file of{' '}
-            <code>{imported.slug}</code> is either rewritten because you changed it, or copied
-            across untouched, including the layouts you did not open, the Custom Shaders Patch
-            extension folder, and any model this editor could not read. The source folder is
-            opened read only and is never written to.
+            <code>{imported.slug}</code> is rewritten or copied across untouched, and the source
+            folder is never written to.
           </div>
 
           <div className="row" style={{ marginTop: 10 }}>
@@ -121,8 +119,8 @@ export function AcExportPanel({ imported, onClose }: { imported: AcImport; onClo
 
           {sameName && (
             <div className="callout" style={{ borderLeftColor: 'var(--danger)' }}>
-              <b>That is the source folder.</b> Writing there would overwrite the original track,
-              which cannot be undone. Choose a different name.
+              <b>That is the source folder.</b> Choose a different name, the original must not be
+              overwritten.
             </div>
           )}
 
@@ -145,11 +143,10 @@ export function AcExportPanel({ imported, onClose }: { imported: AcImport; onClo
             <>
               <div className="callout ok" style={{ marginTop: 10 }}>
                 <b>{overlay.meshes} added mesh(es), {overlay.triangles.toLocaleString('en-US')} triangles</b>{' '}
-                in a model of their own, so the original geometry is untouched.
+                in a model of their own, the original geometry is untouched.
                 {overlay.drapeTotal > 0 && (
                   <> {Math.round((overlay.draped / overlay.drapeTotal) * 100)}% of their vertices
-                    were pinned onto the imported surface
-                    ({overlay.probeTriangles.toLocaleString('en-US')} tarmac triangles measured).</>
+                    were pinned onto the imported surface.</>
                 )}
               </div>
               {overlay.warnings.map((w) => (

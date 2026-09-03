@@ -757,22 +757,42 @@ const FEATURE_ANNOUNCEMENTS = [
     body: "The site can sit on your home screen like a normal app: full screen, no address bar, and still signed in. Tap here for the steps. There's a set for Android and a set for iPhone and iPad.",
     link: "/app",
   },
-  // A personal entry, not a broadcast: recipientId sends it to one member's
-  // bell only. The editor is being shown around before it is announced to
-  // everyone, and the card that links it on /tools is admin-gated, so without
-  // a pointer nobody else would find it.
-  {
-    dedupeKey: "feature:track-editor:306124825439764480",
-    type: "NEWS",
-    title: "New: the track editor",
-    body: "There's now a track editor on the site: draw a circuit in the browser, shape the ground, build the pit complex and export it as a ready-to-drive Assetto Corsa track. Tap here to open it.",
-    link: "/track-editor",
-    recipientId: "306124825439764480",
-  },
 ];
 
+// The track editor's announcement goes to the members, not to the admins,
+// who have had it for weeks: one personal entry per member, so an admin's
+// bell stays quiet. The one admin who asked for it is on the list by id.
+// Members who sign up later get theirs at the next boot, since this runs
+// with every start and the dedupe key makes the rest a no-op.
+const TRACK_EDITOR_ANNOUNCEMENT = {
+  type: "NEWS",
+  title: "New: the track editor",
+  body: "Build your own circuit in the browser and export it straight into Assetto Corsa. You find it under Tools.",
+  link: "/track-editor",
+};
+const TRACK_EDITOR_ALWAYS = new Set(["306124825439764480"]);
+
+async function trackEditorAnnouncements(prisma) {
+  const admins = await getAdminDiscordIds(prisma);
+  const rows = await prisma.$queryRaw`SELECT "discordId", "banned" FROM "MemberAccount"`;
+  const out = [];
+  for (const r of rows) {
+    const id = String(r.discordId ?? "");
+    if (!id || r.banned) continue;
+    if (admins.has(id) && !TRACK_EDITOR_ALWAYS.has(id)) continue;
+    out.push({ ...TRACK_EDITOR_ANNOUNCEMENT, dedupeKey: `feature:track-editor:${id}`, recipientId: id });
+  }
+  return out;
+}
+
 export async function announceFeatures(prisma) {
-  for (const a of FEATURE_ANNOUNCEMENTS) {
+  let personal = [];
+  try {
+    personal = await trackEditorAnnouncements(prisma);
+  } catch {
+    /* best-effort */
+  }
+  for (const a of [...FEATURE_ANNOUNCEMENTS, ...personal]) {
     try {
       await dbCreateNotification(prisma, a); // broadcast: recipientId null
       // Keep an already-posted announcement's wording in sync with the array,

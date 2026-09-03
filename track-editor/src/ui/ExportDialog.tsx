@@ -93,13 +93,11 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
           {phase === 'idle' && (
             <>
               <div className="callout info">
-                Writes the <code>.kn5</code> directly, textures, materials, markers and collision,
-                with surfaces.ini, the AI line, the minimap and the Content Manager files, packed as{' '}
-                <code>content/tracks/{project.meta.slug}</code> in a ZIP.
+                Writes the <code>.kn5</code>, surfaces.ini, AI line, minimap and Content Manager files,
+                packed as <code>content/tracks/{project.meta.slug}</code> in a ZIP.
               </div>
               <div className="callout">
-                Extract it into your Assetto Corsa installation and drive; no ksEditor pass needed.
-                The <code>source/</code> folder holds the FBX/GLB and the fallback route.
+                Extract it into your Assetto Corsa installation and drive, no ksEditor pass needed.
               </div>
               <p className="hint">Nothing is uploaded. Everything is built in your browser.</p>
             </>

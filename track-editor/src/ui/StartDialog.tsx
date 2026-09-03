@@ -84,7 +84,7 @@ export function StartDialog({
       try {
         const p = await loadShowcase();
         replaceProject(p);
-        setStatus(`${p.meta.name} loaded, an entire circuit to take apart.`);
+        setStatus(`${p.meta.name} loaded.`);
       } catch (err) {
         setError((err as Error).message);
         setBusy(false);
@@ -149,7 +149,7 @@ export function StartDialog({
           {opt(
             'generate',
             'Generate a circuit',
-            'A full lap at the length real circuits are, laid over hills of its own: straights and corners, a levelled start/finish, a catch fence right round it, and a pit lane attached to it either side of the line.',
+            'A full lap over hills of its own, with a catch fence and a pit lane attached either side of the line.',
           )}
           {choice === 'generate' && (
             <>
@@ -162,7 +162,7 @@ export function StartDialog({
               </div>
               <label className="checkbox" style={{ margin: '0 0 4px' }}>
                 <input type="checkbox" checked={trees} onChange={(e) => setTrees(e.target.checked)} />
-                Plant the country: woods and clearings along the circuit
+                Plant woods along the circuit
               </label>
               <label className="checkbox" style={{ margin: '0 0 8px' }}>
                 <input type="checkbox" checked={paddock} onChange={(e) => setPaddock(e.target.checked)} />
@@ -184,7 +184,7 @@ export function StartDialog({
           {opt(
             'showcase',
             'Open the showcase circuit',
-            'A finished 5 km circuit as it comes out of this editor: banked corners, a full pit complex with forty boxes, grandstands, and seven thousand trees over three square kilometres of sculpted ground. The fastest way to see what the tool can do, and everything in it can be dragged, repainted or deleted.',
+            'A finished 5 km circuit with a full pit complex, grandstands and seven thousand trees. Everything in it can be dragged, repainted or deleted.',
           )}
           {opt('demo', 'Demo oval', 'The sample circuit: twelve points, a pit lane, somewhere to press every button.')}
 

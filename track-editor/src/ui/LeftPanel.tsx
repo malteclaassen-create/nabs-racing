@@ -45,9 +45,9 @@ const TOOLS: Array<{
   { id: 'select', label: 'Select', icon: IconCursor, title: 'Select and move things (V)' },
   { id: 'drawTrack', label: 'Track', icon: IconTrack, title: 'Click the ground to add track points (T)', modes: ['build'] },
   { id: 'drawPit', label: 'Pit lane', icon: IconPit, title: 'Click the ground to add pit lane points (P)', modes: ['build'] },
-  { id: 'drawRoad', label: 'Roads', icon: IconRoad, title: 'Draw access and service roads (U). Ends near the circuit glue themselves onto it.' },
+  { id: 'drawRoad', label: 'Roads', icon: IconRoad, title: 'Draw access roads (U). Ends near the circuit dock onto it.' },
   { id: 'terrain', label: 'Sculpt', icon: IconTerrain, title: 'Raise, lower and smooth the ground (G)', modes: ['build'] },
-  { id: 'ground', label: 'Ground', icon: IconGround, title: 'Paint grass, asphalt, concrete or gravel into the ground itself, run off included (M). Alt rubs it out.', modes: ['build'] },
+  { id: 'ground', label: 'Ground', icon: IconGround, title: 'Paint grass, asphalt, concrete or gravel into the ground (M). Alt rubs it out.', modes: ['build'] },
   { id: 'kerb', label: 'Kerbs', icon: IconKerb, title: 'Drag along the roadside to lay a kerb (K). Alt removes.' },
   { id: 'barrier', label: 'Barrier', icon: IconBarrier, title: 'Drag along the roadside to add or remove barriers (C)' },
   { id: 'place', label: 'Place', icon: IconPlace, title: 'Drop objects onto the ground (B)' },
@@ -174,9 +174,9 @@ function SelectOptions() {
         Drag the arrows to move the selection, or type exact figures in Properties. Del removes it.
       </p>
       <p className="hint" style={{ marginTop: 0 }}>
-        <b>Box drag</b> on empty ground marks everything inside it · <b>Alt+click</b> the centre
-        line inserts a point · <b>Shift+click</b> a second point takes the stretch between two,
-        <b> Shift</b> again as you drag it moves that run up and down.
+        <b>Box drag</b> on empty ground marks everything inside it, <b>Alt+click</b> the centre
+        line inserts a point. <b>Shift+click</b> a second point takes the stretch between two,
+        <b>Shift</b> while dragging moves that run up and down.
       </p>
     </Section>
   );
@@ -220,14 +220,13 @@ function DrawOptions() {
         </Row>
         <p className="hint" style={{ marginTop: 0 }}>
           {DRAW_MODES.find((m) => m.value === drawMode)?.hint}
-          {drawMode === 'straight' && ' Steps of 15°; hold Alt for any angle at all.'}
-          {drawMode === 'arc' && ' It needs two points to know which way the track is already going.'}
-          {drawMode === 'freehand' && ` One point every ${FREEHAND_SPACING} m, and one undo for the whole stroke.`}
+          {drawMode === 'straight' && ' Steps of 15°, hold Alt for any angle.'}
+          {drawMode === 'arc' && ' It needs two points first.'}
+          {drawMode === 'freehand' && ` One point every ${FREEHAND_SPACING} m, one undo per stroke.`}
         </p>
         <SnapRow />
         <p className="hint" style={{ marginTop: 0 }}>
-          The grid rounds where a point lands, and in Straight mode the length of the run with it.
-          Alt ignores it.
+          Points land on the grid, Alt ignores it.
         </p>
         <Row label="">
           <button
@@ -285,8 +284,7 @@ function RoadOptions() {
     <>
       <Section title="Access roads">
         <p className="hint" style={{ marginTop: 0 }}>
-          Deco roads you can actually drive on. End one at the circuit and it glues itself onto the
-          tarmac, junction and all; the ground is bedded under it wherever it runs.
+          Drivable deco roads. End one at the circuit and it docks onto the tarmac.
         </p>
         <Row label="Surface">
           <Seg
@@ -302,7 +300,7 @@ function RoadOptions() {
           />
         </Row>
         <Row label="Centre line">
-          <label className="check" title="The dashed line down the middle of a two-way road. It stops on its own at junctions and crossings.">
+          <label className="check" title="Dashed centre line. It stops at junctions and crossings.">
             <input
               type="checkbox"
               checked={line}
@@ -366,8 +364,7 @@ function RoadOptions() {
 
       <Section title="Roundabout">
         <p className="hint" style={{ marginTop: 0 }}>
-          A closed ring road. Lay it down first, then draw the approach roads: a road ended at the
-          ring docks onto its edge like it docks onto the circuit.
+          A closed ring road. Lay it first, then roads ended at the ring dock onto it.
         </p>
         <Row label="Radius">
           <input
@@ -400,9 +397,8 @@ function RoadOptions() {
 
       <Section title="Crossing">
         <p className="hint" style={{ marginTop: 0 }}>
-          A ready-made crossroads: two roads through one point, the junction already clean. Roads
-          drawn up to any of its four ends dock on, and every point of it stays editable, bend an
-          arm, stretch it, delete one for a T junction.
+          A ready-made crossroads with four arms. Roads dock onto its ends, and every point stays
+          editable.
         </p>
         <Row label="Arm length">
           <input
@@ -435,10 +431,8 @@ function RoadOptions() {
 
       <Section title="Car parks">
         <p className="hint" style={{ marginTop: 0 }}>
-          Build one yourself: drag an <b>asphalt patch</b> out with the Place tool, stamp{' '}
-          <b>Parking bays</b> onto it (Track furniture, rows latch flush against each other), and
-          end a road at the patch: it docks onto the edge, square and level, exactly like it docks
-          onto the circuit.
+          Drag an <b>asphalt patch</b> out with the Place tool and stamp{' '}
+          <b>Parking bays</b> onto it. A road ended at the patch docks onto its edge.
         </p>
       </Section>
 
@@ -551,9 +545,9 @@ function NewPointSection({ path }: { path: PathId }) {
       <p className="hint" style={{ marginTop: 0 }}>
         {cfg.heightMode === 'ground' && 'Every point lands on the ground under the click.'}
         {cfg.heightMode === 'level' &&
-          `Every point lands at exactly this height; the terrain is blended to meet it. The setting for a flat circuit.`}
+          'Every point lands at this height and the terrain is blended to meet it.'}
         {cfg.heightMode === 'offset' &&
-          'Points follow the ground but sit this far above it, an embankment at plus, a cutting at minus.'}
+          'Points follow the ground at this offset: plus for an embankment, minus for a cutting.'}
       </p>
       <Row label="Apply to all">
         <div style={{ display: 'flex', gap: 6, width: '100%' }}>
@@ -571,7 +565,7 @@ function NewPointSection({ path }: { path: PathId }) {
             disabled={nodes.length === 0 || cfg.heightMode === 'ground'}
             title={
               cfg.heightMode === 'ground'
-                ? 'Pick Level or Above first, On ground has no height of its own to apply.'
+                ? 'Pick Level or Above first.'
                 : `Move every existing ${what} point onto this height`
             }
             onClick={() => setStatus(`Height set on ${applyDrawLevel(path, groundAt)} ${what} points`)}
@@ -581,8 +575,8 @@ function NewPointSection({ path }: { path: PathId }) {
         </div>
       </Row>
       <p className="hint">
-        Settings for the <b>next</b> point; the buttons push them onto the {nodes.length} already
-        down, as one undo step. Banking, run off and barriers still carry over from the point before.
+        Settings for the <b>next</b> point. The buttons push them onto the {nodes.length} points
+        already down, as one undo step.
       </p>
     </Section>
   );
@@ -605,8 +599,7 @@ export function RoadShapeSection() {
         <span className="badge">{road.kerbs.length} on the track</span>
       </Row>
       <p className="hint" style={{ marginTop: 0 }}>
-        Each kerb is a stretch of its own, drawn with the <b>Kerb tool (K)</b>. The white edge line
-        and the tarmac strip belong to it too.
+        Kerbs are drawn with the <b>Kerb tool (K)</b>, edge line and tarmac strip included.
       </p>
       <Row label="Run off">
         <Slider value={road.runoffWidth} min={0} max={60} step={1} unit=" m" onChange={(v) => set('runoffWidth', v)} />
@@ -633,9 +626,8 @@ export function RoadShapeSection() {
         />
       </Row>
       <p className="hint" style={{ marginTop: 0 }}>
-        The run off is part of the road, so the type above is what it is made of everywhere. With
-        this on, the <b>Ground tool (G)</b> overrules it wherever you have painted: gravel at the
-        outside of one corner, tarmac at the exit of the next, and the type above for the rest.
+        The type above is the run off everywhere. With this on, the <b>Ground tool (M)</b> overrules
+        it wherever you have painted.
       </p>
       <Row label="Barriers">
         <Check label="Barrier at the edge" checked={road.wall} onChange={(v) => set('wall', v)} />
@@ -659,12 +651,10 @@ export function RoadShapeSection() {
         {plate > 0 && (
           <>
             One flat plate every <b>{plate.toFixed(1)} m</b>, <b>{sections}</b> cross sections in
-            all, all of them rebuilt per frame while you drag, so it sets the editor's pace too.{' '}
+            all.{' '}
           </>
         )}
-        Everything between two cross sections is dead flat, so this is the facet you drive over.
-        Halve the plate and you halve the crease at each joint. Counted per <i>segment</i>, so
-        points drawn far apart need a higher number for the same metres.
+        Higher is smoother to drive but slower in the editor.
       </p>
       <Row label="Texture length">
         <Slider value={road.uvLength} min={2} max={40} step={1} unit=" m" onChange={(v) => set('uvLength', v)} />
@@ -749,7 +739,7 @@ function KerbOptions() {
       >
         {selected ? (
           <p className="hint" style={{ marginTop: 0 }}>
-            Changes this kerb, and is kept for the next one. Drag it along the road to move it, the
+            Changes this kerb and is kept for the next one. Drag it along the road to move it, the
             white grips to lengthen it.
           </p>
         ) : (
@@ -780,9 +770,7 @@ function KerbOptions() {
             </Row>
             {shape.height < 0.005 && (
               <p className="hint" style={{ marginTop: 0 }}>
-                Flat: painted onto the road with no step to climb. It is still exported as kerb, so
-                it still rumbles and still counts as track, just nothing to unsettle a car mid
-                corner.
+                Flat: painted on with no step. It is still exported as kerb, so it still rumbles.
               </p>
             )}
             <Row label="Ramp ends">
@@ -831,8 +819,8 @@ function KerbOptions() {
           </>
         )}
         <p className="hint">
-          The ramp is the wedge each end runs out over. The tarmac strip is the coloured asphalt
-          outside the kerb, drivable, colour set below.
+          The ramp is the wedge at each end. The tarmac strip is the coloured asphalt outside the
+          kerb.
         </p>
       </Section>
 
@@ -889,8 +877,7 @@ function KerbOptions() {
           />
         </Row>
         <p className="hint">
-          The white line is cut out of the road surface, not laid over it, so it cannot flicker. It
-          runs the whole way round, kerb or no kerb.
+          The white line runs the whole way round, kerb or no kerb.
         </p>
       </Section>
     </>
@@ -958,15 +945,11 @@ function FreeBarrierOptions() {
         </button>
       </Row>
       <p className="hint">
-        Click the ground to start, then click again for each leg, modules are laid end to end along
-        the green line, {length.toFixed(1)} m at a time, following the ground as they go.{' '}
-        <b>Straight</b> locks the heading to 15° steps and <b>Curve</b> bends away from the run in
-        the direction it was already going, exactly as they do for the track. <b>Esc</b> ends the
-        run, and each leg is its own undo step.
+        Click the ground to start and again for each leg, modules follow the green line
+        {' '}{length.toFixed(1)} m at a time. <b>Esc</b> ends the run, each leg is one undo step.
       </p>
       <p className="hint">
-        What it leaves behind is ordinary objects: movable with Select, exported with their own
-        physics.
+        The result is ordinary objects, movable with Select.
       </p>
     </Section>
   );
@@ -1017,10 +1000,8 @@ function EdgeRowOptions() {
         <span className="val">{rowGap.toFixed(1)} m</span>
       </Row>
       <p className="hint">
-        Press on the roadside where the row should start and drag to where it ends, the
-        modules follow the edge of the built-up roadside at this distance, end to end round
-        the corner. Negative puts them on the run off. What is laid down is ordinary
-        objects: pick one up with Select if a single module needs nudging.
+        Press on the roadside where the row starts and drag to where it ends. Negative puts the
+        modules on the run off.
       </p>
     </Section>
   );
@@ -1067,8 +1048,7 @@ function BarrierCutOptions() {
         </Row>
         {faults !== null && faults.length === 0 && (
           <p className="hint" style={{ marginTop: 0 }}>
-            Nothing found: no stretch doubles back, stands on the tarmac, runs through another one
-            or is wound into a hook.
+            Nothing found, the barriers are fine.
           </p>
         )}
         {faults !== null && faults.length > 0 && (
@@ -1121,9 +1101,8 @@ function BarrierCutOptions() {
           <span className="val">{cutLength} m</span>
         </Row>
         <p className="hint" style={{ marginTop: 0 }}>
-          Click the roadside band where the barrier should stop. Amber is barrier that stands,
-          brown is a stretch already taken out, clicking a brown one puts it back. Each click is
-          its own undo step.
+          Click the roadside band where the barrier should stop. Amber stands, brown is taken out,
+          clicking brown puts it back.
         </p>
         <Row label="">
           <button
@@ -1177,12 +1156,12 @@ function BarrierOptions() {
       </Row>
       <p className="hint" style={{ marginTop: 0 }}>
         {mode === 'track'
-          ? 'Paints the generated barrier onto the edge of the road, which follows every change to the track afterwards.'
+          ? 'Paints the generated barrier onto the edge of the road.'
           : mode === 'cut'
-            ? 'Takes short pieces back out of the generated barrier, measured in metres rather than in control points.'
+            ? 'Takes short pieces back out of the generated barrier.'
             : mode === 'edge'
-              ? 'Drags a row of modules along the edge of the roadside, tyres round a corner, armco down a straight, without tracing the curve by hand.'
-              : 'Draws a run of barrier modules wherever you like, following the ground. Nothing to do with the track.'}
+              ? 'Drags a row of modules along the edge of the roadside.'
+              : 'Draws a run of barrier modules anywhere, following the ground.'}
       </p>
     </Section>
   );
@@ -1270,16 +1249,15 @@ function BarrierOptions() {
         </div>
       </Row>
       <p className="hint">
-        <b>Barrier all round</b> switches it on down both sides of the entire lap; <b>None at all</b>
-        {' '}takes every stretch off again. Anything in between is painted with the handles. A
-        stretch runs from one control point to the next, so Alt+click in the Select tool inserts a
-        point wherever a barrier has to start or stop.
-        {!road.wall && ' Barriers are switched off entirely, so nothing will be built.'}
+        <b>Barrier all round</b> and <b>None at all</b> set the whole lap, the handles do anything
+        in between. Alt+click in the Select tool inserts a point where a barrier has to start or
+        stop.
+        {!road.wall && ' Barriers are switched off, so nothing will be built.'}
       </p>
       <p className="hint">
         {road.wallStyle === 'fence'
-          ? 'Catch fence: armco for its first ≈1 m whatever the height says, chain link above it, and the top metre angled back over the circuit so anything thrown at it drops back inside.'
-          : 'Armco: the steel beams themselves, stacked as many as the height takes, three of them at about a metre, which is what a circuit really has.'}
+          ? 'Catch fence: armco at the bottom, chain link above, the top angled back over the circuit.'
+          : 'Armco: steel beams stacked to the height set, three at about a metre.'}
       </p>
       </Section>
     </>
@@ -1319,9 +1297,8 @@ function DatumRow() {
       </Row>
       {off && (
         <p className="hint" style={{ marginTop: 0 }}>
-          This project's ground starts at {base.toFixed(2)} m. The button moves terrain, track,
-          pit lane and objects together, so the circuit stays identical and the figures come out
-          round. One undo step.
+          This project's ground starts at {base.toFixed(2)} m. The button moves everything together,
+          as one undo step.
         </p>
       )}
     </>
@@ -1369,13 +1346,11 @@ function TerrainOptions() {
           Drag to sculpt, <b>Shift</b> inverts raise and lower.{' '}
           {brushRoad ? (
             <>
-              A stroke over the track or the pit lane lifts and lowers the road with the ground,
-              so everything moves as one surface.
+              A stroke over the road moves the road with the ground.
             </>
           ) : (
             <>
-              The road holds its line: the ground under it is always blended back to the tarmac,
-              so a stroke there does not show.
+              The road holds its line, the ground under it is blended back to the tarmac.
             </>
           )}
         </p>
@@ -1395,9 +1370,8 @@ function TerrainOptions() {
         </Row>
         {!terrain.enabled && (
           <p className="hint" style={{ marginTop: 0 }}>
-            Terrain off is the fastest the editor gets: no ground to rebuild, and
-            you draw on a flat plane instead. Good for laying a long track out,
-            switch it back on to shape the landscape.
+            Terrain off is the fastest the editor gets, you draw on a flat plane.
+            Switch it back on to shape the landscape.
           </p>
         )}
         <Row label="3D grass">
@@ -1413,9 +1387,8 @@ function TerrainOptions() {
         </Row>
         {terrain.grass3d && (
           <p className="hint" style={{ marginTop: 0 }}>
-            A strip of little grass cards either side of the road, like the 3D
-            grass on real circuits. It follows the track and the ground paint by
-            itself and is baked into the export.
+            Grass tufts either side of the road, following the track and the ground
+            paint. Baked into the export.
           </p>
         )}
         <Row label="Horizon">
@@ -1431,9 +1404,8 @@ function TerrainOptions() {
         </Row>
         {terrain.horizon !== false && (
           <p className="hint" style={{ marginTop: 0 }}>
-            The country beyond the edge of the terrain: rolling hills a little
-            way out and a range behind them, all the way round, so the map does
-            not end in a line of sky. Scenery only, exported with the track.
+            Hills and a mountain range beyond the edge of the terrain. Scenery
+            only, exported with the track.
           </p>
         )}
         <Row label="Size">
@@ -1605,30 +1577,25 @@ function GroundOptions() {
 
       {ground.mode === 'brush' && (
         <p className="hint">
-          Drag to paint. Free hand, so it is the one for a verge, the mouth of a gravel trap, or
-          anything with no straight line in it.
+          Drag to paint free hand.
         </p>
       )}
       {ground.mode === 'rect' && (
         <p className="hint">
-          Pull a rectangle out corner to corner. Nothing is painted until you let go, and the snap
-          above is what makes two of them meet exactly. <b>Corners</b> rounds the four corners into
-          circular fillets while the sides stay dead straight, how a real run off area ends.
+          Pull a rectangle out corner to corner, nothing is painted until you let go.{' '}
+          <b>Corners</b> rounds the four corners.
         </p>
       )}
       {ground.mode === 'polygon' && (
         <p className="hint">
-          Click the corners of the area. Clicking the first one again, or <b>Enter</b>, closes it
-          and fills it in; <b>Esc</b> drops it. For a paddock or a run off area that is neither
-          round nor square, which on a circuit is most of them.
+          Click the corners of the area. The first corner again or <b>Enter</b> closes it,{' '}
+          <b>Esc</b> drops it.
         </p>
       )}
       {ground.mode === 'path' && (
         <p className="hint">
-          Click points along the line, <b>Enter</b> paints it; clicking the first point again joins
-          it into a ring, <b>Esc</b> drops it. Dead straight between the points, or one continuous
-          curve through them with the toggle on, the precise way to lay a service road or a
-          painted band, exactly where you put it.
+          Click points along the line, <b>Enter</b> paints it, <b>Esc</b> drops it. Clicking the
+          first point again joins it into a ring.
         </p>
       )}
       {ground.mode === 'path' && draft.length > 0 && (
@@ -1689,17 +1656,12 @@ function GroundOptions() {
       )}
 
       <p className="hint" style={{ marginTop: 0 }}>
-        <b>Alt</b> rubs the paint out in any of the four, which is not the same as painting grass:
-        grass is a material you lay over what was there, the eraser hands the patch back. Whatever
-        you paint <i>replaces</i> the ground rather than covering it: nothing sits on top, nothing
-        shows through, and sculpting moves it with the rest. Each material is exported as its own
-        mesh, so a car really does slide on the gravel.
+        <b>Alt</b> rubs the paint out. Paint <i>replaces</i> the ground rather than covering it,
+        and each material is exported as its own mesh.
       </p>
       <p className="hint" style={{ marginTop: 0 }}>
         The edge is cut where the material changes, every{' '}
-        {paintCellSize(terrain).toFixed(1)} m, and it is cut where the shape really ran rather than
-        halfway between two samples, so a rectangle at any angle at all comes out with straight
-        sides instead of a staircase. A finer terrain resolution makes it finer still.
+        {paintCellSize(terrain).toFixed(1)} m. A finer terrain resolution makes it finer.
       </p>
 
       <Row label="">
@@ -1775,7 +1737,7 @@ function HeadingRow({
         <button
           className="btn"
           style={{ width: '100%', justifyContent: 'center' }}
-          title="Turn it onto the heading of the nearest track or pit lane cross section (F). Already aligned, it turns round to face the other way."
+          title="Align with the nearest track or pit lane section (F). Already aligned, it flips round."
           onClick={() => setStatus(alignPlacementToPath())}
         >
           Align with the track (F) · again flips
@@ -1796,8 +1758,7 @@ function PadSizeRow() {
         <Num value={padSize.l} min={1} max={600} step={1} suffix="m" onChange={(v) => setPadSize(padSize.w, v)} />
       </Row>
       <p className="hint">
-        Press and pull a rectangle to size a patch as you place it; its corners latch onto the
-        patches already down. A plain click drops one at the size above.
+        Press and pull to size a patch as you place it, a plain click drops one at the size above.
       </p>
     </>
   );
@@ -1851,9 +1812,8 @@ function PlaceOptions() {
     if (mb > MODEL_LIMIT_MB) {
       setNotice({
         tone: 'error',
-        text: `${file.name} is ${mb.toFixed(0)} MB. The limit is ${MODEL_LIMIT_MB} MB, a bigger `
-          + 'one takes several copies of itself in memory while it is being saved. Reduce the mesh '
-          + 'or the textures in the program it came from and import it again.',
+        text: `${file.name} is ${mb.toFixed(0)} MB, the limit is ${MODEL_LIMIT_MB} MB. `
+          + 'Reduce the mesh or the textures and import it again.',
       });
       return;
     }
@@ -1892,8 +1852,7 @@ function PlaceOptions() {
         tone: mb > AUTOSAVE_SAFE_MB ? 'warn' : 'ok',
         text: `Imported ${file.name}, ${measured}. Click the ground to place it.`
           + (mb > AUTOSAVE_SAFE_MB
-            ? ` At ${mb.toFixed(0)} MB it is past what this browser can autosave, so `
-              + '"Continue last session" will not bring it back, save the project to a file.'
+            ? ` At ${mb.toFixed(0)} MB it cannot be autosaved, save the project to a file.`
             : ''),
       });
       setStatus(`Imported ${file.name}, ${measured}`);
@@ -1941,16 +1900,14 @@ function PlaceOptions() {
         {isGroundPad(placeKind) && <PadSizeRow />}
         {isGroundPad(placeKind) && (
           <p className="hint" style={{ marginTop: 0 }}>
-            A patch is an object lying <i>on</i> the ground, with a height and a position of its
-            own. To make the ground itself asphalt or gravel, no grass underneath it, and the
-            sculpt brush moving it with the rest of the terrain, use the{' '}
+            A patch is an object lying <i>on</i> the ground. To paint the ground itself, use the{' '}
             <b>Ground tool (M)</b> instead.
           </p>
         )}
         <p className="hint">
-          Objects snap to the ground; buildings, patches and barriers line up flush with a
-          neighbour of the same sort. <b>R</b> + mouse turns the next one, <b>[</b> <b>]</b> step
-          15°, <b>Alt</b> drops it under the cursor unsnapped.
+          Objects snap to the ground and line up flush with a neighbour of the same sort.{' '}
+          <b>R</b> + mouse turns the next one, <b>[</b> <b>]</b> step 15°, <b>Alt</b> drops it
+          unsnapped.
         </p>
       </Section>
 
@@ -1969,8 +1926,7 @@ function PlaceOptions() {
           ))}
         </div>
         <p className="hint">
-          A whole arrangement in one click, spaced so the parts sit flush against each other. It
-          drops as a single undo step, and the heading above turns the lot.
+          A whole arrangement in one click, as a single undo step. The heading above turns the lot.
         </p>
       </Section>
 
@@ -2029,9 +1985,8 @@ function PlaceOptions() {
           </div>
         )}
         <p className="hint">
-          Imported models are stored inside the project file, so a saved project stays self contained.
-          They are centred and put on the ground automatically; an FBX is converted to metres from
-          the unit its file names. Wrong size anyway? Select the object and type the metres you want.
+          Imported models are stored inside the project file and put on the ground automatically.
+          If the size is wrong, select the object and type the metres you want.
         </p>
       </Section>
     </>
@@ -2069,12 +2024,10 @@ function EraseOptions() {
         Sweep the red circle over anything you want gone. The whole sweep is <b>one undo step</b>.
       </p>
       <p className="hint" style={{ marginTop: 0 }}>
-        What counts is where an object <i>sits</i>, not how big it is: a grandstand whose centre is
-        outside the circle stays.
+        What counts is where an object <i>sits</i>, not how big it is.
       </p>
       <p className="hint" style={{ marginTop: 0 }}>
-        For picking a few specific things instead, use <b>Select</b> and drag a box over them on
-        empty ground, then Delete removes the lot.
+        For a few specific things, box drag them with <b>Select</b> and press Delete.
       </p>
     </Section>
   );
@@ -2126,9 +2079,8 @@ function ScatterOptions() {
       {/* The palette says (2D) on nearly everything in it, which reads as a
           caveat unless the panel says what it is. */}
       <p className="hint" style={{ marginTop: 0 }}>
-        <b>(2D)</b> trees are two crossed pictures, the way Assetto Corsa builds them: eight
-        triangles against six hundred for a modelled one. That is what makes a wood of a
-        thousand trees affordable, and it is what the game does on its own circuits.
+        <b>(2D)</b> trees are two crossed pictures, the way Assetto Corsa builds them. That is what
+        makes a wood of a thousand trees affordable.
       </p>
 
       {/* Raw range inputs, not the shared Slider: that one opens an undo burst
@@ -2208,15 +2160,14 @@ function ScatterOptions() {
       </p>
 
       <p className="hint">
-        Drag to plant, <b>Alt</b> clears again. <b>Spacing</b> is the density. One stroke is one
-        undo step, and stops at 400 plants.
+        Drag to plant, <b>Alt</b> clears again. One stroke is one undo step and stops at 400 plants.
       </p>
       <p className="hint" style={{ marginTop: 0 }}>
         <b>Keep off track</b> is measured from the edge of{' '}
-        {scatter.overRunoff ? 'the tarmac and its kerb' : 'the run off, at its far side'}, as built.{' '}
+        {scatter.overRunoff ? 'the tarmac and its kerb' : 'the run off'}.{' '}
         {scatter.overRunoff
-          ? 'Ground cover can therefore go right up to the kerb.'
-          : 'That keeps trees out of a run off, and ground cover with them, switch this on for grass.'}
+          ? 'Ground cover can go right up to the kerb.'
+          : 'Switch this on for grass.'}
       </p>
     </Section>
   );

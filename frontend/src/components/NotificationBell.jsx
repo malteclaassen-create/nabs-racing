@@ -200,6 +200,12 @@ export default function NotificationBell({ className = "" }) {
     // A `tour:<name>` link doesn't jump straight to a page — it kicks off a
     // guided walk-through that spotlights the buttons to press on the way there.
     if (n.link.startsWith("tour:")) return startTour(n.link.slice(5));
+    // The track editor is its own page served by the backend, not a route of
+    // this app: a client-side navigation there lands on the 404. Real load.
+    if (n.link.startsWith("/track-editor")) {
+      window.location.assign(n.link.endsWith("/") ? n.link : `${n.link}/`);
+      return;
+    }
     navigate(n.link);
   }
 

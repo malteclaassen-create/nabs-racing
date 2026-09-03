@@ -21,7 +21,7 @@ interface Step {
 const STEPS: Step[] = [
   {
     title: 'The viewport',
-    body: 'WASD flies the camera, middle drag orbits, right drag pans, the wheel zooms. The left button always belongs to the tool you are holding, never to the camera.',
+    body: 'WASD flies the camera, middle drag orbits, right drag pans, the wheel zooms. The left button always belongs to the tool you are holding.',
     tool: 'select',
   },
   {
@@ -31,7 +31,7 @@ const STEPS: Step[] = [
   },
   {
     title: 'Draw the centre line',
-    body: 'The Track tool (T) appends a control point wherever you click. The drawing mode decides what a click means: free, a straight in 15° steps, a constant-radius curve, or freehand.',
+    body: 'The Track tool (T) appends a control point wherever you click. The drawing mode decides what a click means: free, straight, curve or freehand.',
     tool: 'drawTrack',
   },
   {
@@ -41,23 +41,23 @@ const STEPS: Step[] = [
   },
   {
     title: 'The road itself',
-    body: 'Everything the road is made of lives in the Track tab: width, run off, barriers, texture lengths, and the detail setting that decides how finely the tarmac is cut.',
+    body: 'Everything the road is made of lives in the Track tab: width, run off, barriers, textures and detail.',
     tool: 'select',
     tab: 'track',
   },
   {
     title: 'The ground',
-    body: 'Sculpt (G) raises, lowers and smooths the terrain. The corridor under the road is blended back to the road surface on every stroke, so the tarmac cannot break.',
+    body: 'Sculpt (G) raises, lowers and smooths the terrain. The ground under the road is blended back to the tarmac on every stroke.',
     tool: 'terrain',
   },
   {
     title: 'What the ground is made of',
-    body: 'Ground (M) paints asphalt, concrete or gravel into the terrain itself, Alt puts grass back. Sweep it on with the brush, pull a rectangle out, or click an outline and close it. It replaces the grass rather than covering it, so nothing lies on top and sculpting moves the patch with the rest of the ground.',
+    body: 'Ground (M) paints asphalt, concrete or gravel into the terrain itself, Alt puts grass back. Use the brush, pull a rectangle out, or click an outline and close it.',
     tool: 'ground',
   },
   {
     title: 'Kerbs',
-    body: 'Drag along the roadside with the Kerb tool (K) to lay one exactly where the drivers cut. Click a kerb to change its style, width and ramps; Alt+drag rubs it out.',
+    body: 'Drag along the roadside with the Kerb tool (K) to lay one. Click a kerb to change its style, width and ramps, Alt+drag rubs it out.',
     tool: 'kerb',
   },
   {
@@ -72,13 +72,13 @@ const STEPS: Step[] = [
   },
   {
     title: 'Making it a race track',
-    body: 'The Race tab holds the grid, the pit boxes, the timing sectors and the AI line, the things Assetto Corsa needs before it will start a session on the circuit.',
+    body: 'The Race tab holds the grid, the pit boxes, the timing sectors and the AI line, everything Assetto Corsa needs to start a session.',
     tool: 'select',
     tab: 'race',
   },
   {
     title: 'Export',
-    body: 'Export for AC writes the finished content/tracks folder as a ZIP: the .kn5, surfaces.ini, the AI line, the minimap and the UI files. Extract it into Assetto Corsa and drive.',
+    body: 'Export for AC writes the finished content/tracks folder as a ZIP. Extract it into Assetto Corsa and drive.',
     tool: 'select',
     tab: 'export',
   },

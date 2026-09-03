@@ -223,6 +223,12 @@ img {
   margin-right: 2px;
   border-right: 1px solid var(--line);
   height: 22px;
+  /* A link back to the site, dressed as the wordmark it always was. */
+  color: inherit;
+  text-decoration: none;
+}
+.brand:hover .brand-name {
+  color: var(--text);
 }
 
 .brand-mark {

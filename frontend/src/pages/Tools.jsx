@@ -62,62 +62,27 @@ const num = (v) => {
 };
 
 // Shared UI bits, matching the site's card/label language.
-// The track editor, for admins only while we try it out.
-//
-// Two ways to be an admin here and both have to count, or whoever is testing
-// gets told the tool does not exist. A Discord login carries `isAdmin` in the
-// stored profile; the PIN login carries no identity at all, only a token — so
-// the presence of that token IS the check for that route (same reading
-// api/client.js does in adminAuthToken).
-//
-// Worth being straight about what this hides and what it does not: it takes
-// the card off everybody else's page. The address itself answers anyone who
-// types it. That is on purpose for now — the editor is a static app that runs
-// in the visitor's own browser and reads nothing of the league's — but it does
-// mean "admins only" here is "not advertised", not "locked". A real lock is a
-// signed ticket and a cookie, the way backend/middleware/auth.js already does
-// it for member downloads, and can go on later without touching the editor.
-function useIsAdmin() {
-  const { user } = useAuth();
-  // Re-read on every render rather than caching: useAuth re-renders on the
-  // "nabs-auth" event, which is exactly when a PIN token appears or is cleared,
-  // so this stays in step with a login happening in another tab.
-  return !!user?.isAdmin || !!getToken();
-}
-
+// The track editor card. It was admin-only during the trial run; the editor
+// is a static app that runs in the visitor's own browser, so opening it to
+// everyone is a matter of showing the card.
 function TrackEditorCard() {
   return (
     <ToolCard
       title="Track editor"
       subtitle="Draw a circuit and export it ready to drive."
     >
-      <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-widest text-warn">
-        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
-          <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
-        </svg>
-        <span>Admins only · trial run</span>
-      </div>
-
       <p className="text-sm leading-relaxed text-medium">
-        A full 3D editor in the browser. Draw the centre line, sculpt the ground it runs over, lay
-        kerbs and barriers, place the paddock, set the grid, the pit boxes and the timing gates,
-        then export a ZIP with a finished <code className="rounded bg-surface2 px-1 py-0.5 text-xs">.kn5</code>{" "}
-        that drops straight into Assetto Corsa. No ksEditor pass, no Blender.
+        A 3D editor in the browser: draw the track, shape the ground, build the pit complex and
+        export a finished Assetto Corsa track.
       </p>
 
       <p className="text-sm leading-relaxed text-light">
-        It runs entirely on your own machine. Nothing you draw is uploaded anywhere, and your work
-        is kept in this browser between visits. Start from the{" "}
-        <b className="text-medium">showcase circuit</b> to see a finished track you can take apart:
-        five kilometres, a forty-box pit complex, grandstands and seven thousand trees.
+        Everything stays on your own machine. Open the showcase circuit to see a finished track you
+        can take apart.
       </p>
 
       <div className="rounded-xl bg-surface2/60 px-4 py-3 text-xs leading-relaxed text-light">
-        <b className="text-medium">Two things to know.</b> It wants a desktop: it is built around a
-        mouse, a keyboard and a graphics card, and there is no phone layout. And opening a track
-        that is already installed in your game only works when you run the editor locally; from here
-        you can build one from scratch and export it.
+        Desktop only: it needs a mouse, a keyboard and a graphics card.
       </div>
 
       {/*
@@ -923,10 +888,6 @@ function PracticeStrategy({ store, update }) {
 // around it already has a header, so this skips its own.
 
 export default function Tools({ embedded = false }) {
-  // Read from the stored session, so there is no moment where the card is
-  // shown to somebody it is not meant for — unlike the telemetry card below,
-  // this answer is already in hand on the first render.
-  const isAdmin = useIsAdmin();
   // `false` until the answer arrives, so the card cannot flash into view on a
   // page load and then vanish for a member who is not meant to have it.
   const { data: tel } = useApi(useCallback(() => api.telemetryIsPublic().catch(() => ({ public: false })), []));
@@ -950,8 +911,7 @@ export default function Tools({ embedded = false }) {
           subtitle="Fuel and strategy helpers for the next race. Everything stays on your device."
         />
       )}
-      {/* First, while it is the new thing being tried out. */}
-      {isAdmin && <TrackEditorCard />}
+      <TrackEditorCard />
       <FuelCalculator store={store} update={update} />
       <PracticeStrategy store={store} update={update} />
       {/* The lap comparison, once the league has opened it. Until then this
