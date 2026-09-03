@@ -707,10 +707,14 @@ function makeSpeedSign(): HTMLCanvasElement {
 function makeMountain(): HTMLCanvasElement {
   const [c, ctx] = canvas();
   const stops: Array<[number, [number, number, number]]> = [
-    [0.0, [63, 107, 52]],
-    [0.12, [58, 96, 48]],
-    [0.2, [46, 78, 40]],
-    [0.34, [42, 70, 38]],
+    // The foot is the grass sheet's own average (measured: 64, 80, 40), so
+    // the seam with the grass band is a change of grain and nothing else.
+    // The colour the grass is DRAWN with is greener than that; the blades
+    // and the shadow between them pull the average olive.
+    [0.0, [64, 80, 40]],
+    [0.12, [58, 74, 37]],
+    [0.2, [46, 62, 32]],
+    [0.34, [40, 56, 30]],
     [0.42, [92, 88, 70]],
     [0.52, [118, 114, 104]],
     [0.66, [140, 140, 138]],
