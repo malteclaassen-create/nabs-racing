@@ -105,6 +105,7 @@ import { layBarrierRun, runLength } from '../src/core/barrierRun.ts';
 import {
   findCorners,
   planBrakeMarkers,
+  settleBrakeMarkers,
   brakeMarkerKind,
   BRAKE_MARKER_KINDS,
   DEFAULT_BRAKE_CFG,
@@ -5203,6 +5204,31 @@ console.log('\nBraking boards');
     plan.every((m) => m.kind === brakeMarkerKind(m.distance)));
   check('every board belongs to a corner that was found',
     plan.every((m) => corners.some((c) => Math.abs(c.dist - m.cornerDist) < 1e-6)));
+
+  /* --- and each one stands ON the run off, not in it -------------------
+     The planner calls the run off flat from the tarmac edge; on a banked
+     corner it is not, and a board there stood half a metre inside the grass.
+     Settled against the built surface, every board's foot is within a few
+     centimetres of whatever the ray straight down through it meets first. */
+  {
+    const settled = settleBrakeMarkers(plan, d.roadMeshes);
+    const scene = new THREE.Scene();
+    for (const m of d.roadMeshes) scene.add(new THREE.Mesh(m.geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })));
+    const ray = new THREE.Raycaster();
+    let worst = 0;
+    let checked = 0;
+    for (const m of settled) {
+      if (!m.onRunoff) continue;
+      ray.set(new THREE.Vector3(m.p[0], m.p[1] + 30, m.p[2]), new THREE.Vector3(0, -1, 0));
+      const hit = ray.intersectObjects(scene.children, false)[0];
+      if (!hit) continue;
+      checked++;
+      worst = Math.max(worst, Math.abs(hit.point.y + 0.02 - m.p[1]));
+    }
+    check('settled boards stand on the run off surface', checked > 0 && worst < 0.03, `${checked} boards, worst ${worst.toFixed(3)} m`);
+    check('and boards off the run off are left to follow the terrain',
+      settled.every((m, i) => m.onRunoff || m === plan[i]));
+  }
 
   /* --- the distance really is the distance --------------------------- */
   const fr = d.trackFrames;

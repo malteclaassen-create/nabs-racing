@@ -349,3 +349,39 @@ export function planBrakeMarkers(
   }
   return kept;
 }
+
+/**
+ * Put every board on the run off onto the run off's real surface.
+ *
+ * The planner works from the cross section: it stands a board at the tarmac
+ * edge's height and calls the run off flat from there. On a banked corner
+ * the run off is not flat -- it carries the banking on for its first metres
+ * (runoffBankRise in road.ts) -- and a board three metres out stood half a
+ * metre inside the grass. Rather than repeat the road builder's arithmetic
+ * here and drift from it again, the built surface is asked directly: a ray
+ * straight down through each board, and the board's foot goes onto the
+ * highest thing it meets. Boards off the run off follow the terrain as
+ * before and are left alone.
+ */
+export function settleBrakeMarkers(
+  markers: BrakeMarker[],
+  surfaces: ReadonlyArray<{ geometry: THREE.BufferGeometry }>,
+): BrakeMarker[] {
+  if (markers.length === 0 || surfaces.length === 0) return markers;
+  const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+  const meshes = surfaces.map((s) => new THREE.Mesh(s.geometry, material));
+  const ray = new THREE.Raycaster();
+  const from = new THREE.Vector3();
+  const down = new THREE.Vector3(0, -1, 0);
+  const out = markers.map((m) => {
+    if (!m.onRunoff) return m;
+    from.set(m.p[0], m.p[1] + 30, m.p[2]);
+    ray.set(from, down);
+    ray.far = 80;
+    const hit = ray.intersectObjects(meshes, false)[0];
+    if (!hit) return m;
+    return { ...m, p: [m.p[0], hit.point.y + 0.02, m.p[2]] as [number, number, number] };
+  });
+  material.dispose();
+  return out;
+}

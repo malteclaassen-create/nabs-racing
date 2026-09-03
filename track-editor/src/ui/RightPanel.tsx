@@ -28,7 +28,7 @@ import {
 } from '../core/section';
 import { attachPitLane, nodesAlongPitLane } from '../core/pitLink';
 import { GROUND_KINDS } from '../core/terrain';
-import { BRAKE_MARKER_KINDS, findCorners, planBrakeMarkers } from '../core/brakeMarkers';
+import { BRAKE_MARKER_KINDS, findCorners, planBrakeMarkers, settleBrakeMarkers } from '../core/brakeMarkers';
 import { SIGN_DISTANCES } from '../core/textures';
 import {
   APRON_COLOURS,
@@ -1296,7 +1296,12 @@ function BrakeMarkerSection() {
             style={{ flex: 1, justifyContent: 'center' }}
             disabled={corners.length === 0}
             onClick={() => {
-              const plan = planBrakeMarkers(derived.trackFrames, closed, derived.profile, cfg);
+              // Planned off the cross sections, then set down on the built run off:
+              // on a banked corner the two are not the same height.
+              const plan = settleBrakeMarkers(
+                planBrakeMarkers(derived.trackFrames, closed, derived.profile, cfg),
+                derived.roadMeshes,
+              );
               const n = applyBrakeMarkers(plan);
               setStatus(
                 n === 0
