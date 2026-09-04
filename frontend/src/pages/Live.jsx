@@ -742,7 +742,7 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
           longest name on the roster; the table scrolls the extra, which it was
           doing anyway. Phones keep the old behaviour, where the column is the
           one that has to give. */}
-      <span className="min-w-0 sm:min-w-[9.5rem]">
+      <span className="min-w-0 sm:min-w-[9rem] lg:min-w-[8rem] 2xl:min-w-[9rem]">
         <span className="flex items-center gap-1.5">
           <span className="truncate font-display text-base font-bold uppercase tracking-tight text-dark" title={e.name}>
             {name}
@@ -767,7 +767,7 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
               the block has a width floor (below), so parked at the end of it a
               short name and its number sat a hundred pixels apart. */}
           {e.raceNumber > 0 && (
-            <span className="hidden shrink-0 font-mono text-xs font-bold text-faint xl:inline">
+            <span className="hidden shrink-0 font-mono text-xs font-bold text-faint 2xl:inline">
               #{e.raceNumber}
             </span>
           )}
@@ -927,7 +927,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
           sat pinned to the top with the reserved split line as empty space
           under it, which read as a mistake. Centred, it sits where the eye
           expects it and the row still never changes height. */}
-      <td className="w-[184px] py-3 pr-4 text-right align-middle text-base">
+      <td className="w-[176px] py-3 pr-3 text-right align-middle text-base">
         <div className={`flex flex-col justify-center ${isRace ? "" : "min-h-[54px]"}`}>
           <span className="flex h-6 items-center justify-end">
             {e.onTrack ? (
@@ -954,18 +954,15 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
           )}
         </div>
       </td>
-      <td className="hidden py-3 pr-4 text-right text-sm sm:table-cell">{behind}</td>
-      <td className="hidden py-3 pr-4 text-right md:table-cell">
+      <td className="hidden py-3 pr-3 text-right text-sm sm:table-cell">{behind}</td>
+      <td className="hidden py-3 pr-3 text-right md:table-cell lg:hidden 2xl:table-cell">
         <span className="font-mono text-sm tabular-nums text-medium">{formatLap(e.lastLapMs)}</span>
       </td>
-      <td className="py-3 pr-4 text-right">
+      <td className="py-3 pr-3 text-right">
         <span className="font-mono text-base font-bold tabular-nums text-dark">{formatLap(e.bestLapMs)}</span>
       </td>
-      <td className="hidden py-3 pr-4 text-center tabular-nums md:table-cell">
+      <td className="hidden py-3 pr-3 text-center tabular-nums md:table-cell lg:hidden 2xl:table-cell">
         <span className="font-mono text-sm text-medium">{e.lapCount}</span>
-      </td>
-      <td className="hidden py-3 pr-4 text-right tabular-nums 2xl:table-cell">
-        <span className="font-mono text-sm text-light">{e.ping ?? NO_VALUE}</span>
       </td>
       {/* Last, matching the header: the compound is a marker rather than a
           number to read down the column, and in the middle of the row it broke
@@ -999,20 +996,23 @@ const ontrackCols = (isRace) => [
   // reserved whether or not a driver is in a lap right now: this column is the
   // only one whose content is two rows deep, and sized to the clock alone the
   // splits were the thing that had to squeeze.
-  { label: "Current", cls: "w-[184px] py-3 pr-4 text-right" },
-  { label: isRace ? "Gap" : "Δ PB", cls: "hidden py-3 pr-4 text-right sm:table-cell" },
-  { label: "Last", cls: "hidden py-3 pr-4 text-right md:table-cell" },
-  { label: "Best", cls: "py-3 pr-4 text-right" },
-  { label: "Laps", cls: "hidden py-3 pr-4 text-center md:table-cell" },
+  { label: "Current", cls: "w-[176px] py-3 pr-3 text-right" },
+  { label: isRace ? "Gap" : "Δ PB", cls: "hidden py-3 pr-3 text-right sm:table-cell" },
+  // Last and Laps step aside between lg and xl: there the card shares its
+  // row with the map and is narrower than on a tablet, where it has the
+  // whole width. They come back at 2xl. The classification below has both.
+  { label: "Last", cls: "hidden py-3 pr-3 text-right md:table-cell lg:hidden 2xl:table-cell" },
+  { label: "Best", cls: "py-3 pr-3 text-right" },
+  { label: "Laps", cls: "hidden py-3 pr-3 text-center md:table-cell lg:hidden 2xl:table-cell" },
   // No pit COUNT here and no DRS/OUT badges. The pit lane card beside this one
   // names who is in there and times them, the row itself says "In pit" or "Out
   // lap" in the CURRENT column, and in practice everybody has DRS. That was
   // three columns of width spent on facts the page already carried, on the one
   // table that was short of it — which is why the names were being cut.
-  // Ping is the least useful column on the board and the first to go: it now
-  // waits for a window with room to spare (2xl) instead of appearing at lg and
-  // pushing the table wider than its card.
-  { label: "Ping", cls: "hidden py-3 pr-4 text-right 2xl:table-cell" },
+  // No ping here at all any more. It was the least useful column on the board
+  // and the first to go; kept for the widest windows, it was the column that
+  // pushed the table past its card there and cut the tyre off the right edge.
+  // The classification table below still lists it.
   // Last column: a compound badge is a marker, not a number to compare down a
   // list, and in the middle of the row it split the times into two groups.
   { label: "Tyre", cls: "hidden py-3 pr-5 text-center sm:table-cell" },
