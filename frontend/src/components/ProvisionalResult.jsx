@@ -123,9 +123,28 @@ export function ProvisionalResult({ results, openId, match, onPick, onClose }) {
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Classified by the line: laps first, then the gap at the flag. The board
+  // now saves them in this order itself; sorting again here also puts right
+  // a result taken before it did (Most, 2026-09-04, which had the running
+  // order of the cool-down lap). A car without a gap on the same lap keeps
+  // its saved place behind those with one.
+  const rows = useMemo(() => {
+    const list = (r?.entries || []).filter((e) => !e.isSafetyCar).map((e, i) => ({ e, i }));
+    list.sort((a, b) => {
+      const la = a.e.lapCount || 0;
+      const lb = b.e.lapCount || 0;
+      if (la !== lb) return lb - la;
+      const ga = a.e.gapToLeaderMs;
+      const gb = b.e.gapToLeaderMs;
+      if (ga != null && gb != null && ga !== gb) return ga - gb;
+      if (ga != null && gb == null) return -1;
+      if (gb != null && ga == null) return 1;
+      return a.i - b.i;
+    });
+    return list.map((x) => x.e);
+  }, [r]);
   if (!r) return null;
   const code = countryCodeFromName(r.country);
-  const rows = r.entries.filter((e) => !e.isSafetyCar);
   const leaderLaps = rows[0]?.lapCount || 0;
 
   return createPortal(

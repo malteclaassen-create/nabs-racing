@@ -897,9 +897,9 @@ function createRelay(server) {
     const timedRace = !lapRace && si.Time > 0;
     if (!lapRace && !timedRace) return;
     const now = Date.now();
-    const board = buildBoard();
+    let board = buildBoard();
     if (!board.ok || !board.session) return;
-    const competitors = board.entries.filter((e) => !e.isSafetyCar);
+    let competitors = board.entries.filter((e) => !e.isSafetyCar);
     const leader = competitors[0];
     if (!leader) return;
     if (raceFlagAt == null) {
@@ -913,6 +913,11 @@ function createRelay(server) {
       // laps to the distance minus laps-down does not work — laps-down is
       // derived from the lap count, so the two always agree.
       for (const e of competitors) lapsAtFlag.set(e.guid, e.lapCount || 0);
+      // The board above was built BEFORE the flag was set, in running order.
+      // From here on the order is by the line (see buildBoard), and the
+      // result taken below must be that one, not the last running order.
+      board = buildBoard();
+      competitors = board.entries.filter((e) => !e.isSafetyCar);
     }
     const running = competitors.filter((e) => e.onTrack && !e.inPits);
     const home = (e) => {
@@ -1286,10 +1291,35 @@ function createRelay(server) {
       // flag, the exact case the roster exists for.
       const maxLaps = entries.reduce((m, e) => Math.max(m, e.lapCount || 0), 0);
       const dropped = (e) => resurrected.has(e.guid) && (e.lapCount || 0) < maxLaps - 1;
+      // Once the leader has taken the flag the order is no longer where the
+      // cars are on the road but who crossed the line when: laps first, then
+      // the server's own timestamp of each car's last completed lap. The
+      // running order (RacePos) keeps moving through the cool-down lap and
+      // re-issues the slots of drivers who log off, and it put the car that
+      // finished third fourth on the provisional result of Most, 2026-09-04,
+      // with the gaps on the same screen saying otherwise.
+      const over = raceFlagAt != null;
+      const guidOf = over ? new Map([...byGuid].map(([g, e]) => [e, g])) : null;
+      const finishedAt = (e) => {
+        const list = crossingsByGuid.get(guidOf.get(e));
+        const lap = e.lapCount || 0;
+        return list?.find((c) => c.lap === lap)?.at ?? null;
+      };
       entries.sort((a, b) => {
         // The safety car is not in the race, so it is not in the order either:
         // it sits below the classified runners however far up the road it is.
         if (a.isSafetyCar !== b.isSafetyCar) return a.isSafetyCar ? 1 : -1;
+        if (over) {
+          const la = a.lapCount || 0;
+          const lb = b.lapCount || 0;
+          if (la !== lb) return lb - la;
+          const ta = finishedAt(a);
+          const tb = finishedAt(b);
+          if (ta != null && tb != null && ta !== tb) return ta - tb;
+          if (ta != null && tb == null) return -1; // a known crossing beats an unknown one
+          if (tb != null && ta == null) return 1;
+          // Same lap, no usable times: the running-order rules below decide.
+        }
         const da = dropped(a);
         const db = dropped(b);
         if (da !== db) return da ? 1 : -1;

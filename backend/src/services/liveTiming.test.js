@@ -926,3 +926,43 @@ describe("track map", () => {
     expect(mapKey()).toBe("monza|");
   });
 });
+
+// After the flag the classification is by the line, not by the road.
+describe("finishing order", () => {
+  beforeEach(() => {
+    reset();
+    __resetProvisional();
+  });
+
+  // Two cars, twenty laps. `at` is the server's timestamp of the last lap.
+  function lap({ alice, bob, atAlice, atBob, splineAlice = 0.9, splineBob = 0.1 }) {
+    const s = snap({ type: 3, guid: "g1", laps: alice, name: "Alice" });
+    s.SessionInfo.Laps = 20;
+    s.ConnectedDrivers.Drivers.g1.NormalisedSplinePos = splineAlice;
+    if (atAlice) s.ConnectedDrivers.Drivers.g1.Cars.f.LastLapCompletedTime = atAlice;
+    s.ConnectedDrivers.Drivers.g2 = {
+      CarInfo: { DriverName: "Bob", CarModel: "f", Tyres: "M", IsSpectator: false },
+      Cars: { f: { NumLaps: bob, ...(atBob ? { LastLapCompletedTime: atBob } : {}) } },
+      TotalNumLaps: bob,
+      NumPits: 0,
+      IsInPits: false,
+      NormalisedSplinePos: splineBob,
+    };
+    return s;
+  }
+
+  it("the car that crossed the line first wins, whatever the running order says afterwards", () => {
+    // Lap 19 for both, Alice further round the lap: running order says Alice.
+    ingest(lap({ alice: 19, bob: 19, atAlice: "2026-09-04T19:30:00.000Z", atBob: "2026-09-04T19:30:01.000Z" }));
+    expect(getBoard().entries.map((e) => e.name)).toEqual(["Alice", "Bob"]);
+    // Both take the flag. Bob crossed five seconds BEFORE Alice, and on the
+    // cool-down lap Alice is still further round the circuit.
+    ingest(lap({ alice: 20, bob: 20, atAlice: "2026-09-04T19:31:05.000Z", atBob: "2026-09-04T19:31:00.000Z" }));
+    expect(getBoard().entries.map((e) => e.name)).toEqual(["Bob", "Alice"]);
+    // And that is the order the provisional result was taken in.
+    const list = listProvisional("test");
+    expect(list.length).toBe(1);
+    expect(list[0].entries.map((e) => e.name)).toEqual(["Bob", "Alice"]);
+    expect(list[0].entries[1].gapToLeaderMs).toBe(5000);
+  });
+});
