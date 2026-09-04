@@ -84,7 +84,11 @@ export function snapshotFromBoard(board, { id, final = false, completed = true, 
   const leader = competitors[0] || null;
   const fastest = competitors.reduce((b, e) => (e.bestLapMs && (!b || e.bestLapMs < b.bestLapMs) ? e : b), null);
   return {
-    v: 1,
+    // v2: entries arrive from the board already classified by the line (laps,
+    // then the time each car completed its last lap). v1 files were saved in
+    // the running order of the cool-down lap and are put right on load, see
+    // classifyByLine.
+    v: 2,
     id,
     server: board?.server || board?.serverKey || "",
     serverName: s.serverName || "",
@@ -108,6 +112,47 @@ export function snapshotFromBoard(board, { id, final = false, completed = true, 
     drivers: competitors.length,
     entries,
   };
+}
+
+// Re-classify a stored result by the line: laps first, then the gap at the
+// flag. Gaps are crossing-time differences against whoever was saved first,
+// so their ORDER is the finishing order even when that car was not the
+// winner; the gaps are then re-based on the actual winner and the positions
+// renumbered. A same-lap car without a gap (it crossed before the saved
+// reference, or its crossing went unrecorded) keeps its saved place behind
+// the cars with one — nothing more can be known without the crossing times.
+// Written for the v1 files of 2026-09-04 (Most), where the third-placed car
+// was shown fourth; harmless on a file that is already in this order.
+export function classifyByLine(result) {
+  if (!result || !Array.isArray(result.entries)) return result;
+  const cars = result.entries.filter((e) => !e.isSafetyCar).map((e, i) => ({ e, i }));
+  const sc = result.entries.filter((e) => e.isSafetyCar);
+  cars.sort((a, b) => {
+    const la = a.e.lapCount || 0;
+    const lb = b.e.lapCount || 0;
+    if (la !== lb) return lb - la;
+    const ga = a.e.gapToLeaderMs;
+    const gb = b.e.gapToLeaderMs;
+    if (ga != null && gb != null && ga !== gb) return ga - gb;
+    if (ga != null && gb == null) return -1;
+    if (gb != null && ga == null) return 1;
+    return a.i - b.i;
+  });
+  const leader = cars[0]?.e || null;
+  const base = leader?.gapToLeaderMs ?? 0;
+  const entries = cars.map(({ e }, i) => {
+    const sameLap = leader && (e.lapCount || 0) === (leader.lapCount || 0);
+    let gap = e.gapToLeaderMs;
+    if (sameLap && gap != null && base) gap = gap - base;
+    if (e === leader) gap = leader.gapToLeaderMs == null ? null : 0;
+    return {
+      ...e,
+      position: i + 1,
+      lapsDown: leader ? Math.max(0, (leader.lapCount || 0) - (e.lapCount || 0)) : e.lapsDown,
+      gapToLeaderMs: sameLap ? gap : null,
+    };
+  });
+  return { ...result, v: 2, laps: leader ? leader.lapCount : result.laps, entries: [...entries, ...sc] };
 }
 
 function loadAll() {
@@ -143,7 +188,7 @@ function loadAll() {
           }
           continue;
         }
-        byId.set(r.id, r);
+        byId.set(r.id, (r.v || 1) < 2 ? classifyByLine(r) : r);
       } catch {
         /* a torn or foreign file: skip it */
       }
