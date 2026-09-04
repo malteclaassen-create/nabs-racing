@@ -389,8 +389,14 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
 
   if (!circuit) return null;
 
-  const r = vw * 0.028;
-  const fs = vw * 0.032;
+  // Car and label size off the box's DIAGONAL, not its width. Off the width,
+  // a wide, flat circuit (Most's box is twice as wide as it is tall) got cars
+  // twice the size of a tall one's relative to the track around them — the
+  // outline read as a few huge cars on a thin thread. The diagonal treats
+  // both shapes alike.
+  const diag = Math.hypot(vw, vh);
+  const r = diag * 0.018;
+  const fs = diag * 0.022;
 
   return (
     <svg
@@ -413,12 +419,15 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
           d={circuit.path}
           fill="none"
           stroke="currentColor"
-          strokeWidth={r * 0.5}
+          // Screen pixels (non-scaling stroke), so the road is the same
+          // weight whatever the box or the zoom. Derived from the car size it
+          // came out at 1.4px and vanished under the cars on a wide circuit.
+          strokeWidth={3.5}
           strokeLinejoin="round"
           strokeLinecap="round"
           className="text-faint"
           vectorEffect="non-scaling-stroke"
-          opacity="0.55"
+          opacity="0.6"
         />
         {dots.map((d) => (
           <CarDot
