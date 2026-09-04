@@ -70,17 +70,40 @@ describe("pitEventsStore", () => {
     expect(loadPitStops(f).get(G)).toMatchObject({ stops: [5, 15], totalPits: 2 });
   });
 
-  it("an in-place race restart (regression burst) wipes the aborted running", () => {
+  it("an in-place race restart (regression burst): the new running wins by default, the old one stays pickable", () => {
     const f = join(dir, "a.jsonl");
-    session(f, "s1");
+    session(f, "s1", "2026-08-28T18:04:00Z");
     for (const g of [G, G2, G3, G4]) seed(f, "s1", g);
     stop(f, "s1", G, 1, 2); // lap-1 pileup repairs
     stop(f, "s1", G2, 1, 2);
-    for (const g of [G, G2, G3, G4]) appendPitEvent(f, { v: 2, t: "regress", uid: "s1", guid: g, from: g === G3 || g === G4 ? 0 : 1, to: 0 });
-    stop(f, "s1", G, 1, 20); // the real race's only stop
+    const restartAt = "2026-08-28T18:36:00Z";
+    for (const g of [G, G2, G3, G4]) {
+      appendPitEvent(f, { v: 2, t: "regress", uid: "s1", guid: g, at: restartAt, from: g === G3 || g === G4 ? 0 : 1, to: 0 });
+    }
+    stop(f, "s1", G, 1, 20); // the restarted race's only stop
     const d = loadPitStops(f);
     expect(d.get(G)).toMatchObject({ stops: [20], totalPits: 1 });
     expect(d.get(G2)).toMatchObject({ stops: [], totalPits: 0 });
+    // Watched through the restart with nothing to report: still on the list,
+    // as a recorded zero rather than an absence the heuristic would fill.
+    expect(d.get(G3)).toMatchObject({ stops: [], totalPits: 0 });
+    // A double-header run back to back in ONE session (Most, 2026-08-28):
+    // the first race's result file, dated at its own start, still finds the
+    // first running.
+    const first = loadPitStops(f, { aroundIso: "2026-08-28T18:05:00Z" });
+    expect(first.get(G)).toMatchObject({ stops: [2], totalPits: 1 });
+    expect(first.get(G2)).toMatchObject({ stops: [2], totalPits: 1 });
+    expect(loadPitStops(f, { aroundIso: "2026-08-28T18:37:00Z" }).get(G).stops).toEqual([20]);
+  });
+
+  it("a restart burst with nothing after it opens no empty running", () => {
+    const f = join(dir, "a.jsonl");
+    session(f, "s1");
+    for (const g of [G, G2, G3]) seed(f, "s1", g);
+    stop(f, "s1", G, 1, 9);
+    for (const g of [G, G2, G3]) appendPitEvent(f, { v: 2, t: "regress", uid: "s1", guid: g, from: 1, to: 0 });
+    // Recorder stopped right there: the only running on file is the first.
+    expect(loadPitStops(f).get(G)).toMatchObject({ stops: [9], totalPits: 1 });
   });
 
   it("a backend restart mid-race (counters continue): the chunks merge", () => {

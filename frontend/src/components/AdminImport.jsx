@@ -263,6 +263,38 @@ export default function AdminImport({ onCommitted }) {
   // The picked qualifying session, spelled out where the upload used to be.
   const pickedQuali = (remoteQuali.data?.results || []).find((q) => q.id === qualiRemoteId) || null;
 
+  // What the pit-stop recording did for this file, in one line. "used" is
+  // the only good answer: every other one means the tyre strategies below
+  // are ESTIMATED from sector times, which is exactly the state the league
+  // kept catching after the fact. Saying so here, before the save, is the
+  // point.
+  function pitRecordingNote(rec) {
+    if (!rec) return null;
+    if (rec.status === "used") {
+      return {
+        kind: "success",
+        text: `Pit stops come from the live recording: ${rec.drivers} drivers, ${rec.stops} stops (${rec.file}).`,
+      };
+    }
+    if (rec.status === "mismatch") {
+      return {
+        kind: "warn",
+        text: `A live pit recording exists for this day and track (${rec.file}) but only ${rec.known} of its ${rec.recorded} drivers are in this file, so it was not used. Pit stops are estimated from sector times.`,
+      };
+    }
+    if (rec.status === "empty" || rec.status === "unreadable") {
+      return {
+        kind: "warn",
+        text: `The live pit recording for this session could not be read${rec.file ? ` (${rec.file})` : ""}. Pit stops are estimated from sector times.`,
+      };
+    }
+    return {
+      kind: "warn",
+      text: "No live pit recording for this session on this server. Pit stops are estimated from sector times; check the tyre strategies before you save.",
+    };
+  }
+  const pitNote = pitRecordingNote(parsed?.pitRecording);
+
   // Shared: turn a parsed AC result (from upload or server) into the review form.
   function applyParsed(res) {
     setParsed(res);
@@ -839,6 +871,7 @@ export default function AdminImport({ onCommitted }) {
 
       {parsed && (
         <div className="space-y-4">
+          {pitNote && <Notice kind={pitNote.kind}>{pitNote.text}</Notice>}
           <div className="card p-5">
             <CardHead
               eyebrow="Step 3"

@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 import { extractTelemetry, countCarContacts, CONTACT_DEFAULTS } from "./telemetryExtractor.js";
 import { findPitFile, loadPitStops, pitTrackKey } from "../lib/pitEventsStore.js";
+import { basename } from "node:path";
 
 // Re-exported for callers/tests that historically imported them from here.
 export { countCarContacts, CONTACT_DEFAULTS };
@@ -70,10 +71,18 @@ export function parseAcRaceJson(json, drivers) {
   // of a shared file. The lookup can never fail the import — worst case is
   // exactly the old behaviour (the sector heuristic).
   let pitStopsByGuid = null;
+  // What the admin gets told about it. The lookup was silent for a month, and
+  // silence is indistinguishable from "the recorder was never running on the
+  // machine that imports" — which is what a whole evening of estimated stops
+  // looked like from the outside. Now the review screen says which it was.
+  let pitRecording = { status: "none" };
   try {
     const dayIso = json.Date ? String(json.Date).slice(0, 10) : null;
     const file = findPitFile({ dayIso, trackKey: pitTrackKey(json.TrackConfig, json.TrackName) });
-    if (file) pitStopsByGuid = loadPitStops(file, { aroundIso: json.Date ? String(json.Date) : null });
+    if (file) {
+      pitStopsByGuid = loadPitStops(file, { aroundIso: json.Date ? String(json.Date) : null });
+      pitRecording = { status: pitStopsByGuid ? "used" : "empty", file: basename(file) };
+    }
     if (pitStopsByGuid) {
       // The identity is only day+track, and two servers can run the same
       // circuit on the same evening (multi-series). Before trusting a
@@ -99,6 +108,7 @@ export function parseAcRaceJson(json, drivers) {
         console.warn(
           `[import] ignoring pit recording ${file}: only ${known}/${pitStopsByGuid.size} recorded drivers appear in this result file`
         );
+        pitRecording = { status: "mismatch", file: basename(file), known, recorded: pitStopsByGuid.size };
         pitStopsByGuid = null;
       } else {
         // Re-key aliases onto the primary guid the extractor works with.
@@ -113,6 +123,12 @@ export function parseAcRaceJson(json, drivers) {
     }
   } catch {
     /* recording unreadable — heuristic it is */
+    pitRecording = { status: "unreadable" };
+  }
+  if (pitStopsByGuid) {
+    let stops = 0;
+    for (const rec of pitStopsByGuid.values()) stops += Number(rec.totalPits) || 0;
+    pitRecording = { ...pitRecording, drivers: pitStopsByGuid.size, stops };
   }
 
   // Full per-driver telemetry keyed by Steam GUID, attached to each entry below
@@ -223,6 +239,7 @@ export function parseAcRaceJson(json, drivers) {
     date: json.Date ? new Date(json.Date) : null,
     eventName: json.EventName ?? null,
     entries,
+    pitRecording,
   };
 }
 

@@ -350,7 +350,12 @@ export default function RaceSignupCard({
                     logoUrl={r.team.logoUrl}
                     size={18}
                   />
-                  <span className={`truncate ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}>
+                  {/* The full name is a hover away: the grid is three columns
+                      on a laptop and longer names get cut. */}
+                  <span
+                    className={`truncate ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}
+                    title={r.name}
+                  >
                     {r.name}
                   </span>
                   <SubMark sub={r.sub} />

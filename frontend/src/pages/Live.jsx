@@ -812,57 +812,84 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
   // line of its own underneath, where the three split boxes have the room.
   if (narrow) {
     const t = e.tyre ? tyreCompound(e.tyre) : null;
+    const name = match?.nabsName || e.name;
+    const color = match?.teamColor || "var(--c-border)";
+    // What the third line says about the lap in progress. In the pits or on
+    // an out lap there is no lap to time, so the state itself is the line —
+    // as a pill, not a lone word floating in the space the clock would take.
+    const lapLine = !e.onTrack ? (
+      <span className="pill bg-surface2 font-mono text-light">Left</span>
+    ) : e.inPits ? (
+      <span className="pill bg-amber-500/15 text-warn">In pit</span>
+    ) : e.outLap ? (
+      <span className="pill bg-surface2 text-medium">Out lap</span>
+    ) : (
+      <>
+        <span className="w-[58px] shrink-0 font-mono text-sm font-bold tabular-nums text-dark">
+          <CurrentLap
+            lastLapAt={e.lastLapAt}
+            inPits={false}
+            startedAt={isRace && !e.lapCount ? raceStartedAt : null}
+          />
+        </span>
+        {isRace ? (
+          <span className="truncate font-mono text-xs tabular-nums text-light">
+            last {formatLap(e.lastLapMs)} · lap {e.lapCount ?? 0}
+          </span>
+        ) : (
+          <BuildingSectors sectors={e.currentSectors} lastLapAt={e.lastLapAt} compact={false} justify="start" />
+        )}
+      </>
+    );
     return (
       <tr
         data-flip-id={e.guid}
         style={{ "--i": Math.min(index, 16) }}
         className={`border-b border-border last:border-0 transition ${e.onTrack ? "" : "opacity-55"}`}
       >
-        <td className="w-12 py-3 pl-3 pr-1 text-center align-top">{posChip}</td>
-        <td colSpan={2} className="py-2.5 pr-3 align-top">
-          <div className="flex items-start gap-2">
+        {/* The position sits on the name's line: the cell is top-aligned and
+            padded so the 32px chip is centred on the 24px first line. */}
+        <td className="w-11 pb-3 pl-3 pr-0 pt-2 text-center align-top">{posChip}</td>
+        <td colSpan={2} className="py-3 pl-1.5 pr-3 align-top">
+          {/* The team colour runs the full height of the row rather than the
+              two lines of the name: on a three-line row the short bar read as
+              a stub, and the long one is what makes the row one block. */}
+          <div className="flex gap-2.5">
+            <span className="w-1.5 shrink-0 self-stretch rounded-full" style={{ backgroundColor: color }} />
             <div className="min-w-0 flex-1">
-              <DriverCell e={e} match={match} />
-            </div>
-            <div className="flex shrink-0 flex-col items-end gap-0.5 pt-0.5">
-              <span className="font-mono text-base font-bold tabular-nums text-dark">{formatLap(e.bestLapMs)}</span>
-              <span className="flex items-center gap-1.5 text-xs">
-                {behind}
-                {t && (
-                  <span className="inline-grid place-items-center" title={t.name}>
-                    <TyreBadge t={t} size={18} />
+              {/* Line one: who, and their best lap. Baseline-aligned, so the
+                  name and the number share a floor. */}
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate font-display text-base font-bold uppercase tracking-tight text-dark" title={e.name}>
+                    {name}
                   </span>
-                )}
-              </span>
-            </div>
-          </div>
-          {/* Indented to the name: the team-colour bar is 6px and the gap
-              after it 8, so the clock starts where the letters do. */}
-          <div className="mt-1.5 flex min-h-[22px] items-center gap-2.5 pl-[14px]">
-            {e.onTrack ? (
-              <>
-                <span className="flex h-6 w-14 shrink-0 items-center text-sm">
-                  <CurrentLap
-                    lastLapAt={e.lastLapAt}
-                    inPits={e.inPits}
-                    outLap={e.outLap}
-                    startedAt={isRace && !e.lapCount ? raceStartedAt : null}
-                  />
+                  {match?.country && <Flag code={match.country} title={match.teamName} w={15} h={11} className="shrink-0" />}
+                  {match?.role === "safety" && <SafetyCarBadge compact />}
                 </span>
-                {isRace ? (
-                  <span className="truncate font-mono text-xs tabular-nums text-light">
-                    last {formatLap(e.lastLapMs)} · {e.lapCount ?? 0} laps
-                  </span>
-                ) : (
-                  !e.inPits &&
-                  !e.outLap && (
-                    <BuildingSectors sectors={e.currentSectors} lastLapAt={e.lastLapAt} justify="start" />
-                  )
-                )}
-              </>
-            ) : (
-              <span className="pill bg-surface2 font-mono text-light">Left</span>
-            )}
+                <span className="shrink-0 font-mono text-base font-bold tabular-nums text-dark">{formatLap(e.bestLapMs)}</span>
+              </div>
+              {/* Line two: the team, and under the best lap what it is worth —
+                  the gap in a race, the delta to their own best otherwise —
+                  with the compound beside it. */}
+              <div className="mt-0.5 flex items-center justify-between gap-3">
+                <span className="truncate text-xs text-light">{match?.teamName || carLabel(e.carName) || NO_VALUE}</span>
+                <span className="flex shrink-0 items-center gap-1.5 text-xs">
+                  {behind}
+                  {t ? (
+                    <span className="inline-grid place-items-center" title={t.name}>
+                      <TyreBadge t={t} size={18} />
+                    </span>
+                  ) : (
+                    <span className="inline-block h-[18px] w-[18px]" aria-hidden />
+                  )}
+                </span>
+              </div>
+              {/* Line three: the lap in progress. The same 8px above it as
+                  between the first two lines and the row's bottom padding, so
+                  the three lines read as one block with even spacing. */}
+              <div className="mt-2 flex h-6 items-center gap-2.5">{lapLine}</div>
+            </div>
           </div>
         </td>
       </tr>

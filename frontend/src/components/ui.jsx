@@ -715,6 +715,7 @@ export function Notice({ kind = "success", children }) {
   const styles = {
     success: "border-emerald-500/30 bg-emerald-500/10 text-ok",
     info: "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-300",
+    warn: "border-amber-500/30 bg-amber-500/10 text-warn",
     error: "border-red-500/30 bg-red-500/10 text-bad",
   };
   if (!children) return null;

@@ -128,7 +128,7 @@ export function loadPitStops(filePath, { aroundIso } = {}) {
     // A pending regression burst is judged the moment something ELSE arrives —
     // BEFORE that something is processed. Judging after it once wiped the
     // first real stop of the restarted race along with the aborted running.
-    if (ev.t !== "regress" && g.pendingRegress.length) resolveRegressBurst(g);
+    if (ev.t !== "regress" && g.pendingRegress.length) g = resolveRegressBurst(g, groups, groupByUid);
     if (!g.byGuid.has(ev.guid)) {
       g.byGuid.set(ev.guid, { stops: [], tyres: [], seedPits: null, maxPits: 0, epoch: 0, name: ev.name || null });
     }
@@ -164,7 +164,15 @@ export function loadPitStops(filePath, { aroundIso } = {}) {
       g.pendingRegress.push({ guid: ev.guid, at: ev.at || null, to: Number(ev.to) || 0 });
     }
   }
-  for (const g of groups) if (g.pendingRegress.length) resolveRegressBurst(g);
+  // A burst with nothing after it is a restart that never got going (or the
+  // recorder went down as the grid re-formed): nothing was recorded of the
+  // new running, so there is no running to open. Judged as a reconnect at
+  // most, never as a restart that would leave an empty chain at the end of
+  // the file for the caller to pick by default.
+  for (const g of groups) {
+    if (g.pendingRegress.length >= RESTART_REGRESS_MIN) g.pendingRegress = [];
+    if (g.pendingRegress.length) resolveRegressBurst(g, groups, groupByUid);
+  }
   if (!groups.length) return null;
 
   // Chain the groups: continuation merges into the chain, a fresh running
@@ -256,31 +264,48 @@ export function loadPitStops(filePath, { aroundIso } = {}) {
 }
 
 // A burst of counter regressions: three or more drivers at once is the admin
-// restarting the race in place — the recording so far describes an aborted
-// running, so it is wiped and every affected driver re-anchors at their new
-// counter. One or two is a reconnect: keep history, bump their epoch so the
-// restarted counter cannot collide with recorded stops.
-function resolveRegressBurst(g) {
+// restarting the race in place. The running so far is CLOSED, not wiped: it
+// becomes a group of its own, and a fresh group timestamped at the restart
+// takes over from here. The chain step below then sees the reset counters
+// and starts a second chain, which the caller's session date picks between.
+//
+// It used to wipe. That was written for an aborted start (lap-one pile-up,
+// grid re-formed), where the first running IS worthless — and it destroyed
+// the first race of a double-header run back to back in one session: both
+// twenty laps long, both with results to import, and the recording of the
+// first one gone the moment the second was restarted in place. Most,
+// 2026-08-28. Kept as a chain, an aborted start costs nothing: its result
+// file never exists, so nothing ever asks for it.
+//
+// One or two regressions is a reconnect: keep history, bump their epoch so
+// the restarted counter cannot collide with recorded stops.
+//
+// Returns the group the next event belongs to.
+function resolveRegressBurst(g, groups, groupByUid) {
   const burst = g.pendingRegress;
   g.pendingRegress = [];
   if (burst.length >= RESTART_REGRESS_MIN) {
-    for (const d of g.byGuid.values()) {
-      d.stops = [];
-      d.tyres = [];
-      d.maxPits = 0;
-      d.epoch = 0;
-      d.seedPits = 0;
+    const fresh = { uid: g.uid, sessionKey: g.sessionKey, at: burst[0].at || g.at, byGuid: new Map(), pendingRegress: [] };
+    // Everyone the old running knew starts the new one at zero — the ones in
+    // the burst at their reported counter (zero, in practice), the rest at
+    // the zero they were already on (a counter only regresses from above
+    // zero, so a driver missing from the burst had nothing to lose). Watched
+    // from the restart on, so a driver who makes no stop in the new running
+    // is recorded as exactly that, which is what silences the heuristic.
+    const to = new Map(burst.map((r) => [r.guid, r.to]));
+    for (const [guid, d] of g.byGuid) {
+      const pits = to.get(guid) ?? 0;
+      fresh.byGuid.set(guid, { stops: [], tyres: [], seedPits: pits, maxPits: pits, epoch: 0, name: d.name || null });
     }
-    for (const r of burst) {
-      const d = g.byGuid.get(r.guid);
-      if (d) d.maxPits = d.epoch + r.to;
-    }
-  } else {
-    for (const r of burst) {
-      const d = g.byGuid.get(r.guid);
-      if (!d) continue;
-      d.epoch = d.maxPits;
-      d.maxPits = d.epoch + r.to;
-    }
+    groups.push(fresh);
+    groupByUid.set(g.uid, fresh);
+    return fresh;
   }
+  for (const r of burst) {
+    const d = g.byGuid.get(r.guid);
+    if (!d) continue;
+    d.epoch = d.maxPits;
+    d.maxPits = d.epoch + r.to;
+  }
+  return g;
 }
