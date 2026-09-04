@@ -996,7 +996,10 @@ function createRelay(server) {
       guid: publicDriverId(guid),
       name: ci.DriverName || "—",
       initials: ci.DriverInitials || "",
-      raceNumber: ci.RaceNumber ?? null,
+      // AC reports 0 for a car that was never given a number. That is "no
+      // number", not "number zero", and it was printing "#0" beside the name
+      // of every guest and reserve on the board.
+      raceNumber: ci.RaceNumber > 0 ? ci.RaceNumber : null,
       carModel: ci.CarModel || "",
       carName: ci.CarName || car?.CarName || "",
       carSkin: ci.CarSkin || "",

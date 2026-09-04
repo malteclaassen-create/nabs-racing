@@ -399,7 +399,11 @@ function StylisedTrackMap({ track, cars, matchFn, focusGuid, zoom, onFocus, clas
       onClick={() => onFocus(null)}
     >
       <g ref={camRef}>
-        {/* the outline itself — quiet, so the cars read as the foreground */}
+        {/* the outline itself — quiet, so the cars read as the foreground.
+            Quiet is not invisible, though: drawn in the border colour it was a
+            pale grey line on a white card in the light theme, and the cars
+            looked scattered over nothing. The faint text tone is a mid grey in
+            both themes, so the circuit reads on either ground. */}
         <path
           ref={pathRef}
           d={circuit.path}
@@ -408,9 +412,9 @@ function StylisedTrackMap({ track, cars, matchFn, focusGuid, zoom, onFocus, clas
           strokeWidth={r * 0.5}
           strokeLinejoin="round"
           strokeLinecap="round"
-          className="text-border"
+          className="text-faint"
           vectorEffect="non-scaling-stroke"
-          opacity="0.6"
+          opacity="0.55"
         />
         {dots.map((d) => (
           <CarDot

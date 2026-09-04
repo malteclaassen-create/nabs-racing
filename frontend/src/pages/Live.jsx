@@ -204,7 +204,11 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
               // was breaking in half over it, while the track temperature is
               // three characters wide. Tops aligned, so every stat label sits
               // on one line across the card.
-              "sm:pb-6 sm:pt-[28px] lg:items-start lg:grid-cols-[minmax(0,3fr)_minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_auto]"
+              // The leader's column is the second widest: it holds a NAME,
+              // and at 1.1fr it was cutting "THEFAKETB" to "THEFA…" on a
+              // 1440px screen. The track gave up the difference; it can wrap
+              // (see below), a name cannot.
+              "sm:pb-6 sm:pt-[28px] lg:items-start lg:grid-cols-[minmax(0,2.6fr)_minmax(0,1.6fr)_minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_auto]"
             : // Folded, the four stat columns are gone — and the template has to
               // go with them, or their 1fr each is still reserved and the track
               // name is squeezed into a third of a card that is mostly empty.
@@ -234,7 +238,10 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
             {open && session.serverName && (
               <>
                 <span className="hidden h-3 w-px shrink-0 bg-border sm:inline-block" />
-                <span className="hidden truncate font-sans text-xs normal-case tracking-normal text-light sm:inline">
+                <span
+                  className="hidden truncate font-sans text-xs normal-case tracking-normal text-light sm:inline"
+                  title={session.serverName}
+                >
                   {session.serverName}
                 </span>
               </>
@@ -242,12 +249,14 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
           </div>
           <div className={`flex min-w-0 items-center gap-2.5 ${open ? "mt-1.5 sm:mt-2" : ""}`}>
             {code && <Flag code={code} title={session.country} w={26} h={19} />}
-            {/* truncate rather than wrap: two lines of track name is what made
-                the left half look stacked up. The full name is a hover away and
-                sits in the page title regardless. */}
+            {/* Two lines at most, and only when the name needs them. It used to
+                truncate, from the days when the server name was a third line
+                of its own and the left half looked stacked up; with that gone
+                a second line costs 22px, while "NABS AUTODROM MOST (N…" cost
+                the one fact the card is there to state. */}
             <span
               title={session.trackName}
-              className="truncate font-display text-lg font-extrabold uppercase tracking-tight text-dark"
+              className="line-clamp-2 font-display text-lg font-extrabold uppercase leading-tight tracking-tight text-dark"
             >
               {session.trackName}
             </span>
@@ -276,8 +285,12 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
                   clock; practice and qualifying are untouched. */}
               {isRace ? (
                 <Stat label="Leader">
+                  {/* One size down from the numbers beside it on a wide screen:
+                      a fifteen-letter name at 2xl needs more than its column
+                      has, and a name is the one stat here that cannot be
+                      shortened without losing who it is. */}
                   <span
-                    className="block truncate font-display text-xl font-bold uppercase text-dark sm:text-2xl"
+                    className="block truncate font-display text-xl font-bold uppercase text-dark sm:text-2xl lg:text-xl"
                     title={session.leaderName || undefined}
                   >
                     {session.leaderName || NO_VALUE}
@@ -511,9 +524,13 @@ function Sector({ s, compact = false, runningMs = null }) {
   const rolled = useRolledMs(s ? s.ms : null);
 
   if (runningMs != null) {
+    // Dashed, because it is not a result yet; but in the ordinary text tone
+    // rather than the faint one. This is the number that is moving, the one
+    // thing on the row that is happening right now, and at the faint tone it
+    // was the hardest thing on the row to read.
     return (
       <span
-        className={`${base} sector-live border-dashed border-light/40 text-light`}
+        className={`${base} sector-live border-dashed border-light/60 text-medium`}
         title="This sector is still being driven"
       >
         {formatRunningSector(runningMs)}
@@ -587,7 +604,10 @@ const BADGE_BOX = "w-[42px] justify-center";
 // board a driver's sectors SHRANK the moment they went out and grew again when
 // they parked — the same three numbers changing size depending on what the car
 // was doing, which is the one thing a column of times must never do.
-function BuildingSectors({ sectors, lastLapAt, outLap = false, compact = true }) {
+// `justify` is which edge the three boxes hang from: the end of a table cell
+// (default) or the start of a line under the driver's name on a phone.
+function BuildingSectors({ sectors, lastLapAt, outLap = false, compact = true, justify = "end" }) {
+  const side = justify === "start" ? "justify-start" : "justify-end";
   // The clock runs whenever there is a lap to measure: either to count a sector
   // or to expire the hold below.
   const now = useNow(lastLapAt != null && !outLap);
@@ -621,7 +641,7 @@ function BuildingSectors({ sectors, lastLapAt, outLap = false, compact = true })
   // is exactly as tall as it will be a moment later when the first split lands.
   if (!hasSplit && !running) {
     return (
-      <div aria-hidden className={`flex justify-end gap-1 invisible ${compact ? "mt-1" : ""}`}>
+      <div aria-hidden className={`flex ${side} gap-1 invisible ${compact ? "mt-1" : ""}`}>
         {[0, 1, 2].map((i) => (
           <Sector key={i} s={null} compact={compact} />
         ))}
@@ -642,7 +662,7 @@ function BuildingSectors({ sectors, lastLapAt, outLap = false, compact = true })
   }
 
   return (
-    <div className={`flex justify-end gap-1 ${compact ? "mt-1" : ""}`}>
+    <div className={`flex ${side} gap-1 ${compact ? "mt-1" : ""}`}>
       {(shown || [null, null, null]).map((s, i) => (
         <Sector key={i} s={s} compact={compact} runningMs={i === nextIdx ? runningMs : null} />
       ))}
@@ -743,7 +763,7 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
           {/* Right against the name rather than out at the edge of the block:
               the block has a width floor (below), so parked at the end of it a
               short name and its number sat a hundred pixels apart. */}
-          {e.raceNumber != null && (
+          {e.raceNumber > 0 && (
             <span className="hidden shrink-0 font-mono text-xs font-bold text-faint xl:inline">
               #{e.raceNumber}
             </span>
@@ -759,8 +779,96 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
 
 // A row in the "On Track Now" table — live current lap, and either the delta to
 // the driver's own best (practice, qualifying) or the gap to the leader (race).
-function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null }) {
+function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null, narrow = false }) {
   const deltaCls = e.deltaSelfMs == null ? "text-light" : e.deltaSelfMs < 0 ? "text-ok" : "text-warn";
+  const posChip = (
+    <span
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-display font-black tabular-nums ${
+        e.isSafetyCar ? "bg-amber-500/15 text-[11px] text-warn" : "text-base text-medium"
+      }`}
+    >
+      {e.isSafetyCar ? "SC" : e.position}
+    </span>
+  );
+  const behind = isRace ? (
+    <span
+      className={`font-mono tabular-nums ${e.lapsDown > 0 ? "text-light" : "text-medium"}`}
+      title="Behind the leader"
+    >
+      {e.isSafetyCar ? NO_VALUE : formatRaceGap(e.gapToLeaderMs, e.lapsDown)}
+    </span>
+  ) : (
+    <span className={`font-mono tabular-nums ${deltaCls}`} title="Against this driver's own best lap">
+      {formatDelta(e.deltaSelfMs)}
+    </span>
+  );
+
+  // A phone gets a different row, not a narrower table. The table is 520px
+  // wide at its narrowest and a phone is 340: the lap clock, the gap, the best
+  // lap and the tyre all sat off the right edge behind a sideways scroll that
+  // nothing announced, so "Driving now" showed a position and a name and
+  // nothing else. Here every fact the row has is on screen: best lap and gap
+  // (or delta) stacked at the right of the name, and the lap in progress on a
+  // line of its own underneath, where the three split boxes have the room.
+  if (narrow) {
+    const t = e.tyre ? tyreCompound(e.tyre) : null;
+    return (
+      <tr
+        data-flip-id={e.guid}
+        style={{ "--i": Math.min(index, 16) }}
+        className={`border-b border-border last:border-0 transition ${e.onTrack ? "" : "opacity-55"}`}
+      >
+        <td className="w-12 py-3 pl-3 pr-1 text-center align-top">{posChip}</td>
+        <td colSpan={2} className="py-2.5 pr-3 align-top">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <DriverCell e={e} match={match} />
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-0.5 pt-0.5">
+              <span className="font-mono text-base font-bold tabular-nums text-dark">{formatLap(e.bestLapMs)}</span>
+              <span className="flex items-center gap-1.5 text-xs">
+                {behind}
+                {t && (
+                  <span className="inline-grid place-items-center" title={t.name}>
+                    <TyreBadge t={t} size={18} />
+                  </span>
+                )}
+              </span>
+            </div>
+          </div>
+          {/* Indented to the name: the team-colour bar is 6px and the gap
+              after it 8, so the clock starts where the letters do. */}
+          <div className="mt-1.5 flex min-h-[22px] items-center gap-2.5 pl-[14px]">
+            {e.onTrack ? (
+              <>
+                <span className="flex h-6 w-14 shrink-0 items-center text-sm">
+                  <CurrentLap
+                    lastLapAt={e.lastLapAt}
+                    inPits={e.inPits}
+                    outLap={e.outLap}
+                    startedAt={isRace && !e.lapCount ? raceStartedAt : null}
+                  />
+                </span>
+                {isRace ? (
+                  <span className="truncate font-mono text-xs tabular-nums text-light">
+                    last {formatLap(e.lastLapMs)} · {e.lapCount ?? 0} laps
+                  </span>
+                ) : (
+                  !e.inPits &&
+                  !e.outLap && (
+                    <BuildingSectors sectors={e.currentSectors} lastLapAt={e.lastLapAt} justify="start" />
+                  )
+                )}
+              </>
+            ) : (
+              <span className="pill bg-surface2 font-mono text-light">Left</span>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
   return (
     <tr
       data-flip-id={e.guid}
@@ -773,13 +881,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
         {/* The safety car is on the road but not in the race, so it carries no
             position — the board ranks it last precisely so it doesn't take a
             number off a driver. */}
-        <span
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-display font-black tabular-nums ${
-            e.isSafetyCar ? "bg-amber-500/15 text-[11px] text-warn" : "text-base text-medium"
-          }`}
-        >
-          {e.isSafetyCar ? "SC" : e.position}
-        </span>
+        {posChip}
       </td>
       {/* Full width on a phone only. There the badges ride beside the name and
           this column has to be the one that gives, or a PIT badge appearing
@@ -795,7 +897,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
           sat pinned to the top with the reserved split line as empty space
           under it, which read as a mistake. Centred, it sits where the eye
           expects it and the row still never changes height. */}
-      <td className="w-[168px] py-3 pr-4 text-right align-middle text-base">
+      <td className="w-[184px] py-3 pr-4 text-right align-middle text-base">
         <div className={`flex flex-col justify-center ${isRace ? "" : "min-h-[54px]"}`}>
           <span className="flex h-6 items-center justify-end">
             {e.onTrack ? (
@@ -813,23 +915,16 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null 
               while there is a lap to build. In the pits, on an out lap or gone
               to the garage there is nothing to put in it, and the box above is
               centred into the space instead of leaving it blank underneath. */}
+          {/* Full-size boxes, not the compact ones: the lap being driven is
+              the most interesting number on a practice board, and at 10px in
+              the faint tone it was the least legible thing on the row. The
+              column grew 16px to make room for them. */}
           {!isRace && e.onTrack && !e.inPits && !e.outLap && (
-            <BuildingSectors sectors={e.currentSectors} lastLapAt={e.lastLapAt} />
+            <BuildingSectors sectors={e.currentSectors} lastLapAt={e.lastLapAt} compact={false} />
           )}
         </div>
       </td>
-      <td className="hidden py-3 pr-4 text-right sm:table-cell">
-        {isRace ? (
-          <span
-            className={`font-mono text-sm tabular-nums ${e.lapsDown > 0 ? "text-light" : "text-medium"}`}
-            title="Behind the leader"
-          >
-            {e.isSafetyCar ? NO_VALUE : formatRaceGap(e.gapToLeaderMs, e.lapsDown)}
-          </span>
-        ) : (
-          <span className={`font-mono text-sm tabular-nums ${deltaCls}`}>{formatDelta(e.deltaSelfMs)}</span>
-        )}
-      </td>
+      <td className="hidden py-3 pr-4 text-right text-sm sm:table-cell">{behind}</td>
       <td className="hidden py-3 pr-4 text-right md:table-cell">
         <span className="font-mono text-sm tabular-nums text-medium">{formatLap(e.lastLapMs)}</span>
       </td>
@@ -874,7 +969,7 @@ const ontrackCols = (isRace) => [
   // reserved whether or not a driver is in a lap right now: this column is the
   // only one whose content is two rows deep, and sized to the clock alone the
   // splits were the thing that had to squeeze.
-  { label: "Current", cls: "w-[168px] py-3 pr-4 text-right" },
+  { label: "Current", cls: "w-[184px] py-3 pr-4 text-right" },
   { label: isRace ? "Gap" : "Δ PB", cls: "hidden py-3 pr-4 text-right sm:table-cell" },
   { label: "Last", cls: "hidden py-3 pr-4 text-right md:table-cell" },
   { label: "Best", cls: "py-3 pr-4 text-right" },
@@ -891,6 +986,14 @@ const ontrackCols = (isRace) => [
   // Last column: a compound badge is a marker, not a number to compare down a
   // list, and in the middle of the row it split the times into two groups.
   { label: "Tyre", cls: "hidden py-3 pr-5 text-center sm:table-cell" },
+];
+
+// The phone header: the stacked row spans the last two cells, so the header
+// only has to name the two edges of it.
+const ontrackColsNarrow = [
+  { label: "Pos", cls: "w-12 py-3 pl-3 pr-1 text-center" },
+  { label: "Driver", cls: "py-3 pl-1" },
+  { label: "Best", cls: "py-3 pr-3 text-right" },
 ];
 
 /* ===== Session Best Times: the columns ==================================== */
@@ -1883,7 +1986,10 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
 // next door stays in proportion. Empty state (nobody out) keeps the panel
 // instead of vanishing.
 function DrivingNowSection({ onTrack, match, flip = false, isRace = false, raceStartedAt = null, className = "" }) {
-  const cols = ontrackCols(isRace);
+  // Phones get the stacked row (see OnTrackRow) under a three-cell header;
+  // everything wider gets the table.
+  const narrow = useIsNarrow();
+  const cols = narrow ? ontrackColsNarrow : ontrackCols(isRace);
   // During a RACE an overtake FLIP-glides the two rows into their new slots
   // (green flash = gained, red = lost) instead of the order snapping — the
   // same useFlipList the championship projection uses, with the same lite-
@@ -1913,7 +2019,7 @@ function DrivingNowSection({ onTrack, match, flip = false, isRace = false, raceS
         // the height this follows no longer moves.
         <div className="min-h-0 flex-1 lg:relative">
           <div className="scrollbar-slim max-h-[437px] overflow-auto lg:absolute lg:inset-0 lg:max-h-none">
-            <table className="w-full min-w-[520px]">
+            <table className={`w-full ${narrow ? "" : "min-w-[536px]"}`}>
             <thead>
               <tr className="text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
                 {cols.map((c, i) => (
@@ -1931,7 +2037,15 @@ function DrivingNowSection({ onTrack, match, flip = false, isRace = false, raceS
                 entrance fade over the whole field mid-session. */}
             <tbody ref={bodyRef} className={rowsIn}>
               {onTrack.map((e, i) => (
-                <OnTrackRow key={e.guid} e={e} match={match(e.name)} index={i} isRace={isRace} raceStartedAt={raceStartedAt} />
+                <OnTrackRow
+                  key={e.guid}
+                  e={e}
+                  match={match(e.name)}
+                  index={i}
+                  isRace={isRace}
+                  raceStartedAt={raceStartedAt}
+                  narrow={narrow}
+                />
               ))}
             </tbody>
             </table>
@@ -2037,6 +2151,77 @@ function PitLaneSection({ entries, match, className = "" }) {
            because somebody came in. */
         <div className="flex h-[174px] items-center justify-center px-4 py-4 text-center">
           <p className="font-mono text-[11px] uppercase tracking-wider text-light">Pit lane is empty</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// Who owns each sector of the session: the fastest sector anybody has driven,
+// on any lap. Reads `bestSectors` (the upstream's per-driver best splits,
+// whatever lap each was set on) and falls back to the best lap's splits only
+// for a board that does not carry them. Never the upstream's IsBest flag: that
+// rides on the best lap, and can leave a whole field with no purple at all.
+// Shared by the panel on this page and the one on the fullscreen board.
+function bestSectorRows(entries) {
+  return [0, 1, 2].map((i) => {
+    let best = null;
+    for (const e of entries || []) {
+      const ms = e.bestSectors?.[i]?.ms ?? e.sectors?.[i]?.ms;
+      if (ms > 0 && (!best || ms < best.ms)) best = { ms, e };
+    }
+    return best;
+  });
+}
+
+// Under the map in practice and qualifying, where the pit lane alone left the
+// map column visibly shorter than the timing beside it. The three sector
+// holders are what a practice session is about and, until now, the only
+// place they showed was as purple chips somewhere in the long table. Same
+// fixed height as the pit-lane card, for the same reason: nothing beside it
+// moves when the numbers change.
+function BestSectorsSection({ entries, match, className = "" }) {
+  const rows = bestSectorRows(entries);
+  const any = rows.some(Boolean);
+  return (
+    <section className={`reveal card flex-col overflow-hidden ${className}`}>
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Best sectors</span>
+        <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+          {any ? "Fastest of the session" : "No split data"}
+        </span>
+      </div>
+      {any ? (
+        <div className="grid h-[174px] grid-rows-3 divide-y divide-border">
+          {rows.map((r, i) => {
+            const m = r && match ? match(r.e.name) : null;
+            return (
+              <div key={i} className="flex items-center gap-3 px-4 sm:px-5">
+                <span className="w-6 shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                  S{i + 1}
+                </span>
+                <span className="w-[74px] shrink-0 font-mono text-base font-bold tabular-nums text-fl">
+                  {r ? formatSector(r.ms) : NO_VALUE}
+                </span>
+                {r && (
+                  <span
+                    className="h-6 w-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: m?.teamColor || "var(--c-border)" }}
+                  />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+                    {r ? m?.nabsName || r.e.name : NO_VALUE}
+                  </span>
+                  {r && <span className="block truncate text-[11px] text-light">{m?.teamName || carLabel(r.e.carName) || NO_VALUE}</span>}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex h-[174px] items-center justify-center px-4 py-4 text-center">
+          <p className="font-mono text-[11px] uppercase tracking-wider text-light">No sector times yet</p>
         </div>
       )}
     </section>
@@ -2505,14 +2690,7 @@ function TvPanel({ title, right, children, className = "" }) {
 // that does not carry them. Never the upstream's IsBest flag: that rides on the
 // best lap too, and can leave a whole field with no purple at all.
 function TvSectors({ entries, match }) {
-  const rows = [0, 1, 2].map((i) => {
-    let best = null;
-    for (const e of entries || []) {
-      const ms = e.bestSectors?.[i]?.ms ?? e.sectors?.[i]?.ms;
-      if (ms > 0 && (!best || ms < best.ms)) best = { ms, e };
-    }
-    return best;
-  });
+  const rows = bestSectorRows(entries);
   // A server that sends no splits (it happens) gets no panel rather than three
   // empty rows.
   if (!rows.some(Boolean)) return null;
@@ -3428,6 +3606,12 @@ export default function Live() {
                   as dimmed dots on the map above and carry a PIT badge in the
                   timing table, so it was a third copy of the same fact for a
                   screenful of height. */}
+              {/* Practice and qualifying: the sector holders, between the map
+                  and the pit lane. In a race the pit lane is the story and the
+                  column is full without them. */}
+              {session.type !== "Race" && (
+                <BestSectorsSection entries={entries} match={match} className="hidden sm:flex" />
+              )}
               <PitLaneSection entries={entries} match={match} className="hidden flex-1 sm:flex" />
             </div>
             <DrivingNowSection
