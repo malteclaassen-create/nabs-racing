@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
-import { circuitFor } from "../data/circuits.js";
+import { circuitForLive } from "../data/circuits.js";
 
 // Live track map. Two modes:
 //
@@ -344,8 +344,12 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
 // Known, accepted approximation: the stored path's start point and winding
 // direction aren't guaranteed to match the real start/finish or driving
 // direction, so the positions are indicative. Unknown tracks render nothing.
-function StylisedTrackMap({ track, cars, matchFn, focusGuid, zoom, onFocus, className = "" }) {
-  const circuit = circuitFor(track);
+function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFocus, className = "" }) {
+  // The same resolver the card around this map uses to decide there IS an
+  // outline to show. It used to be the plain lookup, which knows "Most" but
+  // not "NABS Autodrom Most (no chicane)" — so the card promised a map and
+  // this drew nothing, every time the real map was missing. (2026-09-04.)
+  const circuit = circuitForLive(track, trackId);
   const pathRef = useRef(null);
   const [len, setLen] = useState(0);
 
@@ -486,7 +490,7 @@ function CockpitReadout({ car, onCarTelemetry }) {
 // caller's `absolute` are the same property and the stylesheet, not the class
 // string, decides which of the two wins. Whatever a caller passes has to keep
 // this element positioned — the controls inside are absolute against it.
-export default function LiveTrackMap({ track, cars, matchFn, map, follow, onCarTelemetry, server = null, className = "", wrapClassName = "" }) {
+export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, server = null, className = "", wrapClassName = "" }) {
   const [focusGuid, setFocusGuid] = useState(null);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
   // The followed car left the server -> drop the focus rather than staring at
@@ -524,6 +528,7 @@ export default function LiveTrackMap({ track, cars, matchFn, map, follow, onCarT
       ) : (
         <StylisedTrackMap
           track={track}
+          trackId={trackId}
           cars={cars}
           matchFn={matchFn}
           focusGuid={focusGuid}

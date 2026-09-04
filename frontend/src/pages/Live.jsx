@@ -1981,6 +1981,7 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
           <>
             <LiveTrackMap
               track={session.trackName || session.track}
+              trackId={session.track}
               cars={cars}
               matchFn={match}
               map={realMap}
@@ -3101,6 +3102,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
               <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card">
                 <LiveTrackMap
                   track={session.trackName || session.track}
+              trackId={session.track}
                   cars={cars}
                   matchFn={match}
                   map={session.map || null}

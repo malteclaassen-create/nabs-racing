@@ -402,27 +402,58 @@ function createRelay(server) {
       }
     }
 
-    // A usable map needs both the image and its calibration; otherwise mark this
-    // track as "no real map" so we don't keep retrying every snapshot.
+    // A usable map needs both the image and its calibration. Without them the
+    // board falls back to the outline — but not for good: the fetch is tried
+    // again later (see mapRetryAt below). It used to be marked "no real map"
+    // once and never asked again, and one slow answer from the server manager
+    // in the seconds after a deploy left the whole evening on the outline,
+    // with the real map one process restart away. (Most, 2026-09-04.)
     if (png && calib && trackMapKey === key) {
       trackMap = { key, calib: { ...calib, ver: shortHash(`${server.key}|${key}`) }, png };
+      mapAttempts = 0;
       console.log(`${tag} track map ready: ${key} (${calib.width}x${calib.height})`);
     } else if (trackMapKey === key) {
       trackMap = { key, calib: null, png: null };
-      console.log(`${tag} no real track map for ${key} (falling back to outline)`);
+      scheduleMapRetry(key);
     }
   }
 
-  // Kick off a (re)fetch when the session's track changes. Fire-and-forget: the
+  // Failed fetches back off: half a minute, then a minute, two, four, and
+  // every ten minutes from there for as long as the track is loaded. A map
+  // that genuinely does not exist costs a request every ten minutes; a map
+  // that was merely slow once is back within the minute.
+  let mapAttempts = 0;
+  let mapRetryAt = 0;
+  function scheduleMapRetry(key) {
+    mapAttempts += 1;
+    const wait = Math.min(10 * 60 * 1000, 30 * 1000 * 2 ** (mapAttempts - 1));
+    mapRetryAt = Date.now() + wait;
+    console.log(`${tag} no real track map for ${key} yet (outline for now, retry in ${Math.round(wait / 1000)}s)`);
+  }
+
+  // Kick off a (re)fetch when the session's track changes, or when an earlier
+  // attempt for this track failed and its retry is due. Fire-and-forget: the
   // board reports map=null until it resolves, then picks it up on the next tick.
   function ensureTrackMap(si) {
     if (!si?.Track) return;
     const key = mapKeyOf(si);
-    if (key === trackMapKey) return; // already loaded / loading this track
-    trackMapKey = key;
-    trackMap = null; // drop the previous track's map while the new one loads
+    if (key === trackMapKey) {
+      // Loaded, loading, or failed-and-waiting. Only the last one gets a
+      // second go, and only when it is due.
+      const failed = trackMap && trackMap.key === key && !trackMap.png;
+      if (!failed || Date.now() < mapRetryAt) return;
+      trackMap = null; // loading again
+    } else {
+      trackMapKey = key;
+      trackMap = null; // drop the previous track's map while the new one loads
+      mapAttempts = 0;
+      mapRetryAt = 0;
+    }
     loadTrackMap(si.Track, si.TrackConfig || "").catch((e) => {
-      if (trackMapKey === key) trackMap = { key, calib: null, png: null };
+      if (trackMapKey === key) {
+        trackMap = { key, calib: null, png: null };
+        scheduleMapRetry(key);
+      }
       console.log(`${tag} track map fetch error:`, e?.message || e);
     });
   }
