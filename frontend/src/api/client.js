@@ -436,6 +436,15 @@ export const api = {
   // page's switch can say which board is worth looking at. `server` is only
   // used to keep the reply about the same series; the list is always all of them.
   liveServers: () => request(`/live/servers${seriesQ()}`),
+  // Provisional results off the live board, for the server on screen.
+  liveResults: (server = null, demo = false) => {
+    const parts = [];
+    const s = seriesQ().replace(/^\?/, "");
+    if (s) parts.push(s);
+    if (server) parts.push(`server=${encodeURIComponent(server)}`);
+    if (demo) parts.push("demo=1");
+    return request(`/live/results${parts.length ? `?${parts.join("&")}` : ""}`);
+  },
   // Live championship projection (only { active: true } while a league race is
   // running). auth:true so an admin's ?simulate demo request is recognised.
   // `server` is the Live page's switch: the projection has to be about the board

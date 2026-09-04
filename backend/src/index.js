@@ -31,7 +31,7 @@ import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { IS_DEPLOYED } from "./lib/deployment.js";
 import searchRoutes from "./routes/search.js";
 import adminRoutes from "./routes/admin.js";
-import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
+import { initLiveTiming, getBoard, getTrackMapPng, getProvisionalResults } from "./services/liveTiming.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
 import { serverKeyForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
 import { recordHit } from "./lib/traffic.js";
@@ -239,6 +239,19 @@ app.get("/api/live/servers", async (req, res) => {
   } catch {
     // A switch that cannot answer should disappear, not break the page.
     res.json({ defaultKey: null, servers: [] });
+  }
+});
+
+// Provisional results of the races this server ran in the last day and a
+// half, straight off the live board (services/provisionalResults.js). The live
+// page polls this and offers the result while the server has long moved on
+// to practice — and before any admin has imported the real one.
+app.get("/api/live/results", async (req, res) => {
+  try {
+    const key = await resolveServerKey(prisma, { series: req.query.series, server: req.query.server });
+    res.json({ results: await getProvisionalResults(key, req) });
+  } catch {
+    res.json({ results: [] });
   }
 });
 

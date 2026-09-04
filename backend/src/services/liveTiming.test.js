@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { __testing } from "./liveTiming.js";
+import { listProvisional, __resetProvisional } from "./provisionalResults.js";
 
 const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset } = __testing;
 
@@ -843,5 +844,72 @@ describe("liveTiming: pit lane and stop timing", () => {
     expect(e.inPits).toBe(false);
     expect(e.pitSince).toBe(null);
     expect(e.stoppedSince).toBe(null);
+  });
+});
+
+// The provisional result: the board's classification kept the moment the
+// race is over (services/provisionalResults.js), so the live page can show
+// it after the server has moved on.
+describe("provisional result", () => {
+  beforeEach(() => {
+    reset();
+    __resetProvisional();
+  });
+
+  // A two-car race: SessionInfo.Laps is the distance the leader has to cover.
+  function race({ leaderLaps, otherLaps, otherInPits = false, sessionType = 3, index = 0 }) {
+    const s = snap({ type: sessionType, guid: "g1", laps: leaderLaps, name: "Alice" });
+    s.SessionInfo.Laps = 20;
+    s.SessionInfo.CurrentSessionIndex = index;
+    s.ConnectedDrivers.Drivers.g2 = {
+      CarInfo: { DriverName: "Bob", CarModel: "f", Tyres: "M", IsSpectator: false },
+      Cars: { f: { NumLaps: otherLaps } },
+      TotalNumLaps: otherLaps,
+      NumPits: 1,
+      IsInPits: otherInPits,
+    };
+    return s;
+  }
+  // The server moving on: a different session in the same event.
+  function practiceAfter() {
+    const s = snap({ type: 1, laps: 0 });
+    s.SessionInfo.CurrentSessionIndex = 1;
+    s.SessionInfo.Name = "Practice";
+    return s;
+  }
+
+  it("is taken once the leader has the distance and the field is home, and finalised when the session moves on", () => {
+    ingest(race({ leaderLaps: 10, otherLaps: 9 }));
+    expect(listProvisional("test")).toEqual([]);
+    // Leader across the line, Bob a lap down and still touring: not yet.
+    ingest(race({ leaderLaps: 20, otherLaps: 18 }));
+    expect(listProvisional("test")).toEqual([]);
+    // Bob completes his last lap (19 of 20, one down): everybody is home.
+    ingest(race({ leaderLaps: 20, otherLaps: 19 }));
+    let list = listProvisional("test");
+    expect(list.length).toBe(1);
+    expect(list[0]).toMatchObject({ final: false, completed: true, laps: 20, raceLaps: 20, drivers: 2 });
+    expect(list[0].entries.map((e) => e.name)).toEqual(["Alice", "Bob"]);
+    // The server goes back to practice: same id, now final.
+    const id = list[0].id;
+    ingest(practiceAfter());
+    list = listProvisional("test");
+    expect(list.length).toBe(1);
+    expect(list[0].id).toBe(id);
+    expect(list[0]).toMatchObject({ final: true, completed: true });
+  });
+
+  it("a race the server left mid-way is kept, marked as not completed", () => {
+    ingest(race({ leaderLaps: 12, otherLaps: 11 }));
+    ingest(practiceAfter());
+    const list = listProvisional("test");
+    expect(list.length).toBe(1);
+    expect(list[0]).toMatchObject({ final: true, completed: false, laps: 12 });
+  });
+
+  it("an aborted start (under two laps) leaves nothing behind", () => {
+    ingest(race({ leaderLaps: 1, otherLaps: 1 }));
+    ingest(practiceAfter());
+    expect(listProvisional("test")).toEqual([]);
   });
 });
