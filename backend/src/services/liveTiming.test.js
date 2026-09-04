@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { __testing } from "./liveTiming.js";
 import { listProvisional, __resetProvisional } from "./provisionalResults.js";
 
-const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset } = __testing;
+const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset, mapKey } = __testing;
 
 // Build a minimal EventType-200 snapshot for one driver, enough to exercise the
 // stint accumulator (session type, laps, current tyre, pit count, in-pits flag).
@@ -911,5 +911,18 @@ describe("provisional result", () => {
     ingest(race({ leaderLaps: 1, otherLaps: 1 }));
     ingest(practiceAfter());
     expect(listProvisional("test")).toEqual([]);
+  });
+});
+
+// The real track map is fetched per track, and the fetch is started by the
+// snapshot that first mentions the track. Any snapshot — not only the one
+// that ends a race, which is where the call once ended up (2026-09-04).
+describe("track map", () => {
+  beforeEach(() => reset());
+
+  it("a snapshot asks for its track's map", () => {
+    expect(mapKey()).toBe(null);
+    ingest(snap({ type: 1, laps: 1 }));
+    expect(mapKey()).toBe("monza|");
   });
 });

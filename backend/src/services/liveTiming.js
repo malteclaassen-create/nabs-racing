@@ -855,6 +855,12 @@ function createRelay(server) {
     // carries none, so what this misses tonight is unknowable tomorrow.
     pitRecorder.onSnapshot(server.key, status, sessionKeyOf(status?.SessionInfo || {}, status?.TrackInfo || {}));
     trackRaceEnd();
+    // (Re)load the real map on a track change. This line belongs to EVERY
+    // snapshot: it once slipped to the end of trackRaceEnd above, behind its
+    // early returns, and the map was only ever asked for after a finished
+    // race — which is how the outline stood in for it all evening on
+    // 2026-09-04. The test "a snapshot asks for its track's map" guards it.
+    ensureTrackMap(status?.SessionInfo || {});
   }
 
   // One save of the race on air as a provisional result, under the id this
@@ -920,7 +926,6 @@ function createRelay(server) {
     if (!settled) return;
     if (now - lastProvisionalAt < PROVISIONAL_RESAVE_MS) return;
     saveProvisionalFor({ ...board, session: { ...board.session, finished: true } }, { final: false, completed: true });
-    ensureTrackMap(status?.SessionInfo || {}); // (re)load the real map on track change
   }
 
   function connectUpstream() {
@@ -1511,6 +1516,7 @@ function createRelay(server) {
     __accumulateStints: accumulateStints,
     __stintsFor: stintsFor,
     __ingest: ingestSnapshot,
+    __mapKey: () => trackMapKey,
     __telemetry: ingestTelemetry,
     __getBoard: getBoard,
     __reset() {
@@ -1533,6 +1539,8 @@ function createRelay(server) {
       sessionStartedAt = null;
       startedAtKey = null;
       lastSnapshotAt = 0;
+      trackMapKey = null;
+      trackMap = null;
     },
   };
 }
@@ -1685,6 +1693,7 @@ export const __testing = {
   accumulateStints: testRelay.__accumulateStints,
   stintsFor: testRelay.__stintsFor,
   ingest: testRelay.__ingest,
+  mapKey: testRelay.__mapKey,
   telemetry: testRelay.__telemetry,
   getBoard: testRelay.__getBoard,
   raceSecond: testRelay.raceSecond,
