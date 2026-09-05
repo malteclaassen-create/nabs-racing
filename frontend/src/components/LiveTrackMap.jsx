@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { circuitForLive } from "../data/circuits.js";
+import { aerialForTrack } from "../data/aerialMaps.js";
+import SlidingTabs from "./SlidingTabs.jsx";
 
 // Live track map. Two modes:
 //
@@ -77,7 +79,7 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo }) {
   const els = useRef(new Map()); // guid -> outer <g>
   const states = useRef(new Map()); // guid -> { prev, next }
   const camRef = useRef(null);
-  const liveRef = useRef({ focusGuid, zoom, camInfo, zoomShown: zoom });
+  const liveRef = useRef({ focusGuid, zoom, camInfo, zoomShown: 1, cameraX: null, cameraY: null });
   liveRef.current.focusGuid = focusGuid;
   liveRef.current.zoom = zoom;
   liveRef.current.camInfo = camInfo;
@@ -127,8 +129,11 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo }) {
 
   useEffect(() => {
     let raf;
+    let lastFrame = performance.now();
     const tick = () => {
       const now = performance.now();
+      const dt = Math.min(now - lastFrame, 64);
+      lastFrame = now;
       const { focusGuid: fg, zoom: zTarget, camInfo: ci } = liveRef.current;
       const instant =
         document.documentElement.classList.contains("fx-lite") ||
@@ -140,28 +145,25 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo }) {
         if (el) {
           el.style.transform = `translate(${p.x}px, ${p.y}px)`;
           const car = el.querySelector("[data-car]");
-          if (car) car.setAttribute("transform", `rotate(${p.h}) scale(${car.dataset.scale})`);
+          if (car) car.setAttribute("transform", `rotate(${p.h}) scale(${Number(car.dataset.scale) / Math.sqrt(liveRef.current.zoomShown)})`);
         }
         if (guid === fg) focusPos = p;
       }
       const cam = camRef.current;
       if (cam && ci) {
-        // The zoom level itself eases toward its target, so +/- and entering
-        // focus feel like a camera move, not a cut.
+        // Ease BOTH camera position and zoom from the currently displayed view.
+        // Switching drivers or returning to overview can interrupt the flight.
         const target = focusPos ? zTarget : 1;
-        const z = instant
-          ? target
-          : (liveRef.current.zoomShown += (target - liveRef.current.zoomShown) * 0.12);
+        const blend = instant ? 1 : 1 - Math.exp(-dt / 190);
+        const z = liveRef.current.zoomShown + (target - liveRef.current.zoomShown) * blend;
         liveRef.current.zoomShown = z;
-        if (focusPos || Math.abs(z - 1) > 0.01) {
-          const cx = ci.w / 2;
-          const cy = ci.h / 2;
-          const fx = focusPos ? focusPos.x : cx;
-          const fy = focusPos ? focusPos.y : cy;
-          cam.style.transform = `translate(${cx - z * fx}px, ${cy - z * fy}px) scale(${z})`;
-        } else {
-          cam.style.transform = "none";
-        }
+        const cx = ci.w / 2, cy = ci.h / 2;
+        const state = liveRef.current;
+        state.cameraX ??= cx;
+        state.cameraY ??= cy;
+        state.cameraX += ((focusPos?.x ?? cx) - state.cameraX) * blend;
+        state.cameraY += ((focusPos?.y ?? cy) - state.cameraY) * blend;
+        cam.style.transform = `translate(${cx - z * state.cameraX}px, ${cy - z * state.cameraY}px) scale(${z})`;
       }
       raf = requestAnimationFrame(tick);
     };
@@ -175,15 +177,15 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo }) {
 // One car marker: the top-down F1 silhouette (rotated by the rAF driver), with
 // the race number floating upright beside it. Clickable to (un)focus; sized
 // down while zoomed so it stays a marker instead of a blob.
-function CarDot({ d, r, fs, zoom, focused, isFocusTarget, counterRotate, onFocus, registerRef }) {
+function CarDot({ d, r, fs, zoom, focused, isFocusTarget, counterRotate, onFocus, registerRef, aerial = false }) {
   const k = focused ? Math.sqrt(zoom) : 1; // gentle counter-scale under zoom
   const rr = r / k;
   const ff = fs / k;
-  const s = (rr * 1.6) / CAR.half; // car length ≈ 3.2 dot radii
+  const s = (r * 1.6) / CAR.half; // rAF scales with the displayed camera zoom
   return (
     <g
       ref={registerRef}
-      style={{ transform: `translate(${d.x}px, ${d.y}px)`, opacity: d.inPits ? 0.4 : 1, cursor: "pointer" }}
+      style={{ transform: `translate(${d.x}px, ${d.y}px)`, opacity: d.inPits ? (aerial ? 0.8 : 0.4) : 1, cursor: "pointer" }}
       onClick={(ev) => {
         ev.stopPropagation();
         onFocus(isFocusTarget ? null : d.guid);
@@ -253,8 +255,8 @@ function projectDot(car, map, matchFn) {
   const label = car.raceNumber != null ? String(car.raceNumber) : (car.initials || car.name || "").slice(0, 3);
   return {
     guid: car.guid,
-    x: (car.pos.x + map.xOffset) / map.scaleFactor + pad,
-    y: (car.pos.z + map.zOffset) / map.scaleFactor + pad,
+    x: map.affine ? map.affine[0] * car.pos.x + map.affine[2] * car.pos.z + map.affine[4] : (car.pos.x + map.xOffset) / map.scaleFactor + pad,
+    y: map.affine ? map.affine[1] * car.pos.x + map.affine[3] * car.pos.z + map.affine[5] : (car.pos.z + map.zOffset) / map.scaleFactor + pad,
     color: m?.teamColor || "#94a3b8",
     label,
     title: m?.nabsName || car.name,
@@ -267,10 +269,18 @@ function projectDot(car, map, matchFn) {
 // stays a sensible landscape instead of a skyscraper of empty margin.
 const ROTATE_RATIO = 1.07;
 
-function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = null, className = "" }) {
+function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = null, className = "", onImageError, aerial = false, aerialLoaded = false, onAerialLoad, loadAerial = false, aerialMap }) {
   const W = map.width;
   const H = map.height;
   const rotated = H / W > ROTATE_RATIO;
+  // Project the aerial into the existing map's coordinates. Cars and camera
+  // never remount or change coordinate systems when switching backgrounds.
+  const [a, b, c, d, e, f] = aerialMap?.affine || [1, 0, 0, 1, 0, 0];
+  const det = a * d - b * c;
+  const scale = map.scaleFactor;
+  const pad = map.padding || 0;
+  const aerialTransform = `matrix(${d / det / scale} ${-b / det / scale} ${-c / det / scale} ${a / det / scale} ${(c * f - d * e) / det / scale + map.xOffset / scale + pad} ${(b * e - a * f) / det / scale + map.zOffset / scale + pad})`;
+  const showAerial = aerial && aerialLoaded;
   // Heading store survives re-renders: real positions carry no direction, so
   // it's derived from each car's movement between updates.
   const headingsRef = useRef(new Map());
@@ -288,7 +298,7 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
   const r = Math.max(W, H) * 0.014;
   const fs = r * 1.05;
   return (
-    <div className={`live-map rounded-xl p-2 sm:p-3 ${className}`}>
+    <div className={`live-map overflow-hidden rounded-xl ${className}`}>
       {/* Width-driven: the SVG takes its height from the (rotated) aspect ratio,
           so the card hugs the map instead of stretching to a tall empty box.
           The max-height only caps a very wide column. */}
@@ -309,6 +319,8 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
                 exactly as before. Getting this wrong is not subtle: the cars
                 would run around a different track from the one they are on. */}
             <image
+              className="transition-opacity duration-500 ease-in-out motion-reduce:transition-none"
+              style={{ opacity: showAerial ? 0 : 1 }}
               href={`/api/live/map.png?v=${map.ver || 0}${(() => {
                 const slug = /^\/s\/([^/]+)/.exec(window.location.pathname)?.[1];
                 const parts = [];
@@ -319,6 +331,33 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
               width={W}
               height={H}
             />
+            {loadAerial && (
+              <image
+                href={aerialMap.image}
+                width={aerialMap.width}
+                height={aerialMap.height}
+                transform={aerialTransform}
+                style={{ filter: "none", opacity: showAerial ? 1 : 0, pointerEvents: "none" }}
+                className="transition-opacity duration-500 ease-in-out motion-reduce:transition-none"
+                onLoad={onAerialLoad}
+                onError={onImageError}
+              />
+            )}
+            <g opacity={showAerial ? 1 : 0} className="transition-opacity duration-500 motion-reduce:transition-none" pointerEvents="none">
+              {(aerialMap?.gates || []).map(gate => {
+                const point = ([x, z]) => [(x + map.xOffset) / scale + pad, (z + map.zOffset) / scale + pad];
+                const left = point(gate.l), right = point(gate.r);
+                const x = (left[0] + right[0]) / 2, y = (left[1] + right[1]) / 2;
+                const label = gate.index === 0 ? "START / FINISH" : `S${gate.index}`;
+                return <g key={gate.index} aria-label={label}>
+                  <line x1={left[0]} y1={left[1]} x2={right[0]} y2={right[1]} stroke="#111827" strokeWidth={r * 0.5} />
+                  <line x1={left[0]} y1={left[1]} x2={right[0]} y2={right[1]} stroke={gate.index === 0 ? "white" : "#ffcf73"} strokeWidth={r * 0.23} />
+                  <g transform={`translate(${x} ${y})${rotated ? " rotate(-90)" : ""}`}>
+                    <text y={r * 1.7} textAnchor="middle" fill="white" stroke="#111827" strokeWidth={r * 0.22} paintOrder="stroke" fontSize={r * 1.15} fontWeight="700">{label}</text>
+                  </g>
+                </g>;
+              })}
+            </g>
             {dots.map((d) => (
               <CarDot
                 key={d.guid}
@@ -331,6 +370,7 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
                 counterRotate={rotated}
                 onFocus={onFocus}
                 registerRef={register(d.guid)}
+                aerial={showAerial}
               />
             ))}
           </g>
@@ -502,6 +542,14 @@ function CockpitReadout({ car, onCarTelemetry }) {
 export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, server = null, className = "", wrapClassName = "" }) {
   const [focusGuid, setFocusGuid] = useState(null);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+  const [mapMode, setMapMode] = useState("track");
+  const [imageFailed, setImageFailed] = useState(false);
+  const [aerialLoaded, setAerialLoaded] = useState(false);
+  const [loadAerial, setLoadAerial] = useState(false);
+  const aerialMap = aerialForTrack(trackId, track);
+  const aerialAvailable = !!aerialMap && !!map?.scaleFactor;
+  const aerial = aerialAvailable && mapMode === "aerial" && !imageFailed;
+  useEffect(() => { setMapMode("track"); setImageFailed(false); setAerialLoaded(false); setLoadAerial(false); }, [trackId, track, server, map?.ver]);
   // The followed car left the server -> drop the focus rather than staring at
   // an empty patch of tarmac.
   const focusedCar = focusGuid ? (cars || []).find((c) => c.guid === focusGuid) : null;
@@ -522,17 +570,37 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
   const zoomBtn =
     "flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 font-mono text-sm font-bold text-white backdrop-blur transition hover:bg-black/75";
   return (
-    <div className={wrapClassName || "relative"}>
+    <div className={`${wrapClassName || "relative"} ${aerialAvailable ? "flex flex-col" : ""}`}>
+      <div className={aerialAvailable ? "relative min-h-0 flex-1" : "contents"}>
+      {aerialAvailable && (
+        <div className="absolute right-2 top-2 z-10" role="group" aria-label="Map background">
+          <SlidingTabs
+            wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5 shadow-sm"
+            btnClassName="px-3 py-1.5 text-xs uppercase tracking-wide"
+            pillClassName="rounded-md bg-brand"
+            items={[{ key: "track", label: "Track" }, { key: "aerial", label: "Satellite" }]}
+            value={aerial ? "aerial" : "track"}
+            onChange={(value) => { setImageFailed(false); setMapMode(value); if (value === "aerial") setLoadAerial(true); }}
+          />
+        </div>
+      )}
       {real ? (
         <RealTrackMap
+          key={`${server || ""}:${map?.ver || ""}`}
           cars={cars}
           map={map}
+          aerial={aerial}
+          aerialMap={aerialMap}
+          aerialLoaded={aerialLoaded}
+          loadAerial={aerialAvailable && loadAerial}
+          onAerialLoad={() => setAerialLoaded(true)}
           matchFn={matchFn}
           focusGuid={focusGuid}
           zoom={zoom}
           onFocus={setFocusGuid}
           server={server}
           className={className}
+          onImageError={() => { setImageFailed(true); setMapMode("track"); setAerialLoaded(false); setLoadAerial(false); }}
         />
       ) : (
         <StylisedTrackMap
@@ -546,6 +614,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
           className={className}
         />
       )}
+      {imageFailed && <p role="status" className="absolute bottom-2 left-2 rounded bg-black/80 px-2 py-1 text-xs text-white">Satellite image unavailable. Showing track map.</p>}
       {focusName && (
         <>
           <button
@@ -573,6 +642,14 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
             </button>
           </div>
         </>
+      )}
+      </div>
+      {aerialAvailable && (
+        <div className="shrink-0 px-1 pt-2 text-xs leading-relaxed text-light">
+          <a href={aerialMap.sourceUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-dark">{aerialMap.source}</a>
+          {" · "}<a href={aerialMap.licenseUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-dark">{aerialMap.license}</a>
+          <span className="block">Cropped · positions approximate</span>
+        </div>
       )}
     </div>
   );

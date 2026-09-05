@@ -1,0 +1,59 @@
+{
+  "width": 1800,
+  "height": 2477,
+  "affine": [
+    0.8528461697703256,
+    0.03742181244773763,
+    -0.03742181244773755,
+    0.8528461697703289,
+    935.1172161156202,
+    1197.157847797406
+  ],
+  "image": "/maps/spa-aerial-2023.jpg",
+  "source": "Aerial \u00a9 SPW 2023",
+  "license": "CC BY 4.0",
+  "sourceUrl": "https://geoportail.wallonie.be/catalogue/ad55c2ce-62ad-4c3c-b3cf-8fbc270a6b6e.html",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "trackId": "spa",
+  "trackNames": [
+    "Circuit de Spa-Francorchamps - F1 2025 - EuroRacers"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "r": [
+        -222.15728759765625,
+        -638.6270751953125
+      ],
+      "l": [
+        -256.0177001953125,
+        -617.5784912109375
+      ]
+    },
+    {
+      "index": 1,
+      "r": [
+        570.817138671875,
+        504.02459716796875
+      ],
+      "l": [
+        595.4511108398438,
+        495.7110900878906
+      ]
+    },
+    {
+      "index": 2,
+      "r": [
+        -557.9536743164062,
+        924.0618286132812
+      ],
+      "l": [
+        -579.6777954101562,
+        956.6876831054688
+      ]
+    }
+  ],
+  "fitMedianMetres": 2.6821115794782378,
+  "fitP90Metres": 5.210237554786346,
+  "note": "Approximate AC-to-OSM similarity fit; aerial crop/resampling; verify live overlay. Geometry \u00a9 OpenStreetMap contributors."
+}

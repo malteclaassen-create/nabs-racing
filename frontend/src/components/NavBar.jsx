@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLiveFeatureNotice } from "../hooks/useLiveFeatureNotice.js";
 import { NavLink, useLocation } from "react-router-dom";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
@@ -531,6 +532,7 @@ function ScrollProgressLine() {
 }
 
 export default function NavBar() {
+  const { isNew: liveFeatureNew } = useLiveFeatureNotice();
   const { seriesPath } = useSeriesPath();
   // Members get the extra menu row to their own feedback threads; a visitor has
   // no threads to read (there is no account for an answer to land in).
@@ -795,6 +797,7 @@ export default function NavBar() {
                   <span className="ml-1.5 font-mono text-[11px] font-bold tabular-nums opacity-70">{liveNow}</span>
                 )}
                 {l.label === "Live" && liveNow > 0 && <span className="sr-only"> ({liveNow} on track)</span>}
+                {l.label === "Live" && liveFeatureNew && <span className="ml-1.5 rounded bg-brand px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ink">New</span>}
                 {/* Same shape as Live's count, for the same reason: the number
                     is the interesting fact, not a dot. It is brand-coloured and
                     breathes because unlike cars on track this is something the
@@ -913,7 +916,7 @@ export default function NavBar() {
                 to={seriesPath("/live")}
                 icon={NAV_ICONS.live}
                 label="Live"
-                sub={liveNow > 0 ? `${liveNow} on track right now` : "Live timing"}
+                sub={liveFeatureNew ? "New: satellite track map" : liveNow > 0 ? `${liveNow} on track right now` : "Live timing"}
               />
 
               <MobileMenuLabel>Standings</MobileMenuLabel>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useLiveFeatureNotice } from "../hooks/useLiveFeatureNotice.js";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
@@ -105,7 +106,6 @@ function Stat({ label, children }) {
   );
 }
 
-const SESSION_CARD_KEY = "nabs_live_session_card";
 // Has this browser ever opened the TV board? Until it has, the button that
 // opens it wears a "New" badge.
 const TV_SEEN_KEY = "nabs_live_tv_seen";
@@ -121,23 +121,9 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
   // .collapse-row wrapper animates the reveal and turns into `display:
   // contents` from sm up, where the stats are simply part of the card's grid.
   const [showMore, setShowMore] = useState(false);
-  // Folded or not, from sm up, remembered per browser. Somebody who watches
-  // every race night from the same machine and does not care about the air
-  // temperature should have to say so once, not once a week.
-  const [open, setOpen] = useState(() => {
-    try {
-      return localStorage.getItem(SESSION_CARD_KEY) !== "folded";
-    } catch {
-      return true; // private mode: the card is simply always open
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(SESSION_CARD_KEY, open ? "open" : "folded");
-    } catch {
-      /* nothing to remember with, and nothing breaks without it */
-    }
-  }, [open]);
+  // Start compact on every visit, regardless of the previous visit's toggle.
+  const [open, setOpen] = useState(false);
+  const trackTitle = (session.trackName || "").replace(/\s*[-–—]\s*F1\s*2025\s*[-–—]\s*EuroRacers\s*$/i, "");
   // The panel's open height, measured from the content so the close animation
   // starts moving immediately instead of idling through a too-generous cap.
   // Measured fresh on every toggle: a mount-time measurement reads 0 when the
@@ -188,11 +174,7 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
           </span>
         </div>
       )}
-      {/* Seven columns on a wide screen: the track, the four numbers, and the
-          buttons on the end. The buttons used to be a bordered strip under all
-          of it, which cost the page a whole row of height before the timing
-          even started. Below lg they drop to their own line, where there is no
-          room to do anything else. */}
+      {/* Track and actions share the first row; four stats get a full row below. */}
       <div
         // pt is 4px more than pb, everywhere: the league's gradient line is
         // drawn over the top edge (absolutely, so the layout never saw it), and
@@ -200,15 +182,8 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
         // Centred by the box, it looked high by exactly the line's thickness.
         className={`grid grid-cols-1 gap-4 px-4 pb-3.5 pt-[18px] sm:grid-cols-2 sm:gap-5 sm:px-6 lg:gap-6 ${
           open
-            ? // Not four equal columns: the clock can read "6d 23:46:50" and
-              // was breaking in half over it, while the track temperature is
-              // three characters wide. Tops aligned, so every stat label sits
-              // on one line across the card.
-              // The leader's column is the second widest: it holds a NAME,
-              // and at 1.1fr it was cutting "THEFAKETB" to "THEFA…" on a
-              // 1440px screen. The track gave up the difference; it can wrap
-              // (see below), a name cannot.
-              "sm:pb-6 sm:pt-[28px] lg:items-start lg:grid-cols-[minmax(0,2.6fr)_minmax(0,1.6fr)_minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_auto]"
+            ?
+              "sm:pb-6 sm:pt-[28px] lg:items-start lg:grid-cols-4"
             : // Folded, the four stat columns are gone — and the template has to
               // go with them, or their 1fr each is still reserved and the track
               // name is squeezed into a third of a card that is mostly empty.
@@ -216,8 +191,8 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
         }`}
       >
         <div
-          className={`min-w-0 sm:col-span-2 lg:col-span-1 ${
-            open ? "" : "flex items-center gap-3"
+          className={`min-w-0 sm:col-span-2 ${open ? "lg:col-span-2" : "lg:col-span-1"} ${
+            open ? "" : "flex flex-wrap items-center gap-x-3 gap-y-2"
           }`}
         >
           {/* Folded, this rides AFTER the track name on the same line (order-2)
@@ -255,12 +230,26 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
                 a second line costs 22px, while "NABS AUTODROM MOST (N…" cost
                 the one fact the card is there to state. */}
             <span
-              title={session.trackName}
+              title={trackTitle}
               className="line-clamp-2 font-display text-lg font-extrabold uppercase leading-tight tracking-tight text-dark"
             >
-              {session.trackName}
+              {trackTitle}
             </span>
           </div>
+          {!open && (
+            <div className={`order-3 items-baseline gap-2 font-mono text-xs ${showMore ? "hidden sm:flex" : "flex"}`}>
+              <span className="whitespace-nowrap text-[10px] uppercase tracking-wider text-light">
+                {isRace && session.lapsLeft != null ? "Laps left" : "Time left"}
+              </span>
+              <span className="whitespace-nowrap font-bold tabular-nums text-dark">
+                {isRace && session.lapsLeft != null ? (
+                  <>{session.lapsLeft}<span className="font-normal text-light"> / {session.raceLaps}</span></>
+                ) : (
+                  <Countdown baseMs={session.remainingMs} receivedAt={receivedAt} resetKey={`${session.type}|${session.sessionIndex}|${session.trackName}`} />
+                )}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Below sm the panel slides (the measured height); from sm up the
@@ -363,8 +352,8 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
             this is the corner of the card that is about the card rather than
             about the session. */}
         <div
-          className={`flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-1 lg:justify-end lg:self-center ${
-            open ? "lg:col-start-6" : ""
+          className={`flex flex-wrap items-center gap-2 sm:col-span-2 lg:justify-end lg:self-center ${
+            open ? "lg:col-span-2 lg:col-start-3 lg:row-start-1" : "lg:col-span-1"
           }`}
         >
           <ExternalButtons links={links} patreonUrl={patreonUrl} />
@@ -3150,6 +3139,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
 }
 
 export default function Live() {
+  const { isNew: liveFeatureNew, dismiss: dismissLiveFeature } = useLiveFeatureNotice();
   const { board: feed, socketState, follow, onCarTelemetry, setServer, serverKey } = useLiveTiming();
   // Polled once here and handed to both pieces of the server switch: the
   // control in the header and the "cars are out over there" line under it.
@@ -3571,6 +3561,16 @@ export default function Live() {
       />
       </div>
 
+      {liveFeatureNew && (
+        <aside aria-label="New live timing feature" className="mb-6 flex items-start gap-3 rounded-xl border border-brand/40 bg-brand/10 px-4 py-3">
+          <span className="mt-0.5 shrink-0 rounded bg-brand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">New</span>
+          <p className="min-w-0 flex-1 text-sm text-dark">
+            <strong>Satellite track map</strong>
+            <span className="text-light"> — Available for Spa: select Satellite on the map, then click a car to follow it. More circuits can be added.</span>
+          </p>
+          <button type="button" onClick={dismissLiveFeature} aria-label="Dismiss satellite feature notice" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-light transition hover:bg-brand/20 hover:text-dark">×</button>
+        </aside>
+      )}
       {!heardFromRelay && !board ? (
         // Still asking. This is the only case that gets a spinner, and it lasts
         // a moment — it used to be the ONLY state, which meant the page spun
