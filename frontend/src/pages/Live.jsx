@@ -22,6 +22,7 @@ import { streamEmbed } from "../utils/streamEmbed.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { LiveSortMenu, LiveColumnsMenu } from "../components/LiveTableMenu.jsx";
 import { ProvisionalBanner, ProvisionalResult } from "../components/ProvisionalResult.jsx";
+import { useAuth } from "../hooks/useAuth.js";
 import { useScrollLock } from "../components/overlay.jsx";
 import { useLiveTablePrefs } from "../hooks/useLiveTablePrefs.js";
 import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
@@ -3307,6 +3308,16 @@ export default function Live() {
   const [provisional, setProvisional] = useState([]);
   // Which result is open, by id; null = closed.
   const [resultOpen, setResultOpen] = useState(null);
+  const { user: viewer } = useAuth();
+  const removeProvisional = useCallback((id) => {
+    api
+      .deleteLiveResult(id)
+      .then(() => {
+        setProvisional((list) => list.filter((x) => x.id !== id));
+        setResultOpen(null);
+      })
+      .catch((e) => window.alert(e?.message || "Could not remove the result"));
+  }, []);
   useVisiblePoll((alive) => {
     const demo = new URLSearchParams(window.location.search).has("demo");
     api
@@ -3624,6 +3635,8 @@ export default function Live() {
           match={match}
           onPick={setResultOpen}
           onClose={() => setResultOpen(null)}
+          isAdmin={!!viewer?.isAdmin}
+          onRemove={removeProvisional}
         />
       )}
 

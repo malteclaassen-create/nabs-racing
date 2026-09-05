@@ -106,7 +106,7 @@ function Stints({ stints }) {
   );
 }
 
-export function ProvisionalResult({ results, openId, match, onPick, onClose }) {
+export function ProvisionalResult({ results, openId, match, onPick, onClose, isAdmin = false, onRemove = null }) {
   const r = useMemo(() => results.find((x) => x.id === openId) || results[0], [results, openId]);
   useScrollLock(true);
   const [leaving, setLeaving] = useState(false);
@@ -182,14 +182,33 @@ export function ProvisionalResult({ results, openId, match, onPick, onClose }) {
               {r.serverName ? ` · ${r.serverName}` : ""}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={leave}
-            className="shrink-0 rounded-lg border border-border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 hover:text-dark"
-            title="Close (Esc)"
-          >
-            Close
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Admins only: off the page for good. The provisional result has
+                no business outliving the official one, and sometimes it
+                should not have been shown at all. */}
+            {isAdmin && onRemove && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(`Remove this provisional result (${r.trackName}) from the live page? This cannot be undone.`)) {
+                    onRemove(r.id);
+                  }
+                }}
+                className="rounded-lg border border-red-500/40 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-bad transition hover:bg-red-500/10"
+                title="Take this result off the live page (admins)"
+              >
+                Remove
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={leave}
+              className="shrink-0 rounded-lg border border-border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 hover:text-dark"
+              title="Close (Esc)"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-warn sm:px-6">

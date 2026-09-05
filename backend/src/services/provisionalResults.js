@@ -229,6 +229,47 @@ export function listProvisional(serverKey) {
   return out.slice(0, LIST_MAX);
 }
 
+// Take one result off the page for good: an admin's decision (it was wrong,
+// it was a test, the official result is up). Memory and file both go, so it
+// does not come back on the next restart.
+export function deleteProvisional(id) {
+  loadAll();
+  const r = byId.get(id);
+  if (!r) return false;
+  byId.delete(id);
+  try {
+    unlinkSync(fileFor(r));
+  } catch {
+    /* already gone */
+  }
+  return true;
+}
+
+// Is this the race the league has since imported a result for? Then the
+// provisional one has done its job and steps aside on its own. Matched by
+// the day (the race's date within the day before the finish) and the track
+// name — the league's short name ("Most") against the server's long one
+// ("NABS Autodrom Most (no chicane)"), either way round, so two series on
+// two circuits the same evening do not hide each other's result.
+export function coveredByOfficial(result, races) {
+  const finished = Date.parse(result?.finishedAt);
+  if (!Number.isFinite(finished)) return false;
+  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const mine = [norm(result.trackName), norm(result.track)].filter((x) => x.length >= 3);
+  for (const race of races || []) {
+    if (!race?.date) continue;
+    const t = new Date(race.date).getTime();
+    if (!Number.isFinite(t)) continue;
+    // Race dates are the evening's start (or midnight, for a date-only row):
+    // anything from a day before the finish up to the finish itself.
+    if (t > finished || finished - t > 30 * 60 * 60 * 1000) continue;
+    const theirs = norm(race.track);
+    if (theirs.length < 3) continue;
+    if (mine.some((m) => m.includes(theirs) || theirs.includes(m))) return true;
+  }
+  return false;
+}
+
 // Tests: forget everything, on disk as well — the test data dir persists
 // between runs, and a result left over from the last run would be counted.
 export function __resetProvisional() {

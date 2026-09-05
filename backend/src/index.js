@@ -32,6 +32,7 @@ import { IS_DEPLOYED } from "./lib/deployment.js";
 import searchRoutes from "./routes/search.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng, getProvisionalResults } from "./services/liveTiming.js";
+import { coveredByOfficial } from "./services/provisionalResults.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
 import { serverKeyForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
 import { recordHit } from "./lib/traffic.js";
@@ -249,7 +250,19 @@ app.get("/api/live/servers", async (req, res) => {
 app.get("/api/live/results", async (req, res) => {
   try {
     const key = await resolveServerKey(prisma, { series: req.query.series, server: req.query.server });
-    res.json({ results: await getProvisionalResults(key, req) });
+    let results = await getProvisionalResults(key, req);
+    // Once the league has the official result of that race in, the
+    // provisional one steps aside by itself: two versions of the same
+    // classification on the site, one of them unofficial, is one too many.
+    if (results.length && !results.every((r) => r.server === "demo")) {
+      const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      const races = await prisma.race.findMany({
+        where: { date: { gte: since }, results: { some: {} } },
+        select: { date: true, track: true },
+      });
+      results = results.filter((r) => r.server === "demo" || !coveredByOfficial(r, races));
+    }
+    res.json({ results });
   } catch {
     res.json({ results: [] });
   }

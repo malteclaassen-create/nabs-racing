@@ -436,6 +436,8 @@ export const api = {
   // page's switch can say which board is worth looking at. `server` is only
   // used to keep the reply about the same series; the list is always all of them.
   liveServers: () => request(`/live/servers${seriesQ()}`),
+  // Admin: take one provisional result off the live page for good.
+  deleteLiveResult: (id) => request(`/admin/live-results/${encodeURIComponent(id)}`, { method: "DELETE", auth: true }),
   // Provisional results off the live board, for the server on screen.
   liveResults: (server = null, demo = false) => {
     const parts = [];

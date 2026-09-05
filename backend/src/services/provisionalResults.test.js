@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyByLine } from "./provisionalResults.js";
+import { classifyByLine, coveredByOfficial } from "./provisionalResults.js";
 
 // A v1 file: saved in the running order of the cool-down lap, with gaps
 // measured against the car saved first (who did win here, as at Most; the
@@ -43,5 +43,22 @@ describe("classifyByLine", () => {
   it("leaves an already classified result alone", () => {
     const r = classifyByLine(classifyByLine(most));
     expect(r.entries.map((e) => e.name)).toEqual(["13Bot", "Siggsta", "Maltegoat", "Tball", "Rashford", "Duck", "Pace car"]);
+  });
+});
+
+describe("coveredByOfficial", () => {
+  const r = { finishedAt: "2026-09-04T19:25:00Z", trackName: "NABS Autodrom Most (no chicane)", track: "rt_autodrom_most" };
+
+  it("the league's race of that evening on that circuit, with results in, covers it", () => {
+    expect(coveredByOfficial(r, [{ date: "2026-09-04T17:30:00Z", track: "Most" }])).toBe(true);
+    // a date-only row (midnight) still counts
+    expect(coveredByOfficial(r, [{ date: "2026-09-04T00:00:00Z", track: "Most" }])).toBe(true);
+  });
+
+  it("another circuit or another week does not", () => {
+    expect(coveredByOfficial(r, [{ date: "2026-09-04T17:30:00Z", track: "Spa" }])).toBe(false);
+    expect(coveredByOfficial(r, [{ date: "2026-08-28T17:30:00Z", track: "Most" }])).toBe(false);
+    expect(coveredByOfficial(r, [{ date: "2026-09-11T17:30:00Z", track: "Most" }])).toBe(false);
+    expect(coveredByOfficial(r, [])).toBe(false);
   });
 });
