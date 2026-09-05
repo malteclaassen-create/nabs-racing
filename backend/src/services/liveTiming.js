@@ -29,7 +29,6 @@ import prisma from "../lib/prisma.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries, isValidServerKey } from "../lib/liveServers.js";
 import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
-import { saveProvisional, listProvisional, snapshotFromBoard, resultIdFor } from "./provisionalResults.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 
 // ---------------------------------------------------------------------------
@@ -108,11 +107,6 @@ const KEEPALIVE_MS = 15000;
 // flag, and the result vanished mid-celebration. A fresh RACE session starting
 // releases the hold early — a new race is never hidden behind an old one.
 const RESULT_HOLD_MS = 15 * 60 * 1000;
-// Provisional result (see trackRaceEnd): how long after the leader's flag a
-// field that has not all crossed the line is taken as it stands, and how
-// often a race that is still settling is re-saved.
-const FINISH_GRACE_MS = 3 * 60 * 1000;
-const PROVISIONAL_RESAVE_MS = 20 * 1000;
 // Quiet servers (nobody on track) only send the full snapshot every ~30s and
 // no per-car telemetry in between, so the stale threshold must sit comfortably
 // above that gap or the badge flaps to "Reconnecting" between snapshots.
@@ -573,14 +567,10 @@ function createRelay(server) {
   // A finished race's final board, held past the session change (see the ET200
   // handler and RESULT_HOLD_MS).
   let finishedRace = null; // { board, until } | null
-  // The provisional result of the race on air (services/provisionalResults.js):
-  // when the leader took the flag, the id the saves go under, and when the
-  // last save was, so a settling field is re-saved every so often rather than
-  // on every snapshot. All three reset with the session.
+  // When the leader took the flag of the race on air (see trackRaceFlag):
+  // from then on the board classifies by the line, not by the road. Reset
+  // with the session.
   let raceFlagAt = null;
-  let lapsAtFlag = new Map(); // public id -> laps completed when the leader took the flag
-  let provisionalId = null;
-  let lastProvisionalAt = 0;
 
   // Note down that this driver has completed another lap, and when. Called for
   // every driver on every snapshot; a lap already on file is ignored, so the
@@ -651,9 +641,6 @@ function createRelay(server) {
     const key = sessionKeyOf(si, msg.TrackInfo || {});
     if (key !== stintSessionKey) {
       raceFlagAt = null;
-      lapsAtFlag = new Map();
-      provisionalId = null;
-      lastProvisionalAt = 0;
       stintsByGuid.clear();
       lastRacePosByGuid.clear();
       raceRosterByGuid.clear();
@@ -808,13 +795,6 @@ function createRelay(server) {
         // Frozen means over: the clock must not keep counting down.
         board.session = { ...board.session, remainingMs: 0, finished: true };
         finishedRace = { board, until: Date.now() + RESULT_HOLD_MS };
-        // And kept: the last word on this race, whether it ran to the flag
-        // (completed) or the server moved on mid-race. A race that never got
-        // past its second lap is an aborted start, not a result.
-        const leaderLaps = board.entries.find((e) => !e.isSafetyCar)?.lapCount || 0;
-        if (leaderLaps >= 2) {
-          saveProvisionalFor(board, { final: true, completed: raceFlagAt != null });
-        }
       }
     }
     status = next;
@@ -854,83 +834,36 @@ function createRelay(server) {
     // Write pit-lane facts to disk while they exist — the stored result JSON
     // carries none, so what this misses tonight is unknowable tomorrow.
     pitRecorder.onSnapshot(server.key, status, sessionKeyOf(status?.SessionInfo || {}, status?.TrackInfo || {}));
-    trackRaceEnd();
+    trackRaceFlag();
     // (Re)load the real map on a track change. This line belongs to EVERY
-    // snapshot: it once slipped to the end of trackRaceEnd above, behind its
+    // snapshot: it once slipped to the end of a helper below, behind its
     // early returns, and the map was only ever asked for after a finished
     // race — which is how the outline stood in for it all evening on
     // 2026-09-04. The test "a snapshot asks for its track's map" guards it.
     ensureTrackMap(status?.SessionInfo || {});
   }
 
-  // One save of the race on air as a provisional result, under the id this
-  // running was given the first time (so later saves overwrite, never add).
-  function saveProvisionalFor(board, opts) {
-    if (!provisionalId) {
-      provisionalId = resultIdFor({
-        server: server.key,
-        track: board.session?.track,
-        trackConfig: status?.SessionInfo?.TrackConfig,
-        startedAt: board.session?.startedAt,
-      });
-    }
-    lastProvisionalAt = Date.now();
-    try {
-      saveProvisional({ ...board, server: server.key }, { ...opts, id: provisionalId });
-    } catch (e) {
-      console.warn(`[live] provisional result not saved: ${e.message}`);
-    }
-  }
-
-  // Has the race on air ended, and has the field finished? The flag is the
-  // leader completing the distance (or the clock running out of a timed race);
-  // the result is taken once every car still running has crossed the line
-  // behind them, or three minutes after the flag if somebody is still
-  // touring round, and again every twenty seconds while anything changes,
-  // until the server leaves the session and the freeze above has the last
-  // word. So the page can show the result a minute after the winner is in,
-  // not a quarter of an hour later when practice has started.
-  function trackRaceEnd() {
+  // Has the leader taken the flag of the race on air? The flag is the leader
+  // completing the distance, or the clock running out of a timed race. From
+  // that moment buildBoard classifies by the line (laps, then each car's
+  // last-lap time) instead of by where the cars are on the road — the
+  // running order keeps moving through the cool-down lap and re-issues the
+  // slots of drivers who log off, and it had the third-placed car fourth on
+  // the frozen result of Most, 2026-09-04.
+  function trackRaceFlag() {
     const si = status?.SessionInfo || {};
-    if (si.Type !== 3) return;
+    if (si.Type !== 3 || raceFlagAt != null) return;
     const lapRace = si.Laps > 0;
     const timedRace = !lapRace && si.Time > 0;
     if (!lapRace && !timedRace) return;
-    const now = Date.now();
-    let board = buildBoard();
+    const board = buildBoard();
     if (!board.ok || !board.session) return;
-    let competitors = board.entries.filter((e) => !e.isSafetyCar);
-    const leader = competitors[0];
+    const leader = board.entries.find((e) => !e.isSafetyCar);
     if (!leader) return;
-    if (raceFlagAt == null) {
-      const flagged = lapRace
-        ? (leader.lapCount || 0) >= si.Laps
-        : board.session.remainingMs === 0 && (leader.lapCount || 0) > 0;
-      if (!flagged) return;
-      raceFlagAt = now;
-      // Where everybody was at that moment: a car is home once it has crossed
-      // the line AGAIN after this (or has the full distance itself). Comparing
-      // laps to the distance minus laps-down does not work — laps-down is
-      // derived from the lap count, so the two always agree.
-      for (const e of competitors) lapsAtFlag.set(e.guid, e.lapCount || 0);
-      // The board above was built BEFORE the flag was set, in running order.
-      // From here on the order is by the line (see buildBoard), and the
-      // result taken below must be that one, not the last running order.
-      board = buildBoard();
-      competitors = board.entries.filter((e) => !e.isSafetyCar);
-    }
-    const running = competitors.filter((e) => e.onTrack && !e.inPits);
-    const home = (e) => {
-      const laps = e.lapCount || 0;
-      if (lapRace && laps >= si.Laps) return true;
-      const then = lapsAtFlag.get(e.guid);
-      return then == null || laps > then;
-    };
-    const allHome = running.every(home);
-    const settled = allHome || now - raceFlagAt > FINISH_GRACE_MS;
-    if (!settled) return;
-    if (now - lastProvisionalAt < PROVISIONAL_RESAVE_MS) return;
-    saveProvisionalFor({ ...board, session: { ...board.session, finished: true } }, { final: false, completed: true });
+    const flagged = lapRace
+      ? (leader.lapCount || 0) >= si.Laps
+      : board.session.remainingMs === 0 && (leader.lapCount || 0) > 0;
+    if (flagged) raceFlagAt = Date.now();
   }
 
   function connectUpstream() {
@@ -1296,8 +1229,8 @@ function createRelay(server) {
       // the server's own timestamp of each car's last completed lap. The
       // running order (RacePos) keeps moving through the cool-down lap and
       // re-issues the slots of drivers who log off, and it put the car that
-      // finished third fourth on the provisional result of Most, 2026-09-04,
-      // with the gaps on the same screen saying otherwise.
+      // finished third fourth on the frozen result of Most, 2026-09-04, with
+      // the gaps on the same screen saying otherwise.
       const over = raceFlagAt != null;
       const guidOf = over ? new Map([...byGuid].map(([g, e]) => [e, g])) : null;
       const finishedAt = (e) => {
@@ -1561,9 +1494,6 @@ function createRelay(server) {
       liveByCar.clear();
       finishedRace = null;
       raceFlagAt = null;
-      lapsAtFlag = new Map();
-      provisionalId = null;
-      lastProvisionalAt = 0;
       stintSessionKey = null;
       status = null;
       sessionStartedAt = null;
@@ -1592,36 +1522,6 @@ function relayFor(key) {
 // payload neither the page nor anyone debugging it can tell the two apart. It
 // also lets the frontend show the switch's true position after a reconnect,
 // rather than trusting what it last clicked.
-// The provisional results a server still has to show (newest first). With
-// the demo switched on and asked for, two fabricated ones off the demo board,
-// so the page's banner and result view can be looked at on a Tuesday.
-export async function getProvisionalResults(serverKey, req = null) {
-  if (demoKindOf(req)) {
-    await ensureDemoState();
-    const board = getDemoBoard("race");
-    if (!board.ok) return [];
-    const now = Date.now();
-    const finished = { ...board, server: "demo", session: { ...board.session, finished: true, startedAt: now - 42 * 60 * 1000 } };
-    const fresh = snapshotFromBoard(finished, {
-      id: "demo-fresh",
-      final: true,
-      completed: true,
-      prev: { finishedAt: new Date(now - 6 * 60 * 1000).toISOString(), startedAt: new Date(now - 42 * 60 * 1000).toISOString() },
-    });
-    const older = snapshotFromBoard(
-      { ...finished, entries: [...board.entries].reverse(), session: { ...finished.session, trackName: "Demo Sprint (earlier)" } },
-      {
-        id: "demo-earlier",
-        final: true,
-        completed: false,
-        prev: { finishedAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(), startedAt: new Date(now - 200 * 60 * 1000).toISOString() },
-      }
-    );
-    return [fresh, older];
-  }
-  return listProvisional(serverKey);
-}
-
 export function getBoard(serverKey) {
   const relay = relayFor(serverKey);
   return { ...relay.getBoard(), serverKey: relay.key };

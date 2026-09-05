@@ -21,8 +21,6 @@ import VideoEmbed from "../components/VideoEmbed.jsx";
 import { streamEmbed } from "../utils/streamEmbed.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { LiveSortMenu, LiveColumnsMenu } from "../components/LiveTableMenu.jsx";
-import { ProvisionalBanner, ProvisionalResult } from "../components/ProvisionalResult.jsx";
-import { useAuth } from "../hooks/useAuth.js";
 import { useScrollLock } from "../components/overlay.jsx";
 import { useLiveTablePrefs } from "../hooks/useLiveTablePrefs.js";
 import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
@@ -111,8 +109,6 @@ const SESSION_CARD_KEY = "nabs_live_session_card";
 // Has this browser ever opened the TV board? Until it has, the button that
 // opens it wears a "New" badge.
 const TV_SEEN_KEY = "nabs_live_tv_seen";
-// The last provisional result this browser was shown on its own (by id).
-const RESULT_SEEN_KEY = "nabs_live_result_seen";
 
 
 function SessionHeader({ session, receivedAt, links, patreonUrl }) {
@@ -3300,54 +3296,6 @@ export default function Live() {
   // which stays connected in a hidden tab so a viewer coming back has missed
   // nothing. Only this HTTP projection pauses, and it refetches on return
   // before anything is read off it (see useVisiblePoll).
-  // Provisional results: what the board had when the flag fell, kept by the
-  // backend for the evening (services/provisionalResults.js). Polled once a
-  // minute — the file changes a handful of times per race night — and shown
-  // as a banner whatever the server is doing now, so the result is there
-  // after the switch back to practice and on the morning after.
-  const [provisional, setProvisional] = useState([]);
-  // Which result is open, by id; null = closed.
-  const [resultOpen, setResultOpen] = useState(null);
-  const { user: viewer } = useAuth();
-  const removeProvisional = useCallback((id) => {
-    api
-      .deleteLiveResult(id)
-      .then(() => {
-        setProvisional((list) => list.filter((x) => x.id !== id));
-        setResultOpen(null);
-      })
-      .catch((e) => window.alert(e?.message || "Could not remove the result"));
-  }, []);
-  useVisiblePoll((alive) => {
-    const demo = new URLSearchParams(window.location.search).has("demo");
-    api
-      .liveResults(serverKey, demo)
-      .then((d) => alive() && setProvisional(Array.isArray(d?.results) ? d.results : []))
-      .catch(() => {});
-  }, 60000, true, serverKey);
-  // A race that has JUST finished opens its result once, on its own, for
-  // whoever was watching. Once per result per browser, and only while it is
-  // fresh: somebody opening the page the next morning gets the banner, not
-  // a pop-up over the practice they came to see.
-  useEffect(() => {
-    const r = provisional[0];
-    if (!r || tv) return;
-    if (Date.now() - Date.parse(r.finishedAt) > 15 * 60 * 1000) return;
-    let seen = null;
-    try {
-      seen = localStorage.getItem(RESULT_SEEN_KEY);
-    } catch {
-      return; // nothing to remember with: never pop up on its own
-    }
-    if (seen === r.id) return;
-    try {
-      localStorage.setItem(RESULT_SEEN_KEY, r.id);
-    } catch {
-      /* fine */
-    }
-    setResultOpen(r.id);
-  }, [provisional, tv]);
-
   const [champ, setChamp] = useState(null);
   useVisiblePoll((alive) => {
     const demo = new URLSearchParams(window.location.search).has("demo");
@@ -3622,23 +3570,6 @@ export default function Live() {
         }
       />
       </div>
-
-      {/* The result of the race that ran earlier, whatever is on now. It is
-          the one thing on this page that outlives the session. */}
-      {provisional.length > 0 && (
-        <ProvisionalBanner results={provisional} onOpen={(id) => setResultOpen(id)} />
-      )}
-      {resultOpen && (
-        <ProvisionalResult
-          results={provisional}
-          openId={resultOpen}
-          match={match}
-          onPick={setResultOpen}
-          onClose={() => setResultOpen(null)}
-          isAdmin={!!viewer?.isAdmin}
-          onRemove={removeProvisional}
-        />
-      )}
 
       {!heardFromRelay && !board ? (
         // Still asking. This is the only case that gets a spinner, and it lasts

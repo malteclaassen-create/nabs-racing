@@ -9,7 +9,6 @@ import prisma from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { isSafeId, safeUploadPath } from "../lib/safeUpload.js";
 import { parseAcRaceJson, parseAcQualiJson } from "../services/acJsonParser.js";
-import { deleteProvisional } from "../services/provisionalResults.js";
 import { listRemoteResults, fetchRemoteResult } from "../services/emperorResults.js";
 import { saveRaceResults } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
@@ -318,17 +317,6 @@ router.post("/backups/prune", (req, res) => {
 });
 
 // DELETE /api/admin/backups/:file -> delete one snapshot by name.
-// DELETE /api/admin/live-results/:id — take a provisional result off the
-// live page for good (wrong, a test run, or simply not wanted). The file and
-// the in-memory copy both go, so a restart does not bring it back.
-router.delete("/live-results/:id", (req, res) => {
-  const id = String(req.params.id || "");
-  if (!/^[A-Za-z0-9_.-]{1,120}$/.test(id)) return res.status(400).json({ error: "Bad id" });
-  const gone = deleteProvisional(id);
-  if (!gone) return res.status(404).json({ error: "No such provisional result" });
-  res.json({ ok: true });
-});
-
 router.delete("/backups/:file", (req, res) => {
   if (!deleteBackup(req.params.file)) return res.status(404).json({ error: "No such backup" });
   res.json({ ok: true, backups: listBackups() });
