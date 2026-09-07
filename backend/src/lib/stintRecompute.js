@@ -27,7 +27,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { RESULTS_ARCHIVE_DIR } from "./dataDirs.js";
 import { trackKeyFor } from "./trackKeys.js";
-import { findPitFile, loadPitStops } from "./pitEventsStore.js";
+import { findPitFile, loadPitStops, pitTrackKey } from "./pitEventsStore.js";
 import { extractTelemetry } from "../services/telemetryExtractor.js";
 
 // Recompute one season's stints from its archived JSONs.
@@ -90,9 +90,15 @@ export async function recomputeSeasonStints(prisma, seasonNumber, { dryRun = fal
       // heuristic.
       let pitStopsByGuid = null;
       try {
+        // The recorder names its file by pitTrackKey (the layout name when the
+        // track table knows it, else the raw layout), and the import path looks
+        // it up the same way. This pass used trackKeyFor on the layout, which
+        // returns null for a mod layout like Most's "nabs_most_no_chicane" —
+        // so the recording was never found here and the pass would have put
+        // the heuristic back over the recorder's fact.
         const pf = findPitFile({
           dayIso: String(json.Date || "").slice(0, 10),
-          trackKey: trackKeyFor(json.TrackConfig || json.TrackName || ""),
+          trackKey: pitTrackKey(json.TrackConfig, json.TrackName),
         });
         if (pf) pitStopsByGuid = loadPitStops(pf, { aroundIso: json.Date ? String(json.Date) : null });
       } catch {
@@ -112,7 +118,12 @@ export async function recomputeSeasonStints(prisma, seasonNumber, { dryRun = fal
     if (!fileDriverIds.size) continue;
 
     const fileDay = String(json.Date || "").slice(0, 10);
-    const fileTrack = trackKeyFor(json.TrackConfig || json.TrackName || "");
+    // Layout first (it distinguishes Spa from Spa without a chicane), then the
+    // track itself: a mod layout the table has no entry for must still find
+    // its race. Most 2026-09-04 was skipped by this pass for exactly that —
+    // "nabs_most_no_chicane" resolved to nothing, so the round it was written
+    // for never got recomputed.
+    const fileTrack = trackKeyFor(json.TrackConfig || "") || trackKeyFor(json.TrackName || "");
     let match = null;
     if (fileDay && fileTrack) {
       for (const r of races) {
@@ -165,7 +176,10 @@ export async function recomputeSeasonStints(prisma, seasonNumber, { dryRun = fal
 // rows are visited again. "racewindow": recorded stops and compound changes
 // outside the race (cool-down pit returns, pre-lights setup changes) no
 // longer split or rename stints — Most 2026-09-04.
-const FLAG_KEY = "stints_recomputed_s8_racewindow";
+// "racewindow2": the first racewindow pass matched races by a key that mod
+// layouts resolve to nothing, so those rounds were skipped and the flag set
+// regardless — run once more with the lookup fixed.
+const FLAG_KEY = "stints_recomputed_s8_racewindow2";
 const FIRST_RECORDED_SEASON = 8;
 
 export async function recomputeStintsOnce(prisma) {
