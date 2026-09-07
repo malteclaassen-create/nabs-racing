@@ -179,7 +179,10 @@ export async function recomputeSeasonStints(prisma, seasonNumber, { dryRun = fal
 // "racewindow2": the first racewindow pass matched races by a key that mod
 // layouts resolve to nothing, so those rounds were skipped and the flag set
 // regardless — run once more with the lookup fixed.
-const FLAG_KEY = "stints_recomputed_s8_racewindow2";
+// "latestop": a snapshot-confirmed stop whose counter read one lap high was
+// split a lap after its own compound change (Endriu's super-softs at Most,
+// shown as two one-lap stints) — run once more with the placement fixed.
+const FLAG_KEY = "stints_recomputed_s8_latestop";
 const FIRST_RECORDED_SEASON = 8;
 
 export async function recomputeStintsOnce(prisma) {

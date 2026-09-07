@@ -572,12 +572,29 @@ export function extractTelemetry(json, opts = {}) {
       // must be the SAME two indices. It used to reach a third lap further,
       // which quietly deleted the earlier of two stops made close together —
       // exactly Flo's opening pair at Hockenheim, two laps apart.
+      //
+      // A stop the recorder confirmed from a snapshot alone (no pit-entry
+      // hint) can also read one HIGHER: snapshots come every ~30s, and when
+      // the out-lap crossing lands before the one that confirms the stop, the
+      // counter already reads N+1 for a stop whose out-lap was lap N+1 — the
+      // split belongs on index N-1 in the terms above. Endriu at Most: super-
+      // softs fitted with two laps to go, the change on the chart at 55, the
+      // stop confirmed at 56 — and the chart showed the two SS laps as two
+      // one-lap stints. So an imprecise stop may also be expressed by a
+      // compound change at N-1, and may split there when the paired sector
+      // evidence puts it there; a precise stop keeps the two-index window.
+      const precisionByLap = new Map();
+      for (const e of Array.isArray(recorded.stopEvents) ? recorded.stopEvents : []) {
+        if (e.lap != null) precisionByLap.set(Number(e.lap), !!e.lapPrecise);
+      }
       for (const entryLap of recorded.stops || []) {
-        const covered = [entryLap, entryLap + 1].some((n) => n >= 1 && n < arr.length && compoundChangeAt(n));
+        const precise = precisionByLap.get(entryLap) ?? true;
+        const window = precise ? [entryLap, entryLap + 1] : [entryLap, entryLap + 1, entryLap - 1];
+        const covered = window.some((n) => n >= 1 && n < arr.length && compoundChangeAt(n));
         if (covered) continue;
         let bestIdx = null;
         let bestScore = -Infinity;
-        for (const cand of [entryLap, entryLap + 1]) {
+        for (const cand of window) {
           if (cand < 1 || cand >= arr.length) continue;
           const ev = pairEvidence(cand);
           const score = ev ? ev.score : 0;

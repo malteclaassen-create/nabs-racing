@@ -260,7 +260,7 @@ export function loadPitStops(filePath, { aroundIso } = {}) {
     out.set(guid, {
       stops: raceStops.filter((x) => x.lap != null).map((x) => x.lap).sort((a, b) => a - b),
       totalPits: raceStops.length,
-      stopEvents: raceStops.map((x) => ({ lap: x.lap ?? null, at: x.at || null })),
+      stopEvents: raceStops.map((x) => ({ lap: x.lap ?? null, at: x.at || null, lapPrecise: !!x.lapPrecise })),
       // Compound timeline: [{lap, tyre}] in observation order, so the importer
       // can name each stint from what the car was actually seen on rather than
       // from the result file's per-lap Tyre field, which a driver's own account
