@@ -94,7 +94,7 @@ import { getStewardDiscordIds, setSteward } from "../lib/stewards.js";
 import {
   notifyResultsSaved, notifyRacePhotosAdded, notifyDownloadAdded, notifySeatFilled, notifyCardUnlocksForSeason,
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
-  sendAttendancePing, dbCreateNotification,
+  sendAttendancePing, dbCreateNotification, withdrawAnswersNoLongerOffered,
 } from "../lib/notifications.js";
 import {
   readFeedConfig, writeFeedConfig, readPosts, writePosts,
@@ -894,9 +894,20 @@ router.get("/notification-settings", async (req, res, next) => {
 });
 
 // PUT /api/admin/notification-settings  { settings } -> sanitized + saved.
+//
+// Switching an answer off (attendanceShow) also takes back every answer of
+// that kind on the upcoming races and tells those members to answer again,
+// see withdrawAnswersNoLongerOffered. `withdrawn` reports what that did.
 router.put("/notification-settings", async (req, res, next) => {
   try {
-    res.json({ ok: true, settings: await writeNotifySettings(prisma, req.body?.settings) });
+    const before = await readNotifySettings(prisma);
+    const settings = await writeNotifySettings(prisma, req.body?.settings);
+    const dropped = before.attendanceShow.filter((s) => !settings.attendanceShow.includes(s));
+    const withdrawn = await withdrawAnswersNoLongerOffered(prisma, dropped);
+    // The Discord posts of the races touched lose that column now, not on
+    // the next answer somebody happens to give.
+    for (const raceId of withdrawn.races) syncRaceToDiscord(prisma, raceId).catch(() => {});
+    res.json({ ok: true, settings, withdrawn });
   } catch (e) {
     next(e);
   }

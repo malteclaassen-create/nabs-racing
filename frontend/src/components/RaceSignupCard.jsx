@@ -213,7 +213,9 @@ export default function RaceSignupCard({
           </div>
         ) : canSignUp ? (
           <div className="flex flex-wrap items-center gap-2">
-            {Object.entries(STATUS_UI).map(([status, ui]) => {
+            {/* Only the answers the admin offers get a button (the same list
+                that decides the columns below). The server refuses the rest. */}
+            {Object.entries(STATUS_UI).filter(([status]) => visible.includes(status)).map(([status, ui]) => {
               const active = myStatus === status;
               return (
                 <button

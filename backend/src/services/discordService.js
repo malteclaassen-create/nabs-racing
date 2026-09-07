@@ -9,6 +9,7 @@ import { readRaceFormat, sessionLines } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
 import { getPersonGroups } from "../lib/persons.js";
 import { collapseByPerson, byNewestAnswer } from "../lib/onePerPerson.js";
+import { readNotifySettings } from "../lib/notifications.js";
 
 const WEBHOOK_KEY = "discord_webhook_url";
 // Results posts go to their OWN channel/webhook (#results), separate from the
@@ -156,7 +157,7 @@ function seasonLabel(season) {
   return /^\d+$/.test(name) ? `Season ${name}` : name;
 }
 
-function buildEmbed(race, rsvps) {
+function buildEmbed(race, rsvps, offered = Object.keys(STATUS_META)) {
   const groups = { ACCEPTED: [], TENTATIVE: [], DECLINED: [] };
   for (const r of rsvps) {
     const name = r.driver?.discordName || r.driver?.name || r.driverId;
@@ -164,7 +165,9 @@ function buildEmbed(race, rsvps) {
   }
 
   const cap = race.capacity || 40;
-  const fields = Object.entries(STATUS_META).map(([key, meta]) => {
+  // Only the answers the admin offers get a column (Notifications tab); a
+  // switched-off one has no answers left to list anyway.
+  const fields = Object.entries(STATUS_META).filter(([key]) => offered.includes(key)).map(([key, meta]) => {
     // Apollo-style: "Accepted (28/40)" for the accepted column, count only otherwise.
     const count = key === "ACCEPTED" ? `${groups[key].length}/${cap}` : `${groups[key].length}`;
     return {
@@ -228,7 +231,8 @@ export async function syncRaceToDiscord(prisma, raceId) {
     const people = await getPersonGroups(prisma).catch(() => ({ byDriver: new Map() }));
     const rsvps = collapseByPerson(race.rsvps, people.byDriver, byNewestAnswer).kept;
 
-    const payload = { embeds: [buildEmbed({ ...race, ...format, type }, rsvps)] };
+    const offered = (await readNotifySettings(prisma)).attendanceShow;
+    const payload = { embeds: [buildEmbed({ ...race, ...format, type }, rsvps, offered)] };
 
     // Try to edit the existing message first.
     if (race.discordMessageId) {

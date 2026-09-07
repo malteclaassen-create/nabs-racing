@@ -104,7 +104,11 @@ export const NOTIFY_DEFAULTS = {
   attendanceOpenDays: null, // sign-up opens N days before race day (null = always open)
   attendanceOpenHour: 8, // ... at this hour, German time
   attendanceOpenNotify: true, // broadcast the moment the sign-up opens
-  attendanceShow: [...ATTENDANCE_STATUSES], // which answer columns the page shows
+  // Which answers members can give (and which columns the page shows). An
+  // answer taken out of this list is gone for real: no button, the API refuses
+  // it, the Discord post drops the column, and answers already given with it
+  // are cleared when the setting is saved (see withdrawAnswersNoLongerOffered).
+  attendanceShow: [...ATTENDANCE_STATUSES],
 };
 
 export function sanitizeNotifySettings(input) {
@@ -193,6 +197,52 @@ export async function writeNotifySettings(prisma, input) {
   });
   settingsCache = { value: clean, at: Date.now() }; // takes effect immediately
   return clean;
+}
+
+// An answer the admin has just switched off (say, Tentative) may already be
+// sitting on upcoming races. Those answers cannot stay: the column is gone
+// from the page and the post, and "maybe" is exactly the answer the admin no
+// longer wants to plan around. So they are taken back, and each member who
+// gave one gets a personal bell note asking them to answer again with what is
+// still on offer. Completed races keep their history untouched.
+//
+// Returns { removed, races, members } for the admin's feedback line; `races`
+// are the ids touched, so the caller can refresh their Discord posts.
+export async function withdrawAnswersNoLongerOffered(prisma, statuses) {
+  const gone = ATTENDANCE_STATUSES.filter((s) => statuses.includes(s));
+  if (!gone.length) return { removed: 0, races: [], members: 0 };
+  const where = { status: { in: gone }, race: { isCompleted: false } };
+  const rows = await prisma.raceRsvp.findMany({
+    where,
+    include: {
+      race: { select: { id: true, number: true, track: true, seasonId: true } },
+      driver: { select: { id: true, name: true, discordUserId: true } },
+    },
+  });
+  if (!rows.length) return { removed: 0, races: [], members: 0 };
+  await prisma.raceRsvp.deleteMany({ where });
+
+  const word = (s) => s[0] + s.slice(1).toLowerCase();
+  const stillOffered = ATTENDANCE_STATUSES.filter((s) => !gone.includes(s)).map(word).join(" or ");
+  const told = new Set();
+  for (const r of rows) {
+    const to = r.driver?.discordUserId;
+    if (!to) continue;
+    const key = `${r.race.id}:${to}`;
+    if (told.has(key)) continue;
+    told.add(key);
+    const prefix = await seriesPrefixForSeason(prisma, r.race.seasonId);
+    await dbCreateNotification(prisma, {
+      type: "REMINDER",
+      title: `Please answer again for ${roundName(r.race)} at ${r.race.track}`,
+      body: `Your "${word(r.status)}" answer was taken back because that option is no longer offered. Please tell us ${stillOffered}.`,
+      link: `${prefix}/attendance?race=${r.race.id}`,
+      recipientId: to,
+      dedupeKey: `answer-withdrawn:${r.race.id}:${to}:${Date.now()}`,
+    }).catch(() => {});
+  }
+  const races = [...new Set(rows.map((r) => r.race.id))];
+  return { removed: rows.length, races, members: told.size };
 }
 
 // --- helpers shared by the notify* functions --------------------------------

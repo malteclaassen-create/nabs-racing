@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox } from "./ui.jsx";
+import { useAsk } from "./overlay.jsx";
 
 // Admin tab "Notifications": league-wide control over the nav-bar bell.
 // Which events post a notification, who hears about seat offers, and when the
@@ -92,9 +93,15 @@ export default function AdminNotifications() {
   const [form, setForm] = useState(null);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const ask = useAsk();
+  // The answer list as last saved, so a second save without a change asks nothing.
+  const [savedShow, setSavedShow] = useState(null);
 
   useEffect(() => {
-    if (!loading && !error && !form && data?.settings) setForm(data.settings);
+    if (!loading && !error && !form && data?.settings) {
+      setForm(data.settings);
+      setSavedShow(data.settings.attendanceShow || null);
+    }
   }, [loading, error, data, form]);
 
   if (error) return <ErrorBox message={error} />;
@@ -112,12 +119,33 @@ export default function AdminNotifications() {
     );
 
   async function save() {
+    // Switching an answer off takes back every answer of that kind on the
+    // upcoming races (the server does it on save). Worth a second look first.
+    const wasOn = savedShow || Object.keys(STATUS_LABELS);
+    const nowOn = Array.isArray(form.attendanceShow) ? form.attendanceShow : Object.keys(STATUS_LABELS);
+    const dropped = wasOn.filter((s) => !nowOn.includes(s)).map((s) => STATUS_LABELS[s]);
+    if (dropped.length) {
+      const yes = await ask({
+        title: `Switch off "${dropped.join('" and "')}"?`,
+        body: `Members can no longer give that answer, and everyone who already did for an upcoming race loses it. They get a note in their bell asking them to answer again with what is left.`,
+        confirmLabel: "Switch off and take answers back",
+        danger: true,
+      });
+      if (!yes) return;
+    }
     setBusy(true);
     setMsg(null);
     try {
       const res = await api.saveNotificationSettings(form);
       setForm(res.settings);
-      setMsg({ ok: true, text: "Saved. Applies to the next notification right away." });
+      setSavedShow(res.settings.attendanceShow || null);
+      const w = res.withdrawn;
+      setMsg({
+        ok: true,
+        text: w?.removed
+          ? `Saved. ${w.removed} answer${w.removed === 1 ? "" : "s"} taken back on ${w.races.length} race${w.races.length === 1 ? "" : "s"}; ${w.members} member${w.members === 1 ? "" : "s"} asked to answer again.`
+          : "Saved. Applies to the next notification right away.",
+      });
     } catch (e) {
       setMsg({ ok: false, text: e.message });
     } finally {
@@ -292,7 +320,7 @@ export default function AdminNotifications() {
           </div>
         )}
         <div className="mt-4 border-t border-border pt-4">
-          <div className="mb-2 text-sm font-semibold text-dark">Answers shown on the page</div>
+          <div className="mb-2 text-sm font-semibold text-dark">Answers members can give</div>
           <div className="flex flex-wrap gap-2">
             {Object.entries(STATUS_LABELS).map(([key, label]) => {
               const on = !Array.isArray(form.attendanceShow) || form.attendanceShow.includes(key);
@@ -320,8 +348,10 @@ export default function AdminNotifications() {
             })}
           </div>
           <p className="mt-2 text-xs leading-relaxed text-light">
-            Hidden columns disappear from the Attendance page for everyone (answering still works
-            for all three). Hiding everything falls back to showing all.
+            An answer you switch off loses its button and its column on the Attendance page and in
+            the Discord post. Answers already given with it on upcoming races are taken back when
+            you save, and those members are asked to answer again. Switching everything off falls
+            back to all three.
           </p>
         </div>
         <AttendanceNudge />

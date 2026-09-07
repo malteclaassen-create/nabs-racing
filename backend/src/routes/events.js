@@ -334,6 +334,12 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     if (gate.closedForStart) {
       return res.status(403).json({ error: "Sign-up is closed. This race is already under way" });
     }
+    // An answer the admin switched off (Notifications tab) has no button on
+    // the page; this keeps a stale tab or an old ?rsvp=maybe link from
+    // filing it anyway.
+    if (!notify.attendanceShow.includes(status)) {
+      return res.status(400).json({ error: "That answer isn't offered any more. Please pick one of the others" });
+    }
     const opens = gate.opensAt;
     if (opens && opens.getTime() > Date.now()) {
       const when = new Intl.DateTimeFormat("en-GB", {
