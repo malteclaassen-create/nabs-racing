@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { circuitForLive } from "../data/circuits.js";
 import { aerialForTrack } from "../data/aerialMaps.js";
 import SlidingTabs from "./SlidingTabs.jsx";
+import FormulaCar, { FORMULA_CAR_HALF } from "./FormulaCar.jsx";
 
 // Live track map. Two modes:
 //
@@ -30,28 +31,6 @@ import SlidingTabs from "./SlidingTabs.jsx";
 const ZOOM_DEFAULT = 3;
 const ZOOM_MIN = 1.6;
 const ZOOM_MAX = 7;
-
-// Top-down open-wheeler, drawn pointing RIGHT (+x) around (0,0) in a roughly
-// 22 x 10 box, so `rotate(headingDeg)` aims it along the direction of travel.
-// Body in team colour; wheels/wings dark so the silhouette reads at map size.
-// (An emoji can't do this: it won't tint per team, won't rotate cleanly, and
-// renders differently on every device.)
-const CAR = {
-  // nose + monocoque + sidepods, one closed path
-  body: "M11,0 L8.2,-1.1 L5.5,-1.4 L3.5,-3 L0.5,-3 L-1.5,-1.6 L-6.5,-1.6 L-6.5,1.6 L-1.5,1.6 L0.5,3 L3.5,3 L5.5,1.4 L8.2,1.1 Z",
-  frontWing: "M7.6,-4.6 L9.4,-4.6 L9.4,4.6 L7.6,4.6 Z",
-  rearWing: "M-9.6,-4.2 L-7.9,-4.2 L-7.9,4.2 L-9.6,4.2 Z",
-  wheels: [
-    { x: 4.2, y: -4.4 }, // front left
-    { x: 4.2, y: 2.4 }, // front right
-    { x: -6.8, y: -4.7 }, // rear left
-    { x: -6.8, y: 2.7 }, // rear right
-  ],
-  wheelW: 2.6,
-  wheelH: 2,
-  // half-length of the drawing, used to convert the old dot radius to a scale
-  half: 11,
-};
 
 // Shortest-path angle interpolation (so 350° -> 10° turns 20°, not -340°).
 function lerpAngle(a, b, f) {
@@ -181,7 +160,7 @@ function CarDot({ d, r, fs, zoom, focused, isFocusTarget, counterRotate, onFocus
   const k = focused ? Math.sqrt(zoom) : 1; // gentle counter-scale under zoom
   const rr = r / k;
   const ff = fs / k;
-  const s = (r * 1.6) / CAR.half; // rAF scales with the displayed camera zoom
+  const s = (r * 1.6) / FORMULA_CAR_HALF; // rAF scales with the displayed camera zoom
   return (
     <g
       ref={registerRef}
@@ -194,13 +173,8 @@ function CarDot({ d, r, fs, zoom, focused, isFocusTarget, counterRotate, onFocus
       <title>{d.title}</title>
       <g data-car data-scale={s} transform={`rotate(${d.heading ?? 0}) scale(${s})`}>
         {/* generous invisible hit area — the silhouette alone is fiddly to tap */}
-        <circle r={CAR.half * 1.2} fill="transparent" stroke="none" />
-        {CAR.wheels.map((w, i) => (
-          <rect key={i} x={w.x} y={w.y} width={CAR.wheelW} height={CAR.wheelH} rx={0.7} fill="#111827" />
-        ))}
-        <path d={CAR.frontWing} fill="#1f2937" />
-        <path d={CAR.rearWing} fill="#1f2937" />
-        <path d={CAR.body} fill={d.color} stroke="rgba(15,23,42,0.85)" strokeWidth={0.5} />
+        <circle r={FORMULA_CAR_HALF * 1.2} fill="transparent" stroke="none" />
+        <FormulaCar color={d.color} />
       </g>
       {/* the race number rides above the car, always upright; the followed
           car shows the driver's name instead — that is the one you zoomed in

@@ -43,7 +43,7 @@ and posts automatically when you set a clean session best.
 
 Nobody is meant to install this by hand. The site serves a windowless variant
 of this same recorder at `/api/telemetry-laps/app.lua?key=…`, and the admin
-card prints a ready-made `[SCRIPT_NABS_TELEMETRY]` snippet for the race
+card prints a ready-made `[SCRIPT_...]` snippet for the race
 server's `csp_extra_options.ini` — CSP's standard server-script delivery.
 Once that snippet is in, drivers do nothing: the script records and posts on
 its own. It draws nothing in the game — no window, no toast — so whatever
@@ -73,3 +73,7 @@ surface as webPenaltyNABS (which does run), everything engine-touching is
 guarded, and any error prints inside the app window instead of vanishing —
 but expect to fix a field name or two on first contact. `ac.debug` lines are
 tagged `nabsTelemetry`.
+
+### Script section names
+
+Use [SCRIPT_...] with the literal three dots for CSP automatic numbering, or an unused numbered section such as [SCRIPT_2] after [SCRIPT_0] and [SCRIPT_1]. A custom name without a digit after SCRIPT_ is not discovered by CSP's section iterator. After changing the block, save and restart the race event and rejoin. Lua Debug should then show the telemetry recorder as another Server Script, with a nabsTelemetry loaded version and a hello status.

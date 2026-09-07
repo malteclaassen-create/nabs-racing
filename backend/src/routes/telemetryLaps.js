@@ -18,6 +18,8 @@ import { recordTelemetryEvent } from "../lib/telemetryIngestLog.js";
 import { getNameOverrides } from "../lib/persons.js";
 import { ensureTrackMap } from "../lib/trackMaps.js";
 import { resolveSeason } from "../services/seasonService.js";
+import { isAdminRequest } from "../middleware/auth.js";
+import { telemetryIdentities } from "../lib/telemetryIdentity.js";
 
 const router = Router();
 
@@ -227,21 +229,11 @@ async function seasonAsked(req) {
 // resolved the same two ways as everywhere else (captured SteamID on a roster
 // row, current name overrides on top). A lap from someone the league doesn't
 // know keeps the name the game recorded.
-async function leagueNames(steamIds) {
-  const ids = [...new Set(steamIds)].filter(Boolean);
-  const out = new Map();
-  if (!ids.length) return out;
-  const rows = await prisma.driver.findMany({
-    where: { steamId: { in: ids } },
-    select: { id: true, steamId: true, name: true },
-  });
+async function leagueNames(steamIds, seasonNumber, req) {
+  if (!steamIds.length) return new Map();
+  const season = await resolveSeason(prisma, seasonNumber, {includePrivate: isAdminRequest(req)});
   const overrides = await getNameOverrides(prisma);
-  for (const d of rows) {
-    // Several season rows can share a SteamID; any of them names the person,
-    // and the override map already speaks with their current name.
-    if (!out.has(d.steamId)) out.set(d.steamId, { driverId: d.id, name: overrides.get(d.id)?.displayName || d.name });
-  }
-  return out;
+  return telemetryIdentities(prisma, steamIds, season?.id, overrides);
 }
 
 // GET /api/telemetry-laps/app.lua?key=... — the script itself, served by the
@@ -329,12 +321,13 @@ router.get("/:trackKey", async (req, res, next) => {
     if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
     const { season, legacy } = await seasonAsked(req);
     const laps = listLaps(season, req.params.trackKey, legacy);
-    const known = await leagueNames(laps.map((l) => l.steamId));
+    const known = await leagueNames(laps.map((l) => l.steamId), season, req);
     res.json({
       laps: laps.map((l) => ({
         ...l,
         driverId: known.get(l.steamId)?.driverId ?? null,
         name: known.get(l.steamId)?.name || l.name,
+        team: known.get(l.steamId)?.team ?? null,
       })),
     });
   } catch (e) {
@@ -400,8 +393,8 @@ router.get("/:trackKey/:steamId/:lapId?", async (req, res, next) => {
     const { season, legacy } = await seasonAsked(req);
     const lap = readLap(season, req.params.trackKey, req.params.steamId, req.params.lapId ?? null, legacy);
     if (!lap) return res.status(404).json({ error: "No lap stored there" });
-    const known = await leagueNames([lap.steamId]);
-    res.json({ ...lap, driverId: known.get(lap.steamId)?.driverId ?? null, name: known.get(lap.steamId)?.name || lap.name });
+    const known = await leagueNames([lap.steamId], season, req);
+    res.json({ ...lap, driverId: known.get(lap.steamId)?.driverId ?? null, name: known.get(lap.steamId)?.name || lap.name, team: known.get(lap.steamId)?.team ?? null });
   } catch (e) {
     next(e);
   }

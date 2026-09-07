@@ -27,7 +27,7 @@ vi.mock("../lib/prisma.js", () => ({
     driver: { findMany: vi.fn(async () => []) },
   },
 }));
-vi.mock("../services/seasonService.js", () => ({ resolveSeason: vi.fn(async () => ({ number: 8 })) }));
+vi.mock("../services/seasonService.js", () => ({ resolveSeason: vi.fn(async () => ({ id: 's8', number: 8 })) }));
 vi.mock("../lib/trackMaps.js", () => ({ ensureTrackMap: vi.fn(async () => null) }));
 vi.mock("../lib/persons.js", () => ({ getNameOverrides: vi.fn(async () => new Map()) }));
 // Who may READ is tested next door (lib/telemetryAccess.test.js); here it would
@@ -37,6 +37,7 @@ vi.mock("../lib/telemetryAccess.js", () => ({ telemetryReadGate: () => (req, res
 const { default: router } = await import("./telemetryLaps.js");
 const { readTelemetryActivity, resetTelemetryActivity } = await import("../lib/telemetryIngestLog.js");
 const { TELEMETRY_LAPS_DIR } = await import("../lib/telemetryLaps.js");
+const { default: prisma } = await import("../lib/prisma.js");
 
 let base;
 let server;
@@ -243,5 +244,31 @@ describe("the ways in that are not laps", () => {
     // The same key answers again the moment the pause lifts.
     const res = await post(`?key=${KEY}&ping=1`, {});
     expect(await res.json()).toMatchObject({ ok: true, pong: true });
+  });
+});
+
+describe('team identity when reading a lap', () => {
+  it('returns the same season team with both the selector metadata and full channels', async () => {
+    await post(`?key=${KEY}`, lapPayload());
+    const team = {id:'ferrari',name:'Ferrari',color:'#ef4444',logoUrl:'/teams/ferrari.png'};
+    const driver = {id:'driver-s8',steamId:lapPayload().steamId,name:'League name',team};
+    const track = 'fr-redbullring--austria-f1-2024';
+    prisma.driver.findMany.mockResolvedValueOnce([driver]);
+    const listResponse = await fetch(`${base}/api/telemetry-laps/${track}?season=8`);
+    expect(listResponse.status).toBe(200);
+    const {laps} = await listResponse.json();
+    expect(laps[0]).toMatchObject({name:'League name',driverId:'driver-s8',team});
+    prisma.driver.findMany.mockResolvedValueOnce([driver]);
+    const lapResponse = await fetch(`${base}/api/telemetry-laps/${track}/${driver.steamId}?season=8`);
+    expect(lapResponse.status).toBe(200);
+    expect(await lapResponse.json()).toMatchObject({name:'League name',team,n:60});
+    expect(prisma.driver.findMany.mock.lastCall[0].where.seasonId).toBe('s8');
+  });
+
+  it('keeps the recorded name and no team for an unregistered driver', async () => {
+    await post(`?key=${KEY}`, lapPayload());
+    const response = await fetch(`${base}/api/telemetry-laps/fr-redbullring--austria-f1-2024/${lapPayload().steamId}?season=8`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({name:'Rashford',driverId:null,team:null});
   });
 });

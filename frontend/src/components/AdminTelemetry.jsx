@@ -6,27 +6,9 @@ import { useAsk } from "./overlay.jsx";
 import TelemetryCompare from "./TelemetryCompare.jsx";
 import { fmtLap } from "../utils/format.js";
 
-// ---------------------------------------------------------------------------
-// Is anything arriving?
-//
-// The recording half of this feature says nothing, anywhere: the in-game
-// script draws no window, and a refused post is a status code that goes into a
-// debug console nobody has open. An empty comparison therefore looked exactly
-// the same whether the race server had never handed the script out, the key
-// had been re-minted underneath it, or the cars were posting fine and nobody
-// had set a clean lap yet. Three problems, one blank page, and the only way to
-// tell them apart was a voice call with whoever runs the server.
-//
-// The split that does most of the work here is script downloads vs laps. A
-// driver's game fetches the script when they join a server carrying the
-// snippet, so a download proves the whole chain up to the car — config,
-// restart, key, CSP. Which means:
-//
-//   nothing at all      -> the race server. The snippet, or the restart it
-//                          has not had, or the wrong one of two servers.
-//   scripts, no laps    -> the recorder in the car, or simply no clean lap yet.
-//   laps                -> it works, and the page is a season/track question.
-// ---------------------------------------------------------------------------
+// Downloads include browser visits and link previews. Only recorder check-ins
+// and lap posts show activity from the game. Those counters restart with the
+// process; the stored-lap summary describes the season's persistent recordings.
 
 // "4 min ago". Written here rather than in utils/format.js because it exists
 // for this panel's question — how stale is this number — and nothing else on
@@ -56,7 +38,7 @@ function Stat({ label, value, at, tone = "" }) {
 // a row. Kept in both places on purpose: the API's list is what an admin reads
 // in a raw response, this is what fits in a column.
 const EVENT_LABEL = {
-  "script-served": "Script sent",
+  "script-served": "Script downloaded",
   "script-refused": "Script refused",
   "lap-kept": "Lap stored",
   "lap-slower": "Lap arrived (slower)",
@@ -70,7 +52,7 @@ const EVENT_LABEL = {
 };
 
 function IngestActivity({ configured }) {
-  const { data, reload } = useApi(useCallback(() => api.telemetryActivity(), []));
+  const { data, reload, error } = useApi(useCallback(() => api.telemetryActivity(), []));
   // While somebody is looking at this card they are usually mid-test — a
   // driver is joining, or about to cross the line. Twenty seconds is short
   // enough to feel live and long enough that leaving the tab open costs
@@ -81,7 +63,7 @@ function IngestActivity({ configured }) {
   }, [reload]);
 
   if (!configured) return null;
-  if (!data) return null;
+  if (!data) return <div className="card p-5 text-sm text-light">{error ? <p role="alert">Recording status could not be loaded. <button type="button" className="text-link underline" onClick={reload}>Try again</button></p> : <p role="status">Loading recording status…</p>}</div>;
 
   const scripts = data.scriptsServed || 0;
   const laps = data.lapsArrived || 0;
@@ -109,23 +91,22 @@ function IngestActivity({ configured }) {
 
   // One sentence saying what the numbers mean, because the numbers alone still
   // need somebody who knows the chain to read them.
-  const verdict =
-    laps > 0
-      ? "Laps are arriving. If the comparison below is still empty, it is a season or track question, not a recording one."
-      : carSkipped > 0
-        ? "The recorder is running and laps are being finished, but every one was held back — the rows below say why each time. Pit-lane and off-track laps are never sent, and “slower than sent” is the recorder working; “incomplete” or “no steam id” on every lap is a bug to report."
-        : carAlive > 0
-          ? "The recorder is running in the car and can reach the site — nobody has finished a lap since it started. One full lap, and its fate appears here either way."
-          : scripts > 0
-            ? "Cars are being handed the script, but it has never spoken from inside a car — no hello, no lap. Either nobody has driven since, or the script cannot run or reach the site from the game. That is the Lua debug console's answer, filter nabsTelemetry."
-            : refused > 0
-              ? "Something is knocking and being turned away. The reasons are listed below — a wrong key means the race server's config and this card have drifted apart."
-              : "Nothing has asked for the script and nothing has posted. That points at the race server rather than at the site: the snippet missing, a restart it has not had, or it sitting on the server nobody was driving on.";
+  const verdict = laps > 0
+    ? `Lap uploads have reached the site since its last restart. ${(data.stored?.laps || 0) > 0 ? "Saved laps are available in the comparison above." : "No laps are stored for this season yet; check the activity log for their outcomes."}`
+    : carSkipped > 0
+      ? "The recorder is running. Some laps were held back; the activity log lists the reasons."
+      : carAlive > 0
+        ? "A recorder has checked in from the game. No lap upload has arrived since the site restarted."
+        : (data.stored?.laps || 0) > 0
+          ? "Saved laps are available. No new recorder check-in or lap upload has arrived since the site restarted."
+          : refused > 0
+            ? "Some requests were refused. Open the activity log for the reasons."
+            : "Waiting for a recorder to check in from the game. Script downloads alone do not confirm that it is running.";
 
   return (
     <div className="card overflow-hidden">
       <CardBar
-        title="Is anything arriving?"
+        title="Recording status"
         right={
           <button type="button" className="text-sm font-semibold text-light transition hover:text-dark" onClick={reload}>
             Refresh
@@ -133,30 +114,19 @@ function IngestActivity({ configured }) {
         }
       />
       <div className="space-y-4 p-5">
+        {error && <p role="alert" className="text-xs text-warn">Could not refresh the recording status. Showing the last received values.</p>}
         <div className="grid gap-3 sm:grid-cols-3">
-          <Stat label="Script handed to a car" value={scripts} at={data.outcomes?.["script-served"]?.lastAt} />
-          <Stat
-            label="Laps arrived"
-            value={laps}
-            at={
-              data.outcomes?.["lap-kept"]?.lastAt || data.outcomes?.["lap-slower"]?.lastAt || null
-            }
-          />
-          <Stat label="Turned away" value={refused} tone={refused ? "text-warn" : ""} at={refusedAt} />
+          <Stat label={`Saved laps · Season ${data.season || "?"}`} value={data.stored?.laps ?? 0} at={data.stored?.newestAt} />
+          <Stat label="Recorder check-ins" value={carAlive} at={data.outcomes?.["car-alive"]?.lastAt} />
+          <Stat label="Refused requests" value={refused} tone={refused ? "text-warn" : ""} at={refusedAt} />
         </div>
 
         <p className="text-sm leading-relaxed text-light">{verdict}</p>
 
-        <p className="text-xs text-faint">
-          Counted since the site last restarted (<span title={data.since}>{ago(data.since)}</span>), so an empty
-          row means nothing since then rather than nothing ever. On disk right now:{" "}
-          <span className="font-semibold text-light">
-            {data.stored?.laps ?? 0} {data.stored?.laps === 1 ? "lap" : "laps"}
-          </span>{" "}
-          in Season {data.season || "?"}
-          {data.stored?.newestAt ? `, newest ${ago(data.stored.newestAt)}` : ""}. Opening the script URL in a
-          browser counts here too.
-        </p>
+        <p className="text-xs text-light">Check-ins and requests count since the site restarted {ago(data.since)}. Saved laps persist across restarts.</p>
+        <details>
+          <summary className="cursor-pointer text-xs font-semibold text-link">Activity log · {scripts} script downloads · {laps} lap uploads</summary>
+          <p className="my-3 text-xs text-light">Downloads can come from the game, a browser or a Discord link preview. A recorder check-in confirms that the script ran inside a car.</p>
 
         {data.events?.length > 0 && (
           <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
@@ -177,27 +147,15 @@ function IngestActivity({ configured }) {
             ))}
           </div>
         )}
+        </details>
       </div>
     </div>
   );
 }
 
 
-// ---------------------------------------------------------------------------
-// Admin → League → Telemetry: everything about laps from inside the car, in
-// the order somebody needs it.
-//
-//   1. record   — mint the key, hand the race server its one line
-//   2. check    — is anything actually arriving, and if not, whose end is it
-//   3. show     — who may read what was recorded: the stewards, or the league
-//   4. read     — the comparison itself
-//
-// The recording card used to live on the Reports tab, next to the in-race
-// reporting key, because the two share a contract: a Lua app in the game
-// posting to the site with a key in the URL. That is a fact about the code,
-// and it was the wrong reason to put a telemetry switch under a heading that
-// says "Reports".
-// ---------------------------------------------------------------------------
+// Comparison first. Setup and detailed diagnostics remain available below it;
+// they no longer push the recorded laps below the fold on every visit.
 export default function AdminTelemetry() {
   const ask = useAsk();
   const [busy, setBusy] = useState(false);
@@ -247,14 +205,20 @@ export default function AdminTelemetry() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-light">
+        <span>Recorded laps · speed, pedal inputs and racing lines</span>
+        <span className="pill bg-surface2 text-light">{isPublic ? "Visible to members" : "Admins only"}</span>
+      </div>
+      <TelemetryCompare />
+      <IngestActivity configured={!!telIngest?.configured} />
       {/* RECORDING: the key, and the line the race server needs.
           This lived on the Reports tab until this tab existed, because it
           shares its key contract with the in-race reporting app — a good
           reason for two pieces of CODE to sit together and a poor one for two
           admin CARDS to. "Reports" means incident reports, and nobody hunting
           for the telemetry recorder would think to open it. */}
-      <div className="card overflow-hidden">
-        <CardBar title="Telemetry from inside the car" />
+      <details className="card overflow-hidden" open={!telIngest?.configured}>
+        <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-dark">Recorder setup &amp; server configuration</summary>
         <div className="space-y-3 p-5">
           <p className="text-sm text-light">
             Every driver who joins the race server sends their fastest clean laps: throttle, brake,
@@ -276,13 +240,13 @@ export default function AdminTelemetry() {
                 aria-label="csp_extra_options snippet"
                 className="input w-full font-mono text-xs"
                 rows={2}
-                value={`[SCRIPT_NABS_TELEMETRY]
+                value={`[SCRIPT_...]
 SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.key}&v=${telIngest.scriptVersion || "1"}"`}
                 onFocus={(e) => e.target.select()}
               />
               <p className="text-xs text-light">
                 Into <span className="font-mono">csp_extra_options.ini</span>, where the penalty script
-                lives. Drivers install nothing. The script shows nothing in the game either, so announce
+                lives. Keep the three dots in [SCRIPT_...] for automatic numbering, or use the next unused number (for example [SCRIPT_2] after [SCRIPT_0] and [SCRIPT_1]). Save the event, restart it and rejoin. Drivers install nothing. The script shows nothing in the game either, so announce
                 the recording in Discord.
               </p>
               <p className="text-xs text-light">
@@ -395,12 +359,7 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
             </div>
           )}
         </div>
-      </div>
-
-      {/* IS IT WORKING. Directly under the card that switches it on, because
-          that is the moment the question comes up — and it is the card whose
-          absence cost an evening of guessing. */}
-      <IngestActivity configured={!!telIngest?.configured} />
+      </details>
 
       {/* WHO MAY LOOK. Separate from the key above, and the separation is the
           point: that one decides whether cars record, this one decides whether
@@ -427,7 +386,7 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
         <p className="mt-3 text-xs text-faint">Recording carries on either way.</p>
       </div>
 
-      <TelemetryCompare />
+
     </div>
   );
 }
