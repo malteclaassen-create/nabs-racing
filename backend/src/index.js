@@ -57,7 +57,7 @@ import { UPLOADS_DIR } from "./lib/dataDirs.js";
 ensureAppSchema(prisma)
   .then(() => ensureDownloadTables(prisma))
   .then(() => backfillCardIntro(prisma))
-  // One-time S8 stint recompute (flag-guarded): carries the pit-detection fix
+  // One-time stint recompute, S8 onwards (flag-guarded): carries the stint fix
   // to databases whose races were imported under the old rule — this is the
   // only way it reaches the hosted instance, which has no shell for scripts.
   .then(() => recomputeStintsOnce(prisma))

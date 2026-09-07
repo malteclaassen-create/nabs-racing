@@ -50,6 +50,48 @@ function tsToMs(t) {
   return t < 1e11 ? t * 1000 : t;
 }
 
+// The recording is of the whole race SESSION, and a race session has a life
+// on either side of the race: the grid forms during the wait time before the
+// lights, and after the flag the field drives back to the pit lane, where the
+// server counts the return as a pit visit and a driver browsing the setup
+// screen shows a compound change. Neither is strategy. The result file says
+// exactly when the race ran — lap one is timed from the lights, and a
+// driver's last lap entry IS their flag (the file holds no cool-down laps:
+// verified on Most 2026-09-04, where every driver's lap count in the file
+// equals the classified NumLaps) — so a stop or compound change confirmed
+// outside that window is dropped here. A real stop cannot be confirmed after
+// the driver's last crossing: its out-lap would be a further lap. Recordings
+// that carry no timestamps (older lines) pass through unchanged, and so does
+// anything the two clocks cannot be held against each other on: a recording
+// made hours away from the file's own race window means the file does not
+// stamp wall-clock time (or not this race's), and judging by it would drop
+// every real stop rather than the odd cool-down one.
+const CLOCKS_COMPARABLE_MS = 12 * 3600 * 1000;
+function withinRaceWindow(recorded, { raceStartMs, lastLapMs }) {
+  if (!recorded) return null;
+  const comparable = (t) => Number.isFinite(t) && raceStartMs != null && Math.abs(t - raceStartMs) <= CLOCKS_COMPARABLE_MS;
+  const inside = (at) => {
+    const t = at ? Date.parse(at) : NaN;
+    if (!comparable(t)) return true; // no timestamp, or clocks not comparable: nothing to judge by
+    if (t < raceStartMs) return false;
+    if (lastLapMs != null && t > lastLapMs) return false;
+    return true;
+  };
+  const events = Array.isArray(recorded.stopEvents) ? recorded.stopEvents : null;
+  const tyres = (recorded.tyres || []).filter((x) => {
+    const t = x.at ? Date.parse(x.at) : NaN;
+    return !comparable(t) || lastLapMs == null || !(t > lastLapMs);
+  });
+  if (!events) return { ...recorded, tyres };
+  const kept = events.filter((e) => inside(e.at));
+  return {
+    ...recorded,
+    stops: kept.filter((e) => e.lap != null).map((e) => Number(e.lap)).sort((a, b) => a - b),
+    totalPits: kept.length,
+    tyres,
+  };
+}
+
 function medianOf(nums) {
   const a = nums.filter((n) => Number.isFinite(n)).sort((x, y) => x - y);
   if (!a.length) return 0;
@@ -433,6 +475,18 @@ export function extractTelemetry(json, opts = {}) {
   // degenerate case where calibration returns something implausibly small.
   const pitDeltaMin = typicalPitLoss ? Math.max(9000, typicalPitLoss * 0.8) : PIT_LAP_EXTRA_MS;
 
+  // When the race went green, from the file itself: the earliest first-lap
+  // crossing minus that lap's time (AC times lap one from the lights). The
+  // race window a recorded stop must fall in runs from here to each driver's
+  // own last crossing — see withinRaceWindow.
+  let raceStartMs = null;
+  for (const arr of lapsByGuid.values()) {
+    const ts = tsToMs(Number(arr[0]?.Timestamp));
+    const lt = Number(arr[0]?.LapTime);
+    if (ts == null || !(lt > 0)) continue;
+    if (raceStartMs == null || ts - lt < raceStartMs) raceStartMs = ts - lt;
+  }
+
   const metrics = new Map();
   for (const [guid, arr] of lapsByGuid) {
     const times = arr.map((l) => Number(l.LapTime)).filter((t) => Number.isFinite(t) && t > 0);
@@ -481,7 +535,10 @@ export function extractTelemetry(json, opts = {}) {
     // the session (see services/pitRecorder.js): the feed's absolute stop
     // counter is authoritative, so with it present the heuristic is DEMOTED to
     // placing the recorded stops on the lap chart rather than inventing any.
-    const recorded = opts.pitStopsByGuid?.get?.(guid) || null;
+    const recorded = withinRaceWindow(opts.pitStopsByGuid?.get?.(guid) || null, {
+      raceStartMs,
+      lastLapMs: tsToMs(Number(arr[arr.length - 1]?.Timestamp)),
+    });
     const pairEvidence = (i) => {
       // Score for a same-compound split between arr[i-1] (in) and arr[i] (out).
       const dIn = sectorDelta(arr[i - 1], i, pitInSector);

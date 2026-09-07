@@ -329,6 +329,66 @@ describe("tyre stints", () => {
     ]);
   });
 
+  it("recorded stops outside the race window are not race stops", () => {
+    // The field's lap one is timed from the lights at 1786000000; G's last
+    // crossing is at 1786002700. A pit visit counted before the lights (the
+    // grid forming) or after G's own flag (driving back to the pits) has no
+    // out-lap on the chart and must neither split it nor add to the count.
+    const at = (sec) => new Date(sec * 1000).toISOString();
+    const m = extractTelemetry(mkField(), {
+      pitStopsByGuid: new Map([
+        [
+          G,
+          {
+            stops: [1, 10, 29],
+            totalPits: 3,
+            stopEvents: [
+              { lap: 1, at: at(1786000000 - 40) },
+              { lap: 10, at: at(1786000000 + 10 * 90 + 3) },
+              { lap: 29, at: at(1786002700 + 20) },
+            ],
+          },
+        ],
+      ]),
+    }).byGuid.get(G);
+    expect(m.stints).toEqual([
+      { tyre: "M", laps: 10 },
+      { tyre: "M", laps: 20 },
+    ]);
+  });
+
+  it("a recording whose clock cannot be held against the file keeps every stop", () => {
+    // Stamped weeks away from the file's race: the file does not carry this
+    // race's wall-clock time, so the window is not applied at all.
+    const m = extractTelemetry(mkField(), {
+      pitStopsByGuid: new Map([
+        [G, { stops: [10, 20], totalPits: 2, stopEvents: [{ lap: 10, at: "2026-09-01T20:00:00Z" }, { lap: 20, at: "2026-09-01T20:20:00Z" }] }],
+      ]),
+    }).byGuid.get(G);
+    expect(m.stints.map((s) => s.laps)).toEqual([10, 10, 10]);
+  });
+
+  it("a compound change seen after the driver's flag does not rename the last stint", () => {
+    const at = (sec) => new Date(sec * 1000).toISOString();
+    const m = extractTelemetry(mkField(), {
+      pitStopsByGuid: new Map([
+        [
+          G,
+          {
+            stops: [],
+            totalPits: 0,
+            stopEvents: [],
+            tyres: [
+              { lap: 1, tyre: "medium", at: at(1786000000 - 200) },
+              { lap: 30, tyre: "soft", at: at(1786002700 + 30) },
+            ],
+          },
+        ],
+      ]),
+    }).byGuid.get(G);
+    expect(m.stints).toEqual([{ tyre: "M", laps: 30 }]);
+  });
+
   it("with a recording present, no heuristic stop is invented beyond it", () => {
     // one huge slow lap that a naive time rule would call a stop
     const o = { 15: { lapTime: 130000, sectors: [30000, 70000, 30000] } };
