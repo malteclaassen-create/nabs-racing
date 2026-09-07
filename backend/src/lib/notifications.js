@@ -807,6 +807,14 @@ const FEATURE_ANNOUNCEMENTS = [
     body: "The site can sit on your home screen like a normal app: full screen, no address bar, and still signed in. Tap here for the steps. There's a set for Android and a set for iPhone and iPad.",
     link: "/app",
   },
+  {
+    dedupeKey: "feature:telemetry",
+    type: "NEWS",
+    title: "New: lap comparison from in-game telemetry",
+    body: "The race server now records throttle, brake, steering, speed and gear on every clean lap you drive, nothing to install. Under Tools you can lay your fastest lap over any other driver's, pedal for pedal, with the racing line on the track map. Tap here to go straight there.",
+    // Lands on the card itself: Tools scrolls to #telemetry once it is drawn.
+    link: "/tools#telemetry",
+  },
 ];
 
 // The track editor's announcement goes to the members, not to the admins,

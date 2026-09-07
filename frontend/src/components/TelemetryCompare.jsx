@@ -11,9 +11,9 @@ import { sampleAtTime } from "../utils/telemetryGeometry.js";
 // The card shell this was drawn in on the Tools page. Ten presentational lines,
 // copied rather than imported: reaching into pages/Tools.jsx for it would pull
 // the whole race-prep page into the admin bundle to borrow a border.
-function ToolCard({ title, subtitle, children }) {
+function ToolCard({ id, title, subtitle, children }) {
   return (
-    <div className="card overflow-hidden">
+    <div id={id} className="card overflow-hidden">
       <div className="border-b border-border bg-surface2/50 px-5 py-3">
         <h2 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">{title}</h2>
         {subtitle && <p className="mt-0.5 text-xs text-light">{subtitle}</p>}
@@ -476,7 +476,7 @@ function TelemetryCompare() {
   const readable = (value) => String(value || '').replaceAll('_', ' ');
 
   return (
-    <ToolCard title="Lap comparison" subtitle={season ? `Season ${season}` : null}>
+    <ToolCard id="telemetry" title="Lap comparison" subtitle={season ? `Season ${season}` : null}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-light">Both laps aligned by track position.</p>
         <button type="button" className="btn-secondary text-xs" onClick={refresh} disabled={tracks.loading}>Refresh laps</button>

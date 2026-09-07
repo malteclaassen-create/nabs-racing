@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { PageHeader, Field } from "../components/ui.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { fmtLap, NO_VALUE } from "../utils/format.js";
@@ -892,6 +892,18 @@ export default function Tools({ embedded = false }) {
   // page load and then vanish for a member who is not meant to have it.
   const { data: tel } = useApi(useCallback(() => api.telemetryIsPublic().catch(() => ({ public: false })), []));
   const telemetryOpen = tel?.public === true;
+  // "/tools#telemetry" (the bell's announcement) should land on the card, not
+  // the top of the page. The browser cannot do this itself: the card is only
+  // drawn once the visibility answer is in, so the anchor does not exist at
+  // load time. Waits for exactly that, then scrolls once.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (!telemetryOpen || hash !== "#telemetry") return;
+    const t = requestAnimationFrame(() =>
+      document.getElementById("telemetry")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    );
+    return () => cancelAnimationFrame(t);
+  }, [telemetryOpen, hash]);
   const [store, setStore] = useState(loadStore);
   useEffect(() => {
     try {
