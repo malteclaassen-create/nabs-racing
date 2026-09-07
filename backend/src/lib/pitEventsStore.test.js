@@ -48,7 +48,7 @@ describe("pitEventsStore", () => {
     stop(f, "s1", G, 1, 10, { at: "2026-08-07T19:12:00Z" });
     appendPitEvent(f, { v: 2, t: "tyre", uid: "s1", guid: G, lap: 10, tyre: "Medium", at: "2026-08-07T19:12:03Z" });
     const d = loadPitStops(f).get(G);
-    expect(d.stopEvents).toEqual([{ lap: 10, at: "2026-08-07T19:12:00Z" }]);
+    expect(d.stopEvents).toEqual([{ lap: 10, at: "2026-08-07T19:12:00Z", lapPrecise: true }]);
     expect(d.tyres).toEqual([
       { lap: 1, tyre: "Soft", at: "2026-08-07T18:56:05Z" },
       { lap: 10, tyre: "Medium", at: "2026-08-07T19:12:03Z" },

@@ -329,6 +329,35 @@ describe("tyre stints", () => {
     ]);
   });
 
+  it("a snapshot-confirmed stop that read one lap high is expressed by the compound change before it", () => {
+    // Endriu at Most: super-softs fitted for the last two laps, the change on
+    // the chart at lap 21, the stop confirmed from a snapshot after the
+    // out-lap crossing, so the counter read 21. It used to become two
+    // one-lap stints.
+    const o = {};
+    for (let n = 21; n <= 30; n++) o[n] = { tyre: "SS" };
+    const m = extractTelemetry(mkField(o), {
+      pitStopsByGuid: new Map([[G, { stops: [21], totalPits: 1, stopEvents: [{ lap: 21, at: null, lapPrecise: false }] }]]),
+    }).byGuid.get(G);
+    expect(m.stints).toEqual([
+      { tyre: "M", laps: 20 },
+      { tyre: "SS", laps: 10 },
+    ]);
+  });
+
+  it("a stop with a precise pit-lane entry keeps its two-index window", () => {
+    const o = {};
+    for (let n = 21; n <= 30; n++) o[n] = { tyre: "SS" };
+    const m = extractTelemetry(mkField(o), {
+      pitStopsByGuid: new Map([[G, { stops: [21], totalPits: 1, stopEvents: [{ lap: 21, at: null, lapPrecise: true }] }]]),
+    }).byGuid.get(G);
+    expect(m.stints).toEqual([
+      { tyre: "M", laps: 20 },
+      { tyre: "SS", laps: 1 },
+      { tyre: "SS", laps: 9 },
+    ]);
+  });
+
   it("recorded stops outside the race window are not race stops", () => {
     // The field's lap one is timed from the lights at 1786000000; G's last
     // crossing is at 1786002700. A pit visit counted before the lights (the
