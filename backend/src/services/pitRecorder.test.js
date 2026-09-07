@@ -155,11 +155,45 @@ describe("live pit recording, end to end", () => {
   });
 
   it("ignores a return to the pit lane after the flag", async () => {
-    const stops = await record(
-      { start: "M", stops: [{ after: 4, tyre: "Hard" }, { after: 11, tyre: "Soft" }] },
-      { laps: 10 }
-    );
-    // Only the stop made while the race was running counts as a race stop.
-    expect(stops.get(G)).toMatchObject({ stops: [4], totalPits: 1 });
+    // A ten-lap race: the leader takes the flag on completing lap ten. The
+    // drive back to the pit lane afterwards raises the server's counter and a
+    // browse through the setup screen changes the compound — neither is a
+    // race stop. (The first version of this test asked for a stop "after lap
+    // eleven" of a ten-lap race, which the harness never generated, so it
+    // passed while the recorder flagged one lap too late.)
+    await record({ start: "M", stops: [{ after: 4, tyre: "Hard" }] }, { laps: 10 });
+    const rec = await import("./pitRecorder.js");
+    const { findPitFile, loadPitStops, pitTrackKey } = await import("../lib/pitEventsStore.js");
+    rec.onSnapshot("nabs1", snapshot({ done: 10, pits: 2, tyre: "Soft", laps: 10 }), SESSION_KEY);
+    const file = findPitFile({
+      dayIso: new Date().toISOString().slice(0, 10),
+      trackKey: pitTrackKey("nabs_hockenheim", "vhe_hockenheim"),
+    });
+    const d = loadPitStops(file).get(G);
+    expect(d).toMatchObject({ stops: [4], totalPits: 1 });
+    expect(d.tyres.map((t) => t.tyre)).toEqual(["medium", "hard"]);
+  });
+
+  it("flags a timed race on the leader's first completed lap after the clock runs out", async () => {
+    const rec = await import("./pitRecorder.js");
+    const { findPitFile, loadPitStops, pitTrackKey } = await import("../lib/pitEventsStore.js");
+    const timed = (done, pits, elapsedMin) => {
+      const s = snapshot({ done, pits, tyre: "M", laps: 0 });
+      s.SessionInfo.Time = 30;
+      s.SessionInfo.ElapsedMilliseconds = elapsedMin * 60000;
+      return s;
+    };
+    const key = "vhe_hockenheim|2|Race timed";
+    rec.onSnapshot("nabs1", timed(0, 0, 0), key);
+    rec.onSnapshot("nabs1", timed(5, 1, 8), key); // a real stop, clock running
+    rec.onSnapshot("nabs1", timed(18, 1, 30), key); // clock out: the leader is on the last lap
+    rec.onSnapshot("nabs1", timed(18, 2, 30.5), key); // still on it: a stop here is a race stop
+    rec.onSnapshot("nabs1", timed(19, 2, 31.2), key); // the flag
+    rec.onSnapshot("nabs1", timed(19, 3, 31.5), key); // back to the pits afterwards
+    const file = findPitFile({
+      dayIso: new Date().toISOString().slice(0, 10),
+      trackKey: pitTrackKey("nabs_hockenheim", "vhe_hockenheim"),
+    });
+    expect(loadPitStops(file).get(G)).toMatchObject({ stops: [5, 18], totalPits: 2 });
   });
 });

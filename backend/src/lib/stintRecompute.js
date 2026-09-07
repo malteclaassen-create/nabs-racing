@@ -154,20 +154,38 @@ export async function recomputeSeasonStints(prisma, seasonNumber, { dryRun = fal
   return out;
 }
 
-// One-time startup pass for the season the pit-detection rework shipped in.
-// Guarded by a Setting flag so it runs once per database, exactly like the
-// card-unlock catch-up. Seasons before 8 are left alone on purpose (owner's
-// call: the archive era stays as imported). The flag is only set after a
-// successful pass that matched at least one race, so a boot where the volume
-// wasn't mounted yet simply retries next time.
-const FLAG_KEY = "stints_recomputed_s8_pairrule";
+// One-time startup pass over the seasons the live pit recorder has been
+// running for. Guarded by a Setting flag so it runs once per database, exactly
+// like the card-unlock catch-up. Seasons before 8 are left alone on purpose
+// (owner's call: the archive era stays as imported). The flag is only set
+// after a successful pass that matched at least one race, so a boot where the
+// volume wasn't mounted yet simply retries next time.
+//
+// The key names the rule the pass carries; a new rule gets a new key so the
+// rows are visited again. "racewindow": recorded stops and compound changes
+// outside the race (cool-down pit returns, pre-lights setup changes) no
+// longer split or rename stints — Most 2026-09-04.
+const FLAG_KEY = "stints_recomputed_s8_racewindow";
+const FIRST_RECORDED_SEASON = 8;
 
 export async function recomputeStintsOnce(prisma) {
   const done = await prisma.setting.findUnique({ where: { key: FLAG_KEY } }).catch(() => null);
   if (done) return;
-  const res = await recomputeSeasonStints(prisma, 8, { log: (m) => console.log("[stints]" + m) });
+  const seasons = await prisma.season.findMany({
+    where: { number: { gte: FIRST_RECORDED_SEASON } },
+    select: { number: true },
+    orderBy: { number: "asc" },
+  });
+  const res = { racesMatched: 0, rowsChanged: 0, rowsSame: 0, notes: [] };
+  for (const s of seasons) {
+    const r = await recomputeSeasonStints(prisma, s.number, { log: (m) => console.log("[stints]" + m) });
+    res.racesMatched += r.racesMatched;
+    res.rowsChanged += r.rowsChanged;
+    res.rowsSame += r.rowsSame;
+    res.notes.push(...r.notes);
+  }
   console.log(
-    `[stints] one-time S8 recompute: ${res.racesMatched} races, ${res.rowsChanged} rows updated, ${res.rowsSame} already current` +
+    `[stints] one-time recompute (S${FIRST_RECORDED_SEASON}+): ${res.racesMatched} races, ${res.rowsChanged} rows updated, ${res.rowsSame} already current` +
       (res.notes.length ? ` (${res.notes.join("; ")})` : "")
   );
   if (res.racesMatched > 0) {

@@ -26,8 +26,15 @@
 //     the race in place (the earlier stops belong to an aborted running).
 //     The reader (loadPitStops) tells the two apart; the recorder just
 //     testifies.
-//   - After the leader completes the race distance a `flag` line is written;
-//     stops confirmed later carry postFlag and the importer ignores them.
+//   - Once the leader has completed the race distance (or, in a timed race,
+//     the first lap after the clock ran out) a `flag` line is written; stops
+//     and compound changes confirmed later carry postFlag and the importer
+//     ignores them. The first version flagged one lap too late (it waited for
+//     the leader to complete a lap BEYOND the distance, which after the flag
+//     nobody does) and never flagged a timed race at all — so every cool-down
+//     return to the pit lane was recorded as a race stop, and the strategy
+//     chart of Most, 2026-09-04, ended in a one-lap stint on rubber that was
+//     bolted on after the chequered flag.
 //
 // Deliberately tiny on memory: one Map of small records per grid slot, pruned
 // every snapshot, cleared on session change. Events go straight to an append
@@ -46,6 +53,8 @@ function fresh() {
     file: null,
     sessionKey: null,
     raceLaps: null,
+    raceTimeMs: null, // timed race: the clock, in ms
+    timeoutLaps: null, // timed race: the leader's lap count when the clock ran out
     flagged: false,
     drivers: new Map(), // guid -> { pits, lap, name, tyre, entry: {lap} | null, entryAt }
   };
@@ -69,11 +78,14 @@ export function onSnapshot(serverKey, status, sessionKey) {
     st.file = null;
     st.flagged = false;
     st.raceLaps = null;
+    st.raceTimeMs = null;
+    st.timeoutLaps = null;
     if (isRace) {
       const dayIso = new Date().toISOString().slice(0, 10);
       const trackKey = pitTrackKey(si.TrackConfig, si.Track);
       st.uid = randomUUID();
       st.raceLaps = Number(si.Laps) > 0 ? Number(si.Laps) : null;
+      st.raceTimeMs = !st.raceLaps && Number(si.Time) > 0 ? Number(si.Time) * 60000 : null;
       st.file = pitFileFor(serverKey, dayIso, trackKey);
       appendPitEvent(st.file, {
         v: 2,
@@ -183,11 +195,26 @@ export function onSnapshot(serverKey, status, sessionKey) {
     rec.pits = pits;
     rec.lap = lap;
   }
-  // The flag: the leader has completed the distance. Stops confirmed after
-  // this line are cooldown returns, not race stops.
-  if (!st.flagged && st.raceLaps && leaderLaps > st.raceLaps) {
-    st.flagged = true;
-    appendPitEvent(st.file, { v: 2, t: "flag", uid: st.uid, at: new Date().toISOString(), lap: leaderLaps });
+  // The flag: the leader has completed the distance — the same rule the live
+  // board classifies by (services/liveTiming.js trackRaceFlag). NumLaps counts
+  // laps COMPLETED, so the leader takes the flag the moment it reads the race
+  // length; waiting for one more lap means waiting for a lap that is never
+  // driven. A timed race ends on the leader's first completed lap after the
+  // clock ran out. Stops confirmed after this line are cooldown returns, not
+  // race stops.
+  if (!st.flagged) {
+    let flagged = false;
+    if (st.raceLaps) {
+      flagged = leaderLaps >= st.raceLaps;
+    } else if (st.raceTimeMs) {
+      const elapsed = Number(si.ElapsedMilliseconds);
+      if (st.timeoutLaps == null && Number.isFinite(elapsed) && elapsed >= st.raceTimeMs) st.timeoutLaps = leaderLaps;
+      flagged = st.timeoutLaps != null && leaderLaps > st.timeoutLaps;
+    }
+    if (flagged) {
+      st.flagged = true;
+      appendPitEvent(st.file, { v: 2, t: "flag", uid: st.uid, at: new Date().toISOString(), lap: leaderLaps });
+    }
   }
   // Drop cars that left the server; a returning car re-seeds safely above.
   for (const g of [...st.drivers.keys()]) if (!seen.has(g)) st.drivers.delete(g);

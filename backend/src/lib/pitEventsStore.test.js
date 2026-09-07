@@ -39,6 +39,22 @@ describe("pitEventsStore", () => {
     expect(loadPitStops(f).get(G)).toMatchObject({ stops: [10, 28], totalPits: 2 });
   });
 
+  it("keeps the moment each stop and compound change was confirmed", () => {
+    // The importer holds these against the result file's lap timestamps to
+    // drop what happened outside the race (services/telemetryExtractor.js).
+    const f = join(dir, "a.jsonl");
+    session(f, "s1");
+    appendPitEvent(f, { v: 2, t: "seed", uid: "s1", guid: G, lap: 1, numPits: 0, tyre: "Soft", at: "2026-08-07T18:56:05Z" });
+    stop(f, "s1", G, 1, 10, { at: "2026-08-07T19:12:00Z" });
+    appendPitEvent(f, { v: 2, t: "tyre", uid: "s1", guid: G, lap: 10, tyre: "Medium", at: "2026-08-07T19:12:03Z" });
+    const d = loadPitStops(f).get(G);
+    expect(d.stopEvents).toEqual([{ lap: 10, at: "2026-08-07T19:12:00Z" }]);
+    expect(d.tyres).toEqual([
+      { lap: 1, tyre: "Soft", at: "2026-08-07T18:56:05Z" },
+      { lap: 10, tyre: "Medium", at: "2026-08-07T19:12:03Z" },
+    ]);
+  });
+
   it("a seeded driver with no stops reads as zero stops, not as unknown", () => {
     const f = join(dir, "a.jsonl");
     session(f, "s1");

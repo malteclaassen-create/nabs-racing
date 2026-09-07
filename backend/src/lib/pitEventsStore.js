@@ -135,9 +135,9 @@ export function loadPitStops(filePath, { aroundIso } = {}) {
     const d = g.byGuid.get(ev.guid);
     const pits = Number(ev.numPits) || 0;
     if (ev.t === "tyre") {
-      if (!ev.postFlag && ev.tyre) d.tyres.push({ lap: Number(ev.lap) || 1, tyre: ev.tyre });
+      if (!ev.postFlag && ev.tyre) d.tyres.push({ lap: Number(ev.lap) || 1, tyre: ev.tyre, at: ev.at || null });
     } else if (ev.t === "seed") {
-      if (ev.tyre && !d.tyres.length) d.tyres.push({ lap: Number(ev.lap) || 1, tyre: ev.tyre });
+      if (ev.tyre && !d.tyres.length) d.tyres.push({ lap: Number(ev.lap) || 1, tyre: ev.tyre, at: ev.at || null });
       if (d.seedPits == null) {
         d.seedPits = pits;
       } else if (pits < d.maxPits) {
@@ -246,12 +246,21 @@ export function loadPitStops(filePath, { aroundIso } = {}) {
   // A driver with a seed and no events IS included — the recorder watched
   // them make zero stops, which is exactly the fact that silences the
   // heuristic.
+  //
+  // stopEvents carries the same stops with the wall-clock moment each was
+  // confirmed (null for a stop counted but never observed), and every tyre
+  // entry carries its own. The importer holds these against the result file's
+  // lap timestamps and drops what falls outside the race — the recorder's
+  // flag line is the first defence against cool-down pit returns, this is the
+  // second, and the only one that reaches recordings made before the flag
+  // rule was right.
   const out = new Map();
   for (const [guid, d] of pick.byGuid) {
     const raceStops = d.stops.filter((x) => !x.postFlag);
     out.set(guid, {
       stops: raceStops.filter((x) => x.lap != null).map((x) => x.lap).sort((a, b) => a - b),
       totalPits: raceStops.length,
+      stopEvents: raceStops.map((x) => ({ lap: x.lap ?? null, at: x.at || null })),
       // Compound timeline: [{lap, tyre}] in observation order, so the importer
       // can name each stint from what the car was actually seen on rather than
       // from the result file's per-lap Tyre field, which a driver's own account
