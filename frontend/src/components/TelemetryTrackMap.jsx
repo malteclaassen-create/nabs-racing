@@ -1,6 +1,7 @@
 import {useEffect, useId, useMemo, useRef, useState} from 'react';
 import FormulaCar, {FORMULA_CAR_HALF} from './FormulaCar.jsx';
 import {recordedPose} from '../utils/telemetryGeometry.js';
+import {maskFromPixels, trackPathFromMask} from '../utils/trackMask.js';
 
 const METRES = [1,2,5,10,20,50,100,200,500,1000,2000];
 const path = (x,y,from=0,to=x.length-1) => x.slice(from,to+1).map((v,i)=>`${v},${y[from+i]}`).join(' ');
@@ -14,10 +15,12 @@ const path = (x,y,from=0,to=x.length-1) => x.slice(from,to+1).map((v,i)=>`${v},$
 const HEAT_STEP = 1.2; // ms per slice
 const HEAT_WIDTH = [2.4, 2.4, 3.1, 3.8];
 
-// The tarmac, drawn from lap A's line: a real circuit is about this wide, and
-// a ribbon in map units grows with the zoom, so a close-up shows a road with
-// two lines on it instead of a blurred map tile.
-const TRACK_WIDTH_M = 13;
+// The tarmac, traced from the map the server publishes (utils/trackMask.js):
+// crisp edges at any zoom, and the racing lines sit where they really were on
+// the road. A first version drew a ribbon of fixed width around lap A's own
+// line, which put A in the middle of the road by construction and said
+// nothing about where on the track anyone was. Without a published map there
+// is no road, only the lines.
 const ASPHALT = '#343b49', EDGE = '#cbd5e1';
 
 export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,onPick,onReset,mode='gain',zoom=1,track,colorA,colorB,sections=[],sectors=[],activeSection=null,onSection,markers,focusRange=null,exportRef=null}) {
@@ -34,6 +37,30 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     return ()=>observer.disconnect();
   },[]);
   useEffect(()=>setPan({x:0,y:0}),[cursor,motionA,zoom,mode]);
+
+  // The published map's pixels, traced once per track into a vector shape.
+  const [shape,setShape]=useState(null); // {href,d,w,h}
+  useEffect(()=>{
+    const href=track?.href;
+    if(!href){setShape(null);return undefined;}
+    let alive=true;
+    const img=new Image();
+    img.onload=()=>{
+      if(!alive) return;
+      try {
+        const w=img.naturalWidth, h=img.naturalHeight;
+        const canvas=document.createElement('canvas');
+        canvas.width=w; canvas.height=h;
+        const ctx=canvas.getContext('2d',{willReadFrequently:true});
+        ctx.drawImage(img,0,0);
+        const {d,loops}=trackPathFromMask(maskFromPixels(ctx.getImageData(0,0,w,h).data,w,h),w,h);
+        if(alive) setShape(loops?{href,d,w,h}:null);
+      } catch { if(alive) setShape(null); }
+    };
+    img.onerror=()=>{ if(alive) setShape(null); };
+    img.src=href;
+    return ()=>{alive=false;};
+  },[track?.href]);
 
   const geo=useMemo(()=>{
     if(!lapA?.x || !lapA?.z) return null;
@@ -159,9 +186,11 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     </g>;
   };
   const gate=recordedPose(geo.a.x,geo.a.y,0);
-  const roadW=TRACK_WIDTH_M/geo.mPerUnit;
-  // The published tile is a guide at 1x and a blur up close: gone by 12x.
-  const imageOpacity=(lines?0.7:0.4)*Math.max(0,Math.min(1,(12-zoom)/8));
+  // The traced road replaces the tile outright; until the trace is in (or if
+  // the tile could not be read) the tile is a guide at 1x and a blur up close,
+  // gone by 12x.
+  const road=shape&&geo.imageBox&&shape.href===track?.href?shape:null;
+  const imageOpacity=road?0:(lines?0.7:0.4)*Math.max(0,Math.min(1,(12-zoom)/8));
   // Which way round: small chevrons on the line, only while the whole lap is
   // in view. Zoomed in, the cars show the direction.
   const chevrons=zoom<4 && Array.from({length:12},(_,k)=>Math.round(((k+0.5)/12)*(n-1))).map(i=>{
@@ -189,8 +218,9 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       <g transform={transform}>
         {zoom>1&&<rect x={0} y={0} width={geo.W} height={geo.H} fill={`url(#${gridId})`} />}
         {geo.image&&imageOpacity>0.02&&<image href={geo.image} x={geo.imageBox.x} y={geo.imageBox.y} width={geo.imageBox.w} height={geo.imageBox.h} opacity={imageOpacity} preserveAspectRatio="none" />}
-        <polyline points={geo.pathA} fill="none" stroke={EDGE} strokeWidth={roadW+1.6/geo.mPerUnit} strokeLinejoin="round" strokeLinecap="round" opacity={0.75}/>
-        <polyline points={geo.pathA} fill="none" stroke={ASPHALT} strokeWidth={roadW} strokeLinejoin="round" strokeLinecap="round"/>
+        {road&&(()=>{const sx=geo.imageBox.w/road.w, sy=geo.imageBox.h/road.h; return <g transform={`translate(${geo.imageBox.x+0.5*sx} ${geo.imageBox.y+0.5*sy}) scale(${sx} ${sy})`} aria-hidden="true">
+          <path d={road.d} fill={ASPHALT} fillRule="evenodd" stroke={EDGE} strokeOpacity={0.8} strokeWidth={1.4} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+        </g>;})()}
         <polyline points={geo.pathA} fill="none" stroke="var(--c-card)" strokeWidth={8} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={zoom<4?0.85:0}/>
         {lines?<>
           <polyline points={geo.pathA} fill="none" stroke={colorA} strokeWidth={2.3} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
