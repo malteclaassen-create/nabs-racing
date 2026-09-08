@@ -80,6 +80,12 @@ describe("roadFromAi", () => {
     expect(Math.hypot(lx - rx, lz - rz)).toBeCloseTo(6, 0);
   });
 
+  it("caps an edge distance that runs off into a paddock", () => {
+    const road = roadFromAi(parseFastLane(circleAi(100, 400, 90, 4)), { step: 3 });
+    const widths = road.left.map(([x, z], i) => Math.hypot(x - road.right[i][0], z - road.right[i][1]));
+    expect(Math.max(...widths)).toBeLessThan(24.5);
+  });
+
   it("gives up on nothing", () => {
     expect(roadFromAi(null)).toBeNull();
     expect(roadFromAi([[0, 0, 1, 1]])).toBeNull();
