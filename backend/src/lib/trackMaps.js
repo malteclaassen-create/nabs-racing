@@ -175,6 +175,10 @@ const AI_HEADER = 16, AI_POINT = 20, AI_EXTRA = 72;
 // edges bend gently enough that 3 m loses nothing a screen can show, and it
 // keeps a 7 km circuit under 40 KB.
 const ROAD_STEP_M = 3;
+// The widest half-road worth believing. Some AI files measure the edge into
+// a run-off or a paddock for a stretch (Singapore: 90 m a side for 200 m),
+// which would draw a fin the size of the circuit's infield.
+const MAX_SIDE_M = 20;
 
 // The AI file as points: [x, z, sideLeft, sideRight], in metres. Null when the
 // bytes are not an AI file we understand.
@@ -219,7 +223,8 @@ export function roadFromAi(points, { closed = true, step = ROAD_STEP_M, fallback
   let since = Infinity;
   for (let i = 0; i < n; i++) {
     const [x, z] = points[i];
-    const sl = blank ? fallbackHalfWidth : points[i][2], sr = blank ? fallbackHalfWidth : points[i][3];
+    const sl = Math.min(MAX_SIDE_M, blank ? fallbackHalfWidth : points[i][2]);
+    const sr = Math.min(MAX_SIDE_M, blank ? fallbackHalfWidth : points[i][3]);
     const prev = points[i === 0 ? (closed ? n - 1 : 0) : i - 1];
     const next = points[i === n - 1 ? (closed ? 0 : n - 1) : i + 1];
     if (i > 0) since += Math.hypot(x - prev[0], z - prev[1]);
