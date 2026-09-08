@@ -41,7 +41,13 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       const xs=lapA.x.map(v=>v/10), ys=lapA.z.map(v=>v/10);
       const minX=Math.min(...xs), minY=Math.min(...ys);
       const spanX=Math.max(1,Math.max(...xs)-minX), spanY=Math.max(1,Math.max(...ys)-minY);
-      const pad=Math.max(spanX,spanY)*0.06;
+      // The margin has to hold the section numbers, which sit ~26 screen
+      // pixels outside the line. A margin that is a share of the track's size
+      // is fine on a desktop and nothing on a phone, where a tall circuit's
+      // top and bottom numbers were cut off — so it is measured in pixels of
+      // the box the map is drawn in.
+      const perPixel=Math.max(spanX/Math.max(1,size.width),spanY/Math.max(1,size.height));
+      const pad=Math.max(Math.max(spanX,spanY)*0.04,30*perPixel);
       W=spanX+2*pad; H=spanY+2*pad; mPerUnit=1;
       projX=v=>v/10-minX+pad; projY=v=>v/10-minY+pad;
     }
@@ -49,7 +55,7 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     const b=lapB?.x && lapB?.z ? {x:lapB.x.slice(0,n).map(projX),y:lapB.z.slice(0,n).map(projY)} : null;
     const centroid={x:a.x.reduce((s,v)=>s+v,0)/n, y:a.y.reduce((s,v)=>s+v,0)/n};
     return {W,H,mPerUnit,a,b,centroid,pathA:path(a.x,a.y),pathB:b?path(b.x,b.y):null,image:calib?.scaleFactor?track.href:null};
-  },[lapA,lapB,n,track]);
+  },[lapA,lapB,n,track,size]);
 
   const segments=useMemo(()=>{
     if(!geo) return [];

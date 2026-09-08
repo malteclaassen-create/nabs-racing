@@ -581,7 +581,10 @@ function TelemetryCompare() {
                     className={`rounded-md px-2 py-1 text-[11px] font-semibold transition ${mapMode === key ? 'bg-brand/15 text-dark' : 'text-light hover:bg-surface2'}`}
                     onClick={() => { setMapMode(key); if (key === 'lines' && zoom < 20) { focusSomewhere(); setZoom(30); } }}>{label}</button>)}</div>}
                 </div>
-                <div className="relative h-[320px] sm:h-[380px]">
+                {/* Square on a phone: a circuit that runs taller than wide
+                    gets the height it needs; a fixed box from a desktop
+                    layout squashed it. */}
+                <div className="relative aspect-square max-h-[460px] w-full sm:aspect-auto sm:h-[380px]">
                   <TelemetryTrackMap lapA={lapA} lapB={lapB} n={n} cursor={at} cursorB={bIdx} motionA={motionA} onPick={pickCursor} onReset={()=>setZoom(1)} mode={mapMode} zoom={zoom} track={track} colorA={colorA} colorB={colorB}
                     sections={sections} activeSection={active?.n ?? null} onSection={selectSection} markers={markers} focusRange={chartZoomed ? visibleRange : null} exportRef={mapSvg}/>
                 </div>
