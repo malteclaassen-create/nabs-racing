@@ -7,9 +7,12 @@ const path = (x,y,from=0,to=x.length-1) => x.slice(from,to+1).map((v,i)=>`${v},$
 
 // Time-gain colouring, in three strengths per side rather than one: a stretch
 // where B loses 4 ms a slice should not look the same as one where it loses
-// 1.3. Level 0 is "level" and stays neutral.
+// 1.3. Strength is drawn as line WIDTH, at full colour throughout — a first
+// version faded the weaker levels instead, and on a real lap, where most of
+// the gain is small, that washed the whole map out. Level 0 is "level" and
+// stays neutral.
 const HEAT_STEP = 1.2; // ms per slice
-const HEAT_OPACITY = [0, 0.45, 0.72, 1];
+const HEAT_WIDTH = [2.4, 2.4, 3.1, 3.8];
 
 export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,onPick,onReset,mode='gain',zoom=1,track,colorA,colorB,sections=[],activeSection=null,onSection,markers,focusRange=null,exportRef=null}) {
   const svgRef=useRef(null), drag=useRef(null);
@@ -50,7 +53,7 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
 
   const segments=useMemo(()=>{
     if(!geo) return [];
-    if(!lapB) return [{points:geo.pathA,color:colorA,opacity:1}];
+    if(!lapB) return [{points:geo.pathA,color:colorA,width:2.6}];
     const pace=Array.from({length:n-1},(_,i)=>(lapB.t[i+1]-lapB.t[i])-(lapA.t[i+1]-lapA.t[i]));
     const levels=pace.map((_,i)=>{
       const samples=pace.slice(Math.max(0,i-5),Math.min(pace.length,i+6));
@@ -63,7 +66,7 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       let end=start+1;
       while(end<n-1 && levels[end]===levels[start]) end++;
       const level=levels[start];
-      output.push({points:path(geo.a.x,geo.a.y,start,end),color:level>0?colorA:level<0?colorB:'var(--c-faint)',opacity:level===0?1:HEAT_OPACITY[Math.abs(level)]});
+      output.push({points:path(geo.a.x,geo.a.y,start,end),color:level>0?colorA:level<0?colorB:'var(--c-faint)',width:HEAT_WIDTH[Math.abs(level)]});
       start=end;
     }
     return output;
@@ -151,7 +154,7 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
         {lines?<>
           <polyline points={geo.pathA} fill="none" stroke={colorA} strokeWidth={2.3} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
           {geo.pathB&&<polyline points={geo.pathB} fill="none" stroke={colorB} strokeWidth={2.3} strokeDasharray="7 4" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
-        </>:segments.map((s,i)=><polyline key={i} points={s.points} fill="none" stroke={s.color} strokeOpacity={s.opacity} strokeWidth={level(s)} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>)}
+        </>:segments.map((s,i)=><polyline key={i} points={s.points} fill="none" stroke={s.color} strokeWidth={s.width} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>)}
         <g transform={`translate(${gate.x} ${gate.y}) rotate(${gate.heading})`} aria-label="Start and finish line">
           <line x1={0} x2={0} y1={-8*localPixel} y2={8*localPixel} stroke="var(--c-card)" strokeWidth={4*localPixel} strokeLinecap="round"/>
           <line x1={0} x2={0} y1={-8*localPixel} y2={8*localPixel} stroke="var(--c-text)" strokeWidth={2*localPixel} strokeLinecap="round" strokeDasharray={`${3*localPixel} ${2*localPixel}`}/>
@@ -171,10 +174,4 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     </div>
     <span className="pointer-events-none absolute right-3 top-3 rounded bg-card/85 px-2 py-1 font-mono text-[10px] text-light">{zoom.toFixed(0)}×</span>
   </div>;
-}
-
-// A stronger gain draws a touch thicker as well as brighter, so the map reads
-// at a glance even for the colour-blind.
-function level(segment) {
-  return segment.opacity>=1?3:segment.opacity>=0.7?2.7:2.4;
 }
