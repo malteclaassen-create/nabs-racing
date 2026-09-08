@@ -41,6 +41,20 @@ const ZOOM_BTN =
   "flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 font-mono text-sm font-bold text-white backdrop-blur transition hover:bg-black/75";
 const SMALL_BTN = "btn-secondary px-2.5 py-1 text-xs";
 const LINK_BTN = "text-link hover:underline disabled:text-faint";
+const ICON_BTN = "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-medium transition hover:bg-surface2 disabled:opacity-30";
+
+// The transport's glyphs: the shapes every player uses, drawn rather than
+// typed so they look the same on every phone.
+function Icon({ name }) {
+  const common = { viewBox: "0 0 16 16", className: "h-3.5 w-3.5", fill: "currentColor", "aria-hidden": true };
+  switch (name) {
+    case "play": return <svg {...common}><path d="M4 2.5v11l9-5.5z" /></svg>;
+    case "pause": return <svg {...common}><path d="M4 2.5h3v11H4zM9 2.5h3v11H9z" /></svg>;
+    case "prev": return <svg {...common}><path d="M3 2.5h2v11H3zM13 2.5v11L6 8z" /></svg>;
+    case "next": return <svg {...common}><path d="M11 2.5h2v11h-2zM3 2.5v11l7-5.5z" /></svg>;
+    default: return null;
+  }
+}
 
 // One dropdown value naming one lap: driver, then which of their laps.
 const pickOf = (l) => `${l.steamId}:${l.lapId}`;
@@ -589,31 +603,36 @@ function TelemetryCompare() {
               </div>}
               <TelemetryDashboard lapA={lapA} lapB={lapB} at={at} atB={playing && bIdx != null ? bIdx : at} colorA={colorA} colorB={colorB} gA={gA} gB={gB} dist={dist} n={n} section={active?.n ?? null} />
             </div>
-            <div className="border-y border-border px-1 py-3">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Pause keeps the cursor where it is; Play resumes from
-                      there. Only a lap that has run to the flag (or has no
-                      cursor yet) starts over from the line. */}
-                  <button type="button" className="btn-secondary text-xs" onClick={togglePlay} title="Space bar plays and pauses">{playing ? 'Pause' : cursor != null && cursor > 0 && cursor < n - 1 ? 'Resume' : 'Play lap'}</button>
-                  <button type="button" className={SMALL_BTN} onClick={() => jumpSection(-1)} disabled={!neighbourSection(sections, at, -1)} title="Previous slow section, or press [">Previous section</button>
-                  <button type="button" className={SMALL_BTN} onClick={() => jumpSection(1)} disabled={!neighbourSection(sections, at, 1)} title="Next slow section, or press ]">Next section</button>
-                  {/* A speed change restarts the run's effect; handing it the
-                      current cursor keeps the dot in place instead of sending
-                      it back to the line. */}
-                  <select aria-label="Playback speed" className="rounded-md border border-border bg-card px-2 py-1 text-xs text-dark" value={playbackRate} onChange={(e) => { startAtRef.current = at; setPlaybackRate(Number(e.target.value)); }}>
-                    {[0.25, 0.5, 1, 2, 4].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
-                  </select>
+            {/* The transport, laid out like a player: play on the left, the
+                lap as a slider, a section skip at either end of it, and the
+                speed on the right. On a phone the slider takes its own line. */}
+            <div className="border-y border-border py-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                {/* Pause keeps the cursor where it is; Play resumes from
+                    there. Only a lap that has run to the flag (or has no
+                    cursor yet) starts over from the line. */}
+                <button type="button" className="btn-primary min-w-[6.5rem] gap-2 px-3 py-1.5 text-xs" onClick={togglePlay} title="Space bar plays and pauses" aria-pressed={playing}>
+                  <Icon name={playing ? 'pause' : 'play'} />{playing ? 'Pause' : cursor != null && cursor > 0 && cursor < n - 1 ? 'Resume' : 'Play lap'}
+                </button>
+                <div className="order-last flex basis-full items-center gap-2 sm:order-none sm:basis-auto sm:flex-1">
+                  <button type="button" className={ICON_BTN} onClick={() => jumpSection(-1)} disabled={!neighbourSection(sections, at, -1)} aria-label="Previous slow section" title="Previous slow section, or press ["><Icon name="prev" /></button>
+                  <div className="relative min-w-0 flex-1">
+                    <input type="range" aria-label="Position around the lap" aria-valuetext={`${(at / (n - 1) * 100).toFixed(1)} percent of lap`} min="0" max={n - 1} step="1" value={at} onChange={(e) => pickCursor(Number(e.target.value))} className="block w-full cursor-pointer accent-primary" />
+                    <div className="pointer-events-none absolute inset-x-2 top-full h-1.5" aria-hidden="true">
+                      {sections.map((s) => <span key={s.n} className="absolute top-0 h-1.5 w-px" style={{ left: `${(s.apex / (n - 1)) * 100}%`, background: s.n === active?.n ? 'rgb(var(--c-accent))' : 'var(--c-text3)' }} />)}
+                    </div>
+                  </div>
+                  <button type="button" className={ICON_BTN} onClick={() => jumpSection(1)} disabled={!neighbourSection(sections, at, 1)} aria-label="Next slow section" title="Next slow section, or press ]"><Icon name="next" /></button>
                 </div>
-                <span className="font-mono text-xs tabular-nums text-light">{position(at)} of lap{active ? ` · section ${active.n}` : ''}</span>
+                {/* A speed change restarts the run's effect; handing it the
+                    current cursor keeps the dot in place instead of sending
+                    it back to the line. */}
+                <select aria-label="Playback speed" className="rounded-md border border-border bg-card px-2 py-1 text-xs text-dark" value={playbackRate} onChange={(e) => { startAtRef.current = at; setPlaybackRate(Number(e.target.value)); }}>
+                  {[0.25, 0.5, 1, 2, 4].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
+                </select>
+                <span className="ml-auto font-mono text-xs tabular-nums text-light">{position(at)} of lap{active ? ` · section ${active.n}` : ''}</span>
               </div>
-              <div className="relative">
-                <input type="range" aria-label="Position around the lap" aria-valuetext={`${(at / (n - 1) * 100).toFixed(1)} percent of lap`} min="0" max={n - 1} step="1" value={at} onChange={(e) => pickCursor(Number(e.target.value))} className="block w-full cursor-pointer accent-primary" />
-                <div className="pointer-events-none absolute inset-x-2 top-full h-1.5" aria-hidden="true">
-                  {sections.map((s) => <span key={s.n} className="absolute top-0 h-1.5 w-px" style={{ left: `${(s.apex / (n - 1)) * 100}%`, background: s.n === active?.n ? 'rgb(var(--c-brand))' : 'var(--c-text3)' }} />)}
-                </div>
-              </div>
-              <div className="mt-2.5 flex justify-between text-[10px] text-light"><span>Start</span><span>Drag to inspect. Arrow keys step, space plays, [ and ] jump between the marked sections.</span><span>Finish</span></div>
+              <p className="mt-3 text-[10px] text-light">Drag the slider or a point on the map to inspect. The ticks are the slow sections.<span className="hidden sm:inline"> Arrow keys step, space plays, [ and ] jump between sections.</span></p>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
               <h3 className="font-display text-lg font-bold text-dark">Lap traces</h3>
