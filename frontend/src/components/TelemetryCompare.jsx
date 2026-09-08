@@ -594,7 +594,7 @@ function TelemetryCompare() {
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-3 py-2 text-[11px] text-light">
                   <span className="flex items-center gap-1.5"><span className="w-4 border-t-2" style={{borderColor:colorA}} />A{both && mapMode === 'gain' ? ' gains' : ''}</span>
-                  {both && <span className="flex items-center gap-1.5"><span className={`w-4 border-t-2 ${mapMode === 'gain' ? '' : 'border-dashed'}`} style={{borderColor:colorB}} />B{mapMode === 'gain' ? ' gains, brighter for more' : ''}</span>}
+                  {both && <span className="flex items-center gap-1.5"><span className={`w-4 border-t-2 ${mapMode === 'gain' ? '' : 'border-dashed'}`} style={{borderColor:colorB}} />B{mapMode === 'gain' ? ' gains, thicker for more' : ''}</span>}
                   <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-medium" />brake point</span>
                   <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border border-medium" />full throttle</span>
                   <span>numbers: slow sections</span>
@@ -630,7 +630,10 @@ function TelemetryCompare() {
                 <select aria-label="Playback speed" className="rounded-md border border-border bg-card px-2 py-1 text-xs text-dark" value={playbackRate} onChange={(e) => { startAtRef.current = at; setPlaybackRate(Number(e.target.value)); }}>
                   {[0.25, 0.5, 1, 2, 4].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
                 </select>
-                <span className="ml-auto font-mono text-xs tabular-nums text-light">{position(at)} of lap{active ? ` · section ${active.n}` : ''}</span>
+                {/* Fixed width and no section suffix (the readout above names
+                    it): text that changes length here reflows the whole row
+                    on a phone with every step of playback. */}
+                <span className="ml-auto min-w-[8.5rem] whitespace-nowrap text-right font-mono text-xs tabular-nums text-light">{position(at)} of lap</span>
               </div>
               <p className="mt-3 text-[10px] text-light">Drag the slider or a point on the map to inspect. The ticks are the slow sections.<span className="hidden sm:inline"> Arrow keys step, space plays, [ and ] jump between sections.</span></p>
             </div>
