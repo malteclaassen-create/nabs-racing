@@ -237,6 +237,11 @@ function TelemetryCompare() {
   const [bError, setBError] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
+  // Where the next run starts. Play resumes from the cursor rather than the
+  // line: pause, drag to a corner, play — and it plays from that corner. Held
+  // in a ref because the run's effect must not depend on the cursor, which it
+  // moves itself sixty times a second.
+  const startAtRef = useRef(0);
   const [chartRange, setChartRange] = useState(null);
   const selections = useRef({ aId, bId });
   selections.current = { aId, bId };
@@ -381,14 +386,16 @@ function TelemetryCompare() {
   };
 
   // Real time, not frames: a slow machine plays the lap slower, it does not
-  // play a different lap. Stops itself at the flag.
+  // play a different lap. Stops itself at the flag. Picks up the clock at the
+  // start index's own time, so resuming and a speed change mid-lap both carry
+  // on from where the dot is instead of from the line.
   useEffect(() => {
     if (!playing || !lapA) return undefined;
     const end = Math.max(lapA.lapTimeMs, both ? lapB.lapTimeMs : 0);
     let raf = 0;
     let last = null;
-    let elapsed = 0;
-    let hintA = 0;
+    let hintA = Math.max(0, Math.min(startAtRef.current, n - 1));
+    let elapsed = lapA.t[hintA] ?? 0;
     let hintB = 0;
     const step = (ts) => {
       if (last == null) last = ts;
@@ -543,15 +550,27 @@ function TelemetryCompare() {
             <div className="border-y border-border px-1 py-3">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <button type="button" className="btn-secondary text-xs" onClick={() => { setBIdx(null); setMotionA(null); if (!playing) setCursor(0); setPlaying((p) => !p); }}>{playing ? 'Stop playback' : '▶ Play lap'}</button>
-                  <select aria-label="Playback speed" className="rounded-md border border-border bg-card px-2 py-1 text-xs text-dark" value={playbackRate} onChange={(e) => { setPlaying(false); setBIdx(null); setMotionA(null); setPlaybackRate(Number(e.target.value)); }}>
+                  {/* Pause keeps the cursor where it is; Play resumes from
+                      there. Only a lap that has run to the flag (or has no
+                      cursor yet) starts over from the line. */}
+                  <button type="button" className="btn-secondary text-xs" onClick={() => {
+                    if (playing) { setPlaying(false); return; }
+                    const from = cursor == null || cursor >= n - 1 ? 0 : cursor;
+                    startAtRef.current = from;
+                    setBIdx(null); setMotionA(null); setCursor(from);
+                    setPlaying(true);
+                  }}>{playing ? '⏸ Pause' : cursor != null && cursor > 0 && cursor < n - 1 ? '▶ Resume' : '▶ Play lap'}</button>
+                  {/* A speed change restarts the run's effect; handing it the
+                      current cursor keeps the dot in place instead of sending
+                      it back to the line. */}
+                  <select aria-label="Playback speed" className="rounded-md border border-border bg-card px-2 py-1 text-xs text-dark" value={playbackRate} onChange={(e) => { startAtRef.current = at; setPlaybackRate(Number(e.target.value)); }}>
                     {[0.5, 1, 2, 4].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
                   </select>
                 </div>
                 <span className="font-mono text-xs tabular-nums text-light">{(at / (n - 1) * 100).toFixed(1)}% of lap{dist ? ` · ≈${Math.round(dist[at]).toLocaleString('en-GB')} m driven by A` : ''}</span>
               </div>
               <input type="range" aria-label="Position around the lap" aria-valuetext={`${(at / (n - 1) * 100).toFixed(1)} percent of lap`} min="0" max={n - 1} step="1" value={at} onChange={(e) => pickCursor(Number(e.target.value))} className="block w-full cursor-pointer accent-primary" />
-              <div className="mt-1 flex justify-between text-[10px] text-light"><span>Start</span><span>Drag to inspect · arrow keys work too</span><span>Finish</span></div>
+              <div className="mt-1 flex justify-between text-[10px] text-light"><span>Start</span><span>Drag to inspect · arrow keys work too · play resumes from here</span><span>Finish</span></div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
               <h3 className="font-display text-lg font-bold text-dark">Lap traces</h3>
