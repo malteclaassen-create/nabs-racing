@@ -169,8 +169,8 @@ export function PedalChart({ a, b, cursor, onPick, range, onSelectRange, onReset
     </span>
   );
   const overlay = <>
-    <span className="pointer-events-none absolute left-1.5 top-1 text-[9px] font-bold uppercase tracking-wide" style={{ color: THROTTLE_COLOR }}>Throttle</span>
-    <span className="pointer-events-none absolute bottom-1 left-1.5 text-[9px] font-bold uppercase tracking-wide" style={{ color: BRAKE_COLOR }}>Brake</span>
+    <span className="pointer-events-none absolute left-1.5 top-0.5 text-[10px] text-light">throttle</span>
+    <span className="pointer-events-none absolute bottom-0.5 left-1.5 text-[10px] text-light">brake</span>
   </>;
   return (
     <div>

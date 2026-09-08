@@ -40,6 +40,7 @@ function ToolCard({ id, title, subtitle, actions, cardRef, full, children }) {
 const ZOOM_BTN =
   "flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 font-mono text-sm font-bold text-white backdrop-blur transition hover:bg-black/75";
 const SMALL_BTN = "btn-secondary px-2.5 py-1 text-xs";
+const LINK_BTN = "text-link hover:underline disabled:text-faint";
 
 // One dropdown value naming one lap: driver, then which of their laps.
 const pickOf = (l) => `${l.steamId}:${l.lapId}`;
@@ -502,18 +503,18 @@ function TelemetryCompare() {
 
   return (
     <ToolCard id="telemetry" cardRef={cardRef} full={full} title="Lap comparison" subtitle={season ? `Season ${season} · both laps aligned by track position` : "Both laps aligned by track position"}
-      actions={<div className="flex flex-wrap items-center gap-1.5">
-        {lapA && <button type="button" className={SMALL_BTN} onClick={copyLink} title="Copy a link that opens exactly this comparison">{copied === "link" ? "✓ Link copied" : "Copy link"}</button>}
+      actions={<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold">
+        {lapA && <button type="button" className={LINK_BTN} onClick={copyLink} title="Copy a link that opens exactly this comparison">{copied === "link" ? "Link copied" : "Copy link"}</button>}
         {lapA && <details className="relative">
-          <summary className={`${SMALL_BTN} cursor-pointer list-none`}>{copied === "summary" ? "✓ Summary copied" : "Share & export ▾"}</summary>
-          <div className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-border bg-card p-1 text-xs shadow-lift">
-            <button type="button" className="block w-full rounded px-2 py-1.5 text-left text-dark hover:bg-surface2" onClick={copySummary}>Copy summary as text<span className="block text-[10px] text-light">Gap, sectors and sections, ready for Discord</span></button>
-            <button type="button" className="block w-full rounded px-2 py-1.5 text-left text-dark hover:bg-surface2" onClick={downloadCsv}>Download CSV<span className="block text-[10px] text-light">Every slice of both laps, for a spreadsheet</span></button>
-            {hasMap && <button type="button" className="block w-full rounded px-2 py-1.5 text-left text-dark hover:bg-surface2" onClick={saveMap}>Save map as PNG<span className="block text-[10px] text-light">The track map as it is shown right now</span></button>}
+          <summary className={`${LINK_BTN} cursor-pointer list-none`}>{copied === "summary" ? "Summary copied" : "Export"}</summary>
+          <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-border bg-card py-1 font-normal shadow-lift">
+            <button type="button" className="block w-full px-3 py-1.5 text-left text-dark hover:bg-surface2" onClick={copySummary}>Copy summary as text</button>
+            <button type="button" className="block w-full px-3 py-1.5 text-left text-dark hover:bg-surface2" onClick={downloadCsv}>Download CSV</button>
+            {hasMap && <button type="button" className="block w-full px-3 py-1.5 text-left text-dark hover:bg-surface2" onClick={saveMap}>Save map as PNG</button>}
           </div>
         </details>}
-        {lapA && <button type="button" className={SMALL_BTN} onClick={toggleFull} aria-pressed={full} title="Full screen (F)">{full ? "Exit full screen" : "Full screen"}</button>}
-        <button type="button" className={SMALL_BTN} onClick={refresh} disabled={tracks.loading}>Refresh laps</button>
+        {lapA && <button type="button" className={LINK_BTN} onClick={toggleFull} aria-pressed={full} title="Full screen (F)">{full ? "Exit full screen" : "Full screen"}</button>}
+        <button type="button" className="btn-secondary px-2.5 py-1 text-xs" onClick={refresh} disabled={tracks.loading}>Refresh laps</button>
       </div>}>
       {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-4 py-3 text-sm text-bad">{error} <button type="button" className="ml-2 underline" onClick={refresh}>Try again</button></div>}
       {tracks.loading && !tracks.data ? <p role="status" className="py-6 text-sm text-light">Loading recorded tracks…</p>
@@ -558,7 +559,7 @@ function TelemetryCompare() {
               </div>
             </div>
             {both && lapA.car !== lapB.car && <p className="rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn">Different cars selected. Vehicle performance also affects this comparison.</p>}
-            <div className={`grid min-w-0 gap-4 ${hasMap ? 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]' : ''}`}>
+            <div className={`grid min-w-0 gap-4 ${hasMap ? 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start' : ''}`}>
               {hasMap && <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface2/30">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
                   <h3 className="text-xs font-semibold text-dark">Track position</h3>
@@ -578,30 +579,31 @@ function TelemetryCompare() {
                   <button type="button" className={ZOOM_BTN} aria-label="Zoom in" onClick={() => { focusSomewhere(); setZoom((z) => Math.min(240, z * 1.5)); }}>+</button>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-3 py-2 text-[11px] text-light">
-                  <span><span style={{color:colorA}}>━ A</span>{both && mapMode === 'gain' ? ' gains' : ''}</span>
-                  {both && <span><span style={{color:colorB}}>{mapMode==='gain'?'━':'┄'} B</span>{mapMode === 'gain' ? ' gains · brighter = more' : ''}</span>}
-                  <span>● brake point</span><span>○ back on full throttle</span><span>⑤ slow section</span>
-                  <span className="ml-auto">{zoom>1?'Drag to pan · double-click to reset':'Select a point on the line'}</span>
+                  <span className="flex items-center gap-1.5"><span className="w-4 border-t-2" style={{borderColor:colorA}} />A{both && mapMode === 'gain' ? ' gains' : ''}</span>
+                  {both && <span className="flex items-center gap-1.5"><span className={`w-4 border-t-2 ${mapMode === 'gain' ? '' : 'border-dashed'}`} style={{borderColor:colorB}} />B{mapMode === 'gain' ? ' gains, brighter for more' : ''}</span>}
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-medium" />brake point</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border border-medium" />full throttle</span>
+                  <span>numbers: slow sections</span>
+                  <span className="ml-auto">{zoom>1?'Drag to pan, double-click to reset':'Select a point on the line'}</span>
                 </div>
               </div>}
-              <TelemetryDashboard lapA={lapA} lapB={lapB} at={at} atB={playing && bIdx != null ? bIdx : at} colorA={colorA} colorB={colorB} gA={gA} gB={gB} dist={dist} n={n} />
+              <TelemetryDashboard lapA={lapA} lapB={lapB} at={at} atB={playing && bIdx != null ? bIdx : at} colorA={colorA} colorB={colorB} gA={gA} gB={gB} dist={dist} n={n} section={active?.n ?? null} />
             </div>
             <div className="border-y border-border px-1 py-3">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <button type="button" className={SMALL_BTN} onClick={() => jumpSection(-1)} disabled={!neighbourSection(sections, at, -1)} aria-label="Previous slow section" title="Previous slow section ( [ )">◀ Section</button>
                   {/* Pause keeps the cursor where it is; Play resumes from
                       there. Only a lap that has run to the flag (or has no
                       cursor yet) starts over from the line. */}
-                  <button type="button" className="btn-secondary text-xs" onClick={togglePlay} title="Play / pause (Space)">{playing ? '⏸ Pause' : cursor != null && cursor > 0 && cursor < n - 1 ? '▶ Resume' : '▶ Play lap'}</button>
-                  <button type="button" className={SMALL_BTN} onClick={() => jumpSection(1)} disabled={!neighbourSection(sections, at, 1)} aria-label="Next slow section" title="Next slow section ( ] )">Section ▶</button>
+                  <button type="button" className="btn-secondary text-xs" onClick={togglePlay} title="Space bar plays and pauses">{playing ? 'Pause' : cursor != null && cursor > 0 && cursor < n - 1 ? 'Resume' : 'Play lap'}</button>
+                  <button type="button" className={SMALL_BTN} onClick={() => jumpSection(-1)} disabled={!neighbourSection(sections, at, -1)} title="Previous slow section, or press [">Previous section</button>
+                  <button type="button" className={SMALL_BTN} onClick={() => jumpSection(1)} disabled={!neighbourSection(sections, at, 1)} title="Next slow section, or press ]">Next section</button>
                   {/* A speed change restarts the run's effect; handing it the
                       current cursor keeps the dot in place instead of sending
                       it back to the line. */}
                   <select aria-label="Playback speed" className="rounded-md border border-border bg-card px-2 py-1 text-xs text-dark" value={playbackRate} onChange={(e) => { startAtRef.current = at; setPlaybackRate(Number(e.target.value)); }}>
                     {[0.25, 0.5, 1, 2, 4].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
                   </select>
-                  <span className="hidden font-mono text-[10px] text-light xl:inline" aria-hidden="true">Space play · ← → step · [ ] sections · F full screen</span>
                 </div>
                 <span className="font-mono text-xs tabular-nums text-light">{position(at)} of lap{active ? ` · section ${active.n}` : ''}</span>
               </div>
@@ -611,7 +613,7 @@ function TelemetryCompare() {
                   {sections.map((s) => <span key={s.n} className="absolute top-0 h-1.5 w-px" style={{ left: `${(s.apex / (n - 1)) * 100}%`, background: s.n === active?.n ? 'rgb(var(--c-brand))' : 'var(--c-text3)' }} />)}
                 </div>
               </div>
-              <div className="mt-2.5 flex justify-between text-[10px] text-light"><span>Start</span><span>Drag to inspect · ticks are the slow sections · play resumes from here</span><span>Finish</span></div>
+              <div className="mt-2.5 flex justify-between text-[10px] text-light"><span>Start</span><span>Drag to inspect. Arrow keys step, space plays, [ and ] jump between the marked sections.</span><span>Finish</span></div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
               <h3 className="font-display text-lg font-bold text-dark">Lap traces</h3>
@@ -640,12 +642,12 @@ function TelemetryCompare() {
                 <input type="range" aria-label="Move graph section" aria-valuetext={`${(visibleRange[0] / (n - 1) * 100).toFixed(1)} to ${(visibleRange[1] / (n - 1) * 100).toFixed(1)} percent of lap`} min="0" max={n - 1 - chartSpan} step="1" value={visibleRange[0]} onChange={(e) => panCharts(Number(e.target.value))} className="min-w-0 flex-1 cursor-pointer accent-primary" />
                 <button type="button" className="text-sm text-light disabled:opacity-30" aria-label="Later graph section" disabled={visibleRange[1] === n - 1} onClick={() => panCharts(Math.min(n - 1 - chartSpan, visibleRange[0] + Math.round(chartSpan / 2)))}>→</button>
               </div>}
-              <p className="text-[11px] text-light">Drag across a graph to zoom. Double-click for the full lap. The shaded bands are the slow sections; select a number to zoom to it.</p>
+              <p className="text-[11px] text-light">Drag across a graph to zoom. Double-click for the full lap.</p>
             </div>
             <div className="space-y-5">
               {both && delta && <div>
                 <ChannelChart {...chartProps} title="Time delta" unit="s · B − A" a={delta.d} lo={-delta.maxAbs} hi={delta.maxAbs} delta height={120} />
-                <p className="ml-12 mt-2 text-[11px] text-light"><span style={{ color: colorA }}>Above the line</span>: A ahead. <span style={{ color: colorB }}>Below</span>: B ahead. Rising means B is losing time.</p>
+                <p className="ml-12 mt-2 text-[11px] text-light">+ A ahead · − B ahead. Rising: B loses time.</p>
               </div>}
               <ChannelChart {...chartProps} title="Speed" unit="km/h" a={lapA.speed} b={lapB?.speed} lo={0} hi={speedHi} height={150} />
               <PedalChart {...chartProps} a={pedalsA} b={pedalsB} height={160} />
