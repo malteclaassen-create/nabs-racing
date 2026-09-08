@@ -111,12 +111,14 @@ function FrictionCircle({ gA, gB, iA, iB, colorA, colorB }) {
   const a = at(gA, iA);
   const b = gB ? at(gB, iB) : null;
   return (
-    <svg viewBox="-58 -58 116 116" className="h-32 w-32 shrink-0" aria-label="Friction circle: lateral g across, accelerating up, braking down">
+    <svg viewBox="-60 -60 120 120" className="h-32 w-32 shrink-0 sm:h-52 sm:w-52 lg:h-60 lg:w-60" aria-label="Friction circle: lateral g across, accelerating up, braking down">
       {[1, 2, 3, 4].map((g) => <circle key={g} r={s(g)} fill="none" stroke="var(--c-border)" strokeWidth="0.8" />)}
       <line x1={-R} x2={R} y1="0" y2="0" stroke="var(--c-border)" strokeWidth="0.8" />
       <line x1="0" x2="0" y1={-R} y2={R} stroke="var(--c-border)" strokeWidth="0.8" />
       <text x={s(2) + 1} y="-2" fontSize="6" fill="var(--c-text3)">2g</text>
       <text x={s(4) + 1} y="-2" fontSize="6" fill="var(--c-text3)">4g</text>
+      <text x="0" y={-R - 4} fontSize="5.5" textAnchor="middle" fill="var(--c-text3)">accel</text>
+      <text x="0" y={R + 8} fontSize="5.5" textAnchor="middle" fill="var(--c-text3)">brake</text>
       {trail.map((i, k) => { const p = at(gA, i); return <circle key={i} cx={p.x} cy={p.y} r="1.6" fill={colorA} opacity={((k + 1) / trail.length) * 0.55} />; })}
       {b && <circle cx={b.x} cy={b.y} r="3.4" fill="var(--c-card)" stroke={colorB} strokeWidth="2" />}
       <circle cx={a.x} cy={a.y} r="3.8" fill={colorA} stroke="var(--c-card)" strokeWidth="1.5" />
@@ -143,7 +145,7 @@ export default function TelemetryDashboard({ lapA, lapB, at, atB, colorA, colorB
         <Column lap={lapA} i={iA} color={colorA} side="A" g={gA} />
         {lapB && <Column lap={lapB} i={iB} color={colorB} side="B" g={gB} />}
       </div>
-      <div className="flex items-center justify-between gap-4 border-t border-border pt-3">
+      <div className="flex items-center justify-between gap-4 border-t border-border pt-3 sm:items-start">
         {lapB ? (
           <p className="text-xs text-light">
             <span className="block whitespace-nowrap">Gap <span className="font-mono text-base font-semibold tabular-nums" style={{ color: leader === "A" ? colorA : leader === "B" ? colorB : "var(--c-text)" }}>{Math.abs(gap).toFixed(3)} s</span></span>

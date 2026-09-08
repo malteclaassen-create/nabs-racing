@@ -379,14 +379,23 @@ function TelemetryCompare() {
     let href = null;
     setTrack(null);
     if (!trackKey) return undefined;
-    api
+    // Two things, each optional: the road edges from the track's AI line (what
+    // the laps are drawn on) and the published map with its calibration (the
+    // frame, and the fallback drawing when there is no AI line).
+    const road = api.telemetryTrackRoad(trackKey).catch(() => null);
+    const map = api
       .telemetryTrackMap(trackKey)
       .then(async (calib) => {
-        href = await telemetryTrackMapUrl(calib.url);
-        if (alive && href) setTrack({ calib, href });
-        else if (href) URL.revokeObjectURL(href);
+        const url = await telemetryTrackMapUrl(calib.url);
+        if (!alive && url) URL.revokeObjectURL(url);
+        return url ? { calib, href: url } : null;
       })
-      .catch(() => {});
+      .catch(() => null);
+    Promise.all([road, map]).then(([edges, image]) => {
+      if (!alive) return;
+      if (image) href = image.href;
+      if (edges || image) setTrack({ calib: image?.calib ?? null, href: image?.href ?? null, road: edges });
+    });
     return () => {
       alive = false;
       // The blob is this component's; nothing else can reach it once the track

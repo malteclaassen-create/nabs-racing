@@ -1130,6 +1130,7 @@ export const api = {
   // The track's real outline, when the server manager publishes one. 404 is a
   // normal answer and means "draw the lap's own shape instead".
   telemetryTrackMap: (trackKey) => request(`/telemetry-laps/${trackKey}/map${seasonQ()}`, { auth: true }),
+  telemetryTrackRoad: (trackKey) => request(`/telemetry-laps/${trackKey}/road${seasonQ()}`, { auth: true }),
   telemetryLaps: (trackKey) => request(`/telemetry-laps/${trackKey}${seasonQ()}`, { auth: true }),
   // A driver has up to three laps per track; `lapId` is the lap time in ms.
   // Omitted, the endpoint answers with their fastest, which is what this call

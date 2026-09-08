@@ -23,6 +23,26 @@ const HEAT_WIDTH = [2.4, 2.4, 3.1, 3.8];
 // is no road, only the lines.
 const ASPHALT = '#343b49', EDGE = '#cbd5e1';
 
+const roadEdges=(road)=>road?[road.track?.left,road.track?.right,road.pit?.left,road.pit?.right].filter(Boolean):[];
+
+// The road between two edges, as SVG paths. The fill is one quad per segment
+// rather than the ring between the two edge loops: a ring fill rule breaks
+// wherever a circuit crosses itself (Suzuka), while quads with a consistent
+// turn always union under the default nonzero rule. Their seams are hidden by
+// stroking the quads in the fill colour; the edges are drawn on top.
+function roadPaths(edge,projX,projY){
+  const P=(pt)=>`${projX(pt[0]*10).toFixed(1)} ${projY(pt[1]*10).toFixed(1)}`;
+  const {left,right,closed}=edge;
+  const n=Math.min(left.length,right.length);
+  const quads=[];
+  for(let i=0;i<(closed?n:n-1);i++){
+    const j=(i+1)%n;
+    quads.push(`M${P(left[i])}L${P(left[j])}L${P(right[j])}L${P(right[i])}Z`);
+  }
+  const line=(pts)=>`M${pts.slice(0,n).map(P).join('L')}${closed?'Z':''}`;
+  return {fill:quads.join(''),edges:`${line(left)}${line(right)}`};
+}
+
 export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,onPick,onReset,mode='gain',zoom=1,track,colorA,colorB,sections=[],sectors=[],activeSection=null,onSection,markers,focusRange=null,exportRef=null}) {
   const svgRef=useRef(null), drag=useRef(null);
   const setSvg=(el)=>{svgRef.current=el; if(exportRef) exportRef.current=el;};
@@ -38,11 +58,15 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
   },[]);
   useEffect(()=>setPan({x:0,y:0}),[cursor,motionA,zoom,mode]);
 
-  // The published map's pixels, traced once per track into a vector shape.
+  // The published map's pixels, traced once per track into a vector shape —
+  // the fallback when the track's AI line is not served. That image is the
+  // AI line drawn as one fat stroke, so it only ever says roughly where the
+  // circuit runs, not where its edges are.
   const [shape,setShape]=useState(null); // {href,d,w,h}
+  const hasRoad=!!track?.road?.track;
   useEffect(()=>{
     const href=track?.href;
-    if(!href){setShape(null);return undefined;}
+    if(!href||hasRoad){setShape(null);return undefined;}
     let alive=true;
     const img=new Image();
     img.onload=()=>{
@@ -60,7 +84,7 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     img.onerror=()=>{ if(alive) setShape(null); };
     img.src=href;
     return ()=>{alive=false;};
-  },[track?.href]);
+  },[track?.href,hasRoad]);
 
   const geo=useMemo(()=>{
     if(!lapA?.x || !lapA?.z) return null;
@@ -79,6 +103,9 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       projY=v=>(v/10+calib.zOffset)/calib.scaleFactor+(calib.padding||0)+pad;
     } else {
       const xs=lapA.x.map(v=>v/10), ys=lapA.z.map(v=>v/10);
+      // The road reaches a few metres past the line on both sides; it has to
+      // fit the frame too.
+      for(const edge of roadEdges(track?.road)) for(const [x,y] of edge){xs.push(x); ys.push(y);}
       const minX=Math.min(...xs), minY=Math.min(...ys);
       const spanX=Math.max(1,Math.max(...xs)-minX), spanY=Math.max(1,Math.max(...ys)-minY);
       // The margin has to hold the section numbers, which sit ~26 screen
@@ -96,7 +123,13 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     const a={x:lapA.x.slice(0,n).map(projX),y:lapA.z.slice(0,n).map(projY)};
     const b=lapB?.x && lapB?.z ? {x:lapB.x.slice(0,n).map(projX),y:lapB.z.slice(0,n).map(projY)} : null;
     const centroid={x:a.x.reduce((s,v)=>s+v,0)/n, y:a.y.reduce((s,v)=>s+v,0)/n};
-    return {W,H,mPerUnit,a,b,centroid,pathA:path(a.x,a.y),pathB:b?path(b.x,b.y):null,image:calib?.scaleFactor?track.href:null,imageBox};
+    // The tarmac, from the track's AI line: the real edges in the same world
+    // metres the laps are in, so no calibration sits between line and road.
+    const road=track?.road?.track?{
+      lane:roadPaths(track.road.track,projX,projY),
+      pit:track.road.pit?roadPaths(track.road.pit,projX,projY):null,
+    }:null;
+    return {W,H,mPerUnit,a,b,centroid,pathA:path(a.x,a.y),pathB:b?path(b.x,b.y):null,image:calib?.scaleFactor&&!road?track.href:null,imageBox,road};
   },[lapA,lapB,n,track,size]);
 
   const segments=useMemo(()=>{
@@ -189,8 +222,8 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
   // The traced road replaces the tile outright; until the trace is in (or if
   // the tile could not be read) the tile is a guide at 1x and a blur up close,
   // gone by 12x.
-  const road=shape&&geo.imageBox&&shape.href===track?.href?shape:null;
-  const imageOpacity=road?0:(lines?0.7:0.4)*Math.max(0,Math.min(1,(12-zoom)/8));
+  const traced=!geo.road&&shape&&geo.imageBox&&shape.href===track?.href?shape:null;
+  const imageOpacity=traced?0:(lines?0.7:0.4)*Math.max(0,Math.min(1,(12-zoom)/8));
   // Which way round: small chevrons on the line, only while the whole lap is
   // in view. Zoomed in, the cars show the direction.
   const chevrons=zoom<4 && Array.from({length:12},(_,k)=>Math.round(((k+0.5)/12)*(n-1))).map(i=>{
@@ -218,8 +251,16 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       <g transform={transform}>
         {zoom>1&&<rect x={0} y={0} width={geo.W} height={geo.H} fill={`url(#${gridId})`} />}
         {geo.image&&imageOpacity>0.02&&<image href={geo.image} x={geo.imageBox.x} y={geo.imageBox.y} width={geo.imageBox.w} height={geo.imageBox.h} opacity={imageOpacity} preserveAspectRatio="none" />}
-        {road&&(()=>{const sx=geo.imageBox.w/road.w, sy=geo.imageBox.h/road.h; return <g transform={`translate(${geo.imageBox.x+0.5*sx} ${geo.imageBox.y+0.5*sy}) scale(${sx} ${sy})`} aria-hidden="true">
-          <path d={road.d} fill={ASPHALT} fillRule="evenodd" stroke={EDGE} strokeOpacity={0.8} strokeWidth={1.4} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+        {geo.road&&<g aria-hidden="true">
+          {geo.road.pit&&<g opacity={0.55}>
+            <path d={geo.road.pit.fill} fill={ASPHALT} stroke={ASPHALT} strokeWidth={0.8} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+            <path d={geo.road.pit.edges} fill="none" stroke={EDGE} strokeOpacity={0.5} strokeWidth={1} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+          </g>}
+          <path d={geo.road.lane.fill} fill={ASPHALT} stroke={ASPHALT} strokeWidth={0.8} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+          <path d={geo.road.lane.edges} fill="none" stroke={EDGE} strokeOpacity={0.8} strokeWidth={1.4} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+        </g>}
+        {traced&&(()=>{const sx=geo.imageBox.w/traced.w, sy=geo.imageBox.h/traced.h; return <g transform={`translate(${geo.imageBox.x+0.5*sx} ${geo.imageBox.y+0.5*sy}) scale(${sx} ${sy})`} aria-hidden="true">
+          <path d={traced.d} fill={ASPHALT} fillRule="evenodd" stroke={EDGE} strokeOpacity={0.8} strokeWidth={1.4} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
         </g>;})()}
         <polyline points={geo.pathA} fill="none" stroke="var(--c-card)" strokeWidth={8} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={zoom<4?0.85:0}/>
         {lines?<>
