@@ -586,7 +586,7 @@ function TelemetryCompare() {
                     layout squashed it. */}
                 <div className="relative aspect-square max-h-[460px] w-full sm:aspect-auto sm:h-[380px]">
                   <TelemetryTrackMap lapA={lapA} lapB={lapB} n={n} cursor={at} cursorB={bIdx} motionA={motionA} onPick={pickCursor} onReset={()=>setZoom(1)} mode={mapMode} zoom={zoom} track={track} colorA={colorA} colorB={colorB}
-                    sections={sections} activeSection={active?.n ?? null} onSection={selectSection} markers={markers} focusRange={chartZoomed ? visibleRange : null} exportRef={mapSvg}/>
+                    sections={sections} sectors={sectors || []} activeSection={active?.n ?? null} onSection={selectSection} markers={markers} focusRange={chartZoomed ? visibleRange : null} exportRef={mapSvg}/>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-border px-3 py-2">
                   <button type="button" className={ZOOM_BTN + ' w-auto px-2 text-[10px]'} onClick={() => setZoom(1)} aria-label="Show whole track">Reset</button>

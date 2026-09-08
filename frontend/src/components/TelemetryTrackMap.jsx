@@ -14,7 +14,13 @@ const path = (x,y,from=0,to=x.length-1) => x.slice(from,to+1).map((v,i)=>`${v},$
 const HEAT_STEP = 1.2; // ms per slice
 const HEAT_WIDTH = [2.4, 2.4, 3.1, 3.8];
 
-export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,onPick,onReset,mode='gain',zoom=1,track,colorA,colorB,sections=[],activeSection=null,onSection,markers,focusRange=null,exportRef=null}) {
+// The tarmac, drawn from lap A's line: a real circuit is about this wide, and
+// a ribbon in map units grows with the zoom, so a close-up shows a road with
+// two lines on it instead of a blurred map tile.
+const TRACK_WIDTH_M = 13;
+const ASPHALT = '#343b49', EDGE = '#cbd5e1';
+
+export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,onPick,onReset,mode='gain',zoom=1,track,colorA,colorB,sections=[],sectors=[],activeSection=null,onSection,markers,focusRange=null,exportRef=null}) {
   const svgRef=useRef(null), drag=useRef(null);
   const setSvg=(el)=>{svgRef.current=el; if(exportRef) exportRef.current=el;};
   const [size,setSize]=useState({width:600,height:360});
@@ -153,6 +159,24 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     </g>;
   };
   const gate=recordedPose(geo.a.x,geo.a.y,0);
+  const roadW=TRACK_WIDTH_M/geo.mPerUnit;
+  // The published tile is a guide at 1x and a blur up close: gone by 12x.
+  const imageOpacity=(lines?0.7:0.4)*Math.max(0,Math.min(1,(12-zoom)/8));
+  // Which way round: small chevrons on the line, only while the whole lap is
+  // in view. Zoomed in, the cars show the direction.
+  const chevrons=zoom<4 && Array.from({length:12},(_,k)=>Math.round(((k+0.5)/12)*(n-1))).map(i=>{
+    const p=recordedPose(geo.a.x,geo.a.y,i), s=3.2*localPixel;
+    return <path key={i} d={`M${-s},${-s} L${s},0 L${-s},${s}`} transform={`translate(${p.x} ${p.y}) rotate(${p.heading})`} fill="none" stroke="var(--c-card)" strokeWidth={1.5*localPixel} strokeLinejoin="round" strokeLinecap="round"/>;
+  });
+  // Sector boundaries, as short gates with their number, while zoomed out.
+  const sectorGates=zoom<8 && sectors.slice(1).map(sec=>{
+    const p=recordedPose(geo.a.x,geo.a.y,sec.from);
+    const dx=p.x-geo.centroid.x, dy=p.y-geo.centroid.y, d=Math.hypot(dx,dy)||1;
+    return <g key={sec.n}>
+      <g transform={`translate(${p.x} ${p.y}) rotate(${p.heading})`}><line x1={0} x2={0} y1={-6*localPixel} y2={6*localPixel} stroke="var(--c-text3)" strokeWidth={1.6*localPixel} strokeLinecap="round"/></g>
+      <text x={p.x+dx/d*13*localPixel} y={p.y+dy/d*13*localPixel} textAnchor="middle" dominantBaseline="central" fontSize={8*localPixel} fontWeight="700" fill="var(--c-text3)" fontFamily="JetBrains Mono, ui-monospace, monospace">S{sec.n}</text>
+    </g>;
+  });
 
   return <div className="relative h-full w-full overflow-hidden bg-surface2/40">
     <svg ref={setSvg} viewBox={`0 0 ${geo.W} ${geo.H}`} className="h-full w-full touch-pan-y select-none" style={{cursor:zoom>1?'grab':'crosshair'}} aria-label={lines?'Track map, both racing lines':'Track map, time gain'}
@@ -164,8 +188,10 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       <defs><pattern id={gridId} width={gridUnits} height={gridUnits} patternUnits="userSpaceOnUse"><path d={`M${gridUnits},0H0V${gridUnits}`} fill="none" stroke="var(--c-border)" strokeWidth={localPixel} opacity={0.4}/></pattern></defs>
       <g transform={transform}>
         {zoom>1&&<rect x={0} y={0} width={geo.W} height={geo.H} fill={`url(#${gridId})`} />}
-        {geo.image&&<image href={geo.image} x={geo.imageBox.x} y={geo.imageBox.y} width={geo.imageBox.w} height={geo.imageBox.h} opacity={lines?0.7:0.4} preserveAspectRatio="none" />}
-        <polyline points={geo.pathA} fill="none" stroke="var(--c-card)" strokeWidth={8} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={0.85}/>
+        {geo.image&&imageOpacity>0.02&&<image href={geo.image} x={geo.imageBox.x} y={geo.imageBox.y} width={geo.imageBox.w} height={geo.imageBox.h} opacity={imageOpacity} preserveAspectRatio="none" />}
+        <polyline points={geo.pathA} fill="none" stroke={EDGE} strokeWidth={roadW+1.6/geo.mPerUnit} strokeLinejoin="round" strokeLinecap="round" opacity={0.75}/>
+        <polyline points={geo.pathA} fill="none" stroke={ASPHALT} strokeWidth={roadW} strokeLinejoin="round" strokeLinecap="round"/>
+        <polyline points={geo.pathA} fill="none" stroke="var(--c-card)" strokeWidth={8} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={zoom<4?0.85:0}/>
         {lines?<>
           <polyline points={geo.pathA} fill="none" stroke={colorA} strokeWidth={2.3} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
           {geo.pathB&&<polyline points={geo.pathB} fill="none" stroke={colorB} strokeWidth={2.3} strokeDasharray="7 4" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
@@ -174,6 +200,8 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
           <line x1={0} x2={0} y1={-8*localPixel} y2={8*localPixel} stroke="var(--c-card)" strokeWidth={4*localPixel} strokeLinecap="round"/>
           <line x1={0} x2={0} y1={-8*localPixel} y2={8*localPixel} stroke="var(--c-text)" strokeWidth={2*localPixel} strokeLinecap="round" strokeDasharray={`${3*localPixel} ${2*localPixel}`}/>
         </g>
+        {chevrons}
+        {sectorGates}
         {markerLayer}
         {/* The graphs are zoomed to a stretch: fade the rest of the lap so the
             map shows the same stretch they do. */}

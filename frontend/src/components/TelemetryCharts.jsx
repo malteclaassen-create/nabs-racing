@@ -85,8 +85,8 @@ function ChartFrame({ height, ticks, visible, span, cursor, handlers, selection,
       <div className="relative w-10 shrink-0 font-mono text-[10px] tabular-nums text-light" aria-hidden="true">
         {ticks.map((t, i) => <span key={i} className="absolute right-0 -translate-y-1/2" style={{ top: `${4 + i * 46}%` }}>{t}</span>)}
       </div>
-      <div className="relative min-w-0 flex-1 cursor-crosshair select-none overflow-hidden rounded border border-border bg-surface2/30"
-        style={{ touchAction: "pan-y" }} {...handlers} onDoubleClick={onResetRange}>
+      <div className="relative min-w-0 flex-1 cursor-crosshair select-none overflow-hidden rounded border border-border"
+        style={{ touchAction: "pan-y", background: "var(--c-bg)" }} {...handlers} onDoubleClick={onResetRange}>
         <Bands bands={bands} visible={visible} span={span} onBand={onBand} />
         {[0, 25, 50, 75, 100].map((p) => <div key={p} className="pointer-events-none absolute inset-y-0 border-l border-border opacity-50" style={{ left: `${p}%` }} />)}
         {[4, 50, 96].map((p) => <div key={p} className={`pointer-events-none absolute inset-x-0 border-t border-border ${dashedMid && p === 50 ? "border-dashed" : "opacity-50"}`} style={{ top: `${p}%` }} />)}
