@@ -16,7 +16,7 @@ import { telemetryReadGate } from "../lib/telemetryAccess.js";
 import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId, isLapId, pruneSeasonsBefore } from "../lib/telemetryLaps.js";
 import { recordTelemetryEvent } from "../lib/telemetryIngestLog.js";
 import { getNameOverrides } from "../lib/persons.js";
-import { ensureTrackMap } from "../lib/trackMaps.js";
+import { ensureTrackMap, ensureTrackRoad } from "../lib/trackMaps.js";
 import { resolveSeason } from "../services/seasonService.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { telemetryIdentities } from "../lib/telemetryIdentity.js";
@@ -176,6 +176,7 @@ router.post("/ingest", async (req, res, next) => {
 // track nobody publishes is not re-fetched by every post.
 function grabTrackMap(track, layout) {
   ensureTrackMap(track, layout).catch(() => {});
+  ensureTrackRoad(track, layout).catch(() => {});
 }
 
 // The first lap of a new season takes the old ones with it.
@@ -357,6 +358,25 @@ router.get("/:trackKey/map", async (req, res, next) => {
     const map = await ensureTrackMap(one.track, one.layout);
     if (!map) return res.status(404).json({ error: "No published map for that track" });
     res.json({ ...map.calib, url: `/api/telemetry-laps/${req.params.trackKey}/map.png` });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/telemetry-laps/:trackKey/road -> the tarmac's two edges in world
+// metres, built from the track's AI line (lib/trackMaps.js). This is what the
+// laps are drawn on: the map.png above is only the AI line drawn fat, so it
+// cannot say where the kerbs were. 404 when the track's AI file is not served.
+router.get("/:trackKey/road", async (req, res, next) => {
+  try {
+    if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
+    const { season, legacy } = await seasonAsked(req);
+    const one = listLaps(season, req.params.trackKey, legacy)[0];
+    if (!one) return res.status(404).json({ error: "No laps at that track" });
+    const road = await ensureTrackRoad(one.track, one.layout);
+    if (!road) return res.status(404).json({ error: "No published AI line for that track" });
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.json(road);
   } catch (e) {
     next(e);
   }

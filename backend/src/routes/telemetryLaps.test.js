@@ -28,7 +28,7 @@ vi.mock("../lib/prisma.js", () => ({
   },
 }));
 vi.mock("../services/seasonService.js", () => ({ resolveSeason: vi.fn(async () => ({ id: 's8', number: 8 })) }));
-vi.mock("../lib/trackMaps.js", () => ({ ensureTrackMap: vi.fn(async () => null) }));
+vi.mock("../lib/trackMaps.js", () => ({ ensureTrackMap: vi.fn(async () => null), ensureTrackRoad: vi.fn(async () => null) }));
 vi.mock("../lib/persons.js", () => ({ getNameOverrides: vi.fn(async () => new Map()) }));
 // Who may READ is tested next door (lib/telemetryAccess.test.js); here it would
 // only stand between the test and the routes it is about.
