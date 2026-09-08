@@ -47,7 +47,9 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       // top and bottom numbers were cut off — so it is measured in pixels of
       // the box the map is drawn in.
       const perPixel=Math.max(spanX/Math.max(1,size.width),spanY/Math.max(1,size.height));
-      const pad=Math.max(Math.max(spanX,spanY)*0.04,30*perPixel);
+      // 40 px: the numbers reach ~26 px out, and the padding itself shrinks
+      // the scale a little once it is added to the box.
+      const pad=Math.max(Math.max(spanX,spanY)*0.04,40*perPixel);
       W=spanX+2*pad; H=spanY+2*pad; mPerUnit=1;
       projX=v=>v/10-minX+pad; projY=v=>v/10-minY+pad;
     }
