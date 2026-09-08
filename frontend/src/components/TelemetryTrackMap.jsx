@@ -5,8 +5,15 @@ import {recordedPose} from '../utils/telemetryGeometry.js';
 const METRES = [1,2,5,10,20,50,100,200,500,1000,2000];
 const path = (x,y,from=0,to=x.length-1) => x.slice(from,to+1).map((v,i)=>`${v},${y[from+i]}`).join(' ');
 
-export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,onPick,onReset,mode='gain',zoom=1,track,colorA,colorB}) {
+// Time-gain colouring, in three strengths per side rather than one: a stretch
+// where B loses 4 ms a slice should not look the same as one where it loses
+// 1.3. Level 0 is "level" and stays neutral.
+const HEAT_STEP = 1.2; // ms per slice
+const HEAT_OPACITY = [0, 0.45, 0.72, 1];
+
+export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,onPick,onReset,mode='gain',zoom=1,track,colorA,colorB,sections=[],activeSection=null,onSection,markers,focusRange=null,exportRef=null}) {
   const svgRef=useRef(null), drag=useRef(null);
+  const setSvg=(el)=>{svgRef.current=el; if(exportRef) exportRef.current=el;};
   const [size,setSize]=useState({width:600,height:360});
   const [pan,setPan]=useState({x:0,y:0});
   const gridId=useId();
@@ -31,29 +38,32 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       const xs=lapA.x.map(v=>v/10), ys=lapA.z.map(v=>v/10);
       const minX=Math.min(...xs), minY=Math.min(...ys);
       const spanX=Math.max(1,Math.max(...xs)-minX), spanY=Math.max(1,Math.max(...ys)-minY);
-      const pad=Math.max(spanX,spanY)*0.04;
+      const pad=Math.max(spanX,spanY)*0.06;
       W=spanX+2*pad; H=spanY+2*pad; mPerUnit=1;
       projX=v=>v/10-minX+pad; projY=v=>v/10-minY+pad;
     }
     const a={x:lapA.x.slice(0,n).map(projX),y:lapA.z.slice(0,n).map(projY)};
     const b=lapB?.x && lapB?.z ? {x:lapB.x.slice(0,n).map(projX),y:lapB.z.slice(0,n).map(projY)} : null;
-    return {W,H,mPerUnit,a,b,pathA:path(a.x,a.y),pathB:b?path(b.x,b.y):null,image:calib?.scaleFactor?track.href:null};
+    const centroid={x:a.x.reduce((s,v)=>s+v,0)/n, y:a.y.reduce((s,v)=>s+v,0)/n};
+    return {W,H,mPerUnit,a,b,centroid,pathA:path(a.x,a.y),pathB:b?path(b.x,b.y):null,image:calib?.scaleFactor?track.href:null};
   },[lapA,lapB,n,track]);
 
   const segments=useMemo(()=>{
     if(!geo) return [];
-    if(!lapB) return [{points:geo.pathA,color:colorA}];
+    if(!lapB) return [{points:geo.pathA,color:colorA,opacity:1}];
     const pace=Array.from({length:n-1},(_,i)=>(lapB.t[i+1]-lapB.t[i])-(lapA.t[i+1]-lapA.t[i]));
-    const categories=pace.map((_,i)=>{
+    const levels=pace.map((_,i)=>{
       const samples=pace.slice(Math.max(0,i-5),Math.min(pace.length,i+6));
       const value=samples.reduce((a,b)=>a+b,0)/samples.length;
-      return value>1.2?'a':value< -1.2?'b':'even';
+      const strength=Math.min(3,Math.floor(Math.abs(value)/HEAT_STEP));
+      return strength===0?0:value>0?strength:-strength;
     });
     const output=[];
     for(let start=0;start<n-1;) {
       let end=start+1;
-      while(end<n-1 && categories[end]===categories[start]) end++;
-      output.push({points:path(geo.a.x,geo.a.y,start,end),color:categories[start]==='a'?colorA:categories[start]==='b'?colorB:'var(--c-faint)'});
+      while(end<n-1 && levels[end]===levels[start]) end++;
+      const level=levels[start];
+      output.push({points:path(geo.a.x,geo.a.y,start,end),color:level>0?colorA:level<0?colorB:'var(--c-faint)',opacity:level===0?1:HEAT_OPACITY[Math.abs(level)]});
       start=end;
     }
     return output;
@@ -94,8 +104,40 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     <text x={(side==='A'?-1:1)*(carPixels/2+12)*localPixel} y={0} textAnchor="middle" dominantBaseline="central" fill={color} stroke="var(--c-card)" strokeWidth={3*localPixel} paintOrder="stroke" fontSize={12*localPixel} fontWeight="800">{side}</text>
   </g>;
 
+  // Brake points (filled) and back-on-full-throttle points (hollow), one of
+  // each per slow section, on each lap's own line. Sized in screen pixels so
+  // they stay legible at every zoom.
+  const marker=(pts,i,color,kind,key,small)=>{
+    if(!pts || i==null) return null;
+    const r=(kind==='brake'?4.4:3.8)*(small?0.85:1)*localPixel;
+    return kind==='brake'
+      ? <circle key={key} cx={pts.x[i]} cy={pts.y[i]} r={r} fill={color} stroke="var(--c-card)" strokeWidth={1.4*localPixel} />
+      : <circle key={key} cx={pts.x[i]} cy={pts.y[i]} r={r} fill="var(--c-card)" stroke={color} strokeWidth={1.7*localPixel} />;
+  };
+  const markerLayer=markers && <g aria-hidden="true">
+    {markers.b && geo.b && markers.b.brake.map((i,k)=>marker(geo.b,i,colorB,'brake',`bb${k}`,true))}
+    {markers.b && geo.b && markers.b.gas.map((i,k)=>marker(geo.b,i,colorB,'gas',`bg${k}`,true))}
+    {markers.a && markers.a.brake.map((i,k)=>marker(geo.a,i,colorA,'brake',`ab${k}`))}
+    {markers.a && markers.a.gas.map((i,k)=>marker(geo.a,i,colorA,'gas',`ag${k}`))}
+  </g>;
+
+  // Section numbers sit just outside the line at each apex, pushed away from
+  // the track's middle so they never sit on the tarmac. Click one to jump.
+  const sectionLabel=(s)=>{
+    const x=geo.a.x[s.apex], y=geo.a.y[s.apex];
+    const dx=x-geo.centroid.x, dy=y-geo.centroid.y, d=Math.hypot(dx,dy)||1;
+    const off=16*localPixel, r=8*localPixel;
+    const active=s.n===activeSection;
+    return <g key={s.n} transform={`translate(${x+dx/d*off} ${y+dy/d*off})`} style={{cursor:'pointer'}} role="button" aria-label={`Slow section ${s.n}`}
+      onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();onSection?.(s);}}>
+      <circle r={r} fill={active?'rgb(var(--c-brand))':'var(--c-card)'} stroke={active?'rgb(var(--c-brand))':'var(--c-text3)'} strokeWidth={1.2*localPixel} />
+      <text textAnchor="middle" dominantBaseline="central" fontSize={9.5*localPixel} fontWeight="800" fill={active?'#0F172A':'var(--c-text)'} fontFamily="JetBrains Mono, ui-monospace, monospace">{s.n}</text>
+    </g>;
+  };
+  const gate=recordedPose(geo.a.x,geo.a.y,0);
+
   return <div className="relative h-full w-full overflow-hidden bg-surface2/40">
-    <svg ref={svgRef} viewBox={`0 0 ${geo.W} ${geo.H}`} className="h-full w-full touch-pan-y select-none" style={{cursor:zoom>1?'grab':'crosshair'}} aria-label={lines?'Track map, both racing lines':'Track map, time gain'}
+    <svg ref={setSvg} viewBox={`0 0 ${geo.W} ${geo.H}`} className="h-full w-full touch-pan-y select-none" style={{cursor:zoom>1?'grab':'crosshair'}} aria-label={lines?'Track map, both racing lines':'Track map, time gain'}
       onPointerDown={e=>{if(!e.isPrimary||e.button!==0)return;if(motionA!=null)onPick(Math.round(motionA));drag.current={x:e.clientX,y:e.clientY,pan,moved:false};e.currentTarget.setPointerCapture(e.pointerId);}}
       onPointerMove={e=>{const d=drag.current;if(!d||zoom===1)return;if(Math.hypot(e.clientX-d.x,e.clientY-d.y)>4)d.moved=true;if(d.moved)setPan({x:d.pan.x-(e.clientX-d.x)*localPixel,y:d.pan.y-(e.clientY-d.y)*localPixel});}}
       onPointerUp={e=>{const d=drag.current;drag.current=null;if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);if(d&&!d.moved)pick(e);}}
@@ -105,11 +147,21 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       <g transform={transform}>
         {zoom>1&&<rect x={0} y={0} width={geo.W} height={geo.H} fill={`url(#${gridId})`} />}
         {geo.image&&<image href={geo.image} width={geo.W} height={geo.H} opacity={lines?0.7:0.4} preserveAspectRatio="none" />}
-        <polyline points={geo.pathA} fill="none" stroke="var(--c-card)" strokeWidth={7} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={0.8}/>
+        <polyline points={geo.pathA} fill="none" stroke="var(--c-card)" strokeWidth={8} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={0.85}/>
         {lines?<>
           <polyline points={geo.pathA} fill="none" stroke={colorA} strokeWidth={2.3} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
           {geo.pathB&&<polyline points={geo.pathB} fill="none" stroke={colorB} strokeWidth={2.3} strokeDasharray="7 4" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
-        </>:segments.map((s,i)=><polyline key={i} points={s.points} fill="none" stroke={s.color} strokeWidth={2.6} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>)}
+        </>:segments.map((s,i)=><polyline key={i} points={s.points} fill="none" stroke={s.color} strokeOpacity={s.opacity} strokeWidth={level(s)} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>)}
+        <g transform={`translate(${gate.x} ${gate.y}) rotate(${gate.heading})`} aria-label="Start and finish line">
+          <line x1={0} x2={0} y1={-8*localPixel} y2={8*localPixel} stroke="var(--c-card)" strokeWidth={4*localPixel} strokeLinecap="round"/>
+          <line x1={0} x2={0} y1={-8*localPixel} y2={8*localPixel} stroke="var(--c-text)" strokeWidth={2*localPixel} strokeLinecap="round" strokeDasharray={`${3*localPixel} ${2*localPixel}`}/>
+        </g>
+        {markerLayer}
+        {/* The graphs are zoomed to a stretch: fade the rest of the lap so the
+            map shows the same stretch they do. */}
+        {focusRange && focusRange[0]>0 && <polyline points={path(geo.a.x,geo.a.y,0,focusRange[0])} fill="none" stroke="var(--c-card)" strokeOpacity={0.7} strokeWidth={9} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
+        {focusRange && focusRange[1]<n-1 && <polyline points={path(geo.a.x,geo.a.y,focusRange[1],n-1)} fill="none" stroke="var(--c-card)" strokeOpacity={0.7} strokeWidth={9} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
+        {sections.map(sectionLabel)}
         {car(b,'B',colorB)}
         {car(a,'A',colorA)}
       </g>
@@ -119,4 +171,10 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     </div>
     <span className="pointer-events-none absolute right-3 top-3 rounded bg-card/85 px-2 py-1 font-mono text-[10px] text-light">{zoom.toFixed(0)}×</span>
   </div>;
+}
+
+// A stronger gain draws a touch thicker as well as brighter, so the map reads
+// at a glance even for the colour-blind.
+function level(segment) {
+  return segment.opacity>=1?3:segment.opacity>=0.7?2.7:2.4;
 }
