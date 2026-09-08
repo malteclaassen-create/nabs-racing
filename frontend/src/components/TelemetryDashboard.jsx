@@ -36,9 +36,9 @@ function useSteadySide(value, enter, exit, holdMs = 400) {
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const gearLabel = (g) => (g === 0 ? "N" : g < 0 ? "R" : String(Math.round(g)));
 
-function Wheel({ angle, color }) {
+function Wheel({ angle, color, className = "h-6 w-6" }) {
   return (
-    <svg viewBox="-24 -24 48 48" className="h-6 w-6 shrink-0" style={{ transform: `rotate(${clamp(angle, -720, 720)}deg)`, transition: "transform 90ms linear" }} aria-hidden="true">
+    <svg viewBox="-24 -24 48 48" className={`${className} shrink-0`} style={{ transform: `rotate(${clamp(angle, -720, 720)}deg)`, transition: "transform 90ms linear" }} aria-hidden="true">
       <circle r="19" fill="none" stroke={color} strokeWidth="5" />
       <path d="M-17,0 H-5 M5,0 H17 M0,5 V16" stroke={color} strokeWidth="4.5" strokeLinecap="round" />
       <circle r="5" fill={color} />
@@ -83,11 +83,18 @@ function Column({ lap, i, color, side, g }) {
       <dl className="mt-2 space-y-1.5 text-xs">
         <Row label="Throttle" value={`${Math.round(lap.gas[i] ?? 0)}%`}><Meter value={lap.gas[i]} color={THROTTLE_COLOR} /></Row>
         <Row label="Brake" value={`${Math.round(lap.brake[i] ?? 0)}%`}><Meter value={lap.brake[i]} color={BRAKE_COLOR} /></Row>
-        <Row label="Steering" value={`${steer > 0 ? "+" : ""}${steer.toFixed(0)}°`}><Wheel angle={steer} color={color} /></Row>
-        {g && <Row label="Lateral" value={g.lat ? `${Math.abs(g.lat[i]).toFixed(1)} g` : "—"} />}
-        {g && <Row label="Long." value={`${long >= 0 ? "+" : "−"}${Math.abs(long).toFixed(1)} g`} />}
-        <Row label="Elapsed" value={formatLapTime(lap.t[i])} />
       </dl>
+      {/* The wheel takes the room to the right of the remaining rows, big
+          enough to read the angle off it rather than the number. */}
+      <div className="mt-1.5 flex items-center gap-3">
+        <dl className="min-w-0 flex-1 space-y-1.5 text-xs">
+          <Row label="Steering" value={`${steer > 0 ? "+" : ""}${steer.toFixed(0)}°`} />
+          {g && <Row label="Lateral" value={g.lat ? `${Math.abs(g.lat[i]).toFixed(1)} g` : "—"} />}
+          {g && <Row label="Long." value={`${long >= 0 ? "+" : "−"}${Math.abs(long).toFixed(1)} g`} />}
+          <Row label="Elapsed" value={formatLapTime(lap.t[i])} />
+        </dl>
+        <Wheel angle={steer} color={color} className="h-20 w-20" />
+      </div>
     </div>
   );
 }

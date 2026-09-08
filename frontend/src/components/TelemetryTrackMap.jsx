@@ -33,10 +33,17 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     if(!lapA?.x || !lapA?.z) return null;
     let W,H,projX,projY,mPerUnit;
     const calib=track?.calib;
+    let imageBox=null;
     if(calib?.scaleFactor>0) {
-      W=calib.width; H=calib.height; mPerUnit=calib.scaleFactor;
-      projX=v=>(v/10+calib.xOffset)/calib.scaleFactor+(calib.padding||0);
-      projY=v=>(v/10+calib.zOffset)/calib.scaleFactor+(calib.padding||0);
+      // The published map's own frame is the lap's bounding box with almost
+      // no margin, and the section numbers hang outside the line — so the
+      // same screen-pixel margin as below goes around the image too.
+      const perPixel=Math.max(calib.width/Math.max(1,size.width),calib.height/Math.max(1,size.height));
+      const pad=40*perPixel;
+      W=calib.width+2*pad; H=calib.height+2*pad; mPerUnit=calib.scaleFactor;
+      imageBox={x:pad,y:pad,w:calib.width,h:calib.height};
+      projX=v=>(v/10+calib.xOffset)/calib.scaleFactor+(calib.padding||0)+pad;
+      projY=v=>(v/10+calib.zOffset)/calib.scaleFactor+(calib.padding||0)+pad;
     } else {
       const xs=lapA.x.map(v=>v/10), ys=lapA.z.map(v=>v/10);
       const minX=Math.min(...xs), minY=Math.min(...ys);
@@ -56,7 +63,7 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     const a={x:lapA.x.slice(0,n).map(projX),y:lapA.z.slice(0,n).map(projY)};
     const b=lapB?.x && lapB?.z ? {x:lapB.x.slice(0,n).map(projX),y:lapB.z.slice(0,n).map(projY)} : null;
     const centroid={x:a.x.reduce((s,v)=>s+v,0)/n, y:a.y.reduce((s,v)=>s+v,0)/n};
-    return {W,H,mPerUnit,a,b,centroid,pathA:path(a.x,a.y),pathB:b?path(b.x,b.y):null,image:calib?.scaleFactor?track.href:null};
+    return {W,H,mPerUnit,a,b,centroid,pathA:path(a.x,a.y),pathB:b?path(b.x,b.y):null,image:calib?.scaleFactor?track.href:null,imageBox};
   },[lapA,lapB,n,track,size]);
 
   const segments=useMemo(()=>{
@@ -157,7 +164,7 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       <defs><pattern id={gridId} width={gridUnits} height={gridUnits} patternUnits="userSpaceOnUse"><path d={`M${gridUnits},0H0V${gridUnits}`} fill="none" stroke="var(--c-border)" strokeWidth={localPixel} opacity={0.4}/></pattern></defs>
       <g transform={transform}>
         {zoom>1&&<rect x={0} y={0} width={geo.W} height={geo.H} fill={`url(#${gridId})`} />}
-        {geo.image&&<image href={geo.image} width={geo.W} height={geo.H} opacity={lines?0.7:0.4} preserveAspectRatio="none" />}
+        {geo.image&&<image href={geo.image} x={geo.imageBox.x} y={geo.imageBox.y} width={geo.imageBox.w} height={geo.imageBox.h} opacity={lines?0.7:0.4} preserveAspectRatio="none" />}
         <polyline points={geo.pathA} fill="none" stroke="var(--c-card)" strokeWidth={8} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={0.85}/>
         {lines?<>
           <polyline points={geo.pathA} fill="none" stroke={colorA} strokeWidth={2.3} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
