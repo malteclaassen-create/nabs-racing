@@ -1,5 +1,29 @@
+import { useEffect, useRef, useState } from "react";
 import { THROTTLE_COLOR, BRAKE_COLOR } from "./TelemetryCharts.jsx";
 import { deltaTrend, formatLapTime } from "../utils/telemetryAnalysis.js";
+
+// A signed reading turned into "A", "B" or nothing, without the flicker.
+// Recorded laps are noisy, and a value that hovers around a single threshold
+// flips sides several times a second during playback. So: it takes `enter`
+// to claim a side and only `exit` to keep it (hysteresis), and any change has
+// to hold for `holdMs` before it is shown. Re-renders itself when a pending
+// change comes due, so a paused readout settles too.
+function useSteadySide(value, enter, exit, holdMs = 400) {
+  const ref = useRef({ shown: null, pending: null, since: 0 });
+  const [, tick] = useState(0);
+  const s = ref.current;
+  const abs = Math.abs(value);
+  const candidate = abs >= enter ? (value > 0 ? "A" : "B") : abs < exit ? null : s.shown;
+  const now = performance.now();
+  if (candidate !== s.pending) { s.pending = candidate; s.since = now; }
+  if (s.pending !== s.shown && now - s.since >= holdMs) s.shown = s.pending;
+  useEffect(() => {
+    if (s.pending === s.shown) return undefined;
+    const t = setTimeout(() => tick((v) => v + 1), holdMs - (performance.now() - s.since) + 10);
+    return () => clearTimeout(t);
+  });
+  return s.shown;
+}
 
 // ---------------------------------------------------------------------------
 // What each car was doing at the cursor, one column per lap, in the same
@@ -97,8 +121,10 @@ export default function TelemetryDashboard({ lapA, lapB, at, atB, colorA, colorB
   const iA = clamp(Math.round(at), 0, n - 1);
   const iB = lapB ? clamp(Math.round(atB ?? at), 0, n - 1) : null;
   const gap = lapB ? (lapB.t[iA] - lapA.t[iA]) / 1000 : null; // + = A ahead
-  const trend = lapB ? deltaTrend(lapA, lapB, iA, 20) : 0;
-  const leader = gap > 0.0005 ? "A" : gap < -0.0005 ? "B" : null;
+  // Trend over the last ~40 slices (a couple of hundred metres): + = A gaining.
+  const trend = lapB ? deltaTrend(lapA, lapB, iA, 40) : 0;
+  const gaining = useSteadySide(trend, 12, 5, 500);
+  const leader = useSteadySide((gap ?? 0) * 1000, 10, 4, 300);
   const circle = gA?.lat ? <FrictionCircle gA={gA} gB={lapB ? gB : null} iA={iA} iB={iB} colorA={colorA} colorB={colorB} /> : null;
   return (
     <div className="min-w-0">
@@ -113,8 +139,8 @@ export default function TelemetryDashboard({ lapA, lapB, at, atB, colorA, colorB
       <div className="flex items-center justify-between gap-4 border-t border-border pt-3">
         {lapB ? (
           <p className="text-xs text-light">
-            Gap <span className="font-mono text-base font-semibold tabular-nums" style={{ color: leader === "A" ? colorA : leader === "B" ? colorB : "var(--c-text)" }}>{Math.abs(gap).toFixed(3)} s</span>
-            {leader ? ` · ${leader} ahead` : " · level"}{Math.abs(trend) >= 4 ? `, ${trend > 0 ? "A" : "B"} gaining` : ""}
+            <span className="block whitespace-nowrap">Gap <span className="font-mono text-base font-semibold tabular-nums" style={{ color: leader === "A" ? colorA : leader === "B" ? colorB : "var(--c-text)" }}>{Math.abs(gap).toFixed(3)} s</span></span>
+            <span className="block whitespace-nowrap">{leader ? `${leader} ahead` : "level"}{gaining ? ` · ${gaining} gaining` : ""}</span>
           </p>
         ) : <p className="text-xs text-light">Choose lap B to see the gap at this point.</p>}
         {circle}
