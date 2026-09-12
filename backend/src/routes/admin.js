@@ -43,6 +43,7 @@ import {
   deleteStoredFile, listOrphanFiles,
 } from "../lib/downloads.js";
 import { stashIncoming, archiveCommitted } from "../lib/resultsArchive.js";
+import { forgetRound } from "../lib/raceContacts.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { invalidateCardRatingCache } from "../services/cardRatingService.js";
@@ -644,6 +645,10 @@ router.post("/races/commit", async (req, res, next) => {
         raceNumber: race.number,
         track: isSprint ? `${race.track} Sprint` : race.track,
       });
+      // The reports of this round anchor themselves to that file
+      // (lib/reportAnchor.js); whatever the contact reader cached for the round
+      // before the file existed, or for the file this one replaces, is stale now.
+      forgetRound(season?.number ?? null, race.number);
     }
     // Steam GUID capture is best-effort; any confirmed mapping that would have
     // changed an already-stored steamId (mis-map or shared account) is reported

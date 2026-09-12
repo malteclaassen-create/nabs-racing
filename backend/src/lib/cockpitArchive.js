@@ -8,7 +8,7 @@
 // stays untouched.
 // ---------------------------------------------------------------------------
 import { join } from "path";
-import { existsSync, readdirSync, readFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { RESULTS_ARCHIVE_DIR } from "./resultsArchive.js";
 
 // Laps beyond 30 minutes are import artefacts (pit-through outliers included
@@ -17,8 +17,11 @@ const MAX_LAP_MS = 1_800_000;
 
 // --- archive file lookup -----------------------------------------------------
 
-// parsed-file cache: path -> { mtime-ish key, data }. The archive is
-// write-once per round, so caching by path alone is safe; capped small.
+// parsed-file cache: path -> { key, data }, where the key is the file's
+// modification time and size. A round's file is NOT write-once: a re-import
+// (penalties applied on the server, a corrected file) replaces it in place
+// under the same name, and the reports of that round anchor themselves to
+// whatever is read here. One stat per read is what it costs to notice.
 const fileCache = new Map();
 const FILE_CACHE_MAX = 12;
 // A full race file parses into a couple of MB, so twelve of them sit on the
@@ -45,13 +48,15 @@ function dropCached(path) {
 }
 
 function readArchiveFile(path) {
+  const st = statSync(path);
+  const key = `${st.mtimeMs}:${st.size}`;
   const hit = fileCache.get(path);
-  if (hit) {
+  if (hit && hit.key === key) {
     keepAlive(path); // still in use: push the expiry back
-    return hit;
+    return hit.data;
   }
   const data = JSON.parse(readFileSync(path, "utf8"));
-  fileCache.set(path, data);
+  fileCache.set(path, { key, data });
   keepAlive(path);
   if (fileCache.size > FILE_CACHE_MAX) {
     dropCached(fileCache.keys().next().value); // drop the oldest entry

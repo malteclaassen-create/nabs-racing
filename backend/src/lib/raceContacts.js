@@ -92,8 +92,19 @@ function lapAt(lapsOfDriver, at) {
 // re-read and re-parse a multi-megabyte AC result file per report. The REDUCED
 // shape is cached, never the raw JSON — holding those would undo the memory
 // work the site did elsewhere. Small and bounded: a steward works through one
-// round at a time, and a stale entry can only exist if a round is re-imported,
-// which restarts the server anyway.
+// round at a time.
+//
+// Only rounds that HAVE a file are cached. On a race evening the reports
+// arrive while the race is on and the stewards open the list straight away,
+// hours before the result file is imported — and the process on the host is
+// not restarted by an import. Caching "no file" at that moment kept every
+// report of the round on its rough live-board figure, with no contact matched,
+// until the next deploy happened to restart the server. Asking the disk again
+// for a round that had nothing is one directory listing, which is what the
+// results page pays on every request anyway.
+//
+// A re-import of a round rewrites its file; forgetRound() (called by the
+// commit) drops the stale entry so the corrected file is read next time.
 const ROUND_CACHE_MAX = 8;
 const roundCache = new Map();
 
@@ -107,9 +118,21 @@ export function contactsForRound(seasonNumber, raceNumber) {
     return hit;
   }
   const built = buildRound(seasonNumber, raceNumber);
+  if (!built.archived) return built;
   roundCache.set(cacheKey, built);
   if (roundCache.size > ROUND_CACHE_MAX) roundCache.delete(roundCache.keys().next().value);
   return built;
+}
+
+// Drop what is cached for one round (or, with no arguments, for every round):
+// the round's file has just been written or replaced, and the next reader must
+// see the new one.
+export function forgetRound(seasonNumber = null, raceNumber = null) {
+  if (seasonNumber == null && raceNumber == null) {
+    roundCache.clear();
+    return;
+  }
+  roundCache.delete(`${seasonNumber}|${raceNumber}`);
 }
 
 // When the round's session started, as unix seconds, or null when the round has
