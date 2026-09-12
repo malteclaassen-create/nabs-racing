@@ -23,6 +23,7 @@ import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
 import { achievementMeta } from "../lib/achievements.js";
 import { hasRaced } from "../lib/standingsRow.js";
+import { withClassifiedPositions } from "./penalisedResults.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -70,10 +71,13 @@ async function countFastestLaps(prisma, ownRows) {
 // used by the card editions to cap the career at "seasons <= N of this series"
 // while everything else keeps the full all-time view.
 async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilter = null) {
-  const results = await prisma.raceResult.findMany({
-    where: { driverId: { in: linkedIds } },
-    include: { race: { select: { seasonId: true, isSpecialEvent: true, isCompleted: true, track: true, number: true } } },
-  });
+  const results = await withClassifiedPositions(
+    prisma,
+    await prisma.raceResult.findMany({
+      where: { driverId: { in: linkedIds } },
+      include: { race: { select: { seasonId: true, isSpecialEvent: true, isCompleted: true, track: true, number: true } } },
+    })
+  );
   const rows = results.filter(
     (r) =>
       r.race &&
@@ -459,7 +463,9 @@ export async function getDriverProfile(prisma, driverId) {
       orderBy: { number: "asc" },
       select: { id: true, number: true, track: true, isCompleted: true },
     }),
-    prisma.raceResult.findMany({ where: { driverId } }),
+    // Classified, not raw: a car moved by a time penalty shows its new place
+    // (the standings score it from there, so the points already say so).
+    prisma.raceResult.findMany({ where: { driverId } }).then((rows) => withClassifiedPositions(prisma, rows)),
     telemetryForDriver(prisma, driverId),
     getNameOverrides(prisma),
     readProfileTiles(prisma, driverId),
