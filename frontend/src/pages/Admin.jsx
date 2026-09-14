@@ -2021,12 +2021,19 @@ function useDriverDb() {
   return { entries: db.data?.entries, reload: db.reload, allSeries, setAllSeries };
 }
 
-// Search-to-add field under each team: type a few letters, pick a person from
-// the series' all-time driver database, and they land in this team of the
-// edited season — identity (photo, flag, Steam ID) and career link included.
-function DbSeatSearch({ team, db, rosterNames, onAdded, onError, autoFocus = false, placeholder, allSeries, onAllSeriesChange }) {
+// Search-to-add field: type a few letters, pick a person from the driver
+// database, and they land in this team of the edited season — identity (photo,
+// flag, Steam ID) and career link included.
+//
+// With no `team` it adds to the season's Reserve pool instead (pass seasonId).
+// A season that is still being built has no teams, and the seat-by-seat form
+// therefore had nowhere to live: naming who is racing had to wait until the
+// grid was invented. The pool takes them, and the roster list moves them into a
+// car when there is one.
+function DbSeatSearch({ team, seasonId, db, rosterNames, onAdded, onError, autoFocus = false, placeholder, allSeries, onAllSeriesChange }) {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
+  const target = team?.name || "the Reserve pool";
   const query = q.trim().toLowerCase();
   const hits = query
     ? (db || [])
@@ -2036,12 +2043,12 @@ function DbSeatSearch({ team, db, rosterNames, onAdded, onError, autoFocus = fal
   async function add(entry) {
     setBusy(true);
     try {
-      const res = await api.addDriverFromDb(entry.sourceDriverId, team.id);
+      const res = await api.addDriverFromDb(entry.sourceDriverId, team?.id || null, seasonId || null);
       setQ("");
       onAdded(
         res?.movedFromReserve
-          ? `${entry.name} moved from the Reserve pool to ${team.name} (sign-ups kept).`
-          : `${entry.name} added to ${team.name}.`
+          ? `${entry.name} moved from the Reserve pool to ${target} (sign-ups kept).`
+          : `${entry.name} added to ${target}.`
       );
     } catch (err) {
       onError(err.message);
@@ -2052,9 +2059,9 @@ function DbSeatSearch({ team, db, rosterNames, onAdded, onError, autoFocus = fal
   return (
     <div className="relative mt-1.5">
       <input
-        aria-label={placeholder || `Add to ${team.name} from the driver database…`}
+        aria-label={placeholder || `Add to ${target} from the driver database…`}
         className="input w-full py-1.5 text-xs"
-        placeholder={placeholder || `Add to ${team.name} from the driver database…`}
+        placeholder={placeholder || `Add to ${target} from the driver database…`}
         value={q}
         autoFocus={autoFocus}
         onChange={(e) => setQ(e.target.value)}
@@ -2113,8 +2120,94 @@ function DbSeatSearch({ team, db, rosterNames, onAdded, onError, autoFocus = fal
   );
 }
 
+// --- BRING A WHOLE FIELD OVER ------------------------------------------------
+// The roster builder for a season that is still an empty page.
+//
+// The seat-by-seat search lives inside a team, which is right once the grid
+// exists and useless before it does: a new series starts with no teams, so
+// there was nowhere to say who is driving. This takes a season — any season of
+// any series — and puts its drivers in this one's Reserve pool, either the
+// whole field in one press or one person at a time. Assigning them cars is the
+// roster list's job, once there are cars.
+//
+// The pool rather than a team on purpose: "who is racing" is a different
+// question from "for whom", and it is the one that gets answered first.
+function DriverIntake({ seasonId, seasonName, db, rosterNames, allSeries, onAllSeriesChange, onDone, onError }) {
+  const seasons = useApi(useCallback(() => api.adminSeasonsAllSeries(), []));
+  const [from, setFrom] = useState("");
+  const [busy, setBusy] = useState(false);
+  // Anything with drivers on it except the season being edited, newest first
+  // per series — "who races there now" is almost always the top entry.
+  const sources = (seasons.data || []).filter((s) => s.id !== seasonId && (s._count?.drivers || 0) > 0);
+  const picked = sources.find((s) => s.id === from) || null;
+
+  async function bringAll() {
+    if (!picked) return;
+    setBusy(true);
+    try {
+      const r = await api.cloneDrivers(seasonId, picked.id, true);
+      const already = (r.skipped || []).length;
+      onDone(
+        `${r.created} driver(s) from ${picked.seriesName ? `${picked.seriesName} ` : ""}${picked.name} added to the ` +
+          `Reserve pool of ${seasonName || "this season"}.` +
+          (already ? ` ${already} were on the roster already.` : "") +
+          (r.created ? " Move them into their teams from the list below." : "")
+      );
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card space-y-4 p-5">
+      <CardHead eyebrow="Drivers" title="Bring a field over" />
+      <p className="text-sm text-light">
+        Take the drivers of another season into this one&rsquo;s Reserve pool, the other series included, with their
+        photo, flag, racing number and the Steam id the result import matches on. Everyone keeps their career: the
+        new entry is linked to the person it came from. Nobody is added twice, so pressing it again is safe.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          aria-label="Season to take the drivers from"
+          className="input max-w-xs py-1.5 text-sm"
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          disabled={busy || seasons.loading}
+        >
+          <option value="">Take the drivers from…</option>
+          {sources.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.seriesName ? `${s.seriesName} · ` : ""}
+              {s.name} ({s._count.drivers} drivers)
+            </option>
+          ))}
+        </select>
+        <button className="btn-primary px-4 py-1.5 text-sm" disabled={busy || !picked} onClick={bringAll}>
+          {busy ? "Adding…" : picked ? `Add all ${picked._count.drivers}` : "Add all"}
+        </button>
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-faint">Or one at a time</p>
+        <DbSeatSearch
+          seasonId={seasonId}
+          db={db}
+          rosterNames={rosterNames}
+          allSeries={allSeries}
+          onAllSeriesChange={onAllSeriesChange}
+          placeholder="Search the driver database…"
+          onAdded={onDone}
+          onError={onError}
+        />
+      </div>
+    </div>
+  );
+}
+
 function Drivers() {
   const ask = useAsk();
+  const { current: season } = useSeason();
   const { data: teams, reload } = useApi(useCallback(() => api.teams(), []));
   // The driver database feeding the per-team search fields (see useDriverDb).
   const driverDb = useDriverDb();
@@ -2302,6 +2395,25 @@ function Drivers() {
 
   return (
     <div>
+    {/* First the whole field, then the seat-by-seat corrections. A season being
+        built asks "who is racing" before it asks anything else, and answering it
+        by hand seventy times is the work this saves. */}
+    {season?.id && (
+      <div className="mb-6">
+        <DriverIntake
+          seasonId={season.id}
+          seasonName={season.name}
+          db={driverDb.entries}
+          rosterNames={
+            new Set((teams || []).flatMap((x) => x.drivers.map((d) => d.name.trim().toLowerCase())))
+          }
+          allSeries={driverDb.allSeries}
+          onAllSeriesChange={driverDb.setAllSeries}
+          onDone={(m) => { setMsg(m); setError(null); reload(); driverDb.reload(); }}
+          onError={(m) => { setError(m); setMsg(null); }}
+        />
+      </div>
+    )}
     <div className="grid gap-6 lg:grid-cols-2">
       <form onSubmit={create} className="card space-y-4 p-5">
         <CardHead eyebrow="Drivers" title="Add driver" />

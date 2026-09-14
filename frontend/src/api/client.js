@@ -700,8 +700,14 @@ export const api = {
     const q = seriesQ();
     return request(`/admin/driver-db${q}${allSeries ? `${q ? "&" : "?"}allSeries=1` : ""}`, { auth: true });
   },
-  addDriverFromDb: (sourceDriverId, teamId) =>
-    request("/admin/drivers/from-db", { method: "POST", body: { sourceDriverId, teamId }, auth: true }),
+  // Into a team, or — with no teams on the grid yet — into the season's Reserve
+  // pool (pass seasonId instead of teamId).
+  addDriverFromDb: (sourceDriverId, teamId, seasonId = null) =>
+    request("/admin/drivers/from-db", {
+      method: "POST",
+      body: teamId ? { sourceDriverId, teamId } : { sourceDriverId, seasonId },
+      auth: true,
+    }),
   updateDriver: (id, body) => request(`/admin/drivers/${id}`, { method: "PUT", body, auth: true }),
   // Move a driver to another team, or into/out of the Reserve pool, in one
   // call: team and tier are set together from the target team, so they cannot
@@ -824,8 +830,15 @@ export const api = {
   cloneRoster: (id, fromSeasonId) =>
     request(`/admin/seasons/${id}/clone-roster`, { method: "POST", body: { fromSeasonId }, auth: true }),
   // Drivers into the teams THIS season already has, without touching the teams.
-  cloneDrivers: (id, fromSeasonId) =>
-    request(`/admin/seasons/${id}/clone-drivers`, { method: "POST", body: { fromSeasonId }, auth: true }),
+  cloneDrivers: (id, fromSeasonId, toReservePool = false) =>
+    request(`/admin/seasons/${id}/clone-drivers`, {
+      method: "POST",
+      body: { fromSeasonId, toReservePool },
+      auth: true,
+    }),
+  // Every season of EVERY series (an explicit empty ?series= switches the
+  // filter off), so the roster builder can take a grid from the other league.
+  adminSeasonsAllSeries: () => request("/admin/seasons?series=", { auth: true }),
   // Home/Welcome main-card photo, per season.
   uploadSeasonHero: (id, file) => {
     const fd = new FormData();

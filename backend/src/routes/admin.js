@@ -1959,20 +1959,41 @@ router.get("/driver-db", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/drivers/from-db { sourceDriverId, teamId } — put a person
-// from the database into a team of the team's season: a fresh row cloned from
-// their newest identity (photo, flag, number, Steam ID for import matching),
-// person-linked to the source so career stats and seals carry over. The
-// Discord id is NOT copied (unique across seasons; it moves on login or via
+// POST /api/admin/drivers/from-db { sourceDriverId, teamId | seasonId } — put a
+// person from the database into a team of the team's season: a fresh row cloned
+// from their newest identity (photo, flag, number, Steam ID for import
+// matching), person-linked to the source so career stats and seals carry over.
+// The Discord id is NOT copied (unique across seasons; it moves on login or via
 // the Drivers tab, same as always).
+//
+// `seasonId` instead of `teamId` means the season's Reserve pool, created on
+// demand. A season being built has no teams yet, and requiring one first put
+// the whole import behind an empty grid: you had to invent the teams before you
+// could say who is driving. The pool takes them, and the roster list moves them
+// into a car once the cars exist.
 router.post("/drivers/from-db", async (req, res, next) => {
   try {
-    const { sourceDriverId, teamId } = req.body || {};
-    if (!sourceDriverId || !teamId) return res.status(400).json({ error: "sourceDriverId and teamId required" });
-    const [source, team] = await Promise.all([
+    const { sourceDriverId, teamId, seasonId } = req.body || {};
+    if (!sourceDriverId || (!teamId && !seasonId)) {
+      return res.status(400).json({ error: "sourceDriverId and teamId (or seasonId) required" });
+    }
+    const [source, pickedTeam] = await Promise.all([
       prisma.driver.findUnique({ where: { id: sourceDriverId } }),
-      prisma.team.findUnique({ where: { id: teamId }, include: { season: { select: { id: true, number: true } } } }),
+      teamId
+        ? prisma.team.findUnique({ where: { id: teamId }, include: { season: { select: { id: true, number: true } } } })
+        : null,
     ]);
+    let team = pickedTeam;
+    if (!team && seasonId) {
+      const season = await prisma.season.findUnique({
+        where: { id: String(seasonId) },
+        select: { id: true, number: true },
+      });
+      if (!season) return res.status(404).json({ error: "Season not found" });
+      const pool = await ensureReservePool(prisma, season.id);
+      if (!pool) return res.status(404).json({ error: "Season not found" });
+      team = { ...pool, season };
+    }
     if (!source) return res.status(404).json({ error: "Source driver not found" });
     if (!team?.season) return res.status(404).json({ error: "Team not found" });
     await attachSteamIds([source]);
@@ -4115,6 +4136,12 @@ router.post("/seasons/:id/clone-roster", async (req, res, next) => {
 router.post("/seasons/:id/clone-drivers", async (req, res, next) => {
   try {
     const { fromSeasonId } = req.body || {};
+    // Everybody straight into the Reserve pool instead of into same-named teams.
+    // That is what a season with no grid yet needs: the question "who is racing"
+    // comes before "for whom", and answering it should not wait on the teams
+    // being invented. It also crosses series, where team names mean nothing to
+    // each other anyway.
+    const toPool = !!req.body?.toReservePool;
     const target = await prisma.season.findUnique({ where: { id: req.params.id } });
     if (!target) return res.status(404).json({ error: "Target season not found" });
     if (!fromSeasonId) return res.status(400).json({ error: "fromSeasonId required" });
@@ -4127,7 +4154,7 @@ router.post("/seasons/:id/clone-drivers", async (req, res, next) => {
       getPersonGroups(prisma),
     ]);
     if (!sourceDrivers.length) return res.status(400).json({ error: "Source season has no drivers" });
-    if (!targetTeams.some((t) => t.tier !== 0)) {
+    if (!toPool && !targetTeams.some((t) => t.tier !== 0)) {
       return res.status(400).json({
         error: "This season has no teams yet. Copy the teams first (or add them), then copy the drivers into them.",
       });
@@ -4152,7 +4179,7 @@ router.post("/seasons/:id/clone-drivers", async (req, res, next) => {
         continue;
       }
       let team;
-      if (d.team?.tier === 0) {
+      if (toPool || d.team?.tier === 0) {
         // The source's reserves stay reserves. Creating the pool on demand is
         // the one exception to "never creates a team": it is not a competitor,
         // it is where a season keeps the people without a seat.
