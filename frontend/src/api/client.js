@@ -938,7 +938,7 @@ export const api = {
   // Everything waiting on an admin as four numbers plus their sum. Drives the
   // dots outside the admin area, where pulling the lists themselves would be
   // four requests for a red circle.
-  adminAttention: () => request("/admin/attention", { auth: true }),
+  adminAttention: () => request(`/admin/attention${seriesQ()}`, { auth: true }),
   // Just "is a seat free and have I already asked for it" — the market list
   // itself is far too big to pull for a dot in the nav bar.
   marketAlert: () => request(`/market/alert${seriesQ()}`, { userAuth: true }),
@@ -1054,7 +1054,10 @@ export const api = {
   // The contacts AC recorded for you in one round, to pin a report to.
   myRaceContacts: (raceId) => request(`/reports/contacts?raceId=${encodeURIComponent(raceId)}`, { userAuth: true }),
   // The office's side.
-  adminReports: () => request("/admin/reports", { auth: true }),
+  // Series-scoped, like the rest of the admin: an incident belongs to a race,
+  // and a race to one league. A report that names no round rides along in every
+  // series (the server decides that, see adminSeriesScope).
+  adminReports: () => request(`/admin/reports${seriesQ()}`, { auth: true }),
   adminReport: (id) => request(`/admin/reports/${id}`, { auth: true }),
   decideReport: (id, body) => request(`/admin/reports/${id}`, { method: "PUT", body, auth: true }),
   // The stewards' own reply. NOT the member endpoint: a PIN admin has no

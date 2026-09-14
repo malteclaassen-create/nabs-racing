@@ -2528,6 +2528,27 @@ router.get("/members/pending", async (req, res, next) => {
   }
 });
 
+// Which races belong to the series the admin is currently looking at.
+//
+// Two of the desks in here are league-wide by nature — an incident report and
+// an offered seat belong to a RACE, not to a season — and both used to be read
+// and counted across everything ever run. With a second series on the site that
+// is simply the wrong desk: switching the series at the top of the admin left
+// the other league's reports in the list and its open seats in the badge.
+//
+// A report that names no round can't be claimed by any series, so it stays
+// visible in all of them rather than disappearing. Returns null when no series
+// resolves at all, which means "don't narrow anything" — the old behaviour.
+async function adminSeriesScope(seriesSlug) {
+  const series = await resolveSeries(prisma, seriesSlug, { includePrivate: true });
+  if (!series) return null;
+  const seasonIds = (await seasonIdsOfSeries(prisma, series.id)).map((s) => s.id ?? s);
+  const races = seasonIds.length
+    ? await prisma.race.findMany({ where: { seasonId: { in: seasonIds } }, select: { id: true } })
+    : [];
+  return { series, seasonIds, raceIds: new Set(races.map((r) => r.id)) };
+}
+
 // GET /api/admin/attention -> { feedback, reports, members, market, total }
 // Everything waiting on an admin, as four numbers and their sum.
 //
@@ -2540,6 +2561,11 @@ router.get("/members/pending", async (req, res, next) => {
 // because a dot that disagrees with the tab it points at is worse than no dot.
 router.get("/attention", async (req, res, next) => {
   try {
+    // Reports and the market belong to a race and therefore to ONE series, so
+    // both numbers follow the series the caller is looking at (adminSeriesScope).
+    // Feedback and unlinked logins deliberately don't: a bug in the website and
+    // a Discord account without a driver belong to no league in particular.
+    const scope = await adminSeriesScope(req.query.series).catch(() => null);
     const [feedbackItems, reports, memberRows, market] = await Promise.all([
       dbListFeedback(prisma).catch(() => []),
       dbListReports(prisma).catch(() => []),
@@ -2554,7 +2580,11 @@ router.get("/attention", async (req, res, next) => {
       // and neither is one whose race is over: the market ignores those too.
       prisma.seatOffer
         .count({
-          where: { status: "OPEN", race: { isCompleted: false }, interests: { some: {} } },
+          where: {
+            status: "OPEN",
+            race: { isCompleted: false, ...(scope ? { seasonId: { in: scope.seasonIds } } : {}) },
+            interests: { some: {} },
+          },
         })
         .catch(() => 0),
     ]);
@@ -2564,7 +2594,9 @@ router.get("/attention", async (req, res, next) => {
       const last = i.replies?.[i.replies.length - 1];
       return !!last && last.author === "SENDER";
     }).length;
-    const open = reports.filter((r) => !REPORT_DECIDED.includes(r.status)).length;
+    const open = reports.filter(
+      (r) => !REPORT_DECIDED.includes(r.status) && (!scope || !r.raceId || scope.raceIds.has(r.raceId))
+    ).length;
     const members = Number(memberRows[0]?.n || 0);
     res.json({
       feedback,
@@ -5206,7 +5238,10 @@ async function stewardView(reports, races) {
 
 router.get("/reports", async (req, res, next) => {
   try {
-    const reports = await dbListReports(prisma);
+    // Only this series' incidents — see adminSeriesScope.
+    const scope = await adminSeriesScope(req.query.series);
+    const all = await dbListReports(prisma);
+    const reports = scope ? all.filter((r) => !r.raceId || scope.raceIds.has(r.raceId)) : all;
     // The races they belong to, so the tab can group by round without the
     // browser fetching the calendar and joining it by hand.
     const ids = [...new Set(reports.map((r) => r.raceId).filter(Boolean))];
