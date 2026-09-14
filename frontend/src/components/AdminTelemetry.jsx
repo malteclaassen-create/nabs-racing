@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useSeries } from "../context/SeriesContext.jsx";
 import { CardBar } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 import TelemetryCompare from "./TelemetryCompare.jsx";
@@ -159,6 +160,13 @@ function IngestActivity({ configured }) {
 export default function AdminTelemetry() {
   const ask = useAsk();
   const [busy, setBusy] = useState(false);
+  // Everything on this tab is about ONE league: the series in the admin bar.
+  // Each series has its own recorder key and its own race server line, and its
+  // own store of laps (backend: lib/telemetryKeys.js, lib/telemetryLaps.js).
+  // The api client sends the slug along; switching the bar remounts the page,
+  // so the whole tab answers for the other league. Only the "who may look"
+  // switch at the bottom is one for the whole site.
+  const { current: series } = useSeries();
 
   // Recording: is there a key, and what is it.
   const { data: telIngest, reload: reloadTelIngest } = useApi(useCallback(() => api.telemetryIngest(), []));
@@ -206,10 +214,10 @@ export default function AdminTelemetry() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-light">
-        <span>Recorded laps · speed, pedal inputs and racing lines</span>
+        <span>Recorded laps{series?.name ? ` of ${series.name}` : ""} · speed, pedal inputs and racing lines</span>
         <span className="pill bg-surface2 text-light">{isPublic ? "Visible to members" : "Admins only"}</span>
       </div>
-      <TelemetryCompare />
+      <TelemetryCompare series={series?.slug || null} />
       <IngestActivity configured={!!telIngest?.configured} />
       {/* RECORDING: the key, and the line the race server needs.
           This lived on the Reports tab until this tab existed, because it
@@ -218,13 +226,19 @@ export default function AdminTelemetry() {
           admin CARDS to. "Reports" means incident reports, and nobody hunting
           for the telemetry recorder would think to open it. */}
       <details className="card overflow-hidden" open={!telIngest?.configured}>
-        <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-dark">Recorder setup &amp; server configuration</summary>
+        <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-dark">Recorder setup &amp; server configuration{series?.name ? ` · ${series.name}` : ""}</summary>
         <div className="space-y-3 p-5">
           <p className="text-sm text-light">
             Every driver who joins the race server sends their fastest clean laps: throttle, brake,
             steering, speed. Three per track are kept, and when a new season&rsquo;s first lap arrives the
             previous seasons are deleted, because the cars change with the season and their times are
             not something anybody is chasing.
+          </p>
+          <p className="text-sm text-light">
+            Every series has a key of its own, and the key is what tells the leagues&rsquo; laps apart: the
+            line below belongs in the race server of <b className="text-dark">{series?.name || "this series"}</b>{" "}
+            and nowhere else. A league on another server gets its own line from its own page. Switch the
+            series in the bar at the top to see it.
           </p>
           {telIngest?.configured ? (
             <>
@@ -383,7 +397,7 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
         <button className="btn-secondary mt-4" disabled={busy || !vis} onClick={flipVisibility}>
           {busy ? "Saving…" : isPublic ? "Go back to admins only" : "Show everyone"}
         </button>
-        <p className="mt-3 text-xs text-faint">Recording carries on either way.</p>
+        <p className="mt-3 text-xs text-faint">Recording carries on either way. One switch for the whole site: it opens the comparison for every series at once.</p>
       </div>
 
 

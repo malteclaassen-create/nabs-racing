@@ -3,11 +3,15 @@
 // comparison reads here. See lib/telemetryLaps.js for what is stored and why.
 //
 // The ingest works exactly like the in-race report ingest one file over: OFF
-// until an admin mints a key (Setting telemetry_ingest_key), and the key rides
-// in the URL because a CSP Lua app cannot set request headers. A key that only
-// ever ADDS a lap — and only one that belongs in the driver's own fastest
-// three — is an acceptable thing to have in a query string; nothing here reads
-// or deletes with it.
+// until an admin mints a key, and the key rides in the URL because a CSP Lua
+// app cannot set request headers. A key that only ever ADDS a lap — and only
+// one that belongs in the driver's own fastest three — is an acceptable thing
+// to have in a query string; nothing here reads or deletes with it.
+//
+// The key also says WHICH SERIES a post belongs to (lib/telemetryKeys.js): each
+// league mints its own and pastes its own line into its own race server, so a
+// lap from the Sunday server lands in the Sunday store and nowhere else. The
+// reads take ?series= like every other series-scoped read on the site.
 // ---------------------------------------------------------------------------
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
@@ -18,8 +22,10 @@ import { recordTelemetryEvent } from "../lib/telemetryIngestLog.js";
 import { getNameOverrides } from "../lib/persons.js";
 import { ensureTrackMap, ensureTrackRoad } from "../lib/trackMaps.js";
 import { resolveSeason } from "../services/seasonService.js";
+import { resolveSeries } from "../lib/series.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { telemetryIdentities } from "../lib/telemetryIdentity.js";
+import { seriesForKey, anyIngestKey } from "../lib/telemetryKeys.js";
 
 const router = Router();
 
@@ -65,37 +71,37 @@ function fetcher(req) {
   return bits.join(" · ");
 }
 
-// The key is permanent; "off" is a separate flag (routes/admin.js explains
-// why). An empty answer here still means the same thing to every caller —
-// nothing is served and nothing is accepted — the key just survives it.
-async function ingestKey() {
-  try {
-    const [key, off] = await Promise.all([
-      prisma.setting.findUnique({ where: { key: "telemetry_ingest_key" } }),
-      prisma.setting.findUnique({ where: { key: "telemetry_ingest_off" } }),
-    ]);
-    if (off?.value === "1") return "";
-    return key?.value || "";
-  } catch {
-    return "";
-  }
+// The series a key opens, or why it opens nothing.
+//
+// Three answers, and the split matters to whoever reads the admin card: a key
+// that names a league whose recording is paused is "off" for that league; a
+// key that names no league is a wrong key — unless no league has ever switched
+// recording on, in which case "off" is the honest word, as it was when the
+// site had one key for everything. Off answers 503 and wrong answers 401, so
+// the script's own log tells them apart too.
+async function keyOwner(req) {
+  const owner = await seriesForKey(prisma, req.query.key);
+  if (owner && !owner.paused) return { series: owner.slug };
+  if (owner || !(await anyIngestKey(prisma))) return { off: true, series: owner?.slug || null };
+  return { bad: true, series: null };
 }
 
 // POST /api/telemetry-laps/ingest?key=...  (&ping=1 to test the URL alone)
 router.post("/ingest", async (req, res, next) => {
   try {
-    const secret = await ingestKey();
-    if (!secret) {
-      recordTelemetryEvent("off");
+    const owner = await keyOwner(req);
+    if (owner.off) {
+      recordTelemetryEvent("off", { series: owner.series });
       return res.status(503).json({ error: "Telemetry recording is switched off" });
     }
-    if (String(req.query.key || "") !== secret) {
+    if (owner.bad) {
       recordTelemetryEvent("bad-key");
       return res.status(401).json({ error: "Bad key" });
     }
+    const { series } = owner;
     // The app's Test button: proves URL + key without inventing a fake lap.
     if (req.query.ping) {
-      recordTelemetryEvent("ping", { detail: fetcher(req) });
+      recordTelemetryEvent("ping", { series, detail: fetcher(req) });
       return res.json({ ok: true, pong: true });
     }
     // The recorder's own voice, added the night a driver put 23 laps on the
@@ -108,6 +114,7 @@ router.post("/ingest", async (req, res, next) => {
     // purpose: when posts flood, these are what explains the flood.
     if (req.query.hello) {
       recordTelemetryEvent("car-alive", {
+        series,
         detail: req.query.info,
         name: req.query.name,
         track: req.query.track,
@@ -116,6 +123,7 @@ router.post("/ingest", async (req, res, next) => {
     }
     if (req.query.diag) {
       recordTelemetryEvent("car-skipped", {
+        series,
         detail: req.query.diag,
         name: req.query.name,
         track: req.query.track,
@@ -124,7 +132,7 @@ router.post("/ingest", async (req, res, next) => {
       return res.json({ ok: true });
     }
     if (flooded()) {
-      recordTelemetryEvent("flooded");
+      recordTelemetryEvent("flooded", { series });
       return res.status(429).json({ error: "Too many laps at once" });
     }
     hits.push(Date.now());
@@ -133,24 +141,27 @@ router.post("/ingest", async (req, res, next) => {
     if (!parsed.ok) {
       // The reason, verbatim: "Bad steamId" and "Implausible lap time" send
       // somebody to two different places, and the script cannot report either.
-      recordTelemetryEvent("lap-refused", { detail: parsed.error });
+      recordTelemetryEvent("lap-refused", { series, detail: parsed.error });
       return res.status(400).json({ error: parsed.error });
     }
-    // WHICH SEASON this lap belongs to is the site's to say, not the game's:
-    // the car knows the track and nothing about the league's calendar. Stamped
-    // on arrival, because the league runs different cars each season and a lap
-    // is only comparable within one.
-    parsed.lap.season = await activeSeasonNumber();
+    // WHICH SERIES and WHICH SEASON this lap belongs to is the site's to say,
+    // not the game's: the car knows the track and nothing about the league's
+    // calendar. The series is the one the key names; the season is that
+    // series' running one. Stamped on arrival, because the league runs
+    // different cars each season and a lap is only comparable within one.
+    parsed.lap.series = series;
+    parsed.lap.season = await activeSeasonNumber(series);
     const result = keepIfFaster(parsed.lap);
     // A lap that was too slow to keep is still a lap that ARRIVED, and the two
     // are counted apart for that reason: "not stored" is the recorder working,
     // not failing.
     recordTelemetryEvent(result.kept ? "lap-kept" : "lap-slower", {
+      series,
       name: parsed.lap.name,
       track: parsed.lap.trackKey,
       lapTimeMs: parsed.lap.lapTimeMs,
     });
-    dropOldSeasons(parsed.lap.season);
+    dropOldSeasons(series, parsed.lap.season);
     grabTrackMap(parsed.lap.track, parsed.lap.layout);
     // `kept` tells the app whether the lap made this driver's stored three, so
     // the in-game line can say "saved" vs "your stored 1:31.2 stands".
@@ -179,60 +190,62 @@ function grabTrackMap(track, layout) {
   ensureTrackRoad(track, layout).catch(() => {});
 }
 
-// The first lap of a new season takes the old ones with it.
+// The first lap of a new season takes the old ones with it — within its own
+// series, because the leagues' calendars have nothing to do with each other.
 //
 // Triggered here rather than by a clock or a button because this is the exact
 // moment the old seasons stop being current: somebody is out on track in the
 // new car. The guard is so that a busy practice evening does not read the
-// directory on every post — the work only ever happens once per season, on
-// whichever lap happens to be the first.
-let prunedFor = null;
-function dropOldSeasons(season) {
-  if (!season || season === prunedFor) return;
-  prunedFor = season;
+// directory on every post — the work only ever happens once per season per
+// series, on whichever lap happens to be the first.
+const prunedFor = new Map(); // series -> season already pruned for
+function dropOldSeasons(series, season) {
+  if (!season || prunedFor.get(series) === season) return;
+  prunedFor.set(series, season);
   try {
-    const gone = pruneSeasonsBefore(season);
+    const gone = pruneSeasonsBefore(series, season);
     if (gone.length) {
-      console.log(`[telemetry] season ${season} started: removed laps from season ${gone.join(", ")}`);
+      console.log(`[telemetry] ${series}: season ${season} started, removed laps from season ${gone.join(", ")}`);
     }
   } catch {
     /* never worth failing an ingest over; the next new season tries again */
   }
 }
 
-// The season a lap belongs to, and the season a reader is looking at. The
-// practice server runs between the rounds of whatever season is on, so "now" is
-// the right answer for an arriving lap; a reader can ask for an older one.
-//
-// Series: the ingest cannot say which one it came from — a key, a car and a
-// track is all it has — so an arriving lap is stamped with the primary series'
-// active season. A second series recording telemetry would need its own key to
-// tell them apart, and that is a bridge for the day it happens.
-async function activeSeasonNumber() {
+// The season a lap belongs to, and the season a reader is looking at, in ONE
+// series. The practice server runs between the rounds of whatever season is
+// on, so "now" is the right answer for an arriving lap; a reader can ask for
+// an older one.
+async function activeSeasonNumber(series) {
   try {
-    const season = await resolveSeason(prisma, null, { includePrivate: true });
+    const season = await resolveSeason(prisma, null, { includePrivate: true, series });
     return Number(season?.number) || 0;
   } catch {
     return 0;
   }
 }
 
-// Which season the caller is asking about, and whether that is the one running
-// now — laps recorded before this store had seasons can only belong to that one.
-async function seasonAsked(req) {
-  const active = await activeSeasonNumber();
+// Which series and season the caller is asking about, and whether that season
+// is the one running now — laps recorded before this store had seasons can
+// only belong to that one. Null when the series does not exist, or is private
+// and the caller is not an admin: the same answer every other series-scoped
+// read on the site gives.
+async function scopeAsked(req) {
+  const series = await resolveSeries(prisma, req.query.series, { includePrivate: isAdminRequest(req) });
+  if (!series) return null;
+  const active = await activeSeasonNumber(series.slug);
   const wanted = Number(req.query?.season);
   const season = Number.isFinite(wanted) && wanted > 0 ? wanted : active;
-  return { season, legacy: season === active };
+  return { series: series.slug, seriesName: series.name, season, legacy: season === active };
 }
 
 // League identity for a set of steamIds: current display name + profile link,
 // resolved the same two ways as everywhere else (captured SteamID on a roster
 // row, current name overrides on top). A lap from someone the league doesn't
 // know keeps the name the game recorded.
-async function leagueNames(steamIds, seasonNumber, req) {
+async function leagueNames(steamIds, scope, req) {
   if (!steamIds.length) return new Map();
-  const season = await resolveSeason(prisma, seasonNumber, {includePrivate: isAdminRequest(req)});
+  const season = await resolveSeason(prisma, scope.season, { includePrivate: isAdminRequest(req), series: scope.series });
   const overrides = await getNameOverrides(prisma);
   return telemetryIdentities(prisma, steamIds, season?.id, overrides);
 }
@@ -244,16 +257,16 @@ async function leagueNames(steamIds, seasonNumber, req) {
 // csp_extra_options.ini points a [SCRIPT_...] section at this URL, CSP
 // downloads it into each joining client, and it records and posts on its own.
 // The key does double duty — it gates the download exactly like the ingest,
-// and it is baked into the served source as the ingest address, so minting a
-// new key invalidates both ends at once. The admin card prints the ready-made
-// ini snippet.
+// and it is baked into the served source as the ingest address, so the series
+// the key belongs to is the series the car will post into. The admin card
+// prints the ready-made ini snippet, one per series.
 router.get("/app.lua", async (req, res, next) => {
   try {
-    const secret = await ingestKey();
+    const owner = await keyOwner(req);
     // 404, not 401/503: an unauthenticated probe learns nothing, not even
     // whether the feature exists.
-    if (!secret || String(req.query.key || "") !== secret) {
-      recordTelemetryEvent("script-refused");
+    if (!owner.series || owner.off) {
+      recordTelemetryEvent("script-refused", { series: owner.series });
       return res.status(404).end();
     }
     const base = `${req.protocol}://${req.get("host")}`;
@@ -263,7 +276,7 @@ router.get("/app.lua", async (req, res, next) => {
     // the served script compiled fine and would have posted to the literal
     // string "__INGEST_URL__" for ever.
     const body = src
-      .replaceAll("__INGEST_URL__", `${base}/api/telemetry-laps/ingest?key=${secret}`)
+      .replaceAll("__INGEST_URL__", `${base}/api/telemetry-laps/ingest?key=${String(req.query.key)}`)
       .replaceAll("__SCRIPT_VERSION__", version);
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     // No caching, said every way HTTP can say it: a re-minted key or a fixed
@@ -277,7 +290,7 @@ router.get("/app.lua", async (req, res, next) => {
     // recorder" and nothing else. It is the first half of the chain, and the
     // half a race server's config can break on its own — see
     // lib/telemetryIngestLog.js for why it is worth a counter at all.
-    recordTelemetryEvent("script-served", { detail: fetcher(req) });
+    recordTelemetryEvent("script-served", { series: owner.series, detail: fetcher(req) });
     // res.end, not res.send: send() stamps an ETag, and a client revalidating
     // against it would get an empty 304 — which a caching client reads as
     // "keep the copy you have", the exact opposite of everything above.
@@ -306,11 +319,20 @@ router.get("/app.lua", async (req, res, next) => {
 // lib/telemetryAccess.js, which owns the question and answers it in one place.
 router.use(telemetryReadGate(prisma));
 
-// GET /api/telemetry-laps -> tracks that have laps
+// GET /api/telemetry-laps?series=&season= -> tracks that have laps, and which
+// series and season the answer is about (the page shows both rather than
+// assuming: an empty list after a switch should read as a fresh start, not a
+// broken feature).
 router.get("/", async (req, res, next) => {
   try {
-    const { season, legacy } = await seasonAsked(req);
-    res.json({ season, tracks: listTracks(season, legacy) });
+    const scope = await scopeAsked(req);
+    if (!scope) return res.status(404).json({ error: "Series not found" });
+    res.json({
+      series: scope.series,
+      seriesName: scope.seriesName,
+      season: scope.season,
+      tracks: listTracks(scope.series, scope.season, scope.legacy),
+    });
   } catch (e) {
     next(e);
   }
@@ -320,9 +342,10 @@ router.get("/", async (req, res, next) => {
 router.get("/:trackKey", async (req, res, next) => {
   try {
     if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
-    const { season, legacy } = await seasonAsked(req);
-    const laps = listLaps(season, req.params.trackKey, legacy);
-    const known = await leagueNames(laps.map((l) => l.steamId), season, req);
+    const scope = await scopeAsked(req);
+    if (!scope) return res.status(404).json({ error: "Series not found" });
+    const laps = listLaps(scope.series, scope.season, req.params.trackKey, scope.legacy);
+    const known = await leagueNames(laps.map((l) => l.steamId), scope, req);
     res.json({
       laps: laps.map((l) => ({
         ...l,
@@ -349,15 +372,19 @@ router.get("/:trackKey", async (req, res, next) => {
 router.get("/:trackKey/map", async (req, res, next) => {
   try {
     if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
-    const { season, legacy } = await seasonAsked(req);
+    const scope = await scopeAsked(req);
+    if (!scope) return res.status(404).json({ error: "Series not found" });
     // The AC track and layout ids, taken from a lap rather than from the slug:
     // the slug is lossy (lower case, punctuation folded) and the upstream path
     // needs them exactly as the game spells them.
-    const one = listLaps(season, req.params.trackKey, legacy)[0];
+    const one = listLaps(scope.series, scope.season, req.params.trackKey, scope.legacy)[0];
     if (!one) return res.status(404).json({ error: "No laps at that track" });
     const map = await ensureTrackMap(one.track, one.layout);
     if (!map) return res.status(404).json({ error: "No published map for that track" });
-    res.json({ ...map.calib, url: `/api/telemetry-laps/${req.params.trackKey}/map.png` });
+    // The image address carries the same scope: the PNG route below finds the
+    // track through a lap too, and a lap lives in one series and one season.
+    const q = `?series=${encodeURIComponent(scope.series)}&season=${scope.season}`;
+    res.json({ ...map.calib, url: `/api/telemetry-laps/${req.params.trackKey}/map.png${q}` });
   } catch (e) {
     next(e);
   }
@@ -370,8 +397,9 @@ router.get("/:trackKey/map", async (req, res, next) => {
 router.get("/:trackKey/road", async (req, res, next) => {
   try {
     if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
-    const { season, legacy } = await seasonAsked(req);
-    const one = listLaps(season, req.params.trackKey, legacy)[0];
+    const scope = await scopeAsked(req);
+    if (!scope) return res.status(404).json({ error: "Series not found" });
+    const one = listLaps(scope.series, scope.season, req.params.trackKey, scope.legacy)[0];
     if (!one) return res.status(404).json({ error: "No laps at that track" });
     const road = await ensureTrackRoad(one.track, one.layout);
     if (!road) return res.status(404).json({ error: "No published AI line for that track" });
@@ -385,8 +413,9 @@ router.get("/:trackKey/road", async (req, res, next) => {
 router.get("/:trackKey/map.png", async (req, res, next) => {
   try {
     if (!isTrackKey(req.params.trackKey)) return res.status(400).json({ error: "Bad track key" });
-    const { season, legacy } = await seasonAsked(req);
-    const one = listLaps(season, req.params.trackKey, legacy)[0];
+    const scope = await scopeAsked(req);
+    if (!scope) return res.status(404).end();
+    const one = listLaps(scope.series, scope.season, req.params.trackKey, scope.legacy)[0];
     const map = one ? await ensureTrackMap(one.track, one.layout) : null;
     if (!map) return res.status(404).end();
     // Immutable: a track's overhead map does not change, and the file is only
@@ -410,10 +439,11 @@ router.get("/:trackKey/:steamId/:lapId?", async (req, res, next) => {
     if (req.params.lapId != null && !isLapId(req.params.lapId)) {
       return res.status(400).json({ error: "Bad lap" });
     }
-    const { season, legacy } = await seasonAsked(req);
-    const lap = readLap(season, req.params.trackKey, req.params.steamId, req.params.lapId ?? null, legacy);
+    const scope = await scopeAsked(req);
+    if (!scope) return res.status(404).json({ error: "Series not found" });
+    const lap = readLap(scope.series, scope.season, req.params.trackKey, req.params.steamId, req.params.lapId ?? null, scope.legacy);
     if (!lap) return res.status(404).json({ error: "No lap stored there" });
-    const known = await leagueNames([lap.steamId], season, req);
+    const known = await leagueNames([lap.steamId], scope, req);
     res.json({ ...lap, driverId: known.get(lap.steamId)?.driverId ?? null, name: known.get(lap.steamId)?.name || lap.name, team: known.get(lap.steamId)?.team ?? null });
   } catch (e) {
     next(e);

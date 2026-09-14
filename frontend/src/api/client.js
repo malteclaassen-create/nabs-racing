@@ -229,6 +229,17 @@ function seriesBody() {
   return SELECTED_SERIES ? { series: SELECTED_SERIES } : {};
 }
 
+// The recorded-laps reads: `series` is the league whose laps are wanted, when
+// the comparison card has been switched to one that is not the series the page
+// is viewing. Without one (or with the viewed series itself) the season
+// switcher applies as usual; with another league the switcher's number would
+// name a season of the WRONG league, so the read goes without it and the
+// backend answers for that league's running season.
+function telemetryQ(series) {
+  if (series && series !== SELECTED_SERIES) return `?series=${encodeURIComponent(series)}`;
+  return seasonQ();
+}
+
 // Drop a dead Discord session (expired 30-day token, or a token the backend
 // rejected outright). Clearing the stored profile flips the whole UI to
 // logged-out via the "nabs-auth" event — without this, the nav keeps showing
@@ -1134,16 +1145,20 @@ export const api = {
   reportIngest: () => request("/admin/reports-ingest", { auth: true }),
   setReportIngest: (enabled) =>
     request("/admin/reports-ingest", { method: "PUT", body: { enabled }, auth: true }),
-  // The in-game telemetry recorder's key — same on/off contract as above.
-  telemetryIngest: () => request("/admin/telemetry-ingest", { auth: true }),
+  // The in-game telemetry recorder's key — same on/off contract as above, and
+  // ONE PER SERIES: each league races on its own server and pastes its own
+  // line into it, which is how their laps are told apart. The series being
+  // edited in the admin bar rides along.
+  telemetryIngest: () => request(`/admin/telemetry-ingest${seriesQ()}`, { auth: true }),
   // `key` optional: a given key instead of a freshly minted one, for when the
   // race server's config was written before the site had one.
   setTelemetryIngest: (enabled, key) =>
-    request("/admin/telemetry-ingest", { method: "PUT", body: { enabled, key }, auth: true }),
-  // Is anything actually arriving: script downloads, laps, refusals with their
-  // reasons. Polled by the admin card while it is open, so it stays cheap on
-  // the server side (counters in memory, file names on disk, nothing parsed).
-  telemetryActivity: () => request("/admin/telemetry-activity", { auth: true }),
+    request(`/admin/telemetry-ingest${seriesQ()}`, { method: "PUT", body: { enabled, key }, auth: true }),
+  // Is anything actually arriving for this series: script downloads, laps,
+  // refusals with their reasons. Polled by the admin card while it is open, so
+  // it stays cheap on the server side (counters in memory, file names on disk,
+  // nothing parsed).
+  telemetryActivity: () => request(`/admin/telemetry-activity${seriesQ()}`, { auth: true }),
   // Recorded telemetry laps (public reads; the /tools comparison).
   // Who may read a lap is a switch, not a deploy: admins only until the league
   // flips it, everyone after (backend: lib/telemetryAccess.js). The token rides
@@ -1153,21 +1168,23 @@ export const api = {
   telemetryVisibility: () => request("/admin/telemetry-visibility", { auth: true }),
   setTelemetryVisibility: (isPublic) =>
     request("/admin/telemetry-visibility", { method: "PUT", body: { public: isPublic }, auth: true }),
-  // Season-scoped, through the same switcher the rest of the site uses: the
-  // league runs different cars each season, so a lap only means something
-  // inside one. Without a season the endpoints answer for the season running
-  // now, which is what a reader who has not touched the switcher wants.
-  telemetryTracks: () => request(`/telemetry-laps${seasonQ()}`, { auth: true }),
+  // Series- and season-scoped, through the same switchers the rest of the site
+  // uses: every league has its own store, and inside it the league runs
+  // different cars each season, so a lap only means something inside one.
+  // Without a season the endpoints answer for the season running now, which is
+  // what a reader who has not touched the switcher wants. `series` is the
+  // comparison card's own pick (telemetryQ above); omitted, the viewed series.
+  telemetryTracks: (series = null) => request(`/telemetry-laps${telemetryQ(series)}`, { auth: true }),
   // The track's real outline, when the server manager publishes one. 404 is a
   // normal answer and means "draw the lap's own shape instead".
-  telemetryTrackMap: (trackKey) => request(`/telemetry-laps/${trackKey}/map${seasonQ()}`, { auth: true }),
-  telemetryTrackRoad: (trackKey) => request(`/telemetry-laps/${trackKey}/road${seasonQ()}`, { auth: true }),
-  telemetryLaps: (trackKey) => request(`/telemetry-laps/${trackKey}${seasonQ()}`, { auth: true }),
+  telemetryTrackMap: (trackKey, series = null) => request(`/telemetry-laps/${trackKey}/map${telemetryQ(series)}`, { auth: true }),
+  telemetryTrackRoad: (trackKey, series = null) => request(`/telemetry-laps/${trackKey}/road${telemetryQ(series)}`, { auth: true }),
+  telemetryLaps: (trackKey, series = null) => request(`/telemetry-laps/${trackKey}${telemetryQ(series)}`, { auth: true }),
   // A driver has up to three laps per track; `lapId` is the lap time in ms.
   // Omitted, the endpoint answers with their fastest, which is what this call
   // meant when everybody had exactly one.
-  telemetryLap: (trackKey, steamId, lapId = null) =>
-    request(`/telemetry-laps/${trackKey}/${steamId}${lapId ? `/${lapId}` : ""}${seasonQ()}`, { auth: true }),
+  telemetryLap: (trackKey, steamId, lapId = null, series = null) =>
+    request(`/telemetry-laps/${trackKey}/${steamId}${lapId ? `/${lapId}` : ""}${telemetryQ(series)}`, { auth: true }),
 
   // Cars and wide wordmarks for the shareable result graphic, per team.
   teamArt: () => request("/admin/team-art", { auth: true }),

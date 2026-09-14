@@ -8,6 +8,10 @@
 // schema.prisma and the migration folders by hand.
 // ---------------------------------------------------------------------------
 
+import { getActiveSeries } from "./series.js";
+import { adoptBareIngestKey } from "./telemetryKeys.js";
+import { adoptRootLaps } from "./telemetryLaps.js";
+
 // Add a column only if it isn't already there (SQLite has no
 // ADD COLUMN IF NOT EXISTS). `def` is everything after the name, e.g. "INTEGER".
 // Returns true when the column was actually created, so a caller can run a
@@ -598,6 +602,30 @@ export async function ensureAppSchema(prisma) {
     .catch(() => {});
 
   await migrateLiveLinksToSeries(prisma);
+  await migrateTelemetryToSeries(prisma);
+}
+
+// --- The telemetry recorder, once per series ---------------------------------
+// One key for the site and one folder of laps became one of each per series
+// when the second league got its own race server (lib/telemetryKeys.js,
+// lib/telemetryLaps.js). Both existing halves belong to the primary series,
+// the only one that was recording: the key so the line already in its server
+// config keeps working, the laps so nothing recorded so far disappears from
+// its comparison. Each half is idempotent on its own terms — the key copies
+// only where the series holds none, the laps move only what still sits at the
+// root — so this runs on every boot and is a no-op after the first.
+async function migrateTelemetryToSeries(prisma) {
+  try {
+    const primary = await getActiveSeries(prisma);
+    if (!primary?.slug) return;
+    if (await adoptBareIngestKey(prisma, primary.slug)) {
+      console.log(`[telemetry] recorder key handed to series "${primary.slug}"`);
+    }
+    const moved = adoptRootLaps(primary.slug);
+    if (moved.length) console.log(`[telemetry] laps handed to series "${primary.slug}": ${moved.join(", ")}`);
+  } catch (e) {
+    console.warn(`[telemetry] per-series handover skipped: ${e.message}`);
+  }
 }
 
 // --- The Live page's three external links, once per series -------------------

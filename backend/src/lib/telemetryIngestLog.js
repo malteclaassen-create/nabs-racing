@@ -24,6 +24,13 @@
 // is on the server. Downloads but no laps means the problem is in the car.
 // That single split is most of what this file exists for.
 //
+// PER SERIES, since each league has its own key and its own race server: an
+// event that arrived with a key names the league it belongs to, and the admin
+// card for one league shows that league's evenings and not the other's. An
+// event that arrived with no usable key (a wrong key, a probe) names nobody
+// and shows on every card — it is exactly the kind of thing either admin
+// would want to see.
+//
 // Nothing identifying is kept. No Steam ids, no addresses, no key — a driver
 // name and a track, which the card next to this already shows anyway.
 // ---------------------------------------------------------------------------
@@ -58,23 +65,31 @@ const KEEP_EVENTS = 40;
 
 const startedAt = new Date().toISOString();
 let events = [];
+// Counters keyed by outcome AND series ("<outcome>|<series or empty>"), so
+// one league's card can add up its own without the other's.
 const counts = new Map();
 const lastAt = new Map();
+
+const tallyKey = (outcome, series) => `${outcome}|${series || ""}`;
 
 // Record one thing that happened. Never throws and never blocks: a diagnostic
 // that can break the feature it reports on is worse than no diagnostic.
 //
-// `detail` is the reason for a refusal ("Bad steamId"), `name`/`track`/
-// `lapTimeMs` describe a lap when there is one to describe.
+// `series` is the slug the key named (null when no key matched); `detail` is
+// the reason for a refusal ("Bad steamId"); `name`/`track`/`lapTimeMs`
+// describe a lap when there is one to describe.
 export function recordTelemetryEvent(outcome, extra = {}) {
   try {
     if (!OUTCOMES[outcome]) return;
     const at = new Date().toISOString();
-    counts.set(outcome, (counts.get(outcome) || 0) + 1);
-    lastAt.set(outcome, at);
+    const series = extra.series ? String(extra.series).slice(0, 60) : null;
+    const k = tallyKey(outcome, series);
+    counts.set(k, (counts.get(k) || 0) + 1);
+    lastAt.set(k, at);
     events.push({
       at,
       outcome,
+      series,
       detail: extra.detail ? String(extra.detail).slice(0, 120) : null,
       name: extra.name ? String(extra.name).slice(0, 64) : null,
       track: extra.track ? String(extra.track).slice(0, 80) : null,
@@ -88,23 +103,37 @@ export function recordTelemetryEvent(outcome, extra = {}) {
 
 // Everything the admin card needs, newest event first.
 //
+// With a `series`: that league's events and the ones that named no league
+// (a wrong key belongs to nobody, and both admins should see it). Without
+// one: everything, every league together.
+//
 // `since` is the process start, and the card says so: "nothing since 14:02"
 // means nothing since the site last restarted, which on a host that redeploys
 // is a different sentence from "nothing ever".
-export function readTelemetryActivity() {
+export function readTelemetryActivity(series = null) {
+  const mine = (s) => series == null || s == null || s === series;
   const out = {};
-  for (const key of Object.keys(OUTCOMES)) {
-    out[key] = { count: counts.get(key) || 0, lastAt: lastAt.get(key) || null };
+  for (const key of Object.keys(OUTCOMES)) out[key] = { count: 0, lastAt: null };
+  for (const [k, n] of counts) {
+    const cut = k.indexOf("|");
+    const outcome = k.slice(0, cut);
+    const s = k.slice(cut + 1) || null;
+    if (!mine(s) || !out[outcome]) continue;
+    out[outcome].count += n;
+    const at = lastAt.get(k) || null;
+    // ISO stamps compare as strings.
+    if (at && (!out[outcome].lastAt || at > out[outcome].lastAt)) out[outcome].lastAt = at;
   }
   return {
     since: startedAt,
+    series: series ?? null,
     outcomes: out,
     // Laps that ARRIVED, however they ended up — the number that answers "is
     // the car posting". A lap that was too slow to keep is still a lap that
     // arrived, and reading it as a failure sent us hunting once already.
-    lapsArrived: (counts.get("lap-kept") || 0) + (counts.get("lap-slower") || 0),
-    scriptsServed: counts.get("script-served") || 0,
-    events: [...events].reverse(),
+    lapsArrived: out["lap-kept"].count + out["lap-slower"].count,
+    scriptsServed: out["script-served"].count,
+    events: events.filter((e) => mine(e.series)).reverse(),
   };
 }
 

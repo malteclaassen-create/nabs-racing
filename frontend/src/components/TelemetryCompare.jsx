@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, telemetryTrackMapUrl } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
+import { useSeries } from "../context/SeriesContext.jsx";
 import { Field } from "./ui.jsx";
 import { fmtLap } from "../utils/format.js";
 import { ChannelChart, PedalChart, ChartAxis, LapSummary, lapColor } from "./TelemetryCharts.jsx";
@@ -69,6 +70,9 @@ const splitPick = (v) => {
 // that names a driver without a lap opens their fastest, and one that names
 // only lap A opens that lap on its own.
 const LINK_PARAM = "tel";
+// Which league the link is about, beside it. Every series has its own laps,
+// and a link pasted into Discord is opened by people viewing the other one.
+const SERIES_PARAM = "series";
 const toLink = (trackKey, aId, bId) => [trackKey, aId.replace(":", "."), bId ? bId.replace(":", ".") : ""].filter(Boolean).join("_");
 function fromLink(raw) {
   const [trackKey, a, b] = String(raw || "").split("_");
@@ -94,11 +98,22 @@ function lapRows(laps) {
   });
 }
 
-function TelemetryCompare() {
-  const tracks = useApi(useCallback(() => api.telemetryTracks(), []));
+function TelemetryCompare({ series: fixedSeries = null }) {
+  // Which league's laps. Every series has its own recorder key and its own
+  // store (backend: lib/telemetryKeys.js), so this is the first choice the
+  // card makes. On the members' page it is a dropdown among the visible
+  // series, starting on the one being viewed; the admin card pins it to the
+  // series in the admin bar (`fixedSeries`), so the setup below the
+  // comparison and the laps inside it are always about the same league. A
+  // shared link names its series, so it opens on the right laps for everybody.
+  const { seriesList, slug: viewedSlug, active: activeSeries } = useSeries();
+  const linkParams = useRef(new URLSearchParams(window.location.search));
+  const [pickedSeries, setPickedSeries] = useState(fixedSeries || linkParams.current.get(SERIES_PARAM) || null);
+  const seriesSlug = fixedSeries || pickedSeries;
+  const tracks = useApi(useCallback(() => api.telemetryTracks(seriesSlug), [seriesSlug]));
   // What a shared link asked for, consumed by the first laps load and then
   // forgotten, so a later track switch behaves like any other.
-  const wanted = useRef(fromLink(new URLSearchParams(window.location.search).get(LINK_PARAM)));
+  const wanted = useRef(fromLink(linkParams.current.get(LINK_PARAM)));
   const [trackKey, setTrackKey] = useState(wanted.current?.trackKey || "");
   // A driver has up to three laps here, so the dropdowns are keyed on the LAP:
   // "<steamId>:<lapId>". Keyed on the driver, as they were when everybody had
@@ -177,6 +192,11 @@ function TelemetryCompare() {
   // otherwise an empty list after a season change looks like a broken feature
   // rather than a fresh start.
   const season = tracks.data?.season;
+  // The league the endpoint answered for, by name and slug: the card says
+  // whose laps these are the same way it says which season, and a link or an
+  // empty list should name the league too.
+  const seriesName = tracks.data?.seriesName;
+  const effectiveSeries = tracks.data?.series || seriesSlug || viewedSlug || activeSeries?.slug || null;
   // First track with laps preselects itself — an empty dropdown helps nobody.
   useEffect(() => {
     if (tracks.data && !list.some((t) => t.trackKey === trackKey)) setTrackKey(list[0]?.trackKey || "");
@@ -188,13 +208,20 @@ function TelemetryCompare() {
     setZoom(1);
   }, [trackKey]);
 
+  // A different league is a different list: the picks go, the track stays
+  // (the new list decides above whether it is still there). Nothing to undo
+  // on first mount, where everything is empty already.
+  useEffect(() => {
+    setLaps(null); setLapA(null); setLapB(null); setAId(""); setBId(""); setCursor(null);
+  }, [seriesSlug]);
+
   useEffect(() => {
     if (!trackKey) return;
     let alive = true;
     setLoadError(null);
     const selected = wanted.current || selections.current;
     wanted.current = null;
-    api.telemetryLaps(trackKey).then((d) => {
+    api.telemetryLaps(trackKey, seriesSlug).then((d) => {
       if (!alive) return;
       setLaps(d.laps);
       if (!d.laps.length) { setAId(""); setBId(""); return; }
@@ -210,24 +237,28 @@ function TelemetryCompare() {
       setBId(b ? pickOf(b) : selected.aId ? "" : alternative ? pickOf(alternative) : "");
     }).catch((e) => alive && setLoadError(e.message || "Could not load the laps."));
     return () => { alive = false; };
-  }, [trackKey, revision]);
+  }, [trackKey, revision, seriesSlug]);
 
+  // The two laps follow the LIST, not the refresh counter: a new list (a new
+  // track, a new league, a refresh) is a new array, and while it is being
+  // replaced there is nothing to fetch a lap against — asking the new league
+  // for the old league's pick would only flash a 404 before the list answers.
   useEffect(() => {
     setLapA(null);
     setAError(null);
-    if (!trackKey || !aId) return;
+    if (!trackKey || !aId || !laps) return;
     let alive = true;
-    api.telemetryLap(trackKey, ...splitPick(aId)).then((d) => alive && setLapA(d)).catch((e) => alive && setAError(e.message || "Could not load lap A."));
+    api.telemetryLap(trackKey, ...splitPick(aId), seriesSlug).then((d) => alive && setLapA(d)).catch((e) => alive && setAError(e.message || "Could not load lap A."));
     return () => { alive = false; };
-  }, [trackKey, aId, revision]);
+  }, [trackKey, aId, laps, seriesSlug]);
   useEffect(() => {
     setLapB(null);
     setBError(null);
-    if (!trackKey || !bId) return;
+    if (!trackKey || !bId || !laps) return;
     let alive = true;
-    api.telemetryLap(trackKey, ...splitPick(bId)).then((d) => alive && setLapB(d)).catch((e) => alive && setBError(e.message || "Could not load lap B."));
+    api.telemetryLap(trackKey, ...splitPick(bId), seriesSlug).then((d) => alive && setLapB(d)).catch((e) => alive && setBError(e.message || "Could not load lap B."));
     return () => { alive = false; };
-  }, [trackKey, bId, revision]);
+  }, [trackKey, bId, laps, seriesSlug]);
 
   // The address follows the selection, so the link in the bar is always the
   // link to what is on screen. replaceState rather than the router: this is a
@@ -237,10 +268,13 @@ function TelemetryCompare() {
     if (!trackKey || !aId) return;
     const url = new URL(window.location.href);
     const code = toLink(trackKey, aId, bId);
-    if (url.searchParams.get(LINK_PARAM) === code) return;
+    const league = effectiveSeries || "";
+    if (url.searchParams.get(LINK_PARAM) === code && (url.searchParams.get(SERIES_PARAM) || "") === league) return;
     url.searchParams.set(LINK_PARAM, code);
+    if (league) url.searchParams.set(SERIES_PARAM, league);
+    else url.searchParams.delete(SERIES_PARAM);
     window.history.replaceState(window.history.state, "", url);
-  }, [trackKey, aId, bId]);
+  }, [trackKey, aId, bId, effectiveSeries]);
 
   // Lap A's grid is the grid; lap B is moved onto it when the two differ.
   const n = lapA?.n || 0;
@@ -382,9 +416,9 @@ function TelemetryCompare() {
     // Two things, each optional: the road edges from the track's AI line (what
     // the laps are drawn on) and the published map with its calibration (the
     // frame, and the fallback drawing when there is no AI line).
-    const road = api.telemetryTrackRoad(trackKey).catch(() => null);
+    const road = api.telemetryTrackRoad(trackKey, seriesSlug).catch(() => null);
     const map = api
-      .telemetryTrackMap(trackKey)
+      .telemetryTrackMap(trackKey, seriesSlug)
       .then(async (calib) => {
         const url = await telemetryTrackMapUrl(calib.url);
         if (!alive && url) URL.revokeObjectURL(url);
@@ -402,7 +436,7 @@ function TelemetryCompare() {
       // changes, and an unreleased one is a leak per switch.
       if (href) URL.revokeObjectURL(href);
     };
-  }, [trackKey]);
+  }, [trackKey, seriesSlug]);
 
   // Changing either lap ends the run: the cursor it left behind belongs to a
   // lap that is no longer on screen. The camera goes back out too — a corner
@@ -507,7 +541,7 @@ function TelemetryCompare() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const shareUrl = () => `${window.location.origin}/tools?${LINK_PARAM}=${encodeURIComponent(toLink(trackKey, aId, bId))}#telemetry`;
+  const shareUrl = () => `${window.location.origin}/tools?${LINK_PARAM}=${encodeURIComponent(toLink(trackKey, aId, bId))}${effectiveSeries ? `&${SERIES_PARAM}=${encodeURIComponent(effectiveSeries)}` : ""}#telemetry`;
   const trackName = (() => { const t = list.find((x) => x.trackKey === trackKey); return t ? `${readable(t.track)}${t.layout ? ` · ${readable(t.layout)}` : ""}` : trackKey; })();
   const fileStem = `${trackKey || "lap"}-${(lapA?.name || "A").replace(/[^\w-]+/g, "_")}${lapB ? `-vs-${lapB.name.replace(/[^\w-]+/g, "_")}` : ""}`;
   const copyText = async (text, what) => {
@@ -525,8 +559,17 @@ function TelemetryCompare() {
   const saveMap = () => exportSvgPng(mapSvg.current, { fileName: `${fileStem}-map.png`, background: getComputedStyle(document.documentElement).getPropertyValue("--c-card").trim() || "#fff" }).catch(() => {});
 
   return (
-    <ToolCard id="telemetry" cardRef={cardRef} full={full} title="Lap comparison" subtitle={season ? `Season ${season} · both laps aligned by track position` : "Both laps aligned by track position"}
+    <ToolCard id="telemetry" cardRef={cardRef} full={full} title="Lap comparison" subtitle={[seriesName, season ? `Season ${season}` : null, seriesName || season ? "both laps aligned by track position" : "Both laps aligned by track position"].filter(Boolean).join(" · ")}
       actions={<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold">
+        {/* The league, when there is more than one to choose from. Up here
+            rather than beside the track dropdown so it is there when the list
+            is empty — which is exactly when somebody wants to look at the
+            other league's laps instead. */}
+        {!fixedSeries && seriesList.length > 1 && (
+          <select aria-label="Series" className="input w-auto py-1 text-xs font-semibold" value={effectiveSeries || ""} onChange={(e) => setPickedSeries(e.target.value || null)}>
+            {seriesList.map((s) => <option key={s.slug} value={s.slug}>{s.name}</option>)}
+          </select>
+        )}
         {lapA && <button type="button" className={LINK_BTN} onClick={copyLink} title="Copy a link that opens exactly this comparison">{copied === "link" ? "Link copied" : "Copy link"}</button>}
         {lapA && <details className="relative">
           <summary className={`${LINK_BTN} cursor-pointer list-none`}>{copied === "summary" ? "Summary copied" : "Export"}</summary>
@@ -541,7 +584,7 @@ function TelemetryCompare() {
       </div>}>
       {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-4 py-3 text-sm text-bad">{error} <button type="button" className="ml-2 underline" onClick={refresh}>Try again</button></div>}
       {tracks.loading && !tracks.data ? <p role="status" className="py-6 text-sm text-light">Loading recorded tracks…</p>
-        : !list.length && !error ? <p className="py-6 text-sm text-light">No laps recorded{season ? ` in Season ${season}` : ''} yet. Refresh after a driver completes a clean lap.</p>
+        : !list.length && !error ? <p className="py-6 text-sm text-light">No laps recorded{seriesName ? ` for ${seriesName}` : ''}{season ? ` in Season ${season}` : ''} yet. Refresh after a driver completes a clean lap.</p>
         : list.length > 0 && <>
           <div className="grid min-w-0 gap-3 sm:grid-cols-3">
             <Field label="Track">

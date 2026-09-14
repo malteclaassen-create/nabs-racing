@@ -33,6 +33,7 @@ import { writeRaceHero } from "../lib/raceHero.js";
 import { deleteLap as deleteTelemetryLap, storedSummary as telemetryStoredSummary } from "../lib/telemetryLaps.js";
 import { readTelemetryActivity } from "../lib/telemetryIngestLog.js";
 import { telemetryScript } from "../lib/telemetryScript.js";
+import { readIngestConfig, setIngestPaused, ensureIngestKey } from "../lib/telemetryKeys.js";
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
 import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
@@ -5865,15 +5866,18 @@ router.put("/reports-ingest", async (req, res, next) => {
 // So off/on is now a separate flag (Setting telemetry_ingest_off) and the key,
 // once minted, is never replaced from this UI. If a leaked key ever forces a
 // rotation, that is a deliberate database edit, not a button.
+//
+// ONE PER SERIES (lib/telemetryKeys.js): the key is how a lap says which
+// league's server it came from, so each league mints its own and pastes its
+// own line into its own server. ?series= names the league, as everywhere.
 router.get("/telemetry-ingest", async (req, res, next) => {
   try {
-    const [row, off] = await Promise.all([
-      prisma.setting.findUnique({ where: { key: "telemetry_ingest_key" } }).catch(() => null),
-      prisma.setting.findUnique({ where: { key: "telemetry_ingest_off" } }).catch(() => null),
-    ]);
-    const key = row?.value || "";
-    const paused = off?.value === "1";
+    const series = await telemetrySeries(req);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    const { key, paused } = await readIngestConfig(prisma, series.slug);
     res.json({
+      series: series.slug,
+      seriesName: series.name,
       configured: !!key && !paused,
       key: key || null,
       // The card needs to know "off but the key survives" apart from "never
@@ -5891,47 +5895,28 @@ router.get("/telemetry-ingest", async (req, res, next) => {
 });
 
 // A key may be GIVEN once — only while none exists yet (settled up front, or
-// re-entered after a database loss). Same shape as a minted key is enforced,
-// so a guessable one can't be set.
-const TELEMETRY_KEY_RE = /^[a-f0-9]{32}$/;
-
+// re-entered after a database loss). The shape rule, the permanence rule and
+// the one new rule — no two series on one key, or their laps could not be told
+// apart — live in lib/telemetryKeys.js next to the reverse lookup the ingest
+// does, the one place that has to agree with itself about what a key is.
 router.put("/telemetry-ingest", async (req, res, next) => {
   try {
+    const series = await telemetrySeries(req);
+    if (!series) return res.status(404).json({ error: "Series not found" });
     const on = req.body?.enabled !== false;
-    const given = typeof req.body?.key === "string" ? req.body.key.trim().toLowerCase() : "";
-    const existing = (await prisma.setting.findUnique({ where: { key: "telemetry_ingest_key" } }).catch(() => null))?.value || "";
+    const given = typeof req.body?.key === "string" ? req.body.key : "";
 
     if (!on) {
       // Pause, never forget: the key stays put so the race server's config
       // line stays valid for the day recording is switched back on.
-      await prisma.setting.upsert({
-        where: { key: "telemetry_ingest_off" },
-        create: { key: "telemetry_ingest_off", value: "1" },
-        update: { value: "1" },
-      });
-      return res.json({ ok: true, configured: false, key: null, keyKept: !!existing });
+      const { key } = await readIngestConfig(prisma, series.slug);
+      await setIngestPaused(prisma, series.slug, true);
+      return res.json({ ok: true, series: series.slug, configured: false, key: null, keyKept: !!key });
     }
 
-    if (given && !TELEMETRY_KEY_RE.test(given)) {
-      return res.status(400).json({ error: "A key must be 32 characters, 0-9 and a-f" });
-    }
-    // The permanence guarantee, enforced rather than assumed: a different key
-    // for an existing one is refused, whatever the UI sent.
-    if (existing && given && given !== existing) {
-      return res.status(409).json({ error: "The key is permanent and cannot be replaced. Switching on brings back the existing key." });
-    }
-    const value = existing || given || randomUUID().replace(/-/g, "");
-    await prisma.setting.upsert({
-      where: { key: "telemetry_ingest_key" },
-      create: { key: "telemetry_ingest_key", value },
-      update: { value },
-    });
-    await prisma.setting.upsert({
-      where: { key: "telemetry_ingest_off" },
-      create: { key: "telemetry_ingest_off", value: "" },
-      update: { value: "" },
-    });
-    res.json({ ok: true, configured: true, key: value, keyKept: true });
+    const made = await ensureIngestKey(prisma, series.slug, given);
+    if (!made.ok) return res.status(made.status).json({ error: made.error });
+    res.json({ ok: true, series: series.slug, configured: true, key: made.key, keyKept: true });
   } catch (e) {
     next(e);
   }
@@ -5948,13 +5933,15 @@ router.put("/telemetry-ingest", async (req, res, next) => {
 // which is the part that survives a restart.
 router.get("/telemetry-activity", async (req, res, next) => {
   try {
-    const season = await activeSeasonForTelemetry();
+    const series = await telemetrySeries(req);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    const season = await activeSeasonForTelemetry(series.slug);
     res.json({
       season,
-      ...readTelemetryActivity(),
+      ...readTelemetryActivity(series.slug),
       // `legacy` for the same reason the read endpoints pass it: laps recorded
       // before the store had seasons can only belong to the one running now.
-      stored: telemetryStoredSummary(season, true),
+      stored: telemetryStoredSummary(series.slug, season, true),
     });
   } catch (e) {
     next(e);
@@ -5985,11 +5972,18 @@ router.put("/telemetry-visibility", async (req, res, next) => {
   }
 });
 
+// The series a telemetry request is about: ?series=, or the primary one. The
+// admin's own list, so a private series — which is what a league is while its
+// recorder is being set up — resolves like any other.
+async function telemetrySeries(req) {
+  return resolveSeries(prisma, req.query.series, { includePrivate: true });
+}
+
 // The season a lap sits in, when the caller did not name one. Telemetry is
 // stored per season because the cars change with it (lib/telemetryLaps.js).
-async function activeSeasonForTelemetry() {
+async function activeSeasonForTelemetry(series) {
   try {
-    return Number((await resolveSeason(prisma, null, { includePrivate: true }))?.number) || 0;
+    return Number((await resolveSeason(prisma, null, { includePrivate: true, series }))?.number) || 0;
   } catch {
     return 0;
   }
@@ -6000,10 +5994,13 @@ async function activeSeasonForTelemetry() {
 // should not be in the list at all is all of them.
 router.delete("/telemetry-laps/:trackKey/:steamId/:lapId?", async (req, res, next) => {
   try {
+    const series = await telemetrySeries(req);
+    if (!series) return res.status(404).json({ error: "Series not found" });
     // ?season=<n>, the same parameter the read endpoints take; without one,
     // the season running now.
     const ok = deleteTelemetryLap(
-      Number(req.query.season) || (await activeSeasonForTelemetry()),
+      series.slug,
+      Number(req.query.season) || (await activeSeasonForTelemetry(series.slug)),
       req.params.trackKey,
       req.params.steamId,
       req.params.lapId ?? null

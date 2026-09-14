@@ -73,3 +73,43 @@ describe("robustness", () => {
     expect(readTelemetryActivity().events[0].lapTimeMs).toBe(null);
   });
 });
+
+// Two leagues, two keys, two admin cards. Each card is about its own league's
+// evening; what arrived with no usable key belongs to nobody and shows on both.
+describe("one league's card", () => {
+  beforeEach(() => {
+    recordTelemetryEvent("lap-kept", { series: "friday-f1", name: "Rashford", lapTimeMs: 62279 });
+    recordTelemetryEvent("lap-slower", { series: "friday-f1", name: "m.timms", lapTimeMs: 62408 });
+    recordTelemetryEvent("script-served", { series: "sunday-gt" });
+    recordTelemetryEvent("lap-kept", { series: "sunday-gt", name: "Neesh", lapTimeMs: 125000 });
+    recordTelemetryEvent("bad-key");
+  });
+
+  it("adds up its own league's events and the ones that named no league", () => {
+    const f1 = readTelemetryActivity("friday-f1");
+    expect(f1.series).toBe("friday-f1");
+    expect(f1.lapsArrived).toBe(2);
+    expect(f1.scriptsServed).toBe(0);
+    expect(f1.outcomes["bad-key"].count).toBe(1);
+    expect(f1.events.map((e) => [e.outcome, e.series])).toEqual([
+      ["bad-key", null],
+      ["lap-slower", "friday-f1"],
+      ["lap-kept", "friday-f1"],
+    ]);
+  });
+
+  it("shows the other league nothing of it", () => {
+    const gt = readTelemetryActivity("sunday-gt");
+    expect(gt.lapsArrived).toBe(1);
+    expect(gt.scriptsServed).toBe(1);
+    expect(gt.events.map((e) => e.name)).toEqual([null, "Neesh", null]);
+    expect(gt.outcomes["lap-slower"].count).toBe(0);
+  });
+
+  it("keeps the newest stamp per league apart", () => {
+    const all = readTelemetryActivity();
+    expect(all.lapsArrived).toBe(3);
+    expect(all.outcomes["lap-kept"].lastAt).toBe(readTelemetryActivity("sunday-gt").outcomes["lap-kept"].lastAt);
+    expect(readTelemetryActivity("friday-f1").outcomes["lap-kept"].lastAt).not.toBeNull();
+  });
+});

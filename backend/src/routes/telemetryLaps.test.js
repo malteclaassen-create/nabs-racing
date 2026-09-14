@@ -5,29 +5,50 @@
 // testing is not the status codes — it is that each branch WRITES DOWN which
 // one it took, because that record is now the only way anybody finds out why an
 // evening produced no laps.
+//
+// And, since the second league got its own race server, WHICH LEAGUE each
+// branch was about: the key names the series, the lap lands in that series'
+// store, and the other league's page never sees it.
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
 import express from "express";
 import { rmSync } from "fs";
 
-const KEY = "f00dcafef00dcafef00dcafef00dcafe";
+const KEY = "f00dcafef00dcafef00dcafef00dcafe"; // the Friday league's
+const KEY2 = "0123456789abcdef0123456789abcdef"; // the Sunday league's
 
 // The pause flag rides on globalThis because vi.mock factories are hoisted
 // above any local variable this file could share with them.
 vi.mock("../lib/prisma.js", () => ({
   default: {
     setting: {
-      findUnique: vi.fn(async ({ where }) =>
-        where.key === "telemetry_ingest_key"
-          ? { value: KEY }
-          : where.key === "telemetry_ingest_off" && globalThis.__telemetryPaused
-            ? { value: "1" }
-            : null
-      ),
+      findUnique: vi.fn(async () => null),
+      findMany: vi.fn(async ({ where }) => {
+        if (globalThis.__telemetryNoKeys) return [];
+        const rows = [
+          { key: "telemetry_ingest_key:friday-f1", value: KEY },
+          { key: "telemetry_ingest_key:sunday-gt", value: KEY2 },
+        ];
+        if (globalThis.__telemetryPaused) rows.push({ key: "telemetry_ingest_off:friday-f1", value: "1" });
+        return rows.filter((r) => where.key.in.includes(r.key));
+      }),
     },
     driver: { findMany: vi.fn(async () => []) },
   },
 }));
-vi.mock("../services/seasonService.js", () => ({ resolveSeason: vi.fn(async () => ({ id: 's8', number: 8 })) }));
+const SERIES = [
+  { id: "f1", slug: "friday-f1", name: "NABS Racing League", isActive: true, isPublic: true },
+  { id: "gt", slug: "sunday-gt", name: "Sunday GT", isActive: false, isPublic: true },
+];
+vi.mock("../lib/series.js", () => ({
+  dbListSeries: vi.fn(async () => SERIES),
+  resolveSeries: vi.fn(async (p, slug) =>
+    slug == null || slug === "" ? SERIES[0] : SERIES.find((s) => s.slug === String(slug)) || null
+  ),
+}));
+// Each league is in its own season: the F1 league's 8th, the GT league's 1st.
+vi.mock("../services/seasonService.js", () => ({
+  resolveSeason: vi.fn(async (p, n, opts) => (opts?.series === "sunday-gt" ? { id: "g1", number: 1 } : { id: "s8", number: 8 })),
+}));
 vi.mock("../lib/trackMaps.js", () => ({ ensureTrackMap: vi.fn(async () => null), ensureTrackRoad: vi.fn(async () => null) }));
 vi.mock("../lib/persons.js", () => ({ getNameOverrides: vi.fn(async () => new Map()) }));
 // Who may READ is tested next door (lib/telemetryAccess.test.js); here it would
@@ -37,6 +58,7 @@ vi.mock("../lib/telemetryAccess.js", () => ({ telemetryReadGate: () => (req, res
 const { default: router } = await import("./telemetryLaps.js");
 const { readTelemetryActivity, resetTelemetryActivity } = await import("../lib/telemetryIngestLog.js");
 const { TELEMETRY_LAPS_DIR } = await import("../lib/telemetryLaps.js");
+const { invalidateTelemetryKeys } = await import("../lib/telemetryKeys.js");
 const { default: prisma } = await import("../lib/prisma.js");
 
 let base;
@@ -90,7 +112,12 @@ beforeAll(async () => {
 });
 
 afterAll(() => server?.close());
-beforeEach(() => resetTelemetryActivity());
+beforeEach(() => {
+  resetTelemetryActivity();
+  // The key lookup answers from a short cache; a test that flips a flag on
+  // the mock must not be answered with the previous test's world.
+  invalidateTelemetryKeys();
+});
 
 describe("handing the script to a car", () => {
   it("serves it with the ingest address and version baked in, and counts it", async () => {
@@ -113,6 +140,8 @@ describe("handing the script to a car", () => {
     // to carry a diagnosis alone, and a browser refresh and a joining car
     // looked identical.
     expect(a.events[0].detail).toBeTruthy();
+    // And WHOSE server handed it out.
+    expect(a.events[0].series).toBe("friday-f1");
   });
 
   it("marks a fetch that asked for a version, and one that was revalidating", async () => {
@@ -134,6 +163,13 @@ describe("handing the script to a car", () => {
     expect(a.scriptsServed).toBe(0);
     expect(a.outcomes["script-refused"].count).toBe(1);
   });
+
+  it("bakes the second league's key into the script its server hands out", async () => {
+    const res = await fetch(`${base}/api/telemetry-laps/app.lua?key=${KEY2}`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(`/api/telemetry-laps/ingest?key=${KEY2}`);
+    expect(readTelemetryActivity().events[0].series).toBe("sunday-gt");
+  });
 });
 
 describe("a lap arriving", () => {
@@ -147,6 +183,7 @@ describe("a lap arriving", () => {
     // The slugged key, not the game's spelling: it is a path segment.
     expect(event.track).toBe("fr-redbullring--austria-f1-2024");
     expect(event.lapTimeMs).toBe(62279);
+    expect(event.series).toBe("friday-f1");
   });
 
   it("counts a lap it does not store as ARRIVED — the distinction the panel is built on", async () => {
@@ -169,6 +206,44 @@ describe("a lap arriving", () => {
   });
 });
 
+describe("two leagues, two keys", () => {
+  it("files a lap posted with the second league's key in the second league's store, in ITS season", async () => {
+    // Same driver, same time, a different circuit — posted with the Sunday key.
+    const res = await post(`?key=${KEY2}`, lapPayload({ track: "spa", layout: "" }));
+    expect(await res.json()).toMatchObject({ ok: true, kept: true });
+    expect(readTelemetryActivity().events[0].series).toBe("sunday-gt");
+
+    const sunday = await (await fetch(`${base}/api/telemetry-laps?series=sunday-gt`)).json();
+    expect(sunday).toMatchObject({ series: "sunday-gt", seriesName: "Sunday GT", season: 1 });
+    expect(sunday.tracks.map((t) => t.trackKey)).toEqual(["spa"]);
+
+    // The Friday page — the default when nobody names a series — is untouched.
+    const friday = await (await fetch(`${base}/api/telemetry-laps`)).json();
+    expect(friday).toMatchObject({ series: "friday-f1", season: 8 });
+    expect(friday.tracks.map((t) => t.trackKey)).toEqual(["fr-redbullring--austria-f1-2024"]);
+  });
+
+  it("answers one league's card with that league's evening and not the other's", async () => {
+    await post(`?key=${KEY}`, lapPayload({ lapTimeMs: 61000 }));
+    await post(`?key=${KEY2}`, lapPayload({ track: "spa", layout: "", lapTimeMs: 125000 }));
+    await post("?key=deadbeefdeadbeefdeadbeefdeadbeef", lapPayload()); // names nobody: both cards show it
+    const f1 = readTelemetryActivity("friday-f1");
+    const gt = readTelemetryActivity("sunday-gt");
+    expect(f1.lapsArrived).toBe(1);
+    expect(gt.lapsArrived).toBe(1);
+    expect(f1.events.map((e) => e.outcome)).toEqual(["bad-key", "lap-kept"]);
+    expect(gt.events.map((e) => e.outcome)).toEqual(["bad-key", "lap-kept"]);
+    expect(f1.events[1].lapTimeMs).toBe(61000);
+    expect(gt.events[1].lapTimeMs).toBe(125000);
+    expect(readTelemetryActivity().lapsArrived).toBe(2);
+  });
+
+  it("does not answer for a series that does not exist", async () => {
+    expect((await fetch(`${base}/api/telemetry-laps?series=no-such-league`)).status).toBe(404);
+    expect((await fetch(`${base}/api/telemetry-laps/spa?series=no-such-league`)).status).toBe(404);
+  });
+});
+
 describe("the recorder's own voice", () => {
   // Both beacons ride the query string alone — the script sends them without
   // JSON on purpose, so the site must not need a body to understand them.
@@ -185,6 +260,7 @@ describe("the recorder's own voice", () => {
     expect(event.name).toBe("TheFakeTB");
     expect(event.track).toBe("most");
     expect(event.detail).toBe(info);
+    expect(event.series).toBe("friday-f1");
     // A hello is not a lap: the split the card is built on stays honest.
     expect(a.lapsArrived).toBe(0);
   });
@@ -225,10 +301,22 @@ describe("the ways in that are not laps", () => {
     expect(readTelemetryActivity().outcomes["bad-key"].count).toBe(1);
   });
 
+  it("reads as switched off, not as a wrong key, while no league has a key at all", async () => {
+    globalThis.__telemetryNoKeys = true;
+    try {
+      const res = await post(`?key=${KEY}`, lapPayload());
+      expect(res.status).toBe(503);
+      expect(readTelemetryActivity().outcomes.off.count).toBe(1);
+      expect(readTelemetryActivity().outcomes["bad-key"].count).toBe(0);
+    } finally {
+      globalThis.__telemetryNoKeys = false;
+    }
+  });
+
   // The league's key is permanent (routes/admin.js): "off" is a flag beside
   // it, not its deletion. While the flag is set the recorder must go fully
   // dark — no script, no laps — with the key itself untouched underneath.
-  it("goes dark while paused, without the key having changed", async () => {
+  it("goes dark while paused, without the key having changed — and only for that league", async () => {
     globalThis.__telemetryPaused = true;
     try {
       const lap = await post(`?key=${KEY}`, lapPayload());
@@ -238,8 +326,15 @@ describe("the ways in that are not laps", () => {
       const a = readTelemetryActivity();
       expect(a.outcomes.off.count).toBe(1);
       expect(a.outcomes["script-refused"].count).toBe(1);
+      // The refusals are the Friday league's to see, not the Sunday league's.
+      expect(readTelemetryActivity("friday-f1").outcomes.off.count).toBe(1);
+      expect(readTelemetryActivity("sunday-gt").outcomes.off.count).toBe(0);
+      // The other league's server keeps working through the Friday pause.
+      const other = await post(`?key=${KEY2}&ping=1`, {});
+      expect(await other.json()).toMatchObject({ ok: true, pong: true });
     } finally {
       globalThis.__telemetryPaused = false;
+      invalidateTelemetryKeys();
     }
     // The same key answers again the moment the pause lifts.
     const res = await post(`?key=${KEY}&ping=1`, {});
