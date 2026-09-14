@@ -477,24 +477,47 @@ export default function Attendance() {
           // rather than a thumbnail parked in a margin. Shares rather than a
           // fixed sidebar width: the split then holds on a wider screen
           // instead of leaving the video behind.
+          //
+          // Without the video the row is still two columns, just a different
+          // pair: the round on the left, the sign-up on the right. Stacking
+          // them instead would run one narrow card down the middle of a wide
+          // screen and leave the rest of it empty, and the countdown is worth
+          // keeping in view while somebody reads down the entry list. Three
+          // fifths to the sign-up, because that is the side that holds forty
+          // names in two columns; the round is a banner and does not need half.
           return (
             <div
               className={`grid gap-6 ${
-                showVideo ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" : "lg:grid-cols-1"
+                showVideo
+                  ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+                  : "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"
               }`}
             >
-              <div className="flex min-w-0 flex-col gap-6">
-                {heroCard}
-                {errorBox}
-                {signUpCard}
-              </div>
               {/* The sticky wrapper sits INSIDE the stretched column: a sticky
                   element that is itself as tall as the row has nothing left to
-                  scroll within. */}
-              {videoPanel && (
-                <div className="min-w-0">
-                  <div className="lg:sticky lg:top-28">{videoPanel}</div>
-                </div>
+                  scroll within. Whichever column is the SHORT one gets it: the
+                  lap when there is one, the round when there is not. */}
+              {videoPanel ? (
+                <>
+                  <div className="flex min-w-0 flex-col gap-6">
+                    {heroCard}
+                    {errorBox}
+                    {signUpCard}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="lg:sticky lg:top-28">{videoPanel}</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="min-w-0">
+                    <div className="flex flex-col gap-6 lg:sticky lg:top-28">
+                      {heroCard}
+                      {errorBox}
+                    </div>
+                  </div>
+                  <div className="min-w-0">{signUpCard}</div>
+                </>
               )}
               {/* Floats over the page rather than sitting in a column: the whole
                   point is to be visible from wherever they stopped reading. */}
