@@ -9,6 +9,7 @@ import { readPrivacyInfo } from "../lib/privacyInfo.js";
 import { discordMemberCount, leagueSince, yearsOfRacing } from "../lib/leagueStats.js";
 import { buildFeed } from "../lib/socialFeed.js";
 import { isTelemetryPublic } from "../lib/telemetryAccess.js";
+import { resolveSeries } from "../lib/series.js";
 
 const router = Router();
 
@@ -35,17 +36,39 @@ export const LIVE_LINK_DEFAULTS = {
   streamUrl: "",
 };
 
-// Read the configured Live-page links, applying the defaults for anything unset.
-export async function readLiveLinks(prismaClient) {
-  const rows = await prismaClient.setting.findMany({
-    where: { key: { in: ["live_timing_url", "live_cm_join_url", "live_stream_url"] } },
-  });
-  const get = (k) => rows.find((r) => r.key === k)?.value || "";
+// The three Live-page links are stored PER SERIES: two leagues race on two
+// servers, and the live-timing board, the Content Manager join link and the
+// stream that belong to one of them are wrong for the other. The key carries
+// the series slug; the bare keys are what every series used to share, migrated
+// onto each of them once by ensureAppSchema.
+//
+// No cross-series fallback on purpose. An empty CM link means "hide the button"
+// and an empty stream means "nobody is broadcasting", and inheriting another
+// league's answer to either would put a dead button and a stranger's stream on
+// a page that deliberately left both blank.
+export const LIVE_LINK_KEYS = ["live_timing_url", "live_cm_join_url", "live_stream_url"];
+const seriesKey = (key, slug) => (slug ? `${key}:${slug}` : key);
+
+// Read the configured Live-page links for one series, applying the defaults for
+// anything unset.
+export async function readLiveLinks(prismaClient, seriesSlug = null) {
+  const keys = LIVE_LINK_KEYS.map((k) => seriesKey(k, seriesSlug));
+  const rows = await prismaClient.setting.findMany({ where: { key: { in: keys } } });
+  const get = (k) => rows.find((r) => r.key === seriesKey(k, seriesSlug))?.value || "";
   return {
     liveTimingUrl: get("live_timing_url") || LIVE_LINK_DEFAULTS.liveTimingUrl,
     cmJoinUrl: get("live_cm_join_url") || LIVE_LINK_DEFAULTS.cmJoinUrl,
     streamUrl: get("live_stream_url") || LIVE_LINK_DEFAULTS.streamUrl,
   };
+}
+
+// The slug the Live-page links of a request belong to: the series asked for, or
+// the active one. Private series resolve for everyone here — the links are the
+// least of what a private series' own live page shows its admin, and an
+// unknown slug simply lands on the active series' links.
+export async function liveLinkSeriesSlug(prismaClient, slug) {
+  const series = await resolveSeries(prismaClient, slug, { includePrivate: true }).catch(() => null);
+  return series?.slug || null;
 }
 
 // GET /api/settings/telemetry -> may the members' side show recorded laps.
@@ -96,10 +119,11 @@ router.get("/league-stats", async (req, res, next) => {
   }
 });
 
-// GET /api/settings/live -> the public Live-page external links (with defaults).
+// GET /api/settings/live?series= -> the Live-page external links of that series
+// (with defaults).
 router.get("/live", async (req, res, next) => {
   try {
-    res.json(await readLiveLinks(prisma));
+    res.json(await readLiveLinks(prisma, await liveLinkSeriesSlug(prisma, req.query.series)));
   } catch (e) {
     next(e);
   }

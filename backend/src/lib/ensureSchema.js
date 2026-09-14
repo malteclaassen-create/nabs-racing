@@ -596,4 +596,45 @@ export async function ensureAppSchema(prisma) {
   await prisma
     .$executeRawUnsafe(`DELETE FROM "PersonLink" WHERE "driverId" NOT IN (SELECT "id" FROM "Driver")`)
     .catch(() => {});
+
+  await migrateLiveLinksToSeries(prisma);
+}
+
+// --- The Live page's three external links, once per series -------------------
+// They used to be three settings for the whole site: the live-timing board, the
+// Content Manager join link and the stream. With a second league on a second
+// race server that is one set of links too few, so they are stored per series
+// now (routes/settings.js).
+//
+// This hands the existing values to every series that exists at the moment of
+// the change, which is what they were already showing. Guarded by a marker so
+// it happens once: an admin who later clears a series' link means it, and a
+// second run would put the old one back.
+async function migrateLiveLinksToSeries(prisma) {
+  const MARKER = "live_links_per_series_migrated";
+  try {
+    const done = await prisma.setting.findUnique({ where: { key: MARKER } });
+    if (done) return;
+    const slugs = (
+      await prisma.$queryRawUnsafe(`SELECT "slug" FROM "Series"`).catch(() => [])
+    ).map((r) => r.slug);
+    const bases = ["live_timing_url", "live_cm_join_url", "live_stream_url"];
+    const rows = await prisma.setting.findMany({ where: { key: { in: bases } } });
+    for (const base of bases) {
+      const value = rows.find((r) => r.key === base)?.value || "";
+      if (!value) continue;
+      for (const slug of slugs) {
+        const key = `${base}:${slug}`;
+        const exists = await prisma.setting.findUnique({ where: { key } });
+        if (!exists) await prisma.setting.create({ data: { key, value } });
+      }
+    }
+    await prisma.setting.upsert({
+      where: { key: MARKER },
+      update: {},
+      create: { key: MARKER, value: new Date().toISOString() },
+    });
+  } catch {
+    /* best-effort: a failed copy leaves every series on the built-in defaults */
+  }
 }

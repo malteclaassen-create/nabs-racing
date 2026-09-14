@@ -776,6 +776,10 @@ function SocialAdmin() {
 // The two external buttons on the Live page: the server manager's own live
 // timing page, and a Content Manager "join" deep link for the running server.
 function LiveLinksAdmin() {
+  // Per series, like the server assignment below it. Which one is being edited
+  // is the series in the bar at the top of the admin, and it is written into
+  // the text so nobody sets the GT stream on the F1 page by accident.
+  const { current: series } = useSeries();
   const { data, loading, error, reload } = useApi(useCallback(() => api.getLiveLinks(), []));
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -819,9 +823,11 @@ function LiveLinksAdmin() {
     <div className="card space-y-5 p-5">
       <CardHead eyebrow="Live Timing" title="Buttons & stream" />
       <p className="text-sm text-light">
-        The two buttons at the top of the Live page, plus the stream player beside the track map. Leave the
-        live-timing URL blank to fall back to the server manager default. Leave the Content Manager link blank to
-        hide that button until a race is up, and the stream link blank when nobody is broadcasting.
+        The two buttons at the top of{" "}
+        <b className="text-dark">{series?.name ? `${series.name}'s` : "this series'"}</b> Live page, plus the stream
+        player beside its track map. Every series has its own three, so the other league keeps whatever it has.
+        Leave the live-timing URL blank to fall back to the server manager default. Leave the Content Manager link
+        blank to hide that button until a race is up, and the stream link blank when nobody is broadcasting.
       </p>
       {err && <Notice kind="error">{err}</Notice>}
       {saved && <Notice kind="success">Saved.</Notice>}

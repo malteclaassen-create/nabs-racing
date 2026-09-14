@@ -627,9 +627,11 @@ export const api = {
   clearSocialCover: (id) => request(`/admin/social-feed/posts/${id}/cover`, { method: "DELETE", auth: true }),
 
   // Live Timing page external links (public read + admin manage)
-  liveLinks: () => request("/settings/live"),
-  getLiveLinks: () => request("/admin/live-links", { auth: true }),
-  setLiveLinks: (body) => request("/admin/live-links", { method: "PUT", body, auth: true }),
+  // Per series: two leagues race on two servers, so the live-timing board, the
+  // Content Manager join link and the stream belong to one of them, not to both.
+  liveLinks: () => request(`/settings/live${seriesQ()}`),
+  getLiveLinks: () => request(`/admin/live-links${seriesQ()}`, { auth: true }),
+  setLiveLinks: (body) => request(`/admin/live-links${seriesQ()}`, { method: "PUT", body, auth: true }),
   // Which race server each series' live page follows.
   getLiveServers: () => request("/admin/live-servers", { auth: true }),
   setLiveServers: (map) => request("/admin/live-servers", { method: "PUT", body: { map }, auth: true }),

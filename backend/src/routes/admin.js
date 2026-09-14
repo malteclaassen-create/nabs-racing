@@ -22,7 +22,9 @@ import { resolveSeasonId, resolveSeason, invalidatePrivateSeasonCache } from "..
 import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, streamFullBackupZip, deleteBackup, pruneBackupsTo } from "../services/backupService.js";
 import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnostics.js";
-import { SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS } from "./settings.js";
+import {
+  SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS, LIVE_LINK_KEYS, liveLinkSeriesSlug,
+} from "./settings.js";
 import { parseFormatNumber, parseRaceFormat } from "../lib/raceFormat.js";
 import { ensureSprintChild, readSprintChildren } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
@@ -1506,15 +1508,18 @@ router.delete("/social-feed/posts/:id/cover", async (req, res, next) => {
 // LIVE TIMING PAGE LINKS (external "Full live timing" + "Join in Content Manager")
 // ---------------------------------------------------------------------------
 
-// GET /api/admin/live-links -> the raw stored values plus the effective ones, so
-// the editor can show the live-timing default it falls back to when left blank.
+// GET /api/admin/live-links?series= -> the raw stored values OF THAT SERIES plus
+// the defaults, so the editor can show the live-timing board it falls back to
+// when left blank. Every series has its own three links (see readLiveLinks).
 router.get("/live-links", async (req, res, next) => {
   try {
+    const slug = await liveLinkSeriesSlug(prisma, req.query.series);
     const rows = await prisma.setting.findMany({
-      where: { key: { in: ["live_timing_url", "live_cm_join_url", "live_stream_url"] } },
+      where: { key: { in: LIVE_LINK_KEYS.map((k) => (slug ? `${k}:${slug}` : k)) } },
     });
-    const get = (k) => rows.find((r) => r.key === k)?.value || "";
+    const get = (k) => rows.find((r) => r.key === (slug ? `${k}:${slug}` : k))?.value || "";
     res.json({
+      series: slug,
       liveTimingUrl: get("live_timing_url"),
       cmJoinUrl: get("live_cm_join_url"),
       streamUrl: get("live_stream_url"),
@@ -1525,12 +1530,15 @@ router.get("/live-links", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/live-links  { liveTimingUrl, cmJoinUrl, streamUrl }
+// PUT /api/admin/live-links?series=  { liveTimingUrl, cmJoinUrl, streamUrl }
 // Empty live-timing URL falls back to the server-manager default; empty CM link
 // hides that button, empty stream link hides the player. Bare values get
-// https:// prefixed (CM's acstuff.ru scheme links are left untouched).
+// https:// prefixed (CM's acstuff.ru scheme links are left untouched). Writes
+// only the named series — the other league's live page is not this form's
+// business.
 router.put("/live-links", async (req, res, next) => {
   try {
+    const slug = await liveLinkSeriesSlug(prisma, req.query.series);
     const body = req.body || {};
     const clean = (v) => {
       let val = String(v ?? "").trim();
@@ -1542,10 +1550,19 @@ router.put("/live-links", async (req, res, next) => {
       live_cm_join_url: clean(body.cmJoinUrl),
       live_stream_url: clean(body.streamUrl),
     };
-    for (const [key, value] of Object.entries(map)) {
+    for (const [base, value] of Object.entries(map)) {
+      const key = slug ? `${base}:${slug}` : base;
       await prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
     }
-    res.json(await readLiveLinks(prisma));
+    // The RAW values back, like the GET: an empty field means "blank" and must
+    // not come back filled with the default the page falls back to.
+    res.json({
+      series: slug,
+      liveTimingUrl: map.live_timing_url,
+      cmJoinUrl: map.live_cm_join_url,
+      streamUrl: map.live_stream_url,
+      defaults: LIVE_LINK_DEFAULTS,
+    });
   } catch (e) {
     next(e);
   }
@@ -1559,7 +1576,15 @@ router.put("/live-links", async (req, res, next) => {
 // and the current series → server assignment (missing entry = first server).
 router.get("/live-servers", async (req, res, next) => {
   try {
-    const [series, map] = await Promise.all([dbListSeries(prisma), readLiveServerMap(prisma)]);
+    // includePrivate: this is the admin's own list, and a series is PRIVATE
+    // exactly while it is being set up — which is when its race server gets
+    // assigned. Without it a new series was missing from the panel until it was
+    // published, so the one league that still needed pointing at a server was
+    // the one league you could not point.
+    const [series, map] = await Promise.all([
+      dbListSeries(prisma, { includePrivate: true }),
+      readLiveServerMap(prisma),
+    ]);
     res.json({
       servers: LIVE_SERVERS.map((s) => ({ key: s.key, name: s.name, origin: s.origin })),
       defaultKey: DEFAULT_SERVER_KEY,
