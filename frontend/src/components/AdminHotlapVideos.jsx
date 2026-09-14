@@ -38,6 +38,11 @@ const eventLabel = (e) => `${e.type === "TRAINING" ? "Training" : `R${e.number}`
 export default function AdminHotlapVideos() {
   const events = useApi(useCallback(() => api.events(true), []));
   const { data: races } = useApi(useCallback(() => api.races(), []));
+  // Whether the sign-up page draws the column at all, for the series being
+  // edited. Off is for a league that films nothing: the entry list then takes
+  // the whole width instead of sitting next to half a page of "no lap yet".
+  const column = useApi(useCallback(() => api.getAttendanceHotlaps(), []));
+  const [columnBusy, setColumnBusy] = useState(false);
 
   // "race:<id>" or "track:<key>" — one picker, two kinds of target, and the
   // prefix is what the editor reads to know where a save goes.
@@ -177,6 +182,40 @@ export default function AdminHotlapVideos() {
           it on a CIRCUIT and it comes back every season this track is on the calendar, for every event that has no lap
           of its own. Add more than one and drivers get a picker.
         </p>
+
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-surface2/50 p-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 accent-primary"
+            checked={column.data ? !!column.data.shown : true}
+            disabled={columnBusy || column.loading}
+            onChange={async (e) => {
+              const shown = e.target.checked;
+              setColumnBusy(true);
+              setError(null);
+              try {
+                await api.setAttendanceHotlaps(shown);
+                await column.reload();
+                setMsg(
+                  shown
+                    ? "The sign-up page shows its hotlap column again."
+                    : "Hotlap column removed from the sign-up page. The entry list now takes the full width."
+                );
+              } catch (err) {
+                setError(err.message);
+              } finally {
+                setColumnBusy(false);
+              }
+            }}
+          />
+          <span className="text-sm">
+            <b className="font-semibold text-dark">Show the hotlap column on the sign-up page</b>
+            <span className="block text-light">
+              Off removes the player from this series&rsquo; attendance page entirely, rather than leaving an empty
+              half beside the entry list. Saved laps stay where they are and come back when you switch it on.
+            </span>
+          </span>
+        </label>
 
         {events.error && <ErrorBox message={events.error} onRetry={events.reload} />}
 

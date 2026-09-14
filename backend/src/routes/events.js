@@ -1,6 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { syncRaceToDiscord } from "../services/discordService.js";
+import { hotlapsShownFor } from "../lib/attendanceHotlaps.js";
 import { optionalUser, resolveDriverId, isAdminRequest } from "../middleware/auth.js";
 import { resolveSeasonId, getPrivateSeasonIds } from "../services/seasonService.js";
 import { resolveSeries, seasonIdsOfSeries } from "../lib/series.js";
@@ -129,6 +130,10 @@ router.get("/", async (req, res, next) => {
     // Laps this event filmed for itself. Only the ones that HAVE their own are
     // in the map; the attendance page falls back to the circuit's for the rest.
     const hotlaps = await readRaceHotlaps(prisma, races.map((r) => r.id));
+    // Does this series draw the hotlap column at all? A league that films
+    // nothing gets half a page of "No hotlap yet" otherwise, so it can switch
+    // the column off and give the width back to the sign-up.
+    const showHotlaps = await hotlapsShownFor(prisma, req.query.series || null);
 
     // Sign-up gating + which answer columns the page shows (admin-configured).
     //
@@ -207,7 +212,11 @@ router.get("/", async (req, res, next) => {
         info: race.info,
         // null, not [] — "this event has no laps of its own" is the state the
         // page answers by showing the circuit's.
-        hotlapVideos: hotlaps.get(race.id) || null,
+        hotlapVideos: showHotlaps ? hotlaps.get(race.id) || null : null,
+        // Whether the page draws the lap column at all (admin, per series).
+        // Off means no column rather than an empty one: the sign-up takes the
+        // whole width instead of sitting beside a gap.
+        showHotlaps,
         qualiMinutes: format.get(race.id)?.qualiMinutes ?? null,
         raceLaps: format.get(race.id)?.raceLaps ?? null,
         raceFormat: format.get(race.id)?.raceFormat ?? "SINGLE",

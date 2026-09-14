@@ -634,6 +634,10 @@ export const api = {
   setLiveLinks: (body) => request(`/admin/live-links${seriesQ()}`, { method: "PUT", body, auth: true }),
   // Which race server each series' live page follows.
   getLiveServers: () => request("/admin/live-servers", { auth: true }),
+  // Whether this series' sign-up page draws its hotlap column.
+  getAttendanceHotlaps: () => request(`/admin/attendance-hotlaps${seriesQ()}`, { auth: true }),
+  setAttendanceHotlaps: (shown) =>
+    request(`/admin/attendance-hotlaps${seriesQ()}`, { method: "PUT", body: { shown }, auth: true }),
   setLiveServers: (map) => request("/admin/live-servers", { method: "PUT", body: { map }, auth: true }),
 
   // discord login. The redirect URI is derived from the current origin so login

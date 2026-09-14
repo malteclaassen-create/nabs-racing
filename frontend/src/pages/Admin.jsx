@@ -931,38 +931,49 @@ function LiveServersAdmin() {
       <CardHead eyebrow="Live Timing" title="Race server per series" />
       <p className="text-sm text-light">
         Which race server each series&rsquo; Live page opens on. Open live pages pick a change up on their next
-        reload. Visitors can switch to the other server themselves from the Live page, and the switch shows
-        them where cars are actually out on track &mdash; but this stays the default everyone arrives on, and
-        it is not remembered between visits.
+        reload. Visitors can switch to the other server themselves from the Live page, and the switch shows them
+        where cars are actually out on track. This stays the default everyone arrives on, and it is not remembered
+        between visits. Tick <b className="text-dark">Only this server</b> and that series loses the switch
+        entirely: its Live page shows its own board and nothing else.
       </p>
       {err && <Notice kind="error">{err}</Notice>}
       {saved && <Notice kind="success">Saved.</Notice>}
       <div className="space-y-3">
-        {(data.series || []).map((s) => (
-          <div key={s.slug} className="flex flex-wrap items-center gap-3">
-            <span className="w-48 truncate text-sm font-semibold text-dark">{s.name}</span>
-            <select
-              aria-label={`Race server for ${s.name}`}
-              className="input max-w-xs"
-              value={map[s.slug] || data.defaultKey}
-              onChange={(e) => {
-                const v = e.target.value;
-                setMap((m) => {
-                  const next = { ...m };
-                  if (v === data.defaultKey) delete next[s.slug];
-                  else next[s.slug] = v;
-                  return next;
-                });
-              }}
-            >
-              {(data.servers || []).map((srv) => (
-                <option key={srv.key} value={srv.key}>
-                  {srv.name} ({srv.origin.replace(/^https?:\/\//, "")})
-                </option>
-              ))}
-            </select>
-          </div>
-        ))}
+        {(data.series || []).map((s) => {
+          const entry = map[s.slug] || {};
+          const key = entry.key || data.defaultKey;
+          const only = !!entry.only;
+          const set = (patch) => setMap((m) => ({ ...m, [s.slug]: { key, only, ...patch } }));
+          return (
+            <div key={s.slug} className="flex flex-wrap items-center gap-3">
+              <span className="w-48 truncate text-sm font-semibold text-dark">{s.name}</span>
+              <select
+                aria-label={`Race server for ${s.name}`}
+                className="input max-w-xs"
+                value={key}
+                onChange={(e) => set({ key: e.target.value })}
+              >
+                {(data.servers || []).map((srv) => (
+                  <option key={srv.key} value={srv.key}>
+                    {srv.name} ({srv.origin.replace(/^https?:\/\//, "")})
+                  </option>
+                ))}
+              </select>
+              <label
+                className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-medium"
+                title={`Hides the server switch on ${s.name}'s Live page, so visitors only ever see this board`}
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={only}
+                  onChange={(e) => set({ only: e.target.checked })}
+                />
+                Only this server
+              </label>
+            </div>
+          );
+        })}
       </div>
       <button className="btn-primary" onClick={save} disabled={busy}>
         {busy ? "Saving…" : "Save servers"}

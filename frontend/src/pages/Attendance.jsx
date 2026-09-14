@@ -291,7 +291,14 @@ export default function Attendance() {
   // The hotlap for the selected track (public) — the only per-track fetch this
   // page still makes. The member's own rating card used to be fetched here too;
   // the page shows one arrangement now and that card is not part of it.
-  const hist = useApi(useCallback(() => (ev ? api.trackHistory(ev.track) : Promise.resolve(null)), [ev?.track]));
+  // Skipped entirely for a series that switched the column off: there is no
+  // player to fill, so asking the circuit for its laps is a request nobody reads.
+  const hist = useApi(
+    useCallback(
+      () => (ev && ev.showHotlaps !== false ? api.trackHistory(ev.track) : Promise.resolve(null)),
+      [ev?.track, ev?.showHotlaps]
+    )
+  );
 
   const circuit = ev ? flagFor(ev.track, ev.country) : null;
   // "Nothing on screen yet", as opposed to "a request is in flight". Every
@@ -440,13 +447,17 @@ export default function Attendance() {
           // keeps showing the circuit's laps, which is still the right answer
           // for every ordinary round.
           const ownLaps = ev.hotlapVideos?.length ? ev.hotlapVideos : null;
-          const videoPanel = (
+          // A series that films nothing switches the column off in the admin
+          // (Photos & Videos). Then there is no second column at all: an empty
+          // half beside the entry list is worse than a full-width entry list.
+          const showVideo = ev.showHotlaps !== false;
+          const videoPanel = showVideo ? (
             <TrackVideos
               track={ev.track}
               videos={ownLaps || hist.data?.videos}
               loading={!ownLaps && hist.loading}
             />
-          );
+          ) : null;
           const errorBox = error ? <ErrorBox message={error} /> : null;
 
           // ONE arrangement, always: the race and the sign-up down the left,
@@ -467,7 +478,11 @@ export default function Attendance() {
           // fixed sidebar width: the split then holds on a wider screen
           // instead of leaving the video behind.
           return (
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div
+              className={`grid gap-6 ${
+                showVideo ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" : "lg:grid-cols-1"
+              }`}
+            >
               <div className="flex min-w-0 flex-col gap-6">
                 {heroCard}
                 {errorBox}
@@ -476,9 +491,11 @@ export default function Attendance() {
               {/* The sticky wrapper sits INSIDE the stretched column: a sticky
                   element that is itself as tall as the row has nothing left to
                   scroll within. */}
-              <div className="min-w-0">
-                <div className="lg:sticky lg:top-28">{videoPanel}</div>
-              </div>
+              {videoPanel && (
+                <div className="min-w-0">
+                  <div className="lg:sticky lg:top-28">{videoPanel}</div>
+                </div>
+              )}
               {/* Floats over the page rather than sitting in a column: the whole
                   point is to be visible from wherever they stopped reading. */}
               {seats.show && (
