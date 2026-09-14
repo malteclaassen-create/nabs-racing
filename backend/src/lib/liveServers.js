@@ -28,6 +28,24 @@ export function isValidServerKey(key) {
 
 const SETTING_KEY = "live_server_map";
 
+// What a series' entry in the blob means.
+//
+// Two shapes, because the blob predates the second half of the idea: a bare
+// server key (every row written before this) or { key, only }. `only` says the
+// Live page of that series shows THAT board and nothing else — no switch to the
+// other server, because for a league that races on one of them the other one is
+// not an alternative view, it is somebody else's race.
+export function serverAssignment(map, slug) {
+  const raw = slug ? map?.[String(slug)] : null;
+  if (typeof raw === "string") {
+    return { key: isValidServerKey(raw) ? raw : DEFAULT_SERVER_KEY, only: false };
+  }
+  if (raw && typeof raw === "object") {
+    return { key: isValidServerKey(raw.key) ? raw.key : DEFAULT_SERVER_KEY, only: !!raw.only };
+  }
+  return { key: DEFAULT_SERVER_KEY, only: false };
+}
+
 export async function readLiveServerMap(prisma) {
   try {
     const row = await prisma.setting.findUnique({ where: { key: SETTING_KEY } });
@@ -39,10 +57,17 @@ export async function readLiveServerMap(prisma) {
 }
 
 export async function writeLiveServerMap(prisma, map) {
-  // Only keep valid assignments; a series mapped to the default needs no entry.
+  // Only keep valid assignments. A series on the default server with the switch
+  // left alone needs no entry at all; one that hides the switch does, even on
+  // the default, or the instruction would have nowhere to live. Rows without
+  // that flag stay bare strings, which is what every older row already is.
   const clean = {};
-  for (const [slug, key] of Object.entries(map || {})) {
-    if (slug && isValidServerKey(key) && key !== DEFAULT_SERVER_KEY) clean[slug] = key;
+  for (const [slug, value] of Object.entries(map || {})) {
+    if (!slug) continue;
+    const { key, only } = serverAssignment({ [slug]: value }, slug);
+    if (!isValidServerKey(key)) continue;
+    if (only) clean[slug] = { key, only: true };
+    else if (key !== DEFAULT_SERVER_KEY) clean[slug] = key;
   }
   const value = JSON.stringify(clean);
   await prisma.setting.upsert({
@@ -72,8 +97,12 @@ export async function resolveServerKey(prisma, { series, server } = {}) {
 // Which server a series' live page follows (by series SLUG). Unknown series
 // or unassigned -> the first server, exactly the pre-multi-server behaviour.
 export async function serverKeyForSeries(prisma, seriesSlug) {
-  if (!seriesSlug) return DEFAULT_SERVER_KEY;
+  return (await serverConfigForSeries(prisma, seriesSlug)).key;
+}
+
+// The same answer with the switch's fate attached: { key, only }.
+export async function serverConfigForSeries(prisma, seriesSlug) {
+  if (!seriesSlug) return { key: DEFAULT_SERVER_KEY, only: false };
   const map = await readLiveServerMap(prisma);
-  const key = map[String(seriesSlug)];
-  return isValidServerKey(key) ? key : DEFAULT_SERVER_KEY;
+  return serverAssignment(map, seriesSlug);
 }

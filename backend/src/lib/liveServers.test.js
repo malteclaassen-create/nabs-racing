@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   resolveServerKey,
   serverKeyForSeries,
+  serverConfigForSeries,
+  serverAssignment,
   isValidServerKey,
   DEFAULT_SERVER_KEY,
   LIVE_SERVERS,
@@ -80,5 +82,63 @@ describe("resolveServerKey", () => {
   it("answers with the default when it is given nothing at all", async () => {
     expect(await resolveServerKey(fakePrisma(null), {})).toBe(DEFAULT_SERVER_KEY);
     expect(await resolveServerKey(fakePrisma(null))).toBe(DEFAULT_SERVER_KEY);
+  });
+});
+
+// A series can also say "this board and no other", which takes the switch off
+// its Live page. The flag rides in the same Setting row, so the reader has to
+// cope with both shapes: every row written before it is a bare key.
+describe("serverAssignment", () => {
+  it("reads a legacy bare key as an assignment with the switch left alone", () => {
+    expect(serverAssignment({ "sunday-gt": OTHER }, "sunday-gt")).toEqual({ key: OTHER, only: false });
+  });
+
+  it("reads the object form, flag included", () => {
+    expect(serverAssignment({ "sunday-gt": { key: OTHER, only: true } }, "sunday-gt")).toEqual({
+      key: OTHER,
+      only: true,
+    });
+  });
+
+  it("keeps the flag when the series sits on the DEFAULT server", () => {
+    // The case the bare-key form cannot express: default server, no switch.
+    expect(serverAssignment({ "sunday-gt": { key: DEFAULT_SERVER_KEY, only: true } }, "sunday-gt")).toEqual({
+      key: DEFAULT_SERVER_KEY,
+      only: true,
+    });
+  });
+
+  it("falls back to the default for anything it cannot use", () => {
+    expect(serverAssignment({}, "sunday-gt")).toEqual({ key: DEFAULT_SERVER_KEY, only: false });
+    expect(serverAssignment(null, "sunday-gt")).toEqual({ key: DEFAULT_SERVER_KEY, only: false });
+    expect(serverAssignment({ "sunday-gt": "nabs99" }, "sunday-gt")).toEqual({
+      key: DEFAULT_SERVER_KEY,
+      only: false,
+    });
+    // A made-up key inside the object form loses the key but keeps the flag:
+    // the admin still said "only one board", and the default is that board.
+    expect(serverAssignment({ "sunday-gt": { key: "nabs99", only: true } }, "sunday-gt")).toEqual({
+      key: DEFAULT_SERVER_KEY,
+      only: true,
+    });
+  });
+});
+
+describe("serverConfigForSeries", () => {
+  it("carries the flag through from the stored row", async () => {
+    const prisma = fakePrisma({ "sunday-gt": { key: OTHER, only: true } });
+    expect(await serverConfigForSeries(prisma, "sunday-gt")).toEqual({ key: OTHER, only: true });
+  });
+
+  it("says no series, no flag", async () => {
+    expect(await serverConfigForSeries(fakePrisma({}), null)).toEqual({
+      key: DEFAULT_SERVER_KEY,
+      only: false,
+    });
+  });
+
+  it("leaves serverKeyForSeries answering exactly as before", async () => {
+    const prisma = fakePrisma({ "sunday-gt": { key: OTHER, only: true } });
+    expect(await serverKeyForSeries(prisma, "sunday-gt")).toBe(OTHER);
   });
 });

@@ -33,7 +33,7 @@ import searchRoutes from "./routes/search.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
-import { serverKeyForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
+import { serverKeyForSeries, serverConfigForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
@@ -216,11 +216,13 @@ app.get("/api/live/status", async (req, res) => {
 app.get("/api/live/servers", async (req, res) => {
   try {
     // The series' assignment is the default the switch opens on, and stays the
-    // one a fresh visitor gets.
-    const defaultKey = await serverKeyForSeries(prisma, req.query.series);
+    // one a fresh visitor gets. `only` means this league races on that board and
+    // nowhere else: the other server is then left out entirely, and the page's
+    // switch disappears by itself (it hides below two servers).
+    const { key: defaultKey, only } = await serverConfigForSeries(prisma, req.query.series);
     res.json({
       defaultKey,
-      servers: LIVE_SERVERS.map((srv) => {
+      servers: (only ? LIVE_SERVERS.filter((srv) => srv.key === defaultKey) : LIVE_SERVERS).map((srv) => {
         const board = getBoard(srv.key);
         return {
           key: srv.key,

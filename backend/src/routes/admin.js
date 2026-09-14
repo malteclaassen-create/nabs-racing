@@ -81,6 +81,7 @@ import {
 } from "../lib/members.js";
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
+import { hotlapsShownFor, setHotlapsShown } from "../lib/attendanceHotlaps.js";
 import { applyTransfer, removeTransfer, readTransfers } from "../services/driverTransfers.js";
 import {
   dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups,
@@ -112,7 +113,9 @@ import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
-import { LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap } from "../lib/liveServers.js";
+import {
+  LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap, serverAssignment,
+} from "../lib/liveServers.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -1568,6 +1571,28 @@ router.put("/live-links", async (req, res, next) => {
   }
 });
 
+// GET/PUT /api/admin/attendance-hotlaps?series= -> whether that series' sign-up
+// page draws its hotlap column. Off gives the width back to the entry list.
+router.get("/attendance-hotlaps", async (req, res, next) => {
+  try {
+    const series = await resolveSeries(prisma, req.query.series, { includePrivate: true });
+    res.json({ series: series?.slug || null, shown: await hotlapsShownFor(prisma, series?.slug || null) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/attendance-hotlaps", async (req, res, next) => {
+  try {
+    const series = await resolveSeries(prisma, req.query.series, { includePrivate: true });
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    const shown = await setHotlapsShown(prisma, series.slug, !!req.body?.shown);
+    res.json({ series: series.slug, shown });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // LIVE RACE SERVERS (which server each series' live page follows)
 // ---------------------------------------------------------------------------
@@ -1589,7 +1614,9 @@ router.get("/live-servers", async (req, res, next) => {
       servers: LIVE_SERVERS.map((s) => ({ key: s.key, name: s.name, origin: s.origin })),
       defaultKey: DEFAULT_SERVER_KEY,
       series: series.map((s) => ({ slug: s.slug, name: s.name })),
-      map,
+      // Normalised to { key, only } per series, so the form has one shape to
+      // edit whether the stored row is an old bare key or a new object.
+      map: Object.fromEntries(series.map((s) => [s.slug, serverAssignment(map, s.slug)])),
     });
   } catch (e) {
     next(e);
