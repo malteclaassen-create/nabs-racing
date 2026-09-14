@@ -585,4 +585,15 @@ export async function ensureAppSchema(prisma) {
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "PersonLink_personId_idx" ON "PersonLink"("personId")`
   );
+  // Links whose driver row is gone. The table has no foreign key, so nothing
+  // removes them when the row they name disappears, and deleting a whole season
+  // used to leave one behind per driver (the delete route now clears them; this
+  // is the sweep for the ones already lying about). Reading one is harmless —
+  // the id resolves to nothing — but driver ids are built from the name, so a
+  // rebuilt season could hand `takoda_s1` to somebody who then inherits a dead
+  // note about who they are. Cheap enough to run every boot, and self-healing
+  // if another path ever forgets again.
+  await prisma
+    .$executeRawUnsafe(`DELETE FROM "PersonLink" WHERE "driverId" NOT IN (SELECT "id" FROM "Driver")`)
+    .catch(() => {});
 }

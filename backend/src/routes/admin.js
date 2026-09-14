@@ -3901,6 +3901,24 @@ router.delete("/seasons/:id", async (req, res, next) => {
     if (hasContent) {
       // Safety net first: this wipes real data.
       await createBackup(prisma, `before-delete-${season.name}`);
+      // The person links of this season's drivers, first and outside the
+      // transaction: PersonLink is a raw table with no foreign key, so nothing
+      // takes its rows away when the driver rows go, and what stays behind is a
+      // note saying "this entry is the same human as that one" about an entry
+      // that no longer exists. Harmless to read (the id resolves to nothing),
+      // but driver ids are derived from the name, so a later season that
+      // rebuilds `takoda_s1` would silently inherit the dead note. The
+      // single-driver and bulk deletes already do this; only this one did not.
+      const doomed = await prisma.driver.findMany({
+        where: { seasonId: season.id },
+        select: { id: true },
+      });
+      if (doomed.length) {
+        const ph = doomed.map(() => "?").join(",");
+        await prisma
+          .$executeRawUnsafe(`DELETE FROM "PersonLink" WHERE "driverId" IN (${ph})`, ...doomed.map((d) => d.id))
+          .catch(() => {});
+      }
       await prisma.$transaction([
         // Races first: results, constructor scores, RSVPs and seat offers
         // (with their interests) cascade off them.
