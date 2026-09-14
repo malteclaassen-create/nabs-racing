@@ -4052,6 +4052,117 @@ router.post("/seasons/:id/clone-roster", async (req, res, next) => {
   }
 });
 
+// POST /api/admin/seasons/:id/clone-drivers  { fromSeasonId }
+// Copies only the DRIVERS of another season into this one, into the teams that
+// are already here.
+//
+// The other two copy buttons both bring the teams along, which is right for a
+// season that is still an empty page. It is wrong for the usual case: the grid
+// has been rebuilt, the entry list has not, and cloning the whole roster would
+// put last season's teams next to the ones just entered by hand. So this one
+// never creates a team. Each driver goes to the team of the SAME NAME in this
+// season (ids are per-season, names are what travel), the Reserve pool takes
+// whoever sat in the source's Reserve pool, and anybody whose team does not
+// exist here is left alone and named in the reply — a driver quietly filed
+// under the wrong badge is worse than one the admin still has to place.
+//
+// Person-linked to the row it was copied from, so career, login and @mentions
+// follow. Safe to re-run: somebody already on this season's roster (by person
+// link or by name) is skipped rather than duplicated.
+router.post("/seasons/:id/clone-drivers", async (req, res, next) => {
+  try {
+    const { fromSeasonId } = req.body || {};
+    const target = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!target) return res.status(404).json({ error: "Target season not found" });
+    if (!fromSeasonId) return res.status(400).json({ error: "fromSeasonId required" });
+    if (fromSeasonId === target.id) return res.status(400).json({ error: "Source and target season are the same" });
+
+    const [sourceDrivers, targetTeams, present, persons] = await Promise.all([
+      prisma.driver.findMany({ where: { seasonId: fromSeasonId }, include: { team: true } }),
+      prisma.team.findMany({ where: { seasonId: target.id } }),
+      prisma.driver.findMany({ where: { seasonId: target.id }, select: { id: true, name: true } }),
+      getPersonGroups(prisma),
+    ]);
+    if (!sourceDrivers.length) return res.status(400).json({ error: "Source season has no drivers" });
+    if (!targetTeams.some((t) => t.tier !== 0)) {
+      return res.status(400).json({
+        error: "This season has no teams yet. Copy the teams first (or add them), then copy the drivers into them.",
+      });
+    }
+
+    const norm = (v) =>
+      String(v || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+    const teamByName = new Map(targetTeams.filter((t) => t.tier !== 0).map((t) => [norm(t.name), t]));
+    // Who is on this season's roster already, by person and by name — the same
+    // two tests the single-driver import uses, so both agree about "already here".
+    const takenNames = new Set(present.map((d) => norm(d.name)));
+    const takenPersons = new Set(present.map((d) => persons.byDriver.get(d.id)).filter(Boolean));
+
+    await attachSteamIds(sourceDrivers);
+    let pool = targetTeams.find((t) => t.tier === 0) || null;
+    const created = [];
+    const skipped = [];
+    for (const d of sourceDrivers) {
+      const personId = persons.byDriver.get(d.id) || null;
+      if ((personId && takenPersons.has(personId)) || takenNames.has(norm(d.name))) {
+        skipped.push({ name: d.name, reason: "already on this season's roster" });
+        continue;
+      }
+      let team;
+      if (d.team?.tier === 0) {
+        // The source's reserves stay reserves. Creating the pool on demand is
+        // the one exception to "never creates a team": it is not a competitor,
+        // it is where a season keeps the people without a seat.
+        pool = pool || (await ensureReservePool(prisma, target.id));
+        team = pool;
+      } else {
+        team = teamByName.get(norm(d.team?.name));
+      }
+      if (!team) {
+        skipped.push({ name: d.name, reason: `no team called "${d.team?.name || "?"}" in this season` });
+        continue;
+      }
+
+      let id = `${d.id.replace(/_s\d+$/, "")}_s${target.number}`;
+      if (await prisma.driver.findUnique({ where: { id } })) id = await uniqueDriverId(d.name);
+      await prisma.driver.create({
+        data: {
+          id,
+          name: d.name,
+          discordName: d.discordName,
+          teamId: team.id,
+          tier: team.tier,
+          isActive: d.isActive,
+          seasonId: target.id,
+          // Identity travels with the person; the season starts with no results.
+          // The Discord id stays behind on purpose (unique site-wide) — the
+          // person link below is what makes the login reach this row.
+          country: d.country,
+          photoUrl: d.photoUrl,
+          discordAvatar: d.discordAvatar,
+          bio: d.bio,
+          number: d.number,
+          socials: d.socials,
+        },
+      });
+      // Raw column (ensureAppSchema), written after the create like everywhere
+      // else. Without it the first import of the season matches names again.
+      if (d.steamId) {
+        await prisma
+          .$executeRawUnsafe(`UPDATE "Driver" SET "steamId" = ? WHERE "id" = ?`, d.steamId, id)
+          .catch(() => {});
+      }
+      await dbLinkDrivers(prisma, [d.id, id]).catch(() => {});
+      takenNames.add(norm(d.name));
+      if (personId) takenPersons.add(personId);
+      created.push({ name: d.name, teamName: team.name });
+    }
+    res.json({ created: created.length, drivers: created, skipped });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /api/admin/seasons/:id/hero  (multipart: file=<image>)
 // Uploads (or replaces) the season's Home/Welcome main-card photo. Works
 // without file-system access (Railway has none), unlike the static

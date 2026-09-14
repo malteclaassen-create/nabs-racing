@@ -3696,14 +3696,32 @@ function Seasons({ gotoRaces }) {
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
-  async function clone(targetId, withDrivers) {
+  // what: "teams" | "roster" | "drivers"
+  async function clone(targetId, what) {
     const fromId = cloneFrom[targetId];
     if (!fromId) return;
     setBusy(true); setError(null); setMsg(null);
     try {
-      if (withDrivers) {
+      if (what === "roster") {
         const r = await api.cloneRoster(targetId, fromId);
         setMsg(`Copied ${r.teamsCreated} team(s) and ${r.driversCreated} driver(s) into this season. Adjust them under Teams / Drivers.`);
+      } else if (what === "drivers") {
+        const r = await api.cloneDrivers(targetId, fromId);
+        // Whoever could not be placed is named rather than counted: the number
+        // alone would send the admin through the whole entry list to find out
+        // who is missing, which is the work this button exists to save.
+        const left = r.skipped || [];
+        const unplaced = left.filter((x) => !/already/.test(x.reason));
+        setMsg(
+          `Copied ${r.created} driver(s) into the teams of this season.` +
+            (unplaced.length
+              ? ` ${unplaced.length} could not be placed (no team of that name here): ${unplaced
+                  .slice(0, 6)
+                  .map((x) => x.name)
+                  .join(", ")}${unplaced.length > 6 ? ", …" : ""}.`
+              : "") +
+            (left.length > unplaced.length ? ` ${left.length - unplaced.length} were on the roster already.` : "")
+        );
       } else {
         const r = await api.cloneTeams(targetId, fromId);
         setMsg(`Copied ${r.created} team(s) into this season. Edit them under the Teams tab.`);
@@ -3885,9 +3903,13 @@ function Seasons({ gotoRaces }) {
                         ))}
                       </select>
                       <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
-                        onClick={() => clone(s.id, false)}>Teams only</button>
+                        onClick={() => clone(s.id, "teams")}>Teams only</button>
                       <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
-                        onClick={() => clone(s.id, true)} title="Copies teams AND drivers as the new season's starting roster">
+                        onClick={() => clone(s.id, "drivers")}
+                        title="Copies only the drivers, into the teams this season already has (matched by team name). Creates no teams; anyone whose team isn't here is listed instead.">
+                        Drivers only</button>
+                      <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
+                        onClick={() => clone(s.id, "roster")} title="Copies teams AND drivers as the new season's starting roster">
                         Teams + drivers</button>
                     </div>
                   )}

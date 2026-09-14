@@ -821,6 +821,9 @@ export const api = {
     request(`/admin/seasons/${id}/clone-teams`, { method: "POST", body: { fromSeasonId }, auth: true }),
   cloneRoster: (id, fromSeasonId) =>
     request(`/admin/seasons/${id}/clone-roster`, { method: "POST", body: { fromSeasonId }, auth: true }),
+  // Drivers into the teams THIS season already has, without touching the teams.
+  cloneDrivers: (id, fromSeasonId) =>
+    request(`/admin/seasons/${id}/clone-drivers`, { method: "POST", body: { fromSeasonId }, auth: true }),
   // Home/Welcome main-card photo, per season.
   uploadSeasonHero: (id, file) => {
     const fd = new FormData();
