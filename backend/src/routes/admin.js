@@ -1850,20 +1850,33 @@ router.post("/drivers", async (req, res, next) => {
   }
 });
 
-// GET /api/admin/driver-db?series= — the series' all-time driver DATABASE:
-// one entry per PERSON across every season (person links first, same name as
-// fallback), with identity, last team/season and career starts. Powers the
-// roster builder's search fields: build a new season by picking people from
+// GET /api/admin/driver-db?series=[&allSeries=1] — the series' all-time driver
+// DATABASE: one entry per PERSON across every season (person links first, same
+// name as fallback), with identity, last team/season and career starts. Powers
+// the roster builder's search fields: build a new season by picking people from
 // here instead of cloning a whole roster of maybe-no-shows.
+//
+// `allSeries=1` widens it to every series on the site, which is how a BRAND NEW
+// series gets a grid. Its own database is empty by definition, and retyping
+// seventy people by hand loses exactly what this route exists to keep: the
+// photo, the flag, the Steam id the import matches on, and the person link that
+// keeps a career together. Entries that come from elsewhere say so (`seriesName`),
+// because "S8, Ferrari" means nothing without the league it happened in.
 router.get("/driver-db", async (req, res, next) => {
   try {
     const series = await resolveSeries(prisma, req.query.series, { includePrivate: true });
     if (!series) return res.status(404).json({ error: "Series not found" });
+    const wide = req.query.allSeries === "1" || req.query.allSeries === "true";
     // seasonIdsOfSeries returns {id, number} rows — we only need the ids here.
-    const seasonIds = (await seasonIdsOfSeries(prisma, series.id)).map((s) => s.id ?? s);
+    const ownSeasonIds = (await seasonIdsOfSeries(prisma, series.id)).map((s) => s.id ?? s);
+    const [bySeries, allSeries] = wide
+      ? await Promise.all([seasonSeriesMap(prisma), dbListSeries(prisma, { includePrivate: true })])
+      : [new Map(), []];
+    const seriesNameById = new Map(allSeries.map((x) => [x.id, x.name]));
+    const ownIds = new Set(ownSeasonIds);
     const [drivers, persons] = await Promise.all([
       prisma.driver.findMany({
-        where: { seasonId: { in: seasonIds } },
+        where: wide ? {} : { seasonId: { in: ownSeasonIds } },
         include: { team: { select: { name: true } }, season: { select: { number: true } } },
       }),
       getPersonGroups(prisma),
@@ -1885,8 +1898,16 @@ router.get("/driver-db", async (req, res, next) => {
       groups.get(key).push(d);
     }
     const entries = [...groups.entries()].map(([key, rows]) => {
-      rows.sort((a, b) => (b.season?.number ?? 0) - (a.season?.number ?? 0));
+      // Newest season first — but a row of THIS series always outranks one from
+      // another, or a person who raced here for years would be introduced by
+      // whichever league happens to number its seasons highest.
+      rows.sort(
+        (a, b) =>
+          Number(ownIds.has(b.seasonId)) - Number(ownIds.has(a.seasonId)) ||
+          (b.season?.number ?? 0) - (a.season?.number ?? 0)
+      );
       const newest = rows[0];
+      const fromSeriesId = wide && !ownIds.has(newest.seasonId) ? bySeries.get(newest.seasonId) : null;
       return {
         key,
         name: newest.name,
@@ -1897,6 +1918,9 @@ router.get("/driver-db", async (req, res, next) => {
         sourceDriverId: newest.id,
         lastSeasonNumber: newest.season?.number ?? null,
         lastTeamName: newest.team?.name ?? null,
+        // Only set when the entry comes from ANOTHER series, so the search list
+        // can name the league it is reaching into and stay quiet otherwise.
+        seriesName: fromSeriesId ? seriesNameById.get(fromSeriesId) || "Other series" : null,
         starts: rows.reduce((s, r) => s + (startsById.get(r.id) || 0), 0),
         // Which seasons the person already has a row in (the builder greys
         // those out for the season being edited).

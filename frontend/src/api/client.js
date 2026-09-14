@@ -691,7 +691,13 @@ export const api = {
   createDriver: (body) => request("/admin/drivers", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   // The series' all-time driver database (one entry per person) + adding one
   // of those people into a team of the currently edited season.
-  adminDriverDb: () => request(`/admin/driver-db${seriesQ()}`, { auth: true }),
+  // The all-time driver database behind the roster builder's search fields.
+  // `allSeries` widens it past the current series, which is the only way a
+  // brand-new series can be built out of people who already race here.
+  adminDriverDb: (allSeries = false) => {
+    const q = seriesQ();
+    return request(`/admin/driver-db${q}${allSeries ? `${q ? "&" : "?"}allSeries=1` : ""}`, { auth: true });
+  },
   addDriverFromDb: (sourceDriverId, teamId) =>
     request("/admin/drivers/from-db", { method: "POST", body: { sourceDriverId, teamId }, auth: true }),
   updateDriver: (id, body) => request(`/admin/drivers/${id}`, { method: "PUT", body, auth: true }),

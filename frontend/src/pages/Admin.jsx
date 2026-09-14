@@ -1996,10 +1996,29 @@ function EditResults() {
 }
 
 // --- DRIVERS ---------------------------------------------------------------
+// The all-time driver database the search fields below are fed from, plus the
+// switch that widens it to every series on the site.
+//
+// Off by default, and that is the point: inside a running league a hit from
+// another series is noise. A NEW series is the opposite case — its own database
+// is empty, because none of these people have raced in it yet, and typing the
+// grid in by hand throws away exactly what this search exists to carry over
+// (photo, flag, the Steam id the result import matches on, and the person link
+// that keeps one driver's career in one place).
+//
+// One switch per tab rather than per field: building a grid means adding
+// several people in a row, and ticking the same box for every seat is not a
+// decision, it is a chore.
+function useDriverDb() {
+  const [allSeries, setAllSeries] = useState(false);
+  const db = useApi(useCallback(() => api.adminDriverDb(allSeries), [allSeries]));
+  return { entries: db.data?.entries, reload: db.reload, allSeries, setAllSeries };
+}
+
 // Search-to-add field under each team: type a few letters, pick a person from
 // the series' all-time driver database, and they land in this team of the
 // edited season — identity (photo, flag, Steam ID) and career link included.
-function DbSeatSearch({ team, db, rosterNames, onAdded, onError, autoFocus = false, placeholder }) {
+function DbSeatSearch({ team, db, rosterNames, onAdded, onError, autoFocus = false, placeholder, allSeries, onAllSeriesChange }) {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const query = q.trim().toLowerCase();
@@ -2035,29 +2054,53 @@ function DbSeatSearch({ team, db, rosterNames, onAdded, onError, autoFocus = fal
         onChange={(e) => setQ(e.target.value)}
         disabled={busy || !db}
       />
-      {hits.length > 0 && (
-        <ul className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-xl shadow-ink/10">
-          {hits.map((e) => (
-            <li key={e.key}>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => add(e)}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition hover:bg-surface2"
-              >
-                <DriverAvatar name={e.name} photoUrl={e.photoUrl} size={24} />
-                <span className="min-w-0 flex-1 truncate font-semibold text-dark">{e.name}</span>
-                <span className="shrink-0 font-mono text-[10px] text-faint">
-                  {e.lastTeamName ? `${e.lastTeamName} · ` : ""}S{e.lastSeasonNumber} · {e.starts} starts
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {query && db && hits.length === 0 && (
-        <div className="absolute inset-x-0 top-full z-20 mt-1 rounded-lg border border-border bg-card px-3 py-2 text-xs text-light shadow-xl">
-          Nobody in the database matches (or they're already on this season's roster). Use "Add driver" for a brand-new name.
+      {query && db && (
+        <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-xl shadow-ink/10">
+          {hits.length > 0 ? (
+            <ul>
+              {hits.map((e) => (
+                <li key={e.key}>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => add(e)}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition hover:bg-surface2"
+                  >
+                    <DriverAvatar name={e.name} photoUrl={e.photoUrl} size={24} />
+                    <span className="min-w-0 flex-1 truncate font-semibold text-dark">{e.name}</span>
+                    {/* Only set for somebody this series has never seen — "S8,
+                        Ferrari" says nothing without the league it happened in. */}
+                    {e.seriesName && (
+                      <span className="shrink-0 rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand">
+                        {e.seriesName}
+                      </span>
+                    )}
+                    <span className="shrink-0 font-mono text-[10px] text-faint">
+                      {e.lastTeamName ? `${e.lastTeamName} · ` : ""}S{e.lastSeasonNumber} · {e.starts} starts
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="px-3 py-2 text-xs text-light">
+              Nobody in the database matches (or they&rsquo;re already on this season&rsquo;s roster).{" "}
+              {allSeries || !onAllSeriesChange
+                ? 'Use "Add driver" for a brand-new name.'
+                : "Tick the box below to look in the other series too."}
+            </div>
+          )}
+          {onAllSeriesChange && (
+            <label className="flex cursor-pointer items-center gap-2 border-t border-border bg-surface2/60 px-3 py-2 text-[11px] font-semibold text-medium">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-primary"
+                checked={!!allSeries}
+                onChange={(e) => onAllSeriesChange(e.target.checked)}
+              />
+              Also search drivers from other series
+            </label>
+          )}
         </div>
       )}
     </div>
@@ -2067,8 +2110,8 @@ function DbSeatSearch({ team, db, rosterNames, onAdded, onError, autoFocus = fal
 function Drivers() {
   const ask = useAsk();
   const { data: teams, reload } = useApi(useCallback(() => api.teams(), []));
-  // The series-wide driver database feeding the per-team search fields.
-  const driverDb = useApi(useCallback(() => api.adminDriverDb(), []));
+  // The driver database feeding the per-team search fields (see useDriverDb).
+  const driverDb = useDriverDb();
   // Known login accounts, to verify hand-entered Discord IDs on the spot.
   const { data: membersData } = useApi(useCallback(() => api.adminMembers(), []));
   const [form, setForm] = useState({ name: "", discordName: "", teamId: "", tier: 2 });
@@ -2321,7 +2364,9 @@ function Drivers() {
               <div className="pb-3">
               <DbSeatSearch
                 team={t}
-                db={driverDb.data?.entries}
+                db={driverDb.entries}
+                allSeries={driverDb.allSeries}
+                onAllSeriesChange={driverDb.setAllSeries}
                 // Only REAL-team drivers are hidden from the search: someone
                 // sitting in the Reserve pool stays findable, and picking them
                 // MOVES their reserve row into the team (sign-ups kept).
@@ -4141,7 +4186,7 @@ const TIER_LABEL = { 0: "Reserve", 1: "Tier 1", 2: "Tier 2" };
 // rolling slot for the Reserve pool). Clicking a dashed slot opens the same
 // driver-database search the Drivers tab uses — the team fixes season and
 // tier, so picking a person is all there is to do.
-function SeatBoxes({ team, db, rosterNames, onAdded, onError, onRemove, busy }) {
+function SeatBoxes({ team, db, rosterNames, onAdded, onError, onRemove, busy, allSeries, onAllSeriesChange }) {
   const [adding, setAdding] = useState(false);
   // The Reserve pool can hold many drivers, so it starts folded to one summary
   // line — expand to see (and edit) the actual entries.
@@ -4217,6 +4262,8 @@ function SeatBoxes({ team, db, rosterNames, onAdded, onError, onRemove, busy }) 
             team={team}
             db={db}
             rosterNames={rosterNames}
+            allSeries={allSeries}
+            onAllSeriesChange={onAllSeriesChange}
             autoFocus
             placeholder={`Search the driver database…`}
             onAdded={(m) => { setAdding(false); onAdded(m); }}
@@ -4350,7 +4397,7 @@ function Teams() {
   // The all-time driver database + current roster names feed the seat boxes'
   // search (same source as the Drivers tab). Reserve-pool drivers are NOT
   // hidden: picking one moves their reserve row into the team (sign-ups kept).
-  const driverDb = useApi(useCallback(() => api.adminDriverDb(), []));
+  const driverDb = useDriverDb();
   const rosterNames = new Set(
     (teams || [])
       .filter((t) => t.tier !== 0)
@@ -4578,7 +4625,9 @@ function Teams() {
                 {/* seats — filled chips + dashed add-slots with DB search */}
                 <SeatBoxes
                   team={t}
-                  db={driverDb.data?.entries}
+                  db={driverDb.entries}
+                  allSeries={driverDb.allSeries}
+                  onAllSeriesChange={driverDb.setAllSeries}
                   rosterNames={rosterNames}
                   busy={busy}
                   onRemove={removeDriver}
