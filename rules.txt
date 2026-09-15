@@ -27,6 +27,16 @@ POINTS PER FINISHING POSITION
 DNS, DNF and DSQ all score 0.
 
 
+SPRINT WEEKENDS
+
+Some rounds run F2 style: a short sprint race and then the feature race on the
+same evening. Both races pay the full points table above, and both count for
+the drivers and for the constructors (the Tier 2 re-ranking is done in each
+race on its own). The sprint's points are added to that round, so a sprint
+weekend is one round worth up to 70 points. For the drop scores it is still one
+round. On the round by round tables a sprint weekend is marked with an S.
+
+
 TIERS
 
 We run two tiers, Tier 1 and Tier 2, plus reserves. A reserve can stand in for a

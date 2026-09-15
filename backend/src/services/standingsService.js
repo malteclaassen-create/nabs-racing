@@ -13,11 +13,15 @@ import {
 } from "./pointsCalculator.js";
 import { getSeasonScoring } from "./seasonService.js";
 import { getNameOverrides, getIdentityOverrides, getPersonGroups } from "../lib/persons.js";
+import { readSprintChildrenOf } from "../lib/sprintRaces.js";
+import { readRaceFormat } from "../lib/raceFormat.js";
 
 // Apply each race's position penalties before scoring. Grouping by race keeps a
-// penalty's re-ranking contained to its own round. With no penalties this is a
-// no-op, so existing standings are unaffected.
-function withPenaltiesApplied(results) {
+// penalty's re-ranking contained to its own classification — a sprint and its
+// feature race share a round number but never a classification (see
+// roundContributions). With no penalties this is a no-op, so existing
+// standings are unaffected.
+export function withPenaltiesApplied(results) {
   const byRace = new Map();
   for (const r of results) {
     if (!byRace.has(r.raceId)) byRace.set(r.raceId, []);
@@ -26,6 +30,67 @@ function withPenaltiesApplied(results) {
   const out = [];
   for (const rs of byRace.values()) out.push(...applyPenalties(rs));
   return out;
+}
+
+// A season's scoring races and the round each one scores under: every
+// championship round under its own number, and the sprint classification of a
+// sprint+feature weekend (the hidden child row, lib/sprintRaces.js) under its
+// PARENT's number. One evening, one round, two classifications that both pay
+// the season's points table — which is how the league scored its sprints
+// before the site did.
+//
+// Returns { raceNumberById, sprintRaceIds, sprintChildOf, raceIds }: the
+// number map every builder below keys on, the ids that are sprints (their
+// result gets the `sprint` share of the round cell rather than the feature's
+// slot), each round's sprint child by round id, and the full list of race ids
+// whose results score. Shared with the admin preview so it prices a proposal
+// exactly as saving it would.
+export async function scoringRaces(prisma, rounds) {
+  const raceNumberById = new Map(rounds.map((r) => [r.id, r.number]));
+  const sprintRaceIds = new Set();
+  const sprintChildOf = new Map();
+  const children = await readSprintChildrenOf(prisma, rounds);
+  for (const [childId, parent] of children) {
+    raceNumberById.set(childId, parent.number);
+    sprintRaceIds.add(childId);
+    sprintChildOf.set(parent.id, childId);
+  }
+  return { raceNumberById, sprintRaceIds, sprintChildOf, raceIds: [...raceNumberById.keys()] };
+}
+
+// The rounds run as sprint+feature weekends (by the event's session format, so
+// a scheduled sprint weekend is known before its results are in). The tables
+// mark those columns and the title-fight maths lets them pay twice.
+async function sprintRoundNumbers(prisma, rounds) {
+  const format = await readRaceFormat(prisma, rounds.map((r) => r.id));
+  return rounds.filter((r) => format.get(r.id)?.raceFormat === "SPRINT_FEATURE").map((r) => r.number);
+}
+
+// One round's constructor contributions. A sprint weekend puts TWO
+// classifications under one round number — the sprint child's results and the
+// feature's — and each must be scored on its own (the Tier-2 re-rank in
+// particular can never be run over a field with two winners in it). So the
+// round's results are split by race, scored per race, and then each driver's
+// shares are merged into the ONE contribution per driver-and-team that every
+// drop rule below counts, exactly as if the weekend had paid out once. Results
+// without a raceId (pure tests, hypothetical rows) are one classification.
+export function roundContributions(contributionsFor, results, drivers, teams, table = DEFAULT_POINTS_TABLE) {
+  const byRace = new Map();
+  for (const r of results) {
+    const key = r.raceId ?? "";
+    if (!byRace.has(key)) byRace.set(key, []);
+    byRace.get(key).push(r);
+  }
+  const merged = new Map();
+  for (const rs of byRace.values()) {
+    for (const c of contributionsFor(rs, drivers, teams, table)) {
+      const key = `${c.driverId}|${c.teamId}`;
+      const cur = merged.get(key);
+      if (cur) cur.points += c.points;
+      else merged.set(key, { ...c });
+    }
+  }
+  return [...merged.values()];
 }
 
 // DEFAULT number of lowest-scoring rounds dropped from every season total
@@ -69,7 +134,10 @@ export function computeDriverDropRounds(resultsByRound, raceNumbers, dropN, tabl
   for (const [num, results] of resultsByRound) {
     for (const r of results) {
       if (!pointsByDriver.has(r.driverId)) pointsByDriver.set(r.driverId, {});
-      pointsByDriver.get(r.driverId)[num] = getDriverResultPoints(r, table);
+      // Summed, not set: a sprint weekend gives a driver two results in one
+      // round, and the round they may drop is worth both together.
+      const mine = pointsByDriver.get(r.driverId);
+      mine[num] = (mine[num] || 0) + getDriverResultPoints(r, table);
     }
   }
   const dropped = new Map();
@@ -103,7 +171,7 @@ export function buildConstructorRows({ tier, teams, drivers, raceNumbers, result
     // tell "scored nothing" apart from "not raced yet".
     for (const row of perTeam.values()) row.perRace[num] = row.perRace[num] ?? 0;
 
-    for (const c of contributionsFor(results, drivers, teams, table)) {
+    for (const c of roundContributions(contributionsFor, results, drivers, teams, table)) {
       const row = perTeam.get(c.teamId);
       if (!row) continue;
       row.perRace[num] += c.points;
@@ -175,7 +243,7 @@ export function buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers
     const results = resultsByRound.get(num);
     if (!results || results.length === 0) continue;
     for (const t of tierTeams) perRace.get(t.id)[num] = perRace.get(t.id)[num] ?? 0;
-    for (const c of contributionsFor(results, drivers, teams, table)) {
+    for (const c of roundContributions(contributionsFor, results, drivers, teams, table)) {
       if (!contribs.has(c.teamId)) continue;
       contribs.get(c.teamId).push({ round: num, points: c.points });
       perRace.get(c.teamId)[num] += c.points;
@@ -218,7 +286,7 @@ export function buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNu
     const results = resultsByRound.get(num);
     if (!results || results.length === 0) continue;
     for (const t of tierTeams) perRace.get(t.id)[num] = perRace.get(t.id)[num] ?? 0;
-    for (const c of contributionsFor(results, drivers, teams, table)) {
+    for (const c of roundContributions(contributionsFor, results, drivers, teams, table)) {
       if (!perRace.has(c.teamId)) continue;
       perRace.get(c.teamId)[num] += c.points;
     }
@@ -398,19 +466,38 @@ async function previousSeasonOrder(prisma, seasonId, depth) {
 // walks the real round list, but very visible on a driver profile, where the
 // head-to-head panel walks the keys of this map instead. A season whose only
 // completed session was a friendly showed duel records for whoever raced it.
-export function buildDriverPerRace(results, driverId, raceNumberById, table = DEFAULT_POINTS_TABLE) {
-  const perRace = {}; // raceNumber -> { points, status, position, grid }
+//
+// A SPRINT WEEKEND is one round with two results. The sprint's race id is in
+// `raceNumberById` under the weekend's number (scoringRaces) and named in
+// `sprintRaceIds`, and its points are ADDED to the round: `points` is the
+// weekend's total, while status, position and grid stay the feature race's —
+// the countback tie-break and the medal colours read those, and a sprint win
+// is not a win. The sprint's own share sits beside them as `sprint`, so the
+// table can explain a cell whose number is more than its position pays.
+export function buildDriverPerRace(results, driverId, raceNumberById, table = DEFAULT_POINTS_TABLE, sprintRaceIds = new Set()) {
+  const perRace = {}; // raceNumber -> { points, status, position, grid, sprint? }
   const pointsByRound = {};
   for (const r of results) {
     if (r.driverId !== driverId) continue;
     const num = raceNumberById.get(r.raceId);
     if (num == null) continue;
     const pts = getDriverResultPoints(r, table);
-    pointsByRound[num] = pts;
+    if (sprintRaceIds.has(r.raceId)) {
+      // The sprint may arrive before or after the feature's row; a driver who
+      // only started the sprint gets a cell with no feature finish in it.
+      const cell = perRace[num] || (perRace[num] = { points: 0, status: null, position: null, grid: null });
+      cell.points += pts;
+      cell.sprint = { points: pts, status: r.status, position: r.position };
+      pointsByRound[num] = cell.points;
+      continue;
+    }
     // grid rides along so a comparison between two drivers (the head-to-head
     // panel) can put their qualifying side by side — the standings table
     // itself ignores it. Rounds without a recorded grid slot carry null.
-    perRace[num] = { points: pts, status: r.status, position: r.position, grid: r.grid ?? null };
+    const sprint = perRace[num]?.sprint;
+    perRace[num] = { points: pts + (sprint?.points || 0), status: r.status, position: r.position, grid: r.grid ?? null };
+    if (sprint) perRace[num].sprint = sprint;
+    pointsByRound[num] = perRace[num].points;
   }
   return { perRace, pointsByRound };
 }
@@ -458,16 +545,9 @@ export function attachPrevPositions(rows, raceNumbers, dropN) {
 // caller — a mid-season standings poster has to be the same table the site
 // showed that week, drop rule and tie-breaks included, not a re-sum of points.
 export async function getDriverStandings(prisma, seasonId, { extraResults = [], upToRound = null, _depth = 1 } = {}) {
-  const [drivers, allRaces, results, scoring, nameOverrides, identity] = await Promise.all([
+  const [drivers, allRaces, scoring, nameOverrides, identity] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
-    // Championship rounds only, the same scope as the race list above. A
-    // training session carries isSpecialEvent, and its results have no round
-    // number to sit under — they used to land in perRace keyed "undefined",
-    // which the head-to-head on a driver profile then counted as a shared
-    // round. A season whose only completed session is a friendly showed
-    // records for the people who turned up to it.
-    prisma.raceResult.findMany({ where: { race: { seasonId, isSpecialEvent: false } } }),
     getSeasonScoring(prisma, seasonId),
     getNameOverrides(prisma),
     getIdentityOverrides(prisma),
@@ -477,7 +557,17 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   const partial = upToRound != null && allRaces.some((r) => r.number > upToRound);
   const races = partial ? allRaces.filter((r) => r.number <= upToRound) : allRaces;
 
-  const raceNumberById = new Map(races.map((r) => [r.id, r.number]));
+  // The rounds plus their sprint classifications, each under its round number
+  // (scoringRaces). Results are read for exactly those races: a training
+  // session or a special event has no round number to sit under — its results
+  // used to land in perRace keyed "undefined", which the head-to-head on a
+  // driver profile then counted as a shared round, so a season whose only
+  // completed session was a friendly showed records for whoever turned up.
+  const { raceNumberById, sprintRaceIds, raceIds } = await scoringRaces(prisma, races);
+  const [results, sprintRounds] = await Promise.all([
+    prisma.raceResult.findMany({ where: { raceId: { in: raceIds } } }),
+    sprintRoundNumbers(prisma, races),
+  ]);
   const raceNumbers = races.map((r) => r.number);
   const appliedResults = withPenaltiesApplied(extraResults.length ? [...results, ...extraResults] : results);
 
@@ -491,7 +581,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   const hidden = new Set(hiddenRows.map((r) => r.id));
 
   const rows = drivers.filter((d) => !hidden.has(d.id)).map((driver) => {
-    const { perRace, pointsByRound } = buildDriverPerRace(appliedResults, driver.id, raceNumberById, table);
+    const { perRace, pointsByRound } = buildDriverPerRace(appliedResults, driver.id, raceNumberById, table, sprintRaceIds);
 
     // Season total drops each driver's N lowest rounds (unscored / not-yet-run
     // rounds count as 0 and are dropped first). The per-race grid still shows
@@ -570,6 +660,9 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // final sheet (not computed), so per-race sums may not add up exactly.
   return {
     raceNumbers,
+    // Rounds run as sprint+feature weekends: both races score, so these
+    // columns can pay twice (the tables mark them, the title fight prices them).
+    sprintRounds,
     dropWorst: scoring.dropWorst,
     officialTotals: !partial && !!scoring.finalStandings?.drivers?.length,
     standings: rows,
@@ -601,20 +694,25 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
   const partial = upToRound != null && allRaces.some((r) => r.number > upToRound);
   const races = partial ? allRaces.filter((r) => r.number <= upToRound) : allRaces;
 
-  const raceNumberById = new Map(races.map((r) => [r.id, r.number]));
+  // Rounds and their sprint classifications, each under its round number.
+  const [{ raceNumberById }, sprintRounds] = await Promise.all([
+    scoringRaces(prisma, races),
+    sprintRoundNumbers(prisma, races),
+  ]);
   const raceNumbers = races.map((r) => r.number);
 
-  // Group by round with each race's penalties applied; results of special
-  // events (not in the number map) never score constructor points.
-  const byRace = new Map();
-  for (const r of extraResults.length ? [...results, ...extraResults] : results) {
+  // Each race's penalties applied within its own classification, THEN grouped
+  // by round: a sprint and its feature race share the round but are two
+  // classifications, and a penalty in one must never re-rank the other. The
+  // builders split the round by race again before scoring (roundContributions).
+  // Results of special events (not in the number map) never score.
+  const resultsByRound = new Map();
+  for (const r of withPenaltiesApplied(extraResults.length ? [...results, ...extraResults] : results)) {
     const num = raceNumberById.get(r.raceId);
     if (num == null) continue;
-    if (!byRace.has(num)) byRace.set(num, []);
-    byRace.get(num).push(r);
+    if (!resultsByRound.has(num)) resultsByRound.set(num, []);
+    resultsByRound.get(num).push(r);
   }
-  const resultsByRound = new Map();
-  for (const [num, rs] of byRace) resultsByRound.set(num, applyPenalties(rs));
 
   // Four ways to score a constructor season:
   //   official   — archived seasons that ship verbatim per-team round points;
@@ -699,6 +797,8 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
   return {
     tier,
     raceNumbers,
+    // Sprint+feature weekends, as on the driver table.
+    sprintRounds,
     dropWorst: scoring.dropWorst,
     // The rule actually in force for the constructor table, so the UI footnote
     // matches: "team" (N lowest single-driver round scores dropped),

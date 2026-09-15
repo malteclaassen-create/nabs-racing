@@ -592,6 +592,7 @@ export default function DriverStandings() {
         <StandingsTable
           variant="driver"
           raceNumbers={data.raceNumbers}
+          sprintRounds={data.sprintRounds || []}
           rows={rows}
           dropWorst={data.dropWorst}
           officialTotals={data.officialTotals}

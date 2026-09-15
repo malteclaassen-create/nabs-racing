@@ -77,6 +77,15 @@ your API origin and run `npm run build`.
 
 `DNS` / `DNF` / `DSQ` = 0 points.
 
+A **sprint + feature weekend** (an F2-style round, race format `SPRINT_FEATURE`)
+runs two races on one evening and both pay this table in full. The sprint's
+points are added to that round — for the drivers and for both constructor
+tables (Tier 2 is re-ranked in each race on its own) — so a sprint weekend is
+one round worth up to 70 points. The drop rule still counts rounds, so the
+weekend drops or counts as a whole. The sprint classification lives on a hidden
+child race of the event (`Race.parentRaceId`) and shows up as the Sprint tab of
+the round.
+
 ---
 
 ## Standings logic

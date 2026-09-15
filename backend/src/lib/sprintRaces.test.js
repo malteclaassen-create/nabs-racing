@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ensureSprintChild, readParentIds, readSprintChildren } from "./sprintRaces.js";
+import { ensureSprintChild, readParentIds, readSprintChildren, readSprintChildrenOf } from "./sprintRaces.js";
 
 // A minimal in-memory Race table speaking just enough prisma for the lib: the
 // raw reads/writes it does are pinned here, because the sprint child is the one
@@ -64,8 +64,8 @@ describe("ensureSprintChild", () => {
       data: { track: "Barcelona", seasonId: "s8", date: new Date("2026-08-28"), country: "es", sprintLaps: 12 },
     });
     const child = await ensureSprintChild(prisma, parent);
-    expect(child.number ?? null).toBeNull(); // never a round
-    expect(child.isSpecialEvent).toBe(true); // never scored
+    expect(child.number ?? null).toBeNull(); // never a round of its own
+    expect(child.isSpecialEvent).toBe(true); // not counted as a round (it scores through its parent)
     expect(child.type).toBe("SPECIAL"); // never announced / signed up
     expect(child.seasonId).toBe("s8");
     expect(child.track).toBe("Barcelona");
@@ -78,6 +78,18 @@ describe("ensureSprintChild", () => {
     const parent = await prisma.race.create({ data: { track: "Barcelona", seasonId: "s8" } });
     const child = await ensureSprintChild(prisma, parent);
     await expect(ensureSprintChild(prisma, child)).rejects.toThrow(/sprint classification/);
+  });
+});
+
+describe("readSprintChildrenOf", () => {
+  it("maps each round's sprint child back to the round, and only rounds that have one", async () => {
+    const prisma = fakePrisma();
+    const parent = await prisma.race.create({ data: { number: 5, track: "Barcelona", seasonId: "s8" } });
+    const plain = await prisma.race.create({ data: { number: 6, track: "Monza", seasonId: "s8" } });
+    const child = await ensureSprintChild(prisma, parent);
+    const map = await readSprintChildrenOf(prisma, [parent, plain]);
+    expect([...map.keys()]).toEqual([child.id]);
+    expect(map.get(child.id).number).toBe(5);
   });
 });
 

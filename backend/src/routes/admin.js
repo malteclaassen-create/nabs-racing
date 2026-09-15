@@ -596,8 +596,12 @@ router.post("/races/commit", async (req, res, next) => {
     // lib/sprintRaces.js), so the event's own results stay the feature race and
     // one evening can hold both. Only meaningful against an existing race.
     const isSprint = req.body.session === "SPRINT";
+    // The event a sprint belongs to: the round number the sprint scores under
+    // and the one the reply names (the child itself carries none).
+    let sprintOf = null;
     if (isSprint) {
       if (!race) return res.status(400).json({ error: "A sprint result needs an existing race (raceId)" });
+      sprintOf = race;
       const child = await ensureSprintChild(prisma, race);
       race = await prisma.race.findFirst({
         where: { id: child.id },
@@ -608,8 +612,13 @@ router.post("/races/commit", async (req, res, next) => {
     // Overwrite guard: committing over a round that already has stored results
     // replaces them entirely. Require an explicit confirmation from the UI.
     if (race && race._count.results > 0 && !req.body.overwrite) {
+      const what = isSprint
+        ? `The round ${sprintOf.number ?? "?"} sprint`
+        : race.number != null
+          ? `Round ${race.number}`
+          : race.track;
       return res.status(409).json({
-        error: `${race.number != null ? `Round ${race.number}` : race.track} already has ${race._count.results} stored results. Confirm to overwrite them.`,
+        error: `${what} already has ${race._count.results} stored results. Confirm to overwrite them.`,
         needsConfirm: true,
       });
     }
@@ -634,14 +643,18 @@ router.post("/races/commit", async (req, res, next) => {
     }
 
     // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
-    await tryCreateBackup(prisma, `before-import-${race.number != null ? `r${race.number}` : "training"}`);
+    await tryCreateBackup(
+      prisma,
+      `before-import-${isSprint ? `r${sprintOf.number ?? "x"}-sprint` : race.number != null ? `r${race.number}` : "training"}`
+    );
     const saveSummary = await saveRaceResults(prisma, race.id, results);
     // Bell notification (deduped per race, so re-imports stay silent). A sprint
     // child stays quiet — the evening's bell rings once, with the feature.
     if (results.length && !isSprint) notifyResultsSaved(prisma, race);
     // New results can tip a driver over a card-unlock threshold (and the finale
-    // seals titles) — reconcile the season's linked drivers' bells.
-    if (results.length && !isSprint) notifyCardUnlocksForSeason(prisma, race.seasonId);
+    // seals titles) — reconcile the season's linked drivers' bells. A sprint
+    // scores too, so its points can be the ones that tip someone over.
+    if (results.length) notifyCardUnlocksForSeason(prisma, race.seasonId);
     // Move the raw JSON into its season folder so this round's telemetry can be
     // recomputed later. Best-effort: never fails the commit.
     if (archiveKey) {
@@ -659,10 +672,14 @@ router.post("/races/commit", async (req, res, next) => {
     // Steam GUID capture is best-effort; any confirmed mapping that would have
     // changed an already-stored steamId (mis-map or shared account) is reported
     // here rather than silently overwritten, so the admin can look into it.
+    // A sprint answers with the CHILD row's id (that is where its results are)
+    // but its EVENT's round number: the sprint scored under that round, and
+    // "Round 5 sprint saved" is what the admin wants to read back.
     res.json({
       ok: true,
       raceId: race.id,
-      number: race.number,
+      number: isSprint ? sprintOf.number : race.number,
+      session: isSprint ? "SPRINT" : "RACE",
       steamIdConflicts: saveSummary?.steamIdConflicts || [],
     });
   } catch (e) {
@@ -824,12 +841,12 @@ router.put("/races/:id/hotlaps", async (req, res, next) => {
 });
 
 // POST /api/admin/races/preview
-// Body: { raceId? , number?, results: [...], seasonId? }
+// Body: { raceId? , number?, results: [...], seasonId?, session? }
 // Computes the would-be round result + driver/constructor standings for the
 // given (unsaved) results. Nothing is persisted.
 router.post("/races/preview", async (req, res, next) => {
   try {
-    const { raceId, number, results, season } = req.body || {};
+    const { raceId, number, results, season, session } = req.body || {};
     if (!Array.isArray(results)) return res.status(400).json({ error: "results[] required" });
     const seasonId = await resolveSeasonId(prisma, season, { includePrivate: true, series: req.body?.series });
     const preview = await previewRaceImpact(prisma, {
@@ -837,6 +854,9 @@ router.post("/races/preview", async (req, res, next) => {
       raceId: raceId || null,
       number: number ?? null,
       results,
+      // session:"SPRINT" — the proposal is the sprint of a sprint+feature
+      // weekend, same contract as the commit below.
+      session: session === "SPRINT" ? "SPRINT" : null,
     });
     res.json(preview);
   } catch (e) {

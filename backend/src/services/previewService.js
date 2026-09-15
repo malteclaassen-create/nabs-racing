@@ -11,7 +11,7 @@ import {
   calculateT2ConstructorPoints,
   DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
-import { applyDropScores, buildConstructorRows } from "./standingsService.js";
+import { applyDropScores, buildConstructorRows, scoringRaces, withPenaltiesApplied } from "./standingsService.js";
 import { resultTeamId } from "../lib/resultTeam.js";
 import { getSeasonScoring } from "./seasonService.js";
 
@@ -96,7 +96,13 @@ function rankWithDelta(rows, currentPosById, idKey) {
   return rows;
 }
 
-export async function previewRaceImpact(prisma, { seasonId, raceId, number, results }) {
+// `session` = "SPRINT" says the proposal is the SPRINT of a sprint+feature
+// weekend (the import page's session picker); a `raceId` that is itself a
+// sprint child (the results editor lists them) says the same. Either way the
+// proposal stands in for the sprint classification only, and the feature's
+// stored results stay in the table — the weekend's other half scores too, so
+// a preview that dropped it would show a round losing half its points.
+export async function previewRaceImpact(prisma, { seasonId, raceId, number, results, session = null }) {
   const [drivers, teams, races, dbResults, scoring] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.team.findMany({ where: { seasonId } }),
@@ -106,48 +112,75 @@ export async function previewRaceImpact(prisma, { seasonId, raceId, number, resu
   ]);
   const table = scoring.pointsTable || DEFAULT_POINTS_TABLE;
 
-  // Which round are we previewing? An existing round (edit) or a new number
-  // (import of a round not yet in the calendar).
+  // Rounds plus their sprint classifications, each under its round number —
+  // the same map the standings score by, so the preview prices a sprint the
+  // way saving it would.
+  const { raceNumberById, sprintRaceIds, sprintChildOf } = await scoringRaces(prisma, races);
+
+  // Which round are we previewing, and which classification of it? An
+  // existing round (edit), a new number (import of a round not yet in the
+  // calendar), or a weekend's sprint (see above). `targetRaceId` is the stored
+  // classification the proposal replaces; null when there is none yet.
   let targetNumber = number != null && number !== "" ? Number(number) : null;
-  if (raceId) {
-    const tr = races.find((r) => r.id === raceId);
-    if (tr) targetNumber = tr.number;
+  let targetRaceId = null;
+  let asSprint = false;
+  if (raceId && sprintRaceIds.has(raceId)) {
+    targetRaceId = raceId;
+    targetNumber = raceNumberById.get(raceId);
+    asSprint = true;
+  } else {
+    const tr = raceId ? races.find((r) => r.id === raceId) : races.find((r) => r.number === targetNumber);
+    if (tr) {
+      targetNumber = tr.number;
+      asSprint = session === "SPRINT";
+      targetRaceId = asSprint ? sprintChildOf.get(tr.id) ?? null : tr.id;
+    }
   }
 
-  const numById = new Map(races.map((r) => [r.id, r.number]));
   const numberSet = new Set(races.map((r) => r.number));
   if (targetNumber != null) numberSet.add(targetNumber);
   const raceNumbers = [...numberSet].sort((a, b) => a - b);
 
-  // Proposed results keep only mapped drivers.
-  const proposed = results.filter((r) => r.driverId);
+  // Proposed results keep only mapped drivers. They carry the race they stand
+  // in for, so the constructor builders can tell them from the weekend's other
+  // classification (a Tier-2 re-rank runs per race, never across two).
+  const proposalRaceId = targetRaceId || "__proposal__";
+  const proposed = results.filter((r) => r.driverId).map((r) => ({ ...r, raceId: proposalRaceId }));
   const proposedApplied = applyPenalties(proposed);
 
-  // DB results grouped by round number (non-target rounds reuse these as-is).
+  // DB results grouped by round number, each race's penalties applied within
+  // its own classification (non-target rounds reuse these as-is). The target
+  // round is split: the classification the proposal replaces (the baseline),
+  // and the rest of the weekend, which stays in the table either way.
   const dbByNum = new Map();
-  for (const r of dbResults) {
-    const n = numById.get(r.raceId);
+  for (const r of withPenaltiesApplied(dbResults)) {
+    const n = raceNumberById.get(r.raceId);
     if (n == null) continue;
     if (!dbByNum.has(n)) dbByNum.set(n, []);
     dbByNum.get(n).push(r);
   }
-  // Compute the full standings for ONE choice of the target round's results.
-  // We run it twice — once with the proposal, once with what's currently stored
-  // for that round (the "baseline") — and diff the two. Computing both the same
-  // way means quirks of the historical/seed data cancel out, so the deltas show
-  // only what the admin's edit actually changes.
+  const targetRound = dbByNum.get(targetNumber) || [];
+  const baselineTarget = targetRaceId ? targetRound.filter((r) => r.raceId === targetRaceId) : [];
+  const restOfTarget = targetRound.filter((r) => r.raceId !== targetRaceId);
+
+  // Compute the full standings for ONE choice of the target classification's
+  // results. We run it twice — once with the proposal, once with what's
+  // currently stored for it (the "baseline") — and diff the two. Computing
+  // both the same way means quirks of the historical/seed data cancel out, so
+  // the deltas show only what the admin's edit actually changes.
   const computeStandings = (targetApplied) => {
     const resultsByRound = new Map();
     for (const n of raceNumbers) {
-      const rs = n === targetNumber ? targetApplied : applyPenalties(dbByNum.get(n) || []);
+      const rs = n === targetNumber ? [...restOfTarget, ...targetApplied] : dbByNum.get(n) || [];
       if (rs.length) resultsByRound.set(n, rs);
     }
 
     const driverRows = drivers.map((d) => {
       const pointsByRound = {};
       for (const n of raceNumbers) {
-        const mine = (resultsByRound.get(n) || []).find((r) => r.driverId === d.id);
-        if (mine) pointsByRound[n] = getDriverResultPoints(mine, table);
+        // Both halves of a sprint weekend add up, exactly as in the standings.
+        const mine = (resultsByRound.get(n) || []).filter((r) => r.driverId === d.id);
+        if (mine.length) pointsByRound[n] = mine.reduce((sum, r) => sum + getDriverResultPoints(r, table), 0);
       }
       const { total } = applyDropScores(pointsByRound, raceNumbers, scoring.dropWorst);
       return { driverId: d.id, name: d.name, total, team: { name: d.team.name, color: d.team.color } };
@@ -183,9 +216,9 @@ export async function previewRaceImpact(prisma, { seasonId, raceId, number, resu
     t1: teamRoundPoints(calculateT1ConstructorPoints(proposedApplied, drivers, teams, table), 1),
     t2: teamRoundPoints(calculateT2ConstructorPoints(proposedApplied, drivers, teams, table), 2),
   };
-  // Baseline = the round exactly as stored now (or absent, for a brand-new
-  // import round). Both sides share every other round, so the diff is the edit.
-  const baselineTarget = targetNumber != null ? applyPenalties(dbByNum.get(targetNumber) || []) : [];
+  // Baseline = the classification exactly as stored now (or absent, for a
+  // brand-new import round or a sprint not yet on file). Both sides share every
+  // other round and the weekend's other half, so the diff is the edit.
   const baseline = computeStandings(baselineTarget);
 
   const basePos = (rows, idKey) => {
@@ -200,6 +233,9 @@ export async function previewRaceImpact(prisma, { seasonId, raceId, number, resu
 
   return {
     targetNumber,
+    // Which classification of the round the proposal is: the sprint of a
+    // sprint+feature weekend, or the race itself.
+    session: asSprint ? "SPRINT" : "RACE",
     round: buildRoundPreview(proposed, drivers, teams, table),
     roundTeams,
     drivers: rankWithDelta(proposedStandings.drivers, baseD, "driverId"),

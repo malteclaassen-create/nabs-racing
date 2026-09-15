@@ -50,12 +50,16 @@ const TILE_ICONS = {
 // the N worst rounds dropped) at least matches the leader's guaranteed floor
 // (zero in every remaining round, same drop rule). The per-round maximum is
 // the best single-round haul seen this season.
-function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, totalRounds, tableMax = 0 }) {
+function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, totalRounds, tableMax = 0, sprintRounds = [] }) {
   const completedCount = completedNumbers.length;
   const remaining = totalRounds - completedCount;
   if (remaining <= 0 || completedCount < 1 || standings.length < 2) return null;
 
   const done = new Set(completedNumbers);
+  // A sprint+feature weekend pays twice — both races score the full table —
+  // so those rounds are priced at double below, and an observed haul from one
+  // counts as two races' worth in the single-race maximum.
+  const sprint = new Set(sprintRounds);
   // Points a round can pay at most: the season's OWN points table (P1's score —
   // admin-editable per season, so a rule change flows straight in here), or,
   // when the season runs on the league default (no stored table), the best
@@ -66,10 +70,13 @@ function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, total
     ...standings.flatMap((d) =>
       Object.entries(d.perRace || {})
         .filter(([n]) => done.has(Number(n)))
-        .map(([, r]) => r?.points || 0)
+        // A sprint weekend's haul is two races' worth: halve it to keep the
+        // fallback a single-race figure.
+        .map(([n, r]) => (sprint.has(Number(n)) ? (r?.points || 0) / 2 : r?.points || 0))
     )
   );
   if (!maxPerRound) return null;
+  const maxFor = (n) => (sprint.has(n) ? maxPerRound * 2 : maxPerRound);
 
   const dropN = Math.min(dropWorst ?? 0, raceNumbers.length);
   const dropSum = (vals) => vals.sort((a, b) => a - b).slice(dropN).reduce((s, v) => s + v, 0);
@@ -80,7 +87,7 @@ function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, total
     dropSum(raceNumbers.map((n) => (done.has(n) ? d.perRace?.[n]?.points ?? 0 : 0)));
   // Best possible final total: max points in every remaining round, then drop.
   const maxFinal = (d) =>
-    dropSum(raceNumbers.map((n) => (done.has(n) ? d.perRace?.[n]?.points ?? 0 : maxPerRound)));
+    dropSum(raceNumbers.map((n) => (done.has(n) ? d.perRace?.[n]?.points ?? 0 : maxFor(n))));
 
   const rows = standings
     .map((d) => ({ d, cur: floorTotal(d) }))
@@ -705,7 +712,7 @@ export default function Home() {
   // lap wins over the one derived from the stored lap times, and a session that
   // scores nothing (training, special event) shows no points column at all.
   const latestRace = latest?.race || null;
-  const latestScores = (latestRace?.type || "CHAMPIONSHIP") === "CHAMPIONSHIP";
+  const latestScores = latestRace?.scores ?? (latestRace?.type || "CHAMPIONSHIP") === "CHAMPIONSHIP";
   const latestLapRows = (latest?.results || []).filter((r) => isLapTime(r.bestLapMs));
   const latestFastestMs = latestLapRows.length
     ? Math.min(...latestLapRows.map((r) => r.bestLapMs))
@@ -1283,6 +1290,7 @@ export default function Home() {
           // P1's score from this season's points table (admin-editable); the
           // widget falls back to the best observed round when none is stored.
           tableMax={Array.isArray(season?.pointsTable) ? season.pointsTable[0] : 0}
+          sprintRounds={drivers.data?.sprintRounds || []}
           totalRounds={totalRounds}
           // Demo rewinds the last two rounds, so gaps/totals/aliveness are all
           // computed as of that earlier point in the season.

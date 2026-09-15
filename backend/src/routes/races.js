@@ -138,6 +138,15 @@ router.get("/", async (req, res, next) => {
       // the round it is actually about (lib/raceHero.js).
       readRaceHeroes(prisma, races.map((r) => r.id)),
     ]);
+    // Whether a classification pays championship points: a championship round
+    // does, and so does the SPRINT of one — the child row is typed SPECIAL so
+    // nothing counts it as a round of its own, but it scores under its event's
+    // round (lib/sprintRaces.js). The results tables show the points column by
+    // this rather than by the type.
+    const allById = new Map(allRaces.map((r) => [r.id, r]));
+    const kindOf = (id) => types.get(id) || (allById.get(id)?.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+    const scoresOf = (r) =>
+      kindOf(r.id) === "CHAMPIONSHIP" || (parentOf.has(r.id) && kindOf(parentOf.get(r.id)) === "CHAMPIONSHIP");
     res.json(
       races.map((r) => ({
         id: r.id,
@@ -147,7 +156,8 @@ router.get("/", async (req, res, next) => {
         date: r.date,
         isCompleted: r.isCompleted,
         isSpecialEvent: r.isSpecialEvent,
-        type: types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
+        type: kindOf(r.id),
+        scores: scoresOf(r),
         resultCount: r._count.results,
         hasQuali: withQuali.has(r.id),
         info: r.info || null,
@@ -538,6 +548,15 @@ router.get("/:id/results", async (req, res, next) => {
     // plus the round's published replay (if any) for the Replay button.
     const format = (await readRaceFormat(prisma, [race.id])).get(race.id) || {};
     const replays = await dbReplaysByRace(prisma, [race.id]);
+    // Both directions of the sprint link (lib/sprintRaces.js), and the kinds
+    // of this race and of the event it is the sprint of: a sprint child is
+    // typed SPECIAL (not a round of its own) but scores when its event is a
+    // championship round, and the results table shows its points by that.
+    const sprintRaceId = (await readSprintChildren(prisma, [race.id])).get(race.id) ?? null;
+    const sprintOf = (await readParentIds(prisma, [race.id])).get(race.id) ?? null;
+    const kinds = await readRaceTypes(prisma, [race.id, sprintOf].filter(Boolean));
+    const kind = kinds.get(race.id) || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+    const scores = kind === "CHAMPIONSHIP" || (!!sprintOf && (kinds.get(sprintOf) || "CHAMPIONSHIP") === "CHAMPIONSHIP");
     // The round's photo gallery. It travels with the round rather than on its
     // own endpoint so the page opens complete, the same way the replay link and
     // the session format already do.
@@ -559,8 +578,8 @@ router.get("/:id/results", async (req, res, next) => {
         // Both directions of the sprint link: an event says where its sprint
         // classification lives (the Races page adds a Sprint tab and fetches
         // it through this same endpoint), a sprint row says whose it is.
-        sprintRaceId: (await readSprintChildren(prisma, [race.id])).get(race.id) ?? null,
-        sprintOf: (await readParentIds(prisma, [race.id])).get(race.id) ?? null,
+        sprintRaceId,
+        sprintOf,
         replayDownloadId: replays.get(race.id) || null,
         // The round's highlights video, if the admin pasted one.
         highlightsUrl: (await readRaceHighlights(prisma, [race.id])).get(race.id) || null,
@@ -575,7 +594,9 @@ router.get("/:id/results", async (req, res, next) => {
         // table had no way to tell them apart and showed a points column for
         // sessions that score nothing.
         isSpecialEvent: race.isSpecialEvent,
-        type: (await readRaceTypes(prisma, [race.id])).get(race.id) || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
+        type: kind,
+        // Pays championship points: a round, or the sprint of one.
+        scores,
         driverOfTheDay,
         // Admin-recorded fastest-lap holder (archive rounds, lib/raceHonours.js).
         // When set, the race page marks THIS driver instead of deriving the

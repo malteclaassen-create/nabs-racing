@@ -161,6 +161,8 @@ export default function AdminImport({ onCommitted }) {
   // Where the result goes on save, in the shape the commit endpoint wants. On
   // a sprint weekend the session rides along: SPRINT lands on the event's
   // hidden sprint row (the backend creates it), RACE is the feature as ever.
+  // The live preview reads the same session, so a sprint is previewed as the
+  // round's second classification rather than in place of the feature.
   const targetBody = targetRace
     ? { raceId: targetRace.id, ...(asSprint ? { session: "SPRINT" } : {}) }
     : { number: Number(newRoundNumber) };
@@ -550,7 +552,7 @@ export default function AdminImport({ onCommitted }) {
         : "";
       setDone(
         res.number != null
-          ? `Round ${res.number} saved. Standings recalculated.${qualiMsg}${conflictNote}`
+          ? `Round ${res.number}${res.session === "SPRINT" ? " sprint" : ""} saved. Standings recalculated.${qualiMsg}${conflictNote}`
           : `Training/event results saved (not scored).${qualiMsg}${conflictNote}`
       );
       setParsed(null);
@@ -667,8 +669,8 @@ export default function AdminImport({ onCommitted }) {
           <p className="text-sm text-medium">
             {asSprint
               ? targetRace.sprintRaceId
-                ? "Importing the sprint again replaces the stored sprint classification. The feature result is untouched."
-                : "The sprint classification is stored alongside the event — the feature race import stays separate."
+                ? "Importing the sprint again replaces the stored sprint classification. The feature result is untouched. The sprint scores the same points as the feature race, added to this round."
+                : "The sprint classification is stored alongside the event — the feature race import stays separate. The sprint scores the same points as the feature race, added to this round."
               : targetRace.resultCount > 0
                 ? `${targetRace.resultCount} results are stored for this race${
                     targetRace.hasQuali ? ", qualifying included" : ", but no qualifying"
