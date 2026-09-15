@@ -205,6 +205,17 @@ drivers can only RSVP as themselves.
    positions if needed.
 4. Confirm → results are saved and **all standings are recalculated**.
 
+### No result file? Enter the round by hand
+
+A round that was never exported by the server (or whose JSON is lost) can be
+typed in under Admin → **Edit Results**: pick the round, then add the drivers
+one by one in finishing order (each pick takes the next free position) or add
+the whole Tier 1/2 grid and fill the positions in. Set retirements to DNF, then
+**Save results** — points, the Tier 2 re-ranking and the standings are computed
+from the positions exactly as for an imported race. Grid, race times, contacts
+and laps led are optional. The same picker adds a driver an import missed to an
+existing round.
+
 ---
 
 ## The live page during a race

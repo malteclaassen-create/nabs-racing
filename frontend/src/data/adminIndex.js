@@ -158,6 +158,12 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "edit",
+    title: "Enter results by hand",
+    hint: "A round with no result file to import: add the drivers in finishing order and save.",
+    keywords: "manual results by hand type in no json file missing lost import add driver row enter classification discord",
+  },
+  {
+    tab: "edit",
     title: "Driver of the Day",
     hint: "Pick the driver of the day for a round, and who made the call.",
     keywords: "dotd driver of the day pick vote award",

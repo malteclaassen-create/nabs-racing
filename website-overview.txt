@@ -65,6 +65,9 @@ This sits behind a PIN (top right, "Admin"). From there I can:
   - Edit any race afterwards. There is a live preview that shows exactly how a
     change moves the standings before I save it. This is also where I add
     steward time penalties.
+    A round that has no result file (say the server never wrote one and all we
+    have is the message in Discord) is typed in here too: add the drivers in
+    finishing order, mark the DNFs, save.
   - Add and edit drivers and teams, including team colours and uploading team
     logos.
   - Manage seasons.
