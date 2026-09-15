@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { useParams, Link, Navigate, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -1623,13 +1623,6 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
   );
 }
 
-// The person's season → row-id map, remembered per row id across the page
-// remount a season switch causes. With it, the fresh mount can redirect to the
-// right season's row in its FIRST render — without it the page first reloaded
-// the OLD row (skeleton), then navigated and loaded again (second skeleton),
-// which read as a stuttering double transition.
-const careerRowsByDriver = new Map(); // driverId -> Map(seasonNumber -> driverId)
-
 // `previewId` + `preview` turn the page into the LIVE PREVIEW embedded on the
 // private /profile editor: the id comes from the prop instead of the route,
 // and `preview` (unsaved edits: name, bio, tiles, photo framing, …) overlays
@@ -1640,9 +1633,29 @@ export default function DriverProfile({ previewId, preview }) {
   const navigate = useNavigate();
   const { user: authedUser } = useAuth();
   const { total: adminAttention } = useAdminAttention();
-  // Drawer for the site settings button shown on one's OWN profile.
+  const location = useLocation();
+
+  // Honour a ?season=N deep link (search results / career-table links): steer
+  // the season switcher to the row's own season before the sync below runs.
+  useSeasonParam();
+  const { season, current: currentSeason, seasons: seasonList } = useSeason();
+  const [searchParams] = useSearchParams();
+  const pendingSeasonParam = searchParams.get("season") != null;
+
+  // The address names the person (their handle) or a row; the backend reads
+  // it within the viewed series and season. A pending ?season deep link is
+  // sent along as-is, so the very first fetch already means that season
+  // instead of the one the switcher still shows. The /profile live preview
+  // edits ONE row and keeps the exact-id read.
+  const wantSeason = pendingSeasonParam ? Number(searchParams.get("season")) : null;
   const { data, loading, error } = useApi(
-    useCallback(() => Promise.all([api.driverProfile(id), api.driverRating(id)]), [id])
+    useCallback(
+      () =>
+        previewId
+          ? Promise.all([api.driverProfile(id), api.driverRating(id)])
+          : Promise.all([api.driverProfileAt(id, wantSeason), api.driverRatingAt(id, wantSeason)]),
+      [id, previewId, wantSeason]
+    )
   );
   // Season-form view: race result or qualifying. Up here with the other hooks,
   // above the loading/error returns below.
@@ -1655,13 +1668,6 @@ export default function DriverProfile({ previewId, preview }) {
   // address at all.
   const shownDriver = previewId ? null : data?.[0]?.driver;
 
-  // Honour a ?season=N deep link (search results / career-table links): steer
-  // the season switcher to the row's own season before the sync below runs.
-  useSeasonParam();
-  const { season, current: currentSeason, seasons: seasonList } = useSeason();
-  const [searchParams] = useSearchParams();
-  const pendingSeasonParam = searchParams.get("season") != null;
-
   // The series in the address against the series this row belongs to. A row
   // id names ONE league's entry of a person, so /s/<other league>/drivers/<id>
   // is the wrong page: it would show this league's numbers under the other
@@ -1670,15 +1676,20 @@ export default function DriverProfile({ previewId, preview }) {
   const { slug: viewedSlug, current: viewedSeries } = useSeries();
   const rowSeriesSlug = previewId ? null : data?.[0]?.driver?.seriesSlug ?? null;
   const wrongSeries = !!viewedSlug && !!rowSeriesSlug && viewedSlug !== rowSeriesSlug;
+  // The address should carry the person's handle, not the row id an older
+  // link brought in; the swap happens below once the row is known.
+  const rowHandle = previewId ? null : data?.[0]?.driver?.handle ?? null;
+  const toHandle = !!rowHandle && routeId !== rowHandle && !!viewedSlug && !wrongSeries && !pendingSeasonParam;
   // No season in the title when the address names another league than the
-  // row (wrongSeries below): the page then says the person does not race
-  // there, and "Season 7" would be the other league's season.
+  // row (wrongSeries below), or when the switcher stands on a season the row
+  // is not from: the page then says the person does not race there, and
+  // "Season 8" would name the row that was found instead.
+  const titleSeason =
+    shownDriver?.seasonNumber != null &&
+    !wrongSeries &&
+    (season == null || pendingSeasonParam || season === shownDriver.seasonNumber);
   useSpecificTitle(
-    shownDriver
-      ? `${shownDriver.name} · ${
-          shownDriver.seasonNumber != null && !wrongSeries ? `Season ${shownDriver.seasonNumber}` : "NABS Racing League"
-        }`
-      : null
+    shownDriver ? `${shownDriver.name} · ${titleSeason ? `Season ${shownDriver.seasonNumber}` : "NABS Racing League"}` : null
   );
 
   // Keep the profile and the NavBar season switcher in step. When they
@@ -1687,7 +1698,7 @@ export default function DriverProfile({ previewId, preview }) {
   // selected season, go to THAT page. Seasons they did NOT race stay put and
   // render a "didn't race this season" notice instead (below).
   useEffect(() => {
-    if (previewId || !data || pendingSeasonParam || wrongSeries) return;
+    if (previewId || !data || pendingSeasonParam || wrongSeries || toHandle) return;
     const prof = data[0];
     const own = prof?.driver?.seasonNumber;
     if (season == null || own == null || season === own) return;
@@ -1695,27 +1706,7 @@ export default function DriverProfile({ previewId, preview }) {
     if (row && row.driverId !== prof.driver.id) {
       navigate(`/drivers/${row.driverId}?season=${season}`, { replace: true });
     }
-  }, [previewId, data, season, pendingSeasonParam, wrongSeries, navigate]);
-
-  // Remember the person's season → row map for every one of their rows, so
-  // the NEXT season switch can redirect instantly (see careerRowsByDriver).
-  useEffect(() => {
-    const prof = data?.[0];
-    if (!prof) return;
-    const rows = prof.career?.seasons?.length
-      ? prof.career.seasons
-      : [{ driverId: prof.driver.id, seasonNumber: prof.driver.seasonNumber }];
-    const map = new Map(rows.filter((s) => s.seasonNumber != null).map((s) => [s.seasonNumber, s.driverId]));
-    for (const rowId of map.values()) careerRowsByDriver.set(rowId, map);
-  }, [data]);
-
-  // Instant redirect on a fresh mount after a season switch: if we already
-  // know this person's row for the selected season, go there before fetching
-  // anything — no wrong-row skeleton, no double page transition.
-  const cachedTarget = !previewId && season != null && !wrongSeries ? careerRowsByDriver.get(id)?.get(season) : null;
-  if (cachedTarget && cachedTarget !== id && !pendingSeasonParam) {
-    return <Navigate to={`/drivers/${cachedTarget}?season=${season}`} replace />;
-  }
+  }, [previewId, data, season, pendingSeasonParam, wrongSeries, toHandle, navigate]);
 
   if (loading)
     return (
@@ -1730,6 +1721,13 @@ export default function DriverProfile({ previewId, preview }) {
   if (error) return <ErrorBox message={error} />;
 
   const [p, rating] = data;
+
+  // A row id in the address (an older link, a career-table chip): swap it for
+  // the person's handle. The season switcher then works on this one address
+  // for every season the person raced, with no row ids passing through it.
+  if (toHandle) {
+    return <Navigate to={`/s/${viewedSlug}/drivers/${rowHandle}${location.search}`} replace />;
+  }
 
   // Wrong league in the address (see wrongSeries above). The person's rows in
   // the viewed series come with the profile; the one for the selected season

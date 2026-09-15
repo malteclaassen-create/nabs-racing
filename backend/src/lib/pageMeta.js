@@ -10,6 +10,7 @@
 // it looks up the entity and rewrites the tags in the HTML it is about to send.
 // Everything else falls through to the static tags unchanged.
 // ---------------------------------------------------------------------------
+import { resolveDriverRow } from "./driverHandles.js";
 import { getDriverStandings } from "../services/standingsService.js";
 import { resolveSeason, resolveSeasonId } from "../services/seasonService.js";
 import { getPrivateSeasonIds, getSeasonTeaser } from "../services/seasonService.js";
@@ -78,8 +79,12 @@ export function raceNight(races) {
 
 // /s/<series>/drivers/<id>
 async function driverMeta(prisma, seriesSlug, driverId) {
+  // The address may carry the person's handle rather than a row id: the row
+  // it means is the one under this league's active season (lib/driverHandles).
+  const hit = await resolveDriverRow(prisma, driverId, { series: seriesSlug }).catch(() => null);
+  if (!hit) return null;
   const driver = await prisma.driver.findUnique({
-    where: { id: driverId },
+    where: { id: hit.id },
     include: { team: true, season: { select: { id: true, number: true } } },
   });
   if (!driver) return null;

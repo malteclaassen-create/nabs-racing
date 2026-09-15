@@ -4,6 +4,7 @@ import { getDriverProfile } from "../services/driverProfileService.js";
 import { getCardRating } from "../services/cardRatingService.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { isAdminRequest } from "../middleware/auth.js";
+import { resolveDriverRow } from "../lib/driverHandles.js";
 
 const router = Router();
 
@@ -14,13 +15,28 @@ async function seasonHidden(req, seasonId) {
   return (await getPrivateSeasonIds(prisma)).has(seasonId);
 }
 
+// :id is a row id, or the person's handle (their name in url form) when the
+// read says which league (?series=) and season (?season=) it is looking at:
+// the address /s/<series>/drivers/<handle> stands for the person's row in
+// that league and season. See lib/driverHandles.js.
+async function rowFor(req) {
+  const { series, season } = req.query || {};
+  const hit = await resolveDriverRow(prisma, req.params.id, {
+    series: series || null,
+    season: season ?? null,
+    includePrivate: isAdminRequest(req),
+  });
+  return hit?.id || null;
+}
+
 // GET /api/drivers/:id/profile -> full career profile for one driver
 router.get("/:id/profile", async (req, res, next) => {
   try {
-    const driver = await prisma.driver.findUnique({ where: { id: req.params.id }, select: { seasonId: true } });
+    const rowId = await rowFor(req);
+    const driver = rowId ? await prisma.driver.findUnique({ where: { id: rowId }, select: { seasonId: true } }) : null;
     if (!driver) return res.status(404).json({ error: "Driver not found" });
     if (await seasonHidden(req, driver.seasonId)) return res.status(404).json({ error: "Driver not found" });
-    const profile = await getDriverProfile(prisma, req.params.id);
+    const profile = await getDriverProfile(prisma, rowId);
     if (!profile) return res.status(404).json({ error: "Driver not found" });
     res.json(profile);
   } catch (e) {
@@ -34,7 +50,8 @@ router.get("/:id/profile", async (req, res, next) => {
 // numbers behind it are private (/api/me/rating/history).
 router.get("/:id/rating", async (req, res, next) => {
   try {
-    const driver = await prisma.driver.findUnique({ where: { id: req.params.id } });
+    const rowId = await rowFor(req);
+    const driver = rowId ? await prisma.driver.findUnique({ where: { id: rowId } }) : null;
     if (!driver) return res.status(404).json({ error: "Driver not found" });
     if (await seasonHidden(req, driver.seasonId)) return res.status(404).json({ error: "Driver not found" });
     res.json(await getCardRating(prisma, driver.seasonId, driver.id));

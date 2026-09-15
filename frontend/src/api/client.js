@@ -397,6 +397,11 @@ export const api = {
   racesFor: (n) => request(`/races${seasonParam(n)}`, { auth: true }),
   driverProfile: (id) => request(`/drivers/${id}/profile`, { auth: true }),
   driverRating: (id) => request(`/drivers/${id}/rating`, { auth: true }),
+  // The public profile page: `id` may be the person's handle (name in url
+  // form) instead of a row id. The backend resolves it within the viewed
+  // series and the season given (null = the selected one) to the right row.
+  driverProfileAt: (id, season) => request(`/drivers/${id}/profile${seasonParam(season)}`, { auth: true }),
+  driverRatingAt: (id, season) => request(`/drivers/${id}/rating${seasonParam(season)}`, { auth: true }),
   // Own round-by-round rating history + component breakdown (My Rating tab).
   myRatingHistory: () => request("/me/rating/history", { userAuth: true }),
   // Per-race career curve — heavier, so it loads only on demand.

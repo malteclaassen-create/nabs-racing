@@ -14,6 +14,7 @@ import { parseSocials } from "../lib/socials.js";
 import { getLinkedDriverIds, getNameOverrides, getIdentityOverrides, getPersonGroups } from "../lib/persons.js";
 import { getActiveSeason } from "./seasonService.js";
 import { seasonSeriesMap, dbListSeries } from "../lib/series.js";
+import { driverHandle, resolveDriverRow } from "../lib/driverHandles.js";
 import { telemetryForDriver } from "../lib/telemetryRead.js";
 import { readManualFastestLaps, readPoleHolders } from "../lib/raceHonours.js";
 import { readProfileTiles } from "../lib/profileTiles.js";
@@ -587,6 +588,16 @@ export async function getDriverProfile(prisma, driverId) {
   const { career, otherSeries } = await buildCareer(prisma, driverId, seasonId, standings);
   const [seriesOfSeason, seriesRows] = await Promise.all([seasonSeriesMap(prisma), dbListSeries(prisma, { includePrivate: true })]);
   const ownSeries = seriesRows.find((s) => s.id === seriesOfSeason.get(seasonId)) || null;
+  // The address the page should show for this row: the person's handle under
+  // their league, but only when that handle really resolves back to THIS row
+  // (a renamed row or a namesake could send it elsewhere; then the row id
+  // stays in the address, which always works).
+  let handle = null;
+  if (ownSeries?.slug && driver.season?.number != null) {
+    const h = driverHandle(driver.name);
+    const back = await resolveDriverRow(prisma, h, { series: ownSeries.slug, season: driver.season.number, includePrivate: true }).catch(() => null);
+    if (back?.id === driver.id) handle = h;
+  }
 
   // Linked rows + private seasons are shared by the all-time stats and both
   // badge shelves below, so resolve them once. Everything here is scoped to
@@ -910,6 +921,9 @@ export async function getDriverProfile(prisma, driverId) {
       // league's prefix is not that league's profile of the person.
       seriesSlug: ownSeries?.slug ?? null,
       seriesName: ownSeries?.name ?? null,
+      // Url form of the name for /s/<series>/drivers/<handle>, null when the
+      // row id has to stay in the address (see above).
+      handle,
       discordName: driver.discordName,
       tier: driver.tier,
       isActive: driver.isActive,
