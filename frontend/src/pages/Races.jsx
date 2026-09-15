@@ -1062,36 +1062,31 @@ export default function Races() {
                               rather than in among the buttons. Each appears
                               only when it has something to offer: a lap chart
                               on file, an imported qualifying. */}
-                          {/* justify-between only bites on the phone line, where
-                              the group is full width: switch left, date right,
-                              the way the row reads on a desktop. */}
-                          <span className="flex w-full items-center justify-between gap-3 sm:w-auto sm:shrink-0">
-                            {/* Table ⇄ lap chart, and the session switch after
-                                it. Two switches, one job each: this one picks
-                                how to look at the round, that one picks which
-                                session. Only for the race (a qualifying
-                                classification has no laps to plot) and only
-                                where the round was archived with its raw
-                                result file — hasLapChart, a directory listing
-                                on the server, not a promise the chart can't
-                                keep. */}
-                            {!detailIsStale && shownSession === "race" && detail.race?.hasLapChart && (
-                              <SlidingTabs
-                                className="shrink-0"
-                                wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
-                                btnClassName="px-2.5 py-1 text-[11px]"
-                                pillClassName="rounded-md bg-brand shadow"
-                                items={[
-                                  { key: "table", label: "Table" },
-                                  { key: "chart", label: "Lap by lap" },
-                                ]}
-                                value={view}
-                                onChange={setView}
-                              />
-                            )}
+                          {/* On the phone line the group is full width: the
+                              switches pack left and the date is pushed to the
+                              right edge (ml-auto), the way the row reads on a
+                              desktop. Deliberately not justify-between: the
+                              view switch comes and goes with the session
+                              (below), and with three items spread across the
+                              line the session switch floated to the middle on
+                              the Feature tab and jumped to the left edge on
+                              the Sprint and Quali tabs — under the thumb that
+                              had just pressed it. */}
+                          <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
+                            {/* Two switches, one job each: the session switch
+                                picks which classification of the evening, the
+                                table ⇄ lap chart switch picks how to look at
+                                it. The session switch is the one that is
+                                always there (when the round has more than one
+                                session), so it is the anchor: first on the
+                                phone, where the left edge never moves, and
+                                next to the date on a desktop, where the
+                                right-aligned group grows leftwards and only
+                                the OUTER item shifts. The view switch takes
+                                the spot that is allowed to come and go. */}
                             {!detailIsStale && (detail.quali?.length > 0 || sprintRaceId) && (
                               <SlidingTabs
-                                className="shrink-0"
+                                className="order-1 shrink-0 sm:order-2"
                                 wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
                                 btnClassName="px-2.5 py-1 text-[11px]"
                                 pillClassName="rounded-md bg-brand shadow"
@@ -1106,9 +1101,29 @@ export default function Races() {
                                 onChange={setSession}
                               />
                             )}
+                            {/* Table ⇄ lap chart. Only for the race (a
+                                qualifying classification has no laps to plot,
+                                a sprint has no archived file) and only where
+                                the round was archived with its raw result
+                                file — hasLapChart, a directory listing on the
+                                server, not a promise the chart can't keep. */}
+                            {!detailIsStale && shownSession === "race" && detail.race?.hasLapChart && (
+                              <SlidingTabs
+                                className="order-2 shrink-0 sm:order-1"
+                                wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
+                                btnClassName="px-2.5 py-1 text-[11px]"
+                                pillClassName="rounded-md bg-brand shadow"
+                                items={[
+                                  { key: "table", label: "Table" },
+                                  { key: "chart", label: "Lap by lap" },
+                                ]}
+                                value={view}
+                                onChange={setView}
+                              />
+                            )}
                             {head.date && (
                               <span
-                                className="text-right font-mono text-xs font-semibold tabular-nums text-light sm:text-sm"
+                                className="order-3 ml-auto text-right font-mono text-xs font-semibold tabular-nums text-light sm:text-sm"
                                 title={fmtRaceTime(head.date)}
                               >
                                 {fmtDate(head.date)}
