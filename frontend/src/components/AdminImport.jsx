@@ -792,7 +792,7 @@ export default function AdminImport({ onCommitted }) {
               type="file"
               accept="application/json,.json"
               onChange={handleFile}
-              className="transition mt-3 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-ink hover:file:bg-primary-dark"
+              className="transition mt-3 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-onbrand hover:file:bg-primary-dark"
             />
           </div>
         </div>
@@ -859,7 +859,7 @@ export default function AdminImport({ onCommitted }) {
                   setQualiBusy(false);
                 }
               }}
-              className="transition block text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-ink hover:file:bg-primary-dark file:disabled:opacity-50"
+              className="transition block text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-onbrand hover:file:bg-primary-dark file:disabled:opacity-50"
             />
           </div>
           {qualiBusy && <p className="text-sm text-light">Uploading…</p>}

@@ -14,21 +14,27 @@ export default {
         medium: "var(--c-text2)",
         light: "var(--c-text3)",
         faint: "var(--c-faint)",
-        // Fixed brand/accent colours (work on both themes)
-        // The filled-button colour: the standard NABS pink, the same value
-        // --c-brand carries. It is a PALE pink, so these buttons are written in
-        // `ink`, not white — white on #f4afc6 is 1.9:1, ink is 9.4:1, and ink
-        // holds up on the hover step below too. Anything pink that must stay
-        // visible as a thin line on a white card (focus rings, selected
-        // borders) uses `accent` instead, which deepens itself in light mode.
-        primary: { DEFAULT: "#F4AFC6", dark: "#EE8BAC" },
+        // The filled-button colour: the series' accent (--c-brand, NABS pink
+        // by default), with a hover step one shade deeper (--c-brand-hover)
+        // and the text colour that reads on it (--c-on-brand: ink on a pale
+        // accent, white on a deep one — all three derived from the one
+        // admin-picked colour in utils/seriesColor.js). It used to be the
+        // fixed pink, so every button stayed pink on a series that had made
+        // the rest of its pages cyan. Anything that must stay visible as a
+        // thin line on a white card (focus rings, selected borders) uses
+        // `accent` instead, which deepens itself in light mode.
+        primary: {
+          DEFAULT: "rgb(var(--c-brand) / <alpha-value>)",
+          dark: "rgb(var(--c-brand-hover) / <alpha-value>)",
+        },
+        onbrand: "var(--c-on-brand)",
         ink: "#0F172A", // intentional dark surface (hero, chips)
         gold: "#EAB308",
         silver: "#94A3B8",
         bronze: "#C2410C",
         // Brand accent (NABS pink by default). Raw RGB triple with alpha support
         // (brand/20 etc.), driven by --c-brand so a series can override it — see
-        // the [data-series] block in index.css.
+        // --c-brand in index.css and context/SeriesContext.jsx.
         brand: "rgb(var(--c-brand) / <alpha-value>)",
         // Eyebrow/mono-label text: readable rose in light mode, brand pink in
         // dark mode (see --c-eyebrow in index.css).

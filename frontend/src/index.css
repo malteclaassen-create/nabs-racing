@@ -29,6 +29,12 @@
      CSS rule keyed to a slug: that broke the moment production's real slug
      differed from the one tested locally. */
   --c-brand: var(--c-brand-dynamic, 244 175 198);
+  /* The filled-button pair that goes with it: the hover shade one step deeper
+     (#ee8bac for the default pink), and the text colour that reads on the
+     fill — ink on a pale accent, white on a deep one. Both derived from the
+     series' colour by SeriesProvider like --c-brand-dynamic above. */
+  --c-brand-hover: var(--c-brand-hover-dynamic, 238 139 172);
+  --c-on-brand: var(--c-on-brand-dynamic, #0f172a);
   --c-page-glow: radial-gradient(1200px 540px at 50% -10%, rgb(var(--c-brand) / 0.16), transparent 70%);
   /* Medal tones for TEXT/borders sitting on the card background. The bright
      gold/silver used for filled chips (MEDAL in ui.jsx) wash out as text on
@@ -214,7 +220,7 @@ body::before {
     box-shadow: var(--c-shadow-lift);
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-ink transition hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-onbrand transition hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-50;
   }
   .btn-secondary {
     @apply inline-flex items-center justify-center rounded-lg bg-surface2 px-4 py-2 text-sm font-semibold text-medium transition hover:bg-border focus:outline-none focus:ring-2 focus:ring-border disabled:opacity-50;
@@ -749,14 +755,14 @@ body::before {
 .tour-spot {
   pointer-events: none;
   border-radius: 12px;
-  box-shadow: 0 0 0 3px rgb(244 175 198 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55);
+  box-shadow: 0 0 0 3px rgb(var(--c-brand) / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55);
   transition: left var(--t-base) var(--e-soft), top var(--t-base) var(--e-soft), width var(--t-base) var(--e-soft), height var(--t-base) var(--e-soft), opacity var(--t-base) var(--e-soft);
   animation: tour-pulse 1.6s ease-in-out infinite;
 }
 .tour-spot-idle { animation: none; }
 @keyframes tour-pulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgb(244 175 198 / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55); }
-  50%      { box-shadow: 0 0 0 8px rgb(244 175 198 / 0.35), 0 0 0 9999px rgb(2 6 23 / 0.55); }
+  0%, 100% { box-shadow: 0 0 0 3px rgb(var(--c-brand) / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55); }
+  50%      { box-shadow: 0 0 0 8px rgb(var(--c-brand) / 0.35), 0 0 0 9999px rgb(2 6 23 / 0.55); }
 }
 .tour-card { animation: nabs-pop var(--t-base) var(--e-out) both; }
 
