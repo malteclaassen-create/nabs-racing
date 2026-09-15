@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, telemetryTrackMapUrl } from "../api/client.js";
+import { api, getToken, telemetryTrackMapUrl } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { Field } from "./ui.jsx";
+import { useAsk } from "./overlay.jsx";
 import { fmtLap } from "../utils/format.js";
 import { ChannelChart, PedalChart, ChartAxis, LapSummary, lapColor } from "./TelemetryCharts.jsx";
 import TelemetryDashboard from "./TelemetryDashboard.jsx";
@@ -168,6 +169,13 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const { user } = useAuth();
   const me = useRef(null);
   me.current = user?.driverId || null;
+  // Who may take a lap OUT. The two ways the site knows an admin (pages/
+  // Admin.jsx): the PIN session, or a Discord account the league made admin.
+  // The backend checks again on the call; this only decides whether to draw
+  // the control, and a member never sees it.
+  const admin = !!user?.isAdmin || !!getToken();
+  const ask = useAsk();
+  const [removing, setRemoving] = useState(false);
 
   // Zooming needs somewhere to point. The camera centres on the cursor, and
   // with no cursor it centred on the middle of the bounding box — which on a
@@ -197,7 +205,11 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   // empty list should name the league too.
   const seriesName = tracks.data?.seriesName;
   const effectiveSeries = tracks.data?.series || seriesSlug || viewedSlug || activeSeries?.slug || null;
-  // First track with laps preselects itself — an empty dropdown helps nobody.
+  // The first track preselects itself — an empty dropdown helps nobody — and
+  // the backend puts the track with the NEWEST lap first, which is the one the
+  // practice server is on now. It used to be the first by name, which on a
+  // night with two layouts of the same circuit in the list opened the card on
+  // a two-lap variant and left the fifty real laps one entry down, unseen.
   useEffect(() => {
     if (tracks.data && !list.some((t) => t.trackKey === trackKey)) setTrackKey(list[0]?.trackKey || "");
   }, [list, trackKey, tracks.data]);
@@ -507,6 +519,37 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const chartProps = { cursor: at, onPick: pickCursor, range: visibleRange, onSelectRange: selectChartRange, onResetRange: resetCharts, colorA, colorB, bands, onBand: selectSection };
   const error = tracks.error || loadError || aError || bError;
   const refresh = () => { tracks.reload(); setRevision((v) => v + 1); };
+  // An admin taking a lap out of the store: a modded-car time, a lap from a
+  // layout the server ran for ten minutes, a driver who should not be in the
+  // list. Asked first, because a stored lap cannot be put back — the car that
+  // recorded it has moved on. Afterwards the list is re-read rather than
+  // patched: a track whose last lap went is a track that no longer exists
+  // here, and the endpoint is the one that knows. The lap's id is its time in
+  // milliseconds, which is how the store names it.
+  const removeLap = async (lap) => {
+    if (!lap || removing) return;
+    const ok = await ask({
+      title: `Remove ${lap.name}'s ${formatLapTime(lap.lapTimeMs)}?`,
+      body: "The lap is deleted from the site's store and cannot be brought back. The driver keeps whatever else they have recorded here, and the recorder carries on as before.",
+      danger: true,
+      confirmLabel: "Remove lap",
+    });
+    if (!ok) return;
+    setRemoving(true);
+    try {
+      await api.deleteTelemetryLap(trackKey, lap.steamId, lap.lapTimeMs, seriesSlug);
+      refresh();
+    } catch (e) {
+      setLoadError(e.message || "Could not remove the lap.");
+    } finally {
+      setRemoving(false);
+    }
+  };
+  const removeButton = (lap) => admin && lap ? (
+    <button type="button" className="text-xs font-semibold text-bad hover:underline disabled:text-faint" disabled={removing} title="Delete this lap from the site's store (admins only)" onClick={() => removeLap(lap)}>
+      {removing ? "Removing…" : "Remove lap"}
+    </button>
+  ) : null;
   const changeA = (id) => {
     if (id === bId) setBId(aId);
     setAId(id);
@@ -609,8 +652,8 @@ function TelemetryCompare({ series: fixedSeries = null }) {
           {!error && laps?.length === 0 && <p className="py-4 text-sm text-light">No laps are currently available for this track. Refresh or select another track.</p>}
           {lapA && <>
             <div className="grid grid-cols-2 gap-4 border-y border-border sm:grid-cols-3">
-              <LapSummary lap={lapA} side="A" />
-              <LapSummary lap={lapB} side="B" />
+              <LapSummary lap={lapA} side="A" action={removeButton(lapA)} />
+              <LapSummary lap={lapB} side="B" action={removeButton(lapB)} />
               <div className="col-span-2 flex flex-col justify-center gap-2 py-3 sm:col-span-1">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <p className="text-xs font-semibold text-light">Finish-line gap</p>

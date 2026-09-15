@@ -204,7 +204,10 @@ export function ChartAxis({ visibleRange, n, dist, mode = "pct", zoomed = false 
   );
 }
 
-export function LapSummary({ lap, side }) {
+// `action` is a control about THIS lap, drawn under its facts — the admin's
+// "Remove lap" today. It sits inside the coloured block rather than beside
+// it so there is no doubt which of the two laps it acts on.
+export function LapSummary({ lap, side, action = null }) {
   const color = lapColor(lap, side);
   return (
     <div className="my-3 min-w-0 border-l-2 pl-3" style={{ borderColor: color }}>
@@ -215,6 +218,7 @@ export function LapSummary({ lap, side }) {
       {lap?.team && <div className="mt-2 flex items-center gap-2 text-xs text-light"><TeamLogo key={lap.team.id} id={lap.team.id} name={lap.team.name} color={color} logoUrl={lap.team.logoUrl} size={22} /><span className="truncate">{lap.team.name}</span></div>}
       <div className="mt-2 font-display text-xl font-bold tabular-nums text-dark sm:text-3xl">{lap ? formatTime(lap.lapTimeMs) : "—"}</div>
       <p className="mt-2 text-xs text-light">{lap ? <><span className="block truncate" title={lap.car}>{String(lap.car || 'Unknown car').replaceAll("_", " ")}</span><span className="mt-1 block">{Math.round(Math.max(...lap.speed))} km/h peak{recordedOn(lap.recordedAt)}</span></> : "Compare another driver or one of your own laps."}</p>
+      {lap && action && <div className="mt-2">{action}</div>}
     </div>
   );
 }

@@ -374,6 +374,15 @@ export function pruneSeasonsBefore(series, season) {
 // All tracks in one season of one series that have at least one lap, with a
 // light summary each. `legacy` folds in the pre-season files, and is passed
 // only for the season running now.
+//
+// NEWEST LAP FIRST, because the comparison opens on the first entry and the
+// track whose last lap is the most recent is the one the practice server is
+// on now. Sorted by key, as it was, the first entry was whichever name
+// happened to sort lowest — and the evening this changed, that was a two-lap
+// layout variant of Baku sitting above the same circuit's real layout with
+// fifty laps and a near-identical name. The card read "baku · 2 laps", and the
+// fifty were one dropdown entry down, where nobody thought to look. A stale
+// variant still appears in the list; it just no longer gets to be the answer.
 export function listTracks(series, season, legacy = false) {
   const dirs = [seasonDir(series, season)];
   // The old shape put track folders directly under the series (under the root,
@@ -395,10 +404,16 @@ export function listTracks(series, season, legacy = false) {
         layout: laps[0].layout,
         laps: laps.length,
         bestMs: laps[0].lapTimeMs,
+        // When the last lap landed here. ISO stamps compare as strings; a
+        // lap from before the store stamped them has none, and its track
+        // sorts after every track that does.
+        newestAt: laps.reduce((m, l) => (l.recordedAt && l.recordedAt > m ? l.recordedAt : m), "") || null,
       });
     }
   }
-  return [...byTrack.values()].sort((a, b) => a.trackKey.localeCompare(b.trackKey));
+  return [...byTrack.values()].sort(
+    (a, b) => (b.newestAt || "").localeCompare(a.newestAt || "") || a.trackKey.localeCompare(b.trackKey)
+  );
 }
 
 // Every stored lap of one track in one season of one series — metadata only,

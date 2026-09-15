@@ -1185,6 +1185,12 @@ export const api = {
   // meant when everybody had exactly one.
   telemetryLap: (trackKey, steamId, lapId = null, series = null) =>
     request(`/telemetry-laps/${trackKey}/${steamId}${lapId ? `/${lapId}` : ""}${telemetryQ(series)}`, { auth: true }),
+  // Take one recorded lap out of the store (admins only; the backend checks).
+  // Carries the same scope as the reads above, so the lap removed is the lap
+  // on screen: the series the card is on, and the season the switcher names
+  // when it names one.
+  deleteTelemetryLap: (trackKey, steamId, lapId, series = null) =>
+    request(`/admin/telemetry-laps/${trackKey}/${steamId}/${lapId}${telemetryQ(series)}`, { method: "DELETE", auth: true }),
 
   // Cars and wide wordmarks for the shareable result graphic, per team.
   teamArt: () => request("/admin/team-art", { auth: true }),
