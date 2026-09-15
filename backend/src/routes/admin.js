@@ -51,7 +51,7 @@ import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { invalidateCardRatingCache } from "../services/cardRatingService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
-import { readTrackInfo, writeTrackInfo } from "../lib/trackInfo.js";
+import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf } from "../lib/trackInfo.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
 import { checkImageUpload } from "../lib/imageIntegrity.js";
 import {
@@ -4683,9 +4683,15 @@ router.post("/tracks/:key/map", upload.single("file"), async (req, res, next) =>
     writeFileSync(dest, req.file.buffer);
     const mapImageUrl = `/api/uploads/tracks/${filename}?v=${Date.now()}`;
     const current = await readTrackInfo(prisma, key);
+    // Measured now, so the page can hold the picture's height open before it
+    // has loaded (lib/trackInfo.js). A picture we cannot measure keeps no size.
+    const size = imageSizeOf(req.file.buffer);
+    const mapImageSizes = { ...current.mapImageSizes };
+    if (size) mapImageSizes[imageKeyOf(mapImageUrl)] = size;
+    else delete mapImageSizes[imageKeyOf(mapImageUrl)];
     const updated = series
-      ? { ...current, mapImages: { ...current.mapImages, [series.slug]: mapImageUrl } }
-      : { ...current, mapImageUrl };
+      ? { ...current, mapImages: { ...current.mapImages, [series.slug]: mapImageUrl }, mapImageSizes }
+      : { ...current, mapImageUrl, mapImageSizes };
     const saved = await writeTrackInfo(prisma, key, updated);
     res.json({ ok: true, mapImageUrl, series: series?.slug || null, content: saved });
   } catch (e) {
