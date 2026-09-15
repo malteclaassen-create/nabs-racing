@@ -6,12 +6,30 @@ import { trackKey, circuitFor } from "../data/circuits.js";
 import { COUNTRIES } from "../data/countries.js";
 import CircuitMap from "./CircuitMap.jsx";
 import Flag from "./Flag.jsx";
+import { useSeries } from "../context/SeriesContext.jsx";
+
+// One stored map image: the picture, whose it is, and its Remove button.
+function MapRow({ label, url, onRemove, busy }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <img src={url} alt={label ? `${label} track map` : "Track map"} className="h-24 rounded-lg border border-border" />
+      {label && <span className="text-sm font-semibold text-medium">{label}</span>}
+      <button className="btn-secondary py-1.5 text-sm" onClick={onRemove} disabled={busy}>Remove image</button>
+    </div>
+  );
+}
 
 // Admin "Tracks" tab: per-circuit fun facts and an optional custom map image,
 // layered on top of the computed track history shown on the upcoming-race panel
-// and the attendance page.
+// and the attendance page. The map image has two layers: the shared one every
+// series shows, and one per series for a league that wants its own picture of
+// the circuit on its own pages (backend lib/trackInfo.js).
 export default function AdminTracks() {
   const { data: races } = useApi(useCallback(() => api.races(), []));
+  const { seriesList } = useSeries();
+  // The per-series choice only exists once there is a second series to choose.
+  const multiSeries = (seriesList || []).length > 1;
+  const nameOf = (slug) => (seriesList || []).find((s) => s.slug === slug)?.name || slug;
   const [selected, setSelected] = useState(""); // track display name
   const [facts, setFacts] = useState([]);
   // The hotlap videos are edited in the Attendance tab, not here — but they
@@ -19,6 +37,10 @@ export default function AdminTracks() {
   // this page untouched. Without this, saving a fun fact would wipe the laps.
   const [keepVideos, setKeepVideos] = useState([]);
   const [mapImageUrl, setMapImageUrl] = useState(null);
+  // Each series' own map image, by slug (empty = every series shows the shared
+  // one), and which of the two an upload is for: "all" or a series slug.
+  const [mapImages, setMapImages] = useState({});
+  const [mapScope, setMapScope] = useState("all");
   const [country, setCountry] = useState(""); // effective flag code ("" = none)
   const [mapRotation, setMapRotation] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -48,6 +70,7 @@ export default function AdminTracks() {
         setFacts(d.facts?.length ? d.facts : [{ label: "", value: "" }]);
         setKeepVideos(d.videos || []);
         setMapImageUrl(d.mapImageUrl || null);
+        setMapImages(d.mapImages || {});
         setMapRotation(d.mapRotation || 0);
         setCountry(d.country || "");
       })
@@ -67,6 +90,9 @@ export default function AdminTracks() {
         facts: facts.filter((f) => f.label.trim() || f.value.trim()),
         videos: keepVideos,
         mapImageUrl,
+        // Uploaded through the map endpoint, carried through this save
+        // untouched — the backend keeps them anyway when they are missing.
+        mapImages,
         mapRotation,
       };
       const res = await api.saveTrackInfo(key, content);
@@ -83,27 +109,42 @@ export default function AdminTracks() {
   }
 
   async function uploadMap(e) {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
+    // "all" is the shared image; a slug is that series' own.
+    const series = multiSeries && mapScope !== "all" ? mapScope : null;
     setBusy(true);
     setError(null);
     try {
-      const d = await api.uploadTrackMap(key, file);
-      setMapImageUrl(d.mapImageUrl);
-      setMsg("Map image uploaded.");
+      const d = await api.uploadTrackMap(key, file, series);
+      if (series) setMapImages((m) => ({ ...m, [series]: d.mapImageUrl }));
+      else setMapImageUrl(d.mapImageUrl);
+      setMsg(series ? `Map image uploaded for ${nameOf(series)}.` : "Map image uploaded.");
     } catch (err) {
       setError(err.message);
     } finally {
+      // Same file again (a re-export after a tweak) must fire the change event.
+      input.value = "";
       setBusy(false);
     }
   }
 
-  async function clearMap() {
+  // `series` = null clears the shared image, a slug that series' own.
+  async function clearMap(series = null) {
     setBusy(true);
     try {
-      await api.clearTrackMap(key);
-      setMapImageUrl(null);
-      setMsg("Map image removed.");
+      await api.clearTrackMap(key, series);
+      if (series) {
+        setMapImages((m) => {
+          const next = { ...m };
+          delete next[series];
+          return next;
+        });
+      } else {
+        setMapImageUrl(null);
+      }
+      setMsg(series ? `Map image for ${nameOf(series)} removed.` : "Map image removed.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -219,16 +260,41 @@ export default function AdminTracks() {
             <p className="mb-2 text-sm text-light">
               Replaces the plain outline on the upcoming-race panel, e.g. the downloaded PNG with the corners labelled.
               Remove it to go back to the built-in outline.
+              {multiSeries &&
+                " A series can have a picture of its own; a series without one shows the image for all series."}
             </p>
-            {mapImageUrl ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <img src={mapImageUrl} alt="Track map" className="h-24 rounded-lg border border-border" />
-                <button className="btn-secondary py-1.5 text-sm" onClick={clearMap} disabled={busy}>Remove image</button>
+            {/* What is stored: the shared image, then each series' own. */}
+            {(mapImageUrl || Object.keys(mapImages).length > 0) && (
+              <div className="mb-3 space-y-2">
+                {mapImageUrl && (
+                  <MapRow label={multiSeries ? "All series" : null} url={mapImageUrl} onRemove={() => clearMap(null)} busy={busy} />
+                )}
+                {Object.entries(mapImages).map(([slug, url]) => (
+                  <MapRow key={slug} label={nameOf(slug)} url={url} onRemove={() => clearMap(slug)} busy={busy} />
+                ))}
               </div>
-            ) : (
-              <input aria-label="Custom map image" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={uploadMap} disabled={busy}
-                className="transition block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-onbrand hover:file:bg-primary-dark" />
             )}
+            {/* Uploading replaces whatever is stored for the chosen scope. */}
+            <div className="flex flex-wrap items-center gap-3">
+              {multiSeries && (
+                <select
+                  aria-label="Which series the image is for"
+                  className="input w-auto max-w-xs"
+                  value={mapScope}
+                  onChange={(e) => setMapScope(e.target.value)}
+                  disabled={busy}
+                >
+                  <option value="all">For all series</option>
+                  {seriesList.map((s) => (
+                    <option key={s.slug} value={s.slug}>
+                      Only {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <input aria-label="Custom map image" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={uploadMap} disabled={busy}
+                className="transition block min-w-[16rem] flex-1 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-onbrand hover:file:bg-primary-dark" />
+            </div>
           </div>
 
           <button className="btn-primary" onClick={save} disabled={busy}>

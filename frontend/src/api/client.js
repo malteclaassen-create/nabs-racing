@@ -1060,12 +1060,16 @@ export const api = {
   adminTrackInfo: (key) => request(`/admin/tracks/${key}/info`, { auth: true }),
   saveTrackCountry: (key, country) => request(`/admin/tracks/${key}/country`, { method: "PUT", body: { country }, auth: true }),
   saveTrackInfo: (key, content) => request(`/admin/tracks/${key}/info`, { method: "PUT", body: { content }, auth: true }),
-  uploadTrackMap: (key, file) => {
+  // `series`: a slug uploads (or clears) that series' own map image, shown on
+  // its pages only; null the shared image every other series shows.
+  uploadTrackMap: (key, file, series = null) => {
     const fd = new FormData();
     fd.append("file", file);
+    if (series) fd.append("series", series);
     return request(`/admin/tracks/${key}/map`, { method: "POST", body: fd, auth: true, form: true });
   },
-  clearTrackMap: (key) => request(`/admin/tracks/${key}/map`, { method: "DELETE", auth: true }),
+  clearTrackMap: (key, series = null) =>
+    request(`/admin/tracks/${key}/map${series ? `?series=${encodeURIComponent(series)}` : ""}`, { method: "DELETE", auth: true }),
 
   // Incident reports. The member's own side: file one, read the threads you are
   // party to, write in them. Everything is scoped to the login server-side.

@@ -14,7 +14,7 @@ import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { resolveSeries, seasonSeriesMap } from "../lib/series.js";
 import { getPersonGroups, getNameOverrides, getLinkedDriverIds } from "../lib/persons.js";
 import { telemetryForRaces } from "../lib/telemetryRead.js";
-import { readTrackInfo } from "../lib/trackInfo.js";
+import { readTrackInfo, mapImageFor } from "../lib/trackInfo.js";
 import { readTrackCountries, staticCountryFor } from "../lib/raceCountries.js";
 
 const router = Router();
@@ -107,7 +107,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
         stats: {},
         editions: [],
         customFacts: info.facts,
-        mapImageUrl: info.mapImageUrl,
+        mapImageUrl: mapImageFor(info, series?.slug),
         mapRotation: info.mapRotation || 0,
         videos,
         me: null,
@@ -247,7 +247,9 @@ router.get("/history", optionalUser, async (req, res, next) => {
       stats,
       editions,
       customFacts: info.facts,
-      mapImageUrl: info.mapImageUrl,
+      // The series' own picture of the circuit when it uploaded one, else the
+      // shared one (lib/trackInfo.js, mapImageFor).
+      mapImageUrl: mapImageFor(info, series?.slug),
       mapRotation: info.mapRotation || 0,
       // Hotlap videos for the circuit — the attendance page's own player.
       videos,

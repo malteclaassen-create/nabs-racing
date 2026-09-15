@@ -4649,14 +4649,22 @@ router.put("/tracks/:key/info", async (req, res, next) => {
   try {
     const key = safeTrackKey(req.params.key);
     if (!key) return res.status(400).json({ error: "Invalid track key" });
-    const saved = await writeTrackInfo(prisma, key, req.body?.content ?? req.body ?? {});
+    const content = req.body?.content ?? req.body ?? {};
+    // The per-series map images are uploaded through the map endpoint below,
+    // not typed into this form; a client that sends the blob without them
+    // (an older page, a tab opened before they existed) must not wipe them.
+    const keep = content.mapImages === undefined ? (await readTrackInfo(prisma, key)).mapImages : undefined;
+    const saved = await writeTrackInfo(prisma, key, keep ? { ...content, mapImages: keep } : content);
     res.json({ ok: true, content: saved });
   } catch (e) {
     next(e);
   }
 });
 
-// POST /api/admin/tracks/:key/map  (multipart: file=<image>) — custom track map.
+// POST /api/admin/tracks/:key/map  (multipart: file=<image>, series?=<slug>)
+// — custom track map. With a series slug the picture is that series' own
+// (shown on its pages only); without, it is the shared one every series
+// without a picture of its own shows (lib/trackInfo.js).
 router.post("/tracks/:key/map", upload.single("file"), async (req, res, next) => {
   try {
     const key = safeTrackKey(req.params.key);
@@ -4664,15 +4672,22 @@ router.post("/tracks/:key/map", upload.single("file"), async (req, res, next) =>
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = LOGO_EXT[req.file.mimetype];
     if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG, WEBP or SVG)" });
+    const seriesSlug = String(req.body?.series || "").trim();
+    const series = seriesSlug ? await resolveSeries(prisma, seriesSlug, { includePrivate: true }) : null;
+    if (seriesSlug && !series) return res.status(400).json({ error: "Unknown series" });
     mkdirSync(TRACKS_DIR, { recursive: true });
-    const filename = `${key}${ext}`;
+    // One file per scope, so a series' picture never overwrites the shared one.
+    const filename = `${key}${series ? `--${series.slug}` : ""}${ext}`;
     const dest = safeUploadPath(TRACKS_DIR, filename);
     if (!dest) return res.status(400).json({ error: "Invalid track key" });
     writeFileSync(dest, req.file.buffer);
     const mapImageUrl = `/api/uploads/tracks/${filename}?v=${Date.now()}`;
     const current = await readTrackInfo(prisma, key);
-    const saved = await writeTrackInfo(prisma, key, { ...current, mapImageUrl });
-    res.json({ ok: true, mapImageUrl, content: saved });
+    const updated = series
+      ? { ...current, mapImages: { ...current.mapImages, [series.slug]: mapImageUrl } }
+      : { ...current, mapImageUrl };
+    const saved = await writeTrackInfo(prisma, key, updated);
+    res.json({ ok: true, mapImageUrl, series: series?.slug || null, content: saved });
   } catch (e) {
     next(e);
   }
@@ -5123,13 +5138,23 @@ router.get("/attendance-gates", async (req, res, next) => {
   }
 });
 
-// DELETE /api/admin/tracks/:key/map -> clear the custom map image.
+// DELETE /api/admin/tracks/:key/map[?series=<slug>] -> clear the custom map
+// image: a series' own with ?series=, the shared one without.
 router.delete("/tracks/:key/map", async (req, res, next) => {
   try {
     const key = safeTrackKey(req.params.key);
     if (!key) return res.status(400).json({ error: "Invalid track key" });
+    const seriesSlug = String(req.query?.series || "").trim();
     const current = await readTrackInfo(prisma, key);
-    const saved = await writeTrackInfo(prisma, key, { ...current, mapImageUrl: null });
+    let updated;
+    if (seriesSlug) {
+      const mapImages = { ...current.mapImages };
+      delete mapImages[seriesSlug];
+      updated = { ...current, mapImages };
+    } else {
+      updated = { ...current, mapImageUrl: null };
+    }
+    const saved = await writeTrackInfo(prisma, key, updated);
     res.json({ ok: true, content: saved });
   } catch (e) {
     next(e);
