@@ -6,6 +6,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
 import AttentionDot from "../components/AttentionDot.jsx";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { useSeries } from "../context/SeriesContext.jsx";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import {
   ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, SafetyCarBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar, NoData,
@@ -1472,13 +1473,6 @@ export default function DriverProfile({ previewId, preview }) {
   // does not contradict it. Not in the /profile live preview, which is not this
   // address at all.
   const shownDriver = previewId ? null : data?.[0]?.driver;
-  useSpecificTitle(
-    shownDriver
-      ? `${shownDriver.name} · ${
-          shownDriver.seasonNumber != null ? `Season ${shownDriver.seasonNumber}` : "NABS Racing League"
-        }`
-      : null
-  );
 
   // Honour a ?season=N deep link (search results / career-table links): steer
   // the season switcher to the row's own season before the sync below runs.
@@ -1487,13 +1481,32 @@ export default function DriverProfile({ previewId, preview }) {
   const [searchParams] = useSearchParams();
   const pendingSeasonParam = searchParams.get("season") != null;
 
+  // The series in the address against the series this row belongs to. A row
+  // id names ONE league's entry of a person, so /s/<other league>/drivers/<id>
+  // is the wrong page: it would show this league's numbers under the other
+  // league's name (and its season switcher). Resolved below: on to the
+  // person's row in the viewed series when they have one, else a notice.
+  const { slug: viewedSlug, current: viewedSeries } = useSeries();
+  const rowSeriesSlug = previewId ? null : data?.[0]?.driver?.seriesSlug ?? null;
+  const wrongSeries = !!viewedSlug && !!rowSeriesSlug && viewedSlug !== rowSeriesSlug;
+  // No season in the title when the address names another league than the
+  // row (wrongSeries below): the page then says the person does not race
+  // there, and "Season 7" would be the other league's season.
+  useSpecificTitle(
+    shownDriver
+      ? `${shownDriver.name} · ${
+          shownDriver.seasonNumber != null && !wrongSeries ? `Season ${shownDriver.seasonNumber}` : "NABS Racing League"
+        }`
+      : null
+  );
+
   // Keep the profile and the NavBar season switcher in step. When they
   // disagree (the visitor just used the switcher, or arrived on an archived
   // row without a ?season hint): if this driver has a linked row in the
   // selected season, go to THAT page. Seasons they did NOT race stay put and
   // render a "didn't race this season" notice instead (below).
   useEffect(() => {
-    if (previewId || !data || pendingSeasonParam) return;
+    if (previewId || !data || pendingSeasonParam || wrongSeries) return;
     const prof = data[0];
     const own = prof?.driver?.seasonNumber;
     if (season == null || own == null || season === own) return;
@@ -1501,7 +1514,7 @@ export default function DriverProfile({ previewId, preview }) {
     if (row && row.driverId !== prof.driver.id) {
       navigate(`/drivers/${row.driverId}?season=${season}`, { replace: true });
     }
-  }, [previewId, data, season, pendingSeasonParam, navigate]);
+  }, [previewId, data, season, pendingSeasonParam, wrongSeries, navigate]);
 
   // Remember the person's season → row map for every one of their rows, so
   // the NEXT season switch can redirect instantly (see careerRowsByDriver).
@@ -1518,7 +1531,7 @@ export default function DriverProfile({ previewId, preview }) {
   // Instant redirect on a fresh mount after a season switch: if we already
   // know this person's row for the selected season, go there before fetching
   // anything — no wrong-row skeleton, no double page transition.
-  const cachedTarget = !previewId && season != null ? careerRowsByDriver.get(id)?.get(season) : null;
+  const cachedTarget = !previewId && season != null && !wrongSeries ? careerRowsByDriver.get(id)?.get(season) : null;
   if (cachedTarget && cachedTarget !== id && !pendingSeasonParam) {
     return <Navigate to={`/drivers/${cachedTarget}?season=${season}`} replace />;
   }
@@ -1536,6 +1549,47 @@ export default function DriverProfile({ previewId, preview }) {
   if (error) return <ErrorBox message={error} />;
 
   const [p, rating] = data;
+
+  // Wrong league in the address (see wrongSeries above). The person's rows in
+  // the viewed series come with the profile; the one for the selected season
+  // wins, else their latest there, carried in as the page's season so the
+  // switcher follows. No row in that league at all: say so and offer the way
+  // back to the league they do race in.
+  if (wrongSeries) {
+    const there = (p.otherSeries || []).find((o) => o.seriesSlug === viewedSlug);
+    const rows = there?.rows || [];
+    const target = rows.find((r) => r.seasonNumber === season) || rows[0] || null;
+    if (target) {
+      const q = target.seasonNumber != null ? `?season=${target.seasonNumber}` : "";
+      return <Navigate to={`/s/${viewedSlug}/drivers/${target.driverId}${q}`} replace />;
+    }
+    const d = p.driver;
+    const viewedName = viewedSeries?.name || "this series";
+    return (
+      <div className="content-in space-y-6">
+        <div className="card flex flex-col items-center gap-4 px-6 py-14 text-center">
+          <DriverAvatar name={d.name} photoUrl={d.photoUrl} color={d.team.color} size={72} />
+          <div>
+            <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-3xl">
+              {d.name}
+            </h1>
+            <p className="mt-2 text-sm text-medium">doesn&rsquo;t race in {viewedName}.</p>
+          </div>
+          {d.seriesSlug && (
+            <Link
+              to={`/s/${d.seriesSlug}/drivers/${d.id}${d.seasonNumber != null ? `?season=${d.seasonNumber}` : ""}`}
+              className="btn-secondary"
+            >
+              Profile in {d.seriesName || "their series"}
+            </Link>
+          )}
+          <Link to="/drivers" className="transition text-sm font-semibold text-link hover:underline">
+            All drivers of {viewedName} →
+          </Link>
+        </div>
+      </div>
+    );
+  }
   // The driver's OWN season standings (sent with the profile), so a driver
   // opened from an archived season still resolves against the right field.
   const standingsData = p.season;
@@ -1572,7 +1626,10 @@ export default function DriverProfile({ previewId, preview }) {
     !previewId &&
     !!authedUser?.driverId &&
     (authedUser.driverId === driver.id ||
-      (p.career?.seasons || []).some((s) => s.driverId === authedUser.driverId));
+      (p.career?.seasons || []).some((s) => s.driverId === authedUser.driverId) ||
+      // The login's row can sit in ANOTHER series (a Friday login browsing
+      // their own Sunday profile): still this person, still their page.
+      (p.otherSeries || []).some((o) => (o.rows || []).some((r) => r.driverId === authedUser.driverId)));
 
   const ownControls = isOwnProfile && (
     <div className="-mb-2 flex justify-end gap-2">

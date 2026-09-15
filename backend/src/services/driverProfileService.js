@@ -180,6 +180,39 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
 
   const seasons = [];
   const foreign = new Map(); // seriesId -> accumulating summary of OTHER series
+  // Every row the person holds in ANOTHER series, whether or not it has
+  // standings yet (a signed seat in a season that has not started counts): the
+  // profile page needs these to land on the right row when the visitor is
+  // browsing that series. Filled before the stats loop so a row that the loop
+  // skips (no standings line yet) is still on record.
+  const foreignRows = (seriesId) => {
+    const series = seriesById.get(seriesId);
+    if (!series || !series.isPublic) return null;
+    let acc = foreign.get(seriesId);
+    if (!acc) {
+      acc = {
+        seriesSlug: series.slug ?? null,
+        seriesName: series.name ?? "Other series",
+        rows: [],
+        seasons: 0,
+        points: 0,
+        starts: 0,
+        wins: 0,
+        podiums: 0,
+        bestPosition: null,
+      };
+      foreign.set(seriesId, acc);
+    }
+    return acc;
+  };
+  for (const ld of linkedDrivers) {
+    if (!ld.seasonId || privateSeasonIds.has(ld.seasonId)) continue;
+    const seriesId = bySeries.get(ld.seasonId) ?? null;
+    if (seriesId !== ownSeriesId) {
+      const acc = foreignRows(seriesId);
+      if (acc) acc.rows.push({ driverId: ld.id, seasonNumber: ld.season?.number ?? null, seasonName: ld.season?.name ?? null });
+    }
+  }
   for (const ld of linkedDrivers) {
     if (!ld.seasonId || privateSeasonIds.has(ld.seasonId)) continue;
     const st = ld.seasonId === ownSeasonId ? ownStandings : await getDriverStandings(prisma, ld.seasonId);
@@ -211,19 +244,9 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
     } else {
       // A season in ANOTHER series: folded into that series' summary line.
       // Hidden series (private, non-admin readers can't browse them anyway)
-      // still count into the numbers but stay unnamed for safety.
-      const series = seriesById.get(seriesId);
-      if (series && !series.isPublic) continue;
-      const acc = foreign.get(seriesId) || {
-        seriesSlug: series?.slug ?? null,
-        seriesName: series?.name ?? "Other series",
-        seasons: 0,
-        points: 0,
-        starts: 0,
-        wins: 0,
-        podiums: 0,
-        bestPosition: null,
-      };
+      // are left out entirely.
+      const acc = foreignRows(seriesId);
+      if (!acc) continue;
       acc.seasons += 1;
       acc.points += line.points;
       acc.starts += line.starts;
@@ -232,9 +255,9 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
       if (line.position != null && line.starts > 0) {
         acc.bestPosition = acc.bestPosition == null ? line.position : Math.min(acc.bestPosition, line.position);
       }
-      foreign.set(seriesId, acc);
     }
   }
+  for (const acc of foreign.values()) acc.rows.sort((a, b) => (b.seasonNumber ?? 0) - (a.seasonNumber ?? 0));
   const otherSeries = foreign.size ? [...foreign.values()] : null;
   // One person can have TWO rows in the SAME season (e.g. started as a reserve,
   // then took over a seat under a new Discord handle). Fold those into a single
@@ -502,6 +525,8 @@ export async function getDriverProfile(prisma, driverId) {
   const resultByRaceId = new Map(results.map((r) => [r.raceId, r]));
   const nameOv = nameOverrides.get(driverId);
   const { career, otherSeries } = await buildCareer(prisma, driverId, seasonId, standings);
+  const [seriesOfSeason, seriesRows] = await Promise.all([seasonSeriesMap(prisma), dbListSeries(prisma, { includePrivate: true })]);
+  const ownSeries = seriesRows.find((s) => s.id === seriesOfSeason.get(seasonId)) || null;
 
   // Linked rows + private seasons are shared by the all-time stats and both
   // badge shelves below, so resolve them once. Everything here is scoped to
@@ -779,6 +804,11 @@ export async function getDriverProfile(prisma, driverId) {
       // The season this row belongs to, so race links can steer the Races
       // page to the right season even when the visitor is viewing another one.
       seasonNumber: driver.season?.number ?? null,
+      // The series that season belongs to. The page compares it with the
+      // series in the address: a row of one league opened under another
+      // league's prefix is not that league's profile of the person.
+      seriesSlug: ownSeries?.slug ?? null,
+      seriesName: ownSeries?.name ?? null,
       discordName: driver.discordName,
       tier: driver.tier,
       isActive: driver.isActive,
