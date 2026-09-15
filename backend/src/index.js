@@ -37,7 +37,14 @@ import { serverKeyForSeries, serverConfigForSeries, resolveServerKey, LIVE_SERVE
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
-import { buildPageMeta, applyPageMeta, buildOrganizationJsonLd, applyJsonLd } from "./lib/pageMeta.js";
+import {
+  buildPageMeta,
+  applyPageMeta,
+  buildOrganizationJsonLd,
+  applyJsonLd,
+  pageThemeColor,
+  applyThemeColor,
+} from "./lib/pageMeta.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
 import { readAndroidApp, buildAssetLinks } from "./lib/androidApp.js";
 import { buildCrawlLinks, applyCrawlLinks } from "./lib/crawlLinks.js";
@@ -543,6 +550,15 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
       if (meta) html = applyPageMeta(html, meta);
     } catch {
       /* a preview must never cost us the page */
+    }
+    // The phone's status bar, in the colour of the series the address belongs
+    // to (lib/pageMeta.js, pageThemeColor). The Play Store app paints the bar
+    // in the colour of the document it loaded and does not follow the tag as
+    // the page later changes it, so the colour has to be right in the HTML.
+    try {
+      html = applyThemeColor(html, await pageThemeColor(prisma, req.path));
+    } catch {
+      /* same rule */
     }
     // Who the league is, in machine-readable form, on the one page everything
     // else links to. Google currently answers "what is NABS Racing" out of

@@ -514,6 +514,62 @@ export function applyJsonLd(html, data) {
   return html.replace(/<\/head>/i, `  ${tag}\n  </head>`);
 }
 
+// ---------------------------------------------------------------------------
+// The colour of the phone's status bar.
+//
+// Chrome paints the status bar (and, in a browser tab, its address bar) in the
+// page's <meta name="theme-color">. The shipped index.html carries the default
+// pink. A series with its own accent colour (Series.accentColor, the Series
+// tab) is painted in that colour on the site, and the bar above it should
+// match. The frontend rewrites the tag from JavaScript once the series list
+// arrives (context/SeriesContext.jsx), which is enough for a browser, which
+// follows the tag as it changes. The Play Store app (a Trusted Web Activity)
+// does not: it takes the colour of the document it loaded and keeps it, so
+// with the default in the HTML every series' pages opened under a pink bar.
+// Hence the document itself has to carry the series' colour, decided here
+// from the address the way the title is: the root (and /join) is the primary
+// series, /s/<slug>/… is that series, and the unprefixed pages (downloads,
+// tools, the admin) keep the default.
+// ---------------------------------------------------------------------------
+export const DEFAULT_THEME_COLOR = "#F4AFC6";
+
+// The status-bar colour of a series row: its accent colour when it has a
+// valid one, else the site's default pink. Pure.
+export function themeColorOf(series) {
+  const hex = String(series?.accentColor || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : DEFAULT_THEME_COLOR;
+}
+
+// The status-bar colour for an address. Private series count too: the colour
+// gives nothing away, and an admin previewing an unpublished series in the app
+// should see its bar. Any failure answers the default — a colour is never
+// worth failing a page load over.
+export async function pageThemeColor(prisma, pathname) {
+  try {
+    const parts = String(pathname || "").split("/").filter(Boolean);
+    let series = null;
+    if (!parts.length || (parts.length === 1 && parts[0] === "join")) {
+      series = await resolveSeries(prisma, undefined, { includePrivate: true });
+    } else if (parts[0] === "s" && parts[1]) {
+      series = await resolveSeries(prisma, decodeURIComponent(parts[1]), { includePrivate: true });
+    }
+    return themeColorOf(series);
+  } catch {
+    return DEFAULT_THEME_COLOR;
+  }
+}
+
+// Rewrites the theme-color tag in the shipped index.html (or adds one to a
+// page without it). Anything that is not a 6-digit hex colour leaves the page
+// alone.
+export function applyThemeColor(html, color) {
+  if (!/^#[0-9a-f]{6}$/i.test(String(color || ""))) return html;
+  if (/<meta name="theme-color" content="[^"]*"/.test(html)) {
+    return html.replace(/(<meta name="theme-color" content=")[^"]*(")/, `$1${color}$2`);
+  }
+  return html.replace(/<\/head>/i, `  <meta name="theme-color" content="${color}" />\n  </head>`);
+}
+
 // Rewrites the title and the og:/twitter: description+title tags in the shipped
 // index.html. Replaces rather than appends, because an unfurler takes the first
 // matching tag it sees.

@@ -86,3 +86,14 @@ export function deriveSeriesAccent(hex) {
     accentLightThemeRgb: triple(dark),
   };
 }
+
+// The colour the phone's status bar is painted in for a series: its accent
+// colour, or the site's default pink (the theme-color index.html ships with).
+// The server stamps the same answer into every page it serves (backend
+// lib/pageMeta.js, pageThemeColor); this is the client's copy, used to tell
+// whether a switch of series changes the bar at all.
+export const DEFAULT_THEME_COLOR = "#f4afc6";
+export function seriesThemeColor(series) {
+  const rgb = hexToRgb(series?.accentColor);
+  return rgb ? toHex(rgb) : DEFAULT_THEME_COLOR;
+}

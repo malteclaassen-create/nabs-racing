@@ -8,7 +8,14 @@
 // evenings today and may not always, so the day is read off the calendar and
 // dropped entirely whenever the calendar does not clearly support one.
 import { describe, it, expect } from "vitest";
-import { seasonDescription, raceNight } from "./pageMeta.js";
+import {
+  seasonDescription,
+  raceNight,
+  themeColorOf,
+  applyThemeColor,
+  pageThemeColor,
+  DEFAULT_THEME_COLOR,
+} from "./pageMeta.js";
 
 // Real Fridays and Sundays in league time, stored the way the app stores them.
 const FRIDAYS = ["2026-05-01", "2026-05-08", "2026-05-15", "2026-05-22", "2026-05-29"];
@@ -95,5 +102,62 @@ describe("seasonDescription", () => {
         expect(text.endsWith(".")).toBe(true);
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The theme colour: what the phone's status bar is painted in. The installed
+// app takes it from the document it loaded, so the server has to put the
+// series' colour into the HTML rather than leave it to the page's JavaScript.
+// ---------------------------------------------------------------------------
+describe("theme colour (the phone's status bar)", () => {
+  const HTML = '<html><head><meta name="theme-color" content="#F4AFC6" /></head><body></body></html>';
+
+  it("a series with an accent colour paints the bar in it", () => {
+    expect(themeColorOf({ accentColor: "#00CCFF" })).toBe("#00ccff");
+  });
+
+  it("no accent, a blank one or a broken one falls back to the default pink", () => {
+    expect(themeColorOf(null)).toBe(DEFAULT_THEME_COLOR);
+    expect(themeColorOf({ accentColor: "" })).toBe(DEFAULT_THEME_COLOR);
+    expect(themeColorOf({ accentColor: "blue" })).toBe(DEFAULT_THEME_COLOR);
+  });
+
+  it("rewrites the shipped tag, or adds one to a page without it", () => {
+    const out = applyThemeColor(HTML, "#00ccff");
+    expect(out).toContain('<meta name="theme-color" content="#00ccff" />');
+    expect(out).not.toContain("#F4AFC6");
+    const bare = "<html><head><title>x</title></head><body></body></html>";
+    expect(applyThemeColor(bare, "#00ccff")).toMatch(/<meta name="theme-color" content="#00ccff" \/>\s*<\/head>/);
+  });
+
+  it("leaves the page alone for a colour that is not one", () => {
+    expect(applyThemeColor(HTML, null)).toBe(HTML);
+    expect(applyThemeColor(HTML, "cyan")).toBe(HTML);
+  });
+
+  it("answers the series the address belongs to", async () => {
+    const rows = [
+      { id: "a", name: "F1 Friday", slug: "friday-f1", order: 0, isActive: 1, isPublic: 1, accentColor: null },
+      // Unpublished on purpose: the colour is not a secret, and the admin
+      // previewing the series in the app should see its bar.
+      { id: "b", name: "Sunday Championship", slug: "sunday-championship", order: 1, isActive: 0, isPublic: 0, accentColor: "#00ccff" },
+    ];
+    const prisma = { $queryRawUnsafe: async () => rows };
+    expect(await pageThemeColor(prisma, "/")).toBe(DEFAULT_THEME_COLOR); // the primary series, no accent
+    expect(await pageThemeColor(prisma, "/join")).toBe(DEFAULT_THEME_COLOR);
+    expect(await pageThemeColor(prisma, "/s/sunday-championship")).toBe("#00ccff");
+    expect(await pageThemeColor(prisma, "/s/sunday-championship/drivers/abc")).toBe("#00ccff");
+    expect(await pageThemeColor(prisma, "/s/nope/drivers")).toBe(DEFAULT_THEME_COLOR);
+    expect(await pageThemeColor(prisma, "/downloads")).toBe(DEFAULT_THEME_COLOR);
+  });
+
+  it("a failing database answers the default rather than failing the page", async () => {
+    const prisma = {
+      $queryRawUnsafe: async () => {
+        throw new Error("down");
+      },
+    };
+    expect(await pageThemeColor(prisma, "/s/sunday-championship")).toBe(DEFAULT_THEME_COLOR);
   });
 });
