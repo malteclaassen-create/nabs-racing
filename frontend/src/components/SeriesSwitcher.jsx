@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { useDismiss } from "./overlay.jsx";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSeries } from "../context/SeriesContext.jsx";
+import { seriesThemeColor } from "../utils/seriesColor.js";
 
 // The series switcher. Lives on the line under the NavBar wordmark (where the
 // season name used to sit) and at the top of the mobile burger menu. With one
@@ -45,9 +46,26 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
   const m = /^\/s\/[^/]+(\/[^/]+)?/.exec(location.pathname);
   const section = m && m[1] ? m[1] : "";
 
+  // Whether the site is running as the installed app rather than in a browser
+  // tab: a Trusted Web Activity reports the manifest's display mode, a tab
+  // reports "browser".
+  const installedApp = () =>
+    typeof window.matchMedia === "function" && !window.matchMedia("(display-mode: browser)").matches;
+
   const pick = (s) => {
     setOpen(false);
-    navigate(`/s/${s.slug}${section}`);
+    const to = `/s/${s.slug}${section}`;
+    // In the installed app the phone's status bar takes its colour from the
+    // document that was loaded and does not follow the theme-color tag as the
+    // page changes it (SeriesContext does that, which is enough for a browser).
+    // So a switch to a series with a different colour is a real page load: the
+    // server puts the new series' colour into the document it serves (backend
+    // lib/pageMeta.js). Same colour, or a browser tab: the in-app navigation.
+    if (installedApp() && seriesThemeColor(s) !== seriesThemeColor(current)) {
+      window.location.assign(to);
+      return;
+    }
+    navigate(to);
     onPick?.(s);
   };
 
