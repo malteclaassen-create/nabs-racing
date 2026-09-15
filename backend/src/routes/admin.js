@@ -1659,21 +1659,39 @@ router.put("/live-servers", async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // EDIT RESULTS
 // ---------------------------------------------------------------------------
-// PUT /api/admin/races/:id/results  { results: [...] }
+// PUT /api/admin/races/:id/results  { results: [...], session? }
+//
+// session:"SPRINT" — :id is the EVENT of a sprint+feature weekend and the
+// results are its SPRINT classification. They go onto the event's hidden
+// child row (find-or-create, lib/sprintRaces.js), the same split the import
+// commit makes. This is how a sprint that was never imported is typed in by
+// hand: until its first save the child does not exist, so there is no row
+// the editor could address directly. The reply names the row the results
+// went to, so the editor can move over to it.
 router.put("/races/:id/results", async (req, res, next) => {
   try {
-    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    let race = await prisma.race.findUnique({ where: { id: req.params.id } });
     if (!race) return res.status(404).json({ error: "Race not found" });
     const { results } = req.body || {};
     if (!Array.isArray(results)) return res.status(400).json({ error: "results[] required" });
+    const isSprint = req.body?.session === "SPRINT";
+    let sprintOf = null;
+    if (isSprint) {
+      sprintOf = race;
+      race = await ensureSprintChild(prisma, race);
+    }
     // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
-    await tryCreateBackup(prisma, `before-edit-r${race.number ?? "x"}`);
+    await tryCreateBackup(
+      prisma,
+      `before-edit-${isSprint ? `r${sprintOf.number ?? "x"}-sprint` : `r${race.number ?? "x"}`}`
+    );
     await saveRaceResults(prisma, race.id, results);
     // Bell notification (deduped per race: only the FIRST save of this round
-    // pings the members, edits stay silent).
-    if (results.length) notifyResultsSaved(prisma, race);
+    // pings the members, edits stay silent). A sprint child stays quiet, as
+    // on import — the evening's bell rings once, with the feature.
+    if (results.length && !isSprint) notifyResultsSaved(prisma, race);
     if (results.length) notifyCardUnlocksForSeason(prisma, race.seasonId);
-    res.json({ ok: true });
+    res.json({ ok: true, raceId: race.id, session: isSprint ? "SPRINT" : "RACE" });
   } catch (e) {
     next(e);
   }

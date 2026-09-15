@@ -688,8 +688,10 @@ export const api = {
   // Same attach, but the QUALIFY JSON comes straight from the race server.
   importRemoteQuali: (raceId, remoteId) =>
     request(`/admin/races/${raceId}/quali`, { method: "POST", body: { remoteId }, auth: true }),
-  editResults: (id, results) =>
-    request(`/admin/races/${id}/results`, { method: "PUT", body: { results }, auth: true }),
+  // session:"SPRINT" — `id` is the event of a sprint+feature weekend and the
+  // results are its sprint classification (created on first save).
+  editResults: (id, results, { session } = {}) =>
+    request(`/admin/races/${id}/results`, { method: "PUT", body: { results, session }, auth: true }),
   setDriverOfTheDay: (raceId, driverId, pickedBy) =>
     request(`/admin/races/${raceId}/driver-of-the-day`, { method: "PUT", body: { driverId, pickedBy }, auth: true }),
   // Manually recorded honours of a round (pole, fastest lap + optional time) —

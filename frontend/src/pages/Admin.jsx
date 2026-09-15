@@ -1090,7 +1090,14 @@ function EditResults() {
   // one place in the admin that has to reach it.
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(undefined, { includeSprints: true }), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
-  const [raceId, setRaceId] = useState("");
+  // What the picker holds: a race id, or "sprint:<eventId>" for the SPRINT of
+  // a sprint+feature weekend that has nothing on file yet. Such a sprint has
+  // no row of its own until its first save (lib/sprintRaces.js creates the
+  // hidden child then), so the editor addresses it through its event and the
+  // session flag, exactly as the import does.
+  const [pick, setPick] = useState("");
+  const pendingSprint = pick.startsWith("sprint:");
+  const raceId = pendingSprint ? pick.slice("sprint:".length) : pick;
   const [rows, setRows] = useState([]);
   // race details editor (raceFormat: SINGLE | SPRINT_FEATURE, see lib/raceFormat.js)
   const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "" });
@@ -1127,10 +1134,15 @@ function EditResults() {
   // it when the round was opened; a hand-added row has no such history, and
   // its driver can still be swapped, so it gets a key of its own.
   const nextRowKey = useRef(1);
+  // A message to show once the picker has moved to another row: the first
+  // save of a sprint creates its row and the editor moves over to it, and
+  // the reset below would otherwise wipe the "saved" line on the way.
+  const msgAfterSwitch = useRef(null);
 
   useEffect(() => {
     setError(null);
-    setMsg(null);
+    setMsg(msgAfterSwitch.current);
+    msgAfterSwitch.current = null;
     // Drop the previous round's data the moment the pick changes. Without this
     // the table kept showing the round the admin had just left: press save
     // during the fetch, or after a fetch that FAILED (the catch below sets an
@@ -1144,7 +1156,11 @@ function EditResults() {
     setHonours({ pole: "", poleTime: "", fl: "", flTime: "" });
     setPenalties(null);
     setPrefilled([]);
-    if (!raceId) return;
+    if (!pick) return;
+    // A sprint with nothing on file has no row to read: the table starts
+    // empty and is filled in by hand below.
+    if (pick.startsWith("sprint:")) return;
+    const raceId = pick;
     // Two quick changes of the picker race each other; without this guard the
     // slower FIRST response can land last and leave race B selected with race
     // A's rows on screen. Same `alive` pattern the public pages use.
@@ -1274,7 +1290,7 @@ function EditResults() {
     return () => {
       alive = false;
     };
-  }, [raceId]);
+  }, [pick]);
 
   function setRow(i, patch) {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -1526,7 +1542,15 @@ function EditResults() {
     setError(null);
     setMsg(null);
     try {
-      await api.editResults(raceId, toResults(rows));
+      const saved = await api.editResults(raceId, toResults(rows), pendingSprint ? { session: "SPRINT" } : {});
+      if (pendingSprint && saved?.raceId) {
+        // The sprint has a row of its own now: move the picker onto it, so
+        // the next edit (and the delete buttons) address the sprint itself.
+        msgAfterSwitch.current = "Sprint results saved and standings recalculated.";
+        reloadRaces();
+        setPick(saved.raceId);
+        return;
+      }
       // The swap is stored now; a second save must not point prevDriverId at a
       // row that no longer exists (that would drop the preserved race data).
       // The overwrite guard's baselines move along too, so saving again without
@@ -1605,14 +1629,47 @@ function EditResults() {
     }
   }
 
+  // How the picker and the delete dialogs name a row. A sprint row is named
+  // for the round it scores under; the event of a sprint weekend says
+  // "feature" so the two halves read apart.
+  function raceLabel(race) {
+    if (!race) return "this race";
+    const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+    const parent = race.sprintOf ? (races || []).find((p) => p.id === race.sprintOf) : null;
+    const what = race.sprintOf
+      ? parent?.number != null ? `Round ${parent.number} sprint` : "Sprint"
+      : kind === "TRAINING" ? "Training"
+      : kind === "SPECIAL" ? "Event"
+      : race.raceFormat === "SPRINT_FEATURE" ? `Round ${race.number} feature`
+      : `Round ${race.number}`;
+    return `${what} · ${race.track}`;
+  }
+
+  // The picker, in calendar order: each round, then the sprint hanging off it
+  // — the stored one, or the entry that creates it on first save.
+  const pickerEntries = [];
+  {
+    const all = races || [];
+    const childOf = new Map(all.filter((r) => r.sprintOf).map((r) => [r.sprintOf, r]));
+    for (const r of all) {
+      if (r.sprintOf) continue;
+      const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+      // Championship rounds always; trainings/events join once they have
+      // stored results (that's what there is to edit or delete).
+      if (kind !== "CHAMPIONSHIP" && !(r.resultCount > 0)) continue;
+      pickerEntries.push({ value: r.id, label: raceLabel(r) });
+      const child = childOf.get(r.id);
+      if (child) pickerEntries.push({ value: child.id, label: raceLabel(child) });
+      else if (r.raceFormat === "SPRINT_FEATURE" && r.number != null)
+        pickerEntries.push({ value: `sprint:${r.id}`, label: `Round ${r.number} sprint · ${r.track} (nothing stored yet)` });
+    }
+  }
+
   // Wipe only the stored RESULTS of the round — the race itself (date, track,
   // sign-ups, quali) stays on the calendar as "not run yet". Backup first.
   async function clearResults() {
     const race = (races || []).find((r) => r.id === raceId);
-    const kind = race ? race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP") : null;
-    const label = race
-      ? `${kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${race.number}`} · ${race.track}`
-      : "this race";
+    const label = raceLabel(race);
     if (
       !(await ask({
         title: `Delete only the RESULTS of ${label}?`,
@@ -1627,7 +1684,7 @@ function EditResults() {
     setMsg(null);
     try {
       await api.clearRaceResults(raceId);
-      setRaceId("");
+      setPick("");
       setRows([]);
       setMsg(`Results of ${label} deleted. The race is back on the calendar as upcoming.`);
       reloadRaces();
@@ -1642,10 +1699,7 @@ function EditResults() {
   // backup first; standings recompute themselves from the remaining rounds.
   async function deleteRace() {
     const race = (races || []).find((r) => r.id === raceId);
-    const kind = race ? race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP") : null;
-    const label = race
-      ? `${kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${race.number}`} · ${race.track}`
-      : "this race";
+    const label = raceLabel(race);
     if (
       !(await ask({
         title: `Delete ${label} and ALL its results?`,
@@ -1660,7 +1714,7 @@ function EditResults() {
     setMsg(null);
     try {
       await api.deleteEvent(raceId, { force: true });
-      setRaceId("");
+      setPick("");
       setRows([]);
       setMsg(`${label} deleted. Standings updated.`);
       reloadRaces();
@@ -1722,35 +1776,20 @@ function EditResults() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <label className="text-sm font-semibold text-medium" htmlFor="admin-edit-race">Race</label>
-        <select id="admin-edit-race" className="input max-w-xs" value={raceId} onChange={(e) => setRaceId(e.target.value)}>
+        <select id="admin-edit-race" className="input max-w-xs" value={pick} onChange={(e) => setPick(e.target.value)}>
           <option value="">Select a round…</option>
-          {/* Championship rounds always; trainings/events join once they have
-              stored results (that's what there is to edit or delete). */}
-          {(races || [])
-            .filter((r) => {
-              const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-              return kind === "CHAMPIONSHIP" || r.resultCount > 0;
-            })
-            .map((r) => {
-              const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-              // A sprint row is named for the round it scores under.
-              const parentNumber = r.sprintOf ? (races || []).find((p) => p.id === r.sprintOf)?.number : null;
-              const label = r.sprintOf
-                ? parentNumber != null ? `Round ${parentNumber} sprint` : "Sprint"
-                : kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${r.number}`;
-              return (
-                <option key={r.id} value={r.id}>
-                  {label} · {r.track}
-                </option>
-              );
-            })}
+          {pickerEntries.map((e) => (
+            <option key={e.value} value={e.value}>
+              {e.label}
+            </option>
+          ))}
         </select>
       </div>
 
       {error && <ErrorBox message={error} />}
       {msg && <Notice kind="success">{msg}</Notice>}
 
-      {raceId && (
+      {raceId && !pendingSprint && (
         <div className="card flex flex-wrap items-end gap-3 p-4">
           <Field label="Track name" tone="plain">
             <input className="input min-w-56" value={meta.track}
@@ -1888,13 +1927,17 @@ function EditResults() {
         <div className="card space-y-3 p-4">
           {rows.length === 0 ? (
             <>
-              <div className="text-sm font-bold text-dark">No results stored for this round</div>
+              <div className="text-sm font-bold text-dark">
+                {pendingSprint ? "No sprint results stored for this round" : "No results stored for this round"}
+              </div>
               <p className="text-xs text-light">
                 Nothing has been imported for it. If there is no result file to import (the race was run
                 without a server export, or the file is lost), type the classification in by hand: add the
                 drivers who raced, in finishing order, set anyone who retired to DNF, and save. Points, the
                 Tier 2 re-ranking and the standings are worked out from the finishing positions exactly as for
                 an imported race. Grid, race times, contacts and laps led are optional and can be left blank.
+                {pendingSprint &&
+                  " The sprint scores the same points as the feature race, added to this round. Its classification is created on the first save and then has its own entry in the picker, next to the feature race."}
               </p>
             </>
           ) : (
@@ -2121,7 +2164,7 @@ function EditResults() {
               that never heard about them. */}
           <StewardPenalties data={penalties} rows={rows} prefilled={prefilled} onFill={fillPenalties} />
 
-          <RacePreview request={{ raceId, results: toResults(rows) }} />
+          <RacePreview request={{ raceId, results: toResults(rows), session: pendingSprint ? "SPRINT" : undefined }} />
 
           {/* Locked while the picked round is still loading: the table is empty
               or half-swapped at that moment, and saving it would write that
@@ -2132,7 +2175,7 @@ function EditResults() {
         </>
       )}
 
-      {raceId && (
+      {raceId && !pendingSprint && (
         <div className="card divide-y divide-border border-red-500/40">
           <div className="flex flex-wrap items-center justify-between gap-3 p-4">
             <div className="min-w-0">
