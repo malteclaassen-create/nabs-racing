@@ -26,6 +26,7 @@
 import { getPrivateSeasonIds, getSeasonScoring } from "../services/seasonService.js";
 import { applyPenalties, getDriverResultPoints } from "../services/pointsCalculator.js";
 import { getNameOverrides } from "./persons.js";
+import { readParentIds } from "./sprintRaces.js";
 import { seasonStandings, seasonRounds, constructorStandings } from "./crawlTables.js";
 import { seasonLabel } from "./seo.js";
 
@@ -228,11 +229,23 @@ async function raceBlock(prisma, base, raceId) {
   if (!race || race.season?.isPublic === false) return null;
 
   const classified = await classification(prisma, race, MAX_CLASSIFIED);
-  const round = race.number != null ? `Round ${race.number}` : "Round";
+  // The sprint of a sprint+feature weekend is a hidden child row of its event
+  // (lib/sprintRaces.js): typed like a special event, numbered like nothing,
+  // but it is the round's sprint and it scores. Named for its round, with the
+  // points column its results table shows.
+  const parentId = (await readParentIds(prisma, [race.id])).get(race.id) || null;
+  const parent = parentId
+    ? await prisma.race
+        .findUnique({ where: { id: parentId }, select: { number: true, isSpecialEvent: true } })
+        .catch(() => null)
+    : null;
+  const round =
+    parent?.number != null ? `Round ${parent.number} sprint` : race.number != null ? `Round ${race.number}` : "Round";
+  const scores = !race.isSpecialEvent || (!!parent && !parent.isSpecialEvent);
   return {
     heading: race.track ? `${round} · ${race.track}` : round,
     line: classified.length ? `${classified.length} classified` : "",
-    groups: classified.length ? [classificationTable(base, classified, !race.isSpecialEvent)] : [],
+    groups: classified.length ? [classificationTable(base, classified, scores)] : [],
   };
 }
 

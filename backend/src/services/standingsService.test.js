@@ -4,6 +4,7 @@ import {
   buildDriverPerRace,
   computeDriverDropRounds,
   buildConstructorRows,
+  buildTeamDropConstructorRows,
   applyFinalStandings,
   buildStoredConstructorRows,
   applyTeamDrop,
@@ -11,8 +12,14 @@ import {
   compareFinishSheets,
   finishSheetOf,
   attachPrevPositions,
+  roundContributions,
 } from "./standingsService.js";
 import { parseFinalStandings } from "./seasonService.js";
+import {
+  DEFAULT_POINTS_TABLE,
+  calculateT1ConstructorContributions,
+  calculateT2ConstructorContributions,
+} from "./pointsCalculator.js";
 
 // The full Season 7 calendar is 12 rounds; the best 9 count.
 const CAL = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
@@ -581,5 +588,163 @@ describe("attachPrevPositions (movement arrows)", () => {
     // prior (rounds 1+2, drop 1): a = 10, b = 12 -> b ahead
     expect(rows.find((r) => r.driverId === "b").prevPosition).toBe(1);
     expect(rows.find((r) => r.driverId === "a").prevPosition).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint weekends: one round, two classifications (the feature race on the
+// event's own row, the sprint on its hidden child row — lib/sprintRaces.js).
+// Both pay the season's table and both land under the weekend's round number.
+// ---------------------------------------------------------------------------
+describe("buildDriverPerRace on a sprint weekend", () => {
+  // Round 4 is a plain round; round 5 runs a sprint (r5s) before the feature (r5).
+  const rounds = new Map([["r4", 4], ["r5", 5], ["r5s", 5]]);
+  const sprints = new Set(["r5s"]);
+  const result = (raceId, driverId, position, status = "FINISHED") => ({
+    raceId, driverId, position, status, penaltySeconds: 0,
+  });
+
+  it("adds the sprint's points to the round and keeps the feature's finish in the cell", () => {
+    const { perRace, pointsByRound } = buildDriverPerRace(
+      [result("r5s", "a", 3), result("r5", "a", 1), result("r4", "a", 2)],
+      "a",
+      rounds,
+      DEFAULT_POINTS_TABLE,
+      sprints
+    );
+    expect(pointsByRound).toEqual({ 4: 30, 5: 60 }); // P2 = 30; P1 (35) + sprint P3 (25)
+    expect(perRace[5].position).toBe(1);
+    expect(perRace[5].status).toBe("FINISHED");
+    expect(perRace[5].sprint).toEqual({ points: 25, status: "FINISHED", position: 3 });
+    expect(perRace[4].sprint).toBeUndefined();
+  });
+
+  it("merges the two halves the same way whichever result comes first", () => {
+    const a = buildDriverPerRace([result("r5", "a", 1), result("r5s", "a", 3)], "a", rounds, DEFAULT_POINTS_TABLE, sprints);
+    const b = buildDriverPerRace([result("r5s", "a", 3), result("r5", "a", 1)], "a", rounds, DEFAULT_POINTS_TABLE, sprints);
+    expect(a.perRace).toEqual(b.perRace);
+    expect(a.pointsByRound).toEqual(b.pointsByRound);
+  });
+
+  it("a feature DNF keeps the sprint's points, and the countback never sees a sprint win", () => {
+    const { perRace, pointsByRound } = buildDriverPerRace(
+      [result("r5s", "a", 1), result("r5", "a", null, "DNF")],
+      "a",
+      rounds,
+      DEFAULT_POINTS_TABLE,
+      sprints
+    );
+    expect(pointsByRound[5]).toBe(35);
+    expect(perRace[5].status).toBe("DNF");
+    expect(perRace[5].sprint).toEqual({ points: 35, status: "FINISHED", position: 1 });
+    expect(finishSheetOf({ perRace })).toEqual([]);
+  });
+
+  it("a driver who only started the sprint gets a cell with no feature finish in it", () => {
+    const { perRace } = buildDriverPerRace([result("r5s", "a", 2)], "a", rounds, DEFAULT_POINTS_TABLE, sprints);
+    expect(perRace[5]).toEqual({
+      points: 30,
+      status: null,
+      position: null,
+      grid: null,
+      sprint: { points: 30, status: "FINISHED", position: 2 },
+    });
+  });
+
+  it("a plain round keeps exactly the shape it always had", () => {
+    const { perRace } = buildDriverPerRace([result("r4", "a", 2)], "a", rounds, DEFAULT_POINTS_TABLE, sprints);
+    expect(perRace[4]).toEqual({ points: 30, status: "FINISHED", position: 2, grid: null });
+  });
+});
+
+describe("roundContributions — each classification of a round scored on its own", () => {
+  const teams = [
+    { id: "t1", tier: 1 },
+    { id: "t2a", tier: 2 },
+    { id: "t2b", tier: 2 },
+  ];
+  const drivers = [
+    { id: "A", teamId: "t1" },
+    { id: "X", teamId: "t2a" },
+    { id: "Y", teamId: "t2b" },
+  ];
+  const fin = (raceId, driverId, position) => ({ raceId, driverId, position, status: "FINISHED", penaltySeconds: 0 });
+
+  it("re-ranks Tier 2 per race, never across the sprint and the feature", () => {
+    // Feature: A P1, X P2, Y P3 -> Tier-2 re-rank X 35, Y 30.
+    // Sprint:  A P1, Y P2, X P3 -> Tier-2 re-rank Y 35, X 30.
+    // Run over the two as one field, X (P2 and P3) would be ranked behind a
+    // second P1 and Y's sprint win would be a P2.
+    const results = [fin("f", "A", 1), fin("f", "X", 2), fin("f", "Y", 3), fin("s", "A", 1), fin("s", "Y", 2), fin("s", "X", 3)];
+    const c = roundContributions(calculateT2ConstructorContributions, results, drivers, teams);
+    expect(c).toHaveLength(2);
+    expect(c.find((x) => x.driverId === "X")).toEqual({ driverId: "X", teamId: "t2a", points: 65 });
+    expect(c.find((x) => x.driverId === "Y")).toEqual({ driverId: "Y", teamId: "t2b", points: 65 });
+  });
+
+  it("sums a driver's two halves into the one Tier 1 contribution the drop rules count", () => {
+    const results = [fin("f", "A", 1), fin("s", "A", 4)];
+    expect(roundContributions(calculateT1ConstructorContributions, results, drivers, teams)).toEqual([
+      { driverId: "A", teamId: "t1", points: 57 },
+    ]);
+  });
+
+  it("results without a race id are one classification, as every round was before sprints", () => {
+    const results = [fin(undefined, "X", 1), fin(undefined, "Y", 2)];
+    expect(roundContributions(calculateT2ConstructorContributions, results, drivers, teams)).toEqual([
+      { driverId: "X", teamId: "t2a", points: 35 },
+      { driverId: "Y", teamId: "t2b", points: 30 },
+    ]);
+  });
+});
+
+describe("drop rules treat a sprint weekend as one round worth both results", () => {
+  it("computeDriverDropRounds compares the weekend's total, not one of its halves", () => {
+    const resultsByRound = new Map([
+      [1, [{ raceId: "r1", ...res("A", 10) }]],
+      [2, [{ raceId: "r2", ...res("A", 8) }, { raceId: "r2s", ...res("A", 8) }]], // 16 together
+    ]);
+    const dropped = computeDriverDropRounds(resultsByRound, [1, 2], 1);
+    expect([...dropped.get("A")]).toEqual([1]); // R1 (10) is the worst, not R2 (8 + 8)
+  });
+
+  it("buildConstructorRows scores a team's sprint and feature under the one round", () => {
+    const resultsByRound = new Map([
+      [1, [{ raceId: "r1", ...res("A", 10) }, { raceId: "r1", ...res("B", 20) }]],
+      [2, [{ raceId: "r2", ...res("A", 5) }, { raceId: "r2s", ...res("A", 5) }, { raceId: "r2", ...res("B", 30) }]],
+    ]);
+    const [tx] = buildConstructorRows({
+      tier: 1,
+      teams: T1_TEAMS,
+      drivers: T1_DRIVERS,
+      raceNumbers: [1, 2],
+      resultsByRound,
+      dropN: 1,
+    });
+    expect(tx.perRace).toEqual({ 1: 30, 2: 40 });
+    // A: R1 10, R2 10 (5 + 5) -> tie, the later round is dropped; B drops R1.
+    expect(tx.droppedPerRace).toEqual({ 1: 20, 2: 10 });
+    expect(tx.total).toBe(40);
+  });
+
+  it("buildTeamDropConstructorRows keeps one slot per driver per round on a sprint weekend", () => {
+    const resultsByRound = new Map([
+      [1, [{ raceId: "r1", ...res("A", 10) }, { raceId: "r1", ...res("B", 20) }]],
+      [2, [{ raceId: "r2", ...res("A", 5) }, { raceId: "r2s", ...res("A", 5) }, { raceId: "r2", ...res("B", 30) }]],
+    ]);
+    const [tx] = buildTeamDropConstructorRows({
+      tier: 1,
+      teams: T1_TEAMS,
+      drivers: T1_DRIVERS,
+      raceNumbers: [1, 2],
+      resultsByRound,
+      teamDropN: 1,
+    });
+    // Slots: A R1 10, B R1 20, A R2 10 (both halves), B R2 30. One dropped:
+    // the two 10s tie and the later round goes. Two halves must never be two
+    // slots, or the sprint would offer a second cheap slot to drop.
+    expect(tx.perRace).toEqual({ 1: 30, 2: 40 });
+    expect(tx.droppedPerRace).toEqual({ 2: 10 });
+    expect(tx.total).toBe(60);
   });
 });

@@ -107,14 +107,33 @@ async function nextRoundNumber(prisma, seasonId) {
   return (Number(max[0]?.n) || 0) + 1;
 }
 
-// The scored rounds of a season that already have results, oldest first.
+// The scored classifications of a season that already have results, oldest
+// first: every completed round, and the sprint of a sprint+feature weekend
+// under its event's number (lib/sprintRaces.js) — it scores there, so a change
+// of team from that round on has to re-attribute the sprint too, or the
+// weekend's two halves would count for two different teams. The sprint row
+// sorts after its event and is named as its sprint in the plan.
 async function savedRounds(prisma, seasonId) {
-  return prisma.$queryRawUnsafe(
-    `SELECT "id", "number", "track" FROM "Race"
-      WHERE "seasonId" = ? AND "number" IS NOT NULL AND "isCompleted" = 1
-      ORDER BY "number" ASC`,
-    seasonId
-  );
+  try {
+    return await prisma.$queryRawUnsafe(
+      `SELECT r."id", COALESCE(r."number", p."number") AS "number",
+              CASE WHEN r."parentRaceId" IS NULL THEN r."track" ELSE r."track" || ' (sprint)' END AS "track"
+         FROM "Race" r LEFT JOIN "Race" p ON p."id" = r."parentRaceId"
+        WHERE r."seasonId" = ? AND r."isCompleted" = 1
+          AND COALESCE(r."number", p."number") IS NOT NULL
+        ORDER BY COALESCE(r."number", p."number") ASC, (r."parentRaceId" IS NOT NULL) ASC`,
+      seasonId
+    );
+  } catch {
+    // parentRaceId not there yet (fresh checkout before the schema upkeep ran):
+    // rounds only, as before sprints existed.
+    return prisma.$queryRawUnsafe(
+      `SELECT "id", "number", "track" FROM "Race"
+        WHERE "seasonId" = ? AND "number" IS NOT NULL AND "isCompleted" = 1
+        ORDER BY "number" ASC`,
+      seasonId
+    );
+  }
 }
 
 // Work out everything a change would do, without writing any of it: which saved

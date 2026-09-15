@@ -1641,8 +1641,10 @@ function EditResults() {
             })
             .map((r) => {
               const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+              // A sprint row is named for the round it scores under.
+              const parentNumber = r.sprintOf ? (races || []).find((p) => p.id === r.sprintOf)?.number : null;
               const label = r.sprintOf
-                ? "Sprint"
+                ? parentNumber != null ? `Round ${parentNumber} sprint` : "Sprint"
                 : kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${r.number}`;
               return (
                 <option key={r.id} value={r.id}>

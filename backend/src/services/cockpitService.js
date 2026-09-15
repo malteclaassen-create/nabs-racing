@@ -237,10 +237,20 @@ export async function getCockpitSeason(prisma, driverId) {
   const completed = races.filter((r) => r.isCompleted).map((r) => r.number);
   const remaining = races.filter((r) => !r.isCompleted).map((r) => r.number);
   // Best single-round haul: the season's points-table maximum, or (points-only
-  // archive) the best observed round.
+  // archive) the best observed round. A sprint+feature weekend pays twice, so
+  // its observed haul is left out of the single-race figure and its ceiling
+  // below is doubled instead.
+  const sprintRounds = new Set(standings.sprintRounds || []);
   const tableMax = Array.isArray(scoring.pointsTable) && scoring.pointsTable.length
     ? scoring.pointsTable[0]
-    : Math.max(0, ...standings.standings.flatMap((r) => Object.values(r.perRace || {}).map((v) => v.points)));
+    : Math.max(
+        0,
+        ...standings.standings.flatMap((r) =>
+          Object.entries(r.perRace || {})
+            .filter(([n]) => !sprintRounds.has(Number(n)))
+            .map(([, v]) => v.points)
+        )
+      );
 
   const dropN = standings.dropWorst ?? 0;
   // Floor = every remaining round scores 0; ceiling = every remaining round
@@ -253,7 +263,7 @@ export async function getCockpitSeason(prisma, driverId) {
     const maxPts = { ...pts };
     for (const num of remaining) {
       floorPts[num] = 0;
-      maxPts[num] = tableMax;
+      maxPts[num] = sprintRounds.has(num) ? tableMax * 2 : tableMax;
     }
     return {
       driverId: r.driverId,
@@ -287,6 +297,7 @@ export async function getCockpitSeason(prisma, driverId) {
     remainingNumbers: remaining,
     dropWorst: dropN,
     tableMax,
+    sprintRounds: standings.sprintRounds || [],
     officialTotals: standings.officialTotals,
     standings: calc,
     goals,

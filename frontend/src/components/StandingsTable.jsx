@@ -91,16 +91,32 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
     return <td className={`${base} text-sm text-medium`}>{cell || <span className="text-faint">0</span>}</td>;
   }
 
-  const { points, status, position } = cell;
+  const { points, status, position, sprint } = cell;
+  // A sprint weekend's cell is the sum of two results: the feature race (whose
+  // position and status the cell shows) and the sprint. The tooltip spells the
+  // two halves out, so a 60 next to a P1 does not look like a typo.
+  const half = (label, pos, st, pts) =>
+    `${label} ${st && st !== "FINISHED" ? st : pos != null ? `P${pos}` : "no result"} (${pts})`;
+  const title = sprint
+    ? `${half("Sprint", sprint.position, sprint.status, sprint.points)} + ${half("Feature", position, status, points - sprint.points)} = ${points}`
+    : undefined;
   if (status && status !== "FINISHED") {
     const cls = status === "DNF" ? "text-warn" : status === "DSQ" ? "text-link" : "text-light";
-    return <td className={`${base} text-[11px] font-semibold ${cls}`}>{status}</td>;
+    return (
+      <td title={title} className={`${base} whitespace-nowrap text-[11px] font-semibold ${cls}`}>
+        {status}
+        {/* The feature was lost but the sprint still paid: the total the
+            column adds up to has to be visible somewhere in the row. */}
+        {sprint?.points > 0 && <span className="ml-0.5 text-[10px] font-semibold text-medium">+{sprint.points}</span>}
+      </td>
+    );
   }
   // Podium finishes light up in the medal colours (gold/silver/bronze), so a
   // driver's best rounds read straight off the matrix, season to season.
   const medal = position >= 1 && position <= 3 ? `var(--medal-${position})` : null;
   return (
     <td
+      title={title}
       className={`${base} text-sm ${medal ? "font-bold" : "text-medium"}`}
       style={medal ? { color: medal } : undefined}
     >
@@ -112,8 +128,13 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
 // `decided` — the season's title is settled (archived, or every round in):
 // first place wears gold; while the season still runs it gets the pink
 // leader wash instead.
-export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false, showMovement = false }) {
+// `sprintRounds` — the rounds run as sprint+feature weekends: both races score
+// the season's table, added together under that round, so those columns are
+// marked (a superscript S) and explained in the footnote.
+export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false, showMovement = false, sprintRounds = [] }) {
   const isDriver = variant === "driver";
+  const sprintSet = new Set(sprintRounds || []);
+  const showSprintNote = raceNumbers.some((n) => sprintSet.has(n));
   // Constructor tables can use a team-level drop rule instead of inheriting
   // each driver's dropped rounds — the footnote must match whichever is in
   // force: "team" counts single-driver round scores, "teamRounds" counts whole
@@ -192,8 +213,18 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
               {isDriver && <th scope="col" className="hidden px-3 py-3 md:table-cell">Team</th>}
               {isDriver && <th scope="col" className="px-3 py-3 text-center">Tier</th>}
               {raceNumbers.map((n) => (
-                <th scope="col" key={n} className="px-2.5 py-3 text-center tabular-nums">
+                <th
+                  scope="col"
+                  key={n}
+                  className="px-2.5 py-3 text-center tabular-nums"
+                  title={sprintSet.has(n) ? "Sprint weekend: the sprint and the feature race both score, added together under this round" : undefined}
+                >
                   R{n}
+                  {sprintSet.has(n) && (
+                    <span className="ml-0.5 align-super text-[9px] font-bold text-brand" aria-label="sprint weekend">
+                      S
+                    </span>
+                  )}
                 </th>
               ))}
               <th scope="col" className={`sticky right-0 z-20 border-l border-border bg-card px-4 py-3 text-right transition-shadow ${rightShadow}`}>
@@ -315,8 +346,15 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
           </tbody>
         </table>
       </div>
-      {(showOfficialNote || showDropNote) && (
+      {(showOfficialNote || showDropNote || showSprintNote) && (
         <div className="space-y-1 border-t border-border px-4 py-2.5 font-mono text-[11px] leading-relaxed text-light">
+          {showSprintNote && (
+            <p>
+              <span className="font-bold text-brand">S</span> marks a sprint weekend: the sprint and the feature race both
+              score the full points table, added together under that round
+              {isDriver && <> (hover a cell for the two halves)</>}.
+            </p>
+          )}
           {showDropNote && (
             <p>
               {isDriver ? (

@@ -105,6 +105,10 @@ export default function RacePreview({ request }) {
         const body = {
           raceId: request.raceId || undefined,
           number: request.number || undefined,
+          // A sprint weekend's SPRINT result previews against the sprint
+          // classification, with the feature's stored result left in the
+          // table — the same split the commit makes.
+          session: request.session || undefined,
           results: mapped.map((r) => ({
             driverId: r.driverId,
             position: r.position === "" || r.position == null ? null : Number(r.position),

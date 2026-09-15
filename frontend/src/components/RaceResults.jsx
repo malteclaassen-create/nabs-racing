@@ -171,8 +171,11 @@ export default function RaceResults({ race, results, quali = null, session = "ra
   // they open in this same table and it printed a full 35/30/25 points column
   // plus the Tier-2 constructor column for them — numbers that look official and
   // are not in any standing. The importer still stores them, so the fix is to
-  // stop showing what does not count.
-  const scores = (race.type || "CHAMPIONSHIP") === "CHAMPIONSHIP";
+  // stop showing what does not count. The API says what counts (`scores`): a
+  // championship round, and the sprint of one — the sprint row is typed like a
+  // special event so nothing counts it as a round of its own, yet it pays the
+  // same points as the feature race under that weekend's round.
+  const scores = race.scores ?? (race.type || "CHAMPIONSHIP") === "CHAMPIONSHIP";
   const hasQuali = Array.isArray(quali) && quali.length > 0;
   // Which drivers' tyre strategies are folded open (rows with stint data from
   // the AC import are clickable; older rounds simply have none).

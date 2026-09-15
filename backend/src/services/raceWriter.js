@@ -9,6 +9,7 @@ import { getSeasonScoring } from "./seasonService.js";
 import { invalidateRecordsCache } from "./recordsService.js";
 import { invalidateRatingHistoryCache } from "./ratingHistoryService.js";
 import { invalidateCardRatingCache } from "./cardRatingService.js";
+import { readParentIds } from "../lib/sprintRaces.js";
 
 // Rejects obviously broken input BEFORE anything is written, with messages an
 // admin can act on. Throws a 400-flagged error (the express error handler
@@ -134,7 +135,18 @@ export async function saveRaceResults(prisma, raceId, results) {
   // remember to go and change the roster on the night (driverTransfers.js).
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const transfers = byDriver(await readTransfers(prisma, { seasonId: race?.seasonId ?? undefined }));
-  const roundNo = race?.number ?? null;
+  // The round this classification scores under. A sprint child carries no
+  // number of its own (lib/sprintRaces.js) but scores under its event's, so a
+  // transfer "from round 5 on" reaches the round-5 sprint the same as the
+  // feature race it was run before.
+  let roundNo = race?.number ?? null;
+  if (roundNo == null && race) {
+    const parentId = (await readParentIds(prisma, [race.id])).get(race.id);
+    if (parentId) {
+      const parent = await prisma.race.findUnique({ where: { id: parentId }, select: { number: true } });
+      roundNo = parent?.number ?? null;
+    }
+  }
   const stamped = results.map((r) => ({
     ...r,
     teamId:

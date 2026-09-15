@@ -13,6 +13,7 @@
 // custom team emojis, role pings and flags can be added by hand there.
 // ---------------------------------------------------------------------------
 import { applyPenalties } from "./pointsCalculator.js";
+import { readParentIds } from "../lib/sprintRaces.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
 
@@ -51,6 +52,17 @@ async function raceLink(prisma, race, origin) {
   return `${origin}${slug ? `/s/${slug}` : ""}/races?${seasonQ}race=${race.id}`;
 }
 
+// The event a sprint classification belongs to (its parent row), or null for
+// any ordinary race. Best-effort: a fake or pre-migration client answers null.
+async function sprintParent(prisma, raceId) {
+  try {
+    const parentId = (await readParentIds(prisma, [raceId])).get(raceId);
+    return parentId ? await prisma.race.findUnique({ where: { id: parentId } }) : null;
+  } catch {
+    return null;
+  }
+}
+
 // Returns { full, short, mentions }, or null when the race doesn't exist or has
 // no results yet. `mentions` maps each Discord id used in the text to the
 // driver's name: the message itself can only carry "<@1234...>", and the
@@ -86,16 +98,22 @@ export async function buildResultsPost(prisma, raceId, { origin = null, roleId =
   const MEDALS = ["🥇", "🥈", "🥉"];
   // A championship round is "ROUND 7". A training session or a special event has
   // no round number, and "ROUND ? - SPA" is what it used to say — so they are
-  // named for what they are instead of for the number they do not have.
+  // named for what they are instead of for the number they do not have. The
+  // sprint of a sprint+feature weekend is a hidden child row typed SPECIAL
+  // (lib/sprintRaces.js) — but it is the round's sprint, and it scores, so it
+  // is named for its round rather than as an event.
   const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+  const sprintOf = await sprintParent(prisma, raceId);
   const what =
-    kind === "CHAMPIONSHIP" && race.number != null
-      ? `ROUND ${race.number}`
-      : kind === "SPECIAL"
-        ? "SPECIAL EVENT"
-        : kind === "TRAINING"
-          ? "TRAINING"
-          : "ROUND ?";
+    sprintOf?.number != null
+      ? `ROUND ${sprintOf.number} SPRINT`
+      : kind === "CHAMPIONSHIP" && race.number != null
+        ? `ROUND ${race.number}`
+        : kind === "SPECIAL"
+          ? "SPECIAL EVENT"
+          : kind === "TRAINING"
+            ? "TRAINING"
+            : "ROUND ?";
   const heading = `**${what} - ${String(race.track || "").toUpperCase()}**`;
   // The drivers' role, on its own line above the heading, so the whole grid gets
   // a notification instead of only the twenty people named further down. Put in
