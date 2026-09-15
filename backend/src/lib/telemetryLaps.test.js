@@ -170,11 +170,41 @@ describe("the list a comparison picks from", () => {
     ]);
   });
 
-  it("summarises the track by its overall best and how many laps it holds", () => {
+  it("summarises the track by its overall best, how many laps it holds and when the last one landed", () => {
     for (const ms of [92000, 91000]) keepIfFaster(lap(ME, ms));
-    keepIfFaster(lap(OTHER, 90000, "Neesh"));
+    keepIfFaster({ ...lap(OTHER, 90000, "Neesh"), recordedAt: "2026-09-14T23:33:08.013Z" });
     expect(listTracks(F1, S8, true)).toEqual([
-      { trackKey: TRACK, track: "watkins_glen", layout: "", laps: 3, bestMs: 90000 },
+      { trackKey: TRACK, track: "watkins_glen", layout: "", laps: 3, bestMs: 90000, newestAt: "2026-09-14T23:33:08.013Z" },
+    ]);
+  });
+
+  // The comparison opens on the first track in the list, so the first track
+  // has to be the one the server is on now — not whichever key sorts lowest.
+  // The night this was added, "baku--nabs-baku" (two laps, a layout used for
+  // ten minutes) sat above "baku--nabs-baku-2025" (fifty laps, the real one)
+  // and the card opened on the two.
+  it("puts the track with the newest lap first, whatever its name", () => {
+    const at = (trackKey, recordedAt, steamId = ME, ms = 91000) => ({ ...lap(steamId, ms), trackKey, track: trackKey, recordedAt });
+    keepIfFaster(at("baku--nabs-baku", "2026-09-14T19:43:54.279Z"));
+    keepIfFaster(at("baku--nabs-baku-2025", "2026-09-11T22:23:21.262Z"));
+    keepIfFaster(at("baku--nabs-baku-2025", "2026-09-14T23:33:08.013Z", OTHER));
+    keepIfFaster(at("spa", "2026-09-11T19:25:06.573Z"));
+    expect(listTracks(F1, S8, true).map((t) => [t.trackKey, t.newestAt])).toEqual([
+      ["baku--nabs-baku-2025", "2026-09-14T23:33:08.013Z"],
+      ["baku--nabs-baku", "2026-09-14T19:43:54.279Z"],
+      ["spa", "2026-09-11T19:25:06.573Z"],
+    ]);
+  });
+
+  it("sorts a track whose laps carry no stamp last, by name among its kind", () => {
+    const at = (trackKey, recordedAt) => ({ ...lap(ME, 91000), trackKey, track: trackKey, recordedAt });
+    keepIfFaster(at("zolder", undefined));
+    keepIfFaster(at("monza", undefined));
+    keepIfFaster(at("spa", "2026-09-11T19:25:06.573Z"));
+    expect(listTracks(F1, S8, true).map((t) => [t.trackKey, t.newestAt])).toEqual([
+      ["spa", "2026-09-11T19:25:06.573Z"],
+      ["monza", null],
+      ["zolder", null],
     ]);
   });
 });

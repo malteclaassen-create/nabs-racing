@@ -197,7 +197,11 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   // empty list should name the league too.
   const seriesName = tracks.data?.seriesName;
   const effectiveSeries = tracks.data?.series || seriesSlug || viewedSlug || activeSeries?.slug || null;
-  // First track with laps preselects itself — an empty dropdown helps nobody.
+  // The first track preselects itself — an empty dropdown helps nobody — and
+  // the backend puts the track with the NEWEST lap first, which is the one the
+  // practice server is on now. It used to be the first by name, which on a
+  // night with two layouts of the same circuit in the list opened the card on
+  // a two-lap variant and left the fifty real laps one entry down, unseen.
   useEffect(() => {
     if (tracks.data && !list.some((t) => t.trackKey === trackKey)) setTrackKey(list[0]?.trackKey || "");
   }, [list, trackKey, tracks.data]);
