@@ -98,6 +98,8 @@ export function SeriesProvider({ children }) {
   const derived = deriveSeriesAccent((current || (loaded ? active : null))?.accentColor);
   const apply = (prop, value) => (value ? html.setProperty(prop, value) : html.removeProperty(prop));
   apply("--c-brand-dynamic", derived?.brandRgb);
+  apply("--c-brand-hover-dynamic", derived?.brandHoverRgb);
+  apply("--c-on-brand-dynamic", derived?.onBrand);
   apply("--c-eyebrow-light-dynamic", derived?.eyebrowLightTheme);
   apply("--c-accent-light-dynamic", derived?.accentLightThemeRgb);
   apply("--c-eyebrow-dark-dynamic", derived?.eyebrowDarkTheme);

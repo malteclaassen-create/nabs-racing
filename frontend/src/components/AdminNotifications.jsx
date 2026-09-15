@@ -361,7 +361,7 @@ export default function AdminNotifications() {
         <button
           onClick={save}
           disabled={busy}
-          className="rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-ink transition hover:bg-primary-dark disabled:opacity-50"
+          className="rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-onbrand transition hover:bg-primary-dark disabled:opacity-50"
         >
           {busy ? "Saving…" : "Save"}
         </button>

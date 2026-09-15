@@ -69,6 +69,15 @@ const triple = ({ r, g, b }) => `${r} ${g} ${b}`;
 const toHex = ({ r, g, b }) =>
   `#${[r, g, b].map((n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, "0")).join("")}`;
 
+// Relative luminance (WCAG), 0 black .. 1 white.
+function luminance({ r, g, b }) {
+  const lin = (c) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
 // Returns null for an invalid/blank hex (caller then clears the dynamic vars,
 // falling back to the default pink baked into index.css).
 export function deriveSeriesAccent(hex) {
@@ -78,8 +87,16 @@ export function deriveSeriesAccent(hex) {
   // Same hue, fixed darker lightness for legible text on a light background;
   // a saturation floor keeps a pale pick from going muddy grey once darkened.
   const dark = hslToRgb({ h: hsl.h, s: Math.max(hsl.s, 0.55), l: 0.38 });
+  // The filled buttons: a hover shade one step deeper (the default pink's own
+  // step, #f4afc6 -> #ee8bac, is about 8 points of lightness), and the text
+  // colour that reads on the fill. Ink beats white once the fill's luminance
+  // passes 0.2 — where (L + 0.05)² outgrows 1.05 × 0.058, the two contrast
+  // ratios crossing — so a pale accent gets ink, a deep one gets white.
+  const hover = hslToRgb({ h: hsl.h, s: hsl.s, l: Math.max(0.1, hsl.l - 0.08) });
   return {
     brandRgb: triple(rgb),
+    brandHoverRgb: triple(hover),
+    onBrand: luminance(rgb) > 0.2 ? "#0f172a" : "#ffffff",
     eyebrowDarkTheme: toHex(rgb),
     accentDarkThemeRgb: triple(rgb),
     eyebrowLightTheme: toHex(dark),
