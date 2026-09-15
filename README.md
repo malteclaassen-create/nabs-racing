@@ -148,7 +148,7 @@ data could not otherwise be represented faithfully:
 | POST | `/api/admin/login` | PIN login → JWT |
 | POST | `/api/admin/races/import` | Upload AC JSON, returns fuzzy-matched mapping |
 | POST | `/api/admin/races/commit` | Create/update a race from a confirmed mapping |
-| PUT | `/api/admin/races/:id/results` | Edit a race's results |
+| PUT | `/api/admin/races/:id/results` | Edit a race's results (`session: "SPRINT"` targets the weekend's sprint, created on first save) |
 | POST | `/api/admin/drivers` | Create a driver |
 | PUT | `/api/admin/drivers/:id` | Edit / deactivate a driver |
 | PUT | `/api/admin/settings/pin` | Change the admin PIN |
@@ -204,6 +204,24 @@ drivers can only RSVP as themselves.
    (DSQ is auto-detected), assign reserves a "sub for" team, add penalty
    positions if needed.
 4. Confirm → results are saved and **all standings are recalculated**.
+
+### No result file? Enter the round by hand
+
+A round that was never exported by the server (or whose JSON is lost) can be
+typed in under Admin → **Edit Results**: pick the round, then add the drivers
+one by one in finishing order (each pick takes the next free position) or add
+the whole Tier 1/2 grid and fill the positions in. Set retirements to DNF, then
+**Save results** — points, the Tier 2 re-ranking and the standings are computed
+from the positions exactly as for an imported race. Grid, race times, contacts
+and laps led are optional. The same picker adds a driver an import missed to an
+existing round.
+
+On a sprint + feature weekend the round's own entry is the feature race and the
+picker offers "Round N sprint" underneath it. Before any sprint result exists it
+reads "(nothing stored yet)": entering and saving it creates the sprint
+classification (`PUT /api/admin/races/:id/results` with `session: "SPRINT"`,
+the same split the import commit makes), and from then on the sprint is edited
+as its own entry.
 
 ---
 

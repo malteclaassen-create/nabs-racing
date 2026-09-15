@@ -1090,7 +1090,14 @@ function EditResults() {
   // one place in the admin that has to reach it.
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(undefined, { includeSprints: true }), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
-  const [raceId, setRaceId] = useState("");
+  // What the picker holds: a race id, or "sprint:<eventId>" for the SPRINT of
+  // a sprint+feature weekend that has nothing on file yet. Such a sprint has
+  // no row of its own until its first save (lib/sprintRaces.js creates the
+  // hidden child then), so the editor addresses it through its event and the
+  // session flag, exactly as the import does.
+  const [pick, setPick] = useState("");
+  const pendingSprint = pick.startsWith("sprint:");
+  const raceId = pendingSprint ? pick.slice("sprint:".length) : pick;
   const [rows, setRows] = useState([]);
   // race details editor (raceFormat: SINGLE | SPRINT_FEATURE, see lib/raceFormat.js)
   const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "" });
@@ -1123,10 +1130,19 @@ function EditResults() {
   // that says so. A number typed into a table by something other than the
   // person looking at it has to announce itself.
   const [prefilled, setPrefilled] = useState([]);
+  // Keys for rows added by hand. A stored row is keyed by the driver who held
+  // it when the round was opened; a hand-added row has no such history, and
+  // its driver can still be swapped, so it gets a key of its own.
+  const nextRowKey = useRef(1);
+  // A message to show once the picker has moved to another row: the first
+  // save of a sprint creates its row and the editor moves over to it, and
+  // the reset below would otherwise wipe the "saved" line on the way.
+  const msgAfterSwitch = useRef(null);
 
   useEffect(() => {
     setError(null);
-    setMsg(null);
+    setMsg(msgAfterSwitch.current);
+    msgAfterSwitch.current = null;
     // Drop the previous round's data the moment the pick changes. Without this
     // the table kept showing the round the admin had just left: press save
     // during the fetch, or after a fetch that FAILED (the catch below sets an
@@ -1140,7 +1156,11 @@ function EditResults() {
     setHonours({ pole: "", poleTime: "", fl: "", flTime: "" });
     setPenalties(null);
     setPrefilled([]);
-    if (!raceId) return;
+    if (!pick) return;
+    // A sprint with nothing on file has no row to read: the table starts
+    // empty and is filled in by hand below.
+    if (pick.startsWith("sprint:")) return;
+    const raceId = pick;
     // Two quick changes of the picker race each other; without this guard the
     // slower FIRST response can land last and leave race B selected with race
     // A's rows on screen. Same `alive` pattern the public pages use.
@@ -1207,6 +1227,8 @@ function EditResults() {
             const owes = owed.get(r.driverId);
             if (owes) filledIn.push({ driverId: r.driverId, name: r.name, seconds: owes.outstanding });
             return {
+              rowKey: r.driverId,
+              isNew: false, // stored in the round (a hand-added row is not, until saved)
               driverId: r.driverId,
               // Who held this row when it was loaded — a driver swap sends this
               // as prevDriverId so the row's race data (time, grid, telemetry)
@@ -1268,7 +1290,7 @@ function EditResults() {
     return () => {
       alive = false;
     };
-  }, [raceId]);
+  }, [pick]);
 
   function setRow(i, patch) {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -1297,9 +1319,18 @@ function EditResults() {
   // Season roster (from the teams payload) for the driver-swap dropdown, so a
   // wrongly mapped result can be reassigned to the person who actually drove.
   const roster = (teams || []).flatMap((t) =>
-    (t.drivers || []).map((d) => ({ id: d.id, name: d.name, teamId: t.id, teamName: t.name }))
+    (t.drivers || []).map((d) => ({ id: d.id, name: d.name, teamId: t.id, teamName: t.name, tier: t.tier }))
   );
   const rosterById = new Map(roster.map((d) => [d.id, d]));
+  // Drivers of the season who have no row in the table (yet).
+  const usedIds = new Set(rows.map((r) => r.driverId));
+  const unlisted = roster.filter((d) => !usedIds.has(d.id));
+  // The regular grid: everyone in a Tier 1 or Tier 2 team. Reserves (tier 0)
+  // are added one by one, because most of them were not in any given race.
+  const unlistedGrid = unlisted.filter((d) => d.tier === 1 || d.tier === 2);
+  // Rows the round actually has stored — the Driver of the Day and honours
+  // cards only offer those, since both are written against a stored result.
+  const savedRows = rows.filter((r) => !r.isNew);
 
   // Swap the person on a result row. The row keeps its finish, status, penalty
   // and race team: an "own team" drive is pinned to the OLD driver's team via
@@ -1321,6 +1352,71 @@ function EditResults() {
         };
       })
     );
+  }
+
+  // Rows for drivers who have no stored result in this round. This is how a
+  // round is typed in when there is no result JSON to import — the server
+  // never wrote one, or it was lost, and all that is left is a message in
+  // Discord — and how a driver an import missed is added afterwards. A new
+  // row starts blank apart from the driver; the finish position is the one
+  // thing the save insists on, because that is what the points come from.
+  function newRow(d, position = "") {
+    return {
+      rowKey: `new-${nextRowKey.current++}`,
+      isNew: true,
+      driverId: d.id,
+      origDriverId: d.id,
+      name: d.name,
+      position: position === "" ? "" : String(position),
+      status: "FINISHED",
+      subForTeamId: "",
+      ownTeamName: d.teamName || "",
+      penaltySeconds: 0,
+      grid: "",
+      time: "",
+      contacts: "",
+      lapsLed: "",
+      points: null,
+      origPos: "",
+      origStatus: "FINISHED",
+      canSub: d.tier === 0,
+      origName: d.name,
+      origSub: "",
+      origPenalty: 0,
+      origGrid: "",
+      origTime: "",
+      origContacts: "",
+      origLapsLed: "",
+    };
+  }
+
+  // One driver, appended at the next free finishing position, so a
+  // classification read off a Discord message can be typed in top to bottom:
+  // pick the winner, pick second, pick third…
+  function addDriver(id) {
+    const d = rosterById.get(id);
+    if (!d) return;
+    setRows((rs) => {
+      if (rs.some((r) => r.driverId === id)) return rs;
+      const taken = rs.map((r) => Number(r.position)).filter((n) => Number.isInteger(n) && n > 0);
+      return [...rs, newRow(d, taken.length ? Math.max(...taken) + 1 : 1)];
+    });
+  }
+
+  // The whole regular grid at once, positions left blank to fill in. Whoever
+  // was not there is removed again with the × on their row, or set to DNS,
+  // which is what an import would have recorded for a car that never started.
+  function addGrid() {
+    setRows((rs) => {
+      const used = new Set(rs.map((r) => r.driverId));
+      return [...rs, ...unlistedGrid.filter((d) => !used.has(d.id)).map((d) => newRow(d))];
+    });
+  }
+
+  // Only a row added by hand can be taken out again here: a stored result
+  // leaves the round through "Delete results" below, never by a stray click.
+  function removeRow(i) {
+    setRows((rs) => rs.filter((r, idx) => idx !== i || !r.isNew));
   }
 
   // Anchor for "+gap" time entries: the P1 row's full time (fallback: the
@@ -1355,7 +1451,7 @@ function EditResults() {
         driverId: r.driverId,
         // On a driver swap: tells the server whose stored race data this row
         // inherits (undefined when unchanged — JSON drops it).
-        prevDriverId: r.origDriverId !== r.driverId ? r.origDriverId : undefined,
+        prevDriverId: !r.isNew && r.origDriverId !== r.driverId ? r.origDriverId : undefined,
         position: r.position === "" ? null : Number(r.position),
         status: r.status,
         subForTeamId: r.subForTeamId || null,
@@ -1395,11 +1491,22 @@ function EditResults() {
       setError("Gaps (+…) need the winner's full race time in the P1 row first.");
       return;
     }
+    // A hand-added row that is still blank is a driver nobody has classified
+    // yet: saved as is, it would score nothing and show as unclassified. The
+    // check is for NEW rows only — some archive rounds store points without
+    // positions, and those must stay editable.
+    for (const r of rows) {
+      if (r.isNew && r.status === "FINISHED" && String(r.position).trim() === "") {
+        setError(`${r.name} has no finishing position yet. Type it into "Finish", set the status to DNS, DNF or DSQ, or remove the row.`);
+        return;
+      }
+    }
     // Guard against misclicks on a round that already has data: list every
     // edit that overwrites or clears a STORED value and ask once. Filling
     // blanks (the archive backfill workflow) never asks.
     const changed = [];
     for (const r of rows) {
+      if (r.isNew) continue; // nothing stored to overwrite
       const mods = [];
       if (r.origDriverId !== r.driverId) mods.push(`driver ${r.origName} → ${r.name}`);
       if (r.origPos !== "" && String(r.position).trim() !== r.origPos)
@@ -1435,7 +1542,15 @@ function EditResults() {
     setError(null);
     setMsg(null);
     try {
-      await api.editResults(raceId, toResults(rows));
+      const saved = await api.editResults(raceId, toResults(rows), pendingSprint ? { session: "SPRINT" } : {});
+      if (pendingSprint && saved?.raceId) {
+        // The sprint has a row of its own now: move the picker onto it, so
+        // the next edit (and the delete buttons) address the sprint itself.
+        msgAfterSwitch.current = "Sprint results saved and standings recalculated.";
+        reloadRaces();
+        setPick(saved.raceId);
+        return;
+      }
       // The swap is stored now; a second save must not point prevDriverId at a
       // row that no longer exists (that would drop the preserved race data).
       // The overwrite guard's baselines move along too, so saving again without
@@ -1443,6 +1558,7 @@ function EditResults() {
       setRows((rs) =>
         rs.map((r) => ({
           ...r,
+          isNew: false,
           origDriverId: r.driverId,
           origName: r.name,
           origSub: r.subForTeamId || "",
@@ -1513,14 +1629,47 @@ function EditResults() {
     }
   }
 
+  // How the picker and the delete dialogs name a row. A sprint row is named
+  // for the round it scores under; the event of a sprint weekend says
+  // "feature" so the two halves read apart.
+  function raceLabel(race) {
+    if (!race) return "this race";
+    const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+    const parent = race.sprintOf ? (races || []).find((p) => p.id === race.sprintOf) : null;
+    const what = race.sprintOf
+      ? parent?.number != null ? `Round ${parent.number} sprint` : "Sprint"
+      : kind === "TRAINING" ? "Training"
+      : kind === "SPECIAL" ? "Event"
+      : race.raceFormat === "SPRINT_FEATURE" ? `Round ${race.number} feature`
+      : `Round ${race.number}`;
+    return `${what} · ${race.track}`;
+  }
+
+  // The picker, in calendar order: each round, then the sprint hanging off it
+  // — the stored one, or the entry that creates it on first save.
+  const pickerEntries = [];
+  {
+    const all = races || [];
+    const childOf = new Map(all.filter((r) => r.sprintOf).map((r) => [r.sprintOf, r]));
+    for (const r of all) {
+      if (r.sprintOf) continue;
+      const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+      // Championship rounds always; trainings/events join once they have
+      // stored results (that's what there is to edit or delete).
+      if (kind !== "CHAMPIONSHIP" && !(r.resultCount > 0)) continue;
+      pickerEntries.push({ value: r.id, label: raceLabel(r) });
+      const child = childOf.get(r.id);
+      if (child) pickerEntries.push({ value: child.id, label: raceLabel(child) });
+      else if (r.raceFormat === "SPRINT_FEATURE" && r.number != null)
+        pickerEntries.push({ value: `sprint:${r.id}`, label: `Round ${r.number} sprint · ${r.track} (nothing stored yet)` });
+    }
+  }
+
   // Wipe only the stored RESULTS of the round — the race itself (date, track,
   // sign-ups, quali) stays on the calendar as "not run yet". Backup first.
   async function clearResults() {
     const race = (races || []).find((r) => r.id === raceId);
-    const kind = race ? race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP") : null;
-    const label = race
-      ? `${kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${race.number}`} · ${race.track}`
-      : "this race";
+    const label = raceLabel(race);
     if (
       !(await ask({
         title: `Delete only the RESULTS of ${label}?`,
@@ -1535,7 +1684,7 @@ function EditResults() {
     setMsg(null);
     try {
       await api.clearRaceResults(raceId);
-      setRaceId("");
+      setPick("");
       setRows([]);
       setMsg(`Results of ${label} deleted. The race is back on the calendar as upcoming.`);
       reloadRaces();
@@ -1550,10 +1699,7 @@ function EditResults() {
   // backup first; standings recompute themselves from the remaining rounds.
   async function deleteRace() {
     const race = (races || []).find((r) => r.id === raceId);
-    const kind = race ? race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP") : null;
-    const label = race
-      ? `${kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${race.number}`} · ${race.track}`
-      : "this race";
+    const label = raceLabel(race);
     if (
       !(await ask({
         title: `Delete ${label} and ALL its results?`,
@@ -1568,7 +1714,7 @@ function EditResults() {
     setMsg(null);
     try {
       await api.deleteEvent(raceId, { force: true });
-      setRaceId("");
+      setPick("");
       setRows([]);
       setMsg(`${label} deleted. Standings updated.`);
       reloadRaces();
@@ -1630,35 +1776,20 @@ function EditResults() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <label className="text-sm font-semibold text-medium" htmlFor="admin-edit-race">Race</label>
-        <select id="admin-edit-race" className="input max-w-xs" value={raceId} onChange={(e) => setRaceId(e.target.value)}>
+        <select id="admin-edit-race" className="input max-w-xs" value={pick} onChange={(e) => setPick(e.target.value)}>
           <option value="">Select a round…</option>
-          {/* Championship rounds always; trainings/events join once they have
-              stored results (that's what there is to edit or delete). */}
-          {(races || [])
-            .filter((r) => {
-              const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-              return kind === "CHAMPIONSHIP" || r.resultCount > 0;
-            })
-            .map((r) => {
-              const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-              // A sprint row is named for the round it scores under.
-              const parentNumber = r.sprintOf ? (races || []).find((p) => p.id === r.sprintOf)?.number : null;
-              const label = r.sprintOf
-                ? parentNumber != null ? `Round ${parentNumber} sprint` : "Sprint"
-                : kind === "TRAINING" ? "Training" : kind === "SPECIAL" ? "Event" : `Round ${r.number}`;
-              return (
-                <option key={r.id} value={r.id}>
-                  {label} · {r.track}
-                </option>
-              );
-            })}
+          {pickerEntries.map((e) => (
+            <option key={e.value} value={e.value}>
+              {e.label}
+            </option>
+          ))}
         </select>
       </div>
 
       {error && <ErrorBox message={error} />}
       {msg && <Notice kind="success">{msg}</Notice>}
 
-      {raceId && (
+      {raceId && !pendingSprint && (
         <div className="card flex flex-wrap items-end gap-3 p-4">
           <Field label="Track name" tone="plain">
             <input className="input min-w-56" value={meta.track}
@@ -1704,12 +1835,12 @@ function EditResults() {
         </div>
       )}
 
-      {rows.length > 0 && (
+      {savedRows.length > 0 && (
         <div className="card flex flex-wrap items-end gap-3 p-4">
           <Field label="Driver of the Day" tone="plain">
             <select className="input min-w-56" value={dotd} onChange={(e) => setDotd(e.target.value)}>
               <option value="">None</option>
-              {rows.map((r) => (
+              {savedRows.map((r) => (
                 <option key={r.driverId} value={r.driverId}>{r.name}</option>
               ))}
             </select>
@@ -1731,7 +1862,7 @@ function EditResults() {
         </div>
       )}
 
-      {rows.length > 0 && (
+      {savedRows.length > 0 && (
         <div className="card flex flex-wrap items-end gap-3 p-4">
           <Field label="Pole position" tone="plain">
             <select
@@ -1740,7 +1871,7 @@ function EditResults() {
               onChange={(e) => setHonours({ ...honours, pole: e.target.value })}
             >
               <option value="">Not on record</option>
-              {rows.map((r) => (
+              {savedRows.map((r) => (
                 <option key={r.driverId} value={r.driverId}>{r.name}</option>
               ))}
             </select>
@@ -1762,7 +1893,7 @@ function EditResults() {
               onChange={(e) => setHonours({ ...honours, fl: e.target.value })}
             >
               <option value="">Not on record</option>
-              {rows.map((r) => (
+              {savedRows.map((r) => (
                 <option key={r.driverId} value={r.driverId}>{r.name}</option>
               ))}
             </select>
@@ -1788,6 +1919,63 @@ function EditResults() {
         </div>
       )}
 
+      {/* Hand entry. For a round with nothing stored this is the whole
+          story: there was no result file to import, so the classification is
+          typed in here and saved like any other. For an imported round it is
+          the way to add a driver the file did not have. */}
+      {raceId && !loadingRace && !(rows.length === 0 && error) && (
+        <div className="card space-y-3 p-4">
+          {rows.length === 0 ? (
+            <>
+              <div className="text-sm font-bold text-dark">
+                {pendingSprint ? "No sprint results stored for this round" : "No results stored for this round"}
+              </div>
+              <p className="text-xs text-light">
+                Nothing has been imported for it. If there is no result file to import (the race was run
+                without a server export, or the file is lost), type the classification in by hand: add the
+                drivers who raced, in finishing order, set anyone who retired to DNF, and save. Points, the
+                Tier 2 re-ranking and the standings are worked out from the finishing positions exactly as for
+                an imported race. Grid, race times, contacts and laps led are optional and can be left blank.
+                {pendingSprint &&
+                  " The sprint scores the same points as the feature race, added to this round. Its classification is created on the first save and then has its own entry in the picker, next to the feature race."}
+              </p>
+            </>
+          ) : (
+            <div className="text-sm font-bold text-dark">Add a driver to the results</div>
+          )}
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="Driver" tone="plain">
+              <select
+                aria-label="Add a driver to the results"
+                className="input min-w-56"
+                value=""
+                disabled={busy || unlisted.length === 0}
+                onChange={(e) => addDriver(e.target.value)}
+              >
+                <option value="">
+                  {unlisted.length === 0 ? "Everyone in the season is listed" : "Pick a driver to add…"}
+                </option>
+                {unlisted.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}{d.teamName ? ` · ${d.teamName}` : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {rows.length === 0 && unlistedGrid.length > 0 && (
+              <button type="button" className="btn-secondary" disabled={busy} onClick={addGrid}>
+                Add the whole grid ({unlistedGrid.length} drivers)
+              </button>
+            )}
+            <span className="pb-2 text-xs text-light">
+              {rows.length === 0
+                ? "Picking drivers one by one numbers them in the order you pick them — first pick is P1. Adding the whole grid leaves the finish blank to fill in; remove anyone who was not there with the × on their row."
+                : "The new row goes at the bottom with the next free finishing position; nothing is stored until you save."}
+            </span>
+          </div>
+        </div>
+      )}
+
       {rows.length > 0 && (
         <>
           <div className="card overflow-x-auto">
@@ -1808,15 +1996,15 @@ function EditResults() {
                   </th>
                   <th className="px-3 py-2 w-20 text-center" title="Car-to-car contacts in the race. Powers the most-incidents fact and the clean-driving stats.">Contacts</th>
                   <th className="px-3 py-2 w-20 text-center" title="Laps spent in the lead. Powers the most-laps-led fact and the career stats.">Laps led</th>
+                  <th className="w-8 px-2 py-2"><span className="sr-only">Remove</span></th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r, i) => {
                   // Everyone already in the results can't be picked a second time.
-                  const usedIds = new Set(rows.map((x) => x.driverId));
-                  const swapOptions = roster.filter((d) => !usedIds.has(d.id));
+                  const swapOptions = unlisted;
                   return (
-                  <tr key={r.origDriverId} className="border-b border-border last:border-0">
+                  <tr key={r.rowKey} className="border-b border-border last:border-0">
                     <td className="px-3 py-2">
                       <select
                         aria-label={`Driver on the result currently credited to ${r.name}`}
@@ -1926,6 +2114,21 @@ function EditResults() {
                         onChange={(e) => setRow(i, { lapsLed: e.target.value })}
                       />
                     </td>
+                    <td className="px-2 py-2 text-center">
+                      {/* Only hand-added rows can be taken out here; a stored
+                          result is removed through "Delete results" below. */}
+                      {r.isNew && (
+                        <button
+                          type="button"
+                          className="rounded px-2 py-0.5 text-lg leading-none text-light transition hover:bg-red-500/10 hover:text-bad"
+                          title="Remove this row (it is not saved yet)"
+                          aria-label={`Remove ${r.name} from the results`}
+                          onClick={() => removeRow(i)}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </td>
                   </tr>
                   );
                 })}
@@ -1961,7 +2164,7 @@ function EditResults() {
               that never heard about them. */}
           <StewardPenalties data={penalties} rows={rows} prefilled={prefilled} onFill={fillPenalties} />
 
-          <RacePreview request={{ raceId, results: toResults(rows) }} />
+          <RacePreview request={{ raceId, results: toResults(rows), session: pendingSprint ? "SPRINT" : undefined }} />
 
           {/* Locked while the picked round is still loading: the table is empty
               or half-swapped at that moment, and saving it would write that
@@ -1972,7 +2175,7 @@ function EditResults() {
         </>
       )}
 
-      {raceId && (
+      {raceId && !pendingSprint && (
         <div className="card divide-y divide-border border-red-500/40">
           <div className="flex flex-wrap items-center justify-between gap-3 p-4">
             <div className="min-w-0">
