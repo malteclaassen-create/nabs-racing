@@ -14,7 +14,7 @@ import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { resolveSeries, seasonSeriesMap } from "../lib/series.js";
 import { getPersonGroups, getNameOverrides, getLinkedDriverIds } from "../lib/persons.js";
 import { telemetryForRaces } from "../lib/telemetryRead.js";
-import { readTrackInfo, mapImageFor } from "../lib/trackInfo.js";
+import { readTrackInfo, mapImageFor, ensureMapImageSize } from "../lib/trackInfo.js";
 import { readTrackCountries, staticCountryFor } from "../lib/raceCountries.js";
 
 const router = Router();
@@ -86,6 +86,11 @@ router.get("/history", optionalUser, async (req, res, next) => {
     // "coming soon" for a track that has none yet.
     const displayName = key ? displayNameFor(key) : track;
     const videos = info.videos;
+    // The series' own picture of the circuit when it uploaded one, else the
+    // shared one (lib/trackInfo.js, mapImageFor), and its pixel size, so the
+    // page can reserve the picture's height before it has loaded.
+    const mapImageUrl = mapImageFor(info, series?.slug);
+    const mapImageSize = await ensureMapImageSize(prisma, groupKey, info, mapImageUrl);
 
     // Races at this circuit: this series' seasons only, and only public
     // (non-private) ones unless we're admin.
@@ -107,7 +112,8 @@ router.get("/history", optionalUser, async (req, res, next) => {
         stats: {},
         editions: [],
         customFacts: info.facts,
-        mapImageUrl: mapImageFor(info, series?.slug),
+        mapImageUrl,
+        mapImageSize,
         mapRotation: info.mapRotation || 0,
         videos,
         me: null,
@@ -247,9 +253,8 @@ router.get("/history", optionalUser, async (req, res, next) => {
       stats,
       editions,
       customFacts: info.facts,
-      // The series' own picture of the circuit when it uploaded one, else the
-      // shared one (lib/trackInfo.js, mapImageFor).
-      mapImageUrl: mapImageFor(info, series?.slug),
+      mapImageUrl,
+      mapImageSize,
       mapRotation: info.mapRotation || 0,
       // Hotlap videos for the circuit — the attendance page's own player.
       videos,

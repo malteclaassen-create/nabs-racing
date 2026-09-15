@@ -12,7 +12,11 @@
 // URL identity and never changes (lib/series.js), which is what makes it a
 // safe key here.
 // ---------------------------------------------------------------------------
+import { join } from "path";
+import { readFileSync } from "fs";
 import { sanitizeVideoList } from "./videoLinks.js";
+import { imageSize } from "./socialFeed.js";
+import { UPLOADS_DIR } from "./dataDirs.js";
 
 const KEY_PREFIX = "track_info_";
 const MAX_FACTS = 8;
@@ -26,7 +30,7 @@ const MAX_TITLE = 80;
 const cap = (s, n) => (typeof s === "string" ? s.slice(0, n) : "");
 
 // The shape every reader gets, including for an unknown or unsaved track.
-const empty = () => ({ facts: [], mapImageUrl: null, mapImages: {}, mapRotation: 0, videos: [] });
+const empty = () => ({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, videos: [] });
 
 // A series slug as lib/series.js makes them: lowercase letters, digits and
 // hyphens. Anything else in the map is not a series and is dropped.
@@ -49,6 +53,17 @@ export function sanitizeTrackInfo(input) {
       out.mapImages[slug] = url.trim().slice(0, 300);
     }
   }
+  // The pixel size of each uploaded picture, keyed by its path (the URL
+  // without the cache-busting query), so the page can hold the picture's
+  // height open before a byte of it has arrived (mapImageSizeFor).
+  if (input && input.mapImageSizes && typeof input.mapImageSizes === "object") {
+    for (const [path, size] of Object.entries(input.mapImageSizes)) {
+      const w = Number(size?.w);
+      const h = Number(size?.h);
+      if (!path || path.length > 300 || !Number.isInteger(w) || !Number.isInteger(h) || w <= 0 || h <= 0) continue;
+      out.mapImageSizes[imageKeyOf(path)] = { w, h };
+    }
+  }
   // Rotation (degrees) for the built-in outline, so it can be turned to fill
   // the upcoming-race panel. Normalised to 0..359; 0 = as drawn.
   const rot = Number(input?.mapRotation);
@@ -65,6 +80,63 @@ export function sanitizeTrackInfo(input) {
 export function mapImageFor(info, seriesSlug) {
   const own = seriesSlug ? info?.mapImages?.[seriesSlug] : null;
   return own || info?.mapImageUrl || null;
+}
+
+// The key a picture's size is stored under: its path, without the ?v= the
+// upload appends to defeat caches — a re-upload of the same scope keeps the
+// path and replaces the size.
+export function imageKeyOf(url) {
+  return String(url || "").split("?")[0];
+}
+
+// The stored pixel size of a map image, or null when it was never measured.
+export function mapImageSizeFor(info, url) {
+  return (url && info?.mapImageSizes?.[imageKeyOf(url)]) || null;
+}
+
+// Width and height out of an upload's own bytes: the raster formats through
+// the reader the social feed already has, SVG from its viewBox (or width and
+// height) — a drawing with neither has no shape to reserve. null when unknown.
+export function imageSizeOf(buffer) {
+  const raster = imageSize(buffer);
+  if (raster && raster.width > 0 && raster.height > 0) return { w: raster.width, h: raster.height };
+  const head = Buffer.isBuffer(buffer) ? buffer.subarray(0, 4096).toString("utf8") : String(buffer || "");
+  if (!/<svg[\s>]/i.test(head)) return null;
+  const vb = /viewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)\s*["']/i.exec(head);
+  if (vb) {
+    const w = Math.round(Number(vb[1]));
+    const h = Math.round(Number(vb[2]));
+    if (w > 0 && h > 0) return { w, h };
+  }
+  const wm = /<svg[^>]*\swidth\s*=\s*["']([\d.]+)(?:px)?["']/i.exec(head);
+  const hm = /<svg[^>]*\sheight\s*=\s*["']([\d.]+)(?:px)?["']/i.exec(head);
+  if (wm && hm) {
+    const w = Math.round(Number(wm[1]));
+    const h = Math.round(Number(hm[1]));
+    if (w > 0 && h > 0) return { w, h };
+  }
+  return null;
+}
+
+// The size of the picture at `url`, measured once and kept: the stored size
+// when there is one, else read off the file on disk (pictures uploaded before
+// sizes were kept) and written back for next time. Best-effort — a picture
+// that cannot be measured simply answers null, and the page lets it load
+// without a reserved height, as it always did.
+export async function ensureMapImageSize(prisma, key, info, url) {
+  const stored = mapImageSizeFor(info, url);
+  if (stored) return stored;
+  const path = imageKeyOf(url);
+  const m = /^\/api\/uploads\/tracks\/([A-Za-z0-9._-]+)$/.exec(path);
+  if (!m) return null;
+  try {
+    const size = imageSizeOf(readFileSync(join(UPLOADS_DIR, "tracks", m[1])));
+    if (!size) return null;
+    await writeTrackInfo(prisma, key, { ...info, mapImageSizes: { ...info.mapImageSizes, [path]: size } });
+    return size;
+  } catch {
+    return null;
+  }
 }
 
 export async function readTrackInfo(prisma, key) {

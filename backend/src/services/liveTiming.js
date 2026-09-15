@@ -107,6 +107,15 @@ const KEEPALIVE_MS = 15000;
 // flag, and the result vanished mid-celebration. A fresh RACE session starting
 // releases the hold early — a new race is never hidden behind an old one.
 const RESULT_HOLD_MS = 15 * 60 * 1000;
+// The hold is for the crowd still on the server after the flag, and it must
+// never sit in front of a session that has actually begun: a new race or a
+// qualifying releases it at once (getBoard), and a practice in which somebody
+// is out on track — not parked in the garage, which is what the finishers do
+// while they wait for the result — keeps it only this much longer. Long
+// enough for the cool-down lap; short enough that a spontaneous evening
+// (a restart, a practice run after the race, nothing announced) is not stuck
+// behind the last result for a quarter of an hour.
+const COOLDOWN_HOLD_MS = 3 * 60 * 1000;
 // Quiet servers (nobody on track) only send the full snapshot every ~30s and
 // no per-car telemetry in between, so the stale threshold must sit comfortably
 // above that gap or the badge flaps to "Reconnecting" between snapshots.
@@ -1148,17 +1157,34 @@ function createRelay(server) {
 
   // What the frontend gets. Usually the live board; for RESULT_HOLD_MS after a
   // race session ended, the frozen final classification instead (a race result
-  // must survive the server cycling back to practice). A new RACE session
-  // releases the hold immediately.
+  // must survive the server cycling back to practice). A new RACE or
+  // QUALIFYING session releases the hold immediately; a practice with
+  // somebody out on track releases it COOLDOWN_HOLD_MS after that was first
+  // seen (see the constant for why).
   function getBoard() {
     if (finishedRace) {
-      if (Date.now() > finishedRace.until || status?.SessionInfo?.Type === 3) {
+      const type = status?.SessionInfo?.Type;
+      if (Date.now() > finishedRace.until || type === 3 || type === 2) {
         finishedRace = null;
-      } else {
-        return { ...finishedRace.board, connected: upstreamOpen(), updatedAt: Date.now() };
+      } else if (someoneDriving()) {
+        finishedRace.drivingSince ??= Date.now();
+        if (Date.now() - finishedRace.drivingSince > COOLDOWN_HOLD_MS) finishedRace = null;
       }
+      if (finishedRace) return { ...finishedRace.board, connected: upstreamOpen(), updatedAt: Date.now() };
     }
     return buildBoard();
+  }
+
+  // Whether a connected, non-spectating driver is out of the pits in the
+  // session the server is on now. The snapshot's own pit flag, not the
+  // telemetry's: a quiet server sends no telemetry, and thirty seconds of lag
+  // on a three-minute window does not matter.
+  function someoneDriving() {
+    for (const d of Object.values(status?.ConnectedDrivers?.Drivers || {})) {
+      if (d?.CarInfo?.IsSpectator) continue;
+      if (!(d?.IsInPits ?? false)) return true;
+    }
+    return false;
   }
 
   // Build the clean board we hand to the frontend.

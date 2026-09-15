@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -152,9 +152,28 @@ function CardHeader({ title, children }) {
 // `ev` is this race's row in the events feed (null for a special event, or
 // while it loads); `canSignUp` comes from the page's shared queue rule, so the
 // button never offers what the Attendance page would then refuse.
+// The height the map slot last settled at, kept across mounts. Switching
+// rounds remounts this panel, and until the next round's history answers the
+// slot has to be SOME height: the outline's own is the honest default, but the
+// last picture's is the better guess between two rounds that both have one —
+// it keeps the calendar below from sliding up for a beat and back down.
+let lastMapHeight = 0;
+
 export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }) {
   const mapRef = useRef(null);
+  const mapImgRef = useRef(null);
   const { data: history, loading } = useApi(useCallback(() => api.trackHistory(race.track), [race.track]));
+  // The uploaded picture fades in once its bytes are here (a cached one is
+  // complete on mount, before any load event could reach a handler).
+  const [mapLoaded, setMapLoaded] = useState(false);
+  useEffect(() => {
+    setMapLoaded(!!mapImgRef.current?.complete);
+  }, [history?.mapImageUrl]);
+  useEffect(() => {
+    if (loading) return;
+    const h = mapRef.current?.offsetHeight;
+    if (h > 0) lastMapHeight = h;
+  });
   const circuit = circuitFor(race.track); // outline (for the map card)
   const flag = flagFor(race.track, race.country); // flag can exist without an outline
   // Training sessions have RSVP like a round; special events are announcement-
@@ -269,9 +288,23 @@ export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }
                 slot is held open at the outline's own height instead, so the
                 card doesn't jump when the answer arrives. */}
             {loading ? (
-              <div className="h-56 w-full sm:h-72" />
+              <div className="h-56 w-full sm:h-72" style={lastMapHeight ? { height: lastMapHeight } : undefined} />
             ) : history?.mapImageUrl ? (
-              <img src={history.mapImageUrl} alt={`${race.track} track map`} className="content-in block h-auto w-full" />
+              // The picture's own proportions, from the size measured at upload
+              // (mapImageSize): the slot is its final height before a byte of
+              // the picture has arrived, so nothing below moves when it does.
+              <div
+                className="w-full"
+                style={history.mapImageSize ? { aspectRatio: `${history.mapImageSize.w} / ${history.mapImageSize.h}` } : undefined}
+              >
+                <img
+                  ref={mapImgRef}
+                  src={history.mapImageUrl}
+                  alt={`${race.track} track map`}
+                  onLoad={() => setMapLoaded(true)}
+                  className={`block h-auto w-full transition-opacity duration-base ${mapLoaded ? "opacity-100" : "opacity-0"}`}
+                />
+              </div>
             ) : circuit ? (
               <CircuitMap
                 track={race.track}

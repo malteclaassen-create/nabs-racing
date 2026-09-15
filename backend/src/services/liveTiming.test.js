@@ -192,7 +192,7 @@ function fullSnap({ type = 3, name = "Race", laps: raceLaps = 0, drivers }) {
       RacePosition: d.pos ?? null,
       NormalisedSplinePos: d.spline ?? 0,
       NumPits: 0,
-      IsInPits: false,
+      IsInPits: d.inPits ?? false,
     };
   }
   return {
@@ -474,6 +474,39 @@ describe("liveTiming race board", () => {
     const board = getBoard();
     expect(board.session.finished).toBeUndefined();
     expect(board.entries.map((e) => e.name)).toEqual(["Bob"]);
+  });
+
+  it("a new qualifying releases the hold immediately too", () => {
+    ingest(fullSnap({ name: "Race 1", drivers: { g1: { name: "Alice", laps: 20, pos: 1 } } }));
+    ingest(fullSnap({ type: 1, name: "Practice", drivers: {} })); // freeze
+    expect(getBoard().session.finished).toBe(true);
+    ingest(fullSnap({ type: 2, name: "Qualify", drivers: { g2: { name: "Bob", laps: 1 } } }));
+    const board = getBoard();
+    expect(board.session.finished).toBeUndefined();
+    expect(board.session.type).toBe("Qualifying");
+  });
+
+  it("a practice with somebody out on track releases the hold after the cool-down window, a garaged field does not", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-09-20T18:00:00Z"));
+      ingest(fullSnap({ name: "Race 1", drivers: { g1: { name: "Alice", laps: 20, pos: 1 } } }));
+      // Everyone parked in the garage after the flag: the result holds.
+      ingest(fullSnap({ type: 1, name: "Practice", drivers: { g1: { name: "Alice", laps: 0, inPits: true } } }));
+      vi.advanceTimersByTime(10 * 60 * 1000);
+      expect(getBoard().session.finished).toBe(true);
+      // Somebody heads out for real: three minutes later the practice shows.
+      ingest(fullSnap({ type: 1, name: "Practice", drivers: { g1: { name: "Alice", laps: 0, inPits: false } } }));
+      expect(getBoard().session.finished).toBe(true);
+      vi.advanceTimersByTime(2 * 60 * 1000);
+      expect(getBoard().session.finished).toBe(true);
+      vi.advanceTimersByTime(61 * 1000);
+      const board = getBoard();
+      expect(board.session.finished).toBeUndefined();
+      expect(board.session.type).toBe("Practice");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
