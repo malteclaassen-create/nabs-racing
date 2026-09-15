@@ -252,7 +252,15 @@ export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }
               </button>
             )}
           </CardHeader>
-          <div ref={mapRef} className="flex flex-1 items-center justify-center p-5 py-8">
+          {/* An uploaded map fills the card to its edges. The picture is the
+              admin's own composition — its margins, its labels, its facts box —
+              so the card adds no frame of its own: the padding and the
+              letterbox it used to sit in put a frame around a frame, and the
+              map came out small in a box that was mostly dark. The height
+              follows the picture; the card's own rounding clips the corners.
+              The generated outline keeps the padding, it has no edges of its
+              own to reach. */}
+          <div ref={mapRef} className={`flex flex-1 items-center justify-center ${!loading && history?.mapImageUrl ? "" : "p-5 py-8"}`}>
             {/* Nothing is drawn until the track history has landed. WHICH map to
                 draw (an uploaded one or the generated outline) and at WHAT ANGLE
                 both come from that answer, so painting early means painting the
@@ -263,7 +271,7 @@ export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }
             {loading ? (
               <div className="h-56 w-full sm:h-72" />
             ) : history?.mapImageUrl ? (
-              <img src={history.mapImageUrl} alt={`${race.track} track map`} className="content-in max-h-80 w-full rounded-lg object-contain" />
+              <img src={history.mapImageUrl} alt={`${race.track} track map`} className="content-in block h-auto w-full" />
             ) : circuit ? (
               <CircuitMap
                 track={race.track}
