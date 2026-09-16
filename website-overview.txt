@@ -24,7 +24,10 @@ Drivers
 Driver profile
   A stats page for one driver - wins, podiums, best and average finish, poles,
   places gained, a season form chart, a head to head against another driver,
-  and a race by race table.
+  and a race by race table. In a season with sprint weekends the sprint races
+  show up too: a Sprint view on the form chart and the head to head, a Sprint
+  column in the race by race table (with the weekend's points split), and
+  Sprint Wins / Sprint Podiums stat tiles a driver can switch on.
 
 Constructors
   The Tier 1 and Tier 2 tables, both with a round by round points breakdown. The

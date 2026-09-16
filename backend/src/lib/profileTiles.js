@@ -26,6 +26,8 @@ export const PROFILE_TILE_KEYS = [
   "dnf",
   "avgGrid",
   "fastestLap",
+  "sprintWins",
+  "sprintPodiums",
   "overtakes",
   "lapsLed",
   "contacts",

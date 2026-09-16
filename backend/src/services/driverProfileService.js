@@ -24,6 +24,7 @@ import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
 import { achievementMeta } from "../lib/achievements.js";
 import { hasRaced } from "../lib/standingsRow.js";
 import { withClassifiedPositions } from "./penalisedResults.js";
+import { readSprintChildrenOf, readParentIds } from "../lib/sprintRaces.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -61,6 +62,30 @@ async function countFastestLaps(prisma, ownRows) {
   return recorded + withLap.filter((r) => r.bestLapMs === minByRace.get(r.raceId)).length;
 }
 
+// Sprint-race stats over a list of sprint results ({ status, position }):
+// the sprint half of a driver's record, kept apart from the feature-race
+// numbers on purpose (a sprint win is not a win, see standingsService). null
+// when the driver's season(s) had no sprint at all, so the tiles that read
+// it hide themselves.
+export function sprintStatsOf(sprintRows) {
+  const rows = (sprintRows || []).filter(Boolean);
+  if (!rows.length) return null;
+  const starts = rows.filter((s) => s.status && s.status !== "DNS");
+  const finishes = starts.filter((s) => s.status === "FINISHED" && s.position != null);
+  const positions = finishes.map((s) => s.position);
+  return {
+    rounds: rows.length,
+    starts: starts.length,
+    finishes: finishes.length,
+    wins: finishes.filter((s) => s.position === 1).length,
+    podiums: finishes.filter((s) => s.position <= 3).length,
+    bestFinish: positions.length ? Math.min(...positions) : null,
+    worstFinish: positions.length ? Math.max(...positions) : null,
+    avgFinish: avg(positions),
+    points: rows.reduce((sum, s) => sum + (s.points || 0), 0),
+  };
+}
+
 // All-time stats across a person's linked driver rows — the same shape as the
 // per-season `stats` object, so the profile's stat tiles can swap between the
 // two with a toggle. Only built when a career exists (driver linked across
@@ -78,15 +103,19 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilt
       include: { race: { select: { seasonId: true, isSpecialEvent: true, isCompleted: true, track: true, number: true } } },
     })
   );
-  const rows = results.filter(
-    (r) =>
-      r.race &&
-      !r.race.isSpecialEvent &&
-      r.race.isCompleted &&
-      r.race.seasonId &&
-      !privateSeasonIds.has(r.race.seasonId) &&
-      (!seasonFilter || seasonFilter.has(r.race.seasonId))
-  );
+  const eligible = (r) =>
+    r.race &&
+    r.race.isCompleted &&
+    r.race.seasonId &&
+    !privateSeasonIds.has(r.race.seasonId) &&
+    (!seasonFilter || seasonFilter.has(r.race.seasonId));
+  const rows = results.filter((r) => eligible(r) && !r.race.isSpecialEvent);
+  // The sprint halves of sprint weekends: their rows sit on hidden child
+  // races (flagged special, lib/sprintRaces.js), so they are told apart from
+  // real special events by the parent link.
+  const specialIds = results.filter((r) => eligible(r) && r.race.isSpecialEvent).map((r) => r.raceId);
+  const sprintIds = await readParentIds(prisma, specialIds);
+  const sprintRows = results.filter((r) => sprintIds.has(r.raceId));
 
   const starts = rows.filter((r) => r.status !== "DNS");
   const finishes = starts.filter((r) => r.status === "FINISHED" && r.position != null);
@@ -152,6 +181,8 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilt
     podiumRate: starts.length ? Math.round((podiums / starts.length) * 100) : 0,
     fastestLap: fastest,
     fastestLaps,
+    // The sprint-race record (null = no sprint weekend in these seasons).
+    sprint: sprintStatsOf(sprintRows.map((r) => ({ status: r.status, position: r.position, points: 0 }))),
     overtakes: anyTelemetry ? overtakesTotal : null,
     contacts: anyTelemetry ? contactsTotal : null,
     lapsLed: anyTelemetry ? lapsLedTotal : null,
@@ -527,6 +558,12 @@ export async function getDriverProfile(prisma, driverId) {
 
   const standingRow = standings.standings.find((r) => r.driverId === driverId);
   const resultByRaceId = new Map(results.map((r) => [r.raceId, r]));
+  // Sprint weekends: the sprint classification lives on a hidden child race of
+  // the round (lib/sprintRaces.js). Map round -> child so the driver's sprint
+  // result can ride along with the feature race's in every per-round read.
+  const sprintChildByRound = new Map(
+    [...(await readSprintChildrenOf(prisma, allRounds))].map(([childId, parent]) => [parent.id, childId])
+  );
   const nameOv = nameOverrides.get(driverId);
   const { career, otherSeries } = await buildCareer(prisma, driverId, seasonId, standings);
   const [seriesOfSeason, seriesRows] = await Promise.all([seasonSeriesMap(prisma), dbListSeries(prisma, { includePrivate: true })]);
@@ -709,11 +746,30 @@ export async function getDriverProfile(prisma, driverId) {
   // driver wasn't entered in still appear (status "DNS", 0 points) so the season
   // form and race-by-race show the whole campaign with the line simply carrying
   // over the gap — instead of those rounds vanishing from the chart entirely.
+  // The driver's sprint result of a round, when the round has a sprint on
+  // file: the classification of the child race, its points from the standings
+  // cell's sprint share (the round's `points` is the weekend total). A sprint
+  // the driver missed reads DNS, like a missed feature race. null for a
+  // single-race round.
+  const sprintOf = (race, official) => {
+    const childId = sprintChildByRound.get(race.id);
+    if (!childId) return null;
+    const s = resultByRaceId.get(childId);
+    return {
+      raceId: childId,
+      position: s?.position ?? null,
+      grid: s?.grid ?? null,
+      status: s ? s.status : "DNS",
+      points: official?.sprint?.points ?? 0,
+      bestLapMs: s?.bestLapMs ?? null,
+    };
+  };
   const perRace = races.map((race) => {
     const r = resultByRaceId.get(race.id);
     const official = standingRow?.perRace?.[race.number];
     const tel = r ? telemetry.get(race.id) : null;
     const quali = qualiByRaceId.get(race.id) || null;
+    const sprint = sprintOf(race, official);
     if (!r) {
       return {
         raceId: race.id,
@@ -728,6 +784,7 @@ export async function getDriverProfile(prisma, driverId) {
         // a DNS row — the Qualifying view still has something to plot.
         qualiPosition: quali?.position ?? null,
         qualiTimeMs: quali?.bestLapMs ?? null,
+        sprint,
       };
     }
     return {
@@ -741,6 +798,7 @@ export async function getDriverProfile(prisma, driverId) {
       bestLapMs: r.bestLapMs,
       qualiPosition: quali?.position ?? null,
       qualiTimeMs: quali?.bestLapMs ?? null,
+      sprint,
       penaltySeconds: r.penaltySeconds || 0,
       overtakes: tel?.overtakes ?? null,
       contacts: tel?.contacts ?? null,
@@ -897,6 +955,8 @@ export async function getDriverProfile(prisma, driverId) {
     season: {
       standings: standings.standings,
       raceNumbers: standings.raceNumbers,
+      // Rounds run as sprint+feature weekends (both races score).
+      sprintRounds: standings.sprintRounds || [],
       dropWorst: standings.dropWorst,
       officialTotals: standings.officialTotals,
     },
@@ -921,6 +981,8 @@ export async function getDriverProfile(prisma, driverId) {
       podiumRate: starts.length ? Math.round((podiums / starts.length) * 100) : 0,
       fastestLap: fastest,
       fastestLaps,
+      // The sprint-race record of the season (null = no sprint weekend run).
+      sprint: sprintStatsOf(perRace.map((r) => r.sprint)),
       // AC telemetry aggregates (null when no round has telemetry yet, so the
       // profile hides these tiles for position-only archive seasons).
       overtakes: anyTelemetry ? overtakesTotal : null,
@@ -942,6 +1004,8 @@ export async function getDriverProfile(prisma, driverId) {
       number: r.number,
       track: r.track,
       isCompleted: r.isCompleted,
+      // Whether the round has a sprint classification on file.
+      hasSprint: sprintChildByRound.has(r.id),
     })),
   };
 }
