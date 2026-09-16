@@ -168,6 +168,9 @@ export async function ensureAppSchema(prisma) {
   // How teamDropWorst counts: null/'results' = single-driver round scores,
   // 'rounds' = whole team round totals (the official sheet's style).
   await addColumn(prisma, "Season", "teamDropMode", "TEXT");
+  // Bonus points for the fastest race lap (0 = none), paid to the classified
+  // finisher who set the race's best lap on top of their finishing points.
+  await addColumn(prisma, "Season", "fastestLapPoints", "INTEGER NOT NULL DEFAULT 0");
 
   // --- Phase 9: season visibility. Existing rows default to public (1). New
   // seasons are created private by the admin route; an active season is forced

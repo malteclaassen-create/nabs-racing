@@ -48,7 +48,9 @@ Sign up
   and set themselves to Accepted, Declined or Tentative for each upcoming race.
   Every answer also gets posted and updated automatically in the Discord
   channel. While logged in a driver can also pick his own country here, and that
-  then shows as his flag everywhere on the site.
+  then shows as his flag everywhere on the site. Profile edits (name, flag,
+  picture, bio, number, socials, stat tiles) apply to the driver's row in every
+  league they race in, not only the one their login is tied to.
 
 Other things
   - Dark mode and light mode (button in the top right).
@@ -78,6 +80,14 @@ This sits behind a PIN (top right, "Admin"). From there I can:
     classifications are stored: the import asks which race the file is, and
     the results view gets a Feature/Sprint switch. The sprint scores the same
     points as the feature race, added to that round.
+  - Set a fastest lap bonus per season (Seasons tab). The driver with the
+    fastest race lap gets it on top of their finish, if they finish. The
+    standings mark those cells with FL.
+  - Import the qualifying session of a round (Quali on the results editor).
+    Once it is there, that session decides who took pole everywhere on the
+    site - the Hall of Fame, the profiles, the track pages. Without one the
+    pole is whoever started from grid slot 1, so a reverse-grid feature race
+    should always have its qualifying imported.
   - Change the admin PIN.
 
 

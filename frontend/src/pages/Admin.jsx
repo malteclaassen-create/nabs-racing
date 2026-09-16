@@ -1108,6 +1108,11 @@ function EditResults() {
   // with what the round currently shows (recorded or derived), so saving
   // unchanged is a no-op.
   const [honours, setHonours] = useState({ pole: "", poleTime: "", fl: "", flTime: "" });
+  // The pole sitter named by the round's imported qualifying session, when
+  // there is one. Then the pole is not editable here: the site takes it from
+  // the session (lib/raceHonours.js), and the grid slot 1 the card used to
+  // write is exactly the number a reverse-grid feature race gets wrong.
+  const [qualiPole, setQualiPole] = useState(null); // { driverId, name, bestLapMs } | null
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
@@ -1194,19 +1199,24 @@ function EditResults() {
         setDotd(d.race?.driverOfTheDay?.driverId || "");
         setDotdBy(d.race?.driverOfTheDay?.pickedBy || "");
         {
-          // Current honours: pole = the grid-1 row (its quali lap is the pole
-          // time); fastest lap = the recorded holder if there is one, else the
-          // best stored lap of the field.
+          // Current honours: pole = the imported qualifying session's fastest
+          // driver where one is on file (read-only here), else the grid-1 row
+          // (its quali lap is the pole time); fastest lap = the recorded holder
+          // if there is one, else the best stored lap of the field.
           const laps = d.results.filter((r) => r.bestLapMs > 0 && r.bestLapMs <= 1_800_000);
           const derivedFl = laps.length
             ? laps.reduce((b, r) => (r.bestLapMs < b.bestLapMs ? r : b)).driverId
             : "";
           const fl = d.race?.fastestLapDriverId || derivedFl;
           const flRow = d.results.find((r) => r.driverId === fl);
+          const qPole = Array.isArray(d.quali)
+            ? d.quali.find((q) => q.position === 1 && q.bestLapMs > 0 && q.bestLapMs <= 1_800_000) || null
+            : null;
+          setQualiPole(qPole ? { driverId: qPole.driverId || null, name: qPole.name, bestLapMs: qPole.bestLapMs } : null);
           const poleRow = d.results.find((r) => r.grid === 1);
           setHonours({
-            pole: poleRow?.driverId || "",
-            poleTime: msToLapInput(poleRow?.qualiTimeMs),
+            pole: qPole ? qPole.driverId || "" : poleRow?.driverId || "",
+            poleTime: msToLapInput(qPole ? qPole.bestLapMs : poleRow?.qualiTimeMs),
             fl,
             flTime: msToLapInput(flRow?.bestLapMs),
           });
@@ -1743,9 +1753,13 @@ function EditResults() {
     setError(null);
     setMsg(null);
     try {
+      // With a qualifying session on file the pole is the session's and is
+      // not sent at all: the server leaves the grid alone for a body without
+      // poleDriverId, so saving the fastest lap cannot rewrite slot 1.
       await api.setRaceHonours(raceId, {
-        poleDriverId: honours.pole || null,
-        poleTimeMs: honours.pole ? poleMs : null,
+        ...(qualiPole
+          ? {}
+          : { poleDriverId: honours.pole || null, poleTimeMs: honours.pole ? poleMs : null }),
         fastestLapDriverId: honours.fl || null,
         fastestLapMs: honours.fl ? flMs : null,
       });
@@ -1864,28 +1878,43 @@ function EditResults() {
 
       {savedRows.length > 0 && (
         <div className="card flex flex-wrap items-end gap-3 p-4">
-          <Field label="Pole position" tone="plain">
-            <select
-              className="input min-w-48"
-              value={honours.pole}
-              onChange={(e) => setHonours({ ...honours, pole: e.target.value })}
-            >
-              <option value="">Not on record</option>
-              {savedRows.map((r) => (
-                <option key={r.driverId} value={r.driverId}>{r.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Pole lap time (optional)" tone="plain">
-            <input
-              className="input w-36"
-              type="text"
-              placeholder="1:23.456"
-              value={honours.poleTime}
-              onChange={(e) => setHonours({ ...honours, poleTime: e.target.value })}
-              disabled={!honours.pole}
-            />
-          </Field>
+          {qualiPole ? (
+            <Field label="Pole position" tone="plain">
+              <div
+                className="input min-w-48 cursor-default bg-surface2 text-medium"
+                title="Taken from the imported qualifying session (Quali tab). Replace or remove the session to change it."
+              >
+                {qualiPole.name}
+                {qualiPole.bestLapMs ? <span className="ml-2 font-mono text-xs text-light">{msToLapInput(qualiPole.bestLapMs)}</span> : null}
+                <span className="ml-2 font-mono text-[10px] uppercase tracking-wider text-light">from qualifying</span>
+              </div>
+            </Field>
+          ) : (
+            <>
+              <Field label="Pole position" tone="plain">
+                <select
+                  className="input min-w-48"
+                  value={honours.pole}
+                  onChange={(e) => setHonours({ ...honours, pole: e.target.value })}
+                >
+                  <option value="">Not on record</option>
+                  {savedRows.map((r) => (
+                    <option key={r.driverId} value={r.driverId}>{r.name}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Pole lap time (optional)" tone="plain">
+                <input
+                  className="input w-36"
+                  type="text"
+                  placeholder="1:23.456"
+                  value={honours.poleTime}
+                  onChange={(e) => setHonours({ ...honours, poleTime: e.target.value })}
+                  disabled={!honours.pole}
+                />
+              </Field>
+            </>
+          )}
           <Field label="Fastest lap" tone="plain">
             <select
               className="input min-w-48"
@@ -1912,9 +1941,11 @@ function EditResults() {
             Save honours
           </button>
           <span className="pb-2 text-xs text-light">
-            For old rounds without imported data: pole and fastest lap count towards the driver profiles, the
-            Hall of Fame and this race&rsquo;s page. Both lap times are optional. The pole lap shows on the race
-            facts; a fastest lap with a time also joins the track records.
+            {qualiPole
+              ? "The pole is the fastest driver of the imported qualifying session, everywhere on the site — a reverse-grid start is not a pole. "
+              : "For old rounds without imported data: pole and fastest lap count towards the driver profiles, the Hall of Fame and this race’s page. "}
+            Lap times are optional. The pole lap shows on the race facts; a fastest lap with a time also joins the
+            track records.
           </span>
         </div>
       )}
@@ -3867,16 +3898,22 @@ function SeasonScoring({ season, onSaved, onError }) {
   const stored = season.pointsTable ? JSON.parse(season.pointsTable).join(", ") : "";
   const storedTeamDrop = season.teamDropWorst == null ? "" : String(season.teamDropWorst);
   const storedTeamMode = season.teamDropMode === "rounds" ? "rounds" : "results";
+  const storedFl = String(season.fastestLapPoints || 0);
   const [drop, setDrop] = useState(String(season.dropWorst ?? 3));
   const [teamDrop, setTeamDrop] = useState(storedTeamDrop);
   const [teamMode, setTeamMode] = useState(storedTeamMode);
   const [points, setPoints] = useState(stored);
+  // Bonus for the fastest race lap (0 = none): paid on top of the finishing
+  // points to the classified finisher who set the race's best lap, in the
+  // sprint and the feature race alike.
+  const [flPoints, setFlPoints] = useState(storedFl);
   const [saving, setSaving] = useState(false);
   const dirty =
     drop !== String(season.dropWorst ?? 3) ||
     teamDrop.trim() !== storedTeamDrop ||
     teamMode !== storedTeamMode ||
-    points.trim() !== stored;
+    points.trim() !== stored ||
+    (flPoints.trim() === "" ? "0" : flPoints.trim()) !== storedFl;
 
   async function save() {
     const n = Number(drop);
@@ -3889,6 +3926,8 @@ function SeasonScoring({ season, onSaved, onError }) {
     }
     const parsed = parsePointsInput(points);
     if (!parsed.ok) return onError(parsed.error);
+    const fl = flPoints.trim() === "" ? 0 : Number(flPoints);
+    if (!Number.isInteger(fl) || fl < 0 || fl > 100) return onError("Fastest lap points must be a whole number between 0 and 100.");
     setSaving(true); onError(null);
     try {
       await api.updateSeason(season.id, {
@@ -3896,6 +3935,7 @@ function SeasonScoring({ season, onSaved, onError }) {
         teamDropWorst: teamDrop.trim() === "" ? null : teamVal,
         teamDropMode: teamDrop.trim() === "" ? null : teamMode,
         pointsTable: parsed.value,
+        fastestLapPoints: fl,
       });
       onSaved(`Scoring for ${season.name} saved.`);
     } catch (err) { onError(err.message); } finally { setSaving(false); }
@@ -3931,6 +3971,12 @@ function SeasonScoring({ season, onSaved, onError }) {
         </label>
         <input aria-label="Points per finishing position" className="input min-w-40 flex-1 py-1 font-mono text-xs" placeholder={`Points P1, P2, … (default: ${DEFAULT_POINTS_HINT})`}
           value={points} onChange={(e) => setPoints(e.target.value)} title="Points per finishing position, starting at P1. Leave empty for the league default." />
+        <label className="flex items-center gap-1.5 text-xs text-light">
+          Fastest lap
+          <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="100"
+            value={flPoints} onChange={(e) => setFlPoints(e.target.value)}
+            title="Bonus points for the fastest race lap, on top of the finishing points. Goes to the driver who set the race's best lap, only if they finished the race (a DNF gets nothing). 0 = no bonus. On a sprint weekend the sprint and the feature race each pay it." />
+        </label>
         <button className="btn-secondary px-3 py-1 text-xs" disabled={saving || !dirty} onClick={save}>
           {saving ? "Saving…" : "Save scoring"}
         </button>
@@ -3942,7 +3988,10 @@ function SeasonScoring({ season, onSaved, onError }) {
         {teamDrop.trim() !== "" && Number(teamDrop) > 0 && (
           <>Teams drop their {teamDrop} lowest {teamMode === "rounds" ? "whole round totals (like the official sheet)" : "single-driver round scores"}. </>
         )}
-        {points.trim() ? "Custom points table." : "League default points table."}
+        {points.trim() ? "Custom points table." : "League default points table."}{" "}
+        {Number(flPoints) > 0 && (
+          <>The fastest race lap pays +{Number(flPoints)} to its driver if they finish the race.</>
+        )}
       </p>
     </div>
   );
@@ -4224,7 +4273,7 @@ function Seasons({ gotoRaces }) {
                   </div>
                   <SeasonHero season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   <SeasonCar season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-                  <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.pointsTable || ""}`} season={s}
+                  <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.fastestLapPoints || 0}-${s.pointsTable || ""}`} season={s}
                     onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   {/* clone teams (or the full roster) from another season */}
                   {(seasons || []).length > 1 && (

@@ -18,7 +18,7 @@ import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsServ
 import { setSeatRsvp, readAnnounce, ANNOUNCE_KEY } from "./market.js";
 import { getWebhookUrl, setWebhookUrl, getResultsRoleId, getResultsWebhookUrl, setResultsRoleId, setResultsWebhookUrl, postToResultsChannel, announce, syncRaceToDiscord } from "../services/discordService.js";
 import { buildResultsPost, buildStandingsPost, buildConstructorsPost } from "../services/resultsPostService.js";
-import { resolveSeasonId, resolveSeason, invalidatePrivateSeasonCache } from "../services/seasonService.js";
+import { resolveSeasonId, resolveSeason, invalidatePrivateSeasonCache, parseFastestLapPoints } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
 import { createBackup, tryCreateBackup, listBackups, streamFullBackupZip, deleteBackup, pruneBackupsTo } from "../services/backupService.js";
 import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnostics.js";
@@ -1786,8 +1786,11 @@ router.put("/races/:id/honours", async (req, res, next) => {
     // pole holder, replacing a stored lap or quali time): backfilling a blank
     // archive round then never floods the rotating backups, a correction is
     // still one file-copy away from being undone.
+    // A body WITHOUT poleDriverId leaves the pole alone (a round with an
+    // imported qualifying session takes its pole from there, so the editor
+    // sends only the fastest lap for it); null still clears a recorded pole.
     const prevPole = rows.find((r) => r.grid === 1)?.driverId || null;
-    const poleChanges = (poleDriverId || null) !== prevPole;
+    const poleChanges = poleDriverId !== undefined && (poleDriverId || null) !== prevPole;
     const poleRow = poleDriverId ? rows.find((r) => r.driverId === poleDriverId) : null;
     const poleTimeChanges = !!poleRow && (qualiTimes.get(poleDriverId) ?? null) !== pms;
     const flRow = fastestLapDriverId ? rows.find((r) => r.driverId === fastestLapDriverId) : null;
@@ -1821,7 +1824,7 @@ router.put("/races/:id/honours", async (req, res, next) => {
     }
     // The pole lap is written exactly as sent while a holder is set (null
     // clears a recorded time); clearing the pole was handled above.
-    if (poleDriverId) {
+    if (poleDriverId !== undefined && poleDriverId) {
       await prisma.$executeRawUnsafe(
         `UPDATE "RaceResult" SET "qualiTimeMs" = ? WHERE "raceId" = ? AND "driverId" = ?`,
         pms,
@@ -3791,7 +3794,7 @@ router.get("/seasons", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / isAnnounced / heroImageUrl /
       // cardsEnabled aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic", "isAnnounced", "heroImageUrl", "carImageUrl", "cardsEnabled" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "isPublic", "isAnnounced", "heroImageUrl", "carImageUrl", "cardsEnabled" FROM "Season"`).catch(() => []),
       seasonSeriesMap(prisma),
       dbListSeries(prisma, { includePrivate: true }),
     ]);
@@ -3817,6 +3820,7 @@ router.get("/seasons", async (req, res, next) => {
             seriesSlug: series?.slug || null,
             teamDropWorst: extra.teamDropWorst == null ? null : Number(extra.teamDropWorst),
             teamDropMode: extra.teamDropMode === "rounds" ? "rounds" : null,
+            fastestLapPoints: parseFastestLapPoints(extra.fastestLapPoints),
             isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
             isAnnounced: !!Number(extra.isAnnounced ?? 0),
             heroImageUrl: extra.heroImageUrl || null,
@@ -3884,6 +3888,15 @@ function parseSeasonRawFields(body) {
     else if (m === "rounds") out.teamDropMode = "rounds"; // whole team rounds (sheet style)
     else return { error: "teamDropMode must be 'results', 'rounds' or blank" };
   }
+  if (body.fastestLapPoints !== undefined) {
+    // Bonus for the fastest race lap; blank/null = none.
+    const raw = body.fastestLapPoints;
+    const n = raw === null || raw === "" ? 0 : Number(raw);
+    if (!Number.isInteger(n) || n < 0 || n > 100) {
+      return { error: "Fastest lap points must be a whole number between 0 and 100" };
+    }
+    out.fastestLapPoints = n;
+  }
   if (body.isPublic !== undefined) out.isPublic = body.isPublic ? 1 : 0;
   if (body.isAnnounced !== undefined) out.isAnnounced = body.isAnnounced ? 1 : 0;
   if (body.cardsEnabled !== undefined) out.cardsEnabled = body.cardsEnabled ? 1 : 0;
@@ -3897,6 +3910,9 @@ async function writeSeasonRawFields(seasonId, raw) {
   }
   if (raw.teamDropMode !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Season" SET "teamDropMode" = ? WHERE "id" = ?`, raw.teamDropMode, seasonId);
+  }
+  if (raw.fastestLapPoints !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Season" SET "fastestLapPoints" = ? WHERE "id" = ?`, raw.fastestLapPoints, seasonId);
   }
   if (raw.isPublic !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Season" SET "isPublic" = ? WHERE "id" = ?`, raw.isPublic, seasonId);

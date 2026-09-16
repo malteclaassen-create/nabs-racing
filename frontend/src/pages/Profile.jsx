@@ -358,8 +358,17 @@ function DiscordLogin() {
 }
 
 
-function ProfileEditor({ me, onDraftChange }) {
+// `leagues` = the person's profile row per league (api.myLeagues) and `scope`
+// which of them is being edited: "all" (the default — the edit is the person's
+// and lands in every league) or one league's driverId (that league's profile
+// on its own, for a member who wants a different number, picture or bio
+// there). The parent keys this component on the scope, so the form starts
+// again from the chosen row's saved values. `target` is the row id the API
+// calls carry, null for "all".
+function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope, onSaved }) {
   const fileRef = useRef(null);
+  const target = scope === "all" ? null : scope;
+  const multiLeague = leagues.length > 1;
   const [photoUrl, setPhotoUrl] = useState(me.photoUrl);
   const [hasCustomPhoto, setHasCustomPhoto] = useState(me.hasCustomPhoto);
   const [name, setName] = useState(me.name);
@@ -399,9 +408,10 @@ function ProfileEditor({ me, onDraftChange }) {
     setError(null);
     setUploading(true);
     try {
-      const res = await api.uploadMyPhoto(file);
+      const res = await api.uploadMyPhoto(file, target);
       setPhotoUrl(res.photoUrl);
       setHasCustomPhoto(true);
+      onSaved?.();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -413,9 +423,10 @@ function ProfileEditor({ me, onDraftChange }) {
     setError(null);
     setUploading(true);
     try {
-      const res = await api.clearMyPhoto();
+      const res = await api.clearMyPhoto(target);
       setPhotoUrl(res.photoUrl);
       setHasCustomPhoto(false);
+      onSaved?.();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -428,16 +439,21 @@ function ProfileEditor({ me, onDraftChange }) {
     setSaving(true);
     try {
       const cleanedSocials = normalizeSocials(socials);
-      await api.updateMyProfile({ name: name.trim(), number, bio, socials: cleanedSocials });
-      await api.setMyCountry(country);
-      await api.setMyTiles(tiles);
-      // Keep the nav chip / stored identity in sync with the new display name.
+      await api.updateMyProfile({ name: name.trim(), number, bio, socials: cleanedSocials }, target);
+      await api.setMyCountry(country, target);
+      await api.setMyTiles(tiles, target);
+      // Keep the nav chip / stored identity in sync with the new display name —
+      // only when the edit reached the login's own row (every league, or that
+      // league on its own).
       const token = getUserToken();
       const stored = (() => {
         try { return JSON.parse(localStorage.getItem("nabs_user") || "null"); } catch { return null; }
       })();
-      if (token && stored) saveUser(token, { ...stored, driverName: name.trim(), avatarUrl: photoUrl });
+      if (token && stored && me.isActing !== false) {
+        saveUser(token, { ...stored, driverName: name.trim(), avatarUrl: photoUrl });
+      }
       setSavedAt(Date.now());
+      onSaved?.();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -450,6 +466,29 @@ function ProfileEditor({ me, onDraftChange }) {
       <CardBar title="Edit your profile" />
       <div className="space-y-6 p-5 sm:p-6">
         {error && <ErrorBox message={error} />}
+
+        {/* Which league the edit is for. Hidden for a person who races in one
+            league only: then there is nothing to choose. */}
+        {multiLeague && (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface2/50 px-4 py-3">
+            <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Applies to</span>
+            <SlidingTabs
+              items={[
+                { key: "all", label: "Every league" },
+                ...leagues.map((l) => ({ key: l.driverId, label: l.seriesName || l.seasonName || "League" })),
+              ]}
+              value={scope}
+              onChange={(key) => onScope?.(key)}
+              wrapClassName="inline-flex flex-nowrap rounded-xl border border-border bg-card p-1"
+              btnClassName="whitespace-nowrap px-3 py-1.5 text-[13px]"
+            />
+            <span className="basis-full text-xs text-light sm:basis-auto sm:flex-1">
+              {scope === "all"
+                ? "Saves go to your profile in every league you race in."
+                : `Only your ${leagues.find((l) => l.driverId === scope)?.seriesName || "selected league"} profile changes; the other leagues keep what they have.`}
+            </span>
+          </div>
+        )}
 
         {/* Identity & fields (left) beside the driver card (right, lg+): one
             compact block instead of the old stacked photo row + card + form. */}
@@ -693,6 +732,9 @@ function ProfileEditor({ me, onDraftChange }) {
             {saving ? "Saving…" : "Save changes"}
           </button>
           {savedAt && <span className="text-sm font-semibold text-ok">Saved.</span>}
+          {!multiLeague && (
+            <span className="text-xs text-light">Saved to your profile in every league you race in.</span>
+          )}
         </div>
       </div>
     </div>
@@ -774,6 +816,10 @@ function MyProfile() {
   const { total: adminAttention } = useAdminAttention();
   const navigate = useNavigate();
   const me = useApi(useCallback(() => api.me(), []));
+  // The person's row per league, for editing one league on its own. A failed
+  // read just means no picker (the editor then behaves as for one league).
+  const leagues = useApi(useCallback(() => api.myLeagues().catch(() => ({ leagues: [] })), []));
+  const [scope, setScope] = useState("all"); // "all" | a league row's driverId
   const [params, setParams] = useSearchParams();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const tab = ["profile", "rating", "tools", ...COCKPIT_TABS.map((t) => t.key)].includes(params.get("tab"))
@@ -813,6 +859,12 @@ function MyProfile() {
   }
 
   const d = me.data;
+  const leagueList = leagues.data?.leagues || [];
+  // The row being edited: the login's own row for "all", else the chosen
+  // league's row — its own fields fill the form and its page is previewed.
+  const scoped = scope === "all" ? null : leagueList.find((l) => l.driverId === scope) || null;
+  const editing = scoped ? { ...d, ...scoped } : d;
+  const previewId = scoped ? scoped.driverId : d.driverId;
 
   return (
     <div className="content-in space-y-6">
@@ -860,7 +912,17 @@ function MyProfile() {
         <CockpitPanels tab={tab} onTab={setTab} />
       ) : (
         <>
-      <ProfileEditor me={d} onDraftChange={setDraft} />
+      <ProfileEditor
+        // Keyed on the scope: switching leagues restarts the form from that
+        // row's saved values (and clears any unsaved typing on purpose).
+        key={scope}
+        me={editing}
+        leagues={leagueList}
+        scope={scope}
+        onScope={(key) => { setScope(key); setDraft(null); }}
+        onSaved={() => { leagues.reload(); if (!scoped) me.reload(); }}
+        onDraftChange={setDraft}
+      />
 
       {/* Live preview of the PUBLIC driver page, overlaid with the unsaved
           edits above — change a tile or the bio and watch it land here.
@@ -877,18 +939,20 @@ function MyProfile() {
           </div>
           <span className="text-xs text-light">
             Updates as you edit above; unsaved changes included.{" "}
-            <Link to={`/drivers/${d.driverId}`} className="transition font-semibold text-link hover:underline">
+            <Link to={`/drivers/${previewId}`} className="transition font-semibold text-link hover:underline">
               Open the real page →
             </Link>
           </span>
         </div>
         <div className="pointer-events-none select-none overflow-hidden rounded-2xl border border-border bg-surface2/40 p-4 sm:p-6 [&_button]:pointer-events-auto [&_select]:pointer-events-auto">
           <DriverProfile
-            previewId={d.driverId}
+            // Keyed on the row so switching leagues re-fetches that page.
+            key={previewId}
+            previewId={previewId}
             preview={
               previewDraft
                 ? {
-                    name: (previewDraft.name || "").trim() || d.name,
+                    name: (previewDraft.name || "").trim() || editing.name,
                     number:
                       previewDraft.number === "" || previewDraft.number == null
                         ? null

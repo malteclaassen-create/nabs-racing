@@ -732,6 +732,12 @@ export default function Welcome() {
               <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Points per finish</h3>
               <span className="ml-auto font-mono text-[11px] uppercase tracking-wider text-light">P{pointsPairs.length + 1}+ &amp; DNF = 0</span>
             </div>
+            {season?.fastestLapPoints > 0 && (
+              <p className="border-b border-border px-5 py-2 text-xs leading-relaxed text-light">
+                <span className="font-bold text-fl">Fastest lap:</span> +{season.fastestLapPoints} on top of your finishing
+                points for the fastest race lap, as long as you finish the race.
+              </p>
+            )}
             <div className="grid grid-cols-3 gap-px bg-border sm:grid-cols-6">
               {pointsPairs.map(([pos, pts], i) => {
                 const medal = i < 3 ? MEDAL[i] : null;

@@ -338,6 +338,13 @@ function Rules({ content, tokens }) {
             })}
           </div>
         </div>
+        {season?.fastestLapPoints > 0 && (
+          <p className="text-xs leading-relaxed text-light">
+            <span className="font-bold text-fl">Fastest lap:</span> the driver who sets the fastest race lap scores +
+            {season.fastestLapPoints} on top of their finishing points, if they finish the race. On a sprint weekend the
+            sprint and the feature race each pay it.
+          </p>
+        )}
         {content.pointsFootnote && (
           <p className="text-xs leading-relaxed text-light">{text(content.pointsFootnote, tokens)}</p>
         )}

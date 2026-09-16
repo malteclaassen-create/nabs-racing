@@ -27,6 +27,28 @@ POINTS PER FINISHING POSITION
 DNS, DNF and DSQ all score 0.
 
 
+FASTEST LAP
+
+A season can pay a bonus for the fastest race lap (set per season in the admin,
+Seasons tab, "Fastest lap"; 0 = no bonus). The driver who sets the fastest lap
+of the race gets it on top of their finishing points, but only if they finish
+the race - a car that sets the lap and then retires gets nothing, and nobody
+else gets it instead. It counts for the driver and for the team they drove for
+(in the Tier 2 table it sits on top of the re-ranked points). On a sprint
+weekend the sprint and the feature race each pay their own. On the round by
+round tables a cell with the bonus in it is marked FL.
+
+
+POLE POSITION
+
+Pole is the fastest driver of the qualifying session. Once a round's qualifying
+result is imported (Results tab, Quali), the site takes the pole from there for
+the Hall of Fame, the driver profiles, the track records and the race facts.
+Only a round with no qualifying on file falls back to whoever started from grid
+slot 1 - which is also how a pole is recorded by hand for the old seasons. A
+reverse-grid start is never a pole.
+
+
 SPRINT WEEKENDS
 
 Some rounds run F2 style: a short sprint race and then the feature race on the

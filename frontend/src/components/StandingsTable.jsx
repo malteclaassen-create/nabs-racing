@@ -91,15 +91,21 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
     return <td className={`${base} text-sm text-medium`}>{cell || <span className="text-faint">0</span>}</td>;
   }
 
-  const { points, status, position, sprint } = cell;
+  const { points, status, position, sprint, fastestLap } = cell;
   // A sprint weekend's cell is the sum of two results: the feature race (whose
   // position and status the cell shows) and the sprint. The tooltip spells the
-  // two halves out, so a 60 next to a P1 does not look like a typo.
-  const half = (label, pos, st, pts) =>
-    `${label} ${st && st !== "FINISHED" ? st : pos != null ? `P${pos}` : "no result"} (${pts})`;
+  // two halves out, so a 60 next to a P1 does not look like a typo. A
+  // fastest-lap bonus inside a half is named the same way, so a 36 next to a
+  // P1 is explained too.
+  const withFl = (pts, fl) => (fl ? `${pts} incl. +${fl} fastest lap` : `${pts}`);
+  const half = (label, pos, st, pts, fl) =>
+    `${label} ${st && st !== "FINISHED" ? st : pos != null ? `P${pos}` : "no result"} (${withFl(pts, fl)})`;
   const title = sprint
-    ? `${half("Sprint", sprint.position, sprint.status, sprint.points)} + ${half("Feature", position, status, points - sprint.points)} = ${points}`
-    : undefined;
+    ? `${half("Sprint", sprint.position, sprint.status, sprint.points, sprint.fastestLap)} + ${half("Feature", position, status, points - sprint.points, fastestLap)} = ${points}`
+    : fastestLap
+      ? `P${position}: ${withFl(points, fastestLap)}`
+      : undefined;
+  const anyFl = !!(fastestLap || sprint?.fastestLap);
   if (status && status !== "FINISHED") {
     const cls = status === "DNF" ? "text-warn" : status === "DSQ" ? "text-link" : "text-light";
     return (
@@ -117,10 +123,17 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
   return (
     <td
       title={title}
-      className={`${base} text-sm ${medal ? "font-bold" : "text-medium"}`}
+      className={`${base} whitespace-nowrap text-sm ${medal ? "font-bold" : "text-medium"}`}
       style={medal ? { color: medal } : undefined}
     >
       {points || <span className="text-faint">0</span>}
+      {/* The fastest-lap bonus is inside the number; the mark says why the
+          cell pays one more than its position, the footnote spells it out. */}
+      {anyFl && (
+        <span className="ml-0.5 align-super text-[8px] font-bold text-fl" aria-label="fastest lap bonus">
+          FL
+        </span>
+      )}
     </td>
   );
 }
@@ -131,10 +144,14 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
 // `sprintRounds` — the rounds run as sprint+feature weekends: both races score
 // the season's table, added together under that round, so those columns are
 // marked (a superscript S) and explained in the footnote.
-export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false, showMovement = false, sprintRounds = [] }) {
+// `fastestLapPoints` — the bonus the fastest race lap pays this season (0 =
+// none): the driver cells carry an FL mark where one was paid and the footnote
+// explains it.
+export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false, showMovement = false, sprintRounds = [], fastestLapPoints = 0 }) {
   const isDriver = variant === "driver";
   const sprintSet = new Set(sprintRounds || []);
   const showSprintNote = raceNumbers.some((n) => sprintSet.has(n));
+  const showFlNote = fastestLapPoints > 0 && raceNumbers.length > 0;
   // Constructor tables can use a team-level drop rule instead of inheriting
   // each driver's dropped rounds — the footnote must match whichever is in
   // force: "team" counts single-driver round scores, "teamRounds" counts whole
@@ -346,8 +363,23 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
           </tbody>
         </table>
       </div>
-      {(showOfficialNote || showDropNote || showSprintNote) && (
+      {(showOfficialNote || showDropNote || showSprintNote || showFlNote) && (
         <div className="space-y-1 border-t border-border px-4 py-2.5 font-mono text-[11px] leading-relaxed text-light">
+          {showFlNote && (
+            <p>
+              {isDriver ? (
+                <>
+                  <span className="font-bold text-fl">FL</span> marks a fastest-lap bonus: the driver who sets the fastest
+                  race lap scores +{fastestLapPoints} on top of their finish, if they finish the race.
+                </>
+              ) : (
+                <>
+                  The fastest race lap pays +{fastestLapPoints} to its driver (if they finish), and that point counts
+                  for the team they drove for.
+                </>
+              )}
+            </p>
+          )}
           {showSprintNote && (
             <p>
               <span className="font-bold text-brand">S</span> marks a sprint weekend: the sprint and the feature race both

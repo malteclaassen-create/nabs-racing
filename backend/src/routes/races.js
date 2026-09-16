@@ -1,6 +1,13 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
-import { getDriverResultPoints, getPointsForPosition, applyPenalties, DEFAULT_POINTS_TABLE } from "../services/pointsCalculator.js";
+import {
+  getDriverResultPoints,
+  getPointsForPosition,
+  applyPenalties,
+  stampFastestLapBonus,
+  fastestLapBonusOf,
+  DEFAULT_POINTS_TABLE,
+} from "../services/pointsCalculator.js";
 import { resolveSeasonId, resolveSeason, getSeasonScoring, getPrivateSeasonIds } from "../services/seasonService.js";
 import { getSeriesById } from "../lib/series.js";
 import { buildRaceCalendar } from "../lib/ics.js";
@@ -378,8 +385,16 @@ router.get("/:id/results", async (req, res, next) => {
 
     // Apply position penalties so the displayed order, points and the Tier-2
     // re-rank all use each car's final (post-penalty) position. `rawById` keeps
-    // the original finishing position so the UI can show "P2 → P5".
-    const applied = applyPenalties(results);
+    // the original finishing position so the UI can show "P2 → P5". The
+    // season's fastest-lap bonus is stamped the same way the standings do it
+    // (recorded holder first, then the best stored lap), so the points column
+    // here is the figure the tables add up.
+    const manualFlHolder = (await readManualFastestLaps(prisma, [race.id])).get(race.id) || null;
+    const applied = stampFastestLapBonus(
+      applyPenalties(results),
+      scoring.fastestLapPoints || 0,
+      manualFlHolder ? new Map([[race.id, manualFlHolder]]) : new Map()
+    );
     const rawById = new Map(results.map((r) => [r.driverId, r.position]));
     // The points column as STORED in the DB (explicit official points, or null
     // when they derive from the position). The admin editor round-trips this
@@ -405,7 +420,7 @@ router.get("/:id/results", async (req, res, next) => {
         const team = effTeam(r);
         t2ReRank[r.driverId] = {
           rank,
-          points: getPointsForPosition(rank, table),
+          points: getPointsForPosition(rank, table) + fastestLapBonusOf(r),
           scoresForTeam: team.id,
         };
       });
@@ -436,6 +451,8 @@ router.get("/:id/results", async (req, res, next) => {
           rawPosition: rawById.get(r.driverId) ?? null,
           status: r.status,
           points: getDriverResultPoints(r, table),
+          // The share of `points` that is the fastest-lap bonus (0 = none).
+          fastestLap: fastestLapBonusOf(r),
           storedPoints: rawPointsById.get(r.driverId) ?? null,
           penaltySeconds: r.penaltySeconds,
           grid: r.grid,
@@ -601,7 +618,9 @@ router.get("/:id/results", async (req, res, next) => {
         // Admin-recorded fastest-lap holder (archive rounds, lib/raceHonours.js).
         // When set, the race page marks THIS driver instead of deriving the
         // holder from the stored lap times. null = derive as always.
-        fastestLapDriverId: (await readManualFastestLaps(prisma, [race.id])).get(race.id) || null,
+        fastestLapDriverId: manualFlHolder,
+        // Bonus the fastest race lap pays this season (0 = none).
+        fastestLapPoints: scoring.fastestLapPoints || 0,
       },
       results: rows,
       quali,

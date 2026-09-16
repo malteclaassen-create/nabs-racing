@@ -5,13 +5,13 @@
 // person-wide via the admin's person links, so a driver's whole career counts
 // as one line no matter how often their handle changed.
 //
-// Deliberately structured as DATA-DRIVEN lists/records so new categories (e.g.
-// poles once quali data lands, or anything telemetry grows) are one entry in
-// the arrays below, not a new page layout.
+// Deliberately structured as DATA-DRIVEN lists/records so new categories
+// (anything telemetry grows) are one entry in the arrays below, not a new page
+// layout.
 // ---------------------------------------------------------------------------
 import { getDriverStandings, getT1ConstructorStandings, getT2ConstructorStandings } from "./standingsService.js";
 import { getPersonGroups } from "../lib/persons.js";
-import { readManualFastestLaps } from "../lib/raceHonours.js";
+import { readManualFastestLaps, readPoleHolders } from "../lib/raceHonours.js";
 import { resolveSeries, getActiveSeries } from "../lib/series.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
@@ -147,9 +147,11 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     }
   }
 
-  // --- extra signals straight off the results (grid, laps, telemetry) --------
-  // Poles: grid data only exists where the AC JSONs carried it (recent
-  // seasons) — the list simply reflects what's known. Fastest laps: the best
+  // --- extra signals straight off the results (quali, laps, telemetry) -------
+  // Poles: the fastest driver of the round's imported qualifying session, or
+  // grid slot 1 where no session is on file (lib/raceHonours.js) — never the
+  // grid of a round WITH a quali, because a reverse-grid feature race puts
+  // somebody who did not qualify first into slot 1. Fastest laps: the best
   // race lap of each completed round.
   const results = await prisma.raceResult.findMany({
     where: { race: { seasonId: { in: seasonIds }, isSpecialEvent: false, isCompleted: true } },
@@ -167,8 +169,9 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   const lapsLed = new Map();
   const contacts = new Map();
   const bestLapByRace = new Map(); // raceId -> { driverId, ms }
+  const raceIdsInPlay = new Set(results.map((r) => r.raceId));
+  for (const driverId of (await readPoleHolders(prisma, raceIdsInPlay)).values()) addTo(poles, driverId);
   for (const r of results) {
-    if (r.grid === 1) addTo(poles, r.driverId);
     if (r.overtakes) addTo(overtakes, r.driverId, r.overtakes);
     if (r.lapsLed) addTo(lapsLed, r.driverId, r.lapsLed);
     if (r.contacts) addTo(contacts, r.driverId, r.contacts);
@@ -180,7 +183,6 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   // Admin-recorded fastest laps (archive rounds without AC data) win over the
   // bestLapMs derivation: the flag is the round's official holder.
   const manualFl = await readManualFastestLaps(prisma);
-  const raceIdsInPlay = new Set(results.map((r) => r.raceId));
   for (const [raceId, driverId] of manualFl) {
     if (raceIdsInPlay.has(raceId)) bestLapByRace.set(raceId, { driverId, ms: null });
   }
@@ -272,7 +274,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     topList("podiums", "Most podiums", "top-3 finishes", (b) => b.podiums, { unit: "podiums" }),
     topList("points", "Most career points", "every round counted, nothing dropped", (b) => b.points, { unit: "pts" }),
     topList("starts", "Most starts", "championship rounds started", (b) => b.starts, { unit: "starts" }),
-    topList("poles", "Most pole positions", "where the pole is on record", (b, id) => poles.get(id) || 0, { unit: "poles" }),
+    topList("poles", "Most pole positions", "fastest in qualifying, where the session is on record", (b, id) => poles.get(id) || 0, { unit: "poles" }),
     topList("fastestLaps", "Most fastest laps", "best race lap of a round", (b, id) => fastestLaps.get(id) || 0, { unit: "laps" }),
     topList("overtakes", "Most overtakes", "on-track passes (telemetry seasons)", (b, id) => overtakes.get(id) || 0, { unit: "passes" }),
     topList("lapsLed", "Most laps led", "laps out front (telemetry seasons)", (b, id) => lapsLed.get(id) || 0, { unit: "laps" }),

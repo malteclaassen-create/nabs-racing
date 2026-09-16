@@ -1,7 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { isAdminRequest } from "../middleware/auth.js";
-import { getPrivateSeasonIds, getSeasonTeaser } from "../services/seasonService.js";
+import { getPrivateSeasonIds, getSeasonTeaser, parseFastestLapPoints } from "../services/seasonService.js";
 import { resolveSeries, seasonSeriesMap } from "../lib/series.js";
 
 const router = Router();
@@ -53,7 +53,7 @@ router.get("/", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / heroImageUrl / cardsEnabled
       // aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "isPublic", "heroImageUrl", "carImageUrl", "cardsEnabled" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "isPublic", "heroImageUrl", "carImageUrl", "cardsEnabled" FROM "Season"`).catch(() => []),
       getPrivateSeasonIds(prisma),
       seasonSeriesMap(prisma),
     ]);
@@ -72,6 +72,8 @@ router.get("/", async (req, res, next) => {
           pointsTable: s.pointsTable ? JSON.parse(s.pointsTable) : null,
           teamDropWorst: extra.teamDropWorst == null ? null : Number(extra.teamDropWorst),
           teamDropMode: extra.teamDropMode === "rounds" ? "rounds" : null,
+          // Bonus for the fastest race lap (0 = none) — the rules copy reads it.
+          fastestLapPoints: parseFastestLapPoints(extra.fastestLapPoints),
           isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
           heroImageUrl: extra.heroImageUrl || null,
           carImageUrl: extra.carImageUrl || null,

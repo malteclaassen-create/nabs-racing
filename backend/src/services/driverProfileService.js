@@ -15,7 +15,7 @@ import { getLinkedDriverIds, getNameOverrides, getIdentityOverrides, getPersonGr
 import { getActiveSeason } from "./seasonService.js";
 import { seasonSeriesMap, dbListSeries } from "../lib/series.js";
 import { telemetryForDriver } from "../lib/telemetryRead.js";
-import { readManualFastestLaps } from "../lib/raceHonours.js";
+import { readManualFastestLaps, readPoleHolders } from "../lib/raceHonours.js";
 import { readProfileTiles } from "../lib/profileTiles.js";
 import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
@@ -104,6 +104,10 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilt
     }
   }
   const fastestLaps = await countFastestLaps(prisma, rows);
+  // Poles: the imported qualifying session's fastest driver, else grid slot 1
+  // (lib/raceHonours.js) — the grid alone would credit a reverse-grid start.
+  const poleByRace = await readPoleHolders(prisma, new Set(rows.map((r) => r.raceId)));
+  const polePositions = rows.filter((r) => poleByRace.get(r.raceId) === r.driverId).length;
 
   // Telemetry across every linked row (per-driver reads, merged).
   let overtakesTotal = 0, contactsTotal = 0, lapsLedTotal = 0, consNum = 0, consDen = 0, gamePenSecTotal = 0;
@@ -141,7 +145,7 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilt
     bestGrid: starts.some((r) => r.grid != null)
       ? Math.min(...starts.filter((r) => r.grid != null).map((r) => r.grid))
       : null,
-    polePositions: starts.filter((r) => r.grid === 1).length,
+    polePositions,
     avgGrid: avg(starts.filter((r) => r.grid != null).map((r) => r.grid)),
     positionsGained: gained.length ? gained.reduce((a, b) => a + b, 0) : 0,
     winRate: starts.length ? Math.round((wins / starts.length) * 100) : 0,
@@ -792,6 +796,11 @@ export async function getDriverProfile(prisma, driverId) {
     prisma,
     results.filter((r) => seasonRaceIds.has(r.raceId))
   );
+  // Poles this season: quali-derived where a session is on file, grid slot 1
+  // otherwise (lib/raceHonours.js) — a reverse-grid feature race's slot 1 is
+  // not a pole.
+  const poleByRace = await readPoleHolders(prisma, seasonRaceIds);
+  const polePositions = races.filter((race) => poleByRace.get(race.id) === driverId).length;
 
   const wins = finishes.filter((r) => r.position === 1).length;
   const podiums = finishes.filter((r) => r.position <= 3).length;
@@ -905,7 +914,7 @@ export async function getDriverProfile(prisma, driverId) {
       worstFinish: finishPositions.length ? Math.max(...finishPositions) : null,
       avgFinish: avg(finishPositions),
       bestGrid: starts.some((r) => r.grid != null) ? Math.min(...starts.filter((r) => r.grid != null).map((r) => r.grid)) : null,
-      polePositions: starts.filter((r) => r.grid === 1).length,
+      polePositions,
       avgGrid: avg(starts.filter((r) => r.grid != null).map((r) => r.grid)),
       positionsGained: gained.length ? gained.reduce((a, b) => a + b, 0) : 0,
       winRate: starts.length ? Math.round((wins / starts.length) * 100) : 0,

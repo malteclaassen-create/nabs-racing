@@ -87,6 +87,13 @@ model Season {
   //                 null = the league default table in pointsCalculator.js.
   dropWorst   Int     @default(3)
   pointsTable String?
+  // Bonus points for the fastest race lap (migration season_fastest_lap_points):
+  // paid on top of the finishing points to the classified finisher who set the
+  // race's best lap, in every classification that scores (a sprint weekend's
+  // sprint and feature each pay it). 0 = none. Rows with explicit historical
+  // `points` never get it added (their official figure already includes what
+  // the sheet paid). Managed via raw SQL (ensureAppSchema) like teamDropWorst.
+  fastestLapPoints Int @default(0)
   // Official final standings for archived seasons, imported straight from the
   // old league sheets/Discord posts (migration season_final_standings). JSON:
   //   { "drivers":[{driverId,points}], "teams":[{teamId,points}] }

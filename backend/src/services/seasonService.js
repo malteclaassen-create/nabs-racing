@@ -204,6 +204,13 @@ export function parsePointsTable(raw) {
   }
 }
 
+// The fastest-lap bonus as stored (raw column, may arrive as a bigint/string):
+// a whole number of points, 0 when unset or unusable.
+export function parseFastestLapPoints(raw) {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}
+
 // Parse a Season.finalStandings JSON string into { drivers, teams } arrays of
 // { id, points }, or null when unset/invalid. Used for archived seasons whose
 // official totals are stored verbatim (see standingsService). Entries missing
@@ -244,9 +251,11 @@ export function parseFinalStandings(raw) {
   return { drivers, teams, teamPerRace };
 }
 
-// The effective scoring rules for a season: { dropWorst, pointsTable, finalStandings }.
+// The effective scoring rules for a season: { dropWorst, pointsTable,
+// fastestLapPoints, finalStandings }.
 // `pointsTable` is null for "league default" (pointsCalculator's table);
 // `dropWorst` counts the lowest rounds dropped from totals (0 = none);
+// `fastestLapPoints` is the bonus the fastest race lap pays (0 = none);
 // `finalStandings` is null unless the season stores authoritative official totals.
 // Works with a season row or a bare id; tolerates unknown ids (defaults).
 export async function getSeasonScoring(prisma, seasonOrId) {
@@ -261,15 +270,17 @@ export async function getSeasonScoring(prisma, seasonOrId) {
   // whole team round totals (the official sheet's style).
   let teamDropWorst = null;
   let teamDropMode = null;
+  let fastestLapPoints = 0;
   if (season?.id) {
     try {
       const rows = await prisma.$queryRawUnsafe(
-        `SELECT "teamDropWorst", "teamDropMode" FROM "Season" WHERE "id" = ?`,
+        `SELECT "teamDropWorst", "teamDropMode", "fastestLapPoints" FROM "Season" WHERE "id" = ?`,
         season.id
       );
       const v = rows[0]?.teamDropWorst;
       teamDropWorst = v == null ? null : Number(v);
       teamDropMode = rows[0]?.teamDropMode === "rounds" ? "rounds" : null;
+      fastestLapPoints = parseFastestLapPoints(rows[0]?.fastestLapPoints);
     } catch {
       teamDropWorst = null;
     }
@@ -278,6 +289,7 @@ export async function getSeasonScoring(prisma, seasonOrId) {
     dropWorst: Number.isInteger(season?.dropWorst) && season.dropWorst >= 0 ? season.dropWorst : 3,
     teamDropWorst,
     teamDropMode,
+    fastestLapPoints,
     pointsTable: parsePointsTable(season?.pointsTable),
     finalStandings: parseFinalStandings(season?.finalStandings),
   };

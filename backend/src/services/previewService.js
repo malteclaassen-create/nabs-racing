@@ -6,21 +6,26 @@
 import {
   applyPenalties,
   getDriverResultPoints,
+  fastestLapBonusOf,
   getPointsForPosition,
+  stampFastestLapBonus,
   calculateT1ConstructorPoints,
   calculateT2ConstructorPoints,
   DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
-import { applyDropScores, buildConstructorRows, scoringRaces, withPenaltiesApplied } from "./standingsService.js";
+import { applyDropScores, buildConstructorRows, scoringRaces, withScoringApplied } from "./standingsService.js";
 import { resultTeamId } from "../lib/resultTeam.js";
 import { getSeasonScoring } from "./seasonService.js";
 
 // The classified, points-bearing view of one proposed round (for the result
-// preview table): final order, points, and the Tier-2 re-rank.
-function buildRoundPreview(proposed, drivers, teams, table = DEFAULT_POINTS_TABLE) {
+// preview table): final order, points, and the Tier-2 re-rank. `fastestLapBonus`
+// is the season's bonus for the fastest race lap, stamped onto the proposal's
+// holder exactly as saving it would (from the proposal's own lap times — the
+// round is not saved, so there is no recorded holder to defer to).
+function buildRoundPreview(proposed, drivers, teams, table = DEFAULT_POINTS_TABLE, fastestLapBonus = 0) {
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const teamById = new Map(teams.map((t) => [t.id, t]));
-  const applied = applyPenalties(proposed);
+  const applied = stampFastestLapBonus(applyPenalties(proposed), fastestLapBonus);
   const rawById = new Map(proposed.map((r) => [r.driverId, r.position]));
 
   // Nothing is stamped yet at preview time (the round is not saved), so this
@@ -33,7 +38,7 @@ function buildRoundPreview(proposed, drivers, teams, table = DEFAULT_POINTS_TABL
   applied
     .filter((r) => r.status === "FINISHED" && r.position != null && effTeam(r)?.tier === 2)
     .sort((a, b) => a.position - b.position)
-    .forEach((r, i) => (t2[r.driverId] = getPointsForPosition(i + 1, table)));
+    .forEach((r, i) => (t2[r.driverId] = getPointsForPosition(i + 1, table) + fastestLapBonusOf(r)));
 
   const rows = applied.map((r) => {
     const d = driverById.get(r.driverId);
@@ -54,6 +59,9 @@ function buildRoundPreview(proposed, drivers, teams, table = DEFAULT_POINTS_TABL
       penalty,
       status: r.status,
       points: getDriverResultPoints(r, table),
+      // The share of `points` that is the fastest-lap bonus (0 = none), so the
+      // preview can mark the row the way the standings cell will.
+      fastestLap: fastestLapBonusOf(r),
       t2Points: t2[r.driverId] ?? null,
       // Effective team + tier so the preview can show who scores as T1 / T2 /
       // Reserve, and whether this is a reserve subbing for a team.
@@ -111,6 +119,7 @@ export async function previewRaceImpact(prisma, { seasonId, raceId, number, resu
     getSeasonScoring(prisma, seasonId),
   ]);
   const table = scoring.pointsTable || DEFAULT_POINTS_TABLE;
+  const flBonus = scoring.fastestLapPoints || 0;
 
   // Rounds plus their sprint classifications, each under its round number —
   // the same map the standings score by, so the preview prices a sprint the
@@ -146,14 +155,17 @@ export async function previewRaceImpact(prisma, { seasonId, raceId, number, resu
   // classification (a Tier-2 re-rank runs per race, never across two).
   const proposalRaceId = targetRaceId || "__proposal__";
   const proposed = results.filter((r) => r.driverId).map((r) => ({ ...r, raceId: proposalRaceId }));
-  const proposedApplied = applyPenalties(proposed);
+  // Penalties applied, then the fastest-lap bonus stamped from the proposal's
+  // own laps — the same pricing saving the round would get.
+  const proposedApplied = stampFastestLapBonus(applyPenalties(proposed), flBonus);
 
-  // DB results grouped by round number, each race's penalties applied within
-  // its own classification (non-target rounds reuse these as-is). The target
-  // round is split: the classification the proposal replaces (the baseline),
-  // and the rest of the weekend, which stays in the table either way.
+  // DB results grouped by round number, each race's penalties applied and its
+  // fastest-lap bonus stamped within its own classification (non-target
+  // rounds reuse these as-is). The target round is split: the classification
+  // the proposal replaces (the baseline), and the rest of the weekend, which
+  // stays in the table either way.
   const dbByNum = new Map();
-  for (const r of withPenaltiesApplied(dbResults)) {
+  for (const r of await withScoringApplied(prisma, dbResults, scoring)) {
     const n = raceNumberById.get(r.raceId);
     if (n == null) continue;
     if (!dbByNum.has(n)) dbByNum.set(n, []);
@@ -236,7 +248,7 @@ export async function previewRaceImpact(prisma, { seasonId, raceId, number, resu
     // Which classification of the round the proposal is: the sprint of a
     // sprint+feature weekend, or the race itself.
     session: asSprint ? "SPRINT" : "RACE",
-    round: buildRoundPreview(proposed, drivers, teams, table),
+    round: buildRoundPreview(proposed, drivers, teams, table, flBonus),
     roundTeams,
     drivers: rankWithDelta(proposedStandings.drivers, baseD, "driverId"),
     t1: rankWithDelta(proposedStandings.t1, baseT1, "teamId"),
