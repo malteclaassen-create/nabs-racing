@@ -54,6 +54,8 @@ const PROFILE_TILES = [
   { key: "dnf", label: "DNFs" },
   { key: "avgGrid", label: "Avg Grid" },
   { key: "fastestLap", label: "Fastest Laps" },
+  { key: "sprintWins", label: "Sprint Wins" },
+  { key: "sprintPodiums", label: "Sprint Podiums" },
   { key: "overtakes", label: "Overtakes", telemetry: true },
   { key: "lapsLed", label: "Laps Led", telemetry: true },
   { key: "contacts", label: "Contacts", telemetry: true },

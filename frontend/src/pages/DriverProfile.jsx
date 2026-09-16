@@ -95,6 +95,12 @@ function readableText(hex) {
 function statsFromRow(row) {
   const fin = Object.values(row.perRace).filter((r) => r.status === "FINISHED" && r.position != null);
   const pos = fin.map((r) => r.position);
+  // The sprint half of a sprint weekend rides on the standings cell as
+  // `sprint` (standingsService.buildDriverPerRace); a season without sprint
+  // weekends has none, and the Sprint duel then stays away.
+  const sprints = Object.values(row.perRace).map((r) => r.sprint).filter(Boolean);
+  const sprintFin = sprints.filter((s) => s.status === "FINISHED" && s.position != null);
+  const sprintPos = sprintFin.map((s) => s.position);
   // Qualifying is read off the starting grid stored with each result — the very
   // same source as the Poles and Avg Grid tiles further up the page (a pole is
   // recorded as grid 1 site-wide), so the two can never disagree. Rounds with
@@ -111,6 +117,11 @@ function statsFromRow(row) {
     poles: grids.filter((g) => g === 1).length,
     bestGrid: grids.length ? Math.min(...grids) : null,
     avgGrid: avg(grids),
+    sprints: sprints.length,
+    sprintWins: sprintFin.filter((s) => s.position === 1).length,
+    sprintPodiums: sprintFin.filter((s) => s.position <= 3).length,
+    sprintBest: sprintPos.length ? Math.min(...sprintPos) : null,
+    sprintAvg: avg(sprintPos),
   };
 }
 
@@ -166,6 +177,21 @@ const TILE_DEFS = (stats) => [
     value: stats.fastestLaps ?? 0,
     sub: stats.fastestLap ? `best ${fmtLapMs(stats.fastestLap.bestLapMs)} · ${stats.fastestLap.track}` : "",
     available: !!stats.fastestLap || (stats.fastestLaps ?? 0) > 0,
+  },
+  // The sprint half of sprint weekends, counted apart from the feature races
+  // above (a sprint win is not a win). Only where the season(s) ran one.
+  {
+    key: "sprintWins", icon: "trophy", label: "Sprint Wins",
+    value: stats.sprint?.wins ?? 0,
+    sub: `${stats.sprint?.starts ?? 0} sprint start${stats.sprint?.starts === 1 ? "" : "s"}`,
+    accent: stats.sprint?.wins ? MEDAL_TEXT[0] : undefined,
+    available: !!stats.sprint,
+  },
+  {
+    key: "sprintPodiums", icon: "podium", label: "Sprint Podiums",
+    value: stats.sprint?.podiums ?? 0,
+    sub: stats.sprint?.bestFinish ? `best sprint P${stats.sprint.bestFinish}` : "sprint races",
+    available: !!stats.sprint,
   },
   { key: "overtakes", icon: "swap", label: "Overtakes", value: stats.overtakes, sub: "on-track passes", available: stats.overtakes != null },
   { key: "lapsLed", icon: "lead", label: "Laps Led", value: stats.lapsLed, sub: "laps out front", available: stats.lapsLed != null },
@@ -408,13 +434,35 @@ function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
 
   // What counts as a plotted point depends on the view: a finishing position in
   // the Race view, a qualifying position in the Qualifying view (which is there
-  // even when the driver went on to retire, so it has no status condition).
+  // even when the driver went on to retire, so it has no status condition), the
+  // sprint classification in the Sprint view (rounds without a sprint stay
+  // empty there).
   const valueOf = (r) =>
     mode === "quali"
       ? r.qualiPosition ?? null
-      : r.status === "FINISHED" && r.position != null
-        ? r.position
-        : null;
+      : mode === "sprint"
+        ? r.sprint?.status === "FINISHED" && r.sprint.position != null
+          ? r.sprint.position
+          : null
+        : r.status === "FINISHED" && r.position != null
+          ? r.position
+          : null;
+  // What a chip says when there is no number to show: a round that hasn't
+  // happened is a quiet dash, one that has is the reason there's no result
+  // (DNF/DNS/DSQ) — or, in the Qualifying and Sprint views, simply nothing
+  // of that kind on file for the round.
+  const emptyLabel = (r) =>
+    r.upcoming ? "–" : mode === "quali" ? "–" : mode === "sprint" ? (r.sprint ? r.sprint.status : "–") : r.status;
+  const emptyTitle = (r) =>
+    r.upcoming
+      ? " · not raced yet"
+      : mode === "quali"
+        ? " · no qualifying on file"
+        : mode === "sprint"
+          ? r.sprint
+            ? ` · sprint ${r.sprint.status}`
+            : " · no sprint this round"
+          : ` · ${r.status}`;
 
   const finishes = rounds
     .map((r, i) => {
@@ -571,18 +619,12 @@ function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
                 : medal
                 ? ""
                 : "ring-1 ring-border";
-              // What the chip says when there is no number to show: a round
-              // that hasn't happened is a quiet dash, one that has is the
-              // reason there's no result (DNF/DNS/DSQ) — or, in the Qualifying
-              // view, simply no session on file.
-              const label = p != null ? p : r.upcoming ? "–" : mode === "quali" ? "–" : r.status;
+              const label = p != null ? p : emptyLabel(r);
               return (
                 <div
                   key={r.number}
                   className={`flex flex-1 flex-col items-center gap-1.5 ${r.upcoming ? "opacity-45" : ""}`}
-                  title={`R${r.number} ${r.track}${
-                    p != null ? ` · P${p}` : r.upcoming ? " · not raced yet" : mode === "quali" ? " · no qualifying on file" : ` · ${r.status}`
-                  }`}
+                  title={`R${r.number} ${r.track}${p != null ? ` · P${p}` : emptyTitle(r)}`}
                 >
                   <span
                     className={`flex h-9 w-9 items-center justify-center rounded-lg font-display font-black tabular-nums ${
@@ -670,6 +712,8 @@ function HeadToHead({ me, meRow, standings }) {
   // a round counts the moment BOTH have a grid slot, whatever the race then did
   // to them — out-qualifying someone who later retired still happened.
   let meAheadQ = 0, oppAheadQ = 0, sharedQ = 0;
+  // The sprint duel: the sprint halves of sprint weekends, both classified.
+  let meAheadS = 0, oppAheadS = 0, sharedS = 0;
   for (const num of Object.keys(meRow.perRace)) {
     const a = meRow.perRace[num], b = opp.perRace[num];
     if (!a || !b) continue;
@@ -677,6 +721,12 @@ function HeadToHead({ me, meRow, standings }) {
       sharedQ++;
       if (a.grid < b.grid) meAheadQ++;
       else if (b.grid < a.grid) oppAheadQ++;
+    }
+    const sa = a.sprint, sb = b.sprint;
+    if (sa?.status === "FINISHED" && sb?.status === "FINISHED" && sa.position != null && sb.position != null) {
+      sharedS++;
+      if (sa.position < sb.position) meAheadS++;
+      else if (sb.position < sa.position) oppAheadS++;
     }
     if (a.status !== "FINISHED" || b.status !== "FINISHED" || a.position == null || b.position == null) continue;
     shared++;
@@ -730,9 +780,29 @@ function HeadToHead({ me, meRow, standings }) {
   // archive seasons have none — with nothing on file for either driver the
   // whole block stays away rather than showing a column of dashes.
   const hasQuali = meStats.quali > 0 || oppStats.quali > 0;
-  // Switching to an opponent from a season with no grid slots takes the switch
-  // away with it — without this the panel would sit on an empty Qualifying view.
-  const mode = hasQuali ? duelMode : "race";
+  // Sprint weekends: the sprint half of the duel, only where the season ran one.
+  const hasSprint = meStats.sprints > 0 || oppStats.sprints > 0;
+  // Switching to an opponent from a season with no grid slots (or sprints)
+  // takes the switch away with it — without this the panel would sit on an
+  // empty Qualifying or Sprint view.
+  const mode = (duelMode === "quali" && hasQuali) || (duelMode === "sprint" && hasSprint) ? duelMode : "race";
+  const sprintRows = [
+    {
+      label: "Finished ahead",
+      sub: (
+        <>
+          <CountUp key={opp.driverId} end={sharedS} /> shared {sharedS === 1 ? "sprint" : "sprints"}
+        </>
+      ),
+      a: num(meAheadS),
+      b: num(oppAheadS),
+      cmp: sign(meAheadS - oppAheadS),
+    },
+    { label: "Sprint wins", a: num(meStats.sprintWins), b: num(oppStats.sprintWins), cmp: sign(meStats.sprintWins - oppStats.sprintWins) },
+    { label: "Sprint podiums", a: num(meStats.sprintPodiums), b: num(oppStats.sprintPodiums), cmp: sign(meStats.sprintPodiums - oppStats.sprintPodiums) },
+    { label: "Best sprint", a: num(meStats.sprintBest, { prefix: "P" }), b: num(oppStats.sprintBest, { prefix: "P" }), cmp: sign((oppStats.sprintBest ?? 99) - (meStats.sprintBest ?? 99)) },
+    { label: "Avg sprint", a: num(meStats.sprintAvg), b: num(oppStats.sprintAvg), cmp: sign((oppStats.sprintAvg ?? 99) - (meStats.sprintAvg ?? 99)) },
+  ];
   const qualiRows = [
     {
       label: "Out-qualified",
@@ -809,10 +879,11 @@ function HeadToHead({ me, meRow, standings }) {
           </div>
         </div>
 
-        {/* Race ⇄ Qualifying, the same switch the season form carries. Only
-            offered when a starting grid is actually on file for one of the two
-            — older archive seasons have none. */}
-        {hasQuali && (
+        {/* Race ⇄ Sprint ⇄ Qualifying, the same switch the season form
+            carries. A view is only offered when there is something in it: a
+            starting grid on file for one of the two (older archive seasons
+            have none), a sprint weekend run this season. */}
+        {(hasQuali || hasSprint) && (
           <div className="mb-3 flex justify-end">
             {/* The pill wears the page driver's team colour — the same colour
                 their half of the points bar and their winning rows carry, so
@@ -820,7 +891,8 @@ function HeadToHead({ me, meRow, standings }) {
             <SlidingTabs
               items={[
                 { key: "race", label: "Race" },
-                { key: "quali", label: "Qualifying" },
+                ...(hasSprint ? [{ key: "sprint", label: "Sprint" }] : []),
+                ...(hasQuali ? [{ key: "quali", label: "Qualifying" }] : []),
               ]}
               value={mode}
               onChange={setDuelMode}
@@ -844,6 +916,14 @@ function HeadToHead({ me, meRow, standings }) {
           >
             <DuelRows rows={raceRows} meColor={meColor} oppColor={oppColor} />
           </div>
+          {hasSprint && (
+            <div
+              className={`col-start-1 row-start-1 ${mode === "sprint" ? "" : "invisible pointer-events-none"}`}
+              aria-hidden={mode !== "sprint"}
+            >
+              <DuelRows rows={sprintRows} meColor={meColor} oppColor={oppColor} />
+            </div>
+          )}
           {hasQuali && (
             <div
               className={`col-start-1 row-start-1 ${mode === "quali" ? "" : "invisible pointer-events-none"}`}
@@ -1600,10 +1680,15 @@ export default function DriverProfile({ previewId, preview }) {
   // all — no uploaded session, no tab.
   const qualiPositions = (perRace || []).map((r) => r.qualiPosition).filter((v) => v != null);
   const hasQuali = qualiPositions.length > 0;
+  // Sprint weekends this season: the Sprint view of the chart, the sprint
+  // column of the race-by-race table. Rounds with a sprint on file carry it.
+  const hasSprint = (perRace || []).some((r) => r.sprint);
   const formBest =
     formMode === "quali"
       ? { best: qualiPositions.length ? Math.min(...qualiPositions) : null, worst: qualiPositions.length ? Math.max(...qualiPositions) : null }
-      : { best: stats.bestFinish ?? null, worst: stats.worstFinish ?? null };
+      : formMode === "sprint"
+        ? { best: stats.sprint?.bestFinish ?? null, worst: stats.sprint?.worstFinish ?? null }
+        : { best: stats.bestFinish ?? null, worst: stats.worstFinish ?? null };
   // Preview mode: unsaved profile edits overlay the stored driver fields.
   const driver = preview ? { ...p.driver, ...preview } : p.driver;
   const color = driver.team.color;
@@ -1753,7 +1838,11 @@ export default function DriverProfile({ previewId, preview }) {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-5 py-4 sm:px-6">
             <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Season Form</h2>
             <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-              {formMode === "quali" ? "qualifying position by round" : "finishing position by round"}
+              {formMode === "quali"
+                ? "qualifying position by round"
+                : formMode === "sprint"
+                  ? "sprint finishing position by round"
+                  : "finishing position by round"}
             </span>
             {formBest.best != null && (
               <span className="flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-wider">
@@ -1767,15 +1856,17 @@ export default function DriverProfile({ previewId, preview }) {
                 )}
               </span>
             )}
-            {/* Race ⇄ Qualifying. Only offered when a quali session has actually
-                been uploaded for this season — otherwise the tab would lead to
-                an empty chart and imply we lost the data. */}
-            {hasQuali && (
+            {/* Race ⇄ Sprint ⇄ Qualifying. A view is only offered when the
+                season has something to show in it — a sprint weekend run, a
+                quali session uploaded — otherwise the tab would lead to an
+                empty chart and imply we lost the data. */}
+            {(hasQuali || hasSprint) && (
               <SlidingTabs
                 className="ml-auto"
                 items={[
                   { key: "race", label: "Race" },
-                  { key: "quali", label: "Qualifying" },
+                  ...(hasSprint ? [{ key: "sprint", label: "Sprint" }] : []),
+                  ...(hasQuali ? [{ key: "quali", label: "Qualifying" }] : []),
                 ]}
                 value={formMode}
                 onChange={setFormMode}
@@ -1811,7 +1902,12 @@ export default function DriverProfile({ previewId, preview }) {
                   <th className="px-5 py-2.5">Rnd</th>
                   <th className="px-2 py-2.5">Circuit</th>
                   <th className="px-2 py-2.5 text-center">Grid</th>
-                  <th className="px-2 py-2.5 text-center">Race</th>
+                  {hasSprint && (
+                    <th className="px-2 py-2.5 text-center" title="The sprint race of a sprint weekend (scores like the feature race, added to the round)">
+                      Sprint
+                    </th>
+                  )}
+                  <th className="px-2 py-2.5 text-center">{hasSprint ? "Feature" : "Race"}</th>
                   <th className="px-2 py-2.5 text-right">Pts</th>
                   <th className="hidden px-5 py-2.5 text-right sm:table-cell">+/−</th>
                 </tr>
@@ -1845,6 +1941,26 @@ export default function DriverProfile({ previewId, preview }) {
                         </div>
                       </td>
                       <td className="px-2 py-3 text-center font-mono tabular-nums text-medium">{r.grid ? `P${r.grid}` : "–"}</td>
+                      {hasSprint && (
+                        <td className="px-2 py-3 text-center">
+                          {r.sprint ? (
+                            r.sprint.status === "FINISHED" && r.sprint.position != null ? (
+                              <span
+                                className={`inline-flex h-7 min-w-[2rem] items-center justify-center rounded-md px-1.5 font-display text-sm font-black tabular-nums ${
+                                  r.sprint.position <= 3 ? "text-ink" : "bg-surface2 text-dark ring-1 ring-border"}`}
+                                style={r.sprint.position <= 3 ? { backgroundColor: MEDAL[r.sprint.position - 1] } : undefined}
+                                title={`Sprint P${r.sprint.position} · ${r.sprint.points} pts`}
+                              >
+                                P{r.sprint.position}
+                              </span>
+                            ) : (
+                              <StatusPill status={r.sprint.status} />
+                            )
+                          ) : (
+                            <span className="text-faint" title="No sprint this round">–</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-2 py-3 text-center">
                         {finished ? (
                           <span className={`inline-flex h-7 min-w-[2rem] items-center justify-center rounded-md px-1.5 font-display text-sm font-black tabular-nums ${
@@ -1854,11 +1970,21 @@ export default function DriverProfile({ previewId, preview }) {
                           </span>
                         ) : <StatusPill status={r.status} />}
                       </td>
-                      <td className="px-2 py-3 text-right font-display text-base font-black tabular-nums">
+                      <td
+                        className="px-2 py-3 text-right font-display text-base font-black tabular-nums"
+                        title={r.sprint ? `Sprint ${r.sprint.points} + feature ${r.points - r.sprint.points} = ${r.points}` : undefined}
+                      >
                         {dropped ? (
                           <span className="text-faint line-through decoration-2">{r.points}</span>
                         ) : (
                           <span className="text-dark">{r.points}</span>
+                        )}
+                        {/* A sprint weekend's total is two results: say so
+                            under the number, so a 60 next to a P3 adds up. */}
+                        {r.sprint && (
+                          <span className="block font-mono text-[10px] font-semibold tabular-nums text-light">
+                            {r.sprint.points} + {r.points - r.sprint.points}
+                          </span>
                         )}
                       </td>
                       <td className="hidden px-5 py-3 text-right font-mono text-sm font-bold tabular-nums sm:table-cell">
