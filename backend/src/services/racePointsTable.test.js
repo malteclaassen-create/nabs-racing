@@ -1,37 +1,40 @@
 import { describe, it, expect } from "vitest";
-import { stampPointsMultiplier, getDriverResultPoints, calculateT2ConstructorContributions } from "./pointsCalculator.js";
+import { stampRacePointsTable, pointsTableOf, getDriverResultPoints, calculateT2ConstructorContributions } from "./pointsCalculator.js";
 import { getDriverStandings, getT2ConstructorStandings, applyChampionOverride } from "./standingsService.js";
 import { previewRaceImpact } from "./previewService.js";
 
 // ---------------------------------------------------------------------------
-// Double-points rounds (Race.pointsMultiplier) and the league-decided champion
-// (Season.championDriverId), priced and applied through the same reads the
-// services make against the real database.
+// A round's own points table (Race.pointsTable) and the league-decided
+// champion (Season.championDriverId), priced and applied through the same
+// reads the services make against the real database.
 // ---------------------------------------------------------------------------
 
 const row = (raceId, driverId, position, extra = {}) => ({
   raceId, driverId, position, status: "FINISHED", points: null, penaltySeconds: 0, grid: null,
   teamId: null, subForTeamId: null, totalTimeMs: null, bestLapMs: null, ...extra,
 });
+const DOUBLE = [70, 60, 50];
 
-describe("stampPointsMultiplier + pricing", () => {
-  it("multiplies derived points, never explicit ones", () => {
-    const rows = stampPointsMultiplier([row("r1", "A", 1), row("r1", "B", 2, { points: 30 })], new Map([["r1", 2]]));
+describe("stampRacePointsTable + pricing", () => {
+  it("prices derived points by the round's table, never explicit ones", () => {
+    const rows = stampRacePointsTable([row("r1", "A", 1), row("r1", "B", 2, { points: 30 }), row("r1", "C", 4)], new Map([["r1", DOUBLE]]));
     expect(getDriverResultPoints(rows[0])).toBe(70);
     expect(getDriverResultPoints(rows[1])).toBe(30);
+    expect(getDriverResultPoints(rows[2])).toBe(0); // beyond the round's table
   });
 
-  it("multiplies the fastest-lap bonus with the finish, and the Tier-2 re-rank", () => {
-    const rows = stampPointsMultiplier([{ ...row("r1", "A", 2), fastestLapBonus: 1 }], new Map([["r1", 2]]));
-    expect(getDriverResultPoints(rows[0])).toBe(62);
+  it("adds the fastest-lap bonus on top, and prices the Tier-2 re-rank by it", () => {
+    const rows = stampRacePointsTable([{ ...row("r1", "A", 2), fastestLapBonus: 1 }], new Map([["r1", DOUBLE]]));
+    expect(getDriverResultPoints(rows[0])).toBe(61);
     const c = calculateT2ConstructorContributions(rows, [{ id: "A", teamId: "t" }], [{ id: "t", tier: 2 }]);
-    expect(c[0].points).toBe(72); // re-ranked P1: (35 + 1) × 2
+    expect(c[0].points).toBe(71); // re-ranked P1 by the round's table + 1
   });
 
-  it("leaves rows alone without a multiplier above 1", () => {
+  it("leaves rows alone without a table, and falls back to the season's", () => {
     const rows = [row("r1", "A", 1)];
-    expect(stampPointsMultiplier(rows, new Map([["r1", 1]]))).toBe(rows);
-    expect(stampPointsMultiplier(rows, new Map())).toBe(rows);
+    expect(stampRacePointsTable(rows, new Map([["r1", null]]))).toBe(rows);
+    expect(stampRacePointsTable(rows, new Map())).toBe(rows);
+    expect(pointsTableOf(rows[0], [9])).toEqual([9]);
   });
 });
 
@@ -63,11 +66,12 @@ const DRIVERS = [
   { id: "A", seasonId: SEASON, name: "Ann", teamId: "t1", tier: 1, isActive: true },
   { id: "B", seasonId: SEASON, name: "Ben", teamId: "t2", tier: 2, isActive: true },
 ];
-// r1 ordinary; r2 a double-points sprint weekend (the sprint child r2s inherits).
+// r1 ordinary; r2 a sprint weekend on its own (doubled) table — the sprint
+// child r2s uses its round's.
 const RACES = [
-  { id: "r1", seasonId: SEASON, number: 1, track: "Monza", isSpecialEvent: false, isCompleted: true, parentRaceId: null, raceFormat: "SINGLE", pointsMultiplier: 1 },
-  { id: "r2", seasonId: SEASON, number: 2, track: "Spa", isSpecialEvent: false, isCompleted: true, parentRaceId: null, raceFormat: "SPRINT_FEATURE", pointsMultiplier: 2 },
-  { id: "r2s", seasonId: SEASON, number: null, track: "Spa", isSpecialEvent: true, isCompleted: true, parentRaceId: "r2", raceFormat: "SINGLE", pointsMultiplier: 1 },
+  { id: "r1", seasonId: SEASON, number: 1, track: "Monza", isSpecialEvent: false, isCompleted: true, parentRaceId: null, raceFormat: "SINGLE", pointsTable: null },
+  { id: "r2", seasonId: SEASON, number: 2, track: "Spa", isSpecialEvent: false, isCompleted: true, parentRaceId: null, raceFormat: "SPRINT_FEATURE", pointsTable: JSON.stringify(DOUBLE) },
+  { id: "r2s", seasonId: SEASON, number: null, track: "Spa", isSpecialEvent: true, isCompleted: true, parentRaceId: "r2", raceFormat: "SINGLE", pointsTable: null },
 ];
 const RESULTS = [
   row("r1", "A", 1), row("r1", "B", 2),
@@ -102,25 +106,25 @@ function fakePrisma({ champion = null } = {}) {
       if (sql.includes('"championDriverId"')) return [{ teamDropWorst: null, teamDropMode: null, fastestLapPoints: 0, championDriverId: champion }];
       if (sql.includes('"parentRaceId" IS NOT NULL')) return RACES.filter((r) => r.parentRaceId && args.includes(r.id)).map((r) => ({ id: r.id, parentRaceId: r.parentRaceId }));
       if (sql.includes('"parentRaceId" IN')) return RACES.filter((r) => args.includes(r.parentRaceId)).map((r) => ({ id: r.id, parentRaceId: r.parentRaceId }));
-      if (sql.includes('"raceFormat"')) return RACES.filter((r) => args.includes(r.id)).map((r) => ({ id: r.id, qualiMinutes: null, raceLaps: null, raceFormat: r.raceFormat, sprintLaps: null, pointsMultiplier: r.pointsMultiplier }));
+      if (sql.includes('"raceFormat"')) return RACES.filter((r) => args.includes(r.id)).map((r) => ({ id: r.id, qualiMinutes: null, raceLaps: null, raceFormat: r.raceFormat, sprintLaps: null, pointsTable: r.pointsTable }));
       throw new Error(`fake prisma: ${sql.slice(0, 60)}`);
     },
   };
 }
 
-describe("a double-points round in the standings", () => {
-  it("pays the round twice over, sprint included, and names it", async () => {
+describe("a round on its own points table", () => {
+  it("pays the round by that table, sprint included, and names it", async () => {
     const table = await getDriverStandings(fakePrisma(), SEASON);
-    expect(table.pointsMultipliers).toEqual({ 2: 2 });
+    expect(table.customPoints).toEqual({ 2: DOUBLE });
     const totals = Object.fromEntries(table.standings.map((r) => [r.driverId, r.total]));
-    // A: 35 + (30 + 35) × 2 = 165; B: 30 + (35 + 30) × 2 = 160.
+    // A: 35 + (60 + 70) = 165; B: 30 + (70 + 60) = 160.
     expect(totals).toEqual({ A: 165, B: 160 });
     expect(table.standings.find((r) => r.driverId === "A").perRace[2]).toEqual({
       points: 130, status: "FINISHED", position: 2, grid: null, sprint: { points: 70, status: "FINISHED", position: 1 },
     });
   });
 
-  it("the Tier-2 table doubles the re-ranked round too", async () => {
+  it("the Tier-2 table re-ranks by the round's table too", async () => {
     const t2 = await getT2ConstructorStandings(fakePrisma(), SEASON);
     expect(t2.standings.find((r) => r.teamId === "t2").perRace).toEqual({ 1: 35, 2: 140 });
   });

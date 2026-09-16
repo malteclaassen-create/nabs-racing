@@ -25,7 +25,7 @@ import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnosti
 import {
   SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS, LIVE_LINK_KEYS, liveLinkSeriesSlug,
 } from "./settings.js";
-import { parseFormatNumber, parseRaceFormat, parsePointsMultiplier } from "../lib/raceFormat.js";
+import { parseFormatNumber, parseRaceFormat, parseRacePointsTable } from "../lib/raceFormat.js";
 import { ensureSprintChild, readSprintChildren } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHotlaps, writeRaceHotlaps } from "../lib/raceHotlaps.js";
@@ -3400,10 +3400,10 @@ function parseEventExtras(body) {
   const sprint = parseFormatNumber(body.sprintLaps, "Sprint laps", 999);
   if (sprint.error) return { error: sprint.error };
   if (sprint.ok) out.sprintLaps = sprint.value;
-  // Double (or more) points for the round; 1 = ordinary.
-  const mult = parsePointsMultiplier(body.pointsMultiplier);
-  if (mult.error) return { error: mult.error };
-  if (mult.ok) out.pointsMultiplier = mult.value;
+  // The round's own points table (null = the season's).
+  const table = parseRacePointsTable(body.pointsTable);
+  if (table.error) return { error: table.error };
+  if (table.ok) out.pointsTable = table.value;
   const highlights = parseHighlightsUrl(body.highlightsUrl);
   if (highlights.error) return { error: highlights.error };
   if (highlights.ok) out.highlightsUrl = highlights.value;
@@ -3430,8 +3430,8 @@ async function writeRaceFormat(raceId, extras) {
   } else if (extras.sprintLaps !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Race" SET "sprintLaps" = ? WHERE "id" = ?`, extras.sprintLaps, raceId);
   }
-  if (extras.pointsMultiplier !== undefined) {
-    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "pointsMultiplier" = ? WHERE "id" = ?`, extras.pointsMultiplier, raceId);
+  if (extras.pointsTable !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "pointsTable" = ? WHERE "id" = ?`, extras.pointsTable, raceId);
   }
   if (extras.highlightsUrl !== undefined) {
     await writeRaceHighlights(prisma, raceId, extras.highlightsUrl);

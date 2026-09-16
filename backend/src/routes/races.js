@@ -5,7 +5,7 @@ import {
   getPointsForPosition,
   applyPenalties,
   stampFastestLapBonus,
-  stampPointsMultiplier,
+  stampRacePointsTable,
   fastestLapBonusOf,
   DEFAULT_POINTS_TABLE,
 } from "../services/pointsCalculator.js";
@@ -173,8 +173,8 @@ router.get("/", async (req, res, next) => {
         raceLaps: format.get(r.id)?.raceLaps ?? null,
         raceFormat: format.get(r.id)?.raceFormat ?? "SINGLE",
         sprintLaps: format.get(r.id)?.sprintLaps ?? null,
-        // 1 = ordinary round, 2 = double points, … (admin race editor).
-        pointsMultiplier: format.get(r.id)?.pointsMultiplier ?? 1,
+        // The round's own points table (array) or null = the season's.
+        pointsTable: format.get(r.id)?.pointsTable ?? null,
         // The event this row is the sprint classification of (only with
         // includeSprints), and the sprint child hanging off this event (so the
         // import page knows a sprint result is already in).
@@ -393,18 +393,18 @@ router.get("/:id/results", async (req, res, next) => {
     // (recorded holder first, then the best stored lap), so the points column
     // here is the figure the tables add up.
     const manualFlHolder = (await readManualFastestLaps(prisma, [race.id])).get(race.id) || null;
-    // The round's points multiplier (a sprint child inherits its round's).
-    const parentForMult = (await readParentIds(prisma, [race.id])).get(race.id) || null;
-    const multFormat = await readRaceFormat(prisma, [race.id, parentForMult].filter(Boolean));
-    const pointsMultiplier =
-      (parentForMult ? multFormat.get(parentForMult) : multFormat.get(race.id))?.pointsMultiplier ?? 1;
-    const applied = stampPointsMultiplier(
+    // The round's own points table, if any (a sprint child uses its round's).
+    const parentForTable = (await readParentIds(prisma, [race.id])).get(race.id) || null;
+    const tableFormat = await readRaceFormat(prisma, [race.id, parentForTable].filter(Boolean));
+    const racePointsTable =
+      (parentForTable ? tableFormat.get(parentForTable) : tableFormat.get(race.id))?.pointsTable ?? null;
+    const applied = stampRacePointsTable(
       stampFastestLapBonus(
         applyPenalties(results),
         scoring.fastestLapPoints || 0,
         manualFlHolder ? new Map([[race.id, manualFlHolder]]) : new Map()
       ),
-      new Map([[race.id, pointsMultiplier]])
+      new Map([[race.id, racePointsTable]])
     );
     const rawById = new Map(results.map((r) => [r.driverId, r.position]));
     // The points column as STORED in the DB (explicit official points, or null
@@ -431,7 +431,7 @@ router.get("/:id/results", async (req, res, next) => {
         const team = effTeam(r);
         t2ReRank[r.driverId] = {
           rank,
-          points: (getPointsForPosition(rank, table) + fastestLapBonusOf(r)) * pointsMultiplier,
+          points: getPointsForPosition(rank, racePointsTable || table) + fastestLapBonusOf(r),
           scoresForTeam: team.id,
         };
       });
@@ -603,8 +603,9 @@ router.get("/:id/results", async (req, res, next) => {
         raceLaps: format.raceLaps ?? null,
         raceFormat: format.raceFormat ?? "SINGLE",
         sprintLaps: format.sprintLaps ?? null,
-        // The round's points multiplier (1 = ordinary), as applied above.
-        pointsMultiplier,
+        // The round's own points table (array) or null = the season's, as
+        // applied above.
+        pointsTable: racePointsTable,
         // Both directions of the sprint link: an event says where its sprint
         // classification lives (the Races page adds a Sprint tab and fetches
         // it through this same endpoint), a sprint row says whose it is.

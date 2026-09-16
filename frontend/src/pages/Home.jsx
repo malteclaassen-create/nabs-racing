@@ -50,7 +50,7 @@ const TILE_ICONS = {
 // the N worst rounds dropped) at least matches the leader's guaranteed floor
 // (zero in every remaining round, same drop rule). The per-round maximum is
 // the best single-round haul seen this season.
-function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, totalRounds, tableMax = 0, sprintRounds = [], pointsMultipliers = {} }) {
+function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, totalRounds, tableMax = 0, sprintRounds = [], customPoints = {} }) {
   const completedCount = completedNumbers.length;
   const remaining = totalRounds - completedCount;
   if (remaining <= 0 || completedCount < 1 || standings.length < 2) return null;
@@ -60,6 +60,8 @@ function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, total
   // so those rounds are priced at double below, and an observed haul from one
   // counts as two races' worth in the single-race maximum.
   const sprint = new Set(sprintRounds);
+  // A round with its own points table pays what THAT table's P1 says.
+  const customMax = (n) => (Array.isArray(customPoints?.[n]) && customPoints[n].length ? customPoints[n][0] : null);
   // Points a round can pay at most: the season's OWN points table (P1's score —
   // admin-editable per season, so a rule change flows straight in here), or,
   // when the season runs on the league default (no stored table), the best
@@ -69,21 +71,17 @@ function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, total
     tableMax || 0,
     ...standings.flatMap((d) =>
       Object.entries(d.perRace || {})
-        .filter(([n]) => done.has(Number(n)))
+        // A round on its own table says nothing about a normal one.
+        .filter(([n]) => done.has(Number(n)) && customMax(Number(n)) == null)
         // A sprint weekend's haul is two races' worth: halve it to keep the
         // fallback a single-race figure.
-        .map(([n, r]) => {
-          // A double-points round's haul is that many times a normal one:
-          // scaled back down to keep the fallback a single normal race.
-          const m = Number(pointsMultipliers?.[n]) || 1;
-          return (sprint.has(Number(n)) ? (r?.points || 0) / 2 : r?.points || 0) / m;
-        })
+        .map(([n, r]) => (sprint.has(Number(n)) ? (r?.points || 0) / 2 : r?.points || 0))
     )
   );
   if (!maxPerRound) return null;
-  // What a round can pay at most: twice for a sprint weekend, times its
-  // multiplier for a double-points round.
-  const maxFor = (n) => (sprint.has(n) ? maxPerRound * 2 : maxPerRound) * (Number(pointsMultipliers?.[n]) || 1);
+  // What a round can pay at most: its own table's P1 where it has one, twice
+  // over for a sprint weekend.
+  const maxFor = (n) => (customMax(n) ?? maxPerRound) * (sprint.has(n) ? 2 : 1);
 
   const dropN = Math.min(dropWorst ?? 0, raceNumbers.length);
   const dropSum = (vals) => vals.sort((a, b) => a - b).slice(dropN).reduce((s, v) => s + v, 0);
@@ -1301,7 +1299,7 @@ export default function Home() {
           // back to the best observed round when no table is stored.
           tableMax={Array.isArray(season?.pointsTable) ? season.pointsTable[0] + (season.fastestLapPoints || 0) : 0}
           sprintRounds={drivers.data?.sprintRounds || []}
-          pointsMultipliers={drivers.data?.pointsMultipliers || {}}
+          customPoints={drivers.data?.customPoints || {}}
           totalRounds={totalRounds}
           // Demo rewinds the last two rounds, so gaps/totals/aliveness are all
           // computed as of that earlier point in the season.

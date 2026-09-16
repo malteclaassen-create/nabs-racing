@@ -295,13 +295,13 @@ model Race {
   // (ensureAppSchema + lib/raceFormat.js).
   raceFormat   String       @default("SINGLE")
   sprintLaps   Int?
-  // Points multiplier of the round (migration race_points_multiplier): 1 for
-  // an ordinary round, 2 for a double-points finale and so on. Applied to the
-  // points a result derives from its position (and its fastest-lap bonus) in
-  // every classification of the round — a sprint weekend's sprint inherits
-  // its round's multiplier. Explicit historical points are never multiplied.
-  // Managed via raw SQL (ensureAppSchema + lib/raceFormat.js).
-  pointsMultiplier Int       @default(1)
+  // The round's OWN points table (migration race_points_table): a JSON array
+  // for P1..Pn like Season.pointsTable, null = the season's table. Lets one
+  // round pay differently (a double-points finale, a one-off format) in every
+  // classification of the round — a sprint weekend's sprint uses its round's.
+  // Explicit historical points are never re-priced. Managed via raw SQL
+  // (ensureAppSchema + lib/raceFormat.js).
+  pointsTable  String?
   // The event this row is the SPRINT CLASSIFICATION of (migration race_parent):
   // a sprint+feature weekend stores its sprint result on a hidden child row —
   // RaceResult is unique per (race, driver), so the second classification of

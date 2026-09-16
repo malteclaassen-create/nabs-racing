@@ -1100,7 +1100,7 @@ function EditResults() {
   const raceId = pendingSprint ? pick.slice("sprint:".length) : pick;
   const [rows, setRows] = useState([]);
   // race details editor (raceFormat: SINGLE | SPRINT_FEATURE, see lib/raceFormat.js)
-  const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsMultiplier: "1", info: "" });
+  const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "" });
   const [dotd, setDotd] = useState(""); // Driver of the Day pick
   const [dotdBy, setDotdBy] = useState(""); // who made the pick (streamer)
   // Manually recorded honours (pole / fastest lap, each with an optional lap
@@ -1155,7 +1155,7 @@ function EditResults() {
     // and one race's classification was written onto another. Everything reset
     // here is per-race and reloaded below.
     setRows([]);
-    setMeta({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsMultiplier: "1", info: "" });
+    setMeta({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "" });
     setDotd("");
     setDotdBy("");
     setHonours({ pole: "", poleTime: "", fl: "", flTime: "" });
@@ -1194,7 +1194,7 @@ function EditResults() {
           raceFormat: d.race?.raceFormat || "SINGLE",
           sprintLaps: d.race?.sprintLaps ?? "",
           raceLaps: d.race?.raceLaps ?? "",
-          pointsMultiplier: String(d.race?.pointsMultiplier || 1),
+          pointsTable: Array.isArray(d.race?.pointsTable) ? d.race.pointsTable.join(", ") : "",
           info: d.race?.info || "",
         });
         setDotd(d.race?.driverOfTheDay?.driverId || "");
@@ -1619,6 +1619,8 @@ function EditResults() {
     setError(null);
     setMsg(null);
     try {
+      const customPoints = parsePointsInput(meta.pointsTable);
+      if (!customPoints.ok) throw new Error(customPoints.error);
       await api.updateEvent(raceId, {
         track: meta.track,
         date: fromLocalInput(meta.date),
@@ -1626,7 +1628,7 @@ function EditResults() {
         raceFormat: meta.raceFormat,
         sprintLaps: meta.raceFormat === "SPRINT_FEATURE" && meta.sprintLaps !== "" ? meta.sprintLaps : null,
         raceLaps: meta.raceLaps === "" ? null : meta.raceLaps,
-        pointsMultiplier: Number(meta.pointsMultiplier) || 1,
+        pointsTable: customPoints.value,
         // NOT the highlights link: that is edited in Photos & Videos, and an
         // omitted key leaves it alone. Sending it from here would mean saving a
         // renamed track quietly wiped the video.
@@ -1838,8 +1840,8 @@ function EditResults() {
             <input className="input w-32" type="number" min="1" value={meta.raceLaps}
               onChange={(e) => setMeta({ ...meta, raceLaps: e.target.value })} />
           </Field>
-          <Field label="Points" tone="plain">
-            <PointsMultiplierSelect value={meta.pointsMultiplier} onChange={(v) => setMeta({ ...meta, pointsMultiplier: v })} />
+          <Field className="w-full" label="Custom points for this round (optional)" tone="plain">
+            <RacePointsInput value={meta.pointsTable} onChange={(v) => setMeta({ ...meta, pointsTable: v })} />
           </Field>
           <Field className="w-full" label="Details (rules, mods, links… shown in the Discord post and on the site)" tone="plain">
             <textarea className="input min-h-20" value={meta.info}
@@ -3390,7 +3392,7 @@ function DiscordEvents() {
   const [busy, setBusy] = useState(false);
   const [event, setEvent] = useState({
     number: "", track: "", date: "", type: "CHAMPIONSHIP",
-    qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsMultiplier: "1", info: "",
+    qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "",
   });
 
   async function saveWebhook(e) {
@@ -3437,6 +3439,8 @@ function DiscordEvents() {
     setBusy(true); setError(null); setMsg(null);
     const isChamp = event.type === "CHAMPIONSHIP";
     try {
+      const eventPoints = parsePointsInput(event.pointsTable);
+      if (!eventPoints.ok) throw new Error(eventPoints.error);
       await api.createEvent({
         number: isChamp ? Number(event.number) : null,
         track: event.track,
@@ -3447,7 +3451,7 @@ function DiscordEvents() {
         raceFormat: event.raceFormat,
         sprintLaps: event.raceFormat === "SPRINT_FEATURE" ? event.sprintLaps || null : null,
         raceLaps: event.raceLaps || null,
-        pointsMultiplier: Number(event.pointsMultiplier) || 1,
+        pointsTable: eventPoints.value,
         info: event.info || null,
       });
       setMsg(
@@ -3459,7 +3463,7 @@ function DiscordEvents() {
       );
       setEvent({
         number: "", track: "", date: "", type: "CHAMPIONSHIP",
-        qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsMultiplier: "1", info: "",
+        qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "",
       });
       reloadRaces();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
@@ -3498,7 +3502,7 @@ function DiscordEvents() {
       raceFormat: r.raceFormat || "SINGLE",
       sprintLaps: r.sprintLaps ?? "",
       raceLaps: r.raceLaps ?? "",
-      pointsMultiplier: String(r.pointsMultiplier || 1),
+      pointsTable: Array.isArray(r.pointsTable) ? r.pointsTable.join(", ") : "",
       info: r.info || "",
     });
   }
@@ -3506,6 +3510,8 @@ function DiscordEvents() {
   async function saveEdit() {
     setBusy(true); setError(null); setMsg(null);
     try {
+      const editPoints = parsePointsInput(edit.pointsTable);
+      if (!editPoints.ok) throw new Error(editPoints.error);
       await api.updateEvent(editingId, {
         track: edit.track,
         date: fromLocalInput(edit.date),
@@ -3515,7 +3521,7 @@ function DiscordEvents() {
         raceFormat: edit.raceFormat,
         sprintLaps: edit.raceFormat === "SPRINT_FEATURE" && edit.sprintLaps !== "" ? edit.sprintLaps : null,
         raceLaps: edit.raceLaps === "" ? null : edit.raceLaps,
-        pointsMultiplier: Number(edit.pointsMultiplier) || 1,
+        pointsTable: editPoints.value,
         info: edit.info || null,
       });
       setMsg("Race saved. An already-announced Discord post updates itself.");
@@ -3605,8 +3611,8 @@ function DiscordEvents() {
             </select>
           </Field>
           {event.type === "CHAMPIONSHIP" && (
-            <Field label="Points" tone="plain">
-              <PointsMultiplierSelect value={event.pointsMultiplier} onChange={(v) => setEvent({ ...event, pointsMultiplier: v })} />
+            <Field label="Custom points for this round (optional)" tone="plain">
+              <RacePointsInput value={event.pointsTable} onChange={(v) => setEvent({ ...event, pointsTable: v })} />
             </Field>
           )}
           {/* Labelled rather than placeholder-only: a sprint day puts three bare
@@ -3708,8 +3714,8 @@ function DiscordEvents() {
                         </select>
                       </Field>
                       {edit.type === "CHAMPIONSHIP" && (
-                        <Field label="Points" tone="plain">
-                          <PointsMultiplierSelect value={edit.pointsMultiplier} onChange={(v) => setEdit({ ...edit, pointsMultiplier: v })} />
+                        <Field label="Custom points for this round (optional)" tone="plain">
+                          <RacePointsInput value={edit.pointsTable} onChange={(v) => setEdit({ ...edit, pointsTable: v })} />
                         </Field>
                       )}
                       <Field label="Qualifying (min)" tone="plain">
@@ -3910,21 +3916,19 @@ function SeasonCar({ season, onSaved, onError }) {
   );
 }
 
-// How much a round pays: ×1 is an ordinary round, ×2 a double-points finale.
-// Applies to every classification of the round (a sprint weekend's sprint
-// included) and to the fastest-lap bonus; official historical points stay.
-function PointsMultiplierSelect({ value, onChange }) {
+// A round's own points table, typed like the season's ("100, 80, 70, …" for
+// P1, P2, P3, …). Empty = the season's table. Applies to every classification
+// of the round (a sprint weekend's sprint included); the fastest-lap bonus is
+// added on top as usual, and official historical points stay as they are.
+function RacePointsInput({ value, onChange }) {
   return (
-    <select
-      className="input w-40"
-      value={String(value || 1)}
+    <input
+      className="input w-full font-mono text-xs"
+      placeholder="Season table (leave empty) — or e.g. 100, 80, 70, 64, 60 for P1, P2, …"
+      value={value}
       onChange={(e) => onChange(e.target.value)}
-      title="How much this round pays. ×2 = double points for the whole round (sprint and feature alike), shown as ×2 on the standings."
-    >
-      <option value="1">Normal (×1)</option>
-      <option value="2">Double points (×2)</option>
-      <option value="3">Triple points (×3)</option>
-    </select>
+      title="Only for a round that pays differently from the rest of the season (a double-points finale, a one-off format). Points per finishing position from P1. Empty = the season's table."
+    />
   );
 }
 

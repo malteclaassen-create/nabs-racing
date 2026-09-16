@@ -39,12 +39,14 @@ weekend the sprint and the feature race each pay their own. On the round by
 round tables a cell with the bonus in it is marked FL.
 
 
-DOUBLE POINTS
+CUSTOM POINTS FOR ONE ROUND
 
-A round can pay more than once over (set per race in the admin, "Points":
-normal, double, triple). Every result of that round scores that many times the
-points table, the sprint of a sprint weekend included, and so does the fastest
-lap bonus. On the round by round tables such a round is marked x2.
+A round can have its own points table (set per race in the admin, "Custom
+points for this round", typed like the season's table: points for P1, P2, ...).
+Every result of that round is scored by that table instead of the season's,
+the sprint of a sprint weekend included; the fastest lap bonus comes on top as
+usual. A double-points finale is just the season's table doubled. On the round
+by round tables such a round is marked with a star.
 
 
 CHAMPION BY RULE

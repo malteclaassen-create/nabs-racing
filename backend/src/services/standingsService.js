@@ -8,8 +8,7 @@ import {
   getDriverResultPoints,
   fastestLapBonusOf,
   stampFastestLapBonus,
-  stampPointsMultiplier,
-  pointsMultiplierOf,
+  stampRacePointsTable,
   applyPenalties,
   calculateT1ConstructorContributions,
   calculateT2ConstructorContributions,
@@ -39,12 +38,13 @@ export function withPenaltiesApplied(results) {
 
 // The stored rows PRICED: penalties applied within each classification, then
 // the season's fastest-lap bonus stamped onto each classification's holder
-// (pointsCalculator.stampFastestLapBonus), then each round's points
-// multiplier stamped onto its rows (a sprint child inherits its round's,
-// pointsCalculator.stampPointsMultiplier). Every scorer of stored results —
-// both standings tables and the admin preview — goes through here, so a
-// bonus or a double-points round can never be paid in one table and missing
-// from another. A season without the bonus skips the honours read entirely.
+// (pointsCalculator.stampFastestLapBonus), then each round's OWN points
+// table stamped onto its rows where it has one (a sprint child uses its
+// round's, pointsCalculator.stampRacePointsTable). Every scorer of stored
+// results — both standings tables and the admin preview — goes through
+// here, so a bonus or a round's special table can never be paid in one
+// table and missing from another. A season without the bonus skips the
+// honours read entirely.
 export async function withScoringApplied(prisma, results, scoring) {
   let applied = withPenaltiesApplied(results);
   const raceIds = [...new Set(applied.map((r) => r.raceId).filter(Boolean))];
@@ -53,23 +53,22 @@ export async function withScoringApplied(prisma, results, scoring) {
     const manual = await readManualFastestLaps(prisma, new Set(raceIds));
     applied = stampFastestLapBonus(applied, bonus, manual);
   }
-  return stampPointsMultiplier(applied, await roundMultipliers(prisma, raceIds));
+  return stampRacePointsTable(applied, await roundPointsTables(prisma, raceIds));
 }
 
-// Map<raceId, pointsMultiplier> for the given race ids, a sprint child
-// reading its round's. Only ids whose multiplier is above 1 appear.
-export async function roundMultipliers(prisma, raceIds) {
+// Map<raceId, number[]> of the rounds' own points tables for the given race
+// ids, a sprint child reading its round's. Only ids with a table appear.
+export async function roundPointsTables(prisma, raceIds) {
   const ids = [...new Set((raceIds || []).filter(Boolean))];
   const out = new Map();
   if (!ids.length) return out;
   const parents = await readParentIds(prisma, ids);
   const format = await readRaceFormat(prisma, [...ids, ...parents.values()]);
   for (const id of ids) {
-    // A sprint child's own column is never set (it is 1 by default): the
-    // round's multiplier is its parent's.
+    // A sprint child never carries a table of its own: its round's counts.
     const parent = parents.get(id);
-    const n = (parent ? format.get(parent) : format.get(id))?.pointsMultiplier ?? 1;
-    if (n > 1) out.set(id, n);
+    const t = (parent ? format.get(parent) : format.get(id))?.pointsTable ?? null;
+    if (Array.isArray(t) && t.length) out.set(id, t);
   }
   return out;
 }
@@ -103,17 +102,17 @@ export async function scoringRaces(prisma, rounds) {
 // The rounds run as sprint+feature weekends (by the event's session format, so
 // a scheduled sprint weekend is known before its results are in). The tables
 // mark those columns and the title-fight maths lets them pay twice. Alongside:
-// the rounds paying more than once over ({ [number]: multiplier }), for the
-// same marks and maths.
+// the rounds paying by their own table ({ [number]: table }), for the same
+// marks and maths.
 async function roundFormats(prisma, rounds) {
   const format = await readRaceFormat(prisma, rounds.map((r) => r.id));
   const sprintRounds = rounds.filter((r) => format.get(r.id)?.raceFormat === "SPRINT_FEATURE").map((r) => r.number);
-  const pointsMultipliers = {};
+  const customPoints = {};
   for (const r of rounds) {
-    const n = format.get(r.id)?.pointsMultiplier ?? 1;
-    if (n > 1 && r.number != null) pointsMultipliers[r.number] = n;
+    const t = format.get(r.id)?.pointsTable;
+    if (Array.isArray(t) && t.length && r.number != null) customPoints[r.number] = t;
   }
-  return { sprintRounds, pointsMultipliers };
+  return { sprintRounds, customPoints };
 }
 
 // One round's constructor contributions. A sprint weekend puts TWO
@@ -637,7 +636,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // driver profile then counted as a shared round, so a season whose only
   // completed session was a friendly showed records for whoever turned up.
   const { raceNumberById, sprintRaceIds, raceIds } = await scoringRaces(prisma, races);
-  const [results, { sprintRounds, pointsMultipliers }] = await Promise.all([
+  const [results, { sprintRounds, customPoints }] = await Promise.all([
     prisma.raceResult.findMany({ where: { raceId: { in: raceIds } } }),
     roundFormats(prisma, races),
   ]);
@@ -748,8 +747,8 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     // Rounds run as sprint+feature weekends: both races score, so these
     // columns can pay twice (the tables mark them, the title fight prices them).
     sprintRounds,
-    // Rounds paying more than once over: { [number]: multiplier }.
-    pointsMultipliers,
+    // Rounds paying by their own points table: { [number]: [P1, P2, …] }.
+    customPoints,
     // The overridden champion ({ driverId, name }) or null.
     championOverride,
     dropWorst: scoring.dropWorst,
@@ -787,7 +786,7 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
   const races = partial ? allRaces.filter((r) => r.number <= upToRound) : allRaces;
 
   // Rounds and their sprint classifications, each under its round number.
-  const [{ raceNumberById }, { sprintRounds, pointsMultipliers }] = await Promise.all([
+  const [{ raceNumberById }, { sprintRounds, customPoints }] = await Promise.all([
     scoringRaces(prisma, races),
     roundFormats(prisma, races),
   ]);
@@ -890,9 +889,9 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
   return {
     tier,
     raceNumbers,
-    // Sprint+feature weekends and double-points rounds, as on the driver table.
+    // Sprint+feature weekends and rounds with their own table, as on the driver table.
     sprintRounds,
-    pointsMultipliers,
+    customPoints,
     dropWorst: scoring.dropWorst,
     // The rule actually in force for the constructor table, so the UI footnote
     // matches: "team" (N lowest single-driver round scores dropped),

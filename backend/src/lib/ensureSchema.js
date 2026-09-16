@@ -106,8 +106,8 @@ export async function ensureAppSchema(prisma) {
   // --- Session format for the announcement (Discord post + upcoming-race
   // panels): qualifying length in minutes, race distance in laps. Optional.
   await addColumn(prisma, "Race", "qualiMinutes", "INTEGER");
-  // Points multiplier of the round (1 = ordinary, 2 = double points, …).
-  await addColumn(prisma, "Race", "pointsMultiplier", "INTEGER NOT NULL DEFAULT 1");
+  // The round's own points table (JSON array, null = the season's).
+  await addColumn(prisma, "Race", "pointsTable", "TEXT");
   await addColumn(prisma, "Race", "raceLaps", "INTEGER");
 
   // --- Sprint + feature weekends (migration race_sprint_format): an F2-style
