@@ -50,7 +50,7 @@ const TILE_ICONS = {
 // the N worst rounds dropped) at least matches the leader's guaranteed floor
 // (zero in every remaining round, same drop rule). The per-round maximum is
 // the best single-round haul seen this season.
-function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, totalRounds, tableMax = 0, sprintRounds = [] }) {
+function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, totalRounds, tableMax = 0, sprintRounds = [], pointsMultipliers = {} }) {
   const completedCount = completedNumbers.length;
   const remaining = totalRounds - completedCount;
   if (remaining <= 0 || completedCount < 1 || standings.length < 2) return null;
@@ -72,11 +72,18 @@ function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, total
         .filter(([n]) => done.has(Number(n)))
         // A sprint weekend's haul is two races' worth: halve it to keep the
         // fallback a single-race figure.
-        .map(([n, r]) => (sprint.has(Number(n)) ? (r?.points || 0) / 2 : r?.points || 0))
+        .map(([n, r]) => {
+          // A double-points round's haul is that many times a normal one:
+          // scaled back down to keep the fallback a single normal race.
+          const m = Number(pointsMultipliers?.[n]) || 1;
+          return (sprint.has(Number(n)) ? (r?.points || 0) / 2 : r?.points || 0) / m;
+        })
     )
   );
   if (!maxPerRound) return null;
-  const maxFor = (n) => (sprint.has(n) ? maxPerRound * 2 : maxPerRound);
+  // What a round can pay at most: twice for a sprint weekend, times its
+  // multiplier for a double-points round.
+  const maxFor = (n) => (sprint.has(n) ? maxPerRound * 2 : maxPerRound) * (Number(pointsMultipliers?.[n]) || 1);
 
   const dropN = Math.min(dropWorst ?? 0, raceNumbers.length);
   const dropSum = (vals) => vals.sort((a, b) => a - b).slice(dropN).reduce((s, v) => s + v, 0);
@@ -96,7 +103,9 @@ function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, total
   if (!leader.cur) return null;
   const contenders = rows.filter((r) => r === leader || maxFinal(r.d) >= leader.cur).slice(0, 4);
   if (contenders.length < 2) return null;
-  const potential = remaining * maxPerRound;
+  // What is still on the table: each remaining round at its own maximum (a
+  // double-points finale counts for what it really pays).
+  const potential = raceNumbers.filter((n) => !done.has(n)).reduce((s, n) => s + maxFor(n), 0) || remaining * maxPerRound;
   return (
     <section className="reveal space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -1292,6 +1301,7 @@ export default function Home() {
           // back to the best observed round when no table is stored.
           tableMax={Array.isArray(season?.pointsTable) ? season.pointsTable[0] + (season.fastestLapPoints || 0) : 0}
           sprintRounds={drivers.data?.sprintRounds || []}
+          pointsMultipliers={drivers.data?.pointsMultipliers || {}}
           totalRounds={totalRounds}
           // Demo rewinds the last two rounds, so gaps/totals/aliveness are all
           // computed as of that earlier point in the season.

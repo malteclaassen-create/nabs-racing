@@ -594,6 +594,8 @@ export default function DriverStandings() {
           raceNumbers={data.raceNumbers}
           sprintRounds={data.sprintRounds || []}
           fastestLapPoints={data.fastestLapPoints || 0}
+          pointsMultipliers={data.pointsMultipliers || {}}
+          championOverride={data.championOverride || null}
           rows={rows}
           dropWorst={data.dropWorst}
           officialTotals={data.officialTotals}

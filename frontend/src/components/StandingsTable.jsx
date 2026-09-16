@@ -147,11 +147,19 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
 // `fastestLapPoints` — the bonus the fastest race lap pays this season (0 =
 // none): the driver cells carry an FL mark where one was paid and the footnote
 // explains it.
-export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false, showMovement = false, sprintRounds = [], fastestLapPoints = 0 }) {
+// `pointsMultipliers` — { [round]: n } for the rounds paying more than once
+// over (a double-points finale): the column is marked ×n and explained below.
+// `championOverride` — { driverId, name } when the league decided the title by
+// a rule the points do not express; the row sits first and the footnote says why.
+export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false, showMovement = false, sprintRounds = [], fastestLapPoints = 0, pointsMultipliers = {}, championOverride = null }) {
   const isDriver = variant === "driver";
   const sprintSet = new Set(sprintRounds || []);
   const showSprintNote = raceNumbers.some((n) => sprintSet.has(n));
   const showFlNote = fastestLapPoints > 0 && raceNumbers.length > 0;
+  const multOf = (n) => Number(pointsMultipliers?.[n]) || 1;
+  const multRounds = raceNumbers.filter((n) => multOf(n) > 1);
+  const showMultNote = multRounds.length > 0;
+  const showChampionNote = isDriver && !!championOverride;
   // Constructor tables can use a team-level drop rule instead of inheriting
   // each driver's dropped rounds — the footnote must match whichever is in
   // force: "team" counts single-driver round scores, "teamRounds" counts whole
@@ -234,12 +242,22 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   scope="col"
                   key={n}
                   className="px-2.5 py-3 text-center tabular-nums"
-                  title={sprintSet.has(n) ? "Sprint weekend: the sprint and the feature race both score, added together under this round" : undefined}
+                  title={
+                    [
+                      sprintSet.has(n) ? "Sprint weekend: the sprint and the feature race both score, added together under this round" : null,
+                      multOf(n) > 1 ? `Pays ×${multOf(n)}: every result of this round scores ${multOf(n)} times the table` : null,
+                    ].filter(Boolean).join(". ") || undefined
+                  }
                 >
                   R{n}
                   {sprintSet.has(n) && (
                     <span className="ml-0.5 align-super text-[9px] font-bold text-brand" aria-label="sprint weekend">
                       S
+                    </span>
+                  )}
+                  {multOf(n) > 1 && (
+                    <span className="ml-0.5 align-super text-[9px] font-bold text-warn" aria-label={`pays ${multOf(n)} times`}>
+                      ×{multOf(n)}
                     </span>
                   )}
                 </th>
@@ -363,8 +381,26 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
           </tbody>
         </table>
       </div>
-      {(showOfficialNote || showDropNote || showSprintNote || showFlNote) && (
+      {(showOfficialNote || showDropNote || showSprintNote || showFlNote || showMultNote || showChampionNote) && (
         <div className="space-y-1 border-t border-border px-4 py-2.5 font-mono text-[11px] leading-relaxed text-light">
+          {showChampionNote && (
+            <p>
+              <span className="font-bold uppercase text-medium">Champion by the league&rsquo;s rule.</span> {championOverride.name} is
+              champion without the most points: the title was decided by the league&rsquo;s own rule for that season, and the
+              table shows the season that way.
+            </p>
+          )}
+          {showMultNote && (
+            <p>
+              <span className="font-bold text-warn">×2</span>-style marks show a round paying more than once over:{" "}
+              {multRounds.map((n, i) => (
+                <span key={n}>
+                  {i > 0 && ", "}R{n} ×{multOf(n)}
+                </span>
+              ))}
+              . Every result of such a round scores that many times the points table.
+            </p>
+          )}
           {showFlNote && (
             <p>
               {isDriver ? (

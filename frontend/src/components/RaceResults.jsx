@@ -506,6 +506,11 @@ export default function RaceResults({ race, results, quali = null, session = "ra
           <span className="flex items-center gap-1.5">
             <TierBadge tier={0} /> Reserve
           </span>
+          {race.pointsMultiplier > 1 && (
+            <span className="flex items-center gap-1.5">
+              <span className="pill bg-warn/15 text-warn">×{race.pointsMultiplier}</span> Pays {race.pointsMultiplier === 2 ? "double" : `${race.pointsMultiplier}×`} points
+            </span>
+          )}
           {fastestDriverId && (
             <span className="flex items-center gap-1.5">
               <span className="pill bg-purple-500/15 text-fl">FL</span> Fastest lap

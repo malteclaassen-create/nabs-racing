@@ -1100,7 +1100,7 @@ function EditResults() {
   const raceId = pendingSprint ? pick.slice("sprint:".length) : pick;
   const [rows, setRows] = useState([]);
   // race details editor (raceFormat: SINGLE | SPRINT_FEATURE, see lib/raceFormat.js)
-  const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "" });
+  const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsMultiplier: "1", info: "" });
   const [dotd, setDotd] = useState(""); // Driver of the Day pick
   const [dotdBy, setDotdBy] = useState(""); // who made the pick (streamer)
   // Manually recorded honours (pole / fastest lap, each with an optional lap
@@ -1155,7 +1155,7 @@ function EditResults() {
     // and one race's classification was written onto another. Everything reset
     // here is per-race and reloaded below.
     setRows([]);
-    setMeta({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "" });
+    setMeta({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsMultiplier: "1", info: "" });
     setDotd("");
     setDotdBy("");
     setHonours({ pole: "", poleTime: "", fl: "", flTime: "" });
@@ -1194,6 +1194,7 @@ function EditResults() {
           raceFormat: d.race?.raceFormat || "SINGLE",
           sprintLaps: d.race?.sprintLaps ?? "",
           raceLaps: d.race?.raceLaps ?? "",
+          pointsMultiplier: String(d.race?.pointsMultiplier || 1),
           info: d.race?.info || "",
         });
         setDotd(d.race?.driverOfTheDay?.driverId || "");
@@ -1625,6 +1626,7 @@ function EditResults() {
         raceFormat: meta.raceFormat,
         sprintLaps: meta.raceFormat === "SPRINT_FEATURE" && meta.sprintLaps !== "" ? meta.sprintLaps : null,
         raceLaps: meta.raceLaps === "" ? null : meta.raceLaps,
+        pointsMultiplier: Number(meta.pointsMultiplier) || 1,
         // NOT the highlights link: that is edited in Photos & Videos, and an
         // omitted key leaves it alone. Sending it from here would mean saving a
         // renamed track quietly wiped the video.
@@ -1835,6 +1837,9 @@ function EditResults() {
           <Field label={meta.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
             <input className="input w-32" type="number" min="1" value={meta.raceLaps}
               onChange={(e) => setMeta({ ...meta, raceLaps: e.target.value })} />
+          </Field>
+          <Field label="Points" tone="plain">
+            <PointsMultiplierSelect value={meta.pointsMultiplier} onChange={(v) => setMeta({ ...meta, pointsMultiplier: v })} />
           </Field>
           <Field className="w-full" label="Details (rules, mods, links… shown in the Discord post and on the site)" tone="plain">
             <textarea className="input min-h-20" value={meta.info}
@@ -3385,7 +3390,7 @@ function DiscordEvents() {
   const [busy, setBusy] = useState(false);
   const [event, setEvent] = useState({
     number: "", track: "", date: "", type: "CHAMPIONSHIP",
-    qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "",
+    qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsMultiplier: "1", info: "",
   });
 
   async function saveWebhook(e) {
@@ -3442,6 +3447,7 @@ function DiscordEvents() {
         raceFormat: event.raceFormat,
         sprintLaps: event.raceFormat === "SPRINT_FEATURE" ? event.sprintLaps || null : null,
         raceLaps: event.raceLaps || null,
+        pointsMultiplier: Number(event.pointsMultiplier) || 1,
         info: event.info || null,
       });
       setMsg(
@@ -3453,7 +3459,7 @@ function DiscordEvents() {
       );
       setEvent({
         number: "", track: "", date: "", type: "CHAMPIONSHIP",
-        qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", info: "",
+        qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsMultiplier: "1", info: "",
       });
       reloadRaces();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
@@ -3492,6 +3498,7 @@ function DiscordEvents() {
       raceFormat: r.raceFormat || "SINGLE",
       sprintLaps: r.sprintLaps ?? "",
       raceLaps: r.raceLaps ?? "",
+      pointsMultiplier: String(r.pointsMultiplier || 1),
       info: r.info || "",
     });
   }
@@ -3508,6 +3515,7 @@ function DiscordEvents() {
         raceFormat: edit.raceFormat,
         sprintLaps: edit.raceFormat === "SPRINT_FEATURE" && edit.sprintLaps !== "" ? edit.sprintLaps : null,
         raceLaps: edit.raceLaps === "" ? null : edit.raceLaps,
+        pointsMultiplier: Number(edit.pointsMultiplier) || 1,
         info: edit.info || null,
       });
       setMsg("Race saved. An already-announced Discord post updates itself.");
@@ -3596,6 +3604,11 @@ function DiscordEvents() {
               <option value="SPRINT_FEATURE">Sprint + feature race (F2 style)</option>
             </select>
           </Field>
+          {event.type === "CHAMPIONSHIP" && (
+            <Field label="Points" tone="plain">
+              <PointsMultiplierSelect value={event.pointsMultiplier} onChange={(v) => setEvent({ ...event, pointsMultiplier: v })} />
+            </Field>
+          )}
           {/* Labelled rather than placeholder-only: a sprint day puts three bare
               numbers in a row, and "15 12 20" says nothing once they're typed. */}
           <div className={`grid gap-3 ${event.raceFormat === "SPRINT_FEATURE" ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
@@ -3694,6 +3707,11 @@ function DiscordEvents() {
                           <option value="SPRINT_FEATURE">Sprint + feature race</option>
                         </select>
                       </Field>
+                      {edit.type === "CHAMPIONSHIP" && (
+                        <Field label="Points" tone="plain">
+                          <PointsMultiplierSelect value={edit.pointsMultiplier} onChange={(v) => setEdit({ ...edit, pointsMultiplier: v })} />
+                        </Field>
+                      )}
                       <Field label="Qualifying (min)" tone="plain">
                         <input className="input" type="number" min="1" value={edit.qualiMinutes}
                           onChange={(e) => setEdit({ ...edit, qualiMinutes: e.target.value })} />
@@ -3892,6 +3910,24 @@ function SeasonCar({ season, onSaved, onError }) {
   );
 }
 
+// How much a round pays: ×1 is an ordinary round, ×2 a double-points finale.
+// Applies to every classification of the round (a sprint weekend's sprint
+// included) and to the fastest-lap bonus; official historical points stay.
+function PointsMultiplierSelect({ value, onChange }) {
+  return (
+    <select
+      className="input w-40"
+      value={String(value || 1)}
+      onChange={(e) => onChange(e.target.value)}
+      title="How much this round pays. ×2 = double points for the whole round (sprint and feature alike), shown as ×2 on the standings."
+    >
+      <option value="1">Normal (×1)</option>
+      <option value="2">Double points (×2)</option>
+      <option value="3">Triple points (×3)</option>
+    </select>
+  );
+}
+
 // Per-season scoring editor: how many worst rounds are dropped (0 = none) and
 // the points-per-position table (empty = league default).
 function SeasonScoring({ season, onSaved, onError }) {
@@ -3907,12 +3943,19 @@ function SeasonScoring({ season, onSaved, onError }) {
   // points to the classified finisher who set the race's best lap, in the
   // sprint and the feature race alike.
   const [flPoints, setFlPoints] = useState(storedFl);
+  // The champion when the league decided it by a rule the points do not
+  // express ("" = most points wins). The season's drivers come from its own
+  // standings, so the picker lists them in table order.
+  const storedChampion = season.championDriverId || "";
+  const [champion, setChampion] = useState(storedChampion);
+  const drivers = useApi(useCallback(() => api.driverStandings(season.number).catch(() => ({ standings: [] })), [season.number]));
   const [saving, setSaving] = useState(false);
   const dirty =
     drop !== String(season.dropWorst ?? 3) ||
     teamDrop.trim() !== storedTeamDrop ||
     teamMode !== storedTeamMode ||
     points.trim() !== stored ||
+    champion !== storedChampion ||
     (flPoints.trim() === "" ? "0" : flPoints.trim()) !== storedFl;
 
   async function save() {
@@ -3936,6 +3979,7 @@ function SeasonScoring({ season, onSaved, onError }) {
         teamDropMode: teamDrop.trim() === "" ? null : teamMode,
         pointsTable: parsed.value,
         fastestLapPoints: fl,
+        championDriverId: champion || null,
       });
       onSaved(`Scoring for ${season.name} saved.`);
     } catch (err) { onError(err.message); } finally { setSaving(false); }
@@ -3977,6 +4021,16 @@ function SeasonScoring({ season, onSaved, onError }) {
             value={flPoints} onChange={(e) => setFlPoints(e.target.value)}
             title="Bonus points for the fastest race lap, on top of the finishing points. Goes to the driver who set the race's best lap, only if they finished the race (a DNF gets nothing). 0 = no bonus. On a sprint weekend the sprint and the feature race each pay it." />
         </label>
+        <label className="flex items-center gap-1.5 text-xs text-light">
+          Champion
+          <select className="input max-w-44 py-1 text-xs" value={champion} onChange={(e) => setChampion(e.target.value)}
+            title="Only when the league decided the title by a rule the points do not express (e.g. whoever finished ahead in the finale). That driver goes to the top of the final table with a footnote; the Hall of Fame and the seals follow.">
+            <option value="">Most points</option>
+            {(drivers.data?.standings || []).map((d) => (
+              <option key={d.driverId} value={d.driverId}>P{d.position} · {d.name}</option>
+            ))}
+          </select>
+        </label>
         <button className="btn-secondary px-3 py-1 text-xs" disabled={saving || !dirty} onClick={save}>
           {saving ? "Saving…" : "Save scoring"}
         </button>
@@ -3990,7 +4044,10 @@ function SeasonScoring({ season, onSaved, onError }) {
         )}
         {points.trim() ? "Custom points table." : "League default points table."}{" "}
         {Number(flPoints) > 0 && (
-          <>The fastest race lap pays +{Number(flPoints)} to its driver if they finish the race.</>
+          <>The fastest race lap pays +{Number(flPoints)} to its driver if they finish the race. </>
+        )}
+        {champion && (
+          <>Champion set by hand: {(drivers.data?.standings || []).find((d) => d.driverId === champion)?.name || "the chosen driver"} tops the final table whatever the points say.</>
         )}
       </p>
     </div>
@@ -4273,7 +4330,7 @@ function Seasons({ gotoRaces }) {
                   </div>
                   <SeasonHero season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   <SeasonCar season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-                  <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.fastestLapPoints || 0}-${s.pointsTable || ""}`} season={s}
+                  <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.fastestLapPoints || 0}-${s.championDriverId || ""}-${s.pointsTable || ""}`} season={s}
                     onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   {/* clone teams (or the full roster) from another season */}
                   {(seasons || []).length > 1 && (

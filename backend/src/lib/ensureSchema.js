@@ -106,6 +106,8 @@ export async function ensureAppSchema(prisma) {
   // --- Session format for the announcement (Discord post + upcoming-race
   // panels): qualifying length in minutes, race distance in laps. Optional.
   await addColumn(prisma, "Race", "qualiMinutes", "INTEGER");
+  // Points multiplier of the round (1 = ordinary, 2 = double points, …).
+  await addColumn(prisma, "Race", "pointsMultiplier", "INTEGER NOT NULL DEFAULT 1");
   await addColumn(prisma, "Race", "raceLaps", "INTEGER");
 
   // --- Sprint + feature weekends (migration race_sprint_format): an F2-style
@@ -171,6 +173,9 @@ export async function ensureAppSchema(prisma) {
   // Bonus points for the fastest race lap (0 = none), paid to the classified
   // finisher who set the race's best lap on top of their finishing points.
   await addColumn(prisma, "Season", "fastestLapPoints", "INTEGER NOT NULL DEFAULT 0");
+  // The champion when decided by a rule the points do not express (a driver
+  // id of the season); null = most points wins.
+  await addColumn(prisma, "Season", "championDriverId", "TEXT");
 
   // --- Phase 9: season visibility. Existing rows default to public (1). New
   // seasons are created private by the admin route; an active season is forced

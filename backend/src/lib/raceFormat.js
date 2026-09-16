@@ -7,16 +7,21 @@
 // so it is also the fallback for a row that predates the column.
 export const RACE_FORMATS = ["SINGLE", "SPRINT_FEATURE"];
 
-// Map raceId -> { qualiMinutes, raceLaps, raceFormat, sprintLaps } for the given
-// ids. Returns an empty map when the columns don't exist yet (fresh checkout
-// before ensureAppSchema).
+// The points multiplier a round may carry (1 = ordinary). Capped small on
+// purpose: a "double points finale" is the real-world case, and a typo of 20
+// would rewrite a championship.
+export const MAX_POINTS_MULTIPLIER = 4;
+
+// Map raceId -> { qualiMinutes, raceLaps, raceFormat, sprintLaps,
+// pointsMultiplier } for the given ids. Returns an empty map when the columns
+// don't exist yet (fresh checkout before ensureAppSchema).
 export async function readRaceFormat(prisma, raceIds) {
   const ids = [...new Set(raceIds)].filter(Boolean);
   if (!ids.length) return new Map();
   try {
     const qs = ids.map(() => "?").join(",");
     const rows = await prisma.$queryRawUnsafe(
-      `SELECT "id", "qualiMinutes", "raceLaps", "raceFormat", "sprintLaps" FROM "Race" WHERE "id" IN (${qs})`,
+      `SELECT "id", "qualiMinutes", "raceLaps", "raceFormat", "sprintLaps", "pointsMultiplier" FROM "Race" WHERE "id" IN (${qs})`,
       ...ids
     );
     return new Map(
@@ -27,12 +32,26 @@ export async function readRaceFormat(prisma, raceIds) {
           raceLaps: r.raceLaps == null ? null : Number(r.raceLaps),
           raceFormat: RACE_FORMATS.includes(r.raceFormat) ? r.raceFormat : "SINGLE",
           sprintLaps: r.sprintLaps == null ? null : Number(r.sprintLaps),
+          pointsMultiplier: parsePointsMultiplier(r.pointsMultiplier).value ?? 1,
         },
       ])
     );
   } catch {
     return new Map();
   }
+}
+
+// Validate a points multiplier: a whole number 1..MAX_POINTS_MULTIPLIER;
+// null/"" means back to 1. Same {ok,value}/{error} contract as the helpers
+// below. A stored value that is not a usable number reads as 1.
+export function parsePointsMultiplier(raw) {
+  if (raw === undefined) return { ok: false };
+  if (raw === null || raw === "") return { ok: true, value: 1 };
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_POINTS_MULTIPLIER) {
+    return { error: `Points multiplier must be a whole number between 1 and ${MAX_POINTS_MULTIPLIER}` };
+  }
+  return { ok: true, value: n };
 }
 
 // Validate an admin-supplied format value: a positive whole number up to

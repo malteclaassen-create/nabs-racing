@@ -179,6 +179,34 @@ export function stampFastestLapBonus(results, bonus, manualHolders = new Map()) 
   );
 }
 
+// ---------------------------------------------------------------------------
+// POINTS MULTIPLIER (Race.pointsMultiplier)
+// ---------------------------------------------------------------------------
+// A round can pay double (or more): the multiplier is stamped onto the
+// round's result rows as `pointsMultiplier` (every classification of the
+// round — a sprint inherits its round's) and getDriverResultPoints multiplies
+// the DERIVED points (position + fastest-lap bonus) by it. Explicit
+// historical points are what the league published and stay as they are.
+//
+// `multipliers` = Map<raceId, n>. Rows of a race not in the map, or with 1,
+// are returned untouched; an all-ones map returns the array itself.
+export function stampPointsMultiplier(results, multipliers) {
+  if (!results?.length || !multipliers?.size) return results;
+  let any = false;
+  for (const n of multipliers.values()) if (n > 1) { any = true; break; }
+  if (!any) return results;
+  return results.map((r) => {
+    const n = multipliers.get(r.raceId);
+    return n > 1 ? { ...r, pointsMultiplier: n } : r;
+  });
+}
+
+// The multiplier a (stamped) result carries, 1 when none.
+export function pointsMultiplierOf(result) {
+  const n = result?.pointsMultiplier;
+  return Number.isInteger(n) && n > 1 ? n : 1;
+}
+
 // The bonus a (stamped) result actually collects: only a classified finisher
 // scoring derived points. See the block above.
 export function fastestLapBonusOf(result) {
@@ -191,11 +219,12 @@ export function fastestLapBonusOf(result) {
 // Points a single result actually scores in the driver standings.
 // DNS / DNF / DSQ always score 0. Otherwise: explicit `points` if provided
 // (historical R1-R8), else derived from finishing position — plus the
-// fastest-lap bonus where the row was stamped with one (see above).
+// fastest-lap bonus where the row was stamped with one, times the round's
+// points multiplier where it was stamped with one (see above).
 export function getDriverResultPoints(result, table = DEFAULT_POINTS_TABLE) {
   if (result.status && result.status !== "FINISHED") return 0;
   if (result.points !== null && result.points !== undefined) return result.points;
-  return getPointsForPosition(result.position, table) + fastestLapBonusOf(result);
+  return (getPointsForPosition(result.position, table) + fastestLapBonusOf(result)) * pointsMultiplierOf(result);
 }
 
 // Resolve the team a result counts towards: a reserve substituting for a team
@@ -270,7 +299,7 @@ export function calculateT2ConstructorContributions(raceResults, drivers, teams,
   return ranked.map((result, index) => ({
     driverId: result.driverId,
     teamId: effectiveTeamId(result, driverById),
-    points: getPointsForPosition(index + 1, table) + fastestLapBonusOf(result),
+    points: (getPointsForPosition(index + 1, table) + fastestLapBonusOf(result)) * pointsMultiplierOf(result),
   }));
 }
 

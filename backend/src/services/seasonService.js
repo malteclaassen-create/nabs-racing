@@ -271,16 +271,18 @@ export async function getSeasonScoring(prisma, seasonOrId) {
   let teamDropWorst = null;
   let teamDropMode = null;
   let fastestLapPoints = 0;
+  let championDriverId = null;
   if (season?.id) {
     try {
       const rows = await prisma.$queryRawUnsafe(
-        `SELECT "teamDropWorst", "teamDropMode", "fastestLapPoints" FROM "Season" WHERE "id" = ?`,
+        `SELECT "teamDropWorst", "teamDropMode", "fastestLapPoints", "championDriverId" FROM "Season" WHERE "id" = ?`,
         season.id
       );
       const v = rows[0]?.teamDropWorst;
       teamDropWorst = v == null ? null : Number(v);
       teamDropMode = rows[0]?.teamDropMode === "rounds" ? "rounds" : null;
       fastestLapPoints = parseFastestLapPoints(rows[0]?.fastestLapPoints);
+      championDriverId = rows[0]?.championDriverId || null;
     } catch {
       teamDropWorst = null;
     }
@@ -290,6 +292,8 @@ export async function getSeasonScoring(prisma, seasonOrId) {
     teamDropWorst,
     teamDropMode,
     fastestLapPoints,
+    // The champion when decided by a rule the points do not express.
+    championDriverId,
     pointsTable: parsePointsTable(season?.pointsTable),
     finalStandings: parseFinalStandings(season?.finalStandings),
   };

@@ -9,11 +9,13 @@ import {
   fastestLapBonusOf,
   getPointsForPosition,
   stampFastestLapBonus,
+  stampPointsMultiplier,
+  pointsMultiplierOf,
   calculateT1ConstructorPoints,
   calculateT2ConstructorPoints,
   DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
-import { applyDropScores, buildConstructorRows, scoringRaces, withScoringApplied } from "./standingsService.js";
+import { applyDropScores, buildConstructorRows, scoringRaces, withScoringApplied, roundMultipliers } from "./standingsService.js";
 import { resultTeamId } from "../lib/resultTeam.js";
 import { getSeasonScoring } from "./seasonService.js";
 
@@ -22,10 +24,14 @@ import { getSeasonScoring } from "./seasonService.js";
 // is the season's bonus for the fastest race lap, stamped onto the proposal's
 // holder exactly as saving it would (from the proposal's own lap times — the
 // round is not saved, so there is no recorded holder to defer to).
-function buildRoundPreview(proposed, drivers, teams, table = DEFAULT_POINTS_TABLE, fastestLapBonus = 0) {
+// `pointsMultiplier` is the round's (1 = ordinary), stamped the same way.
+function buildRoundPreview(proposed, drivers, teams, table = DEFAULT_POINTS_TABLE, fastestLapBonus = 0, pointsMultiplier = 1) {
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const teamById = new Map(teams.map((t) => [t.id, t]));
-  const applied = stampFastestLapBonus(applyPenalties(proposed), fastestLapBonus);
+  const applied = stampPointsMultiplier(
+    stampFastestLapBonus(applyPenalties(proposed), fastestLapBonus),
+    new Map(proposed.map((r) => [r.raceId, pointsMultiplier]))
+  );
   const rawById = new Map(proposed.map((r) => [r.driverId, r.position]));
 
   // Nothing is stamped yet at preview time (the round is not saved), so this
@@ -38,7 +44,7 @@ function buildRoundPreview(proposed, drivers, teams, table = DEFAULT_POINTS_TABL
   applied
     .filter((r) => r.status === "FINISHED" && r.position != null && effTeam(r)?.tier === 2)
     .sort((a, b) => a.position - b.position)
-    .forEach((r, i) => (t2[r.driverId] = getPointsForPosition(i + 1, table) + fastestLapBonusOf(r)));
+    .forEach((r, i) => (t2[r.driverId] = (getPointsForPosition(i + 1, table) + fastestLapBonusOf(r)) * pointsMultiplierOf(r)));
 
   const rows = applied.map((r) => {
     const d = driverById.get(r.driverId);
@@ -155,9 +161,17 @@ export async function previewRaceImpact(prisma, { seasonId, raceId, number, resu
   // classification (a Tier-2 re-rank runs per race, never across two).
   const proposalRaceId = targetRaceId || "__proposal__";
   const proposed = results.filter((r) => r.driverId).map((r) => ({ ...r, raceId: proposalRaceId }));
+  // The round's points multiplier, so a double-points finale previews as one.
+  // The round is found by its number: a sprint proposal's target is the
+  // child, whose multiplier is its round's.
+  const targetRoundRow = races.find((r) => r.number === targetNumber) || null;
+  const mult = targetRoundRow ? (await roundMultipliers(prisma, [targetRoundRow.id])).get(targetRoundRow.id) || 1 : 1;
   // Penalties applied, then the fastest-lap bonus stamped from the proposal's
-  // own laps — the same pricing saving the round would get.
-  const proposedApplied = stampFastestLapBonus(applyPenalties(proposed), flBonus);
+  // own laps, then the multiplier — the same pricing saving the round would get.
+  const proposedApplied = stampPointsMultiplier(
+    stampFastestLapBonus(applyPenalties(proposed), flBonus),
+    new Map([[proposalRaceId, mult]])
+  );
 
   // DB results grouped by round number, each race's penalties applied and its
   // fastest-lap bonus stamped within its own classification (non-target
@@ -248,7 +262,7 @@ export async function previewRaceImpact(prisma, { seasonId, raceId, number, resu
     // Which classification of the round the proposal is: the sprint of a
     // sprint+feature weekend, or the race itself.
     session: asSprint ? "SPRINT" : "RACE",
-    round: buildRoundPreview(proposed, drivers, teams, table, flBonus),
+    round: buildRoundPreview(proposed, drivers, teams, table, flBonus, mult),
     roundTeams,
     drivers: rankWithDelta(proposedStandings.drivers, baseD, "driverId"),
     t1: rankWithDelta(proposedStandings.t1, baseT1, "teamId"),

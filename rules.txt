@@ -39,6 +39,23 @@ weekend the sprint and the feature race each pay their own. On the round by
 round tables a cell with the bonus in it is marked FL.
 
 
+DOUBLE POINTS
+
+A round can pay more than once over (set per race in the admin, "Points":
+normal, double, triple). Every result of that round scores that many times the
+points table, the sprint of a sprint weekend included, and so does the fastest
+lap bonus. On the round by round tables such a round is marked x2.
+
+
+CHAMPION BY RULE
+
+If a season's title was decided by a rule the points do not express (for
+example "whoever finishes ahead in the finale is champion"), the admin can name
+the champion on the Seasons tab. That driver tops the final table with a note
+saying why, and the Hall of Fame, the season honours and the champion seals
+follow the table. Points are not changed.
+
+
 POLE POSITION
 
 Pole is the fastest driver of the qualifying session. Once a round's qualifying
