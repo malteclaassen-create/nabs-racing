@@ -15,6 +15,7 @@ import { seasonSeriesMap } from "../lib/series.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { telemetryForDriver, telemetryForRace } from "../lib/telemetryRead.js";
 import { readManualFastestLaps, readPoleHolders } from "../lib/raceHonours.js";
+import { readParentIds, readSprintChildren } from "../lib/sprintRaces.js";
 import { groupKeyFor, displayNameFor, countryFor } from "../lib/trackKeys.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import { achievementStateFor } from "../lib/achievements.js";
@@ -449,11 +450,17 @@ export async function getCockpitCareer(prisma, driverId) {
   const champRows = results.filter((r) => r.race?.isCompleted && !r.race.isSpecialEvent);
   const bySeasonId = new Map(ctx.rows.map((r) => [r.seasonId, r]));
   // A pole is the imported qualifying session's fastest driver, else grid
-  // slot 1 (lib/raceHonours.js) — the grid alone would credit a reverse-grid start.
-  const poleByRace = await readPoleHolders(prisma, new Set(champRows.map((r) => r.raceId)));
+  // slot 1 (lib/raceHonours.js) — the grid alone would credit a reverse-grid
+  // start. A round with no pole on its feature race takes the sprint's
+  // grid-1 row (a pole recorded by hand on a weekend whose sprint starts
+  // from the qualifying order). One pole per round.
+  const champRoundIds = [...new Set(champRows.map((r) => r.raceId))];
+  const champChildByRound = await readSprintChildren(prisma, champRoundIds);
+  const poleByRace = await readPoleHolders(prisma, [...champRoundIds, ...champChildByRound.values()]);
+  const poleOfRound = (raceId) => poleByRace.get(raceId) ?? poleByRace.get(champChildByRound.get(raceId)) ?? null;
   for (const s of seasons) {
     s.poles = champRows.filter(
-      (r) => bySeasonId.get(r.race.seasonId)?.season.number === s.seasonNumber && poleByRace.get(r.raceId) === r.driverId
+      (r) => bySeasonId.get(r.race.seasonId)?.season.number === s.seasonNumber && poleOfRound(r.raceId) === r.driverId
     ).length;
   }
 
@@ -611,10 +618,20 @@ export async function buildAchievementInputs(prisma, ctx, { standings } = {}) {
 
   const started = rows.filter((r) => r.status !== "DNS");
   const finished = started.filter((r) => r.status === "FINISHED" && r.position != null);
+  // The sprint halves of sprint weekends (hidden child races flagged special,
+  // told apart from real special events by the parent link): they count for
+  // fastest laps, and their grid-1 row stands in for a round whose feature
+  // race has no pole on record.
+  const specialIds = results.filter((r) => r.race?.isCompleted && r.race.isSpecialEvent).map((r) => r.raceId);
+  const sprintParents = await readParentIds(prisma, specialIds);
+  const sprintRows = results.filter((r) => sprintParents.has(r.raceId));
   // Poles the way the whole site counts them (lib/raceHonours.js): the
-  // qualifying session's fastest driver where one is on file, grid 1 otherwise.
-  const poleByRace = await readPoleHolders(prisma, new Set(rows.map((r) => r.raceId)));
-  const onPole = (r) => poleByRace.get(r.raceId) === r.driverId;
+  // qualifying session's fastest driver where one is on file, grid 1
+  // otherwise, the sprint's grid-1 row for a round with none. One per round.
+  const roundIds = [...new Set(rows.map((r) => r.raceId))];
+  const childByRound = await readSprintChildren(prisma, roundIds);
+  const poleByRace = await readPoleHolders(prisma, [...roundIds, ...childByRound.values()]);
+  const onPole = (r) => (poleByRace.get(r.raceId) ?? poleByRace.get(childByRound.get(r.raceId)) ?? null) === r.driverId;
 
   // Season points/positions from the official standings; titles need the
   // concluded rule (a live season's P1 isn't a title yet).
@@ -640,16 +657,17 @@ export async function buildAchievementInputs(prisma, ctx, { standings } = {}) {
   // Fastest laps: rounds where an own row held the race's overall best lap.
   // Rounds with an admin-recorded holder (archive seasons, lib/raceHonours.js)
   // are settled by that record alone, whatever partial lap data they carry.
-  const manualFl = await readManualFastestLaps(prisma, new Set(rows.map((r) => r.raceId)));
+  const flRows = [...rows, ...sprintRows];
+  const manualFl = await readManualFastestLaps(prisma, new Set(flRows.map((r) => r.raceId)));
   let fastestLaps = 0;
   let fastestByRace = new Map();
-  for (const r of rows) {
+  for (const r of flRows) {
     if (manualFl.get(r.raceId) === r.driverId) {
       fastestLaps += 1;
       fastestByRace.set(r.raceId, true);
     }
   }
-  const withLap = rows.filter((r) => isLap(r.bestLapMs) && !manualFl.has(r.raceId));
+  const withLap = flRows.filter((r) => isLap(r.bestLapMs) && !manualFl.has(r.raceId));
   if (withLap.length) {
     const raceIds = [...new Set(withLap.map((r) => r.raceId))];
     const field = await prisma.raceResult.findMany({
