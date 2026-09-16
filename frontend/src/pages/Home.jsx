@@ -1287,9 +1287,10 @@ export default function Home() {
           standings={standings}
           raceNumbers={drivers.data?.raceNumbers || []}
           dropWorst={drivers.data?.dropWorst ?? 0}
-          // P1's score from this season's points table (admin-editable); the
-          // widget falls back to the best observed round when none is stored.
-          tableMax={Array.isArray(season?.pointsTable) ? season.pointsTable[0] : 0}
+          // P1's score from this season's points table (admin-editable) plus
+          // the fastest-lap bonus where the season pays one; the widget falls
+          // back to the best observed round when no table is stored.
+          tableMax={Array.isArray(season?.pointsTable) ? season.pointsTable[0] + (season.fastestLapPoints || 0) : 0}
           sprintRounds={drivers.data?.sprintRounds || []}
           totalRounds={totalRounds}
           // Demo rewinds the last two rounds, so gaps/totals/aliveness are all

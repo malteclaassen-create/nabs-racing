@@ -6,6 +6,8 @@
 // ---------------------------------------------------------------------------
 import {
   getDriverResultPoints,
+  fastestLapBonusOf,
+  stampFastestLapBonus,
   applyPenalties,
   calculateT1ConstructorContributions,
   calculateT2ConstructorContributions,
@@ -15,6 +17,7 @@ import { getSeasonScoring } from "./seasonService.js";
 import { getNameOverrides, getIdentityOverrides, getPersonGroups } from "../lib/persons.js";
 import { readSprintChildrenOf } from "../lib/sprintRaces.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
+import { readManualFastestLaps } from "../lib/raceHonours.js";
 
 // Apply each race's position penalties before scoring. Grouping by race keeps a
 // penalty's re-ranking contained to its own classification — a sprint and its
@@ -30,6 +33,20 @@ export function withPenaltiesApplied(results) {
   const out = [];
   for (const rs of byRace.values()) out.push(...applyPenalties(rs));
   return out;
+}
+
+// The stored rows PRICED: penalties applied within each classification, then
+// the season's fastest-lap bonus stamped onto each classification's holder
+// (pointsCalculator.stampFastestLapBonus). Every scorer of stored results —
+// both standings tables and the admin preview — goes through here, so the
+// bonus can never be paid in one table and missing from another. A season
+// without the bonus skips the honours read entirely.
+export async function withScoringApplied(prisma, results, scoring) {
+  const applied = withPenaltiesApplied(results);
+  const bonus = scoring?.fastestLapPoints || 0;
+  if (!(bonus > 0)) return applied;
+  const manual = await readManualFastestLaps(prisma, new Set(applied.map((r) => r.raceId)));
+  return stampFastestLapBonus(applied, bonus, manual);
 }
 
 // A season's scoring races and the round each one scores under: every
@@ -474,20 +491,27 @@ async function previousSeasonOrder(prisma, seasonId, depth) {
 // the countback tie-break and the medal colours read those, and a sprint win
 // is not a win. The sprint's own share sits beside them as `sprint`, so the
 // table can explain a cell whose number is more than its position pays.
+//
+// A FASTEST-LAP BONUS the result collected (rows stamped by withScoringApplied)
+// is inside `points` already; `fastestLap` names the bonus beside it (on the
+// cell for the feature, on `sprint` for the sprint), only where one was paid,
+// so the table can explain a cell that pays one more than its position.
 export function buildDriverPerRace(results, driverId, raceNumberById, table = DEFAULT_POINTS_TABLE, sprintRaceIds = new Set()) {
-  const perRace = {}; // raceNumber -> { points, status, position, grid, sprint? }
+  const perRace = {}; // raceNumber -> { points, status, position, grid, sprint?, fastestLap? }
   const pointsByRound = {};
   for (const r of results) {
     if (r.driverId !== driverId) continue;
     const num = raceNumberById.get(r.raceId);
     if (num == null) continue;
     const pts = getDriverResultPoints(r, table);
+    const bonus = fastestLapBonusOf(r);
     if (sprintRaceIds.has(r.raceId)) {
       // The sprint may arrive before or after the feature's row; a driver who
       // only started the sprint gets a cell with no feature finish in it.
       const cell = perRace[num] || (perRace[num] = { points: 0, status: null, position: null, grid: null });
       cell.points += pts;
       cell.sprint = { points: pts, status: r.status, position: r.position };
+      if (bonus) cell.sprint.fastestLap = bonus;
       pointsByRound[num] = cell.points;
       continue;
     }
@@ -497,6 +521,7 @@ export function buildDriverPerRace(results, driverId, raceNumberById, table = DE
     const sprint = perRace[num]?.sprint;
     perRace[num] = { points: pts + (sprint?.points || 0), status: r.status, position: r.position, grid: r.grid ?? null };
     if (sprint) perRace[num].sprint = sprint;
+    if (bonus) perRace[num].fastestLap = bonus;
     pointsByRound[num] = perRace[num].points;
   }
   return { perRace, pointsByRound };
@@ -569,7 +594,11 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     sprintRoundNumbers(prisma, races),
   ]);
   const raceNumbers = races.map((r) => r.number);
-  const appliedResults = withPenaltiesApplied(extraResults.length ? [...results, ...extraResults] : results);
+  const appliedResults = await withScoringApplied(
+    prisma,
+    extraResults.length ? [...results, ...extraResults] : results,
+    scoring
+  );
 
   // Admin-hidden rows (a deactivated driver removed from the public table) get
   // no standings row at all — everyone below moves up. Their race results and
@@ -664,6 +693,9 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     // columns can pay twice (the tables mark them, the title fight prices them).
     sprintRounds,
     dropWorst: scoring.dropWorst,
+    // Bonus the fastest race lap pays this season (0 = none), so the table
+    // can footnote it and explain the cells that carry it.
+    fastestLapPoints: scoring.fastestLapPoints || 0,
     officialTotals: !partial && !!scoring.finalStandings?.drivers?.length,
     standings: rows,
   };
@@ -707,7 +739,8 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
   // builders split the round by race again before scoring (roundContributions).
   // Results of special events (not in the number map) never score.
   const resultsByRound = new Map();
-  for (const r of withPenaltiesApplied(extraResults.length ? [...results, ...extraResults] : results)) {
+  const priced = await withScoringApplied(prisma, extraResults.length ? [...results, ...extraResults] : results, scoring);
+  for (const r of priced) {
     const num = raceNumberById.get(r.raceId);
     if (num == null) continue;
     if (!resultsByRound.has(num)) resultsByRound.set(num, []);
@@ -806,6 +839,7 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
     // (legacy inheritance) or "official" (archived verbatim totals).
     dropMode,
     teamDropWorst: dropMode === "team" || dropMode === "teamRounds" ? scoring.teamDropWorst : null,
+    fastestLapPoints: scoring.fastestLapPoints || 0,
     officialTotals: !partial && !!scoring.finalStandings?.teams?.length,
     standings: rows,
   };

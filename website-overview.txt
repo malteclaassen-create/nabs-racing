@@ -78,6 +78,14 @@ This sits behind a PIN (top right, "Admin"). From there I can:
     classifications are stored: the import asks which race the file is, and
     the results view gets a Feature/Sprint switch. The sprint scores the same
     points as the feature race, added to that round.
+  - Set a fastest lap bonus per season (Seasons tab). The driver with the
+    fastest race lap gets it on top of their finish, if they finish. The
+    standings mark those cells with FL.
+  - Import the qualifying session of a round (Quali on the results editor).
+    Once it is there, that session decides who took pole everywhere on the
+    site - the Hall of Fame, the profiles, the track pages. Without one the
+    pole is whoever started from grid slot 1, so a reverse-grid feature race
+    should always have its qualifying imported.
   - Change the admin PIN.
 
 

@@ -126,13 +126,76 @@ export function applyPenalties(raceResults) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// FASTEST LAP BONUS (Season.fastestLapPoints)
+// ---------------------------------------------------------------------------
+// The league pays a bonus for the fastest race lap. It is stamped onto the
+// holder's result row as `fastestLapBonus` by stampFastestLapBonus below, and
+// getDriverResultPoints adds it — so every reader that prices a result (the
+// standings, the constructor contributions, the preview, the results page)
+// sees the same figure without knowing the rule exists.
+//
+// Who holds it: per classification (rows grouped by raceId — a sprint and its
+// feature race each pay their own), the admin-recorded holder where one is
+// on record (lib/raceHonours.js, archive rounds), else the smallest bestLapMs
+// among the rows that carry a real lap. An exact tie pays everyone tied.
+//
+// Who is paid: the holder only when CLASSIFIED (status FINISHED). A car that
+// set the lap and then retired gets nothing — the bonus is a reward on top of
+// a result, and DNS/DNF/DSQ always score 0 here.
+//
+// Rows with EXPLICIT points (archived rounds scored from the official sheet)
+// never get it added: that figure is what the league published, bonus and
+// all. The bonus only rides on points DERIVED from the finishing position.
+const MAX_LAP_MS = 1_800_000; // laps beyond 30 minutes are import artefacts
+const isRealLap = (ms) => ms != null && ms > 0 && ms <= MAX_LAP_MS;
+
+// Returns a copy of `results` with `fastestLapBonus: bonus` on each
+// classification's holder(s). `manualHolders` is a Map<raceId, driverId> of
+// admin-recorded holders. A bonus of 0 returns the rows untouched. Pure.
+export function stampFastestLapBonus(results, bonus, manualHolders = new Map()) {
+  if (!(bonus > 0) || !results?.length) return results;
+  const byRace = new Map();
+  for (const r of results) {
+    const key = r.raceId ?? "";
+    if (!byRace.has(key)) byRace.set(key, []);
+    byRace.get(key).push(r);
+  }
+  const holders = new Set(); // "raceKey|driverId"
+  for (const [key, rows] of byRace) {
+    const recorded = manualHolders.get(key);
+    if (recorded) {
+      holders.add(`${key}|${recorded}`);
+      continue;
+    }
+    let best = null;
+    for (const r of rows) if (isRealLap(r.bestLapMs) && (best == null || r.bestLapMs < best)) best = r.bestLapMs;
+    if (best == null) continue;
+    for (const r of rows) if (r.bestLapMs === best) holders.add(`${key}|${r.driverId}`);
+  }
+  if (!holders.size) return results;
+  return results.map((r) =>
+    holders.has(`${r.raceId ?? ""}|${r.driverId}`) ? { ...r, fastestLapBonus: bonus } : r
+  );
+}
+
+// The bonus a (stamped) result actually collects: only a classified finisher
+// scoring derived points. See the block above.
+export function fastestLapBonusOf(result) {
+  if (!(result?.fastestLapBonus > 0)) return 0;
+  if (result.status && result.status !== "FINISHED") return 0;
+  if (result.points !== null && result.points !== undefined) return 0;
+  return result.fastestLapBonus;
+}
+
 // Points a single result actually scores in the driver standings.
 // DNS / DNF / DSQ always score 0. Otherwise: explicit `points` if provided
-// (historical R1-R8), else derived from finishing position.
+// (historical R1-R8), else derived from finishing position — plus the
+// fastest-lap bonus where the row was stamped with one (see above).
 export function getDriverResultPoints(result, table = DEFAULT_POINTS_TABLE) {
   if (result.status && result.status !== "FINISHED") return 0;
   if (result.points !== null && result.points !== undefined) return result.points;
-  return getPointsForPosition(result.position, table);
+  return getPointsForPosition(result.position, table) + fastestLapBonusOf(result);
 }
 
 // Resolve the team a result counts towards: a reserve substituting for a team
@@ -201,10 +264,13 @@ export function calculateT2ConstructorContributions(raceResults, drivers, teams,
     })
     .sort((a, b) => a.position - b.position);
 
+  // The fastest-lap bonus travels with the driver's points into the team's
+  // column here too: it is a point the driver scored, not a slot in the
+  // re-rank, so it sits on top of the re-ranked figure.
   return ranked.map((result, index) => ({
     driverId: result.driverId,
     teamId: effectiveTeamId(result, driverById),
-    points: getPointsForPosition(index + 1, table),
+    points: getPointsForPosition(index + 1, table) + fastestLapBonusOf(result),
   }));
 }
 

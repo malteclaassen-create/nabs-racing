@@ -14,7 +14,7 @@ import { getLinkedDriverIds, getNameOverrides, getPersonGroups, getIdentityOverr
 import { seasonSeriesMap } from "../lib/series.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { telemetryForDriver, telemetryForRace } from "../lib/telemetryRead.js";
-import { readManualFastestLaps } from "../lib/raceHonours.js";
+import { readManualFastestLaps, readPoleHolders } from "../lib/raceHonours.js";
 import { groupKeyFor, displayNameFor, countryFor } from "../lib/trackKeys.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import { achievementStateFor } from "../lib/achievements.js";
@@ -448,9 +448,12 @@ export async function getCockpitCareer(prisma, driverId) {
   });
   const champRows = results.filter((r) => r.race?.isCompleted && !r.race.isSpecialEvent);
   const bySeasonId = new Map(ctx.rows.map((r) => [r.seasonId, r]));
+  // A pole is the imported qualifying session's fastest driver, else grid
+  // slot 1 (lib/raceHonours.js) — the grid alone would credit a reverse-grid start.
+  const poleByRace = await readPoleHolders(prisma, new Set(champRows.map((r) => r.raceId)));
   for (const s of seasons) {
     s.poles = champRows.filter(
-      (r) => bySeasonId.get(r.race.seasonId)?.season.number === s.seasonNumber && r.grid === 1 && r.status !== "DNS"
+      (r) => bySeasonId.get(r.race.seasonId)?.season.number === s.seasonNumber && poleByRace.get(r.raceId) === r.driverId
     ).length;
   }
 
@@ -608,6 +611,10 @@ export async function buildAchievementInputs(prisma, ctx, { standings } = {}) {
 
   const started = rows.filter((r) => r.status !== "DNS");
   const finished = started.filter((r) => r.status === "FINISHED" && r.position != null);
+  // Poles the way the whole site counts them (lib/raceHonours.js): the
+  // qualifying session's fastest driver where one is on file, grid 1 otherwise.
+  const poleByRace = await readPoleHolders(prisma, new Set(rows.map((r) => r.raceId)));
+  const onPole = (r) => poleByRace.get(r.raceId) === r.driverId;
 
   // Season points/positions from the official standings; titles need the
   // concluded rule (a live season's P1 isn't a title yet).
@@ -718,12 +725,12 @@ export async function buildAchievementInputs(prisma, ctx, { standings } = {}) {
     starts: started.length,
     wins: wins.length,
     podiums: finished.filter((r) => r.position <= 3).length,
-    poles: started.filter((r) => r.grid === 1).length,
+    poles: rows.filter(onPole).length,
     frontRows: started.filter((r) => r.grid != null && r.grid <= 2).length,
     points: Math.round(points),
     pointsFinishes: rows.filter((r) => (r.points ?? 0) > 0 || (r.status === "FINISHED" && r.position != null && r.position <= 10)).length,
     fastestLaps,
-    hatTricks: wins.filter((r) => r.grid === 1 && fastestByRace.get(r.raceId)).length,
+    hatTricks: wins.filter((r) => onPole(r) && fastestByRace.get(r.raceId)).length,
     winsFromP6: wins.filter((r) => r.grid != null && r.grid >= 6).length,
     bestComeback: Math.max(0, ...finished.filter((r) => r.grid != null).map((r) => r.grid - r.position)),
     distinctWinTracks: new Set(wins.map((r) => groupKeyFor(r.race.track))).size,

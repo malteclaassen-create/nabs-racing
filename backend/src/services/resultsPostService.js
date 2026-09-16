@@ -15,6 +15,7 @@
 import { applyPenalties } from "./pointsCalculator.js";
 import { readParentIds } from "../lib/sprintRaces.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
+import { readPoleHolders } from "../lib/raceHonours.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
 
 // The other posts this file makes: the two championship tables. See
@@ -136,7 +137,10 @@ export async function buildResultsPost(prisma, raceId, { origin = null, roleId =
 
   // Stats block — each line only appears when its data was actually imported.
   const stats = [];
-  const pole = applied.find((r) => r.grid === 1);
+  // The qualifying session's fastest driver where one is imported, grid slot 1
+  // otherwise (lib/raceHonours.js) — never a reverse-grid slot 1.
+  const poleId = (await readPoleHolders(prisma, [raceId])).get(raceId);
+  const pole = poleId ? applied.find((r) => r.driverId === poleId) : null;
   if (pole) stats.push(`🎯 Pole - ${who(pole)}`);
   const lapRows = applied.filter((r) => r.bestLapMs > 0);
   if (lapRows.length) {

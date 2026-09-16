@@ -16,6 +16,7 @@ import { getPersonGroups, getNameOverrides, getLinkedDriverIds } from "../lib/pe
 import { telemetryForRaces } from "../lib/telemetryRead.js";
 import { readTrackInfo, mapImageFor, ensureMapImageSize } from "../lib/trackInfo.js";
 import { readTrackCountries, staticCountryFor } from "../lib/raceCountries.js";
+import { readPoleHolders } from "../lib/raceHonours.js";
 
 const router = Router();
 
@@ -120,12 +121,15 @@ router.get("/history", optionalUser, async (req, res, next) => {
       });
     }
 
-    const [results, telemetryRows] = await Promise.all([
+    const [results, telemetryRows, poleByRace] = await Promise.all([
       prisma.raceResult.findMany({
         where: { raceId: { in: raceIds } },
         include: { driver: { select: { id: true, name: true, country: true, seasonId: true } } },
       }),
       telemetryForRaces(prisma, raceIds),
+      // Pole = the imported qualifying session's fastest driver, else grid
+      // slot 1 (lib/raceHonours.js): a reverse-grid start is not a pole.
+      readPoleHolders(prisma, raceIds),
     ]);
     const telByKey = new Map(telemetryRows.map((t) => [`${t.raceId}|${t.driverId}`, t]));
     const raceById = new Map(here.map((r) => [r.id, r]));
@@ -164,7 +168,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
       const p = ensure(r.driver);
       const finished = (!r.status || r.status === "FINISHED") && r.position != null;
       if (finished && r.position === 1) p.wins++;
-      if (r.grid === 1) p.poles++;
+      if (poleByRace.get(r.raceId) === r.driverId) p.poles++;
       const tel = telByKey.get(`${r.raceId}|${r.driverId}`) || {};
       const crashes = (tel.contacts || 0) + (tel.envContacts || 0);
       p.crashes += crashes;
@@ -203,7 +207,7 @@ router.get("/history", optionalUser, async (req, res, next) => {
       .map((race) => {
         const rs = resultsByRace.get(race.id) || [];
         const winner = rs.find((r) => (!r.status || r.status === "FINISHED") && r.position === 1);
-        const pole = rs.find((r) => r.grid === 1);
+        const pole = rs.find((r) => r.driverId === poleByRace.get(race.id));
         const laps = rs.filter((r) => isLap(r.bestLapMs));
         const fl = laps.length ? laps.reduce((b, r) => (r.bestLapMs < b.bestLapMs ? r : b)) : null;
         return {

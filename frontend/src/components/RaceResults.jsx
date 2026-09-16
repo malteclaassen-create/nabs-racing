@@ -342,8 +342,17 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                         </span>
                       )}
                       {isFastest && (
-                        <span className="pill bg-purple-500/15 text-fl" title="Fastest lap of the race">
-                          FL
+                        <span
+                          className="pill bg-purple-500/15 text-fl"
+                          title={
+                            r.fastestLap > 0
+                              ? `Fastest lap of the race: +${r.fastestLap} bonus point${r.fastestLap === 1 ? "" : "s"}`
+                              : race.fastestLapPoints > 0
+                                ? "Fastest lap of the race (no bonus: did not finish, or an official result)"
+                                : "Fastest lap of the race"
+                          }
+                        >
+                          FL{r.fastestLap > 0 ? ` +${r.fastestLap}` : ""}
                         </span>
                       )}
                       {r.isSub && r.subForTeam && (

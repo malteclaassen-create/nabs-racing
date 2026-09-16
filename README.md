@@ -77,6 +77,20 @@ your API origin and run `npm run build`.
 
 `DNS` / `DNF` / `DSQ` = 0 points.
 
+A season can pay a **fastest-lap bonus** (`Season.fastestLapPoints`, admin
+Seasons tab, 0 = none): the classified finisher who set the race's best lap
+scores it on top of their finishing points, in the driver table and for the
+team they drove for (on top of the Tier 2 re-rank). A car that sets the lap and
+retires gets nothing. Rows with explicit historical `points` never get it added.
+The holder is the admin-recorded fastest lap where one exists, else the best
+stored `bestLapMs` of that classification (`pointsCalculator.stampFastestLapBonus`).
+
+**Pole position** is the fastest driver of the imported qualifying session
+(`Race.qualiJson`); only a round without one falls back to `grid = 1`
+(`lib/raceHonours.js` `readPoleHolders`). Every pole consumer — Hall of Fame,
+profiles, cockpit, track history, Discord result posts — goes through it, so a
+reverse-grid feature race's slot 1 is never counted as a pole.
+
 A **sprint + feature weekend** (an F2-style round, race format `SPRINT_FEATURE`)
 runs two races on one evening and both pay this table in full. The sprint's
 points are added to that round — for the drivers and for both constructor

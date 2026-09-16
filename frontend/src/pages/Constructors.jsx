@@ -47,7 +47,7 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
         }
       />
 
-      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} sprintRounds={standings.sprintRounds || []} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} dropMode={standings.dropMode} teamDropWorst={standings.teamDropWorst} decided={decided} showMovement={showMovement} />
+      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} sprintRounds={standings.sprintRounds || []} fastestLapPoints={standings.fastestLapPoints || 0} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} dropMode={standings.dropMode} teamDropWorst={standings.teamDropWorst} decided={decided} showMovement={showMovement} />
 
       <div className="space-y-3 pt-2">
         <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Line-ups</h3>
