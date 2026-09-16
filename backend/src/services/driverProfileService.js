@@ -24,7 +24,7 @@ import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
 import { achievementMeta } from "../lib/achievements.js";
 import { hasRaced } from "../lib/standingsRow.js";
 import { withClassifiedPositions } from "./penalisedResults.js";
-import { readSprintChildrenOf, readParentIds } from "../lib/sprintRaces.js";
+import { readSprintChildrenOf, readParentIds, readSprintChildren } from "../lib/sprintRaces.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -132,11 +132,19 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilt
       fastest = { bestLapMs: r.bestLapMs, track: r.race.track, number: r.race.number };
     }
   }
-  const fastestLaps = await countFastestLaps(prisma, rows);
+  // Fastest laps of every classification the person drove: the feature races
+  // and, on sprint weekends, the sprints (see sprintRows above).
+  const fastestLaps = await countFastestLaps(prisma, [...rows, ...sprintRows]);
   // Poles: the imported qualifying session's fastest driver, else grid slot 1
   // (lib/raceHonours.js) — the grid alone would credit a reverse-grid start.
-  const poleByRace = await readPoleHolders(prisma, new Set(rows.map((r) => r.raceId)));
-  const polePositions = rows.filter((r) => poleByRace.get(r.raceId) === r.driverId).length;
+  // A round with no pole on its feature race takes the sprint's grid-1 row
+  // (a pole recorded by hand on a weekend whose sprint starts from the
+  // qualifying order). One pole per round.
+  const roundIds = [...new Set(rows.map((r) => r.raceId))];
+  const childByRound = await readSprintChildren(prisma, roundIds);
+  const poleByRace = await readPoleHolders(prisma, [...roundIds, ...childByRound.values()]);
+  const poleOfRound = (raceId) => poleByRace.get(raceId) ?? poleByRace.get(childByRound.get(raceId)) ?? null;
+  const polePositions = rows.filter((r) => poleOfRound(r.raceId) === r.driverId).length;
 
   // Telemetry across every linked row (per-driver reads, merged).
   let overtakesTotal = 0, contactsTotal = 0, lapsLedTotal = 0, consNum = 0, consDen = 0, gamePenSecTotal = 0;
@@ -849,16 +857,21 @@ export async function getDriverProfile(prisma, driverId) {
       fastest = { bestLapMs: r.bestLapMs, track: r.track, number: r.number };
     }
   }
-  const seasonRaceIds = new Set(races.map((r) => r.id));
+  // Fastest laps of every classification this season: the feature races and,
+  // on sprint weekends, the sprints (their hidden child races).
+  const seasonRaceIds = new Set([...races.map((r) => r.id), ...races.map((r) => sprintChildByRound.get(r.id)).filter(Boolean)]);
   const fastestLaps = await countFastestLaps(
     prisma,
     results.filter((r) => seasonRaceIds.has(r.raceId))
   );
   // Poles this season: quali-derived where a session is on file, grid slot 1
   // otherwise (lib/raceHonours.js) — a reverse-grid feature race's slot 1 is
-  // not a pole.
+  // not a pole. A round with no pole on its feature race takes the sprint's
+  // grid-1 row (a pole recorded by hand on a weekend whose sprint starts from
+  // the qualifying order). One pole per round.
   const poleByRace = await readPoleHolders(prisma, seasonRaceIds);
-  const polePositions = races.filter((race) => poleByRace.get(race.id) === driverId).length;
+  const poleOfRound = (raceId) => poleByRace.get(raceId) ?? poleByRace.get(sprintChildByRound.get(raceId)) ?? null;
+  const polePositions = races.filter((race) => poleOfRound(race.id) === driverId).length;
 
   const wins = finishes.filter((r) => r.position === 1).length;
   const podiums = finishes.filter((r) => r.position <= 3).length;

@@ -15,6 +15,7 @@ import { readManualFastestLaps, readPoleHolders } from "../lib/raceHonours.js";
 import { resolveSeries, getActiveSeries } from "../lib/series.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
+import { readSprintChildrenOf } from "../lib/sprintRaces.js";
 
 // Heavy (walks every season), so one result is kept warm per series for a few
 // minutes. Results imports simply age out within CACHE_MS.
@@ -148,13 +149,32 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   }
 
   // --- extra signals straight off the results (quali, laps, telemetry) -------
+  // Every CLASSIFICATION of every completed round counts here: the feature
+  // race and, on a sprint weekend, the sprint too. The sprint lives on a
+  // hidden child race flagged special (lib/sprintRaces.js), which is exactly
+  // why it used to be left out — a league that runs every round as a sprint
+  // weekend then saw half its fastest laps missing from this page.
+  //
   // Poles: the fastest driver of the round's imported qualifying session, or
   // grid slot 1 where no session is on file (lib/raceHonours.js) — never the
   // grid of a round WITH a quali, because a reverse-grid feature race puts
-  // somebody who did not qualify first into slot 1. Fastest laps: the best
-  // race lap of each completed round.
+  // somebody who did not qualify first into slot 1. A round with no pole on
+  // its feature race at all takes the sprint's grid-1 row, which is where a
+  // pole is recorded by hand for a weekend whose sprint starts from the
+  // qualifying order. One pole per round, never one per race.
+  // Fastest laps: the best lap of each classification (a sprint has its own).
+  // Overtakes, laps led, contacts: summed over both races of a weekend.
+  const completedRounds = perSeason.flatMap(({ races }) => races.filter((r) => r.isCompleted));
+  const sprintChildren = await readSprintChildrenOf(prisma, completedRounds); // childId -> parent race
+  const childOfRound = new Map([...sprintChildren].map(([childId, parent]) => [parent.id, childId]));
+  const roundIds = completedRounds.map((r) => r.id);
   const results = await prisma.raceResult.findMany({
-    where: { race: { seasonId: { in: seasonIds }, isSpecialEvent: false, isCompleted: true } },
+    where: {
+      OR: [
+        { race: { seasonId: { in: seasonIds }, isSpecialEvent: false, isCompleted: true } },
+        ...(sprintChildren.size ? [{ raceId: { in: [...sprintChildren.keys()] } }] : []),
+      ],
+    },
     select: {
       driverId: true, raceId: true, grid: true, bestLapMs: true, position: true, status: true,
       overtakes: true, lapsLed: true, contacts: true,
@@ -170,7 +190,11 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   const contacts = new Map();
   const bestLapByRace = new Map(); // raceId -> { driverId, ms }
   const raceIdsInPlay = new Set(results.map((r) => r.raceId));
-  for (const driverId of (await readPoleHolders(prisma, raceIdsInPlay)).values()) addTo(poles, driverId);
+  const poleByRace = await readPoleHolders(prisma, [...roundIds, ...sprintChildren.keys()]);
+  for (const roundId of roundIds) {
+    const holder = poleByRace.get(roundId) ?? poleByRace.get(childOfRound.get(roundId)) ?? null;
+    if (holder) addTo(poles, holder);
+  }
   for (const r of results) {
     if (r.overtakes) addTo(overtakes, r.driverId, r.overtakes);
     if (r.lapsLed) addTo(lapsLed, r.driverId, r.lapsLed);
@@ -275,7 +299,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     topList("points", "Most career points", "every round counted, nothing dropped", (b) => b.points, { unit: "pts" }),
     topList("starts", "Most starts", "championship rounds started", (b) => b.starts, { unit: "starts" }),
     topList("poles", "Most pole positions", "fastest in qualifying, where the session is on record", (b, id) => poles.get(id) || 0, { unit: "poles" }),
-    topList("fastestLaps", "Most fastest laps", "best race lap of a round", (b, id) => fastestLaps.get(id) || 0, { unit: "laps" }),
+    topList("fastestLaps", "Most fastest laps", "best lap of a race, sprints included", (b, id) => fastestLaps.get(id) || 0, { unit: "laps" }),
     topList("overtakes", "Most overtakes", "on-track passes (telemetry seasons)", (b, id) => overtakes.get(id) || 0, { unit: "passes" }),
     topList("lapsLed", "Most laps led", "laps out front (telemetry seasons)", (b, id) => lapsLed.get(id) || 0, { unit: "laps" }),
     topList("contacts", "Most contacts", "car-to-car contacts (telemetry seasons)", (b, id) => contacts.get(id) || 0, { unit: "hits" }),
