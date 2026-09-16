@@ -39,6 +39,25 @@ weekend the sprint and the feature race each pay their own. On the round by
 round tables a cell with the bonus in it is marked FL.
 
 
+CUSTOM POINTS FOR ONE ROUND
+
+A round can have its own points table (set per race in the admin, "Custom
+points for this round", typed like the season's table: points for P1, P2, ...).
+Every result of that round is scored by that table instead of the season's,
+the sprint of a sprint weekend included; the fastest lap bonus comes on top as
+usual. A double-points finale is just the season's table doubled. On the round
+by round tables such a round is marked with a star.
+
+
+CHAMPION BY RULE
+
+If a season's title was decided by a rule the points do not express (for
+example "whoever finishes ahead in the finale is champion"), the admin can name
+the champion on the Seasons tab. That driver tops the final table with a note
+saying why, and the Hall of Fame, the season honours and the champion seals
+follow the table. Points are not changed.
+
+
 POLE POSITION
 
 Pole is the fastest driver of the qualifying session. Once a round's qualifying

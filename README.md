@@ -85,6 +85,19 @@ retires gets nothing. Rows with explicit historical `points` never get it added.
 The holder is the admin-recorded fastest lap where one exists, else the best
 stored `bestLapMs` of that classification (`pointsCalculator.stampFastestLapBonus`).
 
+A round can carry its **own points table** (`Race.pointsTable`, admin race
+editor, null = the season's): every result of the round is priced by that
+table instead of the season's, sprint child included, with the fastest-lap
+bonus on top; explicit historical `points` are never re-priced
+(`pointsCalculator.stampRacePointsTable`, read through
+`standingsService.roundPointsTables`). The standings payload names them in
+`customPoints`.
+
+A season can name a **champion by rule** (`Season.championDriverId`, admin
+Seasons tab): the final driver table puts that row first and reports it as
+`championOverride`; a mid-season (`upToRound`) view is untouched. Everything
+reading "the first row of the standings" follows.
+
 **Pole position** is the fastest driver of the imported qualifying session
 (`Race.qualiJson`); only a round without one falls back to `grid = 1`
 (`lib/raceHonours.js` `readPoleHolders`). Every pole consumer — Hall of Fame,

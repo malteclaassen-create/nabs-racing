@@ -83,6 +83,12 @@ This sits behind a PIN (top right, "Admin"). From there I can:
     classifications are stored: the import asks which race the file is, and
     the results view gets a Feature/Sprint switch. The sprint scores the same
     points as the feature race, added to that round.
+  - Give one race its own points table (race editor, "Custom points for this
+    round"), for a double-points finale or any one-off format. The whole
+    round pays by it, sprint included, and the tables mark it with a star.
+  - Name a season's champion by hand (Seasons tab) when the league decided
+    the title by its own rule rather than by points. The final table puts
+    that driver first with a note.
   - Set a fastest lap bonus per season (Seasons tab). The driver with the
     fastest race lap gets it on top of their finish, if they finish. The
     standings mark those cells with FL.

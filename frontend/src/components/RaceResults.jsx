@@ -506,6 +506,11 @@ export default function RaceResults({ race, results, quali = null, session = "ra
           <span className="flex items-center gap-1.5">
             <TierBadge tier={0} /> Reserve
           </span>
+          {Array.isArray(race.pointsTable) && race.pointsTable.length > 0 && (
+            <span className="flex items-center gap-1.5" title={`Points per position for this round: ${race.pointsTable.join(", ")}`}>
+              <span className="pill bg-warn/15 text-warn">*</span> Own points table for this round
+            </span>
+          )}
           {fastestDriverId && (
             <span className="flex items-center gap-1.5">
               <span className="pill bg-purple-500/15 text-fl">FL</span> Fastest lap

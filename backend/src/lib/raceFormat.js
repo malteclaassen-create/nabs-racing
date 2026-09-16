@@ -7,16 +7,31 @@
 // so it is also the fallback for a row that predates the column.
 export const RACE_FORMATS = ["SINGLE", "SPRINT_FEATURE"];
 
-// Map raceId -> { qualiMinutes, raceLaps, raceFormat, sprintLaps } for the given
-// ids. Returns an empty map when the columns don't exist yet (fresh checkout
-// before ensureAppSchema).
+// A stored points table (JSON array of non-negative integers for P1..Pn) as an
+// array, or null when unset/unusable. Same reading as Season.pointsTable.
+export function parseStoredPointsTable(raw) {
+  if (!raw) return null;
+  try {
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    const nums = arr.map(Number);
+    return nums.some((n) => !Number.isInteger(n) || n < 0) ? null : nums;
+  } catch {
+    return null;
+  }
+}
+
+// Map raceId -> { qualiMinutes, raceLaps, raceFormat, sprintLaps, pointsTable }
+// for the given ids (pointsTable = the round's own table as an array, or
+// null for the season's). Returns an empty map when the columns don't exist
+// yet (fresh checkout before ensureAppSchema).
 export async function readRaceFormat(prisma, raceIds) {
   const ids = [...new Set(raceIds)].filter(Boolean);
   if (!ids.length) return new Map();
   try {
     const qs = ids.map(() => "?").join(",");
     const rows = await prisma.$queryRawUnsafe(
-      `SELECT "id", "qualiMinutes", "raceLaps", "raceFormat", "sprintLaps" FROM "Race" WHERE "id" IN (${qs})`,
+      `SELECT "id", "qualiMinutes", "raceLaps", "raceFormat", "sprintLaps", "pointsTable" FROM "Race" WHERE "id" IN (${qs})`,
       ...ids
     );
     return new Map(
@@ -27,12 +42,29 @@ export async function readRaceFormat(prisma, raceIds) {
           raceLaps: r.raceLaps == null ? null : Number(r.raceLaps),
           raceFormat: RACE_FORMATS.includes(r.raceFormat) ? r.raceFormat : "SINGLE",
           sprintLaps: r.sprintLaps == null ? null : Number(r.sprintLaps),
+          pointsTable: parseStoredPointsTable(r.pointsTable),
         },
       ])
     );
   } catch {
     return new Map();
   }
+}
+
+// Validate an admin-supplied points table for ONE round: an array of up to
+// 40 whole numbers 0..1000 for P1..Pn, stored as JSON; null / "" / [] means
+// back to the season's table. Same {ok,value}/{error} contract as below.
+export function parseRacePointsTable(raw) {
+  if (raw === undefined) return { ok: false };
+  if (raw === null || raw === "" || (Array.isArray(raw) && raw.length === 0)) return { ok: true, value: null };
+  if (!Array.isArray(raw) || raw.length > 40) {
+    return { error: "The round's points table must be a list of up to 40 point values" };
+  }
+  const nums = raw.map(Number);
+  if (nums.some((v) => !Number.isInteger(v) || v < 0 || v > 1000)) {
+    return { error: "The round's points table may only contain whole numbers from 0 to 1000" };
+  }
+  return { ok: true, value: JSON.stringify(nums) };
 }
 
 // Validate an admin-supplied format value: a positive whole number up to

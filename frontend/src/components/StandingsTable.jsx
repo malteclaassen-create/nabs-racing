@@ -147,11 +147,20 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
 // `fastestLapPoints` — the bonus the fastest race lap pays this season (0 =
 // none): the driver cells carry an FL mark where one was paid and the footnote
 // explains it.
-export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false, showMovement = false, sprintRounds = [], fastestLapPoints = 0 }) {
+// `customPoints` — { [round]: [P1, P2, …] } for the rounds paying by their own
+// table (a double-points finale): the column is marked * and explained below.
+// `championOverride` — { driverId, name } when the league decided the title by
+// a rule the points do not express; the row sits first and the footnote says why.
+export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false, showMovement = false, sprintRounds = [], fastestLapPoints = 0, customPoints = {}, championOverride = null }) {
   const isDriver = variant === "driver";
   const sprintSet = new Set(sprintRounds || []);
   const showSprintNote = raceNumbers.some((n) => sprintSet.has(n));
   const showFlNote = fastestLapPoints > 0 && raceNumbers.length > 0;
+  const customOf = (n) => (Array.isArray(customPoints?.[n]) && customPoints[n].length ? customPoints[n] : null);
+  const customRounds = raceNumbers.filter((n) => customOf(n));
+  const showCustomNote = customRounds.length > 0;
+  const tableText = (t) => (t.length > 6 ? `${t.slice(0, 6).join(", ")}, …` : t.join(", "));
+  const showChampionNote = isDriver && !!championOverride;
   // Constructor tables can use a team-level drop rule instead of inheriting
   // each driver's dropped rounds — the footnote must match whichever is in
   // force: "team" counts single-driver round scores, "teamRounds" counts whole
@@ -234,12 +243,22 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   scope="col"
                   key={n}
                   className="px-2.5 py-3 text-center tabular-nums"
-                  title={sprintSet.has(n) ? "Sprint weekend: the sprint and the feature race both score, added together under this round" : undefined}
+                  title={
+                    [
+                      sprintSet.has(n) ? "Sprint weekend: the sprint and the feature race both score, added together under this round" : null,
+                      customOf(n) ? `Own points table for this round: ${customOf(n).join(", ")}` : null,
+                    ].filter(Boolean).join(". ") || undefined
+                  }
                 >
                   R{n}
                   {sprintSet.has(n) && (
                     <span className="ml-0.5 align-super text-[9px] font-bold text-brand" aria-label="sprint weekend">
                       S
+                    </span>
+                  )}
+                  {customOf(n) && (
+                    <span className="ml-0.5 align-super text-[9px] font-bold text-warn" aria-label="own points table">
+                      *
                     </span>
                   )}
                 </th>
@@ -363,8 +382,26 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
           </tbody>
         </table>
       </div>
-      {(showOfficialNote || showDropNote || showSprintNote || showFlNote) && (
+      {(showOfficialNote || showDropNote || showSprintNote || showFlNote || showCustomNote || showChampionNote) && (
         <div className="space-y-1 border-t border-border px-4 py-2.5 font-mono text-[11px] leading-relaxed text-light">
+          {showChampionNote && (
+            <p>
+              <span className="font-bold uppercase text-medium">Champion by the league&rsquo;s rule.</span> {championOverride.name} is
+              champion without the most points: the title was decided by the league&rsquo;s own rule for that season, and the
+              table shows the season that way.
+            </p>
+          )}
+          {showCustomNote && (
+            <p>
+              <span className="font-bold text-warn">*</span> marks a round with its own points table:{" "}
+              {customRounds.map((n, i) => (
+                <span key={n}>
+                  {i > 0 && "; "}R{n}: {tableText(customOf(n))}
+                </span>
+              ))}
+              {" "}(P1, P2, …).
+            </p>
+          )}
           {showFlNote && (
             <p>
               {isDriver ? (

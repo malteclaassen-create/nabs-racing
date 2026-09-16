@@ -94,6 +94,12 @@ model Season {
   // `points` never get it added (their official figure already includes what
   // the sheet paid). Managed via raw SQL (ensureAppSchema) like teamDropWorst.
   fastestLapPoints Int @default(0)
+  // The season's champion when the league decided it by a rule the points do
+  // not express (migration season_champion): a driver id of this season, or
+  // null for "most points wins". The standings put that driver first, with a
+  // footnote; the Hall of Fame, honours and seals follow the standings.
+  // Managed via raw SQL (ensureAppSchema) like teamDropWorst.
+  championDriverId String?
   // Official final standings for archived seasons, imported straight from the
   // old league sheets/Discord posts (migration season_final_standings). JSON:
   //   { "drivers":[{driverId,points}], "teams":[{teamId,points}] }
@@ -289,6 +295,13 @@ model Race {
   // (ensureAppSchema + lib/raceFormat.js).
   raceFormat   String       @default("SINGLE")
   sprintLaps   Int?
+  // The round's OWN points table (migration race_points_table): a JSON array
+  // for P1..Pn like Season.pointsTable, null = the season's table. Lets one
+  // round pay differently (a double-points finale, a one-off format) in every
+  // classification of the round — a sprint weekend's sprint uses its round's.
+  // Explicit historical points are never re-priced. Managed via raw SQL
+  // (ensureAppSchema + lib/raceFormat.js).
+  pointsTable  String?
   // The event this row is the SPRINT CLASSIFICATION of (migration race_parent):
   // a sprint+feature weekend stores its sprint result on a hidden child row —
   // RaceResult is unique per (race, driver), so the second classification of

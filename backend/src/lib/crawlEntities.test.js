@@ -16,8 +16,10 @@ vi.mock("../services/seasonService.js", () => ({
 }));
 vi.mock("../services/pointsCalculator.js", () => ({
   applyPenalties: (rows) => rows,
-  // No fastest-lap bonus in these seasons: the rows pass through unstamped.
+  // No fastest-lap bonus and no round with its own table in these seasons:
+  // the rows pass through unstamped.
   stampFastestLapBonus: (rows) => rows,
+  stampRacePointsTable: (rows) => rows,
   // Podium points, enough for the tables to have a Pts column with numbers in
   // it. The real one reads the season's table (services/pointsCalculator).
   getDriverResultPoints: (r) => [25, 18, 15][(r.position ?? 99) - 1] ?? 0,

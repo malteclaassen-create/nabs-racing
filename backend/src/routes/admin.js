@@ -25,7 +25,7 @@ import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnosti
 import {
   SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS, LIVE_LINK_KEYS, liveLinkSeriesSlug,
 } from "./settings.js";
-import { parseFormatNumber, parseRaceFormat } from "../lib/raceFormat.js";
+import { parseFormatNumber, parseRaceFormat, parseRacePointsTable } from "../lib/raceFormat.js";
 import { ensureSprintChild, readSprintChildren } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHotlaps, writeRaceHotlaps } from "../lib/raceHotlaps.js";
@@ -3400,6 +3400,10 @@ function parseEventExtras(body) {
   const sprint = parseFormatNumber(body.sprintLaps, "Sprint laps", 999);
   if (sprint.error) return { error: sprint.error };
   if (sprint.ok) out.sprintLaps = sprint.value;
+  // The round's own points table (null = the season's).
+  const table = parseRacePointsTable(body.pointsTable);
+  if (table.error) return { error: table.error };
+  if (table.ok) out.pointsTable = table.value;
   const highlights = parseHighlightsUrl(body.highlightsUrl);
   if (highlights.error) return { error: highlights.error };
   if (highlights.ok) out.highlightsUrl = highlights.value;
@@ -3425,6 +3429,9 @@ async function writeRaceFormat(raceId, extras) {
     await prisma.$executeRawUnsafe(`UPDATE "Race" SET "sprintLaps" = NULL WHERE "id" = ?`, raceId);
   } else if (extras.sprintLaps !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Race" SET "sprintLaps" = ? WHERE "id" = ?`, extras.sprintLaps, raceId);
+  }
+  if (extras.pointsTable !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "pointsTable" = ? WHERE "id" = ?`, extras.pointsTable, raceId);
   }
   if (extras.highlightsUrl !== undefined) {
     await writeRaceHighlights(prisma, raceId, extras.highlightsUrl);
@@ -3794,7 +3801,7 @@ router.get("/seasons", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / isAnnounced / heroImageUrl /
       // cardsEnabled aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "isPublic", "isAnnounced", "heroImageUrl", "carImageUrl", "cardsEnabled" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "championDriverId", "isPublic", "isAnnounced", "heroImageUrl", "carImageUrl", "cardsEnabled" FROM "Season"`).catch(() => []),
       seasonSeriesMap(prisma),
       dbListSeries(prisma, { includePrivate: true }),
     ]);
@@ -3821,6 +3828,9 @@ router.get("/seasons", async (req, res, next) => {
             teamDropWorst: extra.teamDropWorst == null ? null : Number(extra.teamDropWorst),
             teamDropMode: extra.teamDropMode === "rounds" ? "rounds" : null,
             fastestLapPoints: parseFastestLapPoints(extra.fastestLapPoints),
+            // The champion when decided by a rule the points do not express;
+            // null = most points wins.
+            championDriverId: extra.championDriverId || null,
             isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
             isAnnounced: !!Number(extra.isAnnounced ?? 0),
             heroImageUrl: extra.heroImageUrl || null,
@@ -3897,6 +3907,13 @@ function parseSeasonRawFields(body) {
     }
     out.fastestLapPoints = n;
   }
+  if (body.championDriverId !== undefined) {
+    // A driver id of this season (checked by the route) or null = most points.
+    const raw = body.championDriverId;
+    if (raw === null || raw === "") out.championDriverId = null;
+    else if (typeof raw === "string" && raw.length <= 64) out.championDriverId = raw;
+    else return { error: "championDriverId must be a driver id or blank" };
+  }
   if (body.isPublic !== undefined) out.isPublic = body.isPublic ? 1 : 0;
   if (body.isAnnounced !== undefined) out.isAnnounced = body.isAnnounced ? 1 : 0;
   if (body.cardsEnabled !== undefined) out.cardsEnabled = body.cardsEnabled ? 1 : 0;
@@ -3913,6 +3930,9 @@ async function writeSeasonRawFields(seasonId, raw) {
   }
   if (raw.fastestLapPoints !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Season" SET "fastestLapPoints" = ? WHERE "id" = ?`, raw.fastestLapPoints, seasonId);
+  }
+  if (raw.championDriverId !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Season" SET "championDriverId" = ? WHERE "id" = ?`, raw.championDriverId, seasonId);
   }
   if (raw.isPublic !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Season" SET "isPublic" = ? WHERE "id" = ?`, raw.isPublic, seasonId);
@@ -3984,6 +4004,12 @@ router.put("/seasons/:id", async (req, res, next) => {
     if (scoringError) return res.status(400).json({ error: scoringError });
     const raw = parseSeasonRawFields(req.body || {});
     if (raw.error) return res.status(400).json({ error: raw.error });
+    // The champion override must name a driver OF THIS SEASON: the standings
+    // move that row to the top, and a foreign id would move nothing.
+    if (raw.championDriverId) {
+      const champ = await prisma.driver.findFirst({ where: { id: raw.championDriverId, seasonId: req.params.id }, select: { id: true } });
+      if (!champ) return res.status(400).json({ error: "The champion must be a driver of this season" });
+    }
     if (number !== undefined) {
       // Numbers are unique per series — check against THIS season's series.
       const bySeries = await seasonSeriesMap(prisma);

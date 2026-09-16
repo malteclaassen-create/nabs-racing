@@ -24,8 +24,9 @@
 // eleven more internal links would be.
 // ---------------------------------------------------------------------------
 import { getPrivateSeasonIds, getSeasonScoring } from "../services/seasonService.js";
-import { applyPenalties, getDriverResultPoints, stampFastestLapBonus } from "../services/pointsCalculator.js";
+import { applyPenalties, getDriverResultPoints, stampFastestLapBonus, stampRacePointsTable } from "../services/pointsCalculator.js";
 import { readManualFastestLaps } from "./raceHonours.js";
+import { roundPointsTables } from "../services/standingsService.js";
 import { getNameOverrides } from "./persons.js";
 import { readParentIds } from "./sprintRaces.js";
 import { seasonStandings, seasonRounds, constructorStandings } from "./crawlTables.js";
@@ -269,7 +270,8 @@ async function classification(prisma, race, limit) {
   // The season's fastest-lap bonus, priced as the standings price it.
   const bonus = scoring?.fastestLapPoints || 0;
   const manual = bonus > 0 ? await readManualFastestLaps(prisma, [race.id]).catch(() => new Map()) : new Map();
-  return stampFastestLapBonus(applyPenalties(rows), bonus, manual)
+  const tables = await roundPointsTables(prisma, [race.id]).catch(() => new Map());
+  return stampRacePointsTable(stampFastestLapBonus(applyPenalties(rows), bonus, manual), tables)
     .filter((r) => r.status === "FINISHED" && r.position != null && r.driver?.id)
     .sort((a, b) => a.position - b.position)
     .slice(0, limit)

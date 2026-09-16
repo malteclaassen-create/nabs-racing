@@ -179,6 +179,36 @@ export function stampFastestLapBonus(results, bonus, manualHolders = new Map()) 
   );
 }
 
+// ---------------------------------------------------------------------------
+// A ROUND'S OWN POINTS TABLE (Race.pointsTable)
+// ---------------------------------------------------------------------------
+// A round can pay by its own table (a double-points finale, a one-off
+// format): the table is stamped onto the round's result rows as
+// `racePointsTable` (every classification of the round — a sprint uses its
+// round's) and getDriverResultPoints prices the DERIVED points from it
+// instead of the season's table. Explicit historical points are what the
+// league published and stay as they are.
+//
+// `tables` = Map<raceId, number[] | null>. Rows of a race without a table are
+// returned untouched; a map with no table in it returns the array itself.
+export function stampRacePointsTable(results, tables) {
+  if (!results?.length || !tables?.size) return results;
+  let any = false;
+  for (const t of tables.values()) if (Array.isArray(t) && t.length) { any = true; break; }
+  if (!any) return results;
+  return results.map((r) => {
+    const t = tables.get(r.raceId);
+    return Array.isArray(t) && t.length ? { ...r, racePointsTable: t } : r;
+  });
+}
+
+// The table a (stamped) result is priced by: its round's own, else the given
+// season table.
+export function pointsTableOf(result, fallback = DEFAULT_POINTS_TABLE) {
+  const t = result?.racePointsTable;
+  return Array.isArray(t) && t.length ? t : fallback;
+}
+
 // The bonus a (stamped) result actually collects: only a classified finisher
 // scoring derived points. See the block above.
 export function fastestLapBonusOf(result) {
@@ -190,12 +220,13 @@ export function fastestLapBonusOf(result) {
 
 // Points a single result actually scores in the driver standings.
 // DNS / DNF / DSQ always score 0. Otherwise: explicit `points` if provided
-// (historical R1-R8), else derived from finishing position — plus the
-// fastest-lap bonus where the row was stamped with one (see above).
+// (historical R1-R8), else derived from finishing position by the round's
+// own table where it has one (see above), else `table` — plus the
+// fastest-lap bonus where the row was stamped with one.
 export function getDriverResultPoints(result, table = DEFAULT_POINTS_TABLE) {
   if (result.status && result.status !== "FINISHED") return 0;
   if (result.points !== null && result.points !== undefined) return result.points;
-  return getPointsForPosition(result.position, table) + fastestLapBonusOf(result);
+  return getPointsForPosition(result.position, pointsTableOf(result, table)) + fastestLapBonusOf(result);
 }
 
 // Resolve the team a result counts towards: a reserve substituting for a team
@@ -270,7 +301,7 @@ export function calculateT2ConstructorContributions(raceResults, drivers, teams,
   return ranked.map((result, index) => ({
     driverId: result.driverId,
     teamId: effectiveTeamId(result, driverById),
-    points: getPointsForPosition(index + 1, table) + fastestLapBonusOf(result),
+    points: getPointsForPosition(index + 1, pointsTableOf(result, table)) + fastestLapBonusOf(result),
   }));
 }
 
