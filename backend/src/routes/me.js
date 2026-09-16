@@ -10,7 +10,7 @@ import { join } from "path";
 import prisma from "../lib/prisma.js";
 import { optionalUser, resolveDriverId } from "../middleware/auth.js";
 import { safeUploadPath } from "../lib/safeUpload.js";
-import { getLinkedDriverIds } from "../lib/persons.js";
+import { getLinkedDriverIds, ownCurrentRowIds } from "../lib/persons.js";
 import { parseSocials, serializeSocials } from "../lib/socials.js";
 import { DEFAULT_PROFILE_TILES, PROFILE_TILE_KEYS, readProfileTiles } from "../lib/profileTiles.js";
 import { parseCardPhotoPos, readCardPhotoPos } from "../lib/cardPhoto.js";
@@ -65,6 +65,20 @@ async function steamStateFor(discordId) {
     id: acct?.steamId || null,
     verifiedAt: acct?.steamVerifiedAt || null,
   };
+}
+
+// Run `write(ids)` over the OTHER rows a self-service edit applies to: the
+// person's current-season rows in every series and their draft rows (see
+// lib/persons.js ownCurrentRowIds). The acting row is written by the caller
+// already; this never fails the request — the own-row write is the one that
+// must land, the fan-out is best effort.
+async function applyToOwnRows(actingId, discordId, write) {
+  try {
+    const ids = (await ownCurrentRowIds(prisma, actingId, discordId)).filter((id) => id !== actingId);
+    if (ids.length) await write(ids);
+  } catch (e) {
+    console.error("profile fan-out skipped:", e.message);
+  }
 }
 
 // Returns null when not allowed.
@@ -182,34 +196,15 @@ router.put("/profile", async (req, res, next) => {
       data,
       select: { id: true, name: true, bio: true, number: true, socials: true },
     });
-    // A rename follows the person into UPCOMING seasons: their rows there are
-    // pre-season drafts (cloned rosters) still carrying the old name, and the
-    // site shows the newest row's name — without this, the draft would undo the
-    // rename the moment that season goes live. Never touches a row claimed by a
-    // different Discord account.
-    if (data.name !== undefined) {
-      try {
-        const acting = await prisma.driver.findUnique({
-          where: { id: driverId },
-          select: { discordUserId: true, season: { select: { number: true } } },
-        });
-        const linkedIds = (await getLinkedDriverIds(prisma, driverId)).filter((id) => id !== driverId);
-        if (acting?.season?.number != null && linkedIds.length) {
-          await prisma.driver.updateMany({
-            where: {
-              id: { in: linkedIds },
-              season: { number: { gt: acting.season.number } },
-              OR: acting.discordUserId
-                ? [{ discordUserId: null }, { discordUserId: acting.discordUserId }]
-                : [{ discordUserId: null }],
-            },
-            data: { name: data.name },
-          });
-        }
-      } catch {
-        /* person tables missing etc. — the own-row rename above still counts */
-      }
-    }
+    // The same edit lands on the person's row in every league they race in
+    // (lib/persons.js ownCurrentRowIds): their current-season rows in the
+    // other series and any pre-season draft rows. The login is tied to ONE
+    // row, so without this a Friday-league member's Sunday profile kept the
+    // old bio, number and socials — and a rename made on the active row was
+    // undone by a cloned draft the moment that season went live.
+    await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
+      prisma.driver.updateMany({ where: { id: { in: ids } }, data })
+    );
     res.json({ ok: true, ...driver, bio: driver.bio || "", socials: parseSocials(driver.socials) });
   } catch (e) {
     next(e);
@@ -239,6 +234,10 @@ router.put("/tiles", async (req, res, next) => {
       value = isDefault ? null : JSON.stringify(picked);
     }
     await prisma.$executeRaw`UPDATE "Driver" SET "profileTiles" = ${value} WHERE "id" = ${driverId}`;
+    // The choice is the person's, so it follows them into their other leagues.
+    await applyToOwnRows(driverId, req.user?.discordId, async (ids) => {
+      for (const id of ids) await prisma.$executeRaw`UPDATE "Driver" SET "profileTiles" = ${value} WHERE "id" = ${id}`;
+    });
     res.json({ ok: true, profileTiles: value ? JSON.parse(value) : null });
   } catch (e) {
     next(e);
@@ -411,6 +410,11 @@ router.put("/country", async (req, res, next) => {
       data: { country: country || null },
       select: { id: true, country: true },
     });
+    // A flag is the person's: their row in every league gets it, so the Sunday
+    // standings do not keep showing a flag changed on the Friday profile.
+    await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
+      prisma.driver.updateMany({ where: { id: { in: ids } }, data: { country: country || null } })
+    );
     res.json({ ok: true, country: driver.country || "" });
   } catch (e) {
     next(e);
@@ -434,6 +438,10 @@ router.post("/photo", upload.single("file"), async (req, res, next) => {
     // Cache-bust so the new picture shows immediately even if the URL is reused.
     const photoUrl = `/api/uploads/avatars/${filename}?v=${Date.now()}`;
     await prisma.driver.update({ where: { id: driverId }, data: { photoUrl } });
+    // One face for the person: the same picture on their row in every league.
+    await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
+      prisma.driver.updateMany({ where: { id: { in: ids } }, data: { photoUrl } })
+    );
     res.json({ ok: true, photoUrl });
   } catch (e) {
     next(e);
@@ -451,6 +459,9 @@ router.delete("/photo", async (req, res, next) => {
       data: { photoUrl: null },
       select: { discordAvatar: true },
     });
+    await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
+      prisma.driver.updateMany({ where: { id: { in: ids } }, data: { photoUrl: null } })
+    );
     res.json({ ok: true, photoUrl: driver.discordAvatar || null });
   } catch (e) {
     next(e);

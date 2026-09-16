@@ -693,6 +693,9 @@ function ProfileEditor({ me, onDraftChange }) {
             {saving ? "Saving…" : "Save changes"}
           </button>
           {savedAt && <span className="text-sm font-semibold text-ok">Saved.</span>}
+          <span className="text-xs text-light">
+            Saved to your profile in every league you race in.
+          </span>
         </div>
       </div>
     </div>

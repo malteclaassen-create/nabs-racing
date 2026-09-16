@@ -356,3 +356,61 @@ export async function getNameOverrides(prisma) {
     markDrafts(shaped, await activeNumbersBySeries(prisma), await activeSeasonNumber(prisma))
   );
 }
+
+// ---------------------------------------------------------------------------
+// The rows a member's OWN profile edits apply to.
+//
+// A login is tied to exactly one driver row (Driver.discordUserId is unique),
+// and it used to be the only row the personal area wrote to. A person who
+// races in two series has a row in each, and the edits landed on whichever
+// row the login pointed at — the Friday league's — while their Sunday profile
+// kept the old flag, bio and picture.
+//
+// So a self-service field goes to every linked row of the person that is
+// CURRENT: in the active season of its series or a later (draft) one. Archive
+// rows keep what they had (they show the person's current face and flag
+// through the identity overrides anyway, and their name stays as "raced as").
+// A row claimed by a DIFFERENT Discord account is never touched.
+// ---------------------------------------------------------------------------
+
+// Pure core, exported for the test. `rows` = [{ id, discordUserId,
+// seasonNumber, seriesId }] of the person's linked rows; `activeBySeries` =
+// Map<seriesId, activeSeasonNumber>; `globalActive` = the fallback cap for
+// rows without a series. The acting row is always included.
+export function selectOwnCurrentRows(rows, activeBySeries, globalActive, actingId, discordId = null) {
+  const out = new Set([actingId]);
+  for (const r of rows) {
+    if (!r || r.id === actingId) continue;
+    if (r.discordUserId && r.discordUserId !== discordId) continue;
+    const cap = (r.seriesId && activeBySeries.get(r.seriesId)) ?? globalActive;
+    if (cap == null || r.seasonNumber == null) continue;
+    if (Number(r.seasonNumber) >= Number(cap)) out.add(r.id);
+  }
+  return [...out];
+}
+
+// The ids the acting person's profile edits write to (see above). Never
+// throws: with the person tables missing it is just the acting row.
+export async function ownCurrentRowIds(prisma, actingId, discordId = null) {
+  try {
+    const linked = await getLinkedDriverIds(prisma, actingId);
+    if (linked.length <= 1) return [actingId];
+    const ph = linked.map(() => "?").join(",");
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT d."id" AS "id", d."discordUserId" AS "discordUserId",
+              s."number" AS "seasonNumber", s."seriesId" AS "seriesId"
+       FROM "Driver" d LEFT JOIN "Season" s ON s."id" = d."seasonId"
+       WHERE d."id" IN (${ph})`,
+      ...linked
+    );
+    return selectOwnCurrentRows(
+      rows,
+      await activeNumbersBySeries(prisma),
+      await activeSeasonNumber(prisma),
+      actingId,
+      discordId
+    );
+  } catch {
+    return [actingId];
+  }
+}

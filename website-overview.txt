@@ -48,7 +48,9 @@ Sign up
   and set themselves to Accepted, Declined or Tentative for each upcoming race.
   Every answer also gets posted and updated automatically in the Discord
   channel. While logged in a driver can also pick his own country here, and that
-  then shows as his flag everywhere on the site.
+  then shows as his flag everywhere on the site. Profile edits (name, flag,
+  picture, bio, number, socials, stat tiles) apply to the driver's row in every
+  league they race in, not only the one their login is tied to.
 
 Other things
   - Dark mode and light mode (button in the top right).
