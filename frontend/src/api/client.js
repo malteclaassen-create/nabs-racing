@@ -524,14 +524,27 @@ export const api = {
 
   // logged-in driver self-service
   me: () => request("/me", { userAuth: true }),
-  setMyCountry: (country) => request("/me/country", { method: "PUT", body: { country }, userAuth: true }),
-  updateMyProfile: (body) => request("/me/profile", { method: "PUT", body, userAuth: true }),
-  uploadMyPhoto: (file) => {
+  // The person's profile row in each league they race in (one per series):
+  // the profile page offers to edit one league on its own from this.
+  myLeagues: () => request("/me/leagues", { userAuth: true }),
+  // Every self-service edit takes an optional driverId: one of the person's
+  // own league rows to edit ALONE. Without it the edit is the person's and
+  // lands on their row in every league.
+  setMyCountry: (country, driverId) =>
+    request("/me/country", { method: "PUT", body: { country, driverId }, userAuth: true }),
+  updateMyProfile: (body, driverId) =>
+    request("/me/profile", { method: "PUT", body: { ...body, driverId }, userAuth: true }),
+  uploadMyPhoto: (file, driverId) => {
     const fd = new FormData();
     fd.append("file", file);
+    if (driverId) fd.append("driverId", driverId);
     return request("/me/photo", { method: "POST", body: fd, userAuth: true, form: true });
   },
-  clearMyPhoto: () => request("/me/photo", { method: "DELETE", userAuth: true }),
+  clearMyPhoto: (driverId) =>
+    request(`/me/photo${driverId ? `?driverId=${encodeURIComponent(driverId)}` : ""}`, {
+      method: "DELETE",
+      userAuth: true,
+    }),
   // Deleting your own account (the /delete-account page). The preview counts
   // what would go; the delete itself is irreversible and says so everywhere it
   // is offered.
@@ -539,7 +552,8 @@ export const api = {
   deleteAccount: () =>
     request("/me/delete-account", { method: "POST", body: { confirm: true }, userAuth: true }),
   // Which headline stat tiles the public profile shows (null = all six).
-  setMyTiles: (tiles) => request("/me/tiles", { method: "PUT", body: { tiles }, userAuth: true }),
+  setMyTiles: (tiles, driverId) =>
+    request("/me/tiles", { method: "PUT", body: { tiles, driverId }, userAuth: true }),
   // How the picture sits on the rating card ({x,y,z,s} or null = default).
   // driverId targets one of the person's own season rows (default: current).
   setMyCardPhoto: (pos, driverId) =>

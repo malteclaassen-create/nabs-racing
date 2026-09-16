@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { selectOwnCurrentRows, ownCurrentRowIds } from "./persons.js";
+import { selectOwnCurrentRows, ownCurrentRowIds, currentRowPerSeries } from "./persons.js";
 
 // A member's own profile edits land on their row in EVERY league they race
 // in, not just the one row their login points at. Archive rows and rows that
@@ -36,6 +36,28 @@ describe("selectOwnCurrentRows", () => {
 
   it("always includes the acting row, even alone", () => {
     expect(selectOwnCurrentRows([], active, 7, "f7", "me")).toEqual(["f7"]);
+  });
+});
+
+// For "edit this league on its own": one row per series, the active season's
+// row rather than a later draft.
+describe("currentRowPerSeries", () => {
+  const active = new Map([["friday", 7], ["sunday", 1]]);
+  it("picks the active-season row of each series, not the draft", () => {
+    const rows = [
+      { id: "f7", seasonNumber: 7, seriesId: "friday" },
+      { id: "f8", seasonNumber: 8, seriesId: "friday" },
+      { id: "s1", seasonNumber: 1, seriesId: "sunday" },
+    ];
+    expect(currentRowPerSeries(rows, active, 7).map((r) => r.id).sort()).toEqual(["f7", "s1"]);
+  });
+  it("lets a draft stand in when the series has no active-season row", () => {
+    const rows = [{ id: "f8", seasonNumber: 8, seriesId: "friday" }];
+    expect(currentRowPerSeries(rows, active, 7).map((r) => r.id)).toEqual(["f8"]);
+  });
+  it("skips archive rows", () => {
+    const rows = [{ id: "f6", seasonNumber: 6, seriesId: "friday" }];
+    expect(currentRowPerSeries(rows, active, 7)).toEqual([]);
   });
 });
 

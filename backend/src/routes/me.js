@@ -10,7 +10,8 @@ import { join } from "path";
 import prisma from "../lib/prisma.js";
 import { optionalUser, resolveDriverId } from "../middleware/auth.js";
 import { safeUploadPath } from "../lib/safeUpload.js";
-import { getLinkedDriverIds, ownCurrentRowIds } from "../lib/persons.js";
+import { getLinkedDriverIds, ownCurrentRowIds, ownLeagueRows } from "../lib/persons.js";
+import { dbListSeries } from "../lib/series.js";
 import { parseSocials, serializeSocials } from "../lib/socials.js";
 import { DEFAULT_PROFILE_TILES, PROFILE_TILE_KEYS, readProfileTiles } from "../lib/profileTiles.js";
 import { parseCardPhotoPos, readCardPhotoPos } from "../lib/cardPhoto.js";
@@ -79,6 +80,19 @@ async function applyToOwnRows(actingId, discordId, write) {
   } catch (e) {
     console.error("profile fan-out skipped:", e.message);
   }
+}
+
+// Which row(s) a self-service edit targets. By default the edit is the
+// PERSON's: it lands on the acting row and fans out to their row in every
+// other league (applyToOwnRows). A member who wants one league's profile to
+// differ sends `driverId` (one of their own rows, checked by resolveOwnRow):
+// then that row alone is written and nothing fans out. Returns
+// { driverId, fanOut } or null after sending the 403.
+async function editTarget(req, res, actingId, wantedId) {
+  if (!wantedId) return { driverId: actingId, fanOut: true };
+  const driverId = await resolveOwnRow(req, res, actingId, wantedId);
+  if (!driverId) return null;
+  return { driverId, fanOut: false };
 }
 
 // Returns null when not allowed.
@@ -152,13 +166,69 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-// PUT /api/me/profile { name?, bio?, number?, socials? } -> edit own display
-// fields. `name` is the driver's display name shown across the whole site;
-// `socials` is a { platform: url } object (see lib/socials.js).
+// GET /api/me/leagues -> the person's profile row in each league they race in
+// (one per series, the login's own league first), with that row's editable
+// fields, so the profile page can offer "edit this league on its own". A
+// single entry means the person races in one league only.
+router.get("/leagues", async (req, res, next) => {
+  try {
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const [leagueRows, series] = await Promise.all([
+      ownLeagueRows(prisma, actingId, req.user?.discordId),
+      dbListSeries(prisma),
+    ]);
+    const seriesById = new Map(series.map((s) => [s.id, s]));
+    const ids = leagueRows.map((r) => r.id);
+    const drivers = await prisma.driver.findMany({
+      where: { id: { in: ids } },
+      include: { team: true, season: { select: { number: true, name: true } } },
+    });
+    const byId = new Map(drivers.map((d) => [d.id, d]));
+    const leagues = [];
+    for (const r of leagueRows) {
+      const d = byId.get(r.id);
+      const s = r.seriesId ? seriesById.get(r.seriesId) : null;
+      // A private series is not a league the member can be shown editing.
+      if (!d || (r.seriesId && !s)) continue;
+      leagues.push({
+        driverId: d.id,
+        isActing: d.id === actingId,
+        seriesId: r.seriesId,
+        seriesName: s?.name || null,
+        seriesSlug: s?.slug || null,
+        seasonNumber: d.season?.number ?? null,
+        seasonName: d.season?.name ?? null,
+        name: d.name,
+        country: d.country || "",
+        bio: d.bio || "",
+        number: d.number ?? null,
+        socials: parseSocials(d.socials),
+        photoUrl: d.photoUrl || d.discordAvatar || null,
+        hasCustomPhoto: !!d.photoUrl,
+        profileTiles: await readProfileTiles(prisma, d.id),
+        team: d.team
+          ? { id: d.team.id, name: d.team.name, color: d.team.color, logoUrl: d.team.logoUrl, tier: d.team.tier }
+          : null,
+      });
+    }
+    res.json({ leagues });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/me/profile { name?, bio?, number?, socials?, driverId? } -> edit own
+// display fields. `name` is the driver's display name shown across the whole
+// site; `socials` is a { platform: url } object (see lib/socials.js).
+// `driverId` = edit that one league's row only (see editTarget).
 router.put("/profile", async (req, res, next) => {
   try {
-    const driverId = await requireDriver(req, res);
-    if (!driverId) return;
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const target = await editTarget(req, res, actingId, req.body?.driverId);
+    if (!target) return;
+    const { driverId, fanOut } = target;
     const data = {};
     if (req.body?.name !== undefined) {
       const name = String(req.body.name || "").trim();
@@ -202,21 +272,27 @@ router.put("/profile", async (req, res, next) => {
     // row, so without this a Friday-league member's Sunday profile kept the
     // old bio, number and socials — and a rename made on the active row was
     // undone by a cloned draft the moment that season went live.
-    await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
-      prisma.driver.updateMany({ where: { id: { in: ids } }, data })
-    );
+    if (fanOut) {
+      await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
+        prisma.driver.updateMany({ where: { id: { in: ids } }, data })
+      );
+    }
     res.json({ ok: true, ...driver, bio: driver.bio || "", socials: parseSocials(driver.socials) });
   } catch (e) {
     next(e);
   }
 });
 
-// PUT /api/me/tiles { tiles: ["wins", ...] | null } -> choose which stat tiles
-// the public profile shows. null (or exactly the classic set) = the default.
+// PUT /api/me/tiles { tiles: ["wins", ...] | null, driverId? } -> choose which
+// stat tiles the public profile shows. null (or exactly the classic set) = the
+// default. `driverId` = this one league's row only (see editTarget).
 router.put("/tiles", async (req, res, next) => {
   try {
-    const driverId = await requireDriver(req, res);
-    if (!driverId) return;
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const target = await editTarget(req, res, actingId, req.body?.driverId);
+    if (!target) return;
+    const { driverId, fanOut } = target;
     const raw = req.body?.tiles;
     let value = null;
     if (raw != null) {
@@ -235,9 +311,11 @@ router.put("/tiles", async (req, res, next) => {
     }
     await prisma.$executeRaw`UPDATE "Driver" SET "profileTiles" = ${value} WHERE "id" = ${driverId}`;
     // The choice is the person's, so it follows them into their other leagues.
-    await applyToOwnRows(driverId, req.user?.discordId, async (ids) => {
-      for (const id of ids) await prisma.$executeRaw`UPDATE "Driver" SET "profileTiles" = ${value} WHERE "id" = ${id}`;
-    });
+    if (fanOut) {
+      await applyToOwnRows(driverId, req.user?.discordId, async (ids) => {
+        for (const id of ids) await prisma.$executeRaw`UPDATE "Driver" SET "profileTiles" = ${value} WHERE "id" = ${id}`;
+      });
+    }
     res.json({ ok: true, profileTiles: value ? JSON.parse(value) : null });
   } catch (e) {
     next(e);
@@ -394,13 +472,17 @@ router.put("/card-anim", async (req, res, next) => {
   }
 });
 
-// PUT /api/me/country { country }  -> set/clear the driver's own nationality.
-// `country` is an ISO 3166-1 alpha-2 code (e.g. "de"); "" clears it.
+// PUT /api/me/country { country, driverId? } -> set/clear the driver's own
+// nationality. `country` is an ISO 3166-1 alpha-2 code (e.g. "de"); "" clears
+// it. `driverId` = this one league's row only (see editTarget).
 const CODE = /^[a-z]{2}$/;
 router.put("/country", async (req, res, next) => {
   try {
-    const driverId = await requireDriver(req, res);
-    if (!driverId) return;
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const target = await editTarget(req, res, actingId, req.body?.driverId);
+    if (!target) return;
+    const { driverId, fanOut } = target;
     const country = String(req.body?.country || "").trim().toLowerCase();
     if (country && !CODE.test(country)) {
       return res.status(400).json({ error: "country must be a 2-letter code or empty" });
@@ -412,20 +494,26 @@ router.put("/country", async (req, res, next) => {
     });
     // A flag is the person's: their row in every league gets it, so the Sunday
     // standings do not keep showing a flag changed on the Friday profile.
-    await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
-      prisma.driver.updateMany({ where: { id: { in: ids } }, data: { country: country || null } })
-    );
+    if (fanOut) {
+      await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
+        prisma.driver.updateMany({ where: { id: { in: ids } }, data: { country: country || null } })
+      );
+    }
     res.json({ ok: true, country: driver.country || "" });
   } catch (e) {
     next(e);
   }
 });
 
-// POST /api/me/photo  (multipart: file=<image>) -> set a custom profile picture.
+// POST /api/me/photo  (multipart: file=<image>, driverId?) -> set a custom
+// profile picture. `driverId` (a form field) = this one league's row only.
 router.post("/photo", upload.single("file"), async (req, res, next) => {
   try {
-    const driverId = await requireDriver(req, res);
-    if (!driverId) return;
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const target = await editTarget(req, res, actingId, req.body?.driverId);
+    if (!target) return;
+    const { driverId, fanOut } = target;
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const ext = IMG_EXT[req.file.mimetype];
     if (!ext) return res.status(400).json({ error: "Use a PNG, JPG, WEBP or GIF image" });
@@ -439,29 +527,37 @@ router.post("/photo", upload.single("file"), async (req, res, next) => {
     const photoUrl = `/api/uploads/avatars/${filename}?v=${Date.now()}`;
     await prisma.driver.update({ where: { id: driverId }, data: { photoUrl } });
     // One face for the person: the same picture on their row in every league.
-    await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
-      prisma.driver.updateMany({ where: { id: { in: ids } }, data: { photoUrl } })
-    );
+    if (fanOut) {
+      await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
+        prisma.driver.updateMany({ where: { id: { in: ids } }, data: { photoUrl } })
+      );
+    }
     res.json({ ok: true, photoUrl });
   } catch (e) {
     next(e);
   }
 });
 
-// DELETE /api/me/photo -> drop the custom picture, falling back to the Discord
-// avatar (captured on login). Returns the URL that now applies, if any.
+// DELETE /api/me/photo?driverId= -> drop the custom picture, falling back to
+// the Discord avatar (captured on login). Returns the URL that now applies, if
+// any. `driverId` = this one league's row only.
 router.delete("/photo", async (req, res, next) => {
   try {
-    const driverId = await requireDriver(req, res);
-    if (!driverId) return;
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const target = await editTarget(req, res, actingId, req.query?.driverId);
+    if (!target) return;
+    const { driverId, fanOut } = target;
     const driver = await prisma.driver.update({
       where: { id: driverId },
       data: { photoUrl: null },
       select: { discordAvatar: true },
     });
-    await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
-      prisma.driver.updateMany({ where: { id: { in: ids } }, data: { photoUrl: null } })
-    );
+    if (fanOut) {
+      await applyToOwnRows(driverId, req.user?.discordId, (ids) =>
+        prisma.driver.updateMany({ where: { id: { in: ids } }, data: { photoUrl: null } })
+      );
+    }
     res.json({ ok: true, photoUrl: driver.discordAvatar || null });
   } catch (e) {
     next(e);
