@@ -951,12 +951,13 @@ describe("liveTiming carried training bests", () => {
 
   const msToNs = (ms) => ms * 1e6;
 
-  // A lap as a session file gave it, kept for this season's Monza.
+  // A lap as a session file gave it, kept for this season's Monza. A fifth
+  // element carries the rest of the row (best sectors, laps, last lap, tyre).
   function give(laps, name = "practice.json") {
     addUploadedLaps(SERIES, SEASON, TRACK, {
       track: "monza",
       layout: "",
-      laps: laps.map(([steamId, driver, lapTimeMs, sectorsMs = null]) => ({ steamId, name: driver, car: "f", lapTimeMs, sectorsMs })),
+      laps: laps.map(([steamId, driver, lapTimeMs, sectorsMs = null, more = {}]) => ({ steamId, name: driver, car: "f", lapTimeMs, sectorsMs, ...more })),
       file: { name, type: "PRACTICE" },
     });
   }
@@ -967,14 +968,21 @@ describe("liveTiming carried training bests", () => {
     const Drivers = {};
     for (const [guid, d] of Object.entries(drivers)) {
       Drivers[guid] = {
-        CarInfo: { DriverName: d.name, CarModel: "f", CarSkin: "", CarID: d.carId ?? 1, IsSpectator: false },
+        CarInfo: { DriverName: d.name, CarModel: "f", CarSkin: "", CarID: d.carId ?? 1, IsSpectator: false, Tyres: "S" },
         Cars: {
           f: {
             NumLaps: d.laps ?? 5,
             BestLap: d.bestMs ? msToNs(d.bestMs) : 0,
+            TyreBestLap: d.bestMs ? "S" : "",
             TopSpeedBestLap: d.topSpeed ?? 300,
             BestLapSplits: d.bestMs
               ? { 0: { SplitIndex: 0, SplitTime: msToNs(30_000) }, 1: { SplitIndex: 1, SplitTime: msToNs(30_000) }, 2: { SplitIndex: 2, SplitTime: msToNs(d.bestMs - 60_000) } }
+              : undefined,
+            // The driver's own best of each sector, which the server keeps
+            // apart from the best lap's splits; here the same three, with the
+            // server's own flag on them.
+            BestSplits: d.bestMs
+              ? { 0: { SplitIndex: 0, SplitTime: msToNs(30_000), IsDriversBest: true }, 1: { SplitIndex: 1, SplitTime: msToNs(30_000), IsDriversBest: true }, 2: { SplitIndex: 2, SplitTime: msToNs(d.bestMs - 60_000), IsDriversBest: true } }
               : undefined,
           },
         },
@@ -1150,6 +1158,37 @@ describe("liveTiming carried training bests", () => {
     } finally {
       clearTrack(SERIES, SEASON, "monza--nabs-monza-2025");
     }
+  });
+
+  it("a carried row reads like a live one: best sectors, potential, laps, last lap, tyre", () => {
+    give([[CARA, "Cara", 94_000, [29_500, 32_000, 32_500], { bestSectorsMs: [29_000, 32_000, 32_500], lapCount: 14, lastLapMs: 95_200, lastAt: 500, tyre: "SS" }]]);
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const cara = row(getBoard(), "Cara");
+    expect(cara.bestSectors.map((s) => s.ms)).toEqual([29_000, 32_000, 32_500]);
+    expect(cara.potentialMs).toBe(93_500);
+    expect(cara.lapCount).toBe(14);
+    expect(cara.lastLapMs).toBe(95_200);
+    expect(cara.tyre).toBe("SS");
+    // The best lap's own S2 and S3 are her best of those sectors: green, as
+    // the server would flag them on a live lap. S1 was quicker on another lap.
+    expect(cara.sectors.map((s) => s.driversBest)).toEqual([false, true, true]);
+    expect(cara.topSpeed).toBe(null);
+    expect(cara.numPits).toBe(0);
+  });
+
+  it("a live driver's potential counts the week's best sectors, their own lap count and last lap stay the session's", () => {
+    // Alice's live lap has 30.0/30.0/36.0 splits; the week had a 29.0 S1.
+    give([[ALICE, "Alice", 97_000, [29_000, 33_000, 35_000], { bestSectorsMs: [29_000, 33_000, 35_000], lapCount: 20, lastLapMs: 98_000, lastAt: 500, tyre: "M" }]]);
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const alice = row(getBoard(), "Alice");
+    expect(alice.bestLapMs).toBe(96_000); // her live lap is the quicker one and stays
+    expect(alice.imported).toBeUndefined();
+    expect(alice.bestSectors.map((s) => s.ms)).toEqual([29_000, 30_000, 35_000]); // best of both, per sector
+    expect(alice.potentialMs).toBe(94_000);
+    expect(alice.lapCount).toBe(5); // this session's
+    expect(alice.tyre).toBe("S"); // the live best lap's tyre, not the week's
   });
 
   it("nothing given is the board exactly as it was", () => {

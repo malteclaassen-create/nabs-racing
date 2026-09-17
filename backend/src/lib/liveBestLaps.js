@@ -10,9 +10,10 @@
 // The server manager still has the times: it writes a result JSON for every
 // session it runs, practice included, with every lap and the server's own
 // sector splits in it (lib/practiceJson.js). An admin hands the site those
-// files, and their fastest clean lap per driver is kept here — sectors and
-// all, drawn on the board exactly as a live lap's are. On the board a live lap
-// beats a carried one the moment it is quicker (services/liveTiming.js).
+// files, and their fastest clean lap per driver is kept here — sectors, tyre,
+// the best of each sector, the lap count and the last lap — drawn on the
+// board exactly as a live row is. On the board a live lap beats a carried one
+// the moment it is quicker (services/liveTiming.js).
 //
 // THE SEASON IS PART OF THE KEY, and that is a rule, not a filing choice. The
 // league runs different cars every season, so a Baku time from last season is
@@ -175,25 +176,57 @@ function cleanLap(raw) {
     const s = raw.sectorsMs.map((v) => Math.round(Number(v)));
     if (s.every((v) => Number.isFinite(v) && v > 0) && Math.abs(s[0] + s[1] + s[2] - lapTimeMs) <= 3) sectorsMs = s;
   }
+  // The rest of what a live row shows and a file can answer (lib/practiceJson
+  // .js): each checked the same way, and absent rather than wrong.
+  const sectorMs = (v) => {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) && n > 0 && n < MAX_LAP_MS ? n : null;
+  };
+  const bestSectorsMs = Array.isArray(raw.bestSectorsMs) && raw.bestSectorsMs.length === 3
+    ? raw.bestSectorsMs.map(sectorMs)
+    : [null, null, null];
+  const lastLap = Math.round(Number(raw.lastLapMs));
   return {
     steamId,
     name,
     car: String(raw.car || "").trim().slice(0, 80),
     lapTimeMs,
     sectorsMs,
+    tyre: String(raw.tyre || "").trim().slice(0, 8),
+    bestSectorsMs,
+    lapCount: Math.max(0, Math.round(Number(raw.lapCount)) || 0),
+    lastLapMs: Number.isFinite(lastLap) && lastLap >= MIN_LAP_MS && lastLap <= MAX_LAP_MS ? lastLap : null,
+    lastAt: Number(raw.lastAt) || 0,
     recordedAt: raw.recordedAt ? String(raw.recordedAt).slice(0, 40) : null,
   };
 }
 
-// Fastest first, one row per driver. Where two files have the same time to
-// the millisecond it is the same lap, and the copy with sectors is kept.
+// Two records of the same driver, from two files, as one: the quicker best
+// lap with its sectors, car and tyre (the same time to the millisecond is the
+// same lap, and the copy with sectors is kept); the best of each sector
+// across both; the laps added up; the later last lap.
+function mergeDriver(a, b) {
+  const [fast, slow] =
+    b.lapTimeMs < a.lapTimeMs || (b.lapTimeMs === a.lapTimeMs && b.sectorsMs && !a.sectorsMs) ? [b, a] : [a, b];
+  return {
+    ...fast,
+    bestSectorsMs: [0, 1, 2].map((i) => {
+      const x = fast.bestSectorsMs?.[i] ?? null;
+      const y = slow.bestSectorsMs?.[i] ?? null;
+      return x == null ? y : y == null ? x : Math.min(x, y);
+    }),
+    lapCount: (fast.lapCount || 0) + (slow.lapCount || 0),
+    lastLapMs: (slow.lastAt || 0) > (fast.lastAt || 0) ? slow.lastLapMs : fast.lastLapMs,
+    lastAt: Math.max(fast.lastAt || 0, slow.lastAt || 0),
+  };
+}
+
+// Fastest first, one row per driver, merged across whatever was given.
 function onePerDriver(laps) {
   const byDriver = new Map();
   for (const lap of laps) {
     const seen = byDriver.get(lap.steamId);
-    if (!seen || lap.lapTimeMs < seen.lapTimeMs || (lap.lapTimeMs === seen.lapTimeMs && lap.sectorsMs && !seen.sectorsMs)) {
-      byDriver.set(lap.steamId, lap);
-    }
+    byDriver.set(lap.steamId, seen ? mergeDriver(seen, lap) : lap);
   }
   return [...byDriver.values()].sort((a, b) => a.lapTimeMs - b.lapTimeMs);
 }

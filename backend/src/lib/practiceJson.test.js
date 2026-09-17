@@ -97,6 +97,28 @@ describe("parsePracticeJson", () => {
     expect(p.entrants).toBe(3);
   });
 
+  // What the live board shows beside the best lap, answered from the file so
+  // a carried row reads like a live one.
+  it("reads the rest of the row: best of each sector, laps, last lap, tyre", () => {
+    const p = parsePracticeJson(
+      file({
+        Laps: [
+          lap(A, 96_000, [30_000, 33_000, 33_000], 0, { Timestamp: 100, Tyre: "M" }),
+          lap(A, 93_000, [29_000, 32_000, 32_000], 0, { Timestamp: 200, Tyre: "SS" }), // the best lap
+          lap(A, 95_000, [28_500, 33_000, 33_500], 0, { Timestamp: 300, Tyre: "SS" }), // best S1 on a slower lap
+          lap(A, 101_000, [40_000, 30_000, 31_000], 2, { Timestamp: 400, Tyre: "SS" }), // cut: counts as a lap, not as sectors
+        ],
+      })
+    );
+    const [a] = p.laps;
+    expect(a.lapTimeMs).toBe(93_000);
+    expect(a.sectorsMs).toEqual([29_000, 32_000, 32_000]);
+    expect(a.tyre).toBe("SS"); // the best lap's tyre, not the first lap's
+    expect(a.bestSectorsMs).toEqual([28_500, 32_000, 32_000]); // S1 from the 1:35, the cut lap's 30.0 not counted
+    expect(a.lapCount).toBe(4); // every completed lap, cut or not, as the live board counts
+    expect(a.lastLapMs).toBe(101_000); // the last one completed, whatever it was
+  });
+
   it("the car is the one the lap was driven in, not the one the classification ended on", () => {
     const p = parsePracticeJson(file({ Laps: [lap(A, 93_000, [29_000, 32_000, 32_000], 0, { CarModel: "reserve_car" })] }));
     expect(p.laps[0].car).toBe("reserve_car");
