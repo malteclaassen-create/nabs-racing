@@ -1202,6 +1202,7 @@ function createRelay(server) {
         }, false);
         entry.bestLapMs = lap.lapTimeMs;
         entry.topSpeed = lap.topSpeedKmh ?? null;
+        entry.sectors = carriedSectors(lap);
         entry.imported = true;
         byGuid.set(lap.steamId, entry);
         continue;
@@ -1210,17 +1211,26 @@ function createRelay(server) {
       if (live.bestLapMs != null && live.bestLapMs <= lap.lapTimeMs) continue;
       live.bestLapMs = lap.lapTimeMs;
       live.imported = true;
-      // The top speed on the board belongs to the best lap, so it follows the
-      // lap: the recorder's figure for the carried one replaces the server's
-      // figure for the lap it just displaced.
+      // Everything on the row that belongs to the best lap follows the lap:
+      // the top speed (the recorder's figure, when the lap came from there)
+      // and the sectors (the server's own splits, when it came from a session
+      // file). Where the carried lap has no figure of its own the cell goes
+      // blank rather than keeping the displaced lap's — three splits that do
+      // not add up to the time beside them would be worse than three dashes.
       live.topSpeed = lap.topSpeedKmh ?? null;
-      // The sectors cannot follow it. They are the server's splits of the lap
-      // the carried time just replaced, and the recorder does not know where
-      // the track's sector lines are, so there is nothing to put in their
-      // place. Three splits that do not add up to the time beside them would
-      // be worse than three dashes, so they go.
-      live.sectors = [null, null, null];
+      live.sectors = carriedSectors(lap);
     }
+  }
+
+  // The three sector boxes for a carried lap, in the shape sectorsOf builds
+  // for a live one, so the same pass below colours them: purple if they equal
+  // the session's best sector, and green never — that flag is the server's
+  // "this driver's own best sector", which it only knows for the session it
+  // is in. A lap from the recorder has no sectors (it does not know where the
+  // lines are) and gets three blanks.
+  function carriedSectors(lap) {
+    if (!lap.sectorsMs) return [null, null, null];
+    return lap.sectorsMs.map((ms) => ({ ms, best: false, driversBest: false, cuts: 0 }));
   }
 
   // What the frontend gets. Usually the live board; for RESULT_HOLD_MS after a

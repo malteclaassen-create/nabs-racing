@@ -120,7 +120,10 @@ import {
   serverKeyForSeries,
 } from "../lib/liveServers.js";
 import { bestLapPerDriver, isTrackKey } from "../lib/telemetryLaps.js";
-import { readSource, addSource, clearSource, listSources, currentBests, importEffect } from "../lib/liveBestLaps.js";
+import {
+  readSource, addSource, clearTrack, listTracks, currentBests, uploadedLaps, uploadedFiles, addUploadedLaps, importEffect,
+} from "../lib/liveBestLaps.js";
+import { parsePracticeJson } from "../lib/practiceJson.js";
 import { getBoard as getLiveBoard, realGuidForPublicId } from "../services/liveTiming.js";
 import { telemetryIdentities } from "../lib/telemetryIdentity.js";
 
@@ -1670,9 +1673,11 @@ router.put("/live-servers", async (req, res, next) => {
 // every restart of it takes the week's times off the live board. The site has
 // them anyway — the in-game recorder is served to every driver who joins, so
 // the telemetry store holds each driver's fastest lap per track (lib/telemetry
-// Laps.js). These three routes are the button that puts them back on the board:
-// it does not copy the laps, it tells that board to read them (lib/liveBest
-// Laps.js), so a quicker lap driven afterwards reaches the board on its own.
+// Laps.js), and the server manager writes a result file for every session it
+// runs, sectors and all. These routes put either back on the board (lib/
+// liveBestLaps.js): session files are uploaded and their laps kept; the
+// recorder is a switch, read live, so a quicker lap posted afterwards reaches
+// the board on its own.
 
 // Everything both the preview and the import need: which server's board is in
 // question, which track, what the telemetry store has, and what the board is
@@ -1703,12 +1708,20 @@ async function trainingLapPlan({ series, season, track }) {
     ? activeRow
     : await resolveSeason(prisma, seasonNumber, { includePrivate: true, series: seriesRow.slug });
 
-  // Fastest per driver, straight out of the telemetry store — the same read the
-  // board itself makes once this track is carried.
+  // Fastest per driver across what the recorder's store has (the same read the
+  // board makes once the switch is on) and what uploaded files gave. One row
+  // per driver; on the same time the file's lap wins, it has the sectors.
   const fastest = new Map();
-  if (trackKey && seasonNumber) {
-    for (const lap of bestLapPerDriver(seriesRow.slug, seasonNumber, trackKey, legacy)) {
-      if (!fastest.has(lap.steamId)) fastest.set(lap.steamId, lap);
+  const offer = (lap, from) => {
+    const seen = fastest.get(lap.steamId);
+    if (!seen || lap.lapTimeMs < seen.lapTimeMs || (lap.lapTimeMs === seen.lapTimeMs && from === "file")) {
+      fastest.set(lap.steamId, { ...lap, from });
+    }
+  };
+  if (trackKey) {
+    for (const lap of uploadedLaps(serverKey, trackKey)) offer(lap, "file");
+    if (seasonNumber) {
+      for (const lap of bestLapPerDriver(seriesRow.slug, seasonNumber, trackKey, legacy)) offer(lap, "recorder");
     }
   }
 
@@ -1767,6 +1780,8 @@ async function trainingLapRows(plan) {
         team: known.get(lap.steamId)?.team?.name ?? null,
         car: lap.car,
         telemetryMs: lap.lapTimeMs,
+        sectors: lap.sectorsMs ? true : false,
+        from: lap.from,
         recordedAt: lap.recordedAt,
         liveMs: live,
         importedMs: onBoard,
@@ -1805,6 +1820,10 @@ function trainingLapHead(plan) {
           laps: plan.storedBest.size,
         }
       : null,
+    // The session files this track has been given, and the laps kept from
+    // them — the source the league asked for, and the one with the sectors.
+    files: plan.trackKey ? uploadedFiles(plan.serverKey, plan.trackKey) : [],
+    fileLaps: plan.trackKey ? uploadedLaps(plan.serverKey, plan.trackKey).length : 0,
   };
 }
 
@@ -1820,7 +1839,7 @@ router.get("/live-best-laps", async (req, res, next) => {
       rows: await trainingLapRows(plan),
       // Every track this server currently carries times for, so one switched
       // on three circuits ago can be found and taken off again.
-      tracks: listSources(plan.serverKey),
+      tracks: listTracks(plan.serverKey),
     });
   } catch (e) {
     next(e);
@@ -1847,7 +1866,7 @@ router.post("/live-best-laps", async (req, res, next) => {
     // Counted against what the board showed BEFORE the switch is thrown, which
     // is what the admin was looking at when they pressed it.
     const rows = await trainingLapRows(plan);
-    const laps = [...plan.fastest.values()];
+    const laps = [...plan.fastest.values()].filter((l) => l.from === "recorder");
 
     addSource(plan.serverKey, plan.trackKey, {
       series: plan.series,
@@ -1879,7 +1898,59 @@ router.delete("/live-best-laps", async (req, res, next) => {
     const trackKey = String(req.query.track || "");
     if (!isTrackKey(trackKey)) return res.status(400).json({ error: "Valid track key required" });
     const serverKey = await serverKeyForSeries(prisma, seriesRow.slug);
-    res.json({ ok: true, removed: clearSource(serverKey, trackKey), tracks: listSources(serverKey) });
+    res.json({ ok: true, removed: clearTrack(serverKey, trackKey), tracks: listTracks(serverKey) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/live-best-laps/files  (multipart: files[]=<AC session json>, series)
+// Session result files from the server manager, one or several. Each is read
+// for its fastest clean lap per driver (lib/practiceJson.js) and kept for the
+// track the FILE names — not the track the server is on, which is what makes
+// this the way to bring a session back that the server has since moved on
+// from. The answer says, per file, what it was and what it gave.
+router.post("/live-best-laps/files", upload.array("files", 20), async (req, res, next) => {
+  try {
+    const seriesRow = await resolveSeries(prisma, req.body?.series, { includePrivate: true });
+    if (!seriesRow) return res.status(404).json({ error: "Series not found" });
+    const files = Array.isArray(req.files) ? req.files : [];
+    if (!files.length) return res.status(400).json({ error: "No files uploaded" });
+    const serverKey = await serverKeyForSeries(prisma, seriesRow.slug);
+
+    const results = [];
+    for (const f of files) {
+      const name = String(f.originalname || "session.json").slice(0, 120);
+      try {
+        const parsed = parsePracticeJson(JSON.parse(f.buffer.toString("utf-8")), { fileName: name });
+        if (!parsed.laps.length) {
+          results.push({ name, ok: false, error: "No usable laps in this file" });
+          continue;
+        }
+        const kept = addUploadedLaps(serverKey, parsed.trackKey, {
+          track: parsed.track,
+          layout: parsed.layout,
+          laps: parsed.laps,
+          file: { name, type: parsed.type, date: parsed.date },
+        });
+        results.push({
+          name,
+          ok: true,
+          type: parsed.type,
+          track: parsed.track,
+          layout: parsed.layout,
+          trackKey: parsed.trackKey,
+          date: parsed.date,
+          drivers: parsed.laps.length,
+          withSectors: parsed.laps.filter((l) => l.sectorsMs).length,
+          improved: kept.improved,
+          onBoard: kept.kept,
+        });
+      } catch (e) {
+        results.push({ name, ok: false, error: e instanceof SyntaxError ? "Not valid JSON" : e.message });
+      }
+    }
+    res.json({ ok: results.some((r) => r.ok), results, tracks: listTracks(serverKey) });
   } catch (e) {
     next(e);
   }

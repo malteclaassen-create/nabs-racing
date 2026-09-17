@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { __testing } from "./liveTiming.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { addSource, clearSource, __clearCache as __clearImportCache } from "../lib/liveBestLaps.js";
+import { addSource, clearTrack, addUploadedLaps, __clearCache as __clearImportCache } from "../lib/liveBestLaps.js";
 import { TELEMETRY_LAPS_DIR, seriesKeyOf, seasonKeyOf } from "../lib/telemetryLaps.js";
 
 const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset, mapKey } = __testing;
@@ -1000,7 +1000,7 @@ describe("liveTiming imported training bests", () => {
   const row = (board, name) => board.entries.find((e) => e.name === name);
 
   const wipe = () => {
-    clearSource(SERVER, TRACK);
+    clearTrack(SERVER, TRACK);
     rmSync(join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
     __clearImportCache();
   };
@@ -1113,6 +1113,38 @@ describe("liveTiming imported training bests", () => {
     expect(alice.bestLapMs).toBe(92_100);
     expect(alice.imported).toBeUndefined();
     expect(alice.sectors[0]?.ms).toBe(30_000); // and it is their lap, splits and all
+  });
+
+  it("a lap from a session file brings the server's sectors onto the board", () => {
+    addUploadedLaps(SERVER, TRACK, {
+      track: "monza",
+      layout: "",
+      laps: [{ steamId: CARA, name: "Cara", car: "f", lapTimeMs: 94_000, sectorsMs: [29_500, 32_000, 32_500] }],
+      file: { name: "practice.json", type: "PRACTICE" },
+    });
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const cara = row(getBoard(), "Cara");
+    expect(cara.bestLapMs).toBe(94_000);
+    // In the shape a live lap's sectors take, so the same table draws them.
+    expect(cara.sectors.map((s) => s.ms)).toEqual([29_500, 32_000, 32_500]);
+    expect(cara.sectors[0]).toMatchObject({ driversBest: false, cuts: 0 });
+    expect(cara.topSpeed).toBe(null); // a session file carries no top speed
+  });
+
+  it("when a file's lap takes over a live row, the splits follow the lap", () => {
+    addUploadedLaps(SERVER, TRACK, {
+      track: "monza",
+      layout: "",
+      laps: [{ steamId: ALICE, name: "Alice", car: "f", lapTimeMs: 93_000, sectorsMs: [29_000, 32_000, 32_000] }],
+      file: { name: "practice.json", type: "PRACTICE" },
+    });
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const alice = row(getBoard(), "Alice");
+    expect(alice.bestLapMs).toBe(93_000);
+    expect(alice.sectors.map((s) => s.ms)).toEqual([29_000, 32_000, 32_000]); // not the 1:36's 30/30/36
+    expect(alice.lapCount).toBe(5); // the session's own facts stay
   });
 
   it("no source is the board exactly as it was", () => {

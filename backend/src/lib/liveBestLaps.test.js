@@ -6,9 +6,12 @@ import { TELEMETRY_LAPS_DIR, seriesKeyOf, seasonKeyOf } from "./telemetryLaps.js
 import {
   readSource,
   addSource,
-  clearSource,
-  listSources,
+  clearTrack,
+  listTracks,
   currentBests,
+  addUploadedLaps,
+  uploadedLaps,
+  uploadedFiles,
   importEffect,
   __clearCache,
 } from "./liveBestLaps.js";
@@ -140,14 +143,14 @@ describe("liveBestLaps", () => {
     expect(currentBests(SERVER, TRACK)).toEqual([]);
   });
 
-  it("switching a track off takes it back off the board", () => {
+  it("taking a track off the board takes it off", () => {
     recordLap(A, 95_000);
     carry();
     expect(currentBests(SERVER, TRACK)).toHaveLength(1);
 
-    expect(clearSource(SERVER, TRACK)).toBe(true);
+    expect(clearTrack(SERVER, TRACK)).toBe(true);
     expect(currentBests(SERVER, TRACK)).toEqual([]);
-    expect(clearSource(SERVER, TRACK)).toBe(false); // already gone
+    expect(clearTrack(SERVER, TRACK)).toBe(false); // already gone
   });
 
   it("a switch with no store behind it carries nothing rather than everything", () => {
@@ -181,14 +184,81 @@ describe("liveBestLaps", () => {
     carry("monza");
     carry("spa--gp");
 
-    const list = listSources(SERVER);
+    const list = listTracks(SERVER);
     expect(list.map((t) => t.trackKey).sort()).toEqual(["monza", "spa--gp"]);
-    expect(list.find((t) => t.trackKey === "spa--gp")).toMatchObject({ laps: 2, bestMs: 103_000, season: SEASON });
+    expect(list.find((t) => t.trackKey === "spa--gp")).toMatchObject({ laps: 2, bestMs: 103_000, recorder: { season: SEASON } });
   });
 
   it("an unknown server carries nothing", () => {
-    expect(listSources("nobody")).toEqual([]);
+    expect(listTracks("nobody")).toEqual([]);
     expect(readSource("nobody", TRACK)).toBeNull();
+  });
+});
+
+// Session files from the server manager: the source the league asked for.
+describe("liveBestLaps uploaded files", () => {
+  const S = [30_000, 32_000, 33_000];
+  const fileLap = (steamId, lapTimeMs, name, sectorsMs = S) => ({ steamId, name, car: "rss_f1", lapTimeMs, sectorsMs });
+  const give = (laps, name = "session.json") =>
+    addUploadedLaps(SERVER, TRACK, { track: "ks_monza", layout: "", laps, file: { name, type: "PRACTICE" } });
+
+  it("keeps a file's laps for the board, sectors and all", () => {
+    const r = give([fileLap(A, 95_000, "Alice"), fileLap(B, 93_500, "Bob", [29_000, 32_000, 32_500])]);
+    expect(r).toEqual({ kept: 2, read: 2, improved: 2 });
+
+    const laps = currentBests(SERVER, TRACK);
+    expect(laps.map((l) => l.name)).toEqual(["Bob", "Alice"]);
+    expect(laps[0].sectorsMs).toEqual([29_000, 32_000, 32_500]);
+    expect(laps[0].from).toBe("file");
+    expect(uploadedFiles(SERVER, TRACK).map((f) => f.name)).toEqual(["session.json"]);
+  });
+
+  it("a second file adds drivers and improves times, and never takes a time away", () => {
+    give([fileLap(A, 95_000, "Alice")], "monday.json");
+    const r = give([fileLap(A, 97_000, "Alice"), fileLap(B, 96_000, "Bob")], "tuesday.json");
+    expect(r.improved).toBe(1); // Bob is new; Alice's Monday 1:35 stands
+    expect(uploadedLaps(SERVER, TRACK).map((l) => [l.name, l.lapTimeMs])).toEqual([["Alice", 95_000], ["Bob", 96_000]]);
+    expect(uploadedFiles(SERVER, TRACK)).toHaveLength(2);
+  });
+
+  it("sectors that do not add up to the lap do not reach the board", () => {
+    give([fileLap(A, 95_000, "Alice", [30_000, 30_000, 30_000])]);
+    expect(currentBests(SERVER, TRACK)[0].sectorsMs).toBe(null);
+  });
+
+  it("files and the recorder share a board, faster wins, and a tie goes to the file", () => {
+    recordLap(A, 95_000, { name: "Alice" }); // recorder: 1:35, no sectors
+    recordLap(B, 94_000, { name: "Bob" }); // recorder: 1:34
+    carry();
+    give([fileLap(A, 95_000, "Alice"), fileLap(B, 96_000, "Bob")]); // file: same 1:35 with sectors; a slower Bob
+
+    const laps = currentBests(SERVER, TRACK);
+    const alice = laps.find((l) => l.name === "Alice");
+    const bob = laps.find((l) => l.name === "Bob");
+    expect(alice.from).toBe("file"); // same lap, and the file knows its sectors
+    expect(alice.sectorsMs).toEqual(S);
+    expect(bob.from).toBe("recorder"); // the quicker of the two, wherever from
+    expect(bob.lapTimeMs).toBe(94_000);
+  });
+
+  it("switching the recorder on leaves the files' laps exactly as they were", () => {
+    give([fileLap(A, 95_000, "Alice")]);
+    carry();
+    expect(uploadedLaps(SERVER, TRACK)).toHaveLength(1);
+    expect(readSource(SERVER, TRACK)).not.toBeNull();
+  });
+
+  it("a file with nothing usable in it changes nothing", () => {
+    give([fileLap(A, 95_000, "Alice")]);
+    give([{ steamId: "nope", name: "Ghost", lapTimeMs: 90_000 }], "empty.json");
+    expect(uploadedLaps(SERVER, TRACK)).toHaveLength(1);
+  });
+
+  it("taking the track off the board takes the files with it", () => {
+    give([fileLap(A, 95_000, "Alice")]);
+    expect(clearTrack(SERVER, TRACK)).toBe(true);
+    expect(uploadedLaps(SERVER, TRACK)).toEqual([]);
+    expect(currentBests(SERVER, TRACK)).toEqual([]);
   });
 });
 

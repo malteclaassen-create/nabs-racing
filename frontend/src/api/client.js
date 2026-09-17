@@ -687,6 +687,15 @@ export const api = {
     request("/admin/live-best-laps", { method: "POST", body: { series, track }, auth: true }),
   clearTrainingBestLaps: (track) =>
     request(`/admin/live-best-laps${andQ(seriesQ(), `track=${encodeURIComponent(track)}`)}`, { method: "DELETE", auth: true }),
+  // Session result files from the server manager, one or several at once.
+  // Each lands on the track the FILE names, so the series is all that rides
+  // along: it decides which race server's board they go to.
+  uploadTrainingLaps: (series, files) => {
+    const fd = new FormData();
+    fd.append("series", series || "");
+    for (const f of files) fd.append("files", f);
+    return request("/admin/live-best-laps/files", { method: "POST", body: fd, auth: true, form: true });
+  },
 
   // discord login. The redirect URI is derived from the current origin so login
   // works on localhost and over a tunnel without changing the backend .env.
