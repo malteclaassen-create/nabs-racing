@@ -954,12 +954,12 @@ describe("liveTiming imported training bests", () => {
 
   // A lap where the in-game recorder leaves it. The board reads these back
   // through lib/liveBestLaps.js as it draws, so this is the whole input.
-  function recordLap(steamId, lapTimeMs, name) {
+  function recordLap(steamId, lapTimeMs, name, topSpeed = 312.5) {
     const dir = join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES), seasonKeyOf(SEASON), TRACK, steamId);
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, `${lapTimeMs}.json`),
-      JSON.stringify({ v: 1, steamId, name, car: "f", track: TRACK, layout: "", lapTimeMs })
+      JSON.stringify({ v: 1, steamId, name, car: "f", track: TRACK, layout: "", lapTimeMs, speed: [80, topSpeed, 200] })
     );
   }
 
@@ -1021,9 +1021,10 @@ describe("liveTiming imported training bests", () => {
     expect(cara.bestLapMs).toBe(94_000);
     expect(cara.imported).toBe(true);
     expect(cara.onTrack).toBe(false);
-    // We know the time and nothing else about that lap, and the board says so.
+    // The recorder's trace gives the lap its top speed; what it cannot give is
+    // the server's sector lines, and the board says so rather than guessing.
+    expect(cara.topSpeed).toBe(312.5);
     expect(cara.sectors).toEqual([null, null, null]);
-    expect(cara.topSpeed).toBe(null);
     expect(cara.lapCount).toBe(0);
     // Ranked among the live rows like any other lap: Cara's 1:34 leads.
     expect(board.entries[0].name).toBe("Cara");
@@ -1038,11 +1039,13 @@ describe("liveTiming imported training bests", () => {
     const alice = row(getBoard(), "Alice");
     expect(alice.bestLapMs).toBe(93_000);
     expect(alice.imported).toBe(true);
-    // The sectors on that row were measured on the 1:36 that just lost the
-    // row. Three splits that do not add up to the time beside them would be
-    // the board lying, so they are gone.
+    // The top speed follows the lap: the recorder's figure for the 1:33, not
+    // the server's for the 1:36 that just lost the row.
+    expect(alice.topSpeed).toBe(312.5);
+    // The sectors cannot follow it — they were the server's splits of the
+    // 1:36, and the recorder knows no sector lines. Three splits that do not
+    // add up to the time beside them would be the board lying, so they go.
     expect(alice.sectors).toEqual([null, null, null]);
-    expect(alice.topSpeed).toBe(null);
     // What the session itself produced is untouched: laps, pits, presence.
     expect(alice.lapCount).toBe(5);
   });

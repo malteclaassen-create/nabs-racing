@@ -26,12 +26,16 @@ const B = "76561198000000002";
 
 // A lap as the recorder leaves it on disk: the file is NAMED after its own lap
 // time, which is what makes reading "who is quickest" free.
-function recordLap(steamId, lapTimeMs, { name = "Alice", car = "f1", season = SEASON, track = TRACK } = {}) {
+function recordLap(
+  steamId,
+  lapTimeMs,
+  { name = "Alice", car = "f1", season = SEASON, track = TRACK, speed = [120, 250, 318.4, 90] } = {}
+) {
   const dir = join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES), seasonKeyOf(season), track, steamId);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     join(dir, `${lapTimeMs}.json`),
-    JSON.stringify({ v: 1, steamId, name, car, track, layout: "", lapTimeMs, recordedAt: "2026-09-01T10:00:00Z" })
+    JSON.stringify({ v: 1, steamId, name, car, track, layout: "", lapTimeMs, speed, recordedAt: "2026-09-01T10:00:00Z" })
   );
 }
 
@@ -57,6 +61,16 @@ describe("liveBestLaps", () => {
     const laps = currentBests(SERVER, TRACK);
     expect(laps.map((l) => l.name)).toEqual(["Bob", "Alice"]);
     expect(laps[0].lapTimeMs).toBe(93_500);
+  });
+
+  it("carries the lap's top speed, read off the recorder's speed trace", () => {
+    recordLap(A, 95_000, { speed: [100, 301.7, 250] });
+    recordLap(B, 96_000, { name: "Bob", speed: null }); // a lap from before speeds were recorded
+    carry();
+
+    const [alice, bob] = currentBests(SERVER, TRACK);
+    expect(alice.topSpeedKmh).toBe(301.7);
+    expect(bob.topSpeedKmh).toBe(null);
   });
 
   it("one row per driver — their fastest, not all three", () => {

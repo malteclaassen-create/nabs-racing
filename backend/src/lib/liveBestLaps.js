@@ -91,12 +91,15 @@ function cleanLap(raw) {
   if (!Number.isFinite(lapTimeMs) || lapTimeMs < MIN_LAP_MS || lapTimeMs > MAX_LAP_MS) return null;
   const name = String(raw.name || "").trim().slice(0, 64);
   if (!name) return null;
+  const top = Number(raw.topSpeedKmh);
   return {
     steamId,
     name,
     car: String(raw.car || "").trim().slice(0, 80),
     lapTimeMs,
     recordedAt: raw.recordedAt ? String(raw.recordedAt).slice(0, 40) : null,
+    // Same sanity band as the recorder's own speed channel (0..500 km/h).
+    topSpeedKmh: Number.isFinite(top) && top > 0 && top <= 500 ? top : null,
   };
 }
 

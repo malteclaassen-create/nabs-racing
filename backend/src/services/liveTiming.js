@@ -1201,6 +1201,7 @@ function createRelay(server) {
           CarInfo: { DriverName: lap.name, CarModel: lap.car || "", CarName: lap.car || "" },
         }, false);
         entry.bestLapMs = lap.lapTimeMs;
+        entry.topSpeed = lap.topSpeedKmh ?? null;
         entry.imported = true;
         byGuid.set(lap.steamId, entry);
         continue;
@@ -1209,11 +1210,16 @@ function createRelay(server) {
       if (live.bestLapMs != null && live.bestLapMs <= lap.lapTimeMs) continue;
       live.bestLapMs = lap.lapTimeMs;
       live.imported = true;
-      // The sectors and the top speed on that row were measured on the lap the
-      // imported time just replaced. Leaving them would print three splits that
-      // do not add up to the time beside them, so they go with it.
+      // The top speed on the board belongs to the best lap, so it follows the
+      // lap: the recorder's figure for the carried one replaces the server's
+      // figure for the lap it just displaced.
+      live.topSpeed = lap.topSpeedKmh ?? null;
+      // The sectors cannot follow it. They are the server's splits of the lap
+      // the carried time just replaced, and the recorder does not know where
+      // the track's sector lines are, so there is nothing to put in their
+      // place. Three splits that do not add up to the time beside them would
+      // be worse than three dashes, so they go.
       live.sectors = [null, null, null];
-      live.topSpeed = null;
     }
   }
 
