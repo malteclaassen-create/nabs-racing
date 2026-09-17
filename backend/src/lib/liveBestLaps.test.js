@@ -4,10 +4,12 @@ import { join } from "node:path";
 import { LIVE_BEST_LAPS_DIR } from "./dataDirs.js";
 import { TELEMETRY_LAPS_DIR, seriesKeyOf, seasonKeyOf } from "./telemetryLaps.js";
 import {
+  setBoardScopes,
   readSource,
-  addSource,
+  switchRecorder,
   clearTrack,
   listTracks,
+  bestsFor,
   currentBests,
   addUploadedLaps,
   uploadedLaps,
@@ -16,9 +18,11 @@ import {
   __clearCache,
 } from "./liveBestLaps.js";
 
-// What the live board reads its training bests through. The thing worth
-// testing is that it is NOT a copy: a quicker lap landing in the telemetry
-// store has to reach the board without anybody pressing the button again.
+// What the live board reads its training bests through. Two things are worth
+// testing above all: that it is NOT a copy (a quicker lap landing in the
+// recorder's store reaches the board without anybody pressing the button
+// again), and that the SEASON is part of the key — last season's Baku must
+// never come back with the calendar.
 
 const SERVER = "test";
 const SERIES = "friday-f1";
@@ -42,20 +46,25 @@ function recordLap(
   );
 }
 
-const carry = (track = TRACK) => addSource(SERVER, track, { series: SERIES, season: SEASON, track });
+const S = [30_000, 32_000, 33_000];
+const fileLap = (steamId, lapTimeMs, name, sectorsMs = S) => ({ steamId, name, car: "rss_f1", lapTimeMs, sectorsMs });
+const give = (laps, { name = "session.json", season = SEASON, track = TRACK } = {}) =>
+  addUploadedLaps(SERIES, season, track, { track: "ks_monza", layout: "", laps, file: { name, type: "PRACTICE" } });
+const carry = ({ season = SEASON, track = TRACK } = {}) => switchRecorder(SERIES, season, track, { track });
 
+function wipe() {
+  rmSync(join(LIVE_BEST_LAPS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
+  rmSync(join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
+  __clearCache();
+}
 beforeEach(() => {
-  rmSync(join(LIVE_BEST_LAPS_DIR, SERVER), { recursive: true, force: true });
-  rmSync(join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
-  __clearCache();
+  wipe();
+  // The test server's board follows this series, whose active season is 8.
+  setBoardScopes(SERVER, [{ series: SERIES, season: SEASON }]);
 });
-afterEach(() => {
-  rmSync(join(LIVE_BEST_LAPS_DIR, SERVER), { recursive: true, force: true });
-  rmSync(join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
-  __clearCache();
-});
+afterEach(wipe);
 
-describe("liveBestLaps", () => {
+describe("liveBestLaps recorder", () => {
   it("carries the telemetry store's fastest lap per driver, fastest first", () => {
     recordLap(A, 95_000, { name: "Alice" });
     recordLap(B, 93_500, { name: "Bob" });
@@ -64,6 +73,7 @@ describe("liveBestLaps", () => {
     const laps = currentBests(SERVER, TRACK);
     expect(laps.map((l) => l.name)).toEqual(["Bob", "Alice"]);
     expect(laps[0].lapTimeMs).toBe(93_500);
+    expect(laps[0].from).toBe("recorder");
   });
 
   it("carries the lap's top speed, read off the recorder's speed trace", () => {
@@ -87,7 +97,7 @@ describe("liveBestLaps", () => {
     expect(laps[0].lapTimeMs).toBe(92_000);
   });
 
-  // The reason this is a source and not a copy.
+  // The reason this is a switch and not a copy.
   it("a quicker lap driven afterwards reaches the board without touching the button", () => {
     recordLap(A, 95_000);
     carry();
@@ -95,6 +105,7 @@ describe("liveBestLaps", () => {
 
     recordLap(A, 91_000); // the recorder posts a new personal best
     __clearCache(); // stand in for the read-through TTL expiring
+    setBoardScopes(SERVER, [{ series: SERIES, season: SEASON }]);
     expect(currentBests(SERVER, TRACK)[0].lapTimeMs).toBe(91_000);
   });
 
@@ -120,88 +131,43 @@ describe("liveBestLaps", () => {
     }
   });
 
-  it("a driver who first appears after the switch was thrown is carried too", () => {
-    recordLap(A, 95_000, { name: "Alice" });
-    carry();
-
-    recordLap(B, 96_000, { name: "Bob" });
-    __clearCache();
-    expect(currentBests(SERVER, TRACK).map((l) => l.name)).toEqual(["Alice", "Bob"]);
+  it("a track the recorder was never switched on for carries nothing", () => {
+    recordLap(A, 95_000);
+    expect(readSource(SERIES, SEASON, TRACK)).toBeNull();
+    expect(currentBests(SERVER, TRACK)).toEqual([]);
   });
 
-  it("reads the season it was pointed at, and no other", () => {
+  it("the switch reads this season's store, never an older one", () => {
     recordLap(A, 95_000, { name: "Alice", season: SEASON });
     recordLap(B, 80_000, { name: "LastSeasonBob", season: SEASON - 1 });
     carry();
-
     expect(currentBests(SERVER, TRACK).map((l) => l.name)).toEqual(["Alice"]);
   });
 
-  it("a track that was never switched on carries nothing", () => {
-    recordLap(A, 95_000);
-    expect(readSource(SERVER, TRACK)).toBeNull();
-    expect(currentBests(SERVER, TRACK)).toEqual([]);
-  });
-
-  it("taking a track off the board takes it off", () => {
-    recordLap(A, 95_000);
-    carry();
-    expect(currentBests(SERVER, TRACK)).toHaveLength(1);
-
-    expect(clearTrack(SERVER, TRACK)).toBe(true);
-    expect(currentBests(SERVER, TRACK)).toEqual([]);
-    expect(clearTrack(SERVER, TRACK)).toBe(false); // already gone
-  });
-
-  it("a switch with no store behind it carries nothing rather than everything", () => {
+  it("switching on with no store behind it carries nothing rather than everything", () => {
     carry();
     expect(currentBests(SERVER, TRACK)).toEqual([]);
   });
 
-  it("refuses a switch that names no series or season", () => {
-    expect(() => addSource(SERVER, TRACK, { series: "", season: SEASON })).toThrow();
-    expect(() => addSource(SERVER, TRACK, { series: SERIES, season: 0 })).toThrow();
+  it("refuses a switch that names no series, season or track", () => {
+    expect(() => switchRecorder("", SEASON, TRACK)).toThrow();
+    expect(() => switchRecorder(SERIES, 0, TRACK)).toThrow();
+    expect(() => switchRecorder(SERIES, SEASON, "../../etc/passwd")).toThrow();
+    expect(existsSync(join(LIVE_BEST_LAPS_DIR, "..", "etc"))).toBe(false);
   });
 
-  it("a broken line is no source, not an outage", () => {
-    mkdirSync(join(LIVE_BEST_LAPS_DIR, SERVER), { recursive: true });
-    writeFileSync(join(LIVE_BEST_LAPS_DIR, SERVER, `${TRACK}.json`), "{ this is not json");
+  it("a broken file is no record, not an outage", () => {
+    mkdirSync(join(LIVE_BEST_LAPS_DIR, seriesKeyOf(SERIES), seasonKeyOf(SEASON)), { recursive: true });
+    writeFileSync(join(LIVE_BEST_LAPS_DIR, seriesKeyOf(SERIES), seasonKeyOf(SEASON), `${TRACK}.json`), "{ not json");
     __clearCache();
-    expect(readSource(SERVER, TRACK)).toBeNull();
+    setBoardScopes(SERVER, [{ series: SERIES, season: SEASON }]);
+    expect(readSource(SERIES, SEASON, TRACK)).toBeNull();
     expect(currentBests(SERVER, TRACK)).toEqual([]);
-  });
-
-  it("refuses a track key that could walk out of its folder", () => {
-    expect(() => addSource(SERVER, "../../etc/passwd", { series: SERIES, season: SEASON })).toThrow();
-    expect(readSource(SERVER, "../../etc/passwd")).toBeNull();
-    expect(existsSync(join(LIVE_BEST_LAPS_DIR, SERVER, "..", "..", "etc"))).toBe(false);
-  });
-
-  it("lists what a server carries, with the count it carries right now", () => {
-    recordLap(A, 95_000, { track: "monza" });
-    recordLap(A, 104_000, { track: "spa--gp" });
-    recordLap(B, 103_000, { track: "spa--gp", name: "Bob" });
-    carry("monza");
-    carry("spa--gp");
-
-    const list = listTracks(SERVER);
-    expect(list.map((t) => t.trackKey).sort()).toEqual(["monza", "spa--gp"]);
-    expect(list.find((t) => t.trackKey === "spa--gp")).toMatchObject({ laps: 2, bestMs: 103_000, recorder: { season: SEASON } });
-  });
-
-  it("an unknown server carries nothing", () => {
-    expect(listTracks("nobody")).toEqual([]);
-    expect(readSource("nobody", TRACK)).toBeNull();
   });
 });
 
 // Session files from the server manager: the source the league asked for.
 describe("liveBestLaps uploaded files", () => {
-  const S = [30_000, 32_000, 33_000];
-  const fileLap = (steamId, lapTimeMs, name, sectorsMs = S) => ({ steamId, name, car: "rss_f1", lapTimeMs, sectorsMs });
-  const give = (laps, name = "session.json") =>
-    addUploadedLaps(SERVER, TRACK, { track: "ks_monza", layout: "", laps, file: { name, type: "PRACTICE" } });
-
   it("keeps a file's laps for the board, sectors and all", () => {
     const r = give([fileLap(A, 95_000, "Alice"), fileLap(B, 93_500, "Bob", [29_000, 32_000, 32_500])]);
     expect(r).toEqual({ kept: 2, read: 2, improved: 2 });
@@ -210,15 +176,15 @@ describe("liveBestLaps uploaded files", () => {
     expect(laps.map((l) => l.name)).toEqual(["Bob", "Alice"]);
     expect(laps[0].sectorsMs).toEqual([29_000, 32_000, 32_500]);
     expect(laps[0].from).toBe("file");
-    expect(uploadedFiles(SERVER, TRACK).map((f) => f.name)).toEqual(["session.json"]);
+    expect(uploadedFiles(SERIES, SEASON, TRACK).map((f) => f.name)).toEqual(["session.json"]);
   });
 
   it("a second file adds drivers and improves times, and never takes a time away", () => {
-    give([fileLap(A, 95_000, "Alice")], "monday.json");
-    const r = give([fileLap(A, 97_000, "Alice"), fileLap(B, 96_000, "Bob")], "tuesday.json");
+    give([fileLap(A, 95_000, "Alice")], { name: "monday.json" });
+    const r = give([fileLap(A, 97_000, "Alice"), fileLap(B, 96_000, "Bob")], { name: "tuesday.json" });
     expect(r.improved).toBe(1); // Bob is new; Alice's Monday 1:35 stands
-    expect(uploadedLaps(SERVER, TRACK).map((l) => [l.name, l.lapTimeMs])).toEqual([["Alice", 95_000], ["Bob", 96_000]]);
-    expect(uploadedFiles(SERVER, TRACK)).toHaveLength(2);
+    expect(uploadedLaps(SERIES, SEASON, TRACK).map((l) => [l.name, l.lapTimeMs])).toEqual([["Alice", 95_000], ["Bob", 96_000]]);
+    expect(uploadedFiles(SERIES, SEASON, TRACK)).toHaveLength(2);
   });
 
   it("sectors that do not add up to the lap do not reach the board", () => {
@@ -244,21 +210,96 @@ describe("liveBestLaps uploaded files", () => {
   it("switching the recorder on leaves the files' laps exactly as they were", () => {
     give([fileLap(A, 95_000, "Alice")]);
     carry();
-    expect(uploadedLaps(SERVER, TRACK)).toHaveLength(1);
-    expect(readSource(SERVER, TRACK)).not.toBeNull();
+    expect(uploadedLaps(SERIES, SEASON, TRACK)).toHaveLength(1);
+    expect(readSource(SERIES, SEASON, TRACK)).not.toBeNull();
   });
 
   it("a file with nothing usable in it changes nothing", () => {
     give([fileLap(A, 95_000, "Alice")]);
-    give([{ steamId: "nope", name: "Ghost", lapTimeMs: 90_000 }], "empty.json");
-    expect(uploadedLaps(SERVER, TRACK)).toHaveLength(1);
+    give([{ steamId: "nope", name: "Ghost", lapTimeMs: 90_000 }], { name: "empty.json" });
+    expect(uploadedLaps(SERIES, SEASON, TRACK)).toHaveLength(1);
   });
 
   it("taking the track off the board takes the files with it", () => {
     give([fileLap(A, 95_000, "Alice")]);
-    expect(clearTrack(SERVER, TRACK)).toBe(true);
-    expect(uploadedLaps(SERVER, TRACK)).toEqual([]);
+    expect(clearTrack(SERIES, SEASON, TRACK)).toBe(true);
+    expect(uploadedLaps(SERIES, SEASON, TRACK)).toEqual([]);
     expect(currentBests(SERVER, TRACK)).toEqual([]);
+    expect(clearTrack(SERIES, SEASON, TRACK)).toBe(false); // already gone
+  });
+
+  it("lists what a season carries, with the count it carries right now", () => {
+    give([fileLap(A, 95_000, "Alice")], { track: "monza" });
+    give([fileLap(A, 104_000, "Alice"), fileLap(B, 103_000, "Bob")], { track: "spa--gp" });
+    carry({ track: "spa--gp" });
+
+    const list = listTracks(SERIES, SEASON);
+    expect(list.map((t) => t.trackKey).sort()).toEqual(["monza", "spa--gp"]);
+    expect(list.find((t) => t.trackKey === "spa--gp")).toMatchObject({ laps: 2, bestMs: 103_000, files: 1, recorder: true });
+    expect(list.find((t) => t.trackKey === "monza")).toMatchObject({ laps: 1, recorder: false });
+  });
+});
+
+// The rule the league stated outright: never across seasons.
+describe("liveBestLaps seasons", () => {
+  it("last season's files do not come back when the calendar returns to the track", () => {
+    give([fileLap(A, 80_000, "LastSeasonAlice")], { season: SEASON - 1 });
+    give([fileLap(B, 95_000, "Bob")], { season: SEASON });
+
+    // The board reads the active season only.
+    expect(currentBests(SERVER, TRACK).map((l) => l.name)).toEqual(["Bob"]);
+    // …and what was filed under last season is still there, just not read.
+    expect(bestsFor(SERIES, SEASON - 1, TRACK).map((l) => l.name)).toEqual(["LastSeasonAlice"]);
+  });
+
+  it("last season's recorder switch does not reach this season's board", () => {
+    recordLap(A, 80_000, { name: "LastSeasonAlice", season: SEASON - 1 });
+    carry({ season: SEASON - 1 }); // switched on last season, never switched off
+    expect(currentBests(SERVER, TRACK)).toEqual([]);
+  });
+
+  it("the season moving on takes the old times off the board by itself", () => {
+    give([fileLap(A, 95_000, "Alice")]);
+    recordLap(B, 94_000, { name: "Bob" });
+    carry();
+    expect(currentBests(SERVER, TRACK)).toHaveLength(2);
+
+    // The relay re-reads the active season and finds it has moved to 9.
+    setBoardScopes(SERVER, [{ series: SERIES, season: SEASON + 1 }]);
+    expect(currentBests(SERVER, TRACK)).toEqual([]);
+
+    // Nothing was deleted: the new season simply starts empty, and this
+    // season's record is where it was.
+    expect(bestsFor(SERIES, SEASON, TRACK)).toHaveLength(2);
+    expect(listTracks(SERIES, SEASON + 1)).toEqual([]);
+  });
+
+  it("a server no series follows carries nothing", () => {
+    give([fileLap(A, 95_000, "Alice")]);
+    expect(currentBests("nobody", TRACK)).toEqual([]);
+    setBoardScopes(SERVER, []);
+    expect(currentBests(SERVER, TRACK)).toEqual([]);
+  });
+
+  it("two series on one server each bring their own season's times", () => {
+    give([fileLap(A, 95_000, "Alice")]);
+    // The other league is in its first season, on the same server; its file
+    // for the same track carries a different driver.
+    addUploadedLaps("sunday-gt", 1, TRACK, {
+      track: "ks_monza",
+      layout: "",
+      laps: [fileLap(B, 110_000, "SundayBob")],
+      file: { name: "sunday.json", type: "PRACTICE" },
+    });
+    try {
+      setBoardScopes(SERVER, [
+        { series: SERIES, season: SEASON },
+        { series: "sunday-gt", season: 1 },
+      ]);
+      expect(currentBests(SERVER, TRACK).map((l) => l.name)).toEqual(["Alice", "SundayBob"]);
+    } finally {
+      rmSync(join(LIVE_BEST_LAPS_DIR, "sunday-gt"), { recursive: true, force: true });
+    }
   });
 });
 

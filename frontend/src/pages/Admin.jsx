@@ -1078,7 +1078,10 @@ function TrainingBestLapsAdmin() {
         board the <b className="text-dark">faster lap wins per driver</b>: somebody who goes quicker on the server
         keeps their live lap, an identical time changes nothing, and a carried lap is drawn exactly like one set
         in the session on screen. Carried laps appear in <b className="text-dark">practice sessions only</b> — a
-        qualifying board or a race classification is what happened in that session.
+        qualifying board or a race classification is what happened in that session. Everything here is{" "}
+        <b className="text-dark">per season</b>: what is given now belongs to season {data.season}, and the day a new
+        season is switched on the board starts from nothing again — last season&rsquo;s Baku never comes back
+        with the calendar, and nobody has to delete it.
       </p>
 
       {err && <Notice kind="error">{err}</Notice>}
@@ -1270,7 +1273,7 @@ function TrainingBestLapsAdmin() {
       {!!(data.tracks || []).length && (
         <div className="space-y-2 border-t border-border pt-4">
           <div className="text-xs font-semibold uppercase tracking-widest text-light">
-            Tracks this board carries
+            Tracks carried in season {data.season}
           </div>
           {data.tracks.map((t) => (
             <div key={t.trackKey} className="flex flex-wrap items-center gap-3 text-sm">
@@ -1279,7 +1282,7 @@ function TrainingBestLapsAdmin() {
                 {t.laps} driver{t.laps === 1 ? "" : "s"}
                 {t.bestMs ? ` · best ${formatLapTime(t.bestMs)}` : ""}
                 {t.files ? ` · ${t.files} file${t.files === 1 ? "" : "s"}` : ""}
-                {t.recorder ? ` · recorder on, season ${t.recorder.season}` : ""}
+                {t.recorder ? " · recorder on" : ""}
                 {t.changedAt ? ` · ${new Date(t.changedAt).toLocaleDateString()}` : ""}
               </span>
               <button className="btn-secondary text-xs" onClick={() => remove(t.trackKey)} disabled={busy}>

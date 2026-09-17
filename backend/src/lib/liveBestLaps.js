@@ -8,7 +8,7 @@
 // away every few hours.
 //
 // Two places still have the times, and this carries either or both onto the
-// board, per track, per race server:
+// board, per SERIES, per SEASON, per track:
 //
 //   FILES     The server manager writes a result JSON for every session it
 //             runs, practice included, with every lap and the server's own
@@ -20,29 +20,37 @@
 //   RECORDER  The in-game recorder (lib/telemetryLaps.js) is served to every
 //             driver who joins, so the telemetry store holds each driver's
 //             fastest laps too. It knows the time and the top speed but not
-//             the sector lines. Switching it on for a track is one line here
-//             saying which series' season to read; the laps are re-read as the
-//             board is built, so a quicker lap posted later reaches the board
-//             by itself.
+//             the sector lines. Switching it on for a track is one flag here;
+//             the laps are re-read as the board is built, so a quicker lap
+//             posted later reaches the board by itself.
 //
 // Per driver the faster lap wins whichever source it came from, and on the
 // board itself a live lap beats either the moment it is quicker (services/
 // liveTiming.js). A tie between the two sources goes to the file: it has the
 // sectors.
 //
-// Why per SERVER and not per series: the board is built once per race server
-// and broadcast to everyone watching it, whatever series they came in through.
-// Where the laps are SHOWN is a server; a series only decides which recorder
-// store is read.
+// THE SEASON IS PART OF THE KEY, and that is a rule, not a filing choice. The
+// league runs different cars every season, so a Baku time from last season is
+// not a time anybody is chasing this season — and it must never appear on the
+// board when the calendar comes back round to Baku. Everything here is filed
+// under the series and season it was given in, and the board reads only the
+// ACTIVE season of the series that follow its race server (setBoardScopes,
+// kept fresh by the relay). When the season moves on, last season's records
+// stay on disk and stop being read; nobody has to delete anything.
 //
-// Files under DATA_DIR/live-best-laps/<serverKey>/<trackKey>.json, one per
-// track: the recorder switch, the laps kept from uploaded files, and a line
-// per file so the admin card can say what it has been given.
+// Why the board is asked by SERVER: it is built once per race server and
+// broadcast to everyone watching it. Which series' season(s) that means is
+// the assignment the admin manages (lib/liveServers.js), resolved by the relay
+// and handed in here as the server's scopes.
+//
+// Files under DATA_DIR/live-best-laps/<series>/s<season>/<trackKey>.json, one
+// per track: the recorder switch, the laps kept from uploaded files, and a
+// line per file so the admin card can say what it has been given.
 // ---------------------------------------------------------------------------
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from "fs";
 import { LIVE_BEST_LAPS_DIR } from "./dataDirs.js";
-import { isTrackKey, bestLapPerDriver } from "./telemetryLaps.js";
+import { isTrackKey, bestLapPerDriver, seriesKeyOf, seasonKeyOf } from "./telemetryLaps.js";
 
 // Same bar as the telemetry store, for the same reason: a number outside this
 // is not a lap time and has no business reaching the board.
@@ -65,27 +73,59 @@ const BESTS_TTL_MS = 30_000;
 // are one row per driver regardless; this is only the list on the admin card.
 const FILES_MAX = 50;
 
-function fileFor(serverKey, trackKey) {
-  return join(LIVE_BEST_LAPS_DIR, serverKey, `${trackKey}.json`);
+// ---- Scopes: which (series, season) a server's board reads -----------------
+//
+// Set by the live relay from the series → server assignment and each series'
+// active season (services/liveTiming.js refreshes it every minute), and read
+// synchronously by every board build. A server nothing has been set for
+// carries nothing — the board is the session and nothing else, which is also
+// what it is for the first minute after a restart.
+const scopesByServer = new Map(); // serverKey -> [{ series, season }]
+
+export function setBoardScopes(serverKey, scopes) {
+  if (!SERVER_KEY_RE.test(String(serverKey || ""))) return;
+  const clean = [];
+  for (const s of Array.isArray(scopes) ? scopes : []) {
+    const series = String(s?.series || "");
+    const season = Number(s?.season) || 0;
+    if (series && season > 0 && !clean.some((c) => c.series === series && c.season === season)) {
+      clean.push({ series, season });
+    }
+  }
+  scopesByServer.set(serverKey, clean);
+}
+
+export function boardScopes(serverKey) {
+  return scopesByServer.get(serverKey) || [];
+}
+
+// ---- The per-track record ---------------------------------------------------
+
+function validScope(series, season, trackKey) {
+  return !!String(series || "") && Number(season) > 0 && isTrackKey(String(trackKey || ""));
+}
+
+function trackDir(series, season) {
+  return join(LIVE_BEST_LAPS_DIR, seriesKeyOf(series), seasonKeyOf(season));
+}
+
+function fileFor(series, season, trackKey) {
+  return join(trackDir(series, season), `${trackKey}.json`);
 }
 
 // Two memos, invalidated by the writes below: the track's file (which changes
 // when an admin does something) and the recorder's laps read through it
 // (which change on their own, hence the TTL).
-const trackCache = new Map(); // `${serverKey}/${trackKey}` -> track record | null
+const trackCache = new Map(); // `${series}/${season}/${trackKey}` -> record | null
 const recorderCache = new Map(); // same key -> { at, laps }
 
-function cacheKey(serverKey, trackKey) {
-  return `${serverKey}/${trackKey}`;
+function cacheKey(series, season, trackKey) {
+  return `${seriesKeyOf(series)}/${seasonKeyOf(season)}/${trackKey}`;
 }
 
-function forget(serverKey, trackKey) {
-  trackCache.delete(cacheKey(serverKey, trackKey));
-  recorderCache.delete(cacheKey(serverKey, trackKey));
-}
-
-function validKeys(serverKey, trackKey) {
-  return SERVER_KEY_RE.test(String(serverKey || "")) && isTrackKey(String(trackKey || ""));
+function forget(series, season, trackKey) {
+  trackCache.delete(cacheKey(series, season, trackKey));
+  recorderCache.delete(cacheKey(series, season, trackKey));
 }
 
 // One lap on its way to the board, or null if it is not one. Written
@@ -121,75 +161,6 @@ function cleanLap(raw, from) {
   };
 }
 
-// A track's record as stored, or null. Reads the shape before files were part
-// of it (v2: the recorder switch at the top level) as a record with that
-// switch and no laps. Never throws — a broken file is no record, not an
-// outage; the board goes back to being the session it was.
-function readTrack(serverKey, trackKey) {
-  if (!validKeys(serverKey, trackKey)) return null;
-  const key = cacheKey(serverKey, trackKey);
-  if (trackCache.has(key)) return trackCache.get(key);
-
-  let rec = null;
-  try {
-    const path = fileFor(serverKey, trackKey);
-    if (existsSync(path)) {
-      const raw = JSON.parse(readFileSync(path, "utf8"));
-      const src = raw?.source ?? (raw?.series ? raw : null);
-      const series = String(src?.series || "");
-      const season = Number(src?.season) || 0;
-      const source =
-        series && season > 0
-          ? {
-              series,
-              season,
-              legacy: !!src.legacy,
-              addedAt: src.addedAt ? String(src.addedAt) : null,
-            }
-          : null;
-      const laps = (Array.isArray(raw?.laps) ? raw.laps : []).map((l) => cleanLap(l, "file")).filter(Boolean);
-      const files = (Array.isArray(raw?.files) ? raw.files : [])
-        .map((f) => ({
-          name: String(f?.name || "").slice(0, 120),
-          type: String(f?.type || "").slice(0, 20),
-          date: f?.date ? String(f.date).slice(0, 40) : null,
-          uploadedAt: f?.uploadedAt ? String(f.uploadedAt) : null,
-          laps: Number(f?.laps) || 0,
-        }))
-        .filter((f) => f.name);
-      rec = {
-        trackKey,
-        track: String(raw?.track || src?.track || ""),
-        layout: String(raw?.layout || src?.layout || ""),
-        source,
-        laps: onePerDriver(laps),
-        files,
-      };
-      if (!rec.source && !rec.laps.length) rec = null;
-    }
-  } catch {
-    rec = null;
-  }
-  trackCache.set(key, rec);
-  return rec;
-}
-
-function writeTrack(serverKey, trackKey, rec) {
-  const payload = {
-    v: 3,
-    trackKey,
-    track: rec.track || "",
-    layout: rec.layout || "",
-    source: rec.source,
-    laps: rec.laps,
-    files: rec.files.slice(-FILES_MAX),
-  };
-  mkdirSync(join(LIVE_BEST_LAPS_DIR, serverKey), { recursive: true });
-  writeFileSync(fileFor(serverKey, trackKey), JSON.stringify(payload));
-  forget(serverKey, trackKey);
-  return payload;
-}
-
 // Fastest first, one row per driver. Where two sources have the same time to
 // the millisecond it is the same lap, and the one with sectors is kept.
 function onePerDriver(laps) {
@@ -203,26 +174,98 @@ function onePerDriver(laps) {
   return [...byDriver.values()].sort((a, b) => a.lapTimeMs - b.lapTimeMs);
 }
 
-// Which telemetry store one track's board reads from, or null when the
-// recorder is not switched on for it.
-export function readSource(serverKey, trackKey) {
-  return readTrack(serverKey, trackKey)?.source ?? null;
+// A track's record as stored, or null. Never throws — a broken file is no
+// record, not an outage; the board goes back to being the session it was.
+function readTrack(series, season, trackKey) {
+  if (!validScope(series, season, trackKey)) return null;
+  const key = cacheKey(series, season, trackKey);
+  if (trackCache.has(key)) return trackCache.get(key);
+
+  let rec = null;
+  try {
+    const path = fileFor(series, season, trackKey);
+    if (existsSync(path)) {
+      const raw = JSON.parse(readFileSync(path, "utf8"));
+      const recorder = raw?.recorder?.on
+        ? { on: true, addedAt: raw.recorder.addedAt ? String(raw.recorder.addedAt) : null }
+        : null;
+      const laps = (Array.isArray(raw?.laps) ? raw.laps : []).map((l) => cleanLap(l, "file")).filter(Boolean);
+      const files = (Array.isArray(raw?.files) ? raw.files : [])
+        .map((f) => ({
+          name: String(f?.name || "").slice(0, 120),
+          type: String(f?.type || "").slice(0, 20),
+          date: f?.date ? String(f.date).slice(0, 40) : null,
+          uploadedAt: f?.uploadedAt ? String(f.uploadedAt) : null,
+          laps: Number(f?.laps) || 0,
+        }))
+        .filter((f) => f.name);
+      rec = {
+        trackKey,
+        track: String(raw?.track || ""),
+        layout: String(raw?.layout || ""),
+        recorder,
+        laps: onePerDriver(laps),
+        files,
+      };
+      if (!rec.recorder && !rec.laps.length) rec = null;
+    }
+  } catch {
+    rec = null;
+  }
+  trackCache.set(key, rec);
+  return rec;
+}
+
+function writeTrack(series, season, trackKey, rec) {
+  const payload = {
+    v: 4,
+    series: String(series),
+    season: Number(season),
+    trackKey,
+    track: rec.track || "",
+    layout: rec.layout || "",
+    recorder: rec.recorder,
+    laps: rec.laps,
+    files: rec.files.slice(-FILES_MAX),
+  };
+  mkdirSync(trackDir(series, season), { recursive: true });
+  writeFileSync(fileFor(series, season, trackKey), JSON.stringify(payload));
+  forget(series, season, trackKey);
+  return payload;
+}
+
+const emptyRecord = (trackKey) => ({ trackKey, track: "", layout: "", recorder: null, laps: [], files: [] });
+
+// ---- Reads ------------------------------------------------------------------
+
+// Whether the recorder is switched on for this track in this season, and
+// since when. Null when it is not.
+export function readSource(series, season, trackKey) {
+  return readTrack(series, season, trackKey)?.recorder ?? null;
 }
 
 // The laps kept from uploaded files for one track, fastest first.
-export function uploadedLaps(serverKey, trackKey) {
-  return readTrack(serverKey, trackKey)?.laps ?? [];
+export function uploadedLaps(series, season, trackKey) {
+  return readTrack(series, season, trackKey)?.laps ?? [];
 }
 
-// What the recorder's store currently has for this track, through the switch
-// — memoised for BESTS_TTL_MS, because the board asks several times a second.
-function recorderBests(serverKey, trackKey, source) {
-  const key = cacheKey(serverKey, trackKey);
+// The files one track has been given, for the admin card.
+export function uploadedFiles(series, season, trackKey) {
+  return readTrack(series, season, trackKey)?.files ?? [];
+}
+
+// What the recorder's store currently has for this track — memoised for
+// BESTS_TTL_MS, because the board asks several times a second. The season is
+// the scope's, never anything older, and `legacy` reads the store's
+// pre-season shapes alongside because the scope is always the season being
+// raced, which is the one those belong to.
+function recorderBests(series, season, trackKey) {
+  const key = cacheKey(series, season, trackKey);
   const memo = recorderCache.get(key);
   if (memo && Date.now() - memo.at < BESTS_TTL_MS) return memo.laps;
   let laps = [];
   try {
-    laps = bestLapPerDriver(source.series, source.season, trackKey, source.legacy)
+    laps = bestLapPerDriver(series, season, trackKey, true)
       .map((l) => cleanLap(l, "recorder"))
       .filter(Boolean);
   } catch {
@@ -232,34 +275,43 @@ function recorderBests(serverKey, trackKey, source) {
   return laps;
 }
 
-// The training bests one track's board is carrying right now, fastest first,
-// one row per driver across both sources. Empty when that track carries
-// nothing. This is the call the live relay makes, so it is the one that has
-// to be cheap: the file record is memoised until something writes it, the
-// recorder read for half a minute, and merging a few dozen rows is nothing.
-export function currentBests(serverKey, trackKey) {
-  const rec = readTrack(serverKey, trackKey);
+// The training bests one track carries in one series' season, fastest first,
+// one row per driver across both sources. Empty when it carries nothing.
+export function bestsFor(series, season, trackKey) {
+  const rec = readTrack(series, season, trackKey);
   if (!rec) return [];
-  const fromRecorder = rec.source ? recorderBests(serverKey, trackKey, rec.source) : [];
+  const fromRecorder = rec.recorder ? recorderBests(series, season, trackKey) : [];
   return onePerDriver([...rec.laps, ...fromRecorder]);
 }
 
+// The training bests one SERVER's board is carrying for a track right now:
+// bestsFor over every (series, active season) that follows that server. This
+// is the call the live relay makes, so it is the one that has to be cheap:
+// records are memoised until something writes them, the recorder read for
+// half a minute, and merging a few dozen rows is nothing.
+export function currentBests(serverKey, trackKey) {
+  const scopes = boardScopes(serverKey);
+  if (!scopes.length) return [];
+  return onePerDriver(scopes.flatMap((s) => bestsFor(s.series, s.season, trackKey)));
+}
+
+// ---- Writes -----------------------------------------------------------------
+
 // Keep the laps of one uploaded session file for a track. What is kept is the
-// fastest per driver across everything this track has been given so far — a
-// second file for the same evening adds the drivers it has and improves the
-// times it beats, and never takes a time away.
-export function addUploadedLaps(serverKey, trackKey, { track, layout, laps, file }) {
-  if (!SERVER_KEY_RE.test(String(serverKey || ""))) throw new Error("Bad server key");
-  if (!isTrackKey(String(trackKey || ""))) throw new Error("Bad track key");
-  const rec = readTrack(serverKey, trackKey) || { trackKey, track: "", layout: "", source: null, laps: [], files: [] };
+// fastest per driver across everything this track has been given so far in
+// this season — a second file for the same evening adds the drivers it has
+// and improves the times it beats, and never takes a time away.
+export function addUploadedLaps(series, season, trackKey, { track, layout, laps, file }) {
+  if (!validScope(series, season, trackKey)) throw new Error("A series, a season and a track are required");
+  const rec = readTrack(series, season, trackKey) || emptyRecord(trackKey);
   const incoming = (Array.isArray(laps) ? laps : []).map((l) => cleanLap(l, "file")).filter(Boolean);
   const before = new Map(rec.laps.map((l) => [l.steamId, l.lapTimeMs]));
   const merged = onePerDriver([...rec.laps, ...incoming]);
   const improved = merged.filter((l) => before.get(l.steamId) == null || l.lapTimeMs < before.get(l.steamId)).length;
-  const written = writeTrack(serverKey, trackKey, {
+  const written = writeTrack(series, season, trackKey, {
     track: track || rec.track,
     layout: layout ?? rec.layout,
-    source: rec.source,
+    recorder: rec.recorder,
     laps: merged,
     files: [
       ...rec.files,
@@ -275,36 +327,32 @@ export function addUploadedLaps(serverKey, trackKey, { track, layout, laps, file
   return { kept: written.laps.length, read: incoming.length, improved };
 }
 
-// Switch the recorder on for one track on one server's board. Idempotent:
-// pressing the button again re-points the same line, which is how a board
-// moves to a new season. Leaves uploaded laps exactly as they are.
-export function addSource(serverKey, trackKey, { series, season, track, layout, legacy = false }) {
-  if (!SERVER_KEY_RE.test(String(serverKey || ""))) throw new Error("Bad server key");
-  if (!isTrackKey(String(trackKey || ""))) throw new Error("Bad track key");
-  const cleanSeries = String(series || "");
-  const cleanSeason = Number(season) || 0;
-  if (!cleanSeries || cleanSeason <= 0) throw new Error("A series and a season are required");
-
-  const rec = readTrack(serverKey, trackKey) || { trackKey, track: "", layout: "", source: null, laps: [], files: [] };
-  const source = { series: cleanSeries, season: cleanSeason, legacy: !!legacy, addedAt: new Date().toISOString() };
-  writeTrack(serverKey, trackKey, {
+// Switch the recorder on for one track in one series' season. Idempotent, and
+// it leaves uploaded laps exactly as they are. There is nothing to point it
+// at: the season IS the key, so next season's Baku starts with the switch off
+// and last season's laps out of reach.
+export function switchRecorder(series, season, trackKey, { track, layout } = {}) {
+  if (!validScope(series, season, trackKey)) throw new Error("A series, a season and a track are required");
+  const rec = readTrack(series, season, trackKey) || emptyRecord(trackKey);
+  const recorder = { on: true, addedAt: rec.recorder?.addedAt || new Date().toISOString() };
+  writeTrack(series, season, trackKey, {
     track: track || rec.track,
     layout: layout ?? rec.layout,
-    source,
+    recorder,
     laps: rec.laps,
     files: rec.files,
   });
-  return source;
+  return recorder;
 }
 
-// Take one track off the board entirely — the recorder switch and every lap
-// kept from a file. The board goes back to showing the session the server is
-// in and nothing else.
-export function clearTrack(serverKey, trackKey) {
-  if (!validKeys(serverKey, trackKey)) return false;
+// Take one track off the board for one season — the recorder switch and every
+// lap kept from a file. The board goes back to showing the session the server
+// is in and nothing else.
+export function clearTrack(series, season, trackKey) {
+  if (!validScope(series, season, trackKey)) return false;
   let removed = false;
   try {
-    const path = fileFor(serverKey, trackKey);
+    const path = fileFor(series, season, trackKey);
     if (existsSync(path)) {
       unlinkSync(path);
       removed = true;
@@ -312,32 +360,32 @@ export function clearTrack(serverKey, trackKey) {
   } catch {
     /* it stays until the next attempt; the memos below still let go of it */
   }
-  forget(serverKey, trackKey);
+  forget(series, season, trackKey);
   return removed;
 }
 
-// Every track this server carries training times for, newest change first —
-// the admin card's "what is on the board" list. It counts what the board is
-// carrying, so it reads it: an admin opening the card is exactly the moment to
-// be accurate rather than cheap.
-export function listTracks(serverKey) {
-  if (!SERVER_KEY_RE.test(String(serverKey || ""))) return [];
-  const dir = join(LIVE_BEST_LAPS_DIR, serverKey);
+// Every track one series' season carries training times for, newest change
+// first — the admin card's "what is on the board" list. It counts what the
+// board is carrying, so it reads it: an admin opening the card is exactly the
+// moment to be accurate rather than cheap.
+export function listTracks(series, season) {
+  if (!String(series || "") || !(Number(season) > 0)) return [];
+  const dir = trackDir(series, season);
   if (!existsSync(dir)) return [];
   const out = [];
   try {
     for (const name of readdirSync(dir)) {
       if (!name.endsWith(".json")) continue;
       const trackKey = name.slice(0, -5);
-      const rec = readTrack(serverKey, trackKey);
+      const rec = readTrack(series, season, trackKey);
       if (!rec) continue;
-      const laps = currentBests(serverKey, trackKey);
-      const stamps = [rec.source?.addedAt, ...rec.files.map((f) => f.uploadedAt)].filter(Boolean).sort();
+      const laps = bestsFor(series, season, trackKey);
+      const stamps = [rec.recorder?.addedAt, ...rec.files.map((f) => f.uploadedAt)].filter(Boolean).sort();
       out.push({
         trackKey,
         track: rec.track,
         layout: rec.layout,
-        recorder: rec.source ? { series: rec.source.series, season: rec.source.season } : null,
+        recorder: !!rec.recorder,
         files: rec.files.length,
         fileLaps: rec.laps.length,
         laps: laps.length,
@@ -349,11 +397,6 @@ export function listTracks(serverKey) {
     return out;
   }
   return out.sort((a, b) => String(b.changedAt || "").localeCompare(String(a.changedAt || "")));
-}
-
-// The files one track has been given, for the admin card.
-export function uploadedFiles(serverKey, trackKey) {
-  return readTrack(serverKey, trackKey)?.files ?? [];
 }
 
 // What pressing the recorder button does to one driver's row, for the admin
@@ -377,9 +420,10 @@ export function importEffect(telemetryMs, { liveMs = null, importedMs = null } =
   return shown < telemetryMs ? "slower" : "faster";
 }
 
-// Tests drive the store through the filesystem, so they need the memos cleared
-// between cases; nothing in the running server calls this.
+// Tests drive the store through the filesystem, so they need the memos and the
+// scopes cleared between cases; nothing in the running server calls this.
 export function __clearCache() {
   trackCache.clear();
   recorderCache.clear();
+  scopesByServer.clear();
 }

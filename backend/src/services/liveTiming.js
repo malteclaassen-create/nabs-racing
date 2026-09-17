@@ -31,7 +31,10 @@ import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
-import { currentBests } from "../lib/liveBestLaps.js";
+import { currentBests, setBoardScopes } from "../lib/liveBestLaps.js";
+import { dbListSeries } from "../lib/series.js";
+import { resolveSeason } from "./seasonService.js";
+import { readLiveServerMap, serverAssignment } from "../lib/liveServers.js";
 
 // ---------------------------------------------------------------------------
 // Public driver id for the live board.
@@ -2053,8 +2056,37 @@ function seriesOf(req) {
 }
 
 // Attach the frontend-facing WebSocket and start the upstream connections.
+// Which (series, active season) each race server's board carries training
+// times for (lib/liveBestLaps.js explains why the season is part of it). The
+// series → server assignment is admin managed and the active season moves on
+// a few times a year, so this is re-read every minute rather than once: the
+// day the new season is switched on, last season's Baku times leave the board
+// within the minute, and nobody deletes anything.
+export async function refreshBoardScopes() {
+  try {
+    const [series, map] = await Promise.all([
+      dbListSeries(prisma, { includePrivate: true }),
+      readLiveServerMap(prisma),
+    ]);
+    const byServer = new Map(LIVE_SERVERS.map((s) => [s.key, []]));
+    for (const s of series) {
+      const key = serverAssignment(map, s.slug).key;
+      const season = await resolveSeason(prisma, null, { includePrivate: true, series: s.slug });
+      const n = Number(season?.number) || 0;
+      if (n > 0) byServer.get(key)?.push({ series: s.slug, season: n });
+    }
+    for (const [key, scopes] of byServer) setBoardScopes(key, scopes);
+  } catch (e) {
+    // The board stays what it was; the next minute tries again.
+    console.warn("[live] board scopes not refreshed:", e?.message || e);
+  }
+}
+const SCOPES_REFRESH_MS = 60_000;
+
 export function initLiveTiming(server) {
   for (const r of relays.values()) r.connect();
+  refreshBoardScopes();
+  setInterval(refreshBoardScopes, SCOPES_REFRESH_MS).unref?.();
 
   const wss = new WebSocketServer({ server, path: "/api/live/ws" });
   clientWss = wss; // memory diagnostics read the viewer count from here

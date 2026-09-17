@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { __testing } from "./liveTiming.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { addSource, clearTrack, addUploadedLaps, __clearCache as __clearImportCache } from "../lib/liveBestLaps.js";
+import { switchRecorder, clearTrack, addUploadedLaps, setBoardScopes, __clearCache as __clearImportCache } from "../lib/liveBestLaps.js";
 import { TELEMETRY_LAPS_DIR, seriesKeyOf, seasonKeyOf } from "../lib/telemetryLaps.js";
 
 const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset, mapKey } = __testing;
@@ -963,8 +963,8 @@ describe("liveTiming imported training bests", () => {
     );
   }
 
-  // Tell this board to carry that store's training times.
-  const carry = () => addSource(SERVER, TRACK, { series: SERIES, season: SEASON, track: TRACK });
+  // Switch the recorder on for this track in this season.
+  const carry = () => switchRecorder(SERIES, SEASON, TRACK, { track: TRACK });
 
   const msToNs = (ms) => ms * 1e6;
 
@@ -1000,13 +1000,16 @@ describe("liveTiming imported training bests", () => {
   const row = (board, name) => board.entries.find((e) => e.name === name);
 
   const wipe = () => {
-    clearTrack(SERVER, TRACK);
+    clearTrack(SERIES, SEASON, TRACK);
     rmSync(join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
     __clearImportCache();
   };
   beforeEach(() => {
     reset();
     wipe();
+    // The test server's board follows this series, whose active season is 8 —
+    // what the relay resolves by the minute in production.
+    setBoardScopes(SERVER, [{ series: SERIES, season: SEASON }]);
   });
   afterEach(wipe);
 
@@ -1116,7 +1119,7 @@ describe("liveTiming imported training bests", () => {
   });
 
   it("a lap from a session file brings the server's sectors onto the board", () => {
-    addUploadedLaps(SERVER, TRACK, {
+    addUploadedLaps(SERIES, SEASON, TRACK, {
       track: "monza",
       layout: "",
       laps: [{ steamId: CARA, name: "Cara", car: "f", lapTimeMs: 94_000, sectorsMs: [29_500, 32_000, 32_500] }],
@@ -1133,7 +1136,7 @@ describe("liveTiming imported training bests", () => {
   });
 
   it("when a file's lap takes over a live row, the splits follow the lap", () => {
-    addUploadedLaps(SERVER, TRACK, {
+    addUploadedLaps(SERIES, SEASON, TRACK, {
       track: "monza",
       layout: "",
       laps: [{ steamId: ALICE, name: "Alice", car: "f", lapTimeMs: 93_000, sectorsMs: [29_000, 32_000, 32_000] }],
@@ -1165,6 +1168,18 @@ describe("liveTiming imported training bests", () => {
     reset();
     ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
     expect(row(getBoard(), "Cara")?.bestLapMs).toBe(94_000);
+  });
+
+  it("a new season starts the board from nothing, whatever last season carried for the track", () => {
+    recordLap(CARA, 94_000, "Cara");
+    carry();
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+    expect(row(getBoard(), "Cara")).toBeTruthy();
+
+    // The league switches season 9 on. The relay's next scope refresh sees
+    // it, and the same server on the same track carries nothing any more.
+    setBoardScopes(SERVER, [{ series: SERIES, season: SEASON + 1 }]);
+    expect(getBoard().entries.map((e) => e.name)).toEqual(["Alice"]);
   });
 
   it("no source is the board exactly as it was", () => {
