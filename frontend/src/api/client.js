@@ -853,6 +853,10 @@ export const api = {
   adminSeasons: () => request(`/admin/seasons${seriesQ()}`, { auth: true }),
   createSeason: (body) => request("/admin/seasons", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   updateSeason: (id, body) => request(`/admin/seasons/${id}`, { method: "PUT", body, auth: true }),
+  // Points the league sets by hand for a season: [{ driverId, adjust, override }].
+  // The whole table goes in one call; a driver with both fields blank is cleared.
+  updateSeasonManualPoints: (id, entries) =>
+    request(`/admin/seasons/${id}/manual-points`, { method: "PUT", body: { entries }, auth: true }),
   deleteSeason: (id, force = false) =>
     request(`/admin/seasons/${id}${force ? "?force=1" : ""}`, { method: "DELETE", auth: true }),
   activateSeason: (id) => request(`/admin/seasons/${id}/activate`, { method: "POST", auth: true }),

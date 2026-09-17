@@ -596,6 +596,7 @@ export default function DriverStandings() {
           fastestLapPoints={data.fastestLapPoints || 0}
           customPoints={data.customPoints || {}}
           championOverride={data.championOverride || null}
+          manualPoints={!!data.manualPoints}
           rows={rows}
           dropWorst={data.dropWorst}
           officialTotals={data.officialTotals}

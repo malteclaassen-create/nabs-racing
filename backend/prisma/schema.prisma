@@ -231,6 +231,15 @@ model Driver {
   // JSON array of edition keys this row has already been notified about (bell),
   // so a newly-earned card pings once. First read seeds it silently. Raw SQL.
   cardUnlocksNotified String?
+  // Points the league set by hand for THIS season row (migration
+  // driver_manual_points): pointsAdjust is added to the computed season total
+  // (negative = a deduction, e.g. a stewards' penalty), pointsOverride is the
+  // total outright and wins over both. Both null = the season's scoring
+  // decides. Only the DRIVER standings read them — a season-level figure can
+  // not be traced to the round a team scored it in. Managed via raw SQL
+  // (ensureAppSchema + lib/manualPoints.js) like hideFromStandings.
+  pointsAdjust   Int?
+  pointsOverride Int?
   // Special league role, shown on the rating card and profile: null = regular
   // driver, 'safety' = safety car driver. Managed via raw SQL (ensureAppSchema),
   // migration driver_role.

@@ -151,7 +151,11 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
 // table (a double-points finale): the column is marked * and explained below.
 // `championOverride` — { driverId, name } when the league decided the title by
 // a rule the points do not express; the row sits first and the footnote says why.
-export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false, showMovement = false, sprintRounds = [], fastestLapPoints = 0, customPoints = {}, championOverride = null }) {
+// `manualPoints` — at least one driver's total was set by hand (a bonus the
+// site cannot compute, a deduction, or a total typed in whole): those rows
+// carry a mark on their total and the footnote spells the rule out. The values
+// themselves ride on each row as pointsAdjust / pointsOverride.
+export default function StandingsTable({ variant, raceNumbers, rows, dropWorst = 3, officialTotals = false, dropMode = "driver", teamDropWorst = null, decided = false, showMovement = false, sprintRounds = [], fastestLapPoints = 0, customPoints = {}, championOverride = null, manualPoints = false }) {
   const isDriver = variant === "driver";
   const sprintSet = new Set(sprintRounds || []);
   const showSprintNote = raceNumbers.some((n) => sprintSet.has(n));
@@ -161,6 +165,13 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
   const showCustomNote = customRounds.length > 0;
   const tableText = (t) => (t.length > 6 ? `${t.slice(0, 6).join(", ")}, …` : t.join(", "));
   const showChampionNote = isDriver && !!championOverride;
+  // Hand-set points: only the driver table can carry them (a season figure
+  // cannot be traced to the round a team scored it in).
+  const manualOf = (row) =>
+    isDriver && manualPoints && (row.pointsAdjust || row.pointsOverride != null)
+      ? { adjust: row.pointsAdjust || 0, override: row.pointsOverride ?? null }
+      : null;
+  const showManualNote = isDriver && manualPoints && rows.some((r) => manualOf(r));
   // Constructor tables can use a team-level drop rule instead of inheriting
   // each driver's dropped rounds — the footnote must match whichever is in
   // force: "team" counts single-driver round scores, "teamRounds" counts whole
@@ -375,6 +386,20 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                         auto-sized — without it every gained digit re-measured
                         the whole table and the header twitched (see CountUp). */}
                     <CountUp end={row.total} reserve />
+                    {/* A total the league set by hand says so on the row, or
+                        the column simply disagrees with the cells beside it. */}
+                    {manualOf(row) && (
+                      <sup
+                        className="ml-0.5 align-super text-[10px] font-bold text-warn"
+                        title={
+                          manualOf(row).override != null
+                            ? "Total set by hand by the league"
+                            : `${manualOf(row).adjust > 0 ? "+" : ""}${manualOf(row).adjust} points added by hand by the league`
+                        }
+                      >
+                        M
+                      </sup>
+                    )}
                   </td>
                 </tr>
               );
@@ -382,13 +407,20 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
           </tbody>
         </table>
       </div>
-      {(showOfficialNote || showDropNote || showSprintNote || showFlNote || showCustomNote || showChampionNote) && (
+      {(showOfficialNote || showDropNote || showSprintNote || showFlNote || showCustomNote || showChampionNote || showManualNote) && (
         <div className="space-y-1 border-t border-border px-4 py-2.5 font-mono text-[11px] leading-relaxed text-light">
           {showChampionNote && (
             <p>
               <span className="font-bold uppercase text-medium">Champion by the league&rsquo;s rule.</span> {championOverride.name} is
               champion without the most points: the title was decided by the league&rsquo;s own rule for that season, and the
               table shows the season that way.
+            </p>
+          )}
+          {showManualNote && (
+            <p>
+              <span className="font-bold text-warn">M</span> marks points the league set by hand: a bonus the results
+              cannot show on their own, a deduction, or a total taken straight from the league&rsquo;s own sheet. The round
+              columns stay as they were scored, so they may not add up to the total.
             </p>
           )}
           {showCustomNote && (

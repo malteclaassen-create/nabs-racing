@@ -21,7 +21,7 @@ import { countryFor } from "../data/driverCountries.js";
 import { flagFor } from "../data/circuits.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
 import { fmtLap, NO_VALUE} from "../utils/format.js";
-import { isIdleReserve } from "../utils/standingsRow.js";
+import { isIdleReserve, finishesOf } from "../utils/standingsRow.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
@@ -95,6 +95,11 @@ function readableText(hex) {
 function statsFromRow(row) {
   const fin = Object.values(row.perRace).filter((r) => r.status === "FINISHED" && r.position != null);
   const pos = fin.map((r) => r.position);
+  // Wins and podiums count every classification of a round, the sprint of a
+  // sprint weekend included (utils/standingsRow.js) — the same rule the
+  // backend's stat tiles use. Best/average finish stay the feature race, so
+  // the duel's "avg finish" line still compares like with like.
+  const classified = finishesOf(Object.values(row.perRace));
   // The sprint half of a sprint weekend rides on the standings cell as
   // `sprint` (standingsService.buildDriverPerRace); a season without sprint
   // weekends has none, and the Sprint duel then stays away.
@@ -109,8 +114,8 @@ function statsFromRow(row) {
   const avg = (arr) => (arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null);
   return {
     points: row.total,
-    wins: fin.filter((r) => r.position === 1).length,
-    podiums: fin.filter((r) => r.position <= 3).length,
+    wins: classified.filter((r) => r.position === 1).length,
+    podiums: classified.filter((r) => r.position <= 3).length,
     bestFinish: pos.length ? Math.min(...pos) : null,
     avgFinish: avg(pos),
     quali: grids.length,
@@ -178,12 +183,13 @@ const TILE_DEFS = (stats) => [
     sub: stats.fastestLap ? `best ${fmtLapMs(stats.fastestLap.bestLapMs)} · ${stats.fastestLap.track}` : "",
     available: !!stats.fastestLap || (stats.fastestLaps ?? 0) > 0,
   },
-  // The sprint half of sprint weekends, counted apart from the feature races
-  // above (a sprint win is not a win). Only where the season(s) ran one.
+  // The sprint half of sprint weekends. These wins and podiums are INSIDE the
+  // Wins and Podiums tiles above (a sprint win is a win); this is the
+  // breakdown. Only where the season(s) ran one.
   {
     key: "sprintWins", icon: "trophy", label: "Sprint Wins",
     value: stats.sprint?.wins ?? 0,
-    sub: `${stats.sprint?.starts ?? 0} sprint start${stats.sprint?.starts === 1 ? "" : "s"}`,
+    sub: `of the wins above · ${stats.sprint?.starts ?? 0} sprint start${stats.sprint?.starts === 1 ? "" : "s"}`,
     accent: stats.sprint?.wins ? MEDAL_TEXT[0] : undefined,
     available: !!stats.sprint,
   },

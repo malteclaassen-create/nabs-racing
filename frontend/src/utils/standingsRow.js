@@ -32,3 +32,35 @@ export function hasRaced(row) {
 export function isIdleReserve(row) {
   return !!row && row.tier === 0 && !hasRaced(row);
 }
+
+// ---------------------------------------------------------------------------
+// EVERY CLASSIFICATION OF A ROUND — the twin of the backend's
+// lib/standingsRow.js (see the long note there). A sprint weekend is one round
+// with two races; the sprint rides on the round's cell as `sprint`, and the
+// league counts it: a sprint win is a win, a sprint podium is a podium.
+// Starts, averages and grid stats stay per ROUND. If either side changes,
+// change both.
+// ---------------------------------------------------------------------------
+
+// The round cells of a standings row ({ [roundNumber]: cell }).
+export function roundsOf(row) {
+  return Object.values(row?.perRace || {});
+}
+
+// Feature race + sprint of each round, as { status, position, sprint }.
+export function classificationsOf(cells) {
+  const out = [];
+  for (const cell of cells || []) {
+    if (!cell) continue;
+    out.push({ status: cell.status ?? null, position: cell.position ?? null, sprint: false });
+    if (cell.sprint) {
+      out.push({ status: cell.sprint.status ?? null, position: cell.sprint.position ?? null, sprint: true });
+    }
+  }
+  return out;
+}
+
+// The classified finishes among them — what wins / podiums / top-N count.
+export function finishesOf(cells) {
+  return classificationsOf(cells).filter((c) => c.status === "FINISHED" && c.position != null);
+}
