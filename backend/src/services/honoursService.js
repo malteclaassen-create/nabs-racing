@@ -11,6 +11,8 @@ import {
 } from "./standingsService.js";
 import { getPersonGroups } from "../lib/persons.js";
 import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
+import { readSprintChildrenOf } from "../lib/sprintRaces.js";
+import { startsOf } from "../lib/standingsRow.js";
 
 function norm(s) {
   return (s || "")
@@ -90,7 +92,7 @@ export async function getSeasonHonours(prisma, seasonId) {
   const bestNewcomer =
     season.number > 1
       ? rows.find((r) => {
-          const started = Object.values(r.perRace || {}).some((v) => v.status && v.status !== "DNS");
+          const started = startsOf(Object.values(r.perRace || {})).length > 0;
           if (!started) return false;
           const personId = byDriver.get(r.driverId);
           if (personId && priorPersons.has(personId)) return false;
@@ -100,12 +102,28 @@ export async function getSeasonHonours(prisma, seasonId) {
         }) || null
       : null;
 
-  // Fastest race lap of the season.
+  // Fastest race lap of the season, over every classification: the feature
+  // races and, on a sprint weekend, the sprint. The sprint sits on a hidden
+  // child race flagged special (lib/sprintRaces.js), so it is reached through
+  // the parent link rather than the flag — on a league that runs a sprint
+  // every round, half the laps of the season are on those children.
+  const sprintChildren = await readSprintChildrenOf(prisma, races.filter((r) => r.isCompleted));
+  const sprintRaceIds = [...sprintChildren.keys()];
   const results = await prisma.raceResult.findMany({
-    where: { race: { seasonId, isSpecialEvent: false, isCompleted: true } },
+    where: {
+      OR: [
+        { race: { seasonId, isSpecialEvent: false, isCompleted: true } },
+        ...(sprintRaceIds.length ? [{ raceId: { in: sprintRaceIds } }] : []),
+      ],
+    },
     select: { driverId: true, raceId: true, bestLapMs: true },
   });
-  const raceById = new Map(races.map((r) => [r.id, r]));
+  // A sprint's lap is reported under its parent round, which is the round the
+  // league knows: the child carries no number of its own.
+  const raceById = new Map([
+    ...races.map((r) => [r.id, r]),
+    ...[...sprintChildren].map(([childId, parent]) => [childId, parent]),
+  ]);
   let fl = null;
   for (const r of results) {
     if (r.bestLapMs && r.bestLapMs > 0 && (!fl || r.bestLapMs < fl.bestLapMs)) fl = r;
@@ -123,22 +141,33 @@ export async function getSeasonHonours(prisma, seasonId) {
   // Telemetry awards (only where the season has that data): most on-track
   // overtakes overall, and the cleanest driver = fewest car contacts per start
   // among people who started at least 3 rounds.
-  const telRows = await prisma.$queryRawUnsafe(
-    `SELECT rr."driverId" AS "driverId",
-            SUM(COALESCE(rr."overtakes", 0)) AS "overtakes",
-            COUNT(rr."overtakes") AS "ratedOt",
-            SUM(COALESCE(rr."lapsLed", 0)) AS "lapsLed",
-            COUNT(rr."lapsLed") AS "ratedLed",
-            SUM(COALESCE(rr."contacts", 0)) AS "contacts",
-            COUNT(rr."contacts") AS "ratedCt",
-            COUNT(*) AS "starts"
-       FROM "RaceResult" rr
-       JOIN "Race" r ON r.id = rr."raceId"
-      WHERE r."seasonId" = ? AND r."isSpecialEvent" = 0 AND r."isCompleted" = 1
-        AND COALESCE(rr."status", 'FINISHED') != 'DNS'
-      GROUP BY rr."driverId"`,
-    seasonId
-  );
+  // Counted in JS rather than SQL because the sprint halves are reached by the
+  // parent link, not by a flag the query could filter on (see the fastest lap
+  // above) — and the rows are one season's, a few hundred at most.
+  const telSource = await prisma.raceResult.findMany({
+    where: {
+      OR: [
+        { race: { seasonId, isSpecialEvent: false, isCompleted: true } },
+        ...(sprintRaceIds.length ? [{ raceId: { in: sprintRaceIds } }] : []),
+      ],
+      NOT: { status: "DNS" },
+    },
+    select: { driverId: true, overtakes: true, lapsLed: true, contacts: true },
+  });
+  const telByDriver = new Map();
+  for (const r of telSource) {
+    const t = telByDriver.get(r.driverId) || {
+      driverId: r.driverId, overtakes: 0, ratedOt: 0, lapsLed: 0, ratedLed: 0, contacts: 0, ratedCt: 0, starts: 0,
+    };
+    t.starts += 1;
+    // "rated" counts the races that REPORTED the signal, so a season without
+    // telemetry gives no award rather than a winner on zeroes.
+    if (r.overtakes != null) { t.overtakes += r.overtakes; t.ratedOt += 1; }
+    if (r.lapsLed != null) { t.lapsLed += r.lapsLed; t.ratedLed += 1; }
+    if (r.contacts != null) { t.contacts += r.contacts; t.ratedCt += 1; }
+    telByDriver.set(r.driverId, t);
+  }
+  const telRows = [...telByDriver.values()];
   let mostOvertakes = null;
   let mostLapsLed = null;
   let cleanest = null;

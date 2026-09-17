@@ -47,6 +47,55 @@ export function seasonPointsBeforeDrop(row) {
   return (row.total || 0) + dropped;
 }
 
+// The winner of every race of a season, in the order they were driven: for
+// each completed round the SPRINT first and then the feature race, because
+// that is how a sprint weekend runs. A classification only takes a place in
+// the sequence when the season has it on record — a round flagged complete
+// with no results at all is a gap in the data, not a race somebody else won,
+// and must not break a streak. null = the race ran with nobody classified
+// first, which does break one. Pure, exported for the test.
+export function raceWinnerSequence(races, rows) {
+  const slots = new Map(); // round number -> { sprintRan, sprint, featureRan, feature }
+  for (const row of rows) {
+    for (const [num, cell] of Object.entries(row.perRace || {})) {
+      const n = Number(num);
+      const slot = slots.get(n) || { sprintRan: false, sprint: null, featureRan: false, feature: null };
+      if (cell.status) {
+        slot.featureRan = true;
+        if (cell.status === "FINISHED" && cell.position === 1) slot.feature = row.driverId;
+      }
+      if (cell.sprint?.status) {
+        slot.sprintRan = true;
+        if (cell.sprint.status === "FINISHED" && cell.sprint.position === 1) slot.sprint = row.driverId;
+      }
+      slots.set(n, slot);
+    }
+  }
+  const out = [];
+  for (const race of races) {
+    if (!race.isCompleted || race.number == null) continue;
+    const slot = slots.get(race.number);
+    if (!slot) continue;
+    if (slot.sprintRan) out.push(slot.sprint);
+    if (slot.featureRan) out.push(slot.feature);
+  }
+  return out;
+}
+
+// The longest run of the same winner in that sequence, as { person, length },
+// or null when nobody ever won twice in a row (a single win is a run of one).
+// Pure, exported for the test.
+export function longestStreak(winners) {
+  let best = null;
+  let run = { person: null, length: 0 };
+  for (const person of winners) {
+    if (person && person === run.person) run.length += 1;
+    else run = { person, length: person ? 1 : 0 };
+    if (run.person && (!best || run.length > best.length)) best = { ...run };
+  }
+  return best;
+}
+
 const pickPerson = (p) => ({
   driverId: p.driverId, // newest row = the career profile link
   name: p.name,
@@ -220,27 +269,14 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   for (const fl of bestLapByRace.values()) addTo(fastestLaps, fl.driverId);
 
   // --- single records ---------------------------------------------------------
-  // Longest win streak over the series' championship rounds in calendar order.
-  const orderedWins = [];
-  for (const { races, standings } of perSeason) {
-    const winnerByNumber = new Map();
-    for (const row of standings.standings || []) {
-      for (const [num, r] of Object.entries(row.perRace || {})) {
-        if (r.status === "FINISHED" && r.position === 1) winnerByNumber.set(Number(num), row.driverId);
-      }
-    }
-    for (const race of races) {
-      if (!race.isCompleted || race.number == null) continue;
-      orderedWins.push(winnerByNumber.get(race.number) ? personOf(winnerByNumber.get(race.number)) : null);
-    }
-  }
-  let streak = null; // { person, length }
-  let run = { person: null, length: 0 };
-  for (const person of orderedWins) {
-    if (person && person === run.person) run.length += 1;
-    else run = { person, length: person ? 1 : 0 };
-    if (run.person && (!streak || run.length > streak.length)) streak = { ...run };
-  }
+  // Longest win streak over every RACE of the series in the order they were
+  // driven (raceWinnerSequence). It used to walk rounds, so on a sprint
+  // weekend the sprint in between two feature wins was neither a win that
+  // extended the streak nor a race that broke it — it simply was not there.
+  const orderedWins = perSeason
+    .flatMap(({ races, standings }) => raceWinnerSequence(races, standings.standings || []))
+    .map((driverId) => (driverId ? personOf(driverId) : null));
+  const streak = longestStreak(orderedWins);
 
   // Best single seasons: most wins / most points in one season.
   let mostWinsSeason = null; // { person, value, seasonNumber }
@@ -318,7 +354,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   const records = [
     recordEntry("winsSeason", "Most wins in a season", mostWinsSeason, mostWinsSeason ? `Season ${mostWinsSeason.seasonNumber}` : null),
     recordEntry("pointsSeason", "Most points in a season", mostPointsSeason, mostPointsSeason ? `Season ${mostPointsSeason.seasonNumber}` : null),
-    recordEntry("winStreak", "Longest win streak", streak, "consecutive rounds won"),
+    recordEntry("winStreak", "Longest win streak", streak, "consecutive races won, sprints included"),
   ].filter(Boolean);
 
   return { seriesName: series.name, seasons: seasons.length, lists, records, champions };
