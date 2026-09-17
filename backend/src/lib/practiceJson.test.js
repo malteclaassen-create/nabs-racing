@@ -9,7 +9,16 @@ const A = "76561198000000001";
 const B = "76561198000000002";
 
 const result = (guid, name, extra = {}) => ({ DriverGuid: guid, DriverName: name, CarModel: "rss_f1", BestLap: 0, ...extra });
-const lap = (guid, LapTime, Sectors, Cuts = 0, extra = {}) => ({ DriverGuid: guid, LapTime, Sectors, Cuts, CarModel: "rss_f1", ...extra });
+const NAMES = { [A]: "Alice", [B]: "Bob" };
+const lap = (guid, LapTime, Sectors, Cuts = 0, extra = {}) => ({
+  DriverGuid: guid,
+  DriverName: NAMES[guid] || "Someone",
+  LapTime,
+  Sectors,
+  Cuts,
+  CarModel: "rss_f1",
+  ...extra,
+});
 
 const file = (over = {}) => ({
   Type: "PRACTICE",
@@ -51,14 +60,51 @@ describe("parsePracticeJson", () => {
     expect(p.laps[0].sectorsMs).toEqual([29_000, 32_000, 31_998]);
   });
 
-  it("falls back to the classification's BestLap for an entrant with no lap rows", () => {
+  it("an entrant with no clean lap rows has no time to show, whatever the classification says", () => {
     const p = parsePracticeJson(file({ Result: [result(A, "Alice", { BestLap: 94_500 })], Laps: [] }));
-    expect(p.laps).toEqual([expect.objectContaining({ name: "Alice", lapTimeMs: 94_500, sectorsMs: null })]);
+    expect(p.laps).toEqual([]);
   });
 
-  it("an entrant without a Steam id is nobody the board can name, and is left out", () => {
-    const p = parsePracticeJson(file({ Result: [result("", "Ghost"), result(A, "Alice")] }));
+  it("a lap row without a Steam id is nobody the board can name, and is left out", () => {
+    const p = parsePracticeJson(file({ Laps: [lap("", 90_000, [28_000, 31_000, 31_000]), lap(A, 93_000, [29_000, 32_000, 32_000])] }));
     expect(p.laps.map((l) => l.name)).toEqual(["Alice"]);
+  });
+
+  // The league's practice server has cars that several drivers use one after
+  // another over an evening, and for those the server manager's Result[] row
+  // is the CAR's: every name joined with commas, the car's best lap, one of the
+  // drivers' Steam ids. The first cut read names and times from there and put
+  // a driver on the board with somebody else's lap under a list of five names.
+  it("a shared car is read driver by driver from the lap rows, never from the classification", () => {
+    const C = "76561198000000003";
+    const p = parsePracticeJson(
+      file({
+        Result: [
+          // What the server manager writes for car 38 after three drivers used it.
+          result(A, "Alice, Bob, Cara", { BestLap: 93_000, CarId: 38 }),
+          result(B, "Alice, Bob, Cara", { BestLap: 93_000, CarId: 38 }),
+          result(C, "Cara, Alice, Bob", { BestLap: 93_000, CarId: 38 }),
+        ],
+        Laps: [
+          lap(A, 93_000, [29_000, 32_000, 32_000], 0, { DriverName: "Alice" }),
+          lap(B, 96_000, [30_000, 33_000, 33_000], 0, { DriverName: "Bob" }),
+          // Cara only ever cut: no clean lap, no time — not the car's 1:33.
+          lap(C, 92_000, [28_500, 31_500, 32_000], 1, { DriverName: "Cara" }),
+        ],
+      })
+    );
+    expect(p.laps.map((l) => [l.name, l.lapTimeMs])).toEqual([["Alice", 93_000], ["Bob", 96_000]]);
+    expect(p.entrants).toBe(3);
+  });
+
+  it("the car is the one the lap was driven in, not the one the classification ended on", () => {
+    const p = parsePracticeJson(file({ Laps: [lap(A, 93_000, [29_000, 32_000, 32_000], 0, { CarModel: "reserve_car" })] }));
+    expect(p.laps[0].car).toBe("reserve_car");
+  });
+
+  it("a lap row whose name is itself a comma list is not a driver", () => {
+    const p = parsePracticeJson(file({ Laps: [lap(A, 93_000, [29_000, 32_000, 32_000], 0, { DriverName: "Alice, Bob" })] }));
+    expect(p.laps).toEqual([]);
   });
 
   it("the layout is part of the track key, as it is in the recorder's store", () => {
