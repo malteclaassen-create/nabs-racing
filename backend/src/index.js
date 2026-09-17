@@ -30,6 +30,7 @@ import devLoginRoutes from "./routes/devLogin.js";
 import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { IS_DEPLOYED } from "./lib/deployment.js";
 import searchRoutes from "./routes/search.js";
+import contentCheckRoutes from "./routes/contentCheck.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
@@ -295,6 +296,8 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/auth/discord", discordAuthRoutes);
 app.use("/api/auth/steam", steamAuthRoutes);
 app.use("/api/downloads", downloadsRoutes);
+// "Checksum failed" self-service: the race server's own file hashes.
+app.use("/api/content-check", contentCheckRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/reports", reportsRoutes);
