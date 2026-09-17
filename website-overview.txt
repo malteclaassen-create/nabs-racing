@@ -24,11 +24,13 @@ Drivers
 Driver profile
   A stats page for one driver - wins, podiums, best and average finish, poles,
   places gained, a season form chart, a head to head against another driver,
-  and a race by race table. Fastest laps count the sprint races of a sprint
-  weekend as well as the feature race (so does the Hall of Fame). In a season
+  and a race by race table. Both races of a sprint weekend count: a sprint win
+  is a win and a sprint podium is a podium, here, in the Hall of Fame and in
+  the Cockpit - as do the fastest laps of both races. Starts, averages and the
+  grid numbers stay per round (one race night is one start). In a season
   with sprint weekends the sprint races show up too: a Sprint view on the form chart and the head to head, a Sprint
   column in the race by race table (with the weekend's points split), and
-  Sprint Wins / Sprint Podiums stat tiles a driver can switch on.
+  Sprint Wins / Sprint Podiums stat tiles that break the totals down.
 
 Constructors
   The Tier 1 and Tier 2 tables, both with a round by round points breakdown. The
@@ -93,6 +95,11 @@ This sits behind a PIN (top right, "Admin"). From there I can:
   - Set a fastest lap bonus per season (Seasons tab). The driver with the
     fastest race lap gets it on top of their finish, if they finish. The
     standings mark those cells with FL.
+  - Set points by hand per driver (Seasons tab, "Manual points") for anything
+    the results cannot show on their own - a pole award, laps led, a stewards'
+    deduction - or type a season total straight off the league's own sheet.
+    The driver standings mark those rows with an M; constructor points are
+    not affected.
   - Import the qualifying session of a round (Quali on the results editor).
     Once it is there, that session decides who took pole everywhere on the
     site - the Hall of Fame, the profiles, the track pages. Without one the

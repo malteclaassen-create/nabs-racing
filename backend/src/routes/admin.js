@@ -51,6 +51,7 @@ import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { invalidateCardRatingCache } from "../services/cardRatingService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
+import { parseManualPointsEntry, writeManualPoints } from "../lib/manualPoints.js";
 import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf } from "../lib/trackInfo.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
 import { checkImageUpload } from "../lib/imageIntegrity.js";
@@ -4024,6 +4025,43 @@ router.put("/seasons/:id", async (req, res, next) => {
   } catch (e) {
     if (e.code === "P2002") return res.status(409).json({ error: "A season with that number already exists in this series" });
     if (e.code === "P2025") return res.status(404).json({ error: "Season not found" });
+    next(e);
+  }
+});
+
+// PUT /api/admin/seasons/:id/manual-points  { entries: [{ driverId, adjust, override }] }
+// Points the league sets by hand for a season (lib/manualPoints.js): a bonus
+// or deduction on top of what the results pay, or a total typed in whole.
+// The whole season is saved in one call — the admin edits the table as a table
+// — and an entry with both fields blank clears that driver's row again.
+router.put("/seasons/:id/manual-points", async (req, res, next) => {
+  try {
+    const entries = req.body?.entries;
+    if (!Array.isArray(entries)) return res.status(400).json({ error: "entries must be a list" });
+    if (entries.length > 500) return res.status(400).json({ error: "Too many entries in one save" });
+    const season = await prisma.season.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    // Every id must be a driver OF THIS SEASON: the columns sit on the driver
+    // row, so a foreign id would quietly rewrite another season's table.
+    const own = new Set(
+      (await prisma.driver.findMany({ where: { seasonId: season.id }, select: { id: true } })).map((d) => d.id)
+    );
+    const parsed = [];
+    for (const e of entries) {
+      if (!own.has(e?.driverId)) {
+        return res.status(400).json({ error: "Every entry must name a driver of this season" });
+      }
+      const p = parseManualPointsEntry(e);
+      if (p.error) return res.status(400).json({ error: `${p.error} (${e.driverId})` });
+      parsed.push({ driverId: e.driverId, ...p.value });
+    }
+    for (const p of parsed) {
+      await writeManualPoints(prisma, p.driverId, { adjust: p.adjust, override: p.override });
+    }
+    // The Hall of Fame caches its walk over every season for a few minutes.
+    invalidateRecordsCache();
+    res.json({ saved: parsed.length });
+  } catch (e) {
     next(e);
   }
 });

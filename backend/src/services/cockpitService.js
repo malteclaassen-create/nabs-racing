@@ -19,7 +19,7 @@ import { readParentIds, readSprintChildren } from "../lib/sprintRaces.js";
 import { groupKeyFor, displayNameFor, countryFor } from "../lib/trackKeys.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import { achievementStateFor } from "../lib/achievements.js";
-import { hasRaced } from "../lib/standingsRow.js";
+import { hasRaced, finishesOf } from "../lib/standingsRow.js";
 import { findArchiveFor, analyzeRaceFor, raceInsightsFor } from "../lib/cockpitArchive.js";
 
 const MAX_LAP_MS = 1_800_000;
@@ -169,6 +169,10 @@ export async function getCockpitOverview(prisma, driverId) {
   const rounds = Object.values(me?.perRace || {});
   const started = rounds.filter((v) => v.status !== "DNS");
   const finished = started.filter((v) => v.status === "FINISHED" && v.position != null);
+  // Wins and podiums count both races of a sprint weekend (lib/standingsRow.js).
+  // The average finish beside them stays on the round's own classification, so
+  // it keeps meaning the same thing as the position in the table above it.
+  const classified = finishesOf(rounds);
   let contacts = 0, cuts = 0, anyTel = false;
   for (const t of telemetry.values()) {
     if (t.contacts != null) { contacts += t.contacts; anyTel = true; }
@@ -212,8 +216,8 @@ export async function getCockpitOverview(prisma, driverId) {
         ? Math.round((rounds.filter((v) => v.points > 0).length / started.length) * 100)
         : null,
       dnfCount: started.filter((v) => v.status === "DNF").length,
-      wins: finished.filter((v) => v.position === 1).length,
-      podiums: finished.filter((v) => v.position <= 3).length,
+      wins: classified.filter((v) => v.position === 1).length,
+      podiums: classified.filter((v) => v.position <= 3).length,
       avgFinish: avg(finished.map((v) => v.position)),
       contacts: anyTel ? contacts : null,
       cuts: anyTel ? cuts : null,
@@ -414,7 +418,7 @@ export async function getCockpitCareer(prisma, driverId) {
     if (!me) continue;
     const rounds = Object.values(me.perRace || {});
     const started = rounds.filter((v) => v.status !== "DNS");
-    const finished = started.filter((v) => v.status === "FINISHED" && v.position != null);
+    const finished = finishesOf(rounds); // sprints count as wins/podiums
     seasons.push({
       driverId: row.id,
       seasonNumber: row.season.number,
@@ -738,11 +742,18 @@ export async function buildAchievementInputs(prisma, ctx, { standings } = {}) {
     longestPodiumStreak = Math.max(longestPodiumStreak, podiumStreak);
   }
 
+  // Wins and podiums count the sprints of sprint weekends too (sprintRows
+  // above, lib/standingsRow.js). The composite achievements below stay on the
+  // feature race: a hat trick, a win from P6 and a first win at a circuit are
+  // all about the main race of the weekend.
   const wins = finished.filter((r) => r.position === 1);
+  const sprintFinished = sprintRows.filter((r) => r.status === "FINISHED" && r.position != null);
   return {
     starts: started.length,
-    wins: wins.length,
-    podiums: finished.filter((r) => r.position <= 3).length,
+    wins: wins.length + sprintFinished.filter((r) => r.position === 1).length,
+    podiums:
+      finished.filter((r) => r.position <= 3).length +
+      sprintFinished.filter((r) => r.position <= 3).length,
     poles: rows.filter(onPole).length,
     frontRows: started.filter((r) => r.grid != null && r.grid <= 2).length,
     points: Math.round(points),

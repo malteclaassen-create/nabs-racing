@@ -626,7 +626,7 @@ describe("buildDriverPerRace on a sprint weekend", () => {
     expect(a.pointsByRound).toEqual(b.pointsByRound);
   });
 
-  it("a feature DNF keeps the sprint's points, and the countback never sees a sprint win", () => {
+  it("a feature DNF keeps the sprint's points, and the countback counts the sprint win", () => {
     const { perRace, pointsByRound } = buildDriverPerRace(
       [result("r5s", "a", 1), result("r5", "a", null, "DNF")],
       "a",
@@ -637,7 +637,9 @@ describe("buildDriverPerRace on a sprint weekend", () => {
     expect(pointsByRound[5]).toBe(35);
     expect(perRace[5].status).toBe("DNF");
     expect(perRace[5].sprint).toEqual({ points: 35, status: "FINISHED", position: 1 });
-    expect(finishSheetOf({ perRace })).toEqual([]);
+    // A sprint win is a win (lib/standingsRow.js): the round's own
+    // classification is a DNF, but the sprint's P1 is on the countback sheet.
+    expect(finishSheetOf({ perRace })).toEqual([1]);
   });
 
   it("a driver who only started the sprint gets a cell with no feature finish in it", () => {

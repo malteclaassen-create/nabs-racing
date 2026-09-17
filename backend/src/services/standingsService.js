@@ -19,6 +19,8 @@ import { getNameOverrides, getIdentityOverrides, getPersonGroups } from "../lib/
 import { readSprintChildrenOf, readParentIds } from "../lib/sprintRaces.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readManualFastestLaps } from "../lib/raceHonours.js";
+import { finishesOf, roundsOf } from "../lib/standingsRow.js";
+import { readManualPoints, applyManualPoints } from "../lib/manualPoints.js";
 
 // Apply each race's position penalties before scoring. Grouping by race keeps a
 // penalty's re-ranking contained to its own classification — a sprint and its
@@ -376,10 +378,12 @@ export function compareFinishSheets(a, b) {
 }
 
 // The ascending list of classified finishes behind a standings row, for the
-// countback above.
+// countback above. EVERY classification counts, the sprint of a sprint weekend
+// included (lib/standingsRow.js): "more wins" has to mean the same thing here
+// as it does on the Hall of Fame and the driver profile, or two drivers level
+// on points would be split by a rule the site contradicts one page later.
 export function finishSheetOf(row) {
-  return Object.values(row.perRace || {})
-    .filter((v) => v.status === "FINISHED" && v.position != null)
+  return finishesOf(roundsOf(row))
     .map((v) => v.position)
     .sort((x, y) => x - y);
 }
@@ -405,6 +409,33 @@ export function applyFinalStandings(rows, finals, idKey) {
     if (ob) return 1;
     return b.total - a.total || a.name.localeCompare(b.name);
   });
+  rows.forEach((row, i) => (row.position = i + 1));
+  return rows;
+}
+
+// Lay the league's hand-set points over a sorted table (lib/manualPoints.js):
+// a bonus added to what the row already has, or a total typed in whole. Runs
+// AFTER the official final sheet on purpose — an admin typing a number today
+// means it, and a season that stores both would otherwise swallow the edit
+// without a word. Rows then re-rank on the totals, with the order they already
+// had (countback, or the official sheet's own order) settling ties, so a
+// season nobody touched by hand comes out of here exactly as it went in.
+// Mutates & renumbers `rows`. Pure, exported for the test.
+export function applyManualTotals(rows, manual) {
+  if (!manual || manual.size === 0) return rows;
+  let touched = false;
+  for (const row of rows) {
+    const m = manual.get(row.driverId);
+    if (!m) continue;
+    row.pointsAdjust = m.adjust || 0;
+    row.pointsOverride = m.override ?? null;
+    const next = applyManualPoints(row.total, m);
+    if (next !== row.total) touched = true;
+    row.total = next;
+  }
+  if (!touched) return rows;
+  const was = new Map(rows.map((r, i) => [r.driverId, i]));
+  rows.sort((a, b) => b.total - a.total || was.get(a.driverId) - was.get(b.driverId));
   rows.forEach((row, i) => (row.position = i + 1));
   return rows;
 }
@@ -534,10 +565,12 @@ async function previousSeasonOrder(prisma, seasonId, depth) {
 // A SPRINT WEEKEND is one round with two results. The sprint's race id is in
 // `raceNumberById` under the weekend's number (scoringRaces) and named in
 // `sprintRaceIds`, and its points are ADDED to the round: `points` is the
-// weekend's total, while status, position and grid stay the feature race's —
-// the countback tie-break and the medal colours read those, and a sprint win
-// is not a win. The sprint's own share sits beside them as `sprint`, so the
-// table can explain a cell whose number is more than its position pays.
+// weekend's total, while status, position and grid stay the FEATURE race's —
+// they are what the round cell shows and what the medal colours read. The
+// sprint's own share sits beside them as `sprint`, so the table can explain a
+// cell whose number is more than its position pays, and so that every counter
+// of wins and podiums can see both races of the weekend: a sprint win counts
+// as a win site-wide (lib/standingsRow.js), the countback here included.
 //
 // A FASTEST-LAP BONUS the result collected (rows stamped by withScoringApplied)
 // is inside `points` already; `fastestLap` names the bonus beside it (on the
@@ -583,7 +616,7 @@ export function buildDriverPerRace(results, driverId, raceNumberById, table = DE
 // After the season opener there IS no previous table (the pre-season order is
 // a courtesy sort, not standings), so prevPosition stays absent and the UI
 // shows no arrows until round two — the first moment movement means anything.
-export function attachPrevPositions(rows, raceNumbers, dropN) {
+export function attachPrevPositions(rows, raceNumbers, dropN, manualOf = () => null) {
   const completed = new Set();
   for (const r of rows) for (const num of Object.keys(r.perRace)) completed.add(Number(num));
   const latest = completed.size ? Math.max(...completed) : null;
@@ -597,7 +630,15 @@ export function attachPrevPositions(rows, raceNumbers, dropN) {
       pointsByRound[num] = v.points;
     }
     const { total } = applyDropScores(pointsByRound, raceNumbers, dropN);
-    return { driverId: row.driverId, name: row.name, perRace, total };
+    // Hand-set points belong to the season, not to a round, so they sit on the
+    // previous table exactly as they sit on this one — otherwise every driver
+    // carrying one would show a movement arrow invented by the override.
+    return {
+      driverId: row.driverId,
+      name: row.name,
+      perRace,
+      total: applyManualPoints(total, manualOf(row.driverId)),
+    };
   });
   const priorSheets = new Map(prior.map((r) => [r.driverId, finishSheetOf(r)]));
   prior.sort(
@@ -656,6 +697,12 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     .catch(() => []);
   const hidden = new Set(hiddenRows.map((r) => r.id));
 
+  // Points the admin set by hand for this season (lib/manualPoints.js): a
+  // bonus/penalty on top of the computed total, or a total typed in whole.
+  // Not on a frozen mid-season view — the same reasoning as the official final
+  // sheet below: these are the season's numbers, not round four's.
+  const manualPoints = partial ? new Map() : await readManualPoints(prisma, seasonId);
+
   const rows = drivers.filter((d) => !hidden.has(d.id)).map((driver) => {
     const { perRace, pointsByRound } = buildDriverPerRace(appliedResults, driver.id, raceNumberById, table, sprintRaceIds);
 
@@ -689,7 +736,11 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
       },
       perRace,
       droppedRounds,
+      // What the season's own scoring pays. The admin's hand on it comes last,
+      // in applyManualTotals below.
       total,
+      pointsAdjust: 0,
+      pointsOverride: null,
     };
   });
 
@@ -724,13 +775,17 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // Where everyone stood BEFORE the latest completed round, so the table can
   // carry movement arrows the way championship tables do (see
   // attachPrevPositions).
-  attachPrevPositions(rows, raceNumbers, scoring.dropWorst);
+  attachPrevPositions(rows, raceNumbers, scoring.dropWorst, (id) => manualPoints.get(id) || null);
 
   // Archived seasons: official totals & order win over the computed ones. Not
   // for a mid-season view, though: the official sheet is where the season
   // ENDED, so stamping it onto "after round 4" would answer a question nobody
   // asked with numbers from eight rounds later.
   if (!partial) applyFinalStandings(rows, scoring.finalStandings?.drivers, "driverId");
+
+  // Points the league set by hand — last, so they win over the computed total
+  // and over an official sheet alike (see applyManualTotals).
+  applyManualTotals(rows, manualPoints);
 
   // A champion the league decided by a rule the points do not express
   // (Season.championDriverId, admin Seasons tab): that driver's row goes to
@@ -756,6 +811,9 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     // can footnote it and explain the cells that carry it.
     fastestLapPoints: scoring.fastestLapPoints || 0,
     officialTotals: !partial && !!scoring.finalStandings?.drivers?.length,
+    // True when at least one row's total was set or nudged by hand, so the
+    // table can footnote it (rows carry pointsAdjust / pointsOverride).
+    manualPoints: rows.some((r) => r.pointsAdjust || r.pointsOverride != null),
     standings: rows,
   };
 }

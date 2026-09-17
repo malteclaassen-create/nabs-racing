@@ -3932,6 +3932,122 @@ function RacePointsInput({ value, onChange }) {
   );
 }
 
+// Points the league sets BY HAND for a season (backend lib/manualPoints.js).
+// Two numbers per driver:
+//   Bonus  added to what the results pay — the bonus points a league awards
+//          for things the site cannot see (a pole award, laps led), or a
+//          negative number for a stewards' deduction. Rounds keep scoring
+//          normally, so it survives the rest of the season.
+//   Total  the season total outright, for figures typed off a sheet. Wins over
+//          everything, the bonus included.
+// One editor for the whole table: an admin transcribing a sheet opens it,
+// types down the column and saves once. Blank in both = nothing set.
+function SeasonManualPoints({ season, standings, onSaved, onError, onReload }) {
+  const [open, setOpen] = useState(false);
+  const [edits, setEdits] = useState({}); // driverId -> { adjust, override }
+  const [saving, setSaving] = useState(false);
+
+  // What the season currently has stored, as strings ("" = unset).
+  const stored = {};
+  for (const r of standings) {
+    stored[r.driverId] = {
+      adjust: r.pointsAdjust ? String(r.pointsAdjust) : "",
+      override: r.pointsOverride == null ? "" : String(r.pointsOverride),
+    };
+  }
+  const valueOf = (id, key) => edits[id]?.[key] ?? stored[id]?.[key] ?? "";
+  const set = (id, key, v) =>
+    setEdits((e) => {
+      const cur = e[id] || { adjust: stored[id]?.adjust ?? "", override: stored[id]?.override ?? "" };
+      return { ...e, [id]: { ...cur, [key]: v } };
+    });
+  const changed = Object.entries(edits).filter(
+    ([id, v]) => v.adjust !== (stored[id]?.adjust ?? "") || v.override !== (stored[id]?.override ?? "")
+  );
+  const setCount = standings.filter((r) => r.pointsAdjust || r.pointsOverride != null).length;
+
+  async function save() {
+    const entries = [];
+    for (const [driverId, v] of changed) {
+      const adjust = v.adjust.trim();
+      const override = v.override.trim();
+      if (adjust !== "" && (!Number.isInteger(Number(adjust)) || Math.abs(Number(adjust)) > 1000)) {
+        return onError("A bonus must be a whole number between -1000 and 1000, or blank.");
+      }
+      if (override !== "" && (!Number.isInteger(Number(override)) || Number(override) < 0)) {
+        return onError("A hand-set total must be a whole number of 0 or more, or blank.");
+      }
+      entries.push({ driverId, adjust: adjust === "" ? null : Number(adjust), override: override === "" ? null : Number(override) });
+    }
+    if (!entries.length) return;
+    setSaving(true); onError(null);
+    try {
+      await api.updateSeasonManualPoints(season.id, entries);
+      setEdits({});
+      onSaved(`Manual points for ${season.name} saved.`);
+      onReload();
+    } catch (err) { onError(err.message); } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="rounded-lg bg-surface2/60 p-2.5">
+      <button type="button" className="flex w-full items-center gap-2 text-left text-xs font-semibold text-medium"
+        onClick={() => setOpen(!open)}>
+        <span>Manual points</span>
+        <span className="text-light">
+          {setCount > 0 ? `${setCount} driver${setCount === 1 ? "" : "s"} set by hand` : "nothing set by hand"}
+        </span>
+        <svg viewBox="0 0 24 24" className={`ml-auto h-4 w-4 text-faint transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1.5">
+          <p className="text-[11px] leading-relaxed text-light">
+            <b>Bonus</b> is added to the points the rounds pay — for anything the results can&rsquo;t show on their own
+            (a pole award, laps led) or, negative, for a deduction. It keeps working as new rounds come in.{" "}
+            <b>Total</b> replaces the season total outright, for figures typed off your own sheet, and wins over the
+            bonus. Leave both blank for the normal scoring. The driver standings mark every row you touch with an
+            <span className="font-mono font-bold text-warn"> M</span>; constructor points are not affected.
+          </p>
+          {standings.length === 0 && <p className="text-xs text-light">This season has no drivers yet.</p>}
+          <ul className="max-h-72 divide-y divide-border overflow-y-auto border-y border-border">
+            {standings.map((r) => (
+              <li key={r.driverId} className="flex items-center gap-2 py-1.5 text-xs">
+                <span className="w-7 shrink-0 text-right font-mono text-light">P{r.position}</span>
+                <span className="min-w-0 flex-1 truncate font-semibold text-dark">{r.name}</span>
+                <span className="w-12 shrink-0 text-right font-mono tabular-nums text-medium" title="The total as the table shows it now">
+                  {r.total}
+                </span>
+                <label className="flex items-center gap-1 text-light">
+                  Bonus
+                  <input className="input w-16 py-1 text-center text-xs" type="number" step="1" placeholder="–"
+                    value={valueOf(r.driverId, "adjust")} onChange={(e) => set(r.driverId, "adjust", e.target.value)}
+                    title="Added to the computed season total. Negative for a deduction. Blank = none." />
+                </label>
+                <label className="flex items-center gap-1 text-light">
+                  Total
+                  <input className="input w-20 py-1 text-center text-xs" type="number" step="1" min="0" placeholder="–"
+                    value={valueOf(r.driverId, "override")} onChange={(e) => set(r.driverId, "override", e.target.value)}
+                    title="The season total, typed in whole. Wins over the computed points and the bonus. Blank = compute it." />
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-center gap-2">
+            <button className="btn-secondary px-3 py-1 text-xs" disabled={saving || changed.length === 0} onClick={save}>
+              {saving ? "Saving…" : `Save manual points${changed.length ? ` (${changed.length})` : ""}`}
+            </button>
+            {changed.length > 0 && (
+              <button className="text-xs font-semibold text-light transition hover:text-medium" disabled={saving}
+                onClick={() => setEdits({})}>Discard</button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Per-season scoring editor: how many worst rounds are dropped (0 = none) and
 // the points-per-position table (empty = league default).
 function SeasonScoring({ season, onSaved, onError }) {
@@ -4054,6 +4170,15 @@ function SeasonScoring({ season, onSaved, onError }) {
           <>Champion set by hand: {(drivers.data?.standings || []).find((d) => d.driverId === champion)?.name || "the chosen driver"} tops the final table whatever the points say.</>
         )}
       </p>
+      {/* The hand on the totals themselves: bonus points the results cannot
+          show, deductions, or a total typed off the league's own sheet. */}
+      <SeasonManualPoints
+        season={season}
+        standings={drivers.data?.standings || []}
+        onSaved={onSaved}
+        onError={onError}
+        onReload={() => drivers.reload()}
+      />
     </div>
   );
 }

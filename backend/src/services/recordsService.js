@@ -16,6 +16,7 @@ import { resolveSeries, getActiveSeries } from "../lib/series.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
 import { readSprintChildrenOf } from "../lib/sprintRaces.js";
+import { finishesOf } from "../lib/standingsRow.js";
 
 // Heavy (walks every season), so one result is kept warm per series for a few
 // minutes. Results imports simply age out within CACHE_MS.
@@ -116,7 +117,11 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     for (const row of standings.standings || []) {
       const results = Object.values(row.perRace || {});
       const started = results.filter((r) => r.status && r.status !== "DNS");
-      const finished = results.filter((r) => r.status === "FINISHED" && r.position != null);
+      // Wins, podiums and top fives count EVERY classification of a round —
+      // the feature race and, on a sprint weekend, the sprint (a sprint win is
+      // a win, lib/standingsRow.js). Starts stay per round: one race night is
+      // one start, however many races the league ran that evening.
+      const finished = finishesOf(results);
       const b = bucketFor(personOf(row.driverId));
       // Career points are the GROSS figure: what the driver actually scored,
       // not what the season table credited them with after the drop rule.
@@ -241,7 +246,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   let mostPointsSeason = null;
   for (const { season, standings } of perSeason) {
     for (const row of standings.standings || []) {
-      const wins = Object.values(row.perRace || {}).filter((r) => r.status === "FINISHED" && r.position === 1).length;
+      const wins = finishesOf(Object.values(row.perRace || {})).filter((r) => r.position === 1).length;
       if (wins > 0 && (!mostWinsSeason || wins > mostWinsSeason.value)) {
         mostWinsSeason = { person: personOf(row.driverId), value: wins, seasonNumber: season.number };
       }
@@ -294,8 +299,8 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   };
 
   const lists = [
-    topList("wins", "Most wins", "championship rounds won", (b) => b.wins, { unit: "wins" }),
-    topList("podiums", "Most podiums", "top-3 finishes", (b) => b.podiums, { unit: "podiums" }),
+    topList("wins", "Most wins", "races won, sprints included", (b) => b.wins, { unit: "wins" }),
+    topList("podiums", "Most podiums", "top-3 finishes, sprints included", (b) => b.podiums, { unit: "podiums" }),
     topList("points", "Most career points", "every round counted, nothing dropped", (b) => b.points, { unit: "pts" }),
     topList("starts", "Most starts", "championship rounds started", (b) => b.starts, { unit: "starts" }),
     topList("poles", "Most pole positions", "fastest in qualifying, where the session is on record", (b, id) => poles.get(id) || 0, { unit: "poles" }),

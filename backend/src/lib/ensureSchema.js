@@ -259,6 +259,14 @@ export async function ensureAppSchema(prisma) {
   // reactivating the driver clears the flag. Admin Drivers tab.
   await addColumn(prisma, "Driver", "hideFromStandings", "BOOLEAN NOT NULL DEFAULT 0");
 
+  // --- Admin-set manual points for this driver's season (migration
+  // driver_manual_points, lib/manualPoints.js): pointsAdjust is added to the
+  // computed season total (negative = a deduction), pointsOverride replaces it
+  // outright. Both null = the season's own scoring decides, which is every row
+  // until an admin types a number in the Seasons tab.
+  await addColumn(prisma, "Driver", "pointsAdjust", "INTEGER");
+  await addColumn(prisma, "Driver", "pointsOverride", "INTEGER");
+
   // --- Steam GUID (SteamID64) captured from AC race-result imports (migration
   // driver_steam_id). Stable per-person identity, preferred over fuzzy name
   // matching on future imports (see acJsonParser + raceWriter). Unique PER
