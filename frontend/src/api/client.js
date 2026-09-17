@@ -447,6 +447,10 @@ export const api = {
   // page's switch can say which board is worth looking at. `server` is only
   // used to keep the reply about the same series; the list is always all of them.
   liveServers: () => request(`/live/servers${seriesQ()}`),
+  // The files the race server checksums, with ITS hashes — the /content-check
+  // page compares them against the driver's own copies in the browser.
+  contentCheck: (server = null) =>
+    request(`/content-check${server ? `?server=${encodeURIComponent(server)}` : ""}`),
   // Live championship projection (only { active: true } while a league race is
   // running). auth:true so an admin's ?simulate demo request is recognised.
   // `server` is the Live page's switch: the projection has to be about the board

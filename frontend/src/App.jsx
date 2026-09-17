@@ -48,6 +48,10 @@ const CardGallery = lazy(() => import("./pages/CardGallery.jsx"));
 const Profile = lazy(() => import("./pages/Profile.jsx"));
 const Cockpit = lazy(() => import("./pages/Cockpit.jsx"));
 const Tools = lazy(() => import("./pages/Tools.jsx"));
+// The "Checksum failed" self-service. Opened from a Discord link when someone
+// cannot join, so it is never on anybody's first page view — and it carries an
+// MD5 implementation of its own, which has no business in the main bundle.
+const ContentCheck = lazy(() => import("./pages/ContentCheck.jsx"));
 // Your own feedback threads. Only ever opened from a notification or the
 // feedback panel, so it has no business in the initial bundle.
 const MyFeedback = lazy(() => import("./pages/MyFeedback.jsx"));
@@ -237,6 +241,7 @@ function AppRoutes() {
             page, always, whoever is looking. */}
         <Route path="/join" element={<Welcome />} />
         <Route path="/downloads" element={<Downloads />} />
+        <Route path="/content-check" element={<ContentCheck />} />
         {/* How to put the site on a phone's home screen (Android, iOS and
             desktop). Linked from the footer and from the one-off announcement
             in the notification bell. */}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, withApiBase } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -422,6 +422,23 @@ export default function Downloads() {
           }
         />
         {isLoggedIn ? <Catalogue /> : <LoginGate />}
+        {/* The downloads are where a wrong mod version comes from, so the page
+            that finds one belongs right under them — and it needs no login,
+            because being unable to join is not a reason to make somebody sign
+            in first. */}
+        <div className="card flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-sm font-extrabold uppercase tracking-tight text-dark">
+              Vom Server geflogen mit &bdquo;Checksum failed&ldquo;?
+            </div>
+            <p className="mt-0.5 text-xs leading-relaxed text-light">
+              Der Content Check vergleicht deine Dateien mit denen des Race-Servers und nennt dir die, die nicht stimmt.
+            </p>
+          </div>
+          <Link to="/content-check" className="btn-secondary shrink-0 px-4 py-1.5 text-xs">
+            Content Check
+          </Link>
+        </div>
       </section>
     </div>
   );
