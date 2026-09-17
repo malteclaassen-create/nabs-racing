@@ -30,6 +30,11 @@ import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries, isValidServerKey 
 import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
+import { trackKeyOf } from "../lib/telemetryLaps.js";
+import { currentBests, setBoardScopes } from "../lib/liveBestLaps.js";
+import { dbListSeries } from "../lib/series.js";
+import { resolveSeason } from "./seasonService.js";
+import { readLiveServerMap, serverAssignment } from "../lib/liveServers.js";
 
 // ---------------------------------------------------------------------------
 // Public driver id for the live board.
@@ -1155,6 +1160,82 @@ function createRelay(server) {
     };
   }
 
+  // --- Imported training bests ---------------------------------------------
+  //
+  // Practice only, and deliberately so. Between two race weekends the league's
+  // server sits in an open practice session for days, and the race server keeps
+  // exactly one of them: the session it is in. Every time that session hits its
+  // time limit and restarts, every lap of the week so far leaves the board.
+  //
+  // So an admin can import the week's fastest laps out of the telemetry store
+  // (lib/liveBestLaps.js explains where they come from and why they live per
+  // server), and this is where they land on the board. A qualifying session or
+  // a race is a classification of what happened IN it — carrying a training lap
+  // into either would be inventing a result, so neither is touched.
+  //
+  // Faster wins, per driver, and nothing here is frozen: the laps are read back
+  // out of the telemetry store as the board is built (lib/liveBestLaps.js), so
+  // a driver who goes quicker on the practice server is quicker here too — on
+  // this board the moment they cross the line, and still quicker after the
+  // session resets under them. A driver already on the board who has beaten
+  // their training best keeps their live lap; one who has not yet matched it
+  // shows the training one; one who is not on the server at all becomes a row
+  // of their own, which is the whole point — the board is supposed to hold the
+  // week, not the last two hours of it.
+  function applyImportedBests(byGuid, si) {
+    const stored = currentBests(server.key, trackKeyOf(si.Track || "", si.TrackConfig || ""));
+    if (!stored.length) return;
+
+    for (const lap of stored) {
+      const live = byGuid.get(lap.steamId);
+      if (!live) {
+        // Nobody by that Steam id is on the server. Build the row the same way
+        // every other row is built, from a driver record with no car data, and
+        // put the one number we have onto it: no sectors, no last lap, no lap
+        // count, because we genuinely do not know any of them. The table prints
+        // a dash for each, which is what a stored driver's row already looks
+        // like — the row is meant to read as an ordinary one, and does.
+        //
+        // `imported` is not a badge: the board draws these rows exactly like
+        // the rest. It is how the admin preview can tell a lap the board is
+        // carrying from one somebody set in the session on screen, which is
+        // the difference between "nothing changes" and "this came from here".
+        const entry = buildEntry(lap.steamId, {
+          CarInfo: { DriverName: lap.name, CarModel: lap.car || "", CarName: lap.car || "" },
+        }, false);
+        entry.bestLapMs = lap.lapTimeMs;
+        entry.topSpeed = lap.topSpeedKmh ?? null;
+        entry.sectors = carriedSectors(lap);
+        entry.imported = true;
+        byGuid.set(lap.steamId, entry);
+        continue;
+      }
+
+      if (live.bestLapMs != null && live.bestLapMs <= lap.lapTimeMs) continue;
+      live.bestLapMs = lap.lapTimeMs;
+      live.imported = true;
+      // Everything on the row that belongs to the best lap follows the lap:
+      // the top speed (the recorder's figure, when the lap came from there)
+      // and the sectors (the server's own splits, when it came from a session
+      // file). Where the carried lap has no figure of its own the cell goes
+      // blank rather than keeping the displaced lap's — three splits that do
+      // not add up to the time beside them would be worse than three dashes.
+      live.topSpeed = lap.topSpeedKmh ?? null;
+      live.sectors = carriedSectors(lap);
+    }
+  }
+
+  // The three sector boxes for a carried lap, in the shape sectorsOf builds
+  // for a live one, so the same pass below colours them: purple if they equal
+  // the session's best sector, and green never — that flag is the server's
+  // "this driver's own best sector", which it only knows for the session it
+  // is in. A lap from the recorder has no sectors (it does not know where the
+  // lines are) and gets three blanks.
+  function carriedSectors(lap) {
+    if (!lap.sectorsMs) return [null, null, null];
+    return lap.sectorsMs.map((ms) => ({ ms, best: false, driversBest: false, cuts: 0 }));
+  }
+
   // What the frontend gets. Usually the live board; for RESULT_HOLD_MS after a
   // race session ended, the frozen final classification instead (a race result
   // must survive the server cycling back to practice). A new RACE or
@@ -1222,6 +1303,10 @@ function createRelay(server) {
         }
       }
     }
+    // The week's imported training bests, before anything is ranked or gapped:
+    // an imported lap is a lap like any other once it is on a row.
+    if (si.Type === 1) applyImportedBests(byGuid, si);
+
     const entries = [...byGuid.values()];
 
     // Ranking. A RACE orders by the actual running order (telemetry
@@ -1416,6 +1501,10 @@ function createRelay(server) {
         name: si.Name || "",
         serverName: si.ServerName || "",
         track: si.Track || "",
+        // The same key the telemetry store files a lap under (lib/telemetryLaps
+        // .js), so "which track is this board on" is one string both sides
+        // agree on — the admin import matches the two by it.
+        trackKey: trackKeyOf(si.Track || "", si.TrackConfig || ""),
         trackName: ti.name || si.Track || "",
         country: ti.country || "",
         ambientTemp: si.AmbientTemp ?? null,
@@ -1967,8 +2056,37 @@ function seriesOf(req) {
 }
 
 // Attach the frontend-facing WebSocket and start the upstream connections.
+// Which (series, active season) each race server's board carries training
+// times for (lib/liveBestLaps.js explains why the season is part of it). The
+// series → server assignment is admin managed and the active season moves on
+// a few times a year, so this is re-read every minute rather than once: the
+// day the new season is switched on, last season's Baku times leave the board
+// within the minute, and nobody deletes anything.
+export async function refreshBoardScopes() {
+  try {
+    const [series, map] = await Promise.all([
+      dbListSeries(prisma, { includePrivate: true }),
+      readLiveServerMap(prisma),
+    ]);
+    const byServer = new Map(LIVE_SERVERS.map((s) => [s.key, []]));
+    for (const s of series) {
+      const key = serverAssignment(map, s.slug).key;
+      const season = await resolveSeason(prisma, null, { includePrivate: true, series: s.slug });
+      const n = Number(season?.number) || 0;
+      if (n > 0) byServer.get(key)?.push({ series: s.slug, season: n });
+    }
+    for (const [key, scopes] of byServer) setBoardScopes(key, scopes);
+  } catch (e) {
+    // The board stays what it was; the next minute tries again.
+    console.warn("[live] board scopes not refreshed:", e?.message || e);
+  }
+}
+const SCOPES_REFRESH_MS = 60_000;
+
 export function initLiveTiming(server) {
   for (const r of relays.values()) r.connect();
+  refreshBoardScopes();
+  setInterval(refreshBoardScopes, SCOPES_REFRESH_MS).unref?.();
 
   const wss = new WebSocketServer({ server, path: "/api/live/ws" });
   clientWss = wss; // memory diagnostics read the viewer count from here

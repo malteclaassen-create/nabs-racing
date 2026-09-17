@@ -433,6 +433,13 @@ export const ADMIN_INDEX = [
     hint: "The server the live timing page reads for each series.",
     keywords: "live server race server acserver series which server timing",
   },
+  {
+    tab: "social",
+    title: "Training best times on the live board",
+    hint: "Carry the week's fastest practice laps onto the Live page — from the server manager's session JSON files (with sectors) or the telemetry recorder — which the race server wipes on every session restart.",
+    keywords:
+      "training practice best times laps telemetry import upload json session file result files sectors live board session best carry over restart wiped hotlap week",
+  },
 
   // --- Site content ---------------------------------------------------------
   {

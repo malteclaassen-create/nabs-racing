@@ -1,5 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { __testing } from "./liveTiming.js";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { switchRecorder, clearTrack, addUploadedLaps, setBoardScopes, __clearCache as __clearImportCache } from "../lib/liveBestLaps.js";
+import { TELEMETRY_LAPS_DIR, seriesKeyOf, seasonKeyOf } from "../lib/telemetryLaps.js";
 
 const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset, mapKey } = __testing;
 
@@ -925,5 +929,263 @@ describe("finishing order", () => {
     expect(board.entries.map((e) => e.name)).toEqual(["Bob", "Alice"]);
     // and the gap is measured against the actual winner
     expect(board.entries[1].gapToLeaderMs).toBe(5000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Imported training bests (lib/liveBestLaps.js -> the board).
+//
+// The point of the feature: the race server keeps one practice session, and
+// between two race weekends that session restarts every few hours and takes
+// the week's times with it. An admin imports them back out of the telemetry
+// store, and these are the rules the board applies to them.
+// ---------------------------------------------------------------------------
+describe("liveTiming imported training bests", () => {
+  const ALICE = "76561198000000001";
+  const BOB = "76561198000000002";
+  const CARA = "76561198000000003";
+
+  // The relay under test is server "test" (see __testing), and Track "monza"
+  // with no layout keys the track as "monza".
+  const SERVER = "test";
+  const TRACK = "monza";
+  const SERIES = "friday-f1";
+  const SEASON = 8;
+
+  // A lap where the in-game recorder leaves it. The board reads these back
+  // through lib/liveBestLaps.js as it draws, so this is the whole input.
+  function recordLap(steamId, lapTimeMs, name, topSpeed = 312.5) {
+    const dir = join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES), seasonKeyOf(SEASON), TRACK, steamId);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, `${lapTimeMs}.json`),
+      JSON.stringify({ v: 1, steamId, name, car: "f", track: TRACK, layout: "", lapTimeMs, speed: [80, topSpeed, 200] })
+    );
+  }
+
+  // Switch the recorder on for this track in this season.
+  const carry = () => switchRecorder(SERIES, SEASON, TRACK, { track: TRACK });
+
+  const msToNs = (ms) => ms * 1e6;
+
+  // A practice/qualifying snapshot where drivers carry a best lap and its
+  // splits — the two things an import is allowed to overwrite.
+  function bestSnap({ type = 1, track = "monza", drivers }) {
+    const Drivers = {};
+    for (const [guid, d] of Object.entries(drivers)) {
+      Drivers[guid] = {
+        CarInfo: { DriverName: d.name, CarModel: "f", CarSkin: "", CarID: d.carId ?? 1, IsSpectator: false },
+        Cars: {
+          f: {
+            NumLaps: d.laps ?? 5,
+            BestLap: d.bestMs ? msToNs(d.bestMs) : 0,
+            TopSpeedBestLap: d.topSpeed ?? 300,
+            BestLapSplits: d.bestMs
+              ? { 0: { SplitIndex: 0, SplitTime: msToNs(30_000) }, 1: { SplitIndex: 1, SplitTime: msToNs(30_000) }, 2: { SplitIndex: 2, SplitTime: msToNs(d.bestMs - 60_000) } }
+              : undefined,
+          },
+        },
+        TotalNumLaps: d.laps ?? 5,
+        IsInPits: d.inPits ?? true,
+      };
+    }
+    return {
+      SessionInfo: { Type: type, Track: track, CurrentSessionIndex: 0, Name: "Session" },
+      TrackInfo: { name: `NABS ${track}` },
+      ConnectedDrivers: { Drivers },
+      DisconnectedDrivers: { Drivers: {} },
+    };
+  }
+
+  const row = (board, name) => board.entries.find((e) => e.name === name);
+
+  const wipe = () => {
+    clearTrack(SERIES, SEASON, TRACK);
+    rmSync(join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
+    __clearImportCache();
+  };
+  beforeEach(() => {
+    reset();
+    wipe();
+    // The test server's board follows this series, whose active season is 8 —
+    // what the relay resolves by the minute in production.
+    setBoardScopes(SERVER, [{ series: SERIES, season: SEASON }]);
+  });
+  afterEach(wipe);
+
+  it("puts a driver who is not on the server onto the board with their time", () => {
+    recordLap(CARA, 94_000, "Cara");
+    carry();
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const board = getBoard();
+    const cara = row(board, "Cara");
+    expect(cara).toBeTruthy();
+    expect(cara.bestLapMs).toBe(94_000);
+    expect(cara.imported).toBe(true);
+    expect(cara.onTrack).toBe(false);
+    // The recorder's trace gives the lap its top speed; what it cannot give is
+    // the server's sector lines, and the board says so rather than guessing.
+    expect(cara.topSpeed).toBe(312.5);
+    expect(cara.sectors).toEqual([null, null, null]);
+    expect(cara.lapCount).toBe(0);
+    // Ranked among the live rows like any other lap: Cara's 1:34 leads.
+    expect(board.entries[0].name).toBe("Cara");
+    expect(board.session.bestLapMs).toBe(94_000);
+  });
+
+  it("an imported lap faster than the live one takes the row, and its splits go with it", () => {
+    recordLap(ALICE, 93_000, "Alice");
+    carry();
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const alice = row(getBoard(), "Alice");
+    expect(alice.bestLapMs).toBe(93_000);
+    expect(alice.imported).toBe(true);
+    // The top speed follows the lap: the recorder's figure for the 1:33, not
+    // the server's for the 1:36 that just lost the row.
+    expect(alice.topSpeed).toBe(312.5);
+    // The sectors cannot follow it — they were the server's splits of the
+    // 1:36, and the recorder knows no sector lines. Three splits that do not
+    // add up to the time beside them would be the board lying, so they go.
+    expect(alice.sectors).toEqual([null, null, null]);
+    // What the session itself produced is untouched: laps, pits, presence.
+    expect(alice.lapCount).toBe(5);
+  });
+
+  it("a driver who has since gone quicker keeps their live lap", () => {
+    recordLap(ALICE, 96_000, "Alice");
+    carry();
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 93_000 } } }));
+
+    const alice = row(getBoard(), "Alice");
+    expect(alice.bestLapMs).toBe(93_000);
+    expect(alice.imported).toBeUndefined();
+    expect(alice.sectors[0]?.ms).toBe(30_000); // the live lap's splits stay
+  });
+
+  it("an identical time changes nothing about the row", () => {
+    recordLap(ALICE, 95_000, "Alice");
+    carry();
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 95_000 } } }));
+
+    const alice = row(getBoard(), "Alice");
+    expect(alice.bestLapMs).toBe(95_000);
+    expect(alice.imported).toBeUndefined();
+    expect(alice.sectors[0]?.ms).toBe(30_000);
+  });
+
+  it("qualifying and the race are classifications of their own session, so nothing is carried into them", () => {
+    recordLap(ALICE, 90_000, "Alice");
+    recordLap(CARA, 89_000, "Cara");
+    carry();
+
+    for (const type of [2, 3]) {
+      reset();
+      ingest(bestSnap({ type, drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+      const board = getBoard();
+      expect(row(board, "Cara")).toBeUndefined();
+      expect(row(board, "Alice").bestLapMs).toBe(96_000);
+      expect(row(board, "Alice").imported).toBeUndefined();
+    }
+  });
+
+  it("carries every driver in the overlay, not just the first", () => {
+    recordLap(BOB, 95_500, "Bob");
+    recordLap(CARA, 94_000, "Cara");
+    carry();
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const board = getBoard();
+    expect(board.entries.map((e) => e.name)).toEqual(["Cara", "Bob", "Alice"]);
+    expect(board.session.driverCount).toBe(3);
+  });
+
+  it("a driver who beats their training best on the server takes their own row", () => {
+    recordLap(ALICE, 93_000, "Alice");
+    carry();
+
+    // Out on track, still slower than the time the board is carrying for them.
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+    expect(row(getBoard(), "Alice").bestLapMs).toBe(93_000);
+
+    // They put in a quicker one. Nothing is pressed, nothing waits for a
+    // re-read: their own lap is the faster of the two and takes the row.
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 92_100 } } }));
+    const alice = row(getBoard(), "Alice");
+    expect(alice.bestLapMs).toBe(92_100);
+    expect(alice.imported).toBeUndefined();
+    expect(alice.sectors[0]?.ms).toBe(30_000); // and it is their lap, splits and all
+  });
+
+  it("a lap from a session file brings the server's sectors onto the board", () => {
+    addUploadedLaps(SERIES, SEASON, TRACK, {
+      track: "monza",
+      layout: "",
+      laps: [{ steamId: CARA, name: "Cara", car: "f", lapTimeMs: 94_000, sectorsMs: [29_500, 32_000, 32_500] }],
+      file: { name: "practice.json", type: "PRACTICE" },
+    });
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const cara = row(getBoard(), "Cara");
+    expect(cara.bestLapMs).toBe(94_000);
+    // In the shape a live lap's sectors take, so the same table draws them.
+    expect(cara.sectors.map((s) => s.ms)).toEqual([29_500, 32_000, 32_500]);
+    expect(cara.sectors[0]).toMatchObject({ driversBest: false, cuts: 0 });
+    expect(cara.topSpeed).toBe(null); // a session file carries no top speed
+  });
+
+  it("when a file's lap takes over a live row, the splits follow the lap", () => {
+    addUploadedLaps(SERIES, SEASON, TRACK, {
+      track: "monza",
+      layout: "",
+      laps: [{ steamId: ALICE, name: "Alice", car: "f", lapTimeMs: 93_000, sectorsMs: [29_000, 32_000, 32_000] }],
+      file: { name: "practice.json", type: "PRACTICE" },
+    });
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const alice = row(getBoard(), "Alice");
+    expect(alice.bestLapMs).toBe(93_000);
+    expect(alice.sectors.map((s) => s.ms)).toEqual([29_000, 32_000, 32_000]); // not the 1:36's 30/30/36
+    expect(alice.lapCount).toBe(5); // the session's own facts stay
+  });
+
+  it("the server moving to another track starts that board from nothing, and back again brings the laps back", () => {
+    recordLap(CARA, 94_000, "Cara");
+    carry(); // Monza carries Cara
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+    expect(row(getBoard(), "Cara")).toBeTruthy();
+
+    // The server switches to Spa: nothing has been given for Spa, so it is
+    // the session and nothing else — the week starts over, as it should.
+    reset();
+    ingest(bestSnap({ track: "spa", drivers: { [ALICE]: { name: "Alice", bestMs: 140_000 } } }));
+    const spa = getBoard();
+    expect(spa.session.trackKey).toBe("spa");
+    expect(spa.entries.map((e) => e.name)).toEqual(["Alice"]);
+
+    // Back to Monza: Cara's time is there again, it was never Spa's to lose.
+    reset();
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+    expect(row(getBoard(), "Cara")?.bestLapMs).toBe(94_000);
+  });
+
+  it("a new season starts the board from nothing, whatever last season carried for the track", () => {
+    recordLap(CARA, 94_000, "Cara");
+    carry();
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+    expect(row(getBoard(), "Cara")).toBeTruthy();
+
+    // The league switches season 9 on. The relay's next scope refresh sees
+    // it, and the same server on the same track carries nothing any more.
+    setBoardScopes(SERVER, [{ series: SERIES, season: SEASON + 1 }]);
+    expect(getBoard().entries.map((e) => e.name)).toEqual(["Alice"]);
+  });
+
+  it("no source is the board exactly as it was", () => {
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+    const board = getBoard();
+    expect(board.entries).toHaveLength(1);
+    expect(board.entries[0].imported).toBeUndefined();
   });
 });

@@ -117,7 +117,16 @@ import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
 import {
   LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap, serverAssignment,
+  serverKeyForSeries,
 } from "../lib/liveServers.js";
+import { bestLapPerDriver, isTrackKey } from "../lib/telemetryLaps.js";
+import {
+  readSource, switchRecorder, clearTrack, listTracks, bestsFor, uploadedLaps, uploadedFiles, addUploadedLaps, importEffect,
+} from "../lib/liveBestLaps.js";
+import { refreshBoardScopes } from "../services/liveTiming.js";
+import { parsePracticeJson } from "../lib/practiceJson.js";
+import { getBoard as getLiveBoard, realGuidForPublicId } from "../services/liveTiming.js";
+import { telemetryIdentities } from "../lib/telemetryIdentity.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -1652,6 +1661,301 @@ router.put("/live-servers", async (req, res, next) => {
   try {
     const map = await writeLiveServerMap(prisma, req.body?.map || {});
     res.json({ ok: true, map });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// TRAINING BEST LAPS ON THE LIVE BOARD
+// ---------------------------------------------------------------------------
+// Between two race weekends the league's server sits in an open practice
+// session for days, and the race server keeps exactly one session at a time:
+// every restart of it takes the week's times off the live board. The site has
+// them anyway — the in-game recorder is served to every driver who joins, so
+// the telemetry store holds each driver's fastest lap per track (lib/telemetry
+// Laps.js), and the server manager writes a result file for every session it
+// runs, sectors and all. These routes put either back on the board (lib/
+// liveBestLaps.js): session files are uploaded and their laps kept; the
+// recorder is a switch, read live, so a quicker lap posted afterwards reaches
+// the board on its own.
+
+// The series and the season everything on this card is about. Always the
+// ACTIVE season: a training time belongs to the season it was driven in, and
+// the board only ever reads the active one (lib/liveBestLaps.js), so there is
+// nothing an admin could usefully do to any other.
+async function trainingScope(series) {
+  const seriesRow = await resolveSeries(prisma, series, { includePrivate: true });
+  if (!seriesRow) return null;
+  const seasonRow = await resolveSeason(prisma, null, { includePrivate: true, series: seriesRow.slug });
+  const seasonNumber = Number(seasonRow?.number) || 0;
+  if (!seasonNumber) return null;
+  return { seriesRow, seasonRow, seasonNumber, serverKey: await serverKeyForSeries(prisma, seriesRow.slug) };
+}
+
+// Everything both the preview and the import need: which server's board is in
+// question, which track, what the two sources have, and what the board is
+// showing right now. Returns null when the series is unknown or has no season.
+async function trainingLapPlan({ series, track }) {
+  const scope = await trainingScope(series);
+  if (!scope) return null;
+  const { seriesRow, seasonRow, seasonNumber, serverKey } = scope;
+  const board = getLiveBoard(serverKey);
+
+  // The track the admin asked for, else the one that server is on now. A
+  // server that is off air and was never asked for a track has nothing to
+  // import against, and says so rather than guessing at the last one.
+  const asked = String(track || "");
+  const trackKey = isTrackKey(asked) ? asked : String(board?.session?.trackKey || "");
+  const legacy = true; // the active season also reads the store's pre-season shapes
+
+  // Fastest per driver across what the recorder's store has (the same read the
+  // board makes once the switch is on) and what uploaded files gave. One row
+  // per driver; on the same time the file's lap wins, it has the sectors.
+  const fastest = new Map();
+  const offer = (lap, from) => {
+    const seen = fastest.get(lap.steamId);
+    if (!seen || lap.lapTimeMs < seen.lapTimeMs || (lap.lapTimeMs === seen.lapTimeMs && from === "file")) {
+      fastest.set(lap.steamId, { ...lap, from });
+    }
+  };
+  if (trackKey) {
+    for (const lap of uploadedLaps(seriesRow.slug, seasonNumber, trackKey)) offer(lap, "file");
+    for (const lap of bestLapPerDriver(seriesRow.slug, seasonNumber, trackKey, legacy)) offer(lap, "recorder");
+  }
+
+  // What the board shows of its own accord. An entry that is already carrying
+  // an imported lap is NOT that: comparing against it would make every import
+  // after the first look like it changed nothing.
+  const liveBest = new Map();
+  for (const e of board?.entries || []) {
+    if (e.imported || !e.bestLapMs) continue;
+    const real = realGuidForPublicId(e.guid);
+    if (real) liveBest.set(real, e.bestLapMs);
+  }
+
+  // What this season already carries for that track, if anything.
+  const source = trackKey ? readSource(seriesRow.slug, seasonNumber, trackKey) : null;
+  const storedBest = new Map(
+    (trackKey ? bestsFor(seriesRow.slug, seasonNumber, trackKey) : []).map((l) => [l.steamId, l.lapTimeMs])
+  );
+
+  return {
+    series: seriesRow.slug,
+    seriesName: seriesRow.name,
+    seasonNumber,
+    seasonId: seasonRow?.id || null,
+    legacy,
+    serverKey,
+    board,
+    trackKey,
+    fastest,
+    liveBest,
+    source,
+    storedBest,
+  };
+}
+
+// The plan as the admin card reads it: one row per driver, named the way the
+// league names them, and no Steam ids — lib/privacy.js is explicit that those
+// never leave the building, and nothing here needs one to press the button.
+async function trainingLapRows(plan) {
+  const ids = [...plan.fastest.keys()];
+  const known = ids.length && plan.seasonId
+    ? await telemetryIdentities(prisma, ids, plan.seasonId, await getNameOverrides(prisma))
+    : new Map();
+
+  return [...plan.fastest.values()]
+    .sort((a, b) => a.lapTimeMs - b.lapTimeMs)
+    .map((lap) => {
+      const live = plan.liveBest.get(lap.steamId) ?? null;
+      const onBoard = plan.storedBest.get(lap.steamId) ?? null;
+      // What pressing the button does to this row. "slower" is not a failure:
+      // the driver has since gone quicker on the server than the store's best,
+      // and the board keeps the quicker one — the merge is faster-wins either
+      // way, so a slower import simply never shows.
+      const effect = importEffect(lap.lapTimeMs, { liveMs: live, importedMs: onBoard });
+      return {
+        name: known.get(lap.steamId)?.name || lap.name,
+        driverId: known.get(lap.steamId)?.driverId ?? null,
+        team: known.get(lap.steamId)?.team?.name ?? null,
+        car: lap.car,
+        telemetryMs: lap.lapTimeMs,
+        sectors: lap.sectorsMs ? true : false,
+        from: lap.from,
+        recordedAt: lap.recordedAt,
+        liveMs: live,
+        importedMs: onBoard,
+        effect,
+      };
+    });
+}
+
+// What the plan looks like from outside, minus the rows — the same header both
+// the preview and the import answer with.
+function trainingLapHead(plan) {
+  return {
+    series: plan.series,
+    seriesName: plan.seriesName,
+    season: plan.seasonNumber,
+    serverKey: plan.serverKey,
+    trackKey: plan.trackKey,
+    // What that server is doing right now, so the card can say why an import
+    // will or will not be visible: the merge is practice-only by design.
+    session: plan.board?.session
+      ? {
+          type: plan.board.session.type,
+          trackName: plan.board.session.trackName,
+          trackKey: plan.board.session.trackKey,
+        }
+      : null,
+    connected: !!plan.board?.connected,
+    // Whether this track is already carried, and since when. The laps behind
+    // it are not a copy taken then: they are re-read from the telemetry store
+    // as the board is built, so this line is a switch, not a snapshot.
+    carried: plan.source
+      ? {
+          series: plan.series,
+          season: plan.seasonNumber,
+          addedAt: plan.source.addedAt,
+          laps: plan.storedBest.size,
+        }
+      : null,
+    // The session files this track has been given, and the laps kept from
+    // them — the source the league asked for, and the one with the sectors.
+    files: plan.trackKey ? uploadedFiles(plan.series, plan.seasonNumber, plan.trackKey) : [],
+    fileLaps: plan.trackKey ? uploadedLaps(plan.series, plan.seasonNumber, plan.trackKey).length : 0,
+  };
+}
+
+// GET /api/admin/live-best-laps?series=&season=&track=
+// The preview: what the telemetry store has for this track, what the board is
+// showing, and what would change. Nothing is written.
+router.get("/live-best-laps", async (req, res, next) => {
+  try {
+    const plan = await trainingLapPlan({ series: req.query.series, track: req.query.track });
+    if (!plan) return res.status(404).json({ error: "Series not found, or it has no season" });
+    res.json({
+      ...trainingLapHead(plan),
+      rows: await trainingLapRows(plan),
+      // Every track this season currently carries times for, so one switched
+      // on three circuits ago can be found and taken off again.
+      tracks: listTracks(plan.series, plan.seasonNumber),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/live-best-laps  { series, season?, track? }
+// Carry the telemetry store's fastest laps onto that server's board.
+router.post("/live-best-laps", async (req, res, next) => {
+  try {
+    const plan = await trainingLapPlan({ series: req.body?.series, track: req.body?.track });
+    if (!plan) return res.status(404).json({ error: "Series not found, or it has no season" });
+    if (!plan.trackKey) {
+      return res.status(400).json({ error: "No track: the race server is off air, so name the track to import." });
+    }
+    if (!plan.fastest.size) {
+      return res.status(400).json({ error: "The telemetry store has no laps for this track in this season." });
+    }
+
+    // Counted against what the board showed BEFORE the switch is thrown, which
+    // is what the admin was looking at when they pressed it.
+    const rows = await trainingLapRows(plan);
+    const laps = [...plan.fastest.values()].filter((l) => l.from === "recorder");
+
+    switchRecorder(plan.series, plan.seasonNumber, plan.trackKey, {
+      track: laps[0]?.track || "",
+      layout: laps[0]?.layout || "",
+    });
+    // The board reads scopes the relay refreshes by the minute; a fresh one
+    // now means the admin sees the switch take effect on their next look.
+    await refreshBoardScopes();
+
+    res.json({
+      ok: true,
+      stored: laps.length,
+      carried: rows.filter((r) => r.effect === "faster" || r.effect === "new").length,
+      unchanged: rows.filter((r) => r.effect === "same").length,
+      slower: rows.filter((r) => r.effect === "slower").length,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/live-best-laps?series=&track=
+// Take one track's imported times back off the board. The board goes back to
+// showing the session the server is in and nothing else.
+router.delete("/live-best-laps", async (req, res, next) => {
+  try {
+    const scope = await trainingScope(req.query.series);
+    if (!scope) return res.status(404).json({ error: "Series not found, or it has no season" });
+    const trackKey = String(req.query.track || "");
+    if (!isTrackKey(trackKey)) return res.status(400).json({ error: "Valid track key required" });
+    const { seriesRow, seasonNumber } = scope;
+    res.json({
+      ok: true,
+      removed: clearTrack(seriesRow.slug, seasonNumber, trackKey),
+      tracks: listTracks(seriesRow.slug, seasonNumber),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/live-best-laps/files  (multipart: files[]=<AC session json>, series)
+// Session result files from the server manager, one or several. Each is read
+// for its fastest clean lap per driver (lib/practiceJson.js) and kept for the
+// track the FILE names — not the track the server is on, which is what makes
+// this the way to bring a session back that the server has since moved on
+// from — in the series' ACTIVE season, which is the only one the board reads.
+// The answer says, per file, what it was and what it gave.
+router.post("/live-best-laps/files", upload.array("files", 20), async (req, res, next) => {
+  try {
+    const scope = await trainingScope(req.body?.series);
+    if (!scope) return res.status(404).json({ error: "Series not found, or it has no season" });
+    const files = Array.isArray(req.files) ? req.files : [];
+    if (!files.length) return res.status(400).json({ error: "No files uploaded" });
+    const { seriesRow, seasonNumber } = scope;
+
+    const results = [];
+    for (const f of files) {
+      const name = String(f.originalname || "session.json").slice(0, 120);
+      try {
+        const parsed = parsePracticeJson(JSON.parse(f.buffer.toString("utf-8")), { fileName: name });
+        if (!parsed.laps.length) {
+          results.push({ name, ok: false, error: "No usable laps in this file" });
+          continue;
+        }
+        const kept = addUploadedLaps(seriesRow.slug, seasonNumber, parsed.trackKey, {
+          track: parsed.track,
+          layout: parsed.layout,
+          laps: parsed.laps,
+          file: { name, type: parsed.type, date: parsed.date },
+        });
+        results.push({
+          name,
+          ok: true,
+          type: parsed.type,
+          track: parsed.track,
+          layout: parsed.layout,
+          trackKey: parsed.trackKey,
+          date: parsed.date,
+          drivers: parsed.laps.length,
+          withSectors: parsed.laps.filter((l) => l.sectorsMs).length,
+          improved: kept.improved,
+          onBoard: kept.kept,
+        });
+      } catch (e) {
+        results.push({ name, ok: false, error: e instanceof SyntaxError ? "Not valid JSON" : e.message });
+      }
+    }
+    // Scopes are what make an upload visible on the board; a fresh read now
+    // rather than within the minute, for the admin who is about to look.
+    await refreshBoardScopes();
+    res.json({ ok: results.some((r) => r.ok), results, season: seasonNumber, tracks: listTracks(seriesRow.slug, seasonNumber) });
   } catch (e) {
     next(e);
   }
