@@ -186,6 +186,12 @@ function cleanLap(raw) {
     ? raw.bestSectorsMs.map(sectorMs)
     : [null, null, null];
   const lastLap = Math.round(Number(raw.lastLapMs));
+  // The server's stamp of each completed lap, seconds since the epoch: whole,
+  // positive, once each, in order. A count is derived from these and never
+  // stored, so the same lap given twice stays one lap.
+  const lapStamps = [...new Set((Array.isArray(raw.lapStamps) ? raw.lapStamps : []).map((v) => Math.round(Number(v))))]
+    .filter((v) => Number.isFinite(v) && v > 0)
+    .sort((a, b) => a - b);
   return {
     steamId,
     name,
@@ -194,7 +200,8 @@ function cleanLap(raw) {
     sectorsMs,
     tyre: String(raw.tyre || "").trim().slice(0, 8),
     bestSectorsMs,
-    lapCount: Math.max(0, Math.round(Number(raw.lapCount)) || 0),
+    lapStamps,
+    lapCount: lapStamps.length,
     lastLapMs: Number.isFinite(lastLap) && lastLap >= MIN_LAP_MS && lastLap <= MAX_LAP_MS ? lastLap : null,
     lastAt: Number(raw.lastAt) || 0,
     recordedAt: raw.recordedAt ? String(raw.recordedAt).slice(0, 40) : null,
@@ -204,10 +211,12 @@ function cleanLap(raw) {
 // Two records of the same driver, from two files, as one: the quicker best
 // lap with its sectors, car and tyre (the same time to the millisecond is the
 // same lap, and the copy with sectors is kept); the best of each sector
-// across both; the laps added up; the later last lap.
+// across both; the laps as the union of their stamps, so a file given twice
+// adds nothing; the later last lap.
 function mergeDriver(a, b) {
   const [fast, slow] =
     b.lapTimeMs < a.lapTimeMs || (b.lapTimeMs === a.lapTimeMs && b.sectorsMs && !a.sectorsMs) ? [b, a] : [a, b];
+  const lapStamps = [...new Set([...(fast.lapStamps || []), ...(slow.lapStamps || [])])].sort((x, y) => x - y);
   return {
     ...fast,
     bestSectorsMs: [0, 1, 2].map((i) => {
@@ -215,7 +224,8 @@ function mergeDriver(a, b) {
       const y = slow.bestSectorsMs?.[i] ?? null;
       return x == null ? y : y == null ? x : Math.min(x, y);
     }),
-    lapCount: (fast.lapCount || 0) + (slow.lapCount || 0),
+    lapStamps,
+    lapCount: lapStamps.length,
     lastLapMs: (slow.lastAt || 0) > (fast.lastAt || 0) ? slow.lastLapMs : fast.lastLapMs,
     lastAt: Math.max(fast.lastAt || 0, slow.lastAt || 0),
   };

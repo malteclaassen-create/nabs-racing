@@ -1183,6 +1183,16 @@ function createRelay(server) {
     const stored = currentBests(server.key, trackKeyOf(si.Track || "", si.TrackConfig || ""));
     if (!stored.length) return;
 
+    // The laps a carried record contributes are the ones from BEFORE the
+    // session the server is in: a file of that very session holds laps the
+    // live board is already counting for whoever is on it. The session's
+    // start is now minus how long it has run, in the server's seconds; with
+    // no elapsed figure (an off-air snapshot) every carried lap counts.
+    const elapsed = Number(si.ElapsedMilliseconds);
+    const sessionStartSec = elapsed > 0 ? (Date.now() - elapsed) / 1000 : null;
+    const lapsBefore = (lap) =>
+      (lap.lapStamps || []).filter((t) => sessionStartSec == null || t < sessionStartSec).length;
+
     for (const lap of stored) {
       const live = byGuid.get(lap.steamId);
       if (!live) {
@@ -1208,7 +1218,7 @@ function createRelay(server) {
         // speed a result file does not carry, and the row says so with a dash.
         entry.bestSectors = carriedSectors(lap.bestSectorsMs, lap.bestSectorsMs);
         entry.potentialMs = potentialOfMs(lap.bestSectorsMs);
-        entry.lapCount = lap.lapCount || 0;
+        entry.lapCount = lapsBefore(lap);
         entry.lastLapMs = lap.lastLapMs ?? null;
         entry.tyre = lap.tyre || "";
         entry.imported = true;
@@ -1216,11 +1226,15 @@ function createRelay(server) {
         continue;
       }
 
-      // A driver who is on the server: the week's best sectors count for them
-      // too, sector by sector, whichever lap they were set on — the potential
-      // lap is a "best of everything" question, and the week's laps are part
-      // of everything. Their own lap count and last lap are this session's and
-      // stay so.
+      // A driver who is on the server: the week's laps are theirs too. The
+      // lap count is this session's plus the week's from before it, so the
+      // column means the same thing on every row — laps done on this track
+      // this week; the last lap is this session's, or the week's until they
+      // complete one. And the week's best sectors count for them, sector by
+      // sector, whichever lap they were set on — the potential lap is a "best
+      // of everything" question, and the week's laps are part of everything.
+      live.lapCount = (live.lapCount || 0) + lapsBefore(lap);
+      if (live.lastLapMs == null && lap.lastLapMs != null) live.lastLapMs = lap.lastLapMs;
       const weekBest = [0, 1, 2].map((i) => {
         const here = live.bestSectors?.[i]?.ms ?? null;
         const there = lap.bestSectorsMs?.[i] ?? null;

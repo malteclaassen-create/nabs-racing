@@ -1161,7 +1161,7 @@ describe("liveTiming carried training bests", () => {
   });
 
   it("a carried row reads like a live one: best sectors, potential, laps, last lap, tyre", () => {
-    give([[CARA, "Cara", 94_000, [29_500, 32_000, 32_500], { bestSectorsMs: [29_000, 32_000, 32_500], lapCount: 14, lastLapMs: 95_200, lastAt: 500, tyre: "SS" }]]);
+    give([[CARA, "Cara", 94_000, [29_500, 32_000, 32_500], { bestSectorsMs: [29_000, 32_000, 32_500], lapStamps: Array.from({ length: 14 }, (_, i) => 1000 + i), lastLapMs: 95_200, lastAt: 1013, tyre: "SS" }]]);
     ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
 
     const cara = row(getBoard(), "Cara");
@@ -1177,9 +1177,11 @@ describe("liveTiming carried training bests", () => {
     expect(cara.numPits).toBe(0);
   });
 
-  it("a live driver's potential counts the week's best sectors, their own lap count and last lap stay the session's", () => {
-    // Alice's live lap has 30.0/30.0/36.0 splits; the week had a 29.0 S1.
-    give([[ALICE, "Alice", 97_000, [29_000, 33_000, 35_000], { bestSectorsMs: [29_000, 33_000, 35_000], lapCount: 20, lastLapMs: 98_000, lastAt: 500, tyre: "M" }]]);
+  it("a live driver's potential counts the week's best sectors, and their laps are the week's plus this session's", () => {
+    // Alice's live lap has 30.0/30.0/36.0 splits; the week had a 29.0 S1 and
+    // twenty laps, all from before this session.
+    const longAgo = Math.floor(Date.now() / 1000) - 3 * 24 * 3600;
+    give([[ALICE, "Alice", 97_000, [29_000, 33_000, 35_000], { bestSectorsMs: [29_000, 33_000, 35_000], lapStamps: Array.from({ length: 20 }, (_, i) => longAgo + i * 100), lastLapMs: 98_000, lastAt: longAgo + 1900, tyre: "M" }]]);
     ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
 
     const alice = row(getBoard(), "Alice");
@@ -1187,8 +1189,29 @@ describe("liveTiming carried training bests", () => {
     expect(alice.imported).toBeUndefined();
     expect(alice.bestSectors.map((s) => s.ms)).toEqual([29_000, 30_000, 35_000]); // best of both, per sector
     expect(alice.potentialMs).toBe(94_000);
-    expect(alice.lapCount).toBe(5); // this session's
+    expect(alice.lapCount).toBe(25); // the week's twenty and this session's five
     expect(alice.tyre).toBe("S"); // the live best lap's tyre, not the week's
+  });
+
+  it("a file of the session the server is in does not count its laps twice", () => {
+    // The session started an hour ago; the file of it (uploaded mid-session)
+    // holds Alice's five laps from twenty minutes in, and three from a session
+    // the day before.
+    const now = Math.floor(Date.now() / 1000);
+    const thisSession = Array.from({ length: 5 }, (_, i) => now - 2400 + i * 120);
+    const yesterday = [now - 90_000, now - 89_900, now - 89_800];
+    give([[ALICE, "Alice", 97_000, null, { lapStamps: [...yesterday, ...thisSession], lastLapMs: 98_000, lastAt: now - 1920 }]]);
+    const snap = bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } });
+    snap.SessionInfo.ElapsedMilliseconds = 3600 * 1000;
+    ingest(snap);
+
+    expect(row(getBoard(), "Alice").lapCount).toBe(5 + 3); // this session's five as the server counts them, plus yesterday's three
+  });
+
+  it("a live driver with no lap yet this session shows the week's last lap until they complete one", () => {
+    give([[ALICE, "Alice", 97_000, null, { lapStamps: [1000], lastLapMs: 98_500, lastAt: 1000 }]]);
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 0, laps: 0 } } }));
+    expect(row(getBoard(), "Alice").lastLapMs).toBe(98_500);
   });
 
   it("nothing given is the board exactly as it was", () => {
