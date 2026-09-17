@@ -688,6 +688,10 @@ function FormChart({ perRace, seasonRounds, color, mode = "race", withSprint = f
                 : "ring-1 ring-border";
               const label = p != null ? p : emptyLabel(r);
               const sprint = sprintLabel(r);
+              // The sprint band carries its own medal: a third in the sprint is
+              // bronze there whatever the feature race did.
+              const sprintPos = ghostOf(r);
+              const sprintMedal = sprintPos != null && sprintPos <= 3 ? MEDAL[sprintPos - 1] : null;
               const sprintTitle =
                 sprint == null ? "" : r.sprint ? ` · sprint ${ghostOf(r) != null ? `P${ghostOf(r)}` : r.sprint.status}` : " · no sprint";
               return (
@@ -696,23 +700,43 @@ function FormChart({ perRace, seasonRounds, color, mode = "race", withSprint = f
                   className={`flex flex-1 flex-col items-center gap-1.5 ${r.upcoming ? "opacity-45" : ""}`}
                   title={`R${r.number} ${r.track}${p != null ? ` · P${p}` : emptyTitle(r)}${sprintTitle}`}
                 >
-                  {/* On a sprint season the chip is a two-liner: the race above,
-                      the sprint under it in the same quiet tone as its line. */}
-                  <span
-                    className={`flex ${sprint == null ? "h-9 w-9 items-center" : "h-11 w-9 flex-col justify-center"} justify-center rounded-lg font-display font-black tabular-nums ${
-                      p != null ? "text-sm" : "text-[10px] tracking-tight"
-                    } ${
-                      medal ? "text-ink" : p != null ? "bg-surface2 text-dark" : "bg-surface2 text-light"
-                    } ${ring}`}
-                    style={medal ? { backgroundColor: medal } : undefined}
-                  >
-                    <span className="leading-none">{label}</span>
-                    {sprint != null && (
-                      <span className={`mt-1 text-[10px] font-bold leading-none tracking-tight ${medal ? "opacity-70" : "text-light"}`}>
+                  {/* A round of a sprint season is TWO results, so the chip is
+                      a box split across the middle: the feature race on top,
+                      the sprint below, each band wearing its own colour. A win
+                      in the feature and a third in the sprint reads gold over
+                      bronze — one chip, both races, no arithmetic in the head.
+                      A season without sprints keeps the plain single chip. */}
+                  {sprint == null ? (
+                    <span
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg font-display font-black tabular-nums ${
+                        p != null ? "text-sm" : "text-[10px] tracking-tight"
+                      } ${medal ? "text-ink" : p != null ? "bg-surface2 text-dark" : "bg-surface2 text-light"} ${ring}`}
+                      style={medal ? { backgroundColor: medal } : undefined}
+                    >
+                      {label}
+                    </span>
+                  ) : (
+                    <span className={`flex h-12 w-10 flex-col overflow-hidden rounded-lg ${ring}`}>
+                      <span
+                        className={`flex flex-1 items-center justify-center font-display font-black leading-none tabular-nums ${
+                          p != null ? "text-sm" : "text-[9px] tracking-tight"
+                        } ${medal ? "text-ink" : p != null ? "bg-surface2 text-dark" : "bg-surface2 text-light"}`}
+                        style={medal ? { backgroundColor: medal } : undefined}
+                      >
+                        {label}
+                      </span>
+                      {/* The hairline is the card's own colour, so the split
+                          shows whether the two bands are coloured or not. */}
+                      <span
+                        className={`flex h-[17px] items-center justify-center border-t border-card font-display font-black leading-none tabular-nums ${
+                          sprintPos != null ? "text-[11px]" : "text-[9px] tracking-tight"
+                        } ${sprintMedal ? "text-ink" : "bg-surface2 text-light"}`}
+                        style={sprintMedal ? { backgroundColor: sprintMedal } : undefined}
+                      >
                         {sprint}
                       </span>
-                    )}
-                  </span>
+                    </span>
+                  )}
                   {/* Round label with the circuit's flag, so the axis reads as
                       a calendar rather than a row of numbers. The flag comes
                       from the track itself (same resolver as everywhere else);
