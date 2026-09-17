@@ -970,7 +970,7 @@ describe("liveTiming imported training bests", () => {
 
   // A practice/qualifying snapshot where drivers carry a best lap and its
   // splits — the two things an import is allowed to overwrite.
-  function bestSnap({ type = 1, drivers }) {
+  function bestSnap({ type = 1, track = "monza", drivers }) {
     const Drivers = {};
     for (const [guid, d] of Object.entries(drivers)) {
       Drivers[guid] = {
@@ -990,8 +990,8 @@ describe("liveTiming imported training bests", () => {
       };
     }
     return {
-      SessionInfo: { Type: type, Track: "monza", CurrentSessionIndex: 0, Name: "Session" },
-      TrackInfo: { name: "NABS Monza" },
+      SessionInfo: { Type: type, Track: track, CurrentSessionIndex: 0, Name: "Session" },
+      TrackInfo: { name: `NABS ${track}` },
       ConnectedDrivers: { Drivers },
       DisconnectedDrivers: { Drivers: {} },
     };
@@ -1145,6 +1145,26 @@ describe("liveTiming imported training bests", () => {
     expect(alice.bestLapMs).toBe(93_000);
     expect(alice.sectors.map((s) => s.ms)).toEqual([29_000, 32_000, 32_000]); // not the 1:36's 30/30/36
     expect(alice.lapCount).toBe(5); // the session's own facts stay
+  });
+
+  it("the server moving to another track starts that board from nothing, and back again brings the laps back", () => {
+    recordLap(CARA, 94_000, "Cara");
+    carry(); // Monza carries Cara
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+    expect(row(getBoard(), "Cara")).toBeTruthy();
+
+    // The server switches to Spa: nothing has been given for Spa, so it is
+    // the session and nothing else — the week starts over, as it should.
+    reset();
+    ingest(bestSnap({ track: "spa", drivers: { [ALICE]: { name: "Alice", bestMs: 140_000 } } }));
+    const spa = getBoard();
+    expect(spa.session.trackKey).toBe("spa");
+    expect(spa.entries.map((e) => e.name)).toEqual(["Alice"]);
+
+    // Back to Monza: Cara's time is there again, it was never Spa's to lose.
+    reset();
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+    expect(row(getBoard(), "Cara")?.bestLapMs).toBe(94_000);
   });
 
   it("no source is the board exactly as it was", () => {
