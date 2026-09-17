@@ -99,13 +99,17 @@ function stubRaceServer({ fail = null } = {}) {
   });
 }
 
-function mk({ status = 200, text = "", json = null, buffer = null }) {
+function mk({ status = 200, text = "", json = null, buffer = null, contentLength = null }) {
+  const bytes = new TextEncoder().encode(buffer || "");
   return {
     ok: status < 400,
     status,
+    // Real fetch always carries headers, and the reader checks content-length
+    // before pulling a body into memory.
+    headers: new Headers(buffer != null ? { "content-length": String(contentLength ?? bytes.length) } : {}),
     text: async () => text,
     json: async () => json,
-    arrayBuffer: async () => new TextEncoder().encode(buffer || "").buffer,
+    arrayBuffer: async () => bytes.buffer,
   };
 }
 
@@ -148,6 +152,20 @@ describe("getContentCheck", () => {
     expect(car.md5).toBeNull();
     expect(car.error).toBeTruthy();
     expect(out.files.find((f) => f.inPlay && f.kind === "track").md5).toBeTruthy();
+  });
+
+  it("refuses a file the server declares as huge instead of buffering it", async () => {
+    vi.stubGlobal("fetch", async (url) => {
+      const path = new URL(url).pathname.replace(/^\//, "");
+      if (path === "results") return mk({ text: '<a href="/results/2026_9_16_22_10_PRACTICE">x</a>' });
+      if (path === "results/download/2026_9_16_22_10_PRACTICE.json") {
+        return mk({ json: { TrackName: "monza", TrackConfig: "", Cars: [{ Model: "huge_car" }] } });
+      }
+      return mk({ buffer: "small body, enormous claim", contentLength: 999 * 1024 * 1024 });
+    });
+    const out = await getContentCheck("nabs1");
+    expect(out.files.every((f) => f.md5 === null)).toBe(true);
+    expect(out.files[0].error).toMatch(/too large/i);
   });
 
   it("serves the same build from cache instead of walking the race server again", async () => {

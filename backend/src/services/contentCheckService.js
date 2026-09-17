@@ -27,6 +27,10 @@ const CACHE_MS = 5 * 60 * 1000;
 const MAX_CARS = 40;
 
 const cache = new Map(); // `${serverKey}|${sessionId ?? ""}` -> { at, promise }
+// One live entry per server is the normal state (the public route only ever
+// asks for the newest session). The cap is for the admin path that may name
+// one: expired entries are dropped on every call, so nothing accumulates.
+const MAX_CACHE_ENTRIES = 8;
 
 export function invalidateContentCheckCache() {
   cache.clear();
@@ -41,11 +45,14 @@ export async function getContentCheck(serverKey, { sessionId = null } = {}) {
   const server = LIVE_SERVERS.find((s) => s.key === serverKey) || LIVE_SERVERS.find((s) => s.key === DEFAULT_SERVER_KEY);
   if (!server) return null;
   const key = `${server.key}|${sessionId || ""}`;
+  const now = Date.now();
+  for (const [k, v] of cache) if (now - v.at >= CACHE_MS) cache.delete(k);
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.promise;
+  if (hit && now - hit.at < CACHE_MS) return hit.promise;
+  while (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
 
   const promise = buildContentCheck(server, sessionId);
-  cache.set(key, { at: Date.now(), promise });
+  cache.set(key, { at: now, promise });
   // A failed run must not sit in the cache for the rest of the window: the
   // race server being briefly unreachable would otherwise keep the page
   // broken for five minutes after it came back.

@@ -24,8 +24,10 @@ import { createHash } from "node:crypto";
 
 // A car's data.acd is ~0.5 MB, a surfaces.ini a few kB. Anything far bigger is
 // not a file we asked for, so the cap is a guard against a proxy handing us an
-// error page the size of a movie rather than a real limit.
-const MAX_FILE_BYTES = 32 * 1024 * 1024;
+// error page the size of a movie rather than a real limit. Checked on the
+// header first where there is one: a capped read that downloads the whole
+// thing before refusing it has spent the memory it was meant to save.
+const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const TIMEOUT_MS = 30000;
 
 // AC result ids look like 2026_9_11_19_33_RACE.
@@ -55,6 +57,8 @@ async function fetchWithTimeout(url, { as = "text", timeoutMs = TIMEOUT_MS } = {
     }
     if (as === "json") return res.json();
     if (as === "buffer") {
+      const declared = Number(res.headers.get("content-length"));
+      if (Number.isFinite(declared) && declared > MAX_FILE_BYTES) throw new Error("File too large");
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length > MAX_FILE_BYTES) throw new Error("File too large");
       return buf;
