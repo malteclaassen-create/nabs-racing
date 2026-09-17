@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { __testing } from "./liveTiming.js";
+import { writeImport, clearImport, __clearCache as __clearImportCache } from "../lib/liveBestLaps.js";
 
 const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset, mapKey } = __testing;
 
@@ -925,5 +926,161 @@ describe("finishing order", () => {
     expect(board.entries.map((e) => e.name)).toEqual(["Bob", "Alice"]);
     // and the gap is measured against the actual winner
     expect(board.entries[1].gapToLeaderMs).toBe(5000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Imported training bests (lib/liveBestLaps.js -> the board).
+//
+// The point of the feature: the race server keeps one practice session, and
+// between two race weekends that session restarts every few hours and takes
+// the week's times with it. An admin imports them back out of the telemetry
+// store, and these are the rules the board applies to them.
+// ---------------------------------------------------------------------------
+describe("liveTiming imported training bests", () => {
+  const ALICE = "76561198000000001";
+  const BOB = "76561198000000002";
+  const CARA = "76561198000000003";
+
+  // The relay under test is server "test" (see __testing), and Track "monza"
+  // with no layout keys the overlay as "monza".
+  const SERVER = "test";
+  const TRACK = "monza";
+
+  const msToNs = (ms) => ms * 1e6;
+
+  // A practice/qualifying snapshot where drivers carry a best lap and its
+  // splits — the two things an import is allowed to overwrite.
+  function bestSnap({ type = 1, drivers }) {
+    const Drivers = {};
+    for (const [guid, d] of Object.entries(drivers)) {
+      Drivers[guid] = {
+        CarInfo: { DriverName: d.name, CarModel: "f", CarSkin: "", CarID: d.carId ?? 1, IsSpectator: false },
+        Cars: {
+          f: {
+            NumLaps: d.laps ?? 5,
+            BestLap: d.bestMs ? msToNs(d.bestMs) : 0,
+            TopSpeedBestLap: d.topSpeed ?? 300,
+            BestLapSplits: d.bestMs
+              ? { 0: { SplitIndex: 0, SplitTime: msToNs(30_000) }, 1: { SplitIndex: 1, SplitTime: msToNs(30_000) }, 2: { SplitIndex: 2, SplitTime: msToNs(d.bestMs - 60_000) } }
+              : undefined,
+          },
+        },
+        TotalNumLaps: d.laps ?? 5,
+        IsInPits: d.inPits ?? true,
+      };
+    }
+    return {
+      SessionInfo: { Type: type, Track: "monza", CurrentSessionIndex: 0, Name: "Session" },
+      TrackInfo: { name: "NABS Monza" },
+      ConnectedDrivers: { Drivers },
+      DisconnectedDrivers: { Drivers: {} },
+    };
+  }
+
+  const row = (board, name) => board.entries.find((e) => e.name === name);
+
+  beforeEach(() => {
+    reset();
+    clearImport(SERVER, TRACK);
+    __clearImportCache();
+  });
+  afterEach(() => {
+    clearImport(SERVER, TRACK);
+    __clearImportCache();
+  });
+
+  it("puts a driver who is not on the server onto the board with their time", () => {
+    writeImport(SERVER, TRACK, { laps: [{ steamId: CARA, name: "Cara", car: "f", lapTimeMs: 94_000 }] });
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const board = getBoard();
+    const cara = row(board, "Cara");
+    expect(cara).toBeTruthy();
+    expect(cara.bestLapMs).toBe(94_000);
+    expect(cara.imported).toBe(true);
+    expect(cara.onTrack).toBe(false);
+    // We know the time and nothing else about that lap, and the board says so.
+    expect(cara.sectors).toEqual([null, null, null]);
+    expect(cara.topSpeed).toBe(null);
+    expect(cara.lapCount).toBe(0);
+    // Ranked among the live rows like any other lap: Cara's 1:34 leads.
+    expect(board.entries[0].name).toBe("Cara");
+    expect(board.session.bestLapMs).toBe(94_000);
+  });
+
+  it("an imported lap faster than the live one takes the row, and its splits go with it", () => {
+    writeImport(SERVER, TRACK, { laps: [{ steamId: ALICE, name: "Alice", car: "f", lapTimeMs: 93_000 }] });
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const alice = row(getBoard(), "Alice");
+    expect(alice.bestLapMs).toBe(93_000);
+    expect(alice.imported).toBe(true);
+    // The sectors on that row were measured on the 1:36 that just lost the
+    // row. Three splits that do not add up to the time beside them would be
+    // the board lying, so they are gone.
+    expect(alice.sectors).toEqual([null, null, null]);
+    expect(alice.topSpeed).toBe(null);
+    // What the session itself produced is untouched: laps, pits, presence.
+    expect(alice.lapCount).toBe(5);
+  });
+
+  it("a driver who has since gone quicker keeps their live lap", () => {
+    writeImport(SERVER, TRACK, { laps: [{ steamId: ALICE, name: "Alice", car: "f", lapTimeMs: 96_000 }] });
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 93_000 } } }));
+
+    const alice = row(getBoard(), "Alice");
+    expect(alice.bestLapMs).toBe(93_000);
+    expect(alice.imported).toBeUndefined();
+    expect(alice.sectors[0]?.ms).toBe(30_000); // the live lap's splits stay
+  });
+
+  it("an identical time changes nothing about the row", () => {
+    writeImport(SERVER, TRACK, { laps: [{ steamId: ALICE, name: "Alice", car: "f", lapTimeMs: 95_000 }] });
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 95_000 } } }));
+
+    const alice = row(getBoard(), "Alice");
+    expect(alice.bestLapMs).toBe(95_000);
+    expect(alice.imported).toBeUndefined();
+    expect(alice.sectors[0]?.ms).toBe(30_000);
+  });
+
+  it("qualifying and the race are classifications of their own session, so nothing is carried into them", () => {
+    writeImport(SERVER, TRACK, {
+      laps: [
+        { steamId: ALICE, name: "Alice", car: "f", lapTimeMs: 90_000 },
+        { steamId: CARA, name: "Cara", car: "f", lapTimeMs: 89_000 },
+      ],
+    });
+
+    for (const type of [2, 3]) {
+      reset();
+      ingest(bestSnap({ type, drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+      const board = getBoard();
+      expect(row(board, "Cara")).toBeUndefined();
+      expect(row(board, "Alice").bestLapMs).toBe(96_000);
+      expect(row(board, "Alice").imported).toBeUndefined();
+    }
+  });
+
+  it("carries every driver in the overlay, not just the first", () => {
+    writeImport(SERVER, TRACK, {
+      laps: [
+        { steamId: BOB, name: "Bob", car: "f", lapTimeMs: 95_500 },
+        { steamId: CARA, name: "Cara", car: "f", lapTimeMs: 94_000 },
+      ],
+    });
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+    const board = getBoard();
+    expect(board.entries.map((e) => e.name)).toEqual(["Cara", "Bob", "Alice"]);
+    expect(board.session.driverCount).toBe(3);
+  });
+
+  it("no import is the board exactly as it was", () => {
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+    const board = getBoard();
+    expect(board.entries).toHaveLength(1);
+    expect(board.entries[0].imported).toBeUndefined();
   });
 });

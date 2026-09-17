@@ -38,6 +38,7 @@ import StewardPenalties from "../components/StewardPenalties.jsx";
 // The tab strip and the searchable list of what each tab does live together in
 // one place, so a new tab and its search entries are added side by side.
 import { TAB_GROUPS } from "../data/adminIndex.js";
+import { formatLapTime } from "../utils/telemetryAnalysis.js";
 import { SOCIAL_META, SocialIcon } from "../components/SocialLinks.jsx";
 import { isSteamId64 } from "../utils/steamId.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
@@ -277,6 +278,7 @@ export default function Admin() {
               <AdminSocialFeed />
               <LiveLinksAdmin />
               <LiveServersAdmin />
+              <TrainingBestLapsAdmin />
             </div>
           )}
           {tab === "attendance" && <AdminAttendance jumpView={viewFor("attendance")} jumpKey={jump?.n} />}
@@ -978,6 +980,214 @@ function LiveServersAdmin() {
       <button className="btn-primary" onClick={save} disabled={busy}>
         {busy ? "Saving…" : "Save servers"}
       </button>
+    </div>
+  );
+}
+
+// --- TRAINING BEST LAPS -----------------------------------------------------
+// Between two race weekends the server sits in an open practice session for
+// days, and the race server keeps only the session it is in: every restart of
+// it wipes the week's times off the Live page. The site has them anyway —
+// the in-game recorder is served to everyone who joins, so the telemetry store
+// holds each driver's fastest lap per track. This carries them back onto the
+// board, fastest lap per driver wins.
+function TrainingBestLapsAdmin() {
+  const { current: series } = useSeries();
+  // "" means "whatever the race server is on right now", which is the case the
+  // button exists for; a named track is for importing one the server has left.
+  const [track, setTrack] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const [err, setErr] = useState(null);
+
+  const { data, loading, error, reload } = useApi(useCallback(() => api.trainingBestLaps(track || null), [track]));
+  const stored = useApi(useCallback(() => api.telemetryTracks(), []));
+
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
+  if (loading || !data) return <div className="card p-5 text-sm text-light">Loading…</div>;
+
+  const rows = data.rows || [];
+  const carried = rows.filter((r) => r.effect === "faster" || r.effect === "new").length;
+  const practice = data.session?.type === "Practice";
+
+  async function run() {
+    setBusy(true);
+    setErr(null);
+    setDone(null);
+    try {
+      const res = await api.importTrainingBestLaps(series?.slug || data.series, track || null);
+      setDone(res);
+      reload();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(key) {
+    setBusy(true);
+    setErr(null);
+    setDone(null);
+    try {
+      await api.clearTrainingBestLaps(key);
+      reload();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const effectLabel = {
+    new: ["Carried", "text-success"],
+    faster: ["Carried", "text-success"],
+    same: ["Unchanged", "text-light"],
+    slower: ["Live lap is faster", "text-medium"],
+  };
+
+  return (
+    <div className="card space-y-5 p-5">
+      <CardHead eyebrow="Live Timing" title="Training best times" />
+      <p className="text-sm text-light">
+        The race server forgets a practice session every time it restarts, so the week&rsquo;s training times drop
+        off the Live page. The telemetry recorder does not: it runs for everyone on the server and keeps each
+        driver&rsquo;s fastest lap per track. This carries those laps onto the board, where the{" "}
+        <b className="text-dark">faster of the two wins per driver</b> — somebody who has since gone quicker on
+        the server keeps their live lap, and an identical time changes nothing. Imported laps show in{" "}
+        <b className="text-dark">practice sessions only</b>: a qualifying board or a race classification is what
+        happened in that session, and a training lap has no business in either.
+      </p>
+
+      {err && <Notice kind="error">{err}</Notice>}
+      {done && (
+        <Notice kind="success">
+          {done.stored} lap{done.stored === 1 ? "" : "s"} on the board — {done.carried} carried, {done.unchanged}{" "}
+          unchanged, {done.slower} beaten by a live lap.
+        </Notice>
+      )}
+
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-xs font-semibold uppercase tracking-widest text-light">
+          Track
+          <select
+            className="input mt-1 max-w-xs"
+            value={track}
+            onChange={(e) => setTrack(e.target.value)}
+            disabled={busy}
+          >
+            <option value="">
+              {data.session?.trackName
+                ? `On the server now — ${data.session.trackName}`
+                : "On the server now (server is off air)"}
+            </option>
+            {(stored.data?.tracks || []).map((t) => (
+              <option key={t.trackKey} value={t.trackKey}>
+                {t.track}
+                {t.layout ? ` · ${t.layout}` : ""} ({t.laps} lap{t.laps === 1 ? "" : "s"})
+              </option>
+            ))}
+          </select>
+        </label>
+        <button className="btn-primary" onClick={run} disabled={busy || !rows.length}>
+          {busy ? "Importing…" : `Import ${rows.length} driver${rows.length === 1 ? "" : "s"}`}
+        </button>
+      </div>
+
+      <div className="text-sm text-light">
+        Board: <b className="text-dark">{data.serverKey}</b>
+        {" · "}
+        Track: <b className="text-dark">{data.trackKey || "—"}</b>
+        {" · "}
+        Session: <b className="text-dark">{data.session?.type || (data.connected ? "—" : "off air")}</b>
+        {data.imported && (
+          <>
+            {" · "}
+            Already imported: <b className="text-dark">{data.imported.laps}</b> lap
+            {data.imported.laps === 1 ? "" : "s"}
+          </>
+        )}
+      </div>
+
+      {!practice && data.trackKey && (
+        <Notice kind="info">
+          This server is not in a practice session right now, so nothing imported will be visible until it is back
+          in one. The import itself is stored either way.
+        </Notice>
+      )}
+
+      {/* The board looks its imported laps up by the track key the RACE SERVER
+          reports; these laps are filed under the key the GAME reported when
+          they were recorded. The two are built the same way and normally agree
+          — but a renamed track mod is exactly the case where they do not, and
+          an import nobody can see is worse than one that was refused. */}
+      {data.session?.trackKey && data.trackKey && data.session.trackKey !== data.trackKey && (
+        <Notice kind="info">
+          These laps are filed under <b className="text-dark">{data.trackKey}</b>, and the server&rsquo;s board is
+          on <b className="text-dark">{data.session.trackKey}</b>. They will appear when the server is back on{" "}
+          <b className="text-dark">{data.trackKey}</b> — if that never happens, the track was renamed between the
+          two and the laps need re-recording under the new name.
+        </Notice>
+      )}
+
+      {!rows.length ? (
+        <Notice kind="info">
+          The telemetry store has no laps for this track in this season yet — nothing to import.
+        </Notice>
+      ) : (
+        <div className="scrollbar-slim overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
+                <th className="py-2 pr-3">Driver</th>
+                <th className="py-2 pr-3">Telemetry best</th>
+                <th className="py-2 pr-3">On the board</th>
+                <th className="py-2">Effect</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const [label, cls] = effectLabel[r.effect] || ["—", "text-light"];
+                const shown = r.liveMs ?? r.importedMs ?? null;
+                return (
+                  <tr key={`${r.name}-${i}`} className="border-b border-border/60">
+                    <td className="py-2 pr-3 font-semibold text-dark">
+                      {r.name}
+                      {r.team && <span className="ml-2 text-xs font-normal text-light">{r.team}</span>}
+                    </td>
+                    <td className="py-2 pr-3 font-mono tabular-nums text-dark">{formatLapTime(r.telemetryMs)}</td>
+                    <td className="py-2 pr-3 font-mono tabular-nums text-medium">
+                      {shown == null ? "—" : formatLapTime(shown)}
+                    </td>
+                    <td className={`py-2 text-xs font-semibold ${cls}`}>{label}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!!(data.tracks || []).length && (
+        <div className="space-y-2 border-t border-border pt-4">
+          <div className="text-xs font-semibold uppercase tracking-widest text-light">
+            Currently carried on this board
+          </div>
+          {data.tracks.map((t) => (
+            <div key={t.trackKey} className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="font-semibold text-dark">{t.trackKey}</span>
+              <span className="text-light">
+                {t.laps} lap{t.laps === 1 ? "" : "s"}
+                {t.bestMs ? ` · best ${formatLapTime(t.bestMs)}` : ""}
+                {t.importedAt ? ` · ${new Date(t.importedAt).toLocaleString()}` : ""}
+              </span>
+              <button className="btn-secondary text-xs" onClick={() => remove(t.trackKey)} disabled={busy}>
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

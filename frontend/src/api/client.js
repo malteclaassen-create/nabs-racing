@@ -189,6 +189,14 @@ function seriesQ() {
   return SELECTED_SERIES ? `?series=${encodeURIComponent(SELECTED_SERIES)}` : "";
 }
 
+// Glue a seriesQ() (which is "?series=..." or nothing at all) together with
+// further params. Appending "&track=..." to an empty seriesQ built a URL whose
+// query never started, and the backend saw no track at all.
+function andQ(...parts) {
+  const bare = parts.map((p) => String(p || "").replace(/^[?&]/, "")).filter(Boolean);
+  return bare.length ? `?${bare.join("&")}` : "";
+}
+
 // The season the public site is currently viewing (a round number), or null for
 // the active season. Set by the SeasonProvider; appended to season-scoped reads.
 let SELECTED_SEASON = null;
@@ -668,6 +676,17 @@ export const api = {
   setAttendanceHotlaps: (shown) =>
     request(`/admin/attendance-hotlaps${seriesQ()}`, { method: "PUT", body: { shown }, auth: true }),
   setLiveServers: (map) => request("/admin/live-servers", { method: "PUT", body: { map }, auth: true }),
+  // Training best laps carried from the telemetry store onto the live board.
+  // The track is optional: left out, it is whatever the series' race server is
+  // on right now, which is the case the button exists for. seriesQ() answers
+  // "" when nothing is selected, so the track cannot simply be appended with
+  // an ampersand — the two are assembled as one query here.
+  trainingBestLaps: (track = null) =>
+    request(`/admin/live-best-laps${andQ(seriesQ(), track ? `track=${encodeURIComponent(track)}` : "")}`, { auth: true }),
+  importTrainingBestLaps: (series, track = null) =>
+    request("/admin/live-best-laps", { method: "POST", body: { series, track }, auth: true }),
+  clearTrainingBestLaps: (track) =>
+    request(`/admin/live-best-laps${andQ(seriesQ(), `track=${encodeURIComponent(track)}`)}`, { method: "DELETE", auth: true }),
 
   // discord login. The redirect URI is derived from the current origin so login
   // works on localhost and over a tunnel without changing the backend .env.

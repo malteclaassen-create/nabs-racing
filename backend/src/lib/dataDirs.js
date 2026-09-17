@@ -37,3 +37,9 @@ export const REPORT_FILES_DIR = join(DATA_ROOT, "report-files");
 // The stored result JSON carries no pit data at all, so what is recorded here
 // during a race is the only ground truth the importer will ever have.
 export const LIVE_PITS_DIR = join(DATA_ROOT, "live-pits");
+
+// Training best laps carried onto the live board (lib/liveBestLaps.js). The
+// race server forgets a practice session the moment it resets; this is what
+// an admin has imported from the telemetry store so the week's times stay on
+// the board anyway.
+export const LIVE_BEST_LAPS_DIR = join(DATA_ROOT, "live-best-laps");

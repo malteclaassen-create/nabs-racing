@@ -30,6 +30,8 @@ import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries, isValidServerKey 
 import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
+import { trackKeyOf } from "../lib/telemetryLaps.js";
+import { readImport } from "../lib/liveBestLaps.js";
 
 // ---------------------------------------------------------------------------
 // Public driver id for the live board.
@@ -1155,6 +1157,57 @@ function createRelay(server) {
     };
   }
 
+  // --- Imported training bests ---------------------------------------------
+  //
+  // Practice only, and deliberately so. Between two race weekends the league's
+  // server sits in an open practice session for days, and the race server keeps
+  // exactly one of them: the session it is in. Every time that session hits its
+  // time limit and restarts, every lap of the week so far leaves the board.
+  //
+  // So an admin can import the week's fastest laps out of the telemetry store
+  // (lib/liveBestLaps.js explains where they come from and why they live per
+  // server), and this is where they land on the board. A qualifying session or
+  // a race is a classification of what happened IN it — carrying a training lap
+  // into either would be inventing a result, so neither is touched.
+  //
+  // Faster wins, per driver. A driver already on the board who has since gone
+  // quicker keeps their live lap; one who has not yet matched their imported
+  // time shows the imported one; one who is not on the server at all becomes a
+  // row of their own, which is the whole point — the board is supposed to hold
+  // the week, not the last two hours of it.
+  function applyImportedBests(byGuid, si) {
+    const stored = readImport(server.key, trackKeyOf(si.Track || "", si.TrackConfig || ""));
+    if (!stored) return;
+
+    for (const lap of stored.laps) {
+      const live = byGuid.get(lap.steamId);
+      if (!live) {
+        // Nobody by that Steam id is on the server. Build the row the same way
+        // every other row is built, from a driver record with no car data, and
+        // put the one number we have onto it: no sectors, no last lap, no lap
+        // count, because we genuinely do not know any of them. The table prints
+        // a dash for each, which is honest and is what a stored driver's row
+        // already looks like.
+        const entry = buildEntry(lap.steamId, {
+          CarInfo: { DriverName: lap.name, CarModel: lap.car || "", CarName: lap.car || "" },
+        }, false);
+        entry.bestLapMs = lap.lapTimeMs;
+        entry.imported = true;
+        byGuid.set(lap.steamId, entry);
+        continue;
+      }
+
+      if (live.bestLapMs != null && live.bestLapMs <= lap.lapTimeMs) continue;
+      live.bestLapMs = lap.lapTimeMs;
+      live.imported = true;
+      // The sectors and the top speed on that row were measured on the lap the
+      // imported time just replaced. Leaving them would print three splits that
+      // do not add up to the time beside them, so they go with it.
+      live.sectors = [null, null, null];
+      live.topSpeed = null;
+    }
+  }
+
   // What the frontend gets. Usually the live board; for RESULT_HOLD_MS after a
   // race session ended, the frozen final classification instead (a race result
   // must survive the server cycling back to practice). A new RACE or
@@ -1222,6 +1275,10 @@ function createRelay(server) {
         }
       }
     }
+    // The week's imported training bests, before anything is ranked or gapped:
+    // an imported lap is a lap like any other once it is on a row.
+    if (si.Type === 1) applyImportedBests(byGuid, si);
+
     const entries = [...byGuid.values()];
 
     // Ranking. A RACE orders by the actual running order (telemetry
@@ -1416,6 +1473,10 @@ function createRelay(server) {
         name: si.Name || "",
         serverName: si.ServerName || "",
         track: si.Track || "",
+        // The same key the telemetry store files a lap under (lib/telemetryLaps
+        // .js), so "which track is this board on" is one string both sides
+        // agree on — the admin import matches the two by it.
+        trackKey: trackKeyOf(si.Track || "", si.TrackConfig || ""),
         trackName: ti.name || si.Track || "",
         country: ti.country || "",
         ambientTemp: si.AmbientTemp ?? null,
