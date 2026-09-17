@@ -25,11 +25,11 @@ import { canPickFolder, pickAcFolder, readerFromDrop } from "../utils/acFolder.j
 // ---------------------------------------------------------------------------
 
 const STATUS = {
-  ok: { label: "passt", cls: "bg-emerald-500/15 text-ok" },
-  diff: { label: "falsche Version", cls: "bg-red-500/15 text-bad" },
-  missing: { label: "fehlt", cls: "bg-red-500/15 text-bad" },
-  unpacked: { label: "entpackte Daten", cls: "bg-amber-500/15 text-warn" },
-  skipped: { label: "nicht prüfbar", cls: "bg-surface2 text-light" },
+  ok: { label: "matches", cls: "bg-emerald-500/15 text-ok" },
+  diff: { label: "wrong version", cls: "bg-red-500/15 text-bad" },
+  missing: { label: "missing", cls: "bg-red-500/15 text-bad" },
+  unpacked: { label: "unpacked data", cls: "bg-amber-500/15 text-warn" },
+  skipped: { label: "not checkable", cls: "bg-surface2 text-light" },
 };
 
 function StatusPill({ status }) {
@@ -50,6 +50,8 @@ function ResultRow({ row }) {
     </li>
   );
 }
+
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 export default function ContentCheck() {
   const [serverKey, setServerKey] = useState(null);
@@ -76,7 +78,7 @@ export default function ContentCheck() {
 
   async function runCheck(reader) {
     if (!reader) {
-      setProblem("Das war kein Ordner. Zieh den Ordner assettocorsa (oder content) auf die Fläche.");
+      setProblem("That wasn't a folder. Drop your assettocorsa (or content) folder onto the box.");
       return;
     }
     setBusy(true);
@@ -89,13 +91,13 @@ export default function ContentCheck() {
           out.push({
             ...file,
             status: "skipped",
-            detail: file.error ? `Server: ${file.error}` : "Der Server hat diese Datei nicht",
+            detail: file.error ? `Server: ${file.error}` : "The server doesn't have this file",
           });
           continue;
         }
         const local = await reader.getFile(file.path);
         if (!local) {
-          out.push({ ...file, status: "missing", detail: "Nicht in deiner Installation gefunden" });
+          out.push({ ...file, status: "missing", detail: "Not found in your installation" });
         } else {
           const hash = await md5File(local);
           out.push(
@@ -104,7 +106,7 @@ export default function ContentCheck() {
               : {
                   ...file,
                   status: "diff",
-                  detail: `deine ${hash.slice(0, 8)}… · Server ${file.md5.slice(0, 8)}…`,
+                  detail: `yours ${hash.slice(0, 8)}… · server ${file.md5.slice(0, 8)}…`,
                 }
           );
         }
@@ -117,13 +119,13 @@ export default function ContentCheck() {
             label: file.label,
             path: file.unpackedDir,
             status: "unpacked",
-            detail: "Diesen Ordner löschen — er übersteuert die data.acd",
+            detail: "Delete this folder — it overrides the data.acd",
           });
         }
       }
       setRows(out);
     } catch (e) {
-      setProblem(e?.message || "Der Ordner konnte nicht gelesen werden.");
+      setProblem(e?.message || "The folder could not be read.");
     } finally {
       setBusy(false);
     }
@@ -134,7 +136,7 @@ export default function ContentCheck() {
       await runCheck(await pickAcFolder());
     } catch (e) {
       // The picker throws when the dialog is dismissed — not worth a message.
-      if (e?.name !== "AbortError") setProblem(e?.message || "Der Ordner konnte nicht geöffnet werden.");
+      if (e?.name !== "AbortError") setProblem(e?.message || "The folder could not be opened.");
     }
   }
 
@@ -148,12 +150,12 @@ export default function ContentCheck() {
   const skipped = (rows || []).filter((r) => r.status === "skipped");
 
   // What a driver pastes back into Discord, so the answer there is a file name
-  // instead of "geht nicht".
+  // instead of "doesn't work".
   const report = useMemo(() => {
     if (!rows) return "";
     const head = `NABS Content Check · ${data?.server?.name || ""} · ${data?.track || "?"}${data?.config ? ` (${data.config})` : ""}`;
     if (!bad.length) {
-      return `${head}\nAlles korrekt (${rows.length - skipped.length} Dateien geprüft).`;
+      return `${head}\nAll files match (${plural(rows.length - skipped.length, "file")} checked).`;
     }
     return [head, ...bad.map((r) => `${STATUS[r.status].label.toUpperCase()}: ${r.path}${r.detail ? ` — ${r.detail}` : ""}`)].join("\n");
   }, [rows, bad, skipped.length, data]);
@@ -162,11 +164,11 @@ export default function ContentCheck() {
     navigator.clipboard?.writeText(report).then(
       () => {
         if (copyRef.current) {
-          copyRef.current.textContent = "Kopiert";
-          setTimeout(() => copyRef.current && (copyRef.current.textContent = "Für Discord kopieren"), 2000);
+          copyRef.current.textContent = "Copied";
+          setTimeout(() => copyRef.current && (copyRef.current.textContent = "Copy for Discord"), 2000);
         }
       },
-      () => setProblem("Kopieren hat nicht geklappt — markier den Text oben von Hand.")
+      () => setProblem("Copying didn't work — select the text above by hand.")
     );
   }
 
@@ -175,16 +177,16 @@ export default function ContentCheck() {
       <PageHeader
         eyebrow="Assetto Corsa"
         title="Content Check"
-        subtitle="Vom Server geflogen mit „Checksum failed“? Diese Seite vergleicht deine Dateien mit denen des Race-Servers und sagt dir, welche nicht stimmt."
+        subtitle="Kicked from the server with “Checksum failed”? This page compares your files with the race server's and tells you which one doesn't match."
       />
 
-      {error && <ErrorBox message={error} onRetry={reload} title="Der Race-Server antwortet gerade nicht" />}
+      {error && <ErrorBox message={error} onRetry={reload} title="The race server isn't answering right now" />}
 
       {!error && (
         <div className="space-y-5">
           {/* What is being checked, and where the list comes from. */}
           <div className="card p-5">
-            <CardHead eyebrow="Geprüft wird" title={loading ? "Wird geladen…" : data?.track || "Keine Session gefunden"}>
+            <CardHead eyebrow="Checking against" title={loading ? "Loading…" : data?.track || "No session found"}>
               {(data?.servers?.length || 0) > 1 && (
                 <select
                   className="input py-1 text-xs"
@@ -193,7 +195,7 @@ export default function ContentCheck() {
                     setRows(null);
                     setServerKey(e.target.value);
                   }}
-                  aria-label="Race-Server"
+                  aria-label="Race server"
                 >
                   {data.servers.map((s) => (
                     <option key={s.key} value={s.key}>
@@ -205,15 +207,15 @@ export default function ContentCheck() {
             </CardHead>
             {data?.session ? (
               <p className="text-sm text-medium">
-                Die Liste stammt aus der letzten Session auf {data.server?.name}
-                {data.config && <> · Layout <span className="font-mono text-xs">{data.config}</span></>} ·{" "}
-                {checkable.length} Datei{checkable.length === 1 ? "" : "en"} mit Server-Hash
-                {data.carCount > 0 && <> · {data.carCount} Auto{data.carCount === 1 ? "" : "s"}</>}.
+                The list comes from the latest session on {data.server?.name}
+                {data.config && <> · layout <span className="font-mono text-xs">{data.config}</span></>} ·{" "}
+                {plural(checkable.length, "file")} with a server hash
+                {data.carCount > 0 && <> · {plural(data.carCount, "car")}</>}.
               </p>
             ) : (
               !loading && (
                 <p className="text-sm text-medium">
-                  {data?.note || "Auf diesem Server liegt noch keine Session, aus der sich die Autoliste lesen lässt."}
+                  {data?.note || "This server has no session yet to read a car list from."}
                 </p>
               )
             )}
@@ -232,23 +234,23 @@ export default function ContentCheck() {
             }`}
           >
             <p className="text-sm font-semibold text-dark">
-              {canPickFolder() ? "Wähle deinen Ordner assettocorsa" : "Zieh deinen Ordner assettocorsa hierher"}
+              {canPickFolder() ? "Pick your assettocorsa folder" : "Drop your assettocorsa folder here"}
             </p>
             <p className="max-w-md text-xs text-light">
-              Typisch <span className="font-mono">C:\Program Files (x86)\Steam\steamapps\common\assettocorsa</span>. Der
-              Ordner <span className="font-mono">content</span> tut es auch. Es werden nur die {checkable.length} Dateien
-              oben gelesen — nichts wird hochgeladen.
+              Usually <span className="font-mono">C:\Program Files (x86)\Steam\steamapps\common\assettocorsa</span>. The{" "}
+              <span className="font-mono">content</span> folder works too. Only the {checkable.length} files above are read
+              — nothing is uploaded.
             </p>
             {canPickFolder() ? (
               <button className="btn-primary px-5" disabled={busy || !checkable.length} onClick={onPick}>
-                {busy ? "Prüfe…" : "Ordner auswählen"}
+                {busy ? "Checking…" : "Pick folder"}
               </button>
             ) : (
               <p className="text-xs text-medium">
-                {busy ? "Prüfe…" : "In Chrome oder Edge gibt es hier einen Knopf statt Ziehen und Ablegen."}
+                {busy ? "Checking…" : "In Chrome or Edge there's a button here instead of drag and drop."}
               </p>
             )}
-            {folderName && !busy && <p className="text-xs text-faint">Gelesen: {folderName}</p>}
+            {folderName && !busy && <p className="text-xs text-faint">Read: {folderName}</p>}
           </div>
 
           {problem && <Notice kind="error">{problem}</Notice>}
@@ -257,22 +259,22 @@ export default function ContentCheck() {
           {rows && (
             <div className="card p-5">
               <CardHead
-                eyebrow="Ergebnis"
-                title={bad.length === 0 ? "Alles korrekt" : `${bad.length} Problem${bad.length === 1 ? "" : "e"} gefunden`}
+                eyebrow="Result"
+                title={bad.length === 0 ? "All files match" : `${plural(bad.length, "problem")} found`}
               >
                 <button ref={copyRef} className="btn-secondary px-3 py-1 text-xs" onClick={copyReport}>
-                  Für Discord kopieren
+                  Copy for Discord
                 </button>
               </CardHead>
               {bad.length === 0 ? (
                 <Notice kind="success">
-                  Deine Dateien sind identisch mit denen des Servers. Wenn du trotzdem gekickt wirst, liegt es nicht an
-                  diesen Dateien — schick den Screenshot der Fehlermeldung in den Discord.
+                  Your files are identical to the server's. If you still get kicked, it isn't these files — post a
+                  screenshot of the error message in the Discord.
                 </Notice>
               ) : (
                 <Notice kind="warn">
-                  Genau diese Dateien weichen vom Server ab. Zieh sie neu aus dem Mod-Drive (oder lösch den entpackten
-                  Ordner) und prüfe noch einmal.
+                  These files differ from the server. Get them fresh from the mod drive (or delete the unpacked folder)
+                  and check again.
                 </Notice>
               )}
               <ul className="mt-4 divide-y divide-border border-y border-border">
@@ -282,8 +284,7 @@ export default function ContentCheck() {
               </ul>
               {skipped.length > 0 && (
                 <p className="mt-3 text-xs text-light">
-                  {skipped.length} Datei{skipped.length === 1 ? "" : "en"} ohne Server-Hash konnte{skipped.length === 1 ? "" : "n"}{" "}
-                  nicht verglichen werden.
+                  {plural(skipped.length, "file")} without a server hash could not be compared.
                 </p>
               )}
             </div>
@@ -292,18 +293,18 @@ export default function ContentCheck() {
           {/* Said plainly rather than buried: this check is not everything. */}
           <div className="card p-5 text-xs leading-relaxed text-light">
             <p>
-              <b className="text-medium">Was geprüft wird:</b> die <span className="font-mono">data.acd</span> jedes Autos
-              der Session und die <span className="font-mono">surfaces.ini</span> der Strecke — die Dateien, auf denen der
-              Checksum-Kick beruht. Die Hashes kommen vom Race-Server selbst, nicht aus einer gepflegten Liste.
+              <b className="text-medium">What is checked:</b> the <span className="font-mono">data.acd</span> of every car in
+              the session and the track's <span className="font-mono">surfaces.ini</span> — the files the checksum kick is
+              based on. The hashes come from the race server itself, not from a maintained list.
             </p>
             <p className="mt-2">
-              <b className="text-medium">Was nicht:</b> die 3D-Modelle (<span className="font-mono">.kn5</span>) — die gibt
-              der Server nicht heraus. Und alles, was kein Checksum-Fehler ist: CSP-Version, Passwort, voller Server. Die
-              melden sich mit einer anderen Meldung.
+              <b className="text-medium">What isn't:</b> the 3D models (<span className="font-mono">.kn5</span>) — the server
+              doesn't hand those out. And anything that isn't a checksum error: CSP version, password, full server. Those
+              come with a different message.
             </p>
             <p className="mt-2">
-              <b className="text-medium">Deine Dateien bleiben bei dir.</b> Gelesen und gehasht wird im Browser; zum Server
-              geht nichts.
+              <b className="text-medium">Your files stay with you.</b> Reading and hashing happen in the browser; nothing
+              goes to the server.
             </p>
           </div>
         </div>

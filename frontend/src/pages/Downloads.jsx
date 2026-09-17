@@ -429,10 +429,10 @@ export default function Downloads() {
         <div className="card flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
           <div className="min-w-0 flex-1">
             <div className="font-display text-sm font-extrabold uppercase tracking-tight text-dark">
-              Vom Server geflogen mit &bdquo;Checksum failed&ldquo;?
+              Kicked from the server with &ldquo;Checksum failed&rdquo;?
             </div>
             <p className="mt-0.5 text-xs leading-relaxed text-light">
-              Der Content Check vergleicht deine Dateien mit denen des Race-Servers und nennt dir die, die nicht stimmt.
+              The Content Check compares your files with the race server&rsquo;s and names the one that doesn&rsquo;t match.
             </p>
           </div>
           <Link to="/content-check" className="btn-secondary shrink-0 px-4 py-1.5 text-xs">
