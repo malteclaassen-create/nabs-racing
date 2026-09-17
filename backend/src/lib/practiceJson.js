@@ -12,9 +12,22 @@
 // Fields, as the server manager writes them: Type ("PRACTICE" / "QUALIFY" /
 // "RACE"), TrackName + TrackConfig, Result[] with one row per entrant
 // (DriverGuid = SteamID64, DriverName, CarModel, BestLap in ms) and Laps[] in
-// completion order (DriverGuid, LapTime in ms, Sectors[] in ms, Cuts). The
-// sectors are the server's own splits — the thing the in-game recorder can
-// never know — which is the whole reason this file is worth reading.
+// completion order (DriverGuid, DriverName, CarModel, LapTime in ms, Sectors[]
+// in ms, Cuts). The sectors are the server's own splits — the thing the
+// in-game recorder can never know — which is the whole reason this file is
+// worth reading.
+//
+// LAPS[] IS THE TRUTH; RESULT[] IS NOT READ FOR NAMES OR TIMES. The league's
+// practice server has cars that several drivers use one after another over an
+// evening (the reserve and guest slots), and for those the server manager's
+// Result[] row is the CAR's, dressed up as a driver's: DriverName is every
+// name that sat in it joined with commas ("ricoss, woozy, ThatDudeGuest"),
+// BestLap is the quickest lap anyone did in it, and DriverGuid is one of them.
+// The first cut of this read names and times from there, and the board showed
+// a driver credited with somebody else's lap under a list of five names. A lap
+// row carries the name and the car of the one driver who drove it, so every
+// row here is built from lap rows and nothing else — a driver with no clean
+// lap in the file has no time to show, whatever the classification says.
 // ---------------------------------------------------------------------------
 import { trackKeyOf } from "./telemetryLaps.js";
 
@@ -51,33 +64,21 @@ export function parsePracticeJson(json, { fileName = "" } = {}) {
   const layout = String(json.TrackConfig || "").trim();
   const type = String(json.Type || "").toUpperCase() || "SESSION";
 
-  // Who was in the session, by Steam id. A row without one is a row nobody
-  // can be matched to on the live board, so it is skipped rather than shown
-  // under a name that could be anybody's.
-  const entrants = new Map();
-  for (const r of json.Result) {
-    const guid = String(r?.DriverGuid || "");
-    if (!STEAM_RE.test(guid)) continue;
-    const name = String(r?.DriverName || "").trim().slice(0, 64);
-    if (!name) continue;
-    entrants.set(guid, {
-      steamId: guid,
-      name,
-      car: String(r?.CarModel || "").trim().slice(0, 80),
-      // The classification's own best, kept as the answer of last resort for
-      // a file whose Laps[] was stripped — it carries no sectors.
-      resultBestMs: ms(r?.BestLap),
-    });
-  }
-
-  // The fastest CLEAN lap per driver from the lap list. A lap with cuts is not
-  // a lap time — the server itself does not count it towards BestLap — and a
-  // lap slower than the bounds is an out lap or a lap sat in the garage.
+  // The fastest CLEAN lap per driver, from the lap rows and nothing else (see
+  // the header). A lap with cuts is not a lap time — the server itself does
+  // not count it towards BestLap — and a lap outside the bounds is an out lap
+  // or a lap sat in the garage. A row without a Steam id is a row nobody can
+  // be matched to on the live board, so it is skipped rather than shown under
+  // a name that could be anybody's; a name that is a comma-joined list is the
+  // server manager's shared-car row leaking into a lap row, and not a driver.
   const best = new Map();
+  const entrants = new Set();
   for (const lap of Array.isArray(json.Laps) ? json.Laps : []) {
     const guid = String(lap?.DriverGuid || "");
-    const who = entrants.get(guid);
-    if (!who) continue;
+    if (!STEAM_RE.test(guid)) continue;
+    entrants.add(guid);
+    const name = String(lap?.DriverName || "").trim().slice(0, 64);
+    if (!name || name.includes(", ")) continue;
     if (Number(lap?.Cuts) > 0) continue;
     const lapTimeMs = ms(lap?.LapTime);
     if (lapTimeMs == null) continue;
@@ -85,26 +86,14 @@ export function parsePracticeJson(json, { fileName = "" } = {}) {
     if (seen && seen.lapTimeMs <= lapTimeMs) continue;
     best.set(guid, {
       steamId: guid,
-      name: who.name,
-      // The car this lap was driven in, which in a practice session is not
-      // always the one the classification row ended the evening in.
-      car: String(lap?.CarModel || who.car || "").trim().slice(0, 80),
+      name,
+      // The car THIS lap was driven in: on the practice server a driver can
+      // take a different car later in the evening, and the shared cars are
+      // exactly where the classification row would name the wrong one.
+      car: String(lap?.CarModel || "").trim().slice(0, 80),
       lapTimeMs,
       sectorsMs: sectorsOf(lap, lapTimeMs),
       recordedAt: lap?.Timestamp ? String(lap.Timestamp).slice(0, 40) : null,
-    });
-  }
-  // Entrants with a BestLap in the classification but no usable row in Laps[]:
-  // the time is real, the sectors are unknown.
-  for (const who of entrants.values()) {
-    if (best.has(who.steamId) || who.resultBestMs == null) continue;
-    best.set(who.steamId, {
-      steamId: who.steamId,
-      name: who.name,
-      car: who.car,
-      lapTimeMs: who.resultBestMs,
-      sectorsMs: null,
-      recordedAt: null,
     });
   }
 
@@ -116,6 +105,8 @@ export function parsePracticeJson(json, { fileName = "" } = {}) {
     sessionName: String(json.SessionName || json.Name || "").slice(0, 80),
     fileName: String(fileName || "").slice(0, 120),
     date: json.Date ? String(json.Date).slice(0, 40) : null,
+    // Everyone who completed a lap, clean or not — the number the admin card
+    // can set "drivers with a time" against.
     entrants: entrants.size,
     laps: [...best.values()].sort((a, b) => a.lapTimeMs - b.lapTimeMs),
   };

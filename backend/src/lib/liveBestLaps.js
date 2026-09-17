@@ -161,6 +161,12 @@ function cleanLap(raw) {
   if (!Number.isFinite(lapTimeMs) || lapTimeMs < MIN_LAP_MS || lapTimeMs > MAX_LAP_MS) return null;
   const name = String(raw.name || "").trim().slice(0, 64);
   if (!name) return null;
+  // A comma-joined list of names is the server manager's row for a car that
+  // several drivers shared over an evening, not a driver (lib/practiceJson.js
+  // explains). The parser no longer produces one; records written before it
+  // stopped still hold them, and this is what keeps them off the board until
+  // the files are given again.
+  if (name.includes(", ")) return null;
   // Three positive splits that add up to the lap, or none. Checked again here
   // even though practiceJson.js checked on the way in: this is the last stop
   // before a number is printed beside a driver's name.

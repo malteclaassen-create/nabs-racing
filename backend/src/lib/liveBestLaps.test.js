@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIVE_BEST_LAPS_DIR } from "./dataDirs.js";
 import { seriesKeyOf, seasonKeyOf } from "./telemetryLaps.js";
@@ -80,8 +80,23 @@ describe("liveBestLaps files", () => {
       fileLap("not-a-steam-id", 95_000, "Ghost"),
       fileLap(B, 5, "Impossible"), // under the 20s floor
       { steamId: B, lapTimeMs: 95_000 }, // no name
+      fileLap(B, 94_000, "Bob, Cara, Dan"), // the server manager's shared-car row
     ]);
     expect(bestsFor(SERIES, SEASON, TRACK).map((l) => l.name)).toEqual(["Alice"]);
+  });
+
+  // Records written before the parser stopped producing shared-car rows still
+  // hold them; the read is what keeps them off the board until the files are
+  // given again.
+  it("a shared-car row already on disk stays off the board", () => {
+    give([fileLap(A, 95_000, "Alice")]);
+    const path = join(LIVE_BEST_LAPS_DIR, seriesKeyOf(SERIES), seasonKeyOf(SEASON), `${TRACK}.json`);
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    raw.laps.push({ steamId: B, name: "Bob, Cara, Dan", car: "rss_f1", lapTimeMs: 90_000, sectorsMs: null });
+    writeFileSync(path, JSON.stringify(raw));
+    __clearCache();
+    setBoardScopes(SERVER, [{ series: SERIES, season: SEASON }]);
+    expect(currentBests(SERVER, TRACK).map((l) => l.name)).toEqual(["Alice"]);
   });
 
   it("a file with nothing usable in it changes nothing, and is not listed", () => {
