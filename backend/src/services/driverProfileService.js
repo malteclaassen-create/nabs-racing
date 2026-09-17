@@ -22,7 +22,7 @@ import { readDriverRoles } from "../lib/driverRoles.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
 import { achievementMeta } from "../lib/achievements.js";
-import { hasRaced, finishesOf } from "../lib/standingsRow.js";
+import { hasRaced, finishesOf, startsOf } from "../lib/standingsRow.js";
 import { withClassifiedPositions } from "./penalisedResults.js";
 import { readSprintChildrenOf, readParentIds, readSprintChildren } from "../lib/sprintRaces.js";
 
@@ -117,22 +117,23 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilt
   const sprintIds = await readParentIds(prisma, specialIds);
   const sprintRows = results.filter((r) => sprintIds.has(r.raceId));
 
-  const starts = rows.filter((r) => r.status !== "DNS");
+  // EVERY race counts as a race: the feature races and the sprints of sprint
+  // weekends alike (lib/standingsRow.js). Starts, finishes, retirements, the
+  // top-N counters and the finishing averages all read this one list, so the
+  // win rate is wins per race started and cannot contradict itself.
+  const raced = [...rows, ...sprintRows];
+  const starts = raced.filter((r) => r.status !== "DNS");
   const finishes = starts.filter((r) => r.status === "FINISHED" && r.position != null);
   const finishPositions = finishes.map((r) => r.position);
   const gained = finishes
     .filter((r) => r.grid != null && r.position != null)
     .map((r) => r.grid - r.position);
-  // Wins, podiums and the top-N counters count EVERY classification: the
-  // feature races and the sprints of sprint weekends (a sprint win is a win,
-  // lib/standingsRow.js). Starts, averages, best/worst finish and the grid
-  // numbers stay per ROUND — one race night is one start — so the rates below
-  // read "per round", which is how the league talks about them.
-  const sprintFinishes = sprintRows.filter((r) => r.status === "FINISHED" && r.position != null);
-  const topN = (n) =>
-    finishes.filter((r) => r.position <= n).length + sprintFinishes.filter((r) => r.position <= n).length;
+  const topN = (n) => finishes.filter((r) => r.position <= n).length;
   const wins = topN(1);
   const podiums = topN(3);
+  // The grid numbers stay on the feature races: a sprint's slot is usually
+  // reversed or inherited, not a qualifying result.
+  const qualified = rows.filter((r) => r.status !== "DNS");
 
   let fastest = null;
   for (const r of rows) {
@@ -170,7 +171,7 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilt
 
   // "In the points": stored official points where present, else the position
   // against the default table — close enough for a cross-season counter.
-  const scored = rows.filter((r) =>
+  const scored = raced.filter((r) =>
     r.points != null ? r.points > 0 : r.status === "FINISHED" && r.position != null && r.position <= 18
   ).length;
 
@@ -187,11 +188,11 @@ async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilt
     bestFinish: finishPositions.length ? Math.min(...finishPositions) : null,
     worstFinish: finishPositions.length ? Math.max(...finishPositions) : null,
     avgFinish: avg(finishPositions),
-    bestGrid: starts.some((r) => r.grid != null)
-      ? Math.min(...starts.filter((r) => r.grid != null).map((r) => r.grid))
+    bestGrid: qualified.some((r) => r.grid != null)
+      ? Math.min(...qualified.filter((r) => r.grid != null).map((r) => r.grid))
       : null,
     polePositions,
-    avgGrid: avg(starts.filter((r) => r.grid != null).map((r) => r.grid)),
+    avgGrid: avg(qualified.filter((r) => r.grid != null).map((r) => r.grid)),
     positionsGained: gained.length ? gained.reduce((a, b) => a + b, 0) : 0,
     winRate: starts.length ? Math.round((wins / starts.length) * 100) : 0,
     podiumRate: starts.length ? Math.round((podiums / starts.length) * 100) : 0,
@@ -287,7 +288,7 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
       teamColor: ld.team?.color ?? null,
       position: seasonRank > 0 ? seasonRank : null,
       points: row.total ?? 0,
-      starts: rounds.filter((v) => v.status !== "DNS").length,
+      starts: startsOf(rounds).length,
       wins: finishes.filter((v) => v.position === 1).length,
       podiums: finishes.filter((v) => v.position <= 3).length,
     };
@@ -852,16 +853,21 @@ export async function getDriverProfile(prisma, driverId) {
   }
   const stewardPenaltySeconds = results.reduce((s, r) => s + (r.penaltySeconds || 0), 0);
 
-  const starts = perRace.filter((r) => r.status !== "DNS");
-  const finishes = starts.filter((r) => r.status === "FINISHED" && r.position != null);
+  // Every classification of the season, the sprints included: the cells carry
+  // the sprint half already, so this needs no second query (lib/standingsRow).
+  // Starts and finishes are counted the same way as the wins below them, which
+  // is what makes the win rate wins per race rather than wins per race night.
+  const starts = startsOf(perRace);
+  const finishes = finishesOf(perRace);
   const finishPositions = finishes.map((r) => r.position);
-  // Wins/podiums/top-N over every classification of the season — the feature
-  // races and the sprints (lib/standingsRow.js). The cells already carry the
-  // sprint half, so this needs no second query.
-  const classified = finishesOf(perRace);
-  const topN = (n) => classified.filter((r) => r.position <= n).length;
-  const gained = finishes
-    .filter((r) => r.grid != null && r.position != null)
+  const topN = (n) => finishes.filter((r) => r.position <= n).length;
+  // The grid numbers stay on the feature races: a sprint's slot is usually
+  // reversed or inherited, not a qualifying result.
+  const qualified = perRace.filter((r) => r.status !== "DNS");
+  // Places gained belongs with them: it is grid minus finish, and only the
+  // round cell carries a grid.
+  const gained = qualified
+    .filter((r) => r.status === "FINISHED" && r.grid != null && r.position != null)
     .map((r) => r.grid - r.position);
 
   // Fastest lap across the season: personal best (for the tile's subtitle) and
@@ -995,15 +1001,21 @@ export async function getDriverProfile(prisma, driverId) {
       podiums,
       top5: topN(5),
       top10: topN(10),
-      pointsFinishes: perRace.filter((r) => r.points > 0).length,
+      // Each classification that paid, not each race night: a cell's `points`
+      // is the weekend's total and `sprint.points` the sprint's share, so the
+      // difference is what the feature race paid.
+      pointsFinishes: perRace.reduce(
+        (n, r) => n + (r.points - (r.sprint?.points || 0) > 0 ? 1 : 0) + ((r.sprint?.points || 0) > 0 ? 1 : 0),
+        0
+      ),
       dnf: starts.filter((r) => r.status === "DNF").length,
       dsq: starts.filter((r) => r.status === "DSQ").length,
       bestFinish: finishPositions.length ? Math.min(...finishPositions) : null,
       worstFinish: finishPositions.length ? Math.max(...finishPositions) : null,
       avgFinish: avg(finishPositions),
-      bestGrid: starts.some((r) => r.grid != null) ? Math.min(...starts.filter((r) => r.grid != null).map((r) => r.grid)) : null,
+      bestGrid: qualified.some((r) => r.grid != null) ? Math.min(...qualified.filter((r) => r.grid != null).map((r) => r.grid)) : null,
       polePositions,
-      avgGrid: avg(starts.filter((r) => r.grid != null).map((r) => r.grid)),
+      avgGrid: avg(qualified.filter((r) => r.grid != null).map((r) => r.grid)),
       positionsGained: gained.length ? gained.reduce((a, b) => a + b, 0) : 0,
       winRate: starts.length ? Math.round((wins / starts.length) * 100) : 0,
       podiumRate: starts.length ? Math.round((podiums / starts.length) * 100) : 0,

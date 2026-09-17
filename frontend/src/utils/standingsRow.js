@@ -37,9 +37,9 @@ export function isIdleReserve(row) {
 // EVERY CLASSIFICATION OF A ROUND — the twin of the backend's
 // lib/standingsRow.js (see the long note there). A sprint weekend is one round
 // with two races; the sprint rides on the round's cell as `sprint`, and the
-// league counts it: a sprint win is a win, a sprint podium is a podium.
-// Starts, averages and grid stats stay per ROUND. If either side changes,
-// change both.
+// league counts it: a sprint win is a win, a sprint podium is a podium, and
+// every race of the weekend is a race started. The grid numbers and the poles
+// stay per ROUND. If either side changes, change both.
 // ---------------------------------------------------------------------------
 
 // The round cells of a standings row ({ [roundNumber]: cell }).
@@ -63,4 +63,9 @@ export function classificationsOf(cells) {
 // The classified finishes among them — what wins / podiums / top-N count.
 export function finishesOf(cells) {
   return classificationsOf(cells).filter((c) => c.status === "FINISHED" && c.position != null);
+}
+
+// The classifications the driver took the start of (not a DNS).
+export function startsOf(cells) {
+  return classificationsOf(cells).filter((c) => c.status && c.status !== "DNS");
 }

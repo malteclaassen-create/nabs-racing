@@ -38,10 +38,16 @@ export function isIdleReserve(row) {
 // which is how the sprints were scored before the site existed, and what the
 // Hall of Fame, the profile tiles and the standings countback all read now.
 //
-// What does NOT go through here: starts, averages, best/worst finish, places
-// gained and the grid stats. Those stay per ROUND — a sprint weekend is one
-// race night, so counting it as two starts would quietly halve everybody's
-// win rate on a league that runs a sprint every round.
+// EVERY race of the weekend is also a race STARTED. That was not so at first:
+// wins counted both halves while starts counted race nights, which made a win
+// rate of wins-per-round, and left a driver who made only the sprint recorded
+// as never having started at all — the round cell carries the FEATURE race's
+// status, and theirs was empty. Both counts now ask the same question.
+//
+// What does NOT go through here: the grid numbers and the poles. A sprint
+// usually starts from a reversed or inherited grid, so its slot is not a
+// qualifying result and would drag an average grid somewhere meaningless;
+// a pole stays one per round, the qualifying session of that weekend.
 //
 // The frontend keeps the same rule in utils/standingsRow.js. If either
 // changes, change both.
@@ -71,4 +77,11 @@ export function classificationsOf(cells) {
 // podiums / top-N counter on the site is built from.
 export function finishesOf(cells) {
   return classificationsOf(cells).filter((c) => c.status === "FINISHED" && c.position != null);
+}
+
+// The classifications the driver took the start of: a status on record that is
+// not a DNS. A sprint weekend gives two, a plain round one, and a weekend
+// where only the sprint was driven gives one rather than none.
+export function startsOf(cells) {
+  return classificationsOf(cells).filter((c) => c.status && c.status !== "DNS");
 }

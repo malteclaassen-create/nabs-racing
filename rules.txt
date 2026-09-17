@@ -77,13 +77,20 @@ race on its own). The sprint's points are added to that round, so a sprint
 weekend is one round worth up to 70 points. For the drop scores it is still one
 round. On the round by round tables a sprint weekend is marked with an S.
 
-A SPRINT WIN IS A WIN. Both races of the weekend count as races won or on the
-podium: on the driver profile, in the Hall of Fame lists, in the Cockpit
-achievements and in the countback that splits two drivers on equal points. What
-stays per round is everything measured against a race night - starts, average
-and best finish, the grid numbers and the places gained - so a sprint weekend
-is still one start. The Sprint Wins and Sprint Podiums tiles on a profile are
-the breakdown of the totals, not a separate count.
+A SPRINT WIN IS A WIN, AND A SPRINT DRIVEN IS A START. Both races of the
+weekend count as races started, won, finished or retired from: on the driver
+profile, in the Hall of Fame lists, in the Cockpit achievements and in the
+countback that splits two drivers on equal points. So a win rate is wins per
+race, not per race night, and a driver who only made the sprint of a weekend
+has a start on record for it.
+
+What stays per round: the grid numbers and the poles. A sprint usually starts
+from a reversed or inherited grid, so its slot is not a qualifying result, and
+a pole is the qualifying session of the weekend - one per round. Points, the
+drop rule and the round columns are per round as described above.
+
+The Sprint Wins and Sprint Podiums tiles on a profile are the breakdown of the
+totals, not a separate count.
 
 
 MANUAL POINTS

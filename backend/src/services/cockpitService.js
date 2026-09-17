@@ -19,7 +19,7 @@ import { readParentIds, readSprintChildren } from "../lib/sprintRaces.js";
 import { groupKeyFor, displayNameFor, countryFor } from "../lib/trackKeys.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import { achievementStateFor } from "../lib/achievements.js";
-import { hasRaced, finishesOf } from "../lib/standingsRow.js";
+import { hasRaced, finishesOf, startsOf } from "../lib/standingsRow.js";
 import { findArchiveFor, analyzeRaceFor, raceInsightsFor } from "../lib/cockpitArchive.js";
 
 const MAX_LAP_MS = 1_800_000;
@@ -167,12 +167,11 @@ export async function getCockpitOverview(prisma, driverId) {
 
   // Season quick numbers from the perRace map + telemetry.
   const rounds = Object.values(me?.perRace || {});
-  const started = rounds.filter((v) => v.status !== "DNS");
-  const finished = started.filter((v) => v.status === "FINISHED" && v.position != null);
-  // Wins and podiums count both races of a sprint weekend (lib/standingsRow.js).
-  // The average finish beside them stays on the round's own classification, so
-  // it keeps meaning the same thing as the position in the table above it.
-  const classified = finishesOf(rounds);
+  // Every race of a sprint weekend counts as a race driven and, where it ended
+  // in a classification, as a finish (lib/standingsRow.js) — so the averages
+  // and rates below are per race, like the wins beside them.
+  const started = startsOf(rounds);
+  const finished = finishesOf(rounds);
   let contacts = 0, cuts = 0, anyTel = false;
   for (const t of telemetry.values()) {
     if (t.contacts != null) { contacts += t.contacts; anyTel = true; }
@@ -213,11 +212,18 @@ export async function getCockpitOverview(prisma, driverId) {
     quick: {
       avgPoints: started.length ? Math.round(((me?.total ?? 0) / started.length) * 10) / 10 : null,
       pointsFinishRate: started.length
-        ? Math.round((rounds.filter((v) => v.points > 0).length / started.length) * 100)
+        ? Math.round(
+            (rounds.reduce(
+              (n, v) => n + (v.points - (v.sprint?.points || 0) > 0 ? 1 : 0) + ((v.sprint?.points || 0) > 0 ? 1 : 0),
+              0
+            ) /
+              started.length) *
+              100
+          )
         : null,
       dnfCount: started.filter((v) => v.status === "DNF").length,
-      wins: classified.filter((v) => v.position === 1).length,
-      podiums: classified.filter((v) => v.position <= 3).length,
+      wins: finished.filter((v) => v.position === 1).length,
+      podiums: finished.filter((v) => v.position <= 3).length,
       avgFinish: avg(finished.map((v) => v.position)),
       contacts: anyTel ? contacts : null,
       cuts: anyTel ? cuts : null,
@@ -417,8 +423,9 @@ export async function getCockpitCareer(prisma, driverId) {
     const me = st.standings.find((r) => r.driverId === row.id);
     if (!me) continue;
     const rounds = Object.values(me.perRace || {});
-    const started = rounds.filter((v) => v.status !== "DNS");
-    const finished = finishesOf(rounds); // sprints count as wins/podiums
+    // Starts and finishes both count every race of the weekend.
+    const started = startsOf(rounds);
+    const finished = finishesOf(rounds);
     seasons.push({
       driverId: row.id,
       seasonNumber: row.season.number,
@@ -749,7 +756,8 @@ export async function buildAchievementInputs(prisma, ctx, { standings } = {}) {
   const wins = finished.filter((r) => r.position === 1);
   const sprintFinished = sprintRows.filter((r) => r.status === "FINISHED" && r.position != null);
   return {
-    starts: started.length,
+    // A sprint driven is a race started, like a sprint won is a win.
+    starts: started.length + sprintRows.filter((r) => r.status !== "DNS").length,
     wins: wins.length + sprintFinished.filter((r) => r.position === 1).length,
     podiums:
       finished.filter((r) => r.position <= 3).length +

@@ -16,7 +16,7 @@ import { resolveSeries, getActiveSeries } from "../lib/series.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
 import { readSprintChildrenOf } from "../lib/sprintRaces.js";
-import { finishesOf } from "../lib/standingsRow.js";
+import { finishesOf, startsOf } from "../lib/standingsRow.js";
 
 // Heavy (walks every season), so one result is kept warm per series for a few
 // minutes. Results imports simply age out within CACHE_MS.
@@ -116,11 +116,12 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   for (const { season, standings } of perSeason) {
     for (const row of standings.standings || []) {
       const results = Object.values(row.perRace || {});
-      const started = results.filter((r) => r.status && r.status !== "DNS");
-      // Wins, podiums and top fives count EVERY classification of a round —
-      // the feature race and, on a sprint weekend, the sprint (a sprint win is
-      // a win, lib/standingsRow.js). Starts stay per round: one race night is
-      // one start, however many races the league ran that evening.
+      // Starts, wins, podiums and top fives all count EVERY classification of
+      // a round — the feature race and, on a sprint weekend, the sprint
+      // (lib/standingsRow.js). Counting starts per race night while counting
+      // wins per race was this page's own contradiction: the sprint a driver
+      // won was on their wins, the sprint they drove was not on their starts.
+      const started = startsOf(results);
       const finished = finishesOf(results);
       const b = bucketFor(personOf(row.driverId));
       // Career points are the GROSS figure: what the driver actually scored,
@@ -302,7 +303,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     topList("wins", "Most wins", "races won, sprints included", (b) => b.wins, { unit: "wins" }),
     topList("podiums", "Most podiums", "top-3 finishes, sprints included", (b) => b.podiums, { unit: "podiums" }),
     topList("points", "Most career points", "every round counted, nothing dropped", (b) => b.points, { unit: "pts" }),
-    topList("starts", "Most starts", "championship rounds started", (b) => b.starts, { unit: "starts" }),
+    topList("starts", "Most starts", "races started, sprints included", (b) => b.starts, { unit: "starts" }),
     topList("poles", "Most pole positions", "fastest in qualifying, where the session is on record", (b, id) => poles.get(id) || 0, { unit: "poles" }),
     topList("fastestLaps", "Most fastest laps", "best lap of a race, sprints included", (b, id) => fastestLaps.get(id) || 0, { unit: "laps" }),
     topList("overtakes", "Most overtakes", "on-track passes (telemetry seasons)", (b, id) => overtakes.get(id) || 0, { unit: "passes" }),

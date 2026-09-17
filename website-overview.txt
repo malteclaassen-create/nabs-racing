@@ -25,9 +25,10 @@ Driver profile
   A stats page for one driver - wins, podiums, best and average finish, poles,
   places gained, a season form chart, a head to head against another driver,
   and a race by race table. Both races of a sprint weekend count: a sprint win
-  is a win and a sprint podium is a podium, here, in the Hall of Fame and in
-  the Cockpit - as do the fastest laps of both races. Starts, averages and the
-  grid numbers stay per round (one race night is one start). In a season
+  is a win, a sprint podium is a podium and a sprint driven is a start, here,
+  in the Hall of Fame and in the Cockpit - as do the fastest laps of both
+  races. The grid numbers and the poles stay per round (a sprint grid is not a
+  qualifying result). In a season
   with sprint weekends the sprint races show up too: a Sprint view on the form chart and the head to head, a Sprint
   column in the race by race table (with the weekend's points split), and
   Sprint Wins / Sprint Podiums stat tiles that break the totals down.

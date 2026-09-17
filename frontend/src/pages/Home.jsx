@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { finishesOf, startsOf } from "../utils/standingsRow.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { REPORTS_OPEN_TO_MEMBERS, reportsPath, reportsWindowOpen } from "../reportsAccess.js";
 import { useSeason } from "../context/SeasonContext.jsx";
@@ -827,9 +828,11 @@ export default function Home() {
       ) || null
     : null;
   const myDriverId = myRow?.driverId || (isLoggedIn ? user?.driverId : null);
+  // Every race of a sprint weekend counts, here as everywhere else on the site
+  // (utils/standingsRow.js): a sprint driven is a start, a sprint won a win.
   const myRounds = myRow ? Object.values(myRow.perRace || {}) : [];
-  const myFinishes = myRounds.filter((r) => r.status === "FINISHED" && r.position != null);
-  const myStarts = myRounds.filter((r) => r.status !== "DNS").length;
+  const myFinishes = finishesOf(myRounds);
+  const myStarts = startsOf(myRounds).length;
   const myWins = myFinishes.filter((r) => r.position === 1).length;
   const myPodiums = myFinishes.filter((r) => r.position <= 3).length;
   const myAvg = myFinishes.length
