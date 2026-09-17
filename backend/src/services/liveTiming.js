@@ -1167,17 +1167,14 @@ function createRelay(server) {
   // exactly one of them: the session it is in. Every time that session hits its
   // time limit and restarts, every lap of the week so far leaves the board.
   //
-  // So an admin can import the week's fastest laps out of the telemetry store
-  // (lib/liveBestLaps.js explains where they come from and why they live per
-  // server), and this is where they land on the board. A qualifying session or
-  // a race is a classification of what happened IN it — carrying a training lap
-  // into either would be inventing a result, so neither is touched.
+  // So an admin hands the site the server manager's result files of those
+  // sessions (lib/liveBestLaps.js explains what is kept and why it lives per
+  // season), and this is where their laps land on the board. A qualifying
+  // session or a race is a classification of what happened IN it — carrying a
+  // training lap into either would be inventing a result, so neither is
+  // touched.
   //
-  // Faster wins, per driver, and nothing here is frozen: the laps are read back
-  // out of the telemetry store as the board is built (lib/liveBestLaps.js), so
-  // a driver who goes quicker on the practice server is quicker here too — on
-  // this board the moment they cross the line, and still quicker after the
-  // session resets under them. A driver already on the board who has beaten
+  // Faster wins, per driver. A driver already on the board who has beaten
   // their training best keeps their live lap; one who has not yet matched it
   // shows the training one; one who is not on the server at all becomes a row
   // of their own, which is the whole point — the board is supposed to hold the
@@ -1204,7 +1201,6 @@ function createRelay(server) {
           CarInfo: { DriverName: lap.name, CarModel: lap.car || "", CarName: lap.car || "" },
         }, false);
         entry.bestLapMs = lap.lapTimeMs;
-        entry.topSpeed = lap.topSpeedKmh ?? null;
         entry.sectors = carriedSectors(lap);
         entry.imported = true;
         byGuid.set(lap.steamId, entry);
@@ -1214,14 +1210,13 @@ function createRelay(server) {
       if (live.bestLapMs != null && live.bestLapMs <= lap.lapTimeMs) continue;
       live.bestLapMs = lap.lapTimeMs;
       live.imported = true;
-      // Everything on the row that belongs to the best lap follows the lap:
-      // the top speed (the recorder's figure, when the lap came from there)
-      // and the sectors (the server's own splits, when it came from a session
-      // file). Where the carried lap has no figure of its own the cell goes
-      // blank rather than keeping the displaced lap's — three splits that do
-      // not add up to the time beside them would be worse than three dashes.
-      live.topSpeed = lap.topSpeedKmh ?? null;
+      // Everything on the row that belongs to the best lap follows the lap.
+      // The sectors are the server's own splits of the carried lap; the top
+      // speed is something a result file does not carry, so the cell goes
+      // blank rather than keeping the displaced lap's figure — a number that
+      // belongs to another lap is worse than a dash.
       live.sectors = carriedSectors(lap);
+      live.topSpeed = null;
     }
   }
 
@@ -1229,8 +1224,7 @@ function createRelay(server) {
   // for a live one, so the same pass below colours them: purple if they equal
   // the session's best sector, and green never — that flag is the server's
   // "this driver's own best sector", which it only knows for the session it
-  // is in. A lap from the recorder has no sectors (it does not know where the
-  // lines are) and gets three blanks.
+  // is in. A lap whose file had no usable splits gets three blanks.
   function carriedSectors(lap) {
     if (!lap.sectorsMs) return [null, null, null];
     return lap.sectorsMs.map((ms) => ({ ms, best: false, driversBest: false, cuts: 0 }));

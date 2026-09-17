@@ -987,60 +987,26 @@ function LiveServersAdmin() {
 // --- TRAINING BEST LAPS -----------------------------------------------------
 // Between two race weekends the server sits in an open practice session for
 // days, and the race server keeps only the session it is in: every restart of
-// it wipes the week's times off the Live page. The site has them anyway —
-// the in-game recorder is served to everyone who joins, so the telemetry store
-// holds each driver's fastest lap per track. This carries them back onto the
-// board, fastest lap per driver wins.
+// it wipes the week's times off the Live page. The server manager still has
+// them — a result file per session, sectors and all — and this is where an
+// admin hands those files to the site so the board carries their laps.
 function TrainingBestLapsAdmin() {
   const { current: series } = useSeries();
-  // "" means "whatever the race server is on right now", which is the case the
-  // button exists for; a named track is for one the server has left.
+  // "" means "whatever the race server is on right now"; a named track is one
+  // the server has left, looked at again.
   const [track, setTrack] = useState("");
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(null);
   const [uploaded, setUploaded] = useState(null);
   const [err, setErr] = useState(null);
   const fileInput = useRef(null);
 
   const { data, loading, error, reload } = useApi(useCallback(() => api.trainingBestLaps(track || null), [track]));
-  const stored = useApi(useCallback(() => api.telemetryTracks(), []));
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (loading || !data) return <div className="card p-5 text-sm text-light">Loading…</div>;
 
   const rows = data.rows || [];
   const practice = data.session?.type === "Practice";
-  const on = !!data.carried;
-
-  async function run() {
-    setBusy(true);
-    setErr(null);
-    setDone(null);
-    try {
-      const res = await api.importTrainingBestLaps(series?.slug || data.series, track || null);
-      setDone(res);
-      reload();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function remove(key) {
-    setBusy(true);
-    setErr(null);
-    setDone(null);
-    setUploaded(null);
-    try {
-      await api.clearTrainingBestLaps(key);
-      reload();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   // The session files from the server manager. Each one lands on the track it
   // names, whatever the dropdown says — the file knows better than the form.
@@ -1048,7 +1014,6 @@ function TrainingBestLapsAdmin() {
     if (!files?.length) return;
     setBusy(true);
     setErr(null);
-    setDone(null);
     setUploaded(null);
     try {
       const res = await api.uploadTrainingLaps(series?.slug || data.series, files);
@@ -1062,95 +1027,73 @@ function TrainingBestLapsAdmin() {
     }
   }
 
-  const effectLabel = {
-    new: ["Carried", "text-success"],
-    faster: ["Carried", "text-success"],
-    same: ["Already showing", "text-light"],
-    slower: ["Live lap is faster", "text-medium"],
-  };
+  async function remove(key) {
+    setBusy(true);
+    setErr(null);
+    setUploaded(null);
+    try {
+      await api.clearTrainingBestLaps(key);
+      if (track === key) setTrack("");
+      reload();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="card space-y-5 p-5">
       <CardHead eyebrow="Live Timing" title="Training best times" />
       <p className="text-sm text-light">
         The race server forgets a practice session every time it restarts, so the week&rsquo;s training times drop
-        off the Live page. Two things still have them, and either can be put back on the board for a track. On the
-        board the <b className="text-dark">faster lap wins per driver</b>: somebody who goes quicker on the server
-        keeps their live lap, an identical time changes nothing, and a carried lap is drawn exactly like one set
-        in the session on screen. Carried laps appear in <b className="text-dark">practice sessions only</b> — a
-        qualifying board or a race classification is what happened in that session. Everything here is{" "}
+        off the Live page. The server manager does not: it writes a result JSON for every session, practice
+        included, with every lap and the server&rsquo;s own <b className="text-dark">sector times</b> in it.
+        Download the week&rsquo;s practice sessions from its Results page and drop them here — one or several. Each
+        file lands on the track it names, its fastest clean lap per driver is kept, and a second file for the
+        same evening only ever adds drivers and improves times.
+      </p>
+      <p className="text-sm text-light">
+        On the board the <b className="text-dark">faster lap wins per driver</b>: somebody who goes quicker on the
+        server keeps their live lap, an identical time changes nothing, and a carried lap is drawn exactly like one
+        set in the session on screen. Carried laps appear in <b className="text-dark">practice sessions only</b> —
+        a qualifying board or a race classification is what happened in that session. Everything here is{" "}
         <b className="text-dark">per season</b>: what is given now belongs to season {data.season}, and the day a new
-        season is switched on the board starts from nothing again — last season&rsquo;s Baku never comes back
-        with the calendar, and nobody has to delete it.
+        season is switched on the board starts from nothing again — last season&rsquo;s Baku never comes back with
+        the calendar, and nobody has to delete it.
       </p>
 
       {err && <Notice kind="error">{err}</Notice>}
 
-      {/* ---- Session files from the server manager --------------------- */}
-      <div className="space-y-3 rounded-lg border border-border p-4">
-        <div className="text-xs font-semibold uppercase tracking-widest text-light">Session files</div>
-        <p className="text-sm text-light">
-          The server manager writes a result JSON for every session, practice included, with every lap and the
-          server&rsquo;s own <b className="text-dark">sector times</b> in it. Download the practice sessions of the
-          week from its Results page and drop them here — one or several. Each file lands on the track it names,
-          its fastest clean lap per driver is kept, and a second file for the same evening only ever adds drivers
-          and improves times.
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            ref={fileInput}
-            type="file"
-            accept="application/json,.json"
-            multiple
-            className="text-sm text-medium"
-            disabled={busy}
-            onChange={(e) => uploadFiles([...(e.target.files || [])])}
-          />
-          {busy && <span className="text-sm text-light">Reading…</span>}
-        </div>
-        {uploaded && (
-          <ul className="space-y-1 text-sm">
-            {uploaded.map((r, i) => (
-              <li key={`${r.name}-${i}`} className={r.ok ? "text-dark" : "text-warn"}>
-                <span className="font-mono text-xs">{r.name}</span>
-                {r.ok ? (
-                  <>
-                    {" — "}
-                    {r.type} on <b>{r.trackKey}</b>: {r.drivers} driver{r.drivers === 1 ? "" : "s"},{" "}
-                    {r.withSectors} with sectors, {r.improved} new or improved, {r.onBoard} on the board now
-                  </>
-                ) : (
-                  <> — {r.error}</>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-        {!!(data.files || []).length && (
-          <div className="text-xs text-light">
-            This track has {data.files.length} file{data.files.length === 1 ? "" : "s"}, {data.fileLaps} driver
-            {data.fileLaps === 1 ? "" : "s"} kept:{" "}
-            {data.files.map((f) => f.name).join(", ")}
-          </div>
-        )}
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          ref={fileInput}
+          type="file"
+          accept="application/json,.json"
+          multiple
+          className="text-sm text-medium"
+          disabled={busy}
+          onChange={(e) => uploadFiles([...(e.target.files || [])])}
+        />
+        {busy && <span className="text-sm text-light">Reading…</span>}
       </div>
-
-      {/* ---- The in-game recorder ---------------------------------------- */}
-      <div className="text-xs font-semibold uppercase tracking-widest text-light">Recorder</div>
-      <p className="text-sm text-light">
-        The telemetry recorder runs for everyone on the server and keeps each driver&rsquo;s fastest lap per track,
-        with its top speed but without sectors. Switch it on for a track and nothing is copied: the board re-reads
-        its laps as it draws, so a{" "}
-        <b className="text-dark">new personal best on the practice server reaches the board by itself</b>. This never
-        needs pressing twice for the same track and season. Where a file and the recorder have the same lap, the
-        file&rsquo;s sectors are used.
-      </p>
-
-      {done && (
-        <Notice kind="success">
-          On the board: {done.stored} driver{done.stored === 1 ? "" : "s"} — {done.carried} carried, {done.unchanged}{" "}
-          already showing that time, {done.slower} beaten by a live lap. It stays current on its own from here.
-        </Notice>
+      {uploaded && (
+        <ul className="space-y-1 text-sm">
+          {uploaded.map((r, i) => (
+            <li key={`${r.name}-${i}`} className={r.ok ? "text-dark" : "text-warn"}>
+              <span className="font-mono text-xs">{r.name}</span>
+              {r.ok ? (
+                <>
+                  {" — "}
+                  {r.type} on <b>{r.trackKey}</b>: {r.drivers} driver{r.drivers === 1 ? "" : "s"}, {r.withSectors}{" "}
+                  with sectors, {r.improved} new or improved, {r.onBoard} on the board now
+                </>
+              ) : (
+                <> — {r.error}</>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
 
       <div className="flex flex-wrap items-end gap-3">
@@ -1165,29 +1108,16 @@ function TrainingBestLapsAdmin() {
             <option value="">
               {data.session?.trackName
                 ? `On the server now — ${data.session.trackName}`
-                : "On the server now (server is off air — pick a track, or just upload files)"}
+                : "On the server now (server is off air)"}
             </option>
-            {(stored.data?.tracks || []).map((t) => (
+            {(data.tracks || []).map((t) => (
               <option key={t.trackKey} value={t.trackKey}>
-                {t.track}
-                {t.layout ? ` · ${t.layout}` : ""} ({t.laps} lap{t.laps === 1 ? "" : "s"})
+                {t.track || t.trackKey}
+                {t.layout ? ` · ${t.layout}` : ""} ({t.laps} driver{t.laps === 1 ? "" : "s"})
               </option>
             ))}
           </select>
         </label>
-        <button
-          className="btn-primary"
-          onClick={run}
-          disabled={busy || !rows.some((r) => r.from === "recorder")}
-        >
-          {busy
-            ? "Switching…"
-            : on
-              ? `Recorder on — re-point at season ${data.season}`
-              : `Switch the recorder on (${rows.filter((r) => r.from === "recorder").length} driver${
-                  rows.filter((r) => r.from === "recorder").length === 1 ? "" : "s"
-                })`}
-        </button>
       </div>
 
       <div className="text-sm text-light">
@@ -1196,42 +1126,38 @@ function TrainingBestLapsAdmin() {
         Track: <b className="text-dark">{data.trackKey || "—"}</b>
         {" · "}
         Session: <b className="text-dark">{data.session?.type || (data.connected ? "—" : "off air")}</b>
-        {data.carried && (
+        {!!(data.files || []).length && (
           <>
             {" · "}
-            Carried since <b className="text-dark">{new Date(data.carried.addedAt).toLocaleDateString()}</b>,{" "}
-            <b className="text-dark">{data.carried.laps}</b> driver{data.carried.laps === 1 ? "" : "s"} right now
+            {data.files.length} file{data.files.length === 1 ? "" : "s"}:{" "}
+            <span className="font-mono text-xs">{data.files.map((f) => f.name).join(", ")}</span>
           </>
         )}
       </div>
 
-      {!practice && data.trackKey && (
+      {!practice && data.trackKey && !!rows.length && (
         <Notice kind="info">
-          This server is not in a practice session right now, so nothing carried will be visible until it is back
-          in one. The switch holds either way.
+          This server is not in a practice session right now, so the carried laps are not visible until it is back
+          in one. They are kept either way.
         </Notice>
       )}
 
-      {/* The board looks its training laps up by the track key the RACE SERVER
-          reports; these laps are filed under the key the GAME reported when
-          they were recorded. The two are built the same way and normally agree
-          — but a renamed track mod is exactly the case where they do not, and
-          a switch nobody can see the effect of is worse than one that was
-          refused. */}
+      {/* The board looks its carried laps up by the track key the RACE SERVER
+          reports; a file's laps are filed under the key the file names. The
+          two are built the same way and normally agree — but a renamed track
+          mod is exactly the case where they do not, and laps nobody can see
+          are worse than a refused upload. */}
       {data.session?.trackKey && data.trackKey && data.session.trackKey !== data.trackKey && (
         <Notice kind="info">
           These laps are filed under <b className="text-dark">{data.trackKey}</b>, and the server&rsquo;s board is
           on <b className="text-dark">{data.session.trackKey}</b>. They will appear when the server is back on{" "}
           <b className="text-dark">{data.trackKey}</b> — if that never happens, the track was renamed between the
-          two and the laps need re-recording under the new name.
+          two and the session files carry the old name.
         </Notice>
       )}
 
       {!rows.length ? (
-        <Notice kind="info">
-          Nothing for this track yet — no session file has been given for it, and the recorder has no laps for
-          it in this season.
-        </Notice>
+        <Notice kind="info">Nothing carried for this track yet — no session file has been given for it.</Notice>
       ) : (
         <div className="scrollbar-slim overflow-x-auto">
           <table className="w-full text-sm">
@@ -1239,32 +1165,28 @@ function TrainingBestLapsAdmin() {
               <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
                 <th className="py-2 pr-3">Driver</th>
                 <th className="py-2 pr-3">Training best</th>
-                <th className="py-2 pr-3">From</th>
-                <th className="py-2 pr-3">On the board</th>
-                <th className="py-2">Effect</th>
+                <th className="py-2 pr-3">Sectors</th>
+                <th className="py-2 pr-3">Live now</th>
+                <th className="py-2">On the board</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => {
-                const [label, cls] = effectLabel[r.effect] || ["—", "text-light"];
-                const shown = r.liveMs ?? r.importedMs ?? null;
-                return (
-                  <tr key={`${r.name}-${i}`} className="border-b border-border/60">
-                    <td className="py-2 pr-3 font-semibold text-dark">
-                      {r.name}
-                      {r.team && <span className="ml-2 text-xs font-normal text-light">{r.team}</span>}
-                    </td>
-                    <td className="py-2 pr-3 font-mono tabular-nums text-dark">{formatLapTime(r.telemetryMs)}</td>
-                    <td className="py-2 pr-3 text-xs text-light">
-                      {r.from === "file" ? (r.sectors ? "File, with sectors" : "File") : "Recorder"}
-                    </td>
-                    <td className="py-2 pr-3 font-mono tabular-nums text-medium">
-                      {shown == null ? "—" : formatLapTime(shown)}
-                    </td>
-                    <td className={`py-2 text-xs font-semibold ${cls}`}>{label}</td>
-                  </tr>
-                );
-              })}
+              {rows.map((r, i) => (
+                <tr key={`${r.name}-${i}`} className="border-b border-border/60">
+                  <td className="py-2 pr-3 font-semibold text-dark">
+                    {r.name}
+                    {r.team && <span className="ml-2 text-xs font-normal text-light">{r.team}</span>}
+                  </td>
+                  <td className="py-2 pr-3 font-mono tabular-nums text-dark">{formatLapTime(r.lapTimeMs)}</td>
+                  <td className="py-2 pr-3 text-xs text-light">{r.sectors ? "Yes" : "—"}</td>
+                  <td className="py-2 pr-3 font-mono tabular-nums text-medium">
+                    {r.liveMs == null ? "—" : formatLapTime(r.liveMs)}
+                  </td>
+                  <td className={`py-2 text-xs font-semibold ${r.shown ? "text-success" : "text-medium"}`}>
+                    {r.shown ? "This lap" : "Live lap is faster"}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -1282,7 +1204,6 @@ function TrainingBestLapsAdmin() {
                 {t.laps} driver{t.laps === 1 ? "" : "s"}
                 {t.bestMs ? ` · best ${formatLapTime(t.bestMs)}` : ""}
                 {t.files ? ` · ${t.files} file${t.files === 1 ? "" : "s"}` : ""}
-                {t.recorder ? " · recorder on" : ""}
                 {t.changedAt ? ` · ${new Date(t.changedAt).toLocaleDateString()}` : ""}
               </span>
               <button className="btn-secondary text-xs" onClick={() => remove(t.trackKey)} disabled={busy}>

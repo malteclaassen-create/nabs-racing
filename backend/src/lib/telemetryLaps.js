@@ -422,9 +422,7 @@ export function listTracks(series, season, legacy = false) {
 // it is the lap time in milliseconds, unique per driver per track per season
 // by construction.
 // Everybody who has laps at one track, across the season folder and (when
-// asked) the two shapes that predate seasons. Shared by the full read below
-// and by the cheap one under it, so "who is in this track's store" is decided
-// in one place.
+// asked) the two shapes that predate seasons.
 function driversAt(series, season, trackKey, legacy) {
   const drivers = new Set();
   for (const dir of [join(seasonDir(series, season), trackKey), ...(legacy ? [join(seriesDir(series), trackKey)] : [])]) {
@@ -438,80 +436,6 @@ function driversAt(series, season, trackKey, legacy) {
     }
   }
   return drivers;
-}
-
-// A lap file is named after its own lap time, so what a parse of one says can
-// be memoised for as long as the process lives — keyed by the file's own stamp
-// and size as well as its path, because the same time from the same driver
-// DOES overwrite its file (keepIfFaster), and a memo that outlived that would
-// keep quoting the trace that was replaced. This exists for the caller below,
-// which runs on a schedule rather than on a click: without it, every pass
-// would parse tens of KB of channel arrays per driver to read back a name it
-// already knew. A stat per driver per pass is the price, and it is nothing.
-const lapHeadCache = new Map(); // `${path}|${mtime}|${size}` -> { name, car, track, layout, recordedAt, topSpeedKmh }
-const LAP_HEAD_MAX = 5000;
-
-function lapHead(path) {
-  let key;
-  try {
-    const st = statSync(path);
-    key = `${path}|${st.mtimeMs}|${st.size}`;
-  } catch {
-    return null; // gone between the listing and the read: one lap missing
-  }
-  const seen = lapHeadCache.get(key);
-  if (seen) return seen;
-  let head = null;
-  try {
-    const lap = JSON.parse(readFileSync(path, "utf8"));
-    // The recorder stores no top speed as such, but it stores the speed at
-    // every one of its samples round the lap, and the fastest of those is the
-    // fastest the car went. Read here, while the file is open anyway, so the
-    // live board can print it beside a carried lap the way it prints the
-    // server's own figure beside a live one. (What the recorder does NOT know
-    // is where the track's sector lines are, so there is no sector time to be
-    // had the same way — see the live board's merge for what that costs.)
-    const speeds = Array.isArray(lap.speed) ? lap.speed.filter((v) => Number.isFinite(v)) : [];
-    head = {
-      name: String(lap.name || ""),
-      car: String(lap.car || ""),
-      track: String(lap.track || ""),
-      layout: String(lap.layout || ""),
-      recordedAt: lap.recordedAt ? String(lap.recordedAt) : null,
-      topSpeedKmh: speeds.length ? Math.max(...speeds) : null,
-    };
-  } catch {
-    return null; // an unreadable file is one lap missing, not a failure
-  }
-  // Fixed ceiling, same bargain as the live board's id cache: far beyond what
-  // a league produces, and an eviction only costs one re-parse.
-  if (lapHeadCache.size >= LAP_HEAD_MAX) lapHeadCache.clear();
-  lapHeadCache.set(key, head);
-  return head;
-}
-
-// The fastest lap each driver has at one track, fastest first — the question
-// "who is quickest here" on its own, without the channel arrays that answer
-// "and what did they do with the wheel".
-//
-// listLaps parses every lap it touches, which is the right trade for a
-// comparison a human opened and the wrong one for something that runs on a
-// timer (the live board's training bests, lib/liveBestLaps.js). This reads the
-// times off the FILE NAMES — the store names each lap after its own time
-// precisely so that question is free — and parses only the one winning file
-// per driver, memoised above. A pass over a full grid touches nothing after
-// the first.
-export function bestLapPerDriver(series, season, trackKey, legacy = false) {
-  if (!isTrackKey(trackKey)) return [];
-  const out = [];
-  for (const steamId of driversAt(series, season, trackKey, legacy)) {
-    const fastest = lapFilesOf(series, season, trackKey, steamId, legacy)[0];
-    if (!fastest) continue;
-    const head = lapHead(fastest.path);
-    if (!head?.name) continue;
-    out.push({ steamId, lapTimeMs: fastest.lapTimeMs, ...head });
-  }
-  return out.sort((a, b) => a.lapTimeMs - b.lapTimeMs);
 }
 
 export function listLaps(series, season, trackKey, legacy = false) {
