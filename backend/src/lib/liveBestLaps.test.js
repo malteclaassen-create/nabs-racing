@@ -65,19 +65,30 @@ describe("liveBestLaps files", () => {
 
   it("two files of the same driver add up: quicker lap, best of each sector, laps summed, later last lap", () => {
     give(
-      [{ ...fileLap(A, 95_000, "Alice"), tyre: "M", bestSectorsMs: [30_000, 32_000, 33_000], lapCount: 10, lastLapMs: 97_000, lastAt: 100 }],
+      [{ ...fileLap(A, 95_000, "Alice"), tyre: "M", bestSectorsMs: [30_000, 32_000, 33_000], lapStamps: [10, 20, 30], lastLapMs: 97_000, lastAt: 30 }],
       { name: "monday.json" }
     );
     give(
-      [{ ...fileLap(A, 94_000, "Alice", [29_500, 31_500, 33_000]), tyre: "SS", bestSectorsMs: [29_500, 31_500, 34_000], lapCount: 6, lastLapMs: 99_000, lastAt: 200 }],
+      [{ ...fileLap(A, 94_000, "Alice", [29_500, 31_500, 33_000]), tyre: "SS", bestSectorsMs: [29_500, 31_500, 34_000], lapStamps: [200, 210], lastLapMs: 99_000, lastAt: 210 }],
       { name: "tuesday.json" }
     );
     const [a] = bestsFor(SERIES, SEASON, TRACK);
     expect(a.lapTimeMs).toBe(94_000);
     expect(a.tyre).toBe("SS"); // the quicker lap's
     expect(a.bestSectorsMs).toEqual([29_500, 31_500, 33_000]); // S3 from Monday
-    expect(a.lapCount).toBe(16);
+    expect(a.lapStamps).toEqual([10, 20, 30, 200, 210]);
+    expect(a.lapCount).toBe(5);
     expect(a.lastLapMs).toBe(99_000); // Tuesday's, the later file
+  });
+
+  // The reason laps are stamps and not a count.
+  it("the same file given twice is the same laps, not twice the laps", () => {
+    const monday = [{ ...fileLap(A, 95_000, "Alice"), lapStamps: [10, 20, 30], lastLapMs: 97_000, lastAt: 30 }];
+    give(monday, { name: "monday.json" });
+    give(monday, { name: "monday (1).json" }); // downloaded again, uploaded again
+    const [a] = bestsFor(SERIES, SEASON, TRACK);
+    expect(a.lapCount).toBe(3);
+    expect(uploadedFiles(SERIES, SEASON, TRACK)).toHaveLength(2); // the files are still both listed
   });
 
   it("the same time in two files is the same lap, and the copy with sectors is kept", () => {

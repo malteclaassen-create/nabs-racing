@@ -115,7 +115,7 @@ describe("parsePracticeJson", () => {
     expect(a.sectorsMs).toEqual([29_000, 32_000, 32_000]);
     expect(a.tyre).toBe("SS"); // the best lap's tyre, not the first lap's
     expect(a.bestSectorsMs).toEqual([28_500, 32_000, 32_000]); // S1 from the 1:35, the cut lap's 30.0 not counted
-    expect(a.lapCount).toBe(4); // every completed lap, cut or not, as the live board counts
+    expect(a.lapStamps).toEqual([100, 200, 300, 400]); // every completed lap, cut or not, as the live board counts
     expect(a.lastLapMs).toBe(101_000); // the last one completed, whatever it was
   });
 

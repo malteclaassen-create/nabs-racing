@@ -75,8 +75,8 @@ export function parsePracticeJson(json, { fileName = "" } = {}) {
   // Alongside the best lap, what the live board shows for a driver and the
   // file can also answer, so a carried row reads like a live one: the best
   // of each sector across all their clean laps (and the potential lap those
-  // add up to), how many laps they did, the last one they completed, and the
-  // tyre the best lap was set on. Top speed is not among them — the server
+  // add up to), when each of their laps was done, the last one they
+  // completed, and the tyre the best lap was set on. Top speed is not among them — the server
   // manager leaves SpeedTrapHits empty on the league's server — and neither
   // are pit stops, which a practice file does not record.
   const best = new Map();
@@ -103,16 +103,21 @@ export function parsePracticeJson(json, { fileName = "" } = {}) {
         sectorsMs: null,
         tyre: "",
         bestSectorsMs: [null, null, null],
-        lapCount: 0,
+        // When each completed lap was done, cut or not — the way the live
+        // board counts laps — as the server's own stamps. Stamps rather than
+        // a count, for two reasons that both bit: the same file given twice
+        // is the same laps (a count would double), and a file of the session
+        // the server is IN right now holds laps the live board already
+        // counts (the relay keeps the ones from before the session started).
+        lapStamps: [],
         lastLapMs: null,
         lastAt: 0,
         recordedAt: null,
       };
       best.set(guid, d);
     }
-    // Every completed lap counts as a lap, cut or not, the way the live board
-    // counts them; the LAST lap is the last one completed, whatever it was.
-    d.lapCount += 1;
+    if (stamp > 0) d.lapStamps.push(stamp);
+    // The LAST lap is the last one completed, whatever it was.
     if (stamp >= d.lastAt && lapTimeMs != null) {
       d.lastAt = stamp;
       d.lastLapMs = lapTimeMs;
@@ -136,7 +141,10 @@ export function parsePracticeJson(json, { fileName = "" } = {}) {
     }
   }
   // A driver with laps but no clean one has no time to show.
-  for (const [guid, d] of best) if (d.lapTimeMs == null) best.delete(guid);
+  for (const [guid, d] of best) {
+    if (d.lapTimeMs == null) best.delete(guid);
+    else d.lapStamps = [...new Set(d.lapStamps)].sort((a, b) => a - b);
+  }
 
   return {
     type,
