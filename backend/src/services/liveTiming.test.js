@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { __testing } from "./liveTiming.js";
-import { writeImport, clearImport, __clearCache as __clearImportCache } from "../lib/liveBestLaps.js";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { addSource, clearSource, __clearCache as __clearImportCache } from "../lib/liveBestLaps.js";
+import { TELEMETRY_LAPS_DIR, seriesKeyOf, seasonKeyOf } from "../lib/telemetryLaps.js";
 
 const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset, mapKey } = __testing;
 
@@ -943,9 +946,25 @@ describe("liveTiming imported training bests", () => {
   const CARA = "76561198000000003";
 
   // The relay under test is server "test" (see __testing), and Track "monza"
-  // with no layout keys the overlay as "monza".
+  // with no layout keys the track as "monza".
   const SERVER = "test";
   const TRACK = "monza";
+  const SERIES = "friday-f1";
+  const SEASON = 8;
+
+  // A lap where the in-game recorder leaves it. The board reads these back
+  // through lib/liveBestLaps.js as it draws, so this is the whole input.
+  function recordLap(steamId, lapTimeMs, name) {
+    const dir = join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES), seasonKeyOf(SEASON), TRACK, steamId);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, `${lapTimeMs}.json`),
+      JSON.stringify({ v: 1, steamId, name, car: "f", track: TRACK, layout: "", lapTimeMs })
+    );
+  }
+
+  // Tell this board to carry that store's training times.
+  const carry = () => addSource(SERVER, TRACK, { series: SERIES, season: SEASON, track: TRACK });
 
   const msToNs = (ms) => ms * 1e6;
 
@@ -980,18 +999,20 @@ describe("liveTiming imported training bests", () => {
 
   const row = (board, name) => board.entries.find((e) => e.name === name);
 
+  const wipe = () => {
+    clearSource(SERVER, TRACK);
+    rmSync(join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
+    __clearImportCache();
+  };
   beforeEach(() => {
     reset();
-    clearImport(SERVER, TRACK);
-    __clearImportCache();
+    wipe();
   });
-  afterEach(() => {
-    clearImport(SERVER, TRACK);
-    __clearImportCache();
-  });
+  afterEach(wipe);
 
   it("puts a driver who is not on the server onto the board with their time", () => {
-    writeImport(SERVER, TRACK, { laps: [{ steamId: CARA, name: "Cara", car: "f", lapTimeMs: 94_000 }] });
+    recordLap(CARA, 94_000, "Cara");
+    carry();
     ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
 
     const board = getBoard();
@@ -1010,7 +1031,8 @@ describe("liveTiming imported training bests", () => {
   });
 
   it("an imported lap faster than the live one takes the row, and its splits go with it", () => {
-    writeImport(SERVER, TRACK, { laps: [{ steamId: ALICE, name: "Alice", car: "f", lapTimeMs: 93_000 }] });
+    recordLap(ALICE, 93_000, "Alice");
+    carry();
     ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
 
     const alice = row(getBoard(), "Alice");
@@ -1026,7 +1048,8 @@ describe("liveTiming imported training bests", () => {
   });
 
   it("a driver who has since gone quicker keeps their live lap", () => {
-    writeImport(SERVER, TRACK, { laps: [{ steamId: ALICE, name: "Alice", car: "f", lapTimeMs: 96_000 }] });
+    recordLap(ALICE, 96_000, "Alice");
+    carry();
     ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 93_000 } } }));
 
     const alice = row(getBoard(), "Alice");
@@ -1036,7 +1059,8 @@ describe("liveTiming imported training bests", () => {
   });
 
   it("an identical time changes nothing about the row", () => {
-    writeImport(SERVER, TRACK, { laps: [{ steamId: ALICE, name: "Alice", car: "f", lapTimeMs: 95_000 }] });
+    recordLap(ALICE, 95_000, "Alice");
+    carry();
     ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 95_000 } } }));
 
     const alice = row(getBoard(), "Alice");
@@ -1046,12 +1070,9 @@ describe("liveTiming imported training bests", () => {
   });
 
   it("qualifying and the race are classifications of their own session, so nothing is carried into them", () => {
-    writeImport(SERVER, TRACK, {
-      laps: [
-        { steamId: ALICE, name: "Alice", car: "f", lapTimeMs: 90_000 },
-        { steamId: CARA, name: "Cara", car: "f", lapTimeMs: 89_000 },
-      ],
-    });
+    recordLap(ALICE, 90_000, "Alice");
+    recordLap(CARA, 89_000, "Cara");
+    carry();
 
     for (const type of [2, 3]) {
       reset();
@@ -1064,12 +1085,9 @@ describe("liveTiming imported training bests", () => {
   });
 
   it("carries every driver in the overlay, not just the first", () => {
-    writeImport(SERVER, TRACK, {
-      laps: [
-        { steamId: BOB, name: "Bob", car: "f", lapTimeMs: 95_500 },
-        { steamId: CARA, name: "Cara", car: "f", lapTimeMs: 94_000 },
-      ],
-    });
+    recordLap(BOB, 95_500, "Bob");
+    recordLap(CARA, 94_000, "Cara");
+    carry();
     ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
 
     const board = getBoard();
@@ -1077,7 +1095,24 @@ describe("liveTiming imported training bests", () => {
     expect(board.session.driverCount).toBe(3);
   });
 
-  it("no import is the board exactly as it was", () => {
+  it("a driver who beats their training best on the server takes their own row", () => {
+    recordLap(ALICE, 93_000, "Alice");
+    carry();
+
+    // Out on track, still slower than the time the board is carrying for them.
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+    expect(row(getBoard(), "Alice").bestLapMs).toBe(93_000);
+
+    // They put in a quicker one. Nothing is pressed, nothing waits for a
+    // re-read: their own lap is the faster of the two and takes the row.
+    ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 92_100 } } }));
+    const alice = row(getBoard(), "Alice");
+    expect(alice.bestLapMs).toBe(92_100);
+    expect(alice.imported).toBeUndefined();
+    expect(alice.sectors[0]?.ms).toBe(30_000); // and it is their lap, splits and all
+  });
+
+  it("no source is the board exactly as it was", () => {
     ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
     const board = getBoard();
     expect(board.entries).toHaveLength(1);

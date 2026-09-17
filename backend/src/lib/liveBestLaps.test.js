@@ -1,108 +1,180 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIVE_BEST_LAPS_DIR } from "./dataDirs.js";
-import { readImport, writeImport, clearImport, listImports, importEffect, __clearCache } from "./liveBestLaps.js";
+import { TELEMETRY_LAPS_DIR, seriesKeyOf, seasonKeyOf } from "./telemetryLaps.js";
+import {
+  readSource,
+  addSource,
+  clearSource,
+  listSources,
+  currentBests,
+  importEffect,
+  __clearCache,
+} from "./liveBestLaps.js";
 
-// The overlay the live board reads its imported training bests from. What is
-// tested here is what the BOARD depends on: one row per driver, fastest first,
-// and never a number that is not a lap time — the board trusts this file and
-// prints whatever is in it next to a driver's name.
+// What the live board reads its training bests through. The thing worth
+// testing is that it is NOT a copy: a quicker lap landing in the telemetry
+// store has to reach the board without anybody pressing the button again.
 
 const SERVER = "test";
+const SERIES = "friday-f1";
+const SEASON = 8;
 const TRACK = "monza";
 const A = "76561198000000001";
 const B = "76561198000000002";
 
-const lap = (steamId, lapTimeMs, name = "Alice") => ({ steamId, name, car: "f1", lapTimeMs });
+// A lap as the recorder leaves it on disk: the file is NAMED after its own lap
+// time, which is what makes reading "who is quickest" free.
+function recordLap(steamId, lapTimeMs, { name = "Alice", car = "f1", season = SEASON, track = TRACK } = {}) {
+  const dir = join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES), seasonKeyOf(season), track, steamId);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, `${lapTimeMs}.json`),
+    JSON.stringify({ v: 1, steamId, name, car, track, layout: "", lapTimeMs, recordedAt: "2026-09-01T10:00:00Z" })
+  );
+}
+
+const carry = (track = TRACK) => addSource(SERVER, track, { series: SERIES, season: SEASON, track });
 
 beforeEach(() => {
   rmSync(join(LIVE_BEST_LAPS_DIR, SERVER), { recursive: true, force: true });
+  rmSync(join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
   __clearCache();
 });
 afterEach(() => {
   rmSync(join(LIVE_BEST_LAPS_DIR, SERVER), { recursive: true, force: true });
+  rmSync(join(TELEMETRY_LAPS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
   __clearCache();
 });
 
 describe("liveBestLaps", () => {
-  it("round-trips an import, fastest first", () => {
-    writeImport(SERVER, TRACK, {
-      track: "monza",
-      layout: "",
-      series: "nabs",
-      season: 8,
-      laps: [lap(A, 95_000, "Alice"), lap(B, 93_500, "Bob")],
-    });
-    __clearCache(); // force the read to come off disk, not the write's memo
+  it("carries the telemetry store's fastest lap per driver, fastest first", () => {
+    recordLap(A, 95_000, { name: "Alice" });
+    recordLap(B, 93_500, { name: "Bob" });
+    carry();
 
-    const stored = readImport(SERVER, TRACK);
-    expect(stored.laps.map((l) => l.name)).toEqual(["Bob", "Alice"]);
-    expect(stored.laps[0].lapTimeMs).toBe(93_500);
-    expect(stored.season).toBe(8);
+    const laps = currentBests(SERVER, TRACK);
+    expect(laps.map((l) => l.name)).toEqual(["Bob", "Alice"]);
+    expect(laps[0].lapTimeMs).toBe(93_500);
   });
 
-  it("keeps one row per driver — the fastest", () => {
-    writeImport(SERVER, TRACK, { laps: [lap(A, 95_000), lap(A, 92_000), lap(A, 99_000)] });
-    const stored = readImport(SERVER, TRACK);
-    expect(stored.laps).toHaveLength(1);
-    expect(stored.laps[0].lapTimeMs).toBe(92_000);
+  it("one row per driver — their fastest, not all three", () => {
+    recordLap(A, 95_000);
+    recordLap(A, 92_000);
+    recordLap(A, 99_000);
+    carry();
+
+    const laps = currentBests(SERVER, TRACK);
+    expect(laps).toHaveLength(1);
+    expect(laps[0].lapTimeMs).toBe(92_000);
   });
 
-  it("drops rows that are not laps", () => {
-    writeImport(SERVER, TRACK, {
-      laps: [
-        lap(A, 95_000, "Alice"),
-        lap("not-a-steam-id", 95_000, "Ghost"),
-        lap(B, 5, "Impossible"), // under the 20s floor
-        lap(B, 9_000_000, "Also impossible"), // over the 30min ceiling
-        { steamId: B, lapTimeMs: 95_000 }, // no name
-      ],
-    });
-    const stored = readImport(SERVER, TRACK);
-    expect(stored.laps.map((l) => l.name)).toEqual(["Alice"]);
+  // The reason this is a source and not a copy.
+  it("a quicker lap driven afterwards reaches the board without touching the button", () => {
+    recordLap(A, 95_000);
+    carry();
+    expect(currentBests(SERVER, TRACK)[0].lapTimeMs).toBe(95_000);
+
+    recordLap(A, 91_000); // the recorder posts a new personal best
+    __clearCache(); // stand in for the read-through TTL expiring
+    expect(currentBests(SERVER, TRACK)[0].lapTimeMs).toBe(91_000);
   });
 
-  it("an import with nothing usable in it leaves no overlay at all", () => {
-    writeImport(SERVER, TRACK, { laps: [lap(A, 95_000)] });
-    expect(readImport(SERVER, TRACK)).not.toBeNull();
+  // The same thing again, but proving the read-through actually expires rather
+  // than relying on a test clearing the memo by hand.
+  it("the board's read of the store goes stale on its own, within the minute", () => {
+    const t0 = Date.UTC(2026, 8, 17, 18, 0, 0);
+    vi.setSystemTime(t0);
+    try {
+      recordLap(A, 95_000);
+      carry();
+      expect(currentBests(SERVER, TRACK)[0].lapTimeMs).toBe(95_000);
 
-    writeImport(SERVER, TRACK, { laps: [lap("nonsense", 95_000)] });
-    expect(readImport(SERVER, TRACK)).toBeNull();
-    expect(existsSync(join(LIVE_BEST_LAPS_DIR, SERVER, `${TRACK}.json`))).toBe(false);
+      recordLap(A, 91_000);
+      // Straight away the board is still on the memo it took a moment ago…
+      expect(currentBests(SERVER, TRACK)[0].lapTimeMs).toBe(95_000);
+
+      // …and half a minute later it has read the store again.
+      vi.setSystemTime(t0 + 31_000);
+      expect(currentBests(SERVER, TRACK)[0].lapTimeMs).toBe(91_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("clearing takes the overlay off the board", () => {
-    writeImport(SERVER, TRACK, { laps: [lap(A, 95_000)] });
-    expect(clearImport(SERVER, TRACK)).toBe(true);
-    expect(readImport(SERVER, TRACK)).toBeNull();
-    expect(clearImport(SERVER, TRACK)).toBe(false); // already gone
+  it("a driver who first appears after the switch was thrown is carried too", () => {
+    recordLap(A, 95_000, { name: "Alice" });
+    carry();
+
+    recordLap(B, 96_000, { name: "Bob" });
+    __clearCache();
+    expect(currentBests(SERVER, TRACK).map((l) => l.name)).toEqual(["Alice", "Bob"]);
   });
 
-  it("a broken file is no overlay, not an outage", () => {
+  it("reads the season it was pointed at, and no other", () => {
+    recordLap(A, 95_000, { name: "Alice", season: SEASON });
+    recordLap(B, 80_000, { name: "LastSeasonBob", season: SEASON - 1 });
+    carry();
+
+    expect(currentBests(SERVER, TRACK).map((l) => l.name)).toEqual(["Alice"]);
+  });
+
+  it("a track that was never switched on carries nothing", () => {
+    recordLap(A, 95_000);
+    expect(readSource(SERVER, TRACK)).toBeNull();
+    expect(currentBests(SERVER, TRACK)).toEqual([]);
+  });
+
+  it("switching a track off takes it back off the board", () => {
+    recordLap(A, 95_000);
+    carry();
+    expect(currentBests(SERVER, TRACK)).toHaveLength(1);
+
+    expect(clearSource(SERVER, TRACK)).toBe(true);
+    expect(currentBests(SERVER, TRACK)).toEqual([]);
+    expect(clearSource(SERVER, TRACK)).toBe(false); // already gone
+  });
+
+  it("a switch with no store behind it carries nothing rather than everything", () => {
+    carry();
+    expect(currentBests(SERVER, TRACK)).toEqual([]);
+  });
+
+  it("refuses a switch that names no series or season", () => {
+    expect(() => addSource(SERVER, TRACK, { series: "", season: SEASON })).toThrow();
+    expect(() => addSource(SERVER, TRACK, { series: SERIES, season: 0 })).toThrow();
+  });
+
+  it("a broken line is no source, not an outage", () => {
     mkdirSync(join(LIVE_BEST_LAPS_DIR, SERVER), { recursive: true });
     writeFileSync(join(LIVE_BEST_LAPS_DIR, SERVER, `${TRACK}.json`), "{ this is not json");
     __clearCache();
-    expect(readImport(SERVER, TRACK)).toBeNull();
+    expect(readSource(SERVER, TRACK)).toBeNull();
+    expect(currentBests(SERVER, TRACK)).toEqual([]);
   });
 
   it("refuses a track key that could walk out of its folder", () => {
-    expect(() => writeImport(SERVER, "../../etc/passwd", { laps: [lap(A, 95_000)] })).toThrow();
-    expect(readImport(SERVER, "../../etc/passwd")).toBeNull();
+    expect(() => addSource(SERVER, "../../etc/passwd", { series: SERIES, season: SEASON })).toThrow();
+    expect(readSource(SERVER, "../../etc/passwd")).toBeNull();
+    expect(existsSync(join(LIVE_BEST_LAPS_DIR, SERVER, "..", "..", "etc"))).toBe(false);
   });
 
-  it("lists what a server carries, newest import first", () => {
-    writeImport(SERVER, "monza", { laps: [lap(A, 95_000)] });
-    writeImport(SERVER, "spa--gp", { laps: [lap(A, 104_000), lap(B, 103_000)] });
+  it("lists what a server carries, with the count it carries right now", () => {
+    recordLap(A, 95_000, { track: "monza" });
+    recordLap(A, 104_000, { track: "spa--gp" });
+    recordLap(B, 103_000, { track: "spa--gp", name: "Bob" });
+    carry("monza");
+    carry("spa--gp");
 
-    const list = listImports(SERVER);
+    const list = listSources(SERVER);
     expect(list.map((t) => t.trackKey).sort()).toEqual(["monza", "spa--gp"]);
-    expect(list.find((t) => t.trackKey === "spa--gp")).toMatchObject({ laps: 2, bestMs: 103_000 });
+    expect(list.find((t) => t.trackKey === "spa--gp")).toMatchObject({ laps: 2, bestMs: 103_000, season: SEASON });
   });
 
   it("an unknown server carries nothing", () => {
-    expect(listImports("nobody")).toEqual([]);
-    expect(readImport("nobody", TRACK)).toBeNull();
+    expect(listSources("nobody")).toEqual([]);
+    expect(readSource("nobody", TRACK)).toBeNull();
   });
 });
 
@@ -129,10 +201,7 @@ describe("importEffect", () => {
   });
 
   it("compares against whichever of the two the board is actually showing", () => {
-    // An earlier import left 1:36 on the row and the driver has since done
-    // 1:33 on the server: the board shows the 1:33, so a 1:34 is slower.
     expect(importEffect(94_000, { liveMs: 93_000, importedMs: 96_000 })).toBe("slower");
-    // The other way round: the row is carrying the imported 1:33.
     expect(importEffect(94_000, { liveMs: 96_000, importedMs: 93_000 })).toBe("slower");
     expect(importEffect(92_000, { liveMs: 96_000, importedMs: 93_000 })).toBe("faster");
   });

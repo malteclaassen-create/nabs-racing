@@ -1136,19 +1136,6 @@ const TIMING_COLUMNS = [
         >
           {formatLap(e.bestLapMs)}
         </span>
-        {/* A training best the admin carried onto the board (backend: lib/
-            liveBestLaps.js): set on this track during the week, not in the
-            session on screen. It is marked because the rest of the row was
-            not set with it — a lap from another evening sitting unmarked
-            among live ones would be the board telling a small lie. */}
-        {e.imported && (
-          <span
-            className="ml-1 align-super text-[9px] font-black text-light"
-            title="Training best from an earlier session on this track"
-          >
-            T
-          </span>
-        )}
         {/* When the gap has no column of its own it sits directly under the lap
             it refers to: on phones in automatic mode (where the Gap column is
             sm-and-up), and at any width for someone who switched that column
@@ -2668,14 +2655,6 @@ function TvRow({ e, match, isRace, fastestLapMs, index = 0 }) {
               holdsFastest ? "text-fl" : "text-dark"
             }`}
           >
-            {/* Same mark as the table's Best column, for the same reason: this
-                lap was set on this track in another session, and a wallboard
-                that does not say so is claiming it happened tonight. It hangs
-                in the column's own leading space (the times are right-aligned)
-                so no row moves because of it. */}
-            {e.imported && (
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[10px] font-black text-light">T</span>
-            )}
             {formatLap(rolledMs)}
           </span>
         </>
@@ -3490,11 +3469,6 @@ export default function Live() {
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> On track now
         </span>
-        {entries.some((e) => e.imported) && (
-          <span className="flex items-center gap-1.5">
-            <span className="align-super text-[9px] font-black">T</span> Training best, earlier session
-          </span>
-        )}
         {tablePrefs.enabled.has("potential") && (
           <span className="text-faint">Potential = sum of best sectors</span>
         )}

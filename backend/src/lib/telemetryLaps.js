@@ -421,6 +421,80 @@ export function listTracks(series, season, legacy = false) {
 // first, and every entry carries a `lapId` because a driver has up to three:
 // it is the lap time in milliseconds, unique per driver per track per season
 // by construction.
+// Everybody who has laps at one track, across the season folder and (when
+// asked) the two shapes that predate seasons. Shared by the full read below
+// and by the cheap one under it, so "who is in this track's store" is decided
+// in one place.
+function driversAt(series, season, trackKey, legacy) {
+  const drivers = new Set();
+  for (const dir of [join(seasonDir(series, season), trackKey), ...(legacy ? [join(seriesDir(series), trackKey)] : [])]) {
+    if (!existsSync(dir)) continue;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory() && isSteamId(entry.name)) drivers.add(entry.name);
+      else if (legacy && entry.isFile() && entry.name.endsWith(".json")) {
+        const steamId = entry.name.replace(/\.json$/, "");
+        if (isSteamId(steamId)) drivers.add(steamId);
+      }
+    }
+  }
+  return drivers;
+}
+
+// A lap file is named after its own lap time and is never rewritten, so what a
+// parse of one says can be memoised by its path for as long as the process
+// lives. This exists for the caller below, which runs on a schedule rather
+// than on a click: without it, every pass would parse tens of KB of channel
+// arrays per driver to read back a name it already knew.
+const lapHeadCache = new Map(); // path -> { name, car, track, layout, recordedAt }
+const LAP_HEAD_MAX = 5000;
+
+function lapHead(path) {
+  const seen = lapHeadCache.get(path);
+  if (seen) return seen;
+  let head = null;
+  try {
+    const lap = JSON.parse(readFileSync(path, "utf8"));
+    head = {
+      name: String(lap.name || ""),
+      car: String(lap.car || ""),
+      track: String(lap.track || ""),
+      layout: String(lap.layout || ""),
+      recordedAt: lap.recordedAt ? String(lap.recordedAt) : null,
+    };
+  } catch {
+    return null; // an unreadable file is one lap missing, not a failure
+  }
+  // Fixed ceiling, same bargain as the live board's id cache: far beyond what
+  // a league produces, and an eviction only costs one re-parse.
+  if (lapHeadCache.size >= LAP_HEAD_MAX) lapHeadCache.clear();
+  lapHeadCache.set(path, head);
+  return head;
+}
+
+// The fastest lap each driver has at one track, fastest first — the question
+// "who is quickest here" on its own, without the channel arrays that answer
+// "and what did they do with the wheel".
+//
+// listLaps parses every lap it touches, which is the right trade for a
+// comparison a human opened and the wrong one for something that runs on a
+// timer (the live board's training bests, lib/liveBestLaps.js). This reads the
+// times off the FILE NAMES — the store names each lap after its own time
+// precisely so that question is free — and parses only the one winning file
+// per driver, memoised above. A pass over a full grid touches nothing after
+// the first.
+export function bestLapPerDriver(series, season, trackKey, legacy = false) {
+  if (!isTrackKey(trackKey)) return [];
+  const out = [];
+  for (const steamId of driversAt(series, season, trackKey, legacy)) {
+    const fastest = lapFilesOf(series, season, trackKey, steamId, legacy)[0];
+    if (!fastest) continue;
+    const head = lapHead(fastest.path);
+    if (!head?.name) continue;
+    out.push({ steamId, lapTimeMs: fastest.lapTimeMs, ...head });
+  }
+  return out.sort((a, b) => a.lapTimeMs - b.lapTimeMs);
+}
+
 export function listLaps(series, season, trackKey, legacy = false) {
   if (!isTrackKey(trackKey)) return [];
   const out = [];
@@ -448,17 +522,7 @@ export function listLaps(series, season, trackKey, legacy = false) {
 
   // Everybody who has a folder here, in this season and (when asked) in the
   // shapes that predate seasons.
-  const drivers = new Set();
-  for (const dir of [join(seasonDir(series, season), trackKey), ...(legacy ? [join(seriesDir(series), trackKey)] : [])]) {
-    if (!existsSync(dir)) continue;
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isDirectory() && isSteamId(entry.name)) drivers.add(entry.name);
-      else if (legacy && entry.isFile() && entry.name.endsWith(".json")) {
-        const steamId = entry.name.replace(/\.json$/, "");
-        if (isSteamId(steamId)) drivers.add(steamId);
-      }
-    }
-  }
+  const drivers = driversAt(series, season, trackKey, legacy);
   for (const steamId of drivers) {
     for (const f of lapFilesOf(series, season, trackKey, steamId, legacy)) read(f.path, f.lapTimeMs);
   }

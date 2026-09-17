@@ -994,7 +994,7 @@ function LiveServersAdmin() {
 function TrainingBestLapsAdmin() {
   const { current: series } = useSeries();
   // "" means "whatever the race server is on right now", which is the case the
-  // button exists for; a named track is for importing one the server has left.
+  // button exists for; a named track is for one the server has left.
   const [track, setTrack] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
@@ -1007,8 +1007,8 @@ function TrainingBestLapsAdmin() {
   if (loading || !data) return <div className="card p-5 text-sm text-light">Loading…</div>;
 
   const rows = data.rows || [];
-  const carried = rows.filter((r) => r.effect === "faster" || r.effect === "new").length;
   const practice = data.session?.type === "Practice";
+  const on = !!data.carried;
 
   async function run() {
     setBusy(true);
@@ -1042,7 +1042,7 @@ function TrainingBestLapsAdmin() {
   const effectLabel = {
     new: ["Carried", "text-success"],
     faster: ["Carried", "text-success"],
-    same: ["Unchanged", "text-light"],
+    same: ["Already showing", "text-light"],
     slower: ["Live lap is faster", "text-medium"],
   };
 
@@ -1052,18 +1052,24 @@ function TrainingBestLapsAdmin() {
       <p className="text-sm text-light">
         The race server forgets a practice session every time it restarts, so the week&rsquo;s training times drop
         off the Live page. The telemetry recorder does not: it runs for everyone on the server and keeps each
-        driver&rsquo;s fastest lap per track. This carries those laps onto the board, where the{" "}
-        <b className="text-dark">faster of the two wins per driver</b> — somebody who has since gone quicker on
-        the server keeps their live lap, and an identical time changes nothing. Imported laps show in{" "}
-        <b className="text-dark">practice sessions only</b>: a qualifying board or a race classification is what
-        happened in that session, and a training lap has no business in either.
+        driver&rsquo;s fastest lap per track. Switch a track on here and its board carries those laps, where the{" "}
+        <b className="text-dark">faster of the two wins per driver</b> — somebody who goes quicker on the server
+        keeps their live lap, and an identical time changes nothing.
+      </p>
+      <p className="text-sm text-light">
+        Nothing is copied: the board re-reads the recorder&rsquo;s laps as it draws, so a{" "}
+        <b className="text-dark">new personal best set on the practice server reaches the board by itself</b> and
+        is still there after the session resets under it. This never needs pressing twice for the same track and
+        season. The laps appear in <b className="text-dark">practice sessions only</b> — a qualifying board or a
+        race classification is what happened in that session, and a training lap has no business in either — and
+        they are drawn exactly like a lap set in the session on screen.
       </p>
 
       {err && <Notice kind="error">{err}</Notice>}
       {done && (
         <Notice kind="success">
-          {done.stored} lap{done.stored === 1 ? "" : "s"} on the board — {done.carried} carried, {done.unchanged}{" "}
-          unchanged, {done.slower} beaten by a live lap.
+          On the board: {done.stored} driver{done.stored === 1 ? "" : "s"} — {done.carried} carried, {done.unchanged}{" "}
+          already showing that time, {done.slower} beaten by a live lap. It stays current on its own from here.
         </Notice>
       )}
 
@@ -1090,7 +1096,11 @@ function TrainingBestLapsAdmin() {
           </select>
         </label>
         <button className="btn-primary" onClick={run} disabled={busy || !rows.length}>
-          {busy ? "Importing…" : `Import ${rows.length} driver${rows.length === 1 ? "" : "s"}`}
+          {busy
+            ? "Carrying…"
+            : on
+              ? `Re-point at season ${data.season}`
+              : `Carry ${rows.length} driver${rows.length === 1 ? "" : "s"}`}
         </button>
       </div>
 
@@ -1100,27 +1110,28 @@ function TrainingBestLapsAdmin() {
         Track: <b className="text-dark">{data.trackKey || "—"}</b>
         {" · "}
         Session: <b className="text-dark">{data.session?.type || (data.connected ? "—" : "off air")}</b>
-        {data.imported && (
+        {data.carried && (
           <>
             {" · "}
-            Already imported: <b className="text-dark">{data.imported.laps}</b> lap
-            {data.imported.laps === 1 ? "" : "s"}
+            Carried since <b className="text-dark">{new Date(data.carried.addedAt).toLocaleDateString()}</b>,{" "}
+            <b className="text-dark">{data.carried.laps}</b> driver{data.carried.laps === 1 ? "" : "s"} right now
           </>
         )}
       </div>
 
       {!practice && data.trackKey && (
         <Notice kind="info">
-          This server is not in a practice session right now, so nothing imported will be visible until it is back
-          in one. The import itself is stored either way.
+          This server is not in a practice session right now, so nothing carried will be visible until it is back
+          in one. The switch holds either way.
         </Notice>
       )}
 
-      {/* The board looks its imported laps up by the track key the RACE SERVER
+      {/* The board looks its training laps up by the track key the RACE SERVER
           reports; these laps are filed under the key the GAME reported when
           they were recorded. The two are built the same way and normally agree
           — but a renamed track mod is exactly the case where they do not, and
-          an import nobody can see is worse than one that was refused. */}
+          a switch nobody can see the effect of is worse than one that was
+          refused. */}
       {data.session?.trackKey && data.trackKey && data.session.trackKey !== data.trackKey && (
         <Notice kind="info">
           These laps are filed under <b className="text-dark">{data.trackKey}</b>, and the server&rsquo;s board is
@@ -1171,15 +1182,15 @@ function TrainingBestLapsAdmin() {
       {!!(data.tracks || []).length && (
         <div className="space-y-2 border-t border-border pt-4">
           <div className="text-xs font-semibold uppercase tracking-widest text-light">
-            Currently carried on this board
+            Tracks this board carries
           </div>
           {data.tracks.map((t) => (
             <div key={t.trackKey} className="flex flex-wrap items-center gap-3 text-sm">
               <span className="font-semibold text-dark">{t.trackKey}</span>
               <span className="text-light">
-                {t.laps} lap{t.laps === 1 ? "" : "s"}
+                season {t.season} · {t.laps} driver{t.laps === 1 ? "" : "s"}
                 {t.bestMs ? ` · best ${formatLapTime(t.bestMs)}` : ""}
-                {t.importedAt ? ` · ${new Date(t.importedAt).toLocaleString()}` : ""}
+                {t.addedAt ? ` · since ${new Date(t.addedAt).toLocaleDateString()}` : ""}
               </span>
               <button className="btn-secondary text-xs" onClick={() => remove(t.trackKey)} disabled={busy}>
                 Remove

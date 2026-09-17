@@ -31,7 +31,7 @@ import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
-import { readImport } from "../lib/liveBestLaps.js";
+import { currentBests } from "../lib/liveBestLaps.js";
 
 // ---------------------------------------------------------------------------
 // Public driver id for the live board.
@@ -1170,24 +1170,33 @@ function createRelay(server) {
   // a race is a classification of what happened IN it — carrying a training lap
   // into either would be inventing a result, so neither is touched.
   //
-  // Faster wins, per driver. A driver already on the board who has since gone
-  // quicker keeps their live lap; one who has not yet matched their imported
-  // time shows the imported one; one who is not on the server at all becomes a
-  // row of their own, which is the whole point — the board is supposed to hold
-  // the week, not the last two hours of it.
+  // Faster wins, per driver, and nothing here is frozen: the laps are read back
+  // out of the telemetry store as the board is built (lib/liveBestLaps.js), so
+  // a driver who goes quicker on the practice server is quicker here too — on
+  // this board the moment they cross the line, and still quicker after the
+  // session resets under them. A driver already on the board who has beaten
+  // their training best keeps their live lap; one who has not yet matched it
+  // shows the training one; one who is not on the server at all becomes a row
+  // of their own, which is the whole point — the board is supposed to hold the
+  // week, not the last two hours of it.
   function applyImportedBests(byGuid, si) {
-    const stored = readImport(server.key, trackKeyOf(si.Track || "", si.TrackConfig || ""));
-    if (!stored) return;
+    const stored = currentBests(server.key, trackKeyOf(si.Track || "", si.TrackConfig || ""));
+    if (!stored.length) return;
 
-    for (const lap of stored.laps) {
+    for (const lap of stored) {
       const live = byGuid.get(lap.steamId);
       if (!live) {
         // Nobody by that Steam id is on the server. Build the row the same way
         // every other row is built, from a driver record with no car data, and
         // put the one number we have onto it: no sectors, no last lap, no lap
         // count, because we genuinely do not know any of them. The table prints
-        // a dash for each, which is honest and is what a stored driver's row
-        // already looks like.
+        // a dash for each, which is what a stored driver's row already looks
+        // like — the row is meant to read as an ordinary one, and does.
+        //
+        // `imported` is not a badge: the board draws these rows exactly like
+        // the rest. It is how the admin preview can tell a lap the board is
+        // carrying from one somebody set in the session on screen, which is
+        // the difference between "nothing changes" and "this came from here".
         const entry = buildEntry(lap.steamId, {
           CarInfo: { DriverName: lap.name, CarModel: lap.car || "", CarName: lap.car || "" },
         }, false);

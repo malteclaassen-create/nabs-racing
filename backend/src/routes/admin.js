@@ -119,8 +119,8 @@ import {
   LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap, serverAssignment,
   serverKeyForSeries,
 } from "../lib/liveServers.js";
-import { listLaps as listTelemetryLaps, isTrackKey } from "../lib/telemetryLaps.js";
-import { readImport, writeImport, clearImport, listImports, importEffect } from "../lib/liveBestLaps.js";
+import { bestLapPerDriver, isTrackKey } from "../lib/telemetryLaps.js";
+import { readSource, addSource, clearSource, listSources, currentBests, importEffect } from "../lib/liveBestLaps.js";
 import { getBoard as getLiveBoard, realGuidForPublicId } from "../services/liveTiming.js";
 import { telemetryIdentities } from "../lib/telemetryIdentity.js";
 
@@ -1670,8 +1670,9 @@ router.put("/live-servers", async (req, res, next) => {
 // every restart of it takes the week's times off the live board. The site has
 // them anyway — the in-game recorder is served to every driver who joins, so
 // the telemetry store holds each driver's fastest lap per track (lib/telemetry
-// Laps.js). These three routes are the button that puts them back on the board
-// (lib/liveBestLaps.js holds the overlay they write).
+// Laps.js). These three routes are the button that puts them back on the board:
+// it does not copy the laps, it tells that board to read them (lib/liveBest
+// Laps.js), so a quicker lap driven afterwards reaches the board on its own.
 
 // Everything both the preview and the import need: which server's board is in
 // question, which track, what the telemetry store has, and what the board is
@@ -1702,11 +1703,11 @@ async function trainingLapPlan({ series, season, track }) {
     ? activeRow
     : await resolveSeason(prisma, seasonNumber, { includePrivate: true, series: seriesRow.slug });
 
-  // Fastest per driver. The store keeps three laps each and hands them over
-  // fastest first, so the first one seen for a Steam id is that driver's best.
+  // Fastest per driver, straight out of the telemetry store — the same read the
+  // board itself makes once this track is carried.
   const fastest = new Map();
   if (trackKey && seasonNumber) {
-    for (const lap of listTelemetryLaps(seriesRow.slug, seasonNumber, trackKey, legacy)) {
+    for (const lap of bestLapPerDriver(seriesRow.slug, seasonNumber, trackKey, legacy)) {
       if (!fastest.has(lap.steamId)) fastest.set(lap.steamId, lap);
     }
   }
@@ -1721,20 +1722,22 @@ async function trainingLapPlan({ series, season, track }) {
     if (real) liveBest.set(real, e.bestLapMs);
   }
 
-  const stored = readImport(serverKey, trackKey);
-  const storedBest = new Map((stored?.laps || []).map((l) => [l.steamId, l.lapTimeMs]));
+  // What this board is already carrying for that track, if anything.
+  const source = readSource(serverKey, trackKey);
+  const storedBest = new Map(currentBests(serverKey, trackKey).map((l) => [l.steamId, l.lapTimeMs]));
 
   return {
     series: seriesRow.slug,
     seriesName: seriesRow.name,
     seasonNumber,
     seasonId: seasonRow?.id || null,
+    legacy,
     serverKey,
     board,
     trackKey,
     fastest,
     liveBest,
-    stored,
+    source,
     storedBest,
   };
 }
@@ -1791,8 +1794,16 @@ function trainingLapHead(plan) {
         }
       : null,
     connected: !!plan.board?.connected,
-    imported: plan.stored
-      ? { laps: plan.stored.laps.length, importedAt: plan.stored.importedAt, bestMs: plan.stored.laps[0]?.lapTimeMs ?? null }
+    // Whether this track is already carried, and since when. The laps behind
+    // it are not a copy taken then: they are re-read from the telemetry store
+    // as the board is built, so this line is a switch, not a snapshot.
+    carried: plan.source
+      ? {
+          series: plan.source.series,
+          season: plan.source.season,
+          addedAt: plan.source.addedAt,
+          laps: plan.storedBest.size,
+        }
       : null,
   };
 }
@@ -1807,9 +1818,9 @@ router.get("/live-best-laps", async (req, res, next) => {
     res.json({
       ...trainingLapHead(plan),
       rows: await trainingLapRows(plan),
-      // Every track this server currently carries times for, so an import made
-      // three circuits ago can be found and cleared again.
-      tracks: listImports(plan.serverKey),
+      // Every track this server currently carries times for, so one switched
+      // on three circuits ago can be found and taken off again.
+      tracks: listSources(plan.serverKey),
     });
   } catch (e) {
     next(e);
@@ -1833,28 +1844,22 @@ router.post("/live-best-laps", async (req, res, next) => {
       return res.status(400).json({ error: "The telemetry store has no laps for this track in this season." });
     }
 
+    // Counted against what the board showed BEFORE the switch is thrown, which
+    // is what the admin was looking at when they pressed it.
+    const rows = await trainingLapRows(plan);
     const laps = [...plan.fastest.values()];
-    const written = writeImport(plan.serverKey, plan.trackKey, {
-      track: laps[0]?.track || "",
-      layout: laps[0]?.layout || "",
+
+    addSource(plan.serverKey, plan.trackKey, {
       series: plan.series,
       season: plan.seasonNumber,
-      laps: laps.map((l) => ({
-        steamId: l.steamId,
-        name: l.name,
-        car: l.car,
-        lapTimeMs: l.lapTimeMs,
-        recordedAt: l.recordedAt,
-      })),
+      legacy: plan.legacy,
+      track: laps[0]?.track || "",
+      layout: laps[0]?.layout || "",
     });
 
-    const rows = await trainingLapRows(plan);
     res.json({
       ok: true,
-      ...trainingLapHead(plan),
-      // Counted against what the board showed BEFORE this call, which is what
-      // the admin was looking at when they pressed it.
-      stored: written.laps.length,
+      stored: laps.length,
       carried: rows.filter((r) => r.effect === "faster" || r.effect === "new").length,
       unchanged: rows.filter((r) => r.effect === "same").length,
       slower: rows.filter((r) => r.effect === "slower").length,
@@ -1874,7 +1879,7 @@ router.delete("/live-best-laps", async (req, res, next) => {
     const trackKey = String(req.query.track || "");
     if (!isTrackKey(trackKey)) return res.status(400).json({ error: "Valid track key required" });
     const serverKey = await serverKeyForSeries(prisma, seriesRow.slug);
-    res.json({ ok: true, removed: clearImport(serverKey, trackKey), tracks: listImports(serverKey) });
+    res.json({ ok: true, removed: clearSource(serverKey, trackKey), tracks: listSources(serverKey) });
   } catch (e) {
     next(e);
   }
