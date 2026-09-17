@@ -29,7 +29,10 @@ Driver profile
   in the Hall of Fame and in the Cockpit - as do the fastest laps of both
   races. The grid numbers and the poles stay per round (a sprint grid is not a
   qualifying result). In a season
-  with sprint weekends the sprint races show up too: a Sprint view on the form chart and the head to head, a Sprint
+  with sprint weekends the sprint races show up too: the season form draws the
+  sprint as a dashed line behind the race line, with the sprint result under
+  each round's chip (the switch there is Race / Qualifying, no Sprint tab), a
+  Sprint view on the head to head, a Sprint
   column in the race by race table (with the weekend's points split), and
   Sprint Wins / Sprint Podiums stat tiles that break the totals down.
 

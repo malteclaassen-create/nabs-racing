@@ -425,7 +425,12 @@ function RatingBreakdown({ rating, stats, color }) {
 // the per-round result chips sitting directly under each round. The line only
 // connects rounds the driver actually finished — rounds they sat out (or
 // retired from) leave a gap and the line simply carries on to the next finish.
-function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
+// `withSprint`: the season ran sprint weekends, so the Race view carries the
+// sprint behind it as a dashed ghost line rather than hiding it in a tab of
+// its own. Two races of the same evening belong in one picture — a driver
+// reading the season wants to see the sprint that set up the feature race,
+// not switch views to find it.
+function FormChart({ perRace, seasonRounds, color, mode = "race", withSprint = false }) {
   // Every round of the season, run or not: a round already raced brings its
   // result along, one still ahead is an empty slot that only carries its label.
   // That way the chart reads as the whole campaign from round one instead of
@@ -446,29 +451,28 @@ function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
   const valueOf = (r) =>
     mode === "quali"
       ? r.qualiPosition ?? null
-      : mode === "sprint"
-        ? r.sprint?.status === "FINISHED" && r.sprint.position != null
-          ? r.sprint.position
-          : null
-        : r.status === "FINISHED" && r.position != null
-          ? r.position
-          : null;
+      : r.status === "FINISHED" && r.position != null
+        ? r.position
+        : null;
+  // The ghost series: the sprint's own classification, drawn behind the race
+  // line. Only in the Race view — a sprint has no qualifying of its own.
+  const ghost = mode === "race" && withSprint;
+  const ghostOf = (r) =>
+    ghost && r.sprint?.status === "FINISHED" && r.sprint.position != null ? r.sprint.position : null;
   // What a chip says when there is no number to show: a round that hasn't
   // happened is a quiet dash, one that has is the reason there's no result
-  // (DNF/DNS/DSQ) — or, in the Qualifying and Sprint views, simply nothing
-  // of that kind on file for the round.
-  const emptyLabel = (r) =>
-    r.upcoming ? "–" : mode === "quali" ? "–" : mode === "sprint" ? (r.sprint ? r.sprint.status : "–") : r.status;
+  // (DNF/DNS/DSQ) — or, in the Qualifying view, simply nothing on file.
+  const emptyLabel = (r) => (r.upcoming ? "–" : mode === "quali" ? "–" : r.status);
   const emptyTitle = (r) =>
-    r.upcoming
-      ? " · not raced yet"
-      : mode === "quali"
-        ? " · no qualifying on file"
-        : mode === "sprint"
-          ? r.sprint
-            ? ` · sprint ${r.sprint.status}`
-            : " · no sprint this round"
-          : ` · ${r.status}`;
+    r.upcoming ? " · not raced yet" : mode === "quali" ? " · no qualifying on file" : ` · ${r.status}`;
+  // The small second line under a chip: the sprint's position, its status when
+  // it ran without one, and a slash for a round that had no sprint at all.
+  const sprintLabel = (r) => {
+    if (!ghost) return null;
+    if (r.upcoming) return "/";
+    if (!r.sprint) return "/";
+    return ghostOf(r) ?? r.sprint.status ?? "/";
+  };
 
   const finishes = rounds
     .map((r, i) => {
@@ -476,7 +480,17 @@ function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
       return p != null ? { i, p } : null;
     })
     .filter(Boolean);
-  const positions = finishes.map((f) => f.p);
+  const ghostFinishes = rounds
+    .map((r, i) => {
+      const p = ghostOf(r);
+      return p != null ? { i, p } : null;
+    })
+    .filter(Boolean);
+  // Best and worst read BOTH series, so the rings agree with the season stats
+  // above them — where a sprint win has counted as the best finish since the
+  // league made a sprint win a win. The scale follows for the same reason: a
+  // sprint further back than any feature race must still fit on the chart.
+  const positions = [...finishes, ...ghostFinishes].map((f) => f.p);
   const best = positions.length ? Math.min(...positions) : null;
   const worst = positions.length ? Math.max(...positions) : null;
   const maxPos = Math.max(3, worst || 3);
@@ -497,6 +511,8 @@ function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
   const areaD = linePts.length > 1
     ? `${d} L${linePts[linePts.length - 1].x.toFixed(2)},100 L${linePts[0].x.toFixed(2)},100 Z`
     : null;
+  const ghostPts = ghostFinishes.map((f) => ({ x: f.i + 0.5, y: yPct(f.p) }));
+  const ghostD = ghostPts.map((pt, k) => `${k ? "L" : "M"}${pt.x.toFixed(2)},${pt.y.toFixed(2)}`).join(" ");
   const gradId = `form-grad-${color.replace(/[^a-z0-9]/gi, "")}`;
   const minW = Math.max(360, N * 46);
 
@@ -563,6 +579,22 @@ function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
                 </linearGradient>
               </defs>
               {areaD && <path d={areaD} fill={`url(#${gradId})`} stroke="none" />}
+              {/* The sprint, behind and quieter: same colour so it reads as the
+                  same driver, dashed and faint so it never competes with the
+                  race line for the eye. */}
+              {ghostPts.length > 1 && (
+                <path
+                  d={ghostD}
+                  fill="none"
+                  stroke={color}
+                  strokeOpacity="0.5"
+                  strokeWidth="2"
+                  strokeDasharray="5 4"
+                  vectorEffect="non-scaling-stroke"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              )}
               {finishes.length > 1 && (
                 <path
                   d={d}
@@ -575,6 +607,35 @@ function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
                 />
               )}
             </svg>
+            {/* sprint dots, hollow and faint — the ring marks a best or worst
+                that happened in a sprint, so the header's Best/Worst always
+                has a dot to point at. */}
+            {ghost && (
+              <div className="absolute inset-0 flex" aria-hidden="true">
+                {rounds.map((r, i) => {
+                  const p = ghostOf(r);
+                  if (p == null) return <div key={i} className="flex-1" />;
+                  const isBest = p === best;
+                  const isWorst = p === worst && worst !== best;
+                  const top = `${yPct(p)}%`;
+                  return (
+                    <div key={i} className="relative flex-1">
+                      {(isBest || isWorst) && (
+                        <span
+                          className="absolute h-[18px] w-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-60"
+                          style={{ left: "50%", top, boxShadow: `0 0 0 2px ${isBest ? "#16a34a" : "#dc2626"}` }}
+                        />
+                      )}
+                      <span
+                        className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-60 ring-2 ring-card"
+                        style={{ left: "50%", top, backgroundColor: color }}
+                        title={`R${r.number} ${r.track} · sprint P${p}`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             {/* dots — plotted rounds only; best ringed green, worst ringed red */}
             <div className="absolute inset-0 flex">
               {rounds.map((r, i) => {
@@ -626,21 +687,31 @@ function FormChart({ perRace, seasonRounds, color, mode = "race" }) {
                 ? ""
                 : "ring-1 ring-border";
               const label = p != null ? p : emptyLabel(r);
+              const sprint = sprintLabel(r);
+              const sprintTitle =
+                sprint == null ? "" : r.sprint ? ` · sprint ${ghostOf(r) != null ? `P${ghostOf(r)}` : r.sprint.status}` : " · no sprint";
               return (
                 <div
                   key={r.number}
                   className={`flex flex-1 flex-col items-center gap-1.5 ${r.upcoming ? "opacity-45" : ""}`}
-                  title={`R${r.number} ${r.track}${p != null ? ` · P${p}` : emptyTitle(r)}`}
+                  title={`R${r.number} ${r.track}${p != null ? ` · P${p}` : emptyTitle(r)}${sprintTitle}`}
                 >
+                  {/* On a sprint season the chip is a two-liner: the race above,
+                      the sprint under it in the same quiet tone as its line. */}
                   <span
-                    className={`flex h-9 w-9 items-center justify-center rounded-lg font-display font-black tabular-nums ${
+                    className={`flex ${sprint == null ? "h-9 w-9 items-center" : "h-11 w-9 flex-col justify-center"} justify-center rounded-lg font-display font-black tabular-nums ${
                       p != null ? "text-sm" : "text-[10px] tracking-tight"
                     } ${
                       medal ? "text-ink" : p != null ? "bg-surface2 text-dark" : "bg-surface2 text-light"
                     } ${ring}`}
                     style={medal ? { backgroundColor: medal } : undefined}
                   >
-                    {label}
+                    <span className="leading-none">{label}</span>
+                    {sprint != null && (
+                      <span className={`mt-1 text-[10px] font-bold leading-none tracking-tight ${medal ? "opacity-70" : "text-light"}`}>
+                        {sprint}
+                      </span>
+                    )}
                   </span>
                   {/* Round label with the circuit's flag, so the axis reads as
                       a calendar rather than a row of numbers. The flag comes
@@ -1551,7 +1622,7 @@ export default function DriverProfile({ previewId, preview }) {
   );
   // Season-form view: race result or qualifying. Up here with the other hooks,
   // above the loading/error returns below.
-  const [formMode, setFormMode] = useState("race");
+  const [formMode, setFormMode] = useState("race"); // "race" | "quali"
 
   // The driver IS this page, so the tab and the search result should say so
   // rather than naming the season alone. Same wording as the title the server
@@ -1686,15 +1757,16 @@ export default function DriverProfile({ previewId, preview }) {
   // all — no uploaded session, no tab.
   const qualiPositions = (perRace || []).map((r) => r.qualiPosition).filter((v) => v != null);
   const hasQuali = qualiPositions.length > 0;
-  // Sprint weekends this season: the Sprint view of the chart, the sprint
-  // column of the race-by-race table. Rounds with a sprint on file carry it.
+  // Sprint weekends this season: the ghost line under the season form, the
+  // sprint column of the race-by-race table. Rounds with a sprint carry it.
   const hasSprint = (perRace || []).some((r) => r.sprint);
+  // The Race view's Best/Worst come from the season stats, which count every
+  // classification — the sprints included — and the chart rings the matching
+  // dot on whichever line it happened on.
   const formBest =
     formMode === "quali"
       ? { best: qualiPositions.length ? Math.min(...qualiPositions) : null, worst: qualiPositions.length ? Math.max(...qualiPositions) : null }
-      : formMode === "sprint"
-        ? { best: stats.sprint?.bestFinish ?? null, worst: stats.sprint?.worstFinish ?? null }
-        : { best: stats.bestFinish ?? null, worst: stats.worstFinish ?? null };
+      : { best: stats.bestFinish ?? null, worst: stats.worstFinish ?? null };
   // Preview mode: unsaved profile edits overlay the stored driver fields.
   const driver = preview ? { ...p.driver, ...preview } : p.driver;
   const color = driver.team.color;
@@ -1844,11 +1916,7 @@ export default function DriverProfile({ previewId, preview }) {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-5 py-4 sm:px-6">
             <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Season Form</h2>
             <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-              {formMode === "quali"
-                ? "qualifying position by round"
-                : formMode === "sprint"
-                  ? "sprint finishing position by round"
-                  : "finishing position by round"}
+              {formMode === "quali" ? "qualifying position by round" : "finishing position by round"}
             </span>
             {formBest.best != null && (
               <span className="flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-wider">
@@ -1862,17 +1930,30 @@ export default function DriverProfile({ previewId, preview }) {
                 )}
               </span>
             )}
-            {/* Race ⇄ Sprint ⇄ Qualifying. A view is only offered when the
-                season has something to show in it — a sprint weekend run, a
-                quali session uploaded — otherwise the tab would lead to an
-                empty chart and imply we lost the data. */}
-            {(hasQuali || hasSprint) && (
+            {/* The sprint used to be a third tab. It is drawn INTO the race
+                view now — one evening, one picture — so all that is left to
+                switch is Race ⇄ Qualifying, and only when a quali session was
+                uploaded at all. The legend says which line is which. */}
+            {hasSprint && formMode === "race" && (
+              <span className="flex items-center gap-3 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-0.5 w-5 rounded-full" style={{ backgroundColor: color }} /> Race
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="h-0 w-5 border-t-2 border-dashed"
+                    style={{ borderColor: color, opacity: 0.6 }}
+                  />{" "}
+                  Sprint
+                </span>
+              </span>
+            )}
+            {hasQuali && (
               <SlidingTabs
                 className="ml-auto"
                 items={[
                   { key: "race", label: "Race" },
-                  ...(hasSprint ? [{ key: "sprint", label: "Sprint" }] : []),
-                  ...(hasQuali ? [{ key: "quali", label: "Qualifying" }] : []),
+                  { key: "quali", label: "Qualifying" },
                 ]}
                 value={formMode}
                 onChange={setFormMode}
@@ -1890,6 +1971,7 @@ export default function DriverProfile({ previewId, preview }) {
               seasonRounds={p.seasonRounds}
               color={color}
               mode={formMode}
+              withSprint={hasSprint}
             />
           </div>
         </div>
