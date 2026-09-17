@@ -92,6 +92,12 @@ drop rule and the round columns are per round as described above.
 The Sprint Wins and Sprint Podiums tiles on a profile are the breakdown of the
 totals, not a separate count.
 
+The same goes for everything counted race by race: the longest win streak in
+the Hall of Fame runs over every race in the order they were driven (the sprint
+first, then the feature race of that weekend), so a sprint win keeps a streak
+alive and a sprint lost ends it. The season awards - fastest lap, most
+overtakes, most laps led, cleanest driver - count both races of a weekend too.
+
 
 MANUAL POINTS
 
