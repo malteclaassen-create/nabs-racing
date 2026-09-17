@@ -36,11 +36,32 @@ async function fsaReader(root) {
   const norm = pathNormaliser(hasContentDir);
   const dirCache = new Map();
 
+  // A child by name, the exact spelling first and, failing that, any spelling
+  // that matches case-insensitively. The manifest's names come off a Linux
+  // race server, the driver's folders off a Windows disk, and AC content is
+  // full of Formula_2010 / formula_2010 pairs the game itself never minds.
+  // The scan only runs on a miss, so the common case costs nothing extra.
+  const child = async (dir, name, kind) => {
+    const get = kind === "directory" ? "getDirectoryHandle" : "getFileHandle";
+    try {
+      return await dir[get](name);
+    } catch (e) {
+      if (e?.name !== "NotFoundError" && e?.name !== "TypeMismatchError") throw e;
+    }
+    const wanted = name.toLowerCase();
+    for await (const [entryName, handle] of dir.entries()) {
+      if (entryName.toLowerCase() === wanted && handle.kind === kind) return handle;
+    }
+    const err = new Error(`${name} not found`);
+    err.name = "NotFoundError";
+    throw err;
+  };
+
   const dirOf = async (segments) => {
-    const key = segments.join("/");
+    const key = segments.join("/").toLowerCase();
     if (dirCache.has(key)) return dirCache.get(key);
     let handle = root;
-    for (const seg of segments) handle = await handle.getDirectoryHandle(seg);
+    for (const seg of segments) handle = await child(handle, seg, "directory");
     dirCache.set(key, handle);
     return handle;
   };
@@ -52,7 +73,7 @@ async function fsaReader(root) {
       const file = parts.pop();
       try {
         const dir = await dirOf(parts);
-        return await (await dir.getFileHandle(file)).getFile();
+        return await (await child(dir, file, "file")).getFile();
       } catch {
         return null; // not there — which is an answer, not a failure
       }

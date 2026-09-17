@@ -63,10 +63,16 @@ export default function ContentCheck() {
   const [dragging, setDragging] = useState(false);
   const copyRef = useRef(null);
 
-  // The files the server actually has a hash for. A file the server does not
-  // serve cannot be compared, and saying so is better than a green tick that
-  // means nothing.
-  const checkable = useMemo(() => (data?.files || []).filter((f) => f.md5), [data]);
+  // Only the files this session's join actually hashes. The manifest also
+  // carries a layout track's ROOT surfaces.ini (inPlay: false) for the admin
+  // view — the game never looks at it for a layout session, so a difference
+  // there would be a false alarm, and a false alarm is the one thing this page
+  // must never raise. It is left out of the check entirely.
+  const inPlay = useMemo(() => (data?.files || []).filter((f) => f.inPlay !== false), [data]);
+  // Of those, the ones the server actually has a hash for. A file the server
+  // does not serve cannot be compared, and saying so is better than a green
+  // tick that means nothing.
+  const checkable = useMemo(() => inPlay.filter((f) => f.md5), [inPlay]);
 
   async function runCheck(reader) {
     if (!reader) {
@@ -78,7 +84,7 @@ export default function ContentCheck() {
     setFolderName(reader.name || null);
     try {
       const out = [];
-      for (const file of data?.files || []) {
+      for (const file of inPlay) {
         if (!file.md5) {
           out.push({
             ...file,
