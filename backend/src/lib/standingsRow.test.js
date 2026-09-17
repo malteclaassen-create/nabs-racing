@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasRaced, isIdleReserve, classificationsOf, finishesOf, roundsOf } from "./standingsRow.js";
+import { hasRaced, isIdleReserve, classificationsOf, finishesOf, startsOf, roundsOf } from "./standingsRow.js";
 
 // The rule that decides whether a driver gets a championship position at all.
 // It is pure (one standings row in, a verdict out), so the cases worth pinning
@@ -68,5 +68,39 @@ describe("classificationsOf / finishesOf", () => {
     expect(roundsOf({ perRace: { 1: round(1), 2: round(2) } })).toHaveLength(2);
     expect(finishesOf(roundsOf({}))).toEqual([]);
     expect(finishesOf(roundsOf(null))).toEqual([]);
+  });
+});
+
+// A start is a race started, not a race night attended. This is the counter
+// that used to disagree with the wins beside it.
+describe("startsOf", () => {
+  const round = (position, status = "FINISHED") => ({ points: 0, status, position, grid: null });
+  const weekend = (feature, sprint) => ({ ...round(...[].concat(feature)), sprint: sprint ? { points: 0, ...sprint } : undefined });
+
+  it("counts a sprint weekend as two starts and a plain round as one", () => {
+    expect(startsOf([round(4)])).toHaveLength(1);
+    expect(startsOf([weekend(2, { status: "FINISHED", position: 1 })])).toHaveLength(2);
+  });
+
+  it("counts the driver who made ONLY the sprint", () => {
+    // The round cell carries the feature race's status, and theirs is empty —
+    // which used to leave them with no start at all for a race they drove.
+    const cells = [{ points: 30, status: null, position: null, grid: null, sprint: { points: 30, status: "FINISHED", position: 2 } }];
+    expect(startsOf(cells)).toHaveLength(1);
+  });
+
+  it("counts a retirement, because they started it", () => {
+    expect(startsOf([round(null, "DNF"), round(null, "DSQ")])).toHaveLength(2);
+  });
+
+  it("does not count a DNS on either half", () => {
+    expect(startsOf([round(null, "DNS")])).toEqual([]);
+    expect(startsOf([weekend([null, "DNS"], { status: "DNS", position: null })])).toEqual([]);
+  });
+
+  it("never reports fewer starts than finishes", () => {
+    const cells = [weekend(1, { status: "FINISHED", position: 1 }), round(null, "DNF")];
+    expect(startsOf(cells).length).toBeGreaterThanOrEqual(finishesOf(cells).length);
+    expect(classificationsOf(cells)).toHaveLength(3);
   });
 });
