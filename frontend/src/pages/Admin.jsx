@@ -4183,6 +4183,78 @@ function SeasonScoring({ season, onSaved, onError }) {
   );
 }
 
+// What a season is CALLED: its display name, its round number and the game
+// subtitle under it. All three were typed once in the create form and then
+// stuck for good — a season entered as "Season 7" in a series whose sixth
+// season it actually is could only be put right in the database. The PUT has
+// always accepted these fields; this is the way in from the site.
+//
+// Name and number are edited together on purpose. The number is not
+// decoration: it keys the ?season= in every public link and is what the parts
+// of the site that print "Season <n>" read, so renaming alone would leave the
+// old number in the page titles of a correctly named season. Nothing stores a
+// season number anywhere — every reading of it comes from this row — so a
+// corrected number simply reads right everywhere from the next load.
+function SeasonIdentity({ season, onSaved, onError }) {
+  const storedName = season.name || "";
+  const storedNumber = String(season.number ?? "");
+  const storedGame = season.game || "";
+  const [name, setName] = useState(storedName);
+  const [number, setNumber] = useState(storedNumber);
+  const [game, setGame] = useState(storedGame);
+  const [saving, setSaving] = useState(false);
+  const dirty =
+    name.trim() !== storedName || number.trim() !== storedNumber || game.trim() !== storedGame;
+
+  async function save() {
+    if (!name.trim()) return onError("A season needs a name.");
+    const n = Number(number);
+    if (!Number.isInteger(n) || n < 1 || n > 999)
+      return onError("The season number must be a whole number between 1 and 999.");
+    const renumbered = n !== Number(season.number);
+    setSaving(true); onError(null);
+    try {
+      await api.updateSeason(season.id, { name: name.trim(), number: n, game: game.trim() || null });
+      onSaved(
+        renumbered
+          ? `Saved. ${name.trim()} is now season number ${n} of its series.`
+          : `Saved. The season is now called ${name.trim()}.`
+      );
+      // The season switcher and every season-scoped read key on the NUMBER,
+      // and those providers only refetch their list on this event (the series
+      // panel's rename nudges them the same way). Without it the site keeps
+      // asking for a number that no longer exists until the next full reload.
+      if (renumbered) window.dispatchEvent(new Event("nabs-auth"));
+    } catch (err) { onError(err.message); } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface2/60 p-2.5">
+      <label className="flex items-center gap-1.5 text-xs text-light">
+        Name
+        <input aria-label={`Name of ${season.name}`} className="input min-w-36 py-1 text-xs" value={name}
+          onChange={(e) => setName(e.target.value)}
+          title="What the site calls this season everywhere: the switcher, the headings, the standings." />
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-light">
+        Number
+        <input aria-label={`Number of ${season.name}`} className="input w-16 py-1 text-center text-xs" type="number" min="1" max="999"
+          value={number} onChange={(e) => setNumber(e.target.value)}
+          title="Which season of ITS SERIES this is — unique within the series, and free to repeat a number another series uses. It keys the ?season= in public links and the places that print 'Season <n>', so keep it in step with the name." />
+      </label>
+      <label className="flex min-w-40 flex-1 items-center gap-1.5 text-xs text-light">
+        Game
+        <input aria-label={`Game of ${season.name}`} className="input min-w-32 flex-1 py-1 text-xs" value={game} placeholder={NO_VALUE}
+          onChange={(e) => setGame(e.target.value)}
+          title="The subtitle under the season name, e.g. F1 2010 · Assetto Corsa" />
+      </label>
+      <button className="btn-secondary px-3 py-1 text-xs" disabled={saving || !dirty} onClick={save}>
+        {saving ? "Saving…" : "Save name"}
+      </button>
+    </div>
+  );
+}
+
 function Seasons({ gotoRaces }) {
   const ask = useAsk();
   const { data: seasons, reload } = useApi(useCallback(() => api.adminSeasons(), []));
@@ -4457,6 +4529,8 @@ function Seasons({ gotoRaces }) {
                       </>
                     )}
                   </div>
+                  <SeasonIdentity key={`${s.id}-${s.number}-${s.name}-${s.game || ""}`} season={s}
+                    onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   <SeasonHero season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   <SeasonCar season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.fastestLapPoints || 0}-${s.championDriverId || ""}-${s.pointsTable || ""}`} season={s}

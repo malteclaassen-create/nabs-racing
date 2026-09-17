@@ -3948,6 +3948,17 @@ async function writeSeasonRawFields(seasonId, raw) {
 }
 
 
+// A season number off the wire. Both endpoints take it as free text typed in
+// the admin (the season list can renumber a season now, not just the create
+// form), and Number("") is 0 while Number("six") is NaN — either would sail
+// past the "is it taken?" check and land in the row, where every label built
+// from the number reads back as nonsense.
+function parseSeasonNumber(value) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 999) return null;
+  return n;
+}
+
 // Season numbers are unique PER SERIES now. The DB enforces it via the
 // composite index, but the seriesId is written in a second raw step (the
 // generated client doesn't know the column), so check up front for a clean
@@ -3970,12 +3981,14 @@ router.post("/seasons", async (req, res, next) => {
   try {
     const { number, name, game } = req.body || {};
     if (number === undefined || !name) return res.status(400).json({ error: "number and name required" });
+    const n = parseSeasonNumber(number);
+    if (n === null) return res.status(400).json({ error: "number must be a whole number between 1 and 999" });
     const series = await resolveSeries(prisma, req.body?.series, { includePrivate: true });
     if (!series) return res.status(400).json({ error: "Unknown series" });
-    if (await seasonNumberTaken(series.id, number)) {
+    if (await seasonNumberTaken(series.id, n)) {
       return res.status(409).json({ error: `A season with that number already exists in ${series.name}` });
     }
-    const data = { number: Number(number), name, game: game || null };
+    const data = { number: n, name, game: game || null };
     const scoringError = applyScoringInput(req.body || {}, data);
     if (scoringError) return res.status(400).json({ error: scoringError });
     const raw = parseSeasonRawFields(req.body || {});
@@ -3998,8 +4011,15 @@ router.put("/seasons/:id", async (req, res, next) => {
   try {
     const { number, name, game } = req.body || {};
     const data = {};
-    if (number !== undefined) data.number = Number(number);
-    if (name !== undefined) data.name = name;
+    if (number !== undefined) {
+      const n = parseSeasonNumber(number);
+      if (n === null) return res.status(400).json({ error: "number must be a whole number between 1 and 999" });
+      data.number = n;
+    }
+    if (name !== undefined) {
+      if (!String(name).trim()) return res.status(400).json({ error: "name cannot be empty" });
+      data.name = String(name).trim();
+    }
     if (game !== undefined) data.game = game || null;
     const scoringError = applyScoringInput(req.body || {}, data);
     if (scoringError) return res.status(400).json({ error: scoringError });
@@ -4015,7 +4035,7 @@ router.put("/seasons/:id", async (req, res, next) => {
       // Numbers are unique per series — check against THIS season's series.
       const bySeries = await seasonSeriesMap(prisma);
       const seriesId = bySeries.get(req.params.id) || null;
-      if (seriesId && (await seasonNumberTaken(seriesId, number, req.params.id))) {
+      if (seriesId && (await seasonNumberTaken(seriesId, data.number, req.params.id))) {
         return res.status(409).json({ error: "A season with that number already exists in this series" });
       }
     }
