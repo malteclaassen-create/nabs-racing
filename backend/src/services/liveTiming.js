@@ -1201,33 +1201,68 @@ function createRelay(server) {
           CarInfo: { DriverName: lap.name, CarModel: lap.car || "", CarName: lap.car || "" },
         }, false);
         entry.bestLapMs = lap.lapTimeMs;
-        entry.sectors = carriedSectors(lap);
+        entry.sectors = carriedSectors(lap.sectorsMs, lap.bestSectorsMs);
+        // The rest of the row, the way a live row has it: the week's best of
+        // each sector and the potential they add up to, the laps done, the
+        // last one completed, the tyre the best lap was set on. Pits and top
+        // speed a result file does not carry, and the row says so with a dash.
+        entry.bestSectors = carriedSectors(lap.bestSectorsMs, lap.bestSectorsMs);
+        entry.potentialMs = potentialOfMs(lap.bestSectorsMs);
+        entry.lapCount = lap.lapCount || 0;
+        entry.lastLapMs = lap.lastLapMs ?? null;
+        entry.tyre = lap.tyre || "";
         entry.imported = true;
         byGuid.set(lap.steamId, entry);
         continue;
       }
 
+      // A driver who is on the server: the week's best sectors count for them
+      // too, sector by sector, whichever lap they were set on — the potential
+      // lap is a "best of everything" question, and the week's laps are part
+      // of everything. Their own lap count and last lap are this session's and
+      // stay so.
+      const weekBest = [0, 1, 2].map((i) => {
+        const here = live.bestSectors?.[i]?.ms ?? null;
+        const there = lap.bestSectorsMs?.[i] ?? null;
+        return here == null ? there : there == null ? here : Math.min(here, there);
+      });
+      if (weekBest.some((ms, i) => ms != null && ms !== (live.bestSectors?.[i]?.ms ?? null))) {
+        live.bestSectors = carriedSectors(weekBest, weekBest);
+        live.potentialMs = potentialOfMs(weekBest);
+      }
+
       if (live.bestLapMs != null && live.bestLapMs <= lap.lapTimeMs) continue;
       live.bestLapMs = lap.lapTimeMs;
       live.imported = true;
-      // Everything on the row that belongs to the best lap follows the lap.
-      // The sectors are the server's own splits of the carried lap; the top
-      // speed is something a result file does not carry, so the cell goes
-      // blank rather than keeping the displaced lap's figure — a number that
-      // belongs to another lap is worse than a dash.
-      live.sectors = carriedSectors(lap);
+      // Everything on the row that belongs to the best lap follows the lap:
+      // the server's own splits of the carried lap, and the tyre it was set
+      // on. The top speed is something a result file does not carry, so the
+      // cell goes blank rather than keeping the displaced lap's figure — a
+      // number that belongs to another lap is worse than a dash.
+      live.sectors = carriedSectors(lap.sectorsMs, weekBest);
+      live.tyre = lap.tyre || live.tyre;
       live.topSpeed = null;
     }
   }
 
-  // The three sector boxes for a carried lap, in the shape sectorsOf builds
-  // for a live one, so the same pass below colours them: purple if they equal
-  // the session's best sector, and green never — that flag is the server's
-  // "this driver's own best sector", which it only knows for the session it
-  // is in. A lap whose file had no usable splits gets three blanks.
-  function carriedSectors(lap) {
-    if (!lap.sectorsMs) return [null, null, null];
-    return lap.sectorsMs.map((ms) => ({ ms, best: false, driversBest: false, cuts: 0 }));
+  // The sum of three best sectors, or null while any is unknown — the same
+  // answer potentialOf gives for a live car's BestSplits.
+  function potentialOfMs(bestMs) {
+    if (!bestMs || bestMs.some((ms) => ms == null)) return null;
+    return bestMs[0] + bestMs[1] + bestMs[2];
+  }
+
+  // Three sector boxes for a carried lap, in the shape sectorsOf builds for a
+  // live one, so the same pass below colours them: purple if they equal the
+  // session's best sector, green if they are this driver's own best of that
+  // sector — which is what the server's IsDriversBest flag means for a live
+  // lap, and what comparing against the week's best sectors means here. A lap
+  // whose file had no usable splits gets three blanks.
+  function carriedSectors(sectorsMs, bestMs) {
+    if (!sectorsMs) return [null, null, null];
+    return sectorsMs.map((ms, i) =>
+      ms == null ? null : { ms, best: false, driversBest: bestMs?.[i] != null && ms === bestMs[i], cuts: 0 }
+    );
   }
 
   // What the frontend gets. Usually the live board; for RESULT_HOLD_MS after a

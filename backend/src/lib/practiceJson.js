@@ -71,31 +71,72 @@ export function parsePracticeJson(json, { fileName = "" } = {}) {
   // be matched to on the live board, so it is skipped rather than shown under
   // a name that could be anybody's; a name that is a comma-joined list is the
   // server manager's shared-car row leaking into a lap row, and not a driver.
+  //
+  // Alongside the best lap, what the live board shows for a driver and the
+  // file can also answer, so a carried row reads like a live one: the best
+  // of each sector across all their clean laps (and the potential lap those
+  // add up to), how many laps they did, the last one they completed, and the
+  // tyre the best lap was set on. Top speed is not among them — the server
+  // manager leaves SpeedTrapHits empty on the league's server — and neither
+  // are pit stops, which a practice file does not record.
   const best = new Map();
   const entrants = new Set();
-  for (const lap of Array.isArray(json.Laps) ? json.Laps : []) {
+  const rows = Array.isArray(json.Laps) ? json.Laps : [];
+  for (const lap of rows) {
     const guid = String(lap?.DriverGuid || "");
     if (!STEAM_RE.test(guid)) continue;
     entrants.add(guid);
     const name = String(lap?.DriverName || "").trim().slice(0, 64);
     if (!name || name.includes(", ")) continue;
-    if (Number(lap?.Cuts) > 0) continue;
     const lapTimeMs = ms(lap?.LapTime);
-    if (lapTimeMs == null) continue;
-    const seen = best.get(guid);
-    if (seen && seen.lapTimeMs <= lapTimeMs) continue;
-    best.set(guid, {
-      steamId: guid,
-      name,
-      // The car THIS lap was driven in: on the practice server a driver can
-      // take a different car later in the evening, and the shared cars are
-      // exactly where the classification row would name the wrong one.
-      car: String(lap?.CarModel || "").trim().slice(0, 80),
-      lapTimeMs,
-      sectorsMs: sectorsOf(lap, lapTimeMs),
-      recordedAt: lap?.Timestamp ? String(lap.Timestamp).slice(0, 40) : null,
-    });
+    const stamp = Number(lap?.Timestamp) || 0;
+    const clean = !(Number(lap?.Cuts) > 0) && lapTimeMs != null;
+    const sectors = clean ? sectorsOf(lap, lapTimeMs) : null;
+
+    let d = best.get(guid);
+    if (!d) {
+      d = {
+        steamId: guid,
+        name,
+        car: "",
+        lapTimeMs: null,
+        sectorsMs: null,
+        tyre: "",
+        bestSectorsMs: [null, null, null],
+        lapCount: 0,
+        lastLapMs: null,
+        lastAt: 0,
+        recordedAt: null,
+      };
+      best.set(guid, d);
+    }
+    // Every completed lap counts as a lap, cut or not, the way the live board
+    // counts them; the LAST lap is the last one completed, whatever it was.
+    d.lapCount += 1;
+    if (stamp >= d.lastAt && lapTimeMs != null) {
+      d.lastAt = stamp;
+      d.lastLapMs = lapTimeMs;
+    }
+    if (!clean) continue;
+    if (sectors) {
+      for (let i = 0; i < 3; i++) {
+        if (d.bestSectorsMs[i] == null || sectors[i] < d.bestSectorsMs[i]) d.bestSectorsMs[i] = sectors[i];
+      }
+    }
+    if (d.lapTimeMs == null || lapTimeMs < d.lapTimeMs) {
+      d.lapTimeMs = lapTimeMs;
+      d.sectorsMs = sectors;
+      // The car and the tyre THIS lap was driven on: on the practice server a
+      // driver can take a different car later in the evening, and the shared
+      // cars are exactly where the classification row would name the wrong
+      // one.
+      d.car = String(lap?.CarModel || "").trim().slice(0, 80);
+      d.tyre = String(lap?.Tyre || "").trim().slice(0, 8);
+      d.recordedAt = stamp ? String(stamp) : null;
+    }
   }
+  // A driver with laps but no clean one has no time to show.
+  for (const [guid, d] of best) if (d.lapTimeMs == null) best.delete(guid);
 
   return {
     type,

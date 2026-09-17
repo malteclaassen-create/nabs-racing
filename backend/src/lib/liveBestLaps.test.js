@@ -63,6 +63,23 @@ describe("liveBestLaps files", () => {
     expect(uploadedFiles(SERIES, SEASON, TRACK)).toHaveLength(2);
   });
 
+  it("two files of the same driver add up: quicker lap, best of each sector, laps summed, later last lap", () => {
+    give(
+      [{ ...fileLap(A, 95_000, "Alice"), tyre: "M", bestSectorsMs: [30_000, 32_000, 33_000], lapCount: 10, lastLapMs: 97_000, lastAt: 100 }],
+      { name: "monday.json" }
+    );
+    give(
+      [{ ...fileLap(A, 94_000, "Alice", [29_500, 31_500, 33_000]), tyre: "SS", bestSectorsMs: [29_500, 31_500, 34_000], lapCount: 6, lastLapMs: 99_000, lastAt: 200 }],
+      { name: "tuesday.json" }
+    );
+    const [a] = bestsFor(SERIES, SEASON, TRACK);
+    expect(a.lapTimeMs).toBe(94_000);
+    expect(a.tyre).toBe("SS"); // the quicker lap's
+    expect(a.bestSectorsMs).toEqual([29_500, 31_500, 33_000]); // S3 from Monday
+    expect(a.lapCount).toBe(16);
+    expect(a.lastLapMs).toBe(99_000); // Tuesday's, the later file
+  });
+
   it("the same time in two files is the same lap, and the copy with sectors is kept", () => {
     give([fileLap(A, 95_000, "Alice", null)], { name: "stripped.json" });
     give([fileLap(A, 95_000, "Alice")], { name: "full.json" });
