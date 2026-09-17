@@ -775,7 +775,7 @@ function CopyProfileLink({ driverId }) {
 }
 
 // The member bar top right: the two real tabs of this page (Edit Profile,
-// Achievements) plus jump-offs (race tools, settings drawer, admin). The
+// Achievements) plus jump-offs (telemetry, settings drawer, admin). The
 // public page gets its own separate button next to the bar. Synced to ?tab=
 // so bell links and bookmarks land on the right section.
 // `attention` is how much is waiting in the admin area, or 0. It rides on the
@@ -786,7 +786,8 @@ function memberTabs(isAdmin, attention = 0) {
     { key: "profile", label: "Edit Profile" },
     ...COCKPIT_TABS,
     { key: "rating", label: "My Rating", dataTour: "tab-rating" },
-    { key: "tools", label: "Race Tools" },
+    // The key stays "tools": ?tab=tools is in bell links and bookmarks.
+    { key: "tools", label: "Telemetry" },
     // Feedback used to be a floating button in the bottom right corner. That
     // corner is the Report widget's now, and this is where the things you do
     // ABOUT the site rather than in it belong anyway. It opens the same panel

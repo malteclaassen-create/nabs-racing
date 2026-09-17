@@ -119,7 +119,7 @@ export default function ContentCheck() {
             label: file.label,
             path: file.unpackedDir,
             status: "unpacked",
-            detail: "Delete this folder — it overrides the data.acd",
+            detail: "Delete this folder, it overrides the data.acd",
           });
         }
       }
@@ -157,7 +157,7 @@ export default function ContentCheck() {
     if (!bad.length) {
       return `${head}\nAll files match (${plural(rows.length - skipped.length, "file")} checked).`;
     }
-    return [head, ...bad.map((r) => `${STATUS[r.status].label.toUpperCase()}: ${r.path}${r.detail ? ` — ${r.detail}` : ""}`)].join("\n");
+    return [head, ...bad.map((r) => `${STATUS[r.status].label.toUpperCase()}: ${r.path}${r.detail ? ` (${r.detail})` : ""}`)].join("\n");
   }, [rows, bad, skipped.length, data]);
 
   function copyReport() {
@@ -168,7 +168,7 @@ export default function ContentCheck() {
           setTimeout(() => copyRef.current && (copyRef.current.textContent = "Copy for Discord"), 2000);
         }
       },
-      () => setProblem("Copying didn't work — select the text above by hand.")
+      () => setProblem("Copying didn't work. Select the text above by hand.")
     );
   }
 
@@ -238,8 +238,8 @@ export default function ContentCheck() {
             </p>
             <p className="max-w-md text-xs text-light">
               Usually <span className="font-mono">C:\Program Files (x86)\Steam\steamapps\common\assettocorsa</span>. The{" "}
-              <span className="font-mono">content</span> folder works too. Only the {checkable.length} files above are read
-              — nothing is uploaded.
+              <span className="font-mono">content</span> folder works too. Only the {checkable.length} files above are
+              read, nothing is uploaded.
             </p>
             {canPickFolder() ? (
               <button className="btn-primary px-5" disabled={busy || !checkable.length} onClick={onPick}>
@@ -268,7 +268,7 @@ export default function ContentCheck() {
               </CardHead>
               {bad.length === 0 ? (
                 <Notice kind="success">
-                  Your files are identical to the server's. If you still get kicked, it isn't these files — post a
+                  Your files are identical to the server's. If you still get kicked, it isn't these files. Post a
                   screenshot of the error message in the Discord.
                 </Notice>
               ) : (
@@ -294,13 +294,13 @@ export default function ContentCheck() {
           <div className="card p-5 text-xs leading-relaxed text-light">
             <p>
               <b className="text-medium">What is checked:</b> the <span className="font-mono">data.acd</span> of every car in
-              the session and the track's <span className="font-mono">surfaces.ini</span> — the files the checksum kick is
+              the session and the track's <span className="font-mono">surfaces.ini</span>: the files the checksum kick is
               based on. The hashes come from the race server itself, not from a maintained list.
             </p>
             <p className="mt-2">
-              <b className="text-medium">What isn't:</b> the 3D models (<span className="font-mono">.kn5</span>) — the server
-              doesn't hand those out. And anything that isn't a checksum error: CSP version, password, full server. Those
-              come with a different message.
+              <b className="text-medium">What isn't:</b> the 3D models (<span className="font-mono">.kn5</span>), because
+              the server doesn't hand those out. And anything that isn't a checksum error: CSP version, password, full
+              server. Those come with a different message.
             </p>
             <p className="mt-2">
               <b className="text-medium">Your files stay with you.</b> Reading and hashing happen in the browser; nothing

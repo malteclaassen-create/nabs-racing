@@ -244,8 +244,8 @@ export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }
                 Sign up now
               </Link>
             )}
-            <Link to="/tools" className="btn-secondary text-center" title="Fuel calculator, practice pace and pit strategy">
-              Race tools
+            <Link to="/tools" className="btn-secondary text-center" title="Your recorded laps against the field's">
+              Telemetry
             </Link>
           </div>
         </div>
