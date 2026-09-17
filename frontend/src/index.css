@@ -534,6 +534,26 @@ body::before {
   animation: nabs-pop var(--t-quick) ease-out both;
 }
 
+/* --- Points gained since your last visit ---------------------------- */
+/* The championship total on your own profile does not just sit at a new
+   number after a race: the gain arrives first, in the total's place, then
+   lifts away while the total counts up from what you last saw to what you
+   have now (components/PointsGain.jsx). Two steps, so the eye is given the
+   change before it is given the result. The travel rides on --gain-rise, so
+   a 3xl scoreboard number and a tile's caption line can share the keyframes
+   without the small one flying off its own row. */
+@keyframes nabs-gain-in {
+  from { opacity: 0; transform: translateY(0.45em) scale(0.72); }
+  60%  { opacity: 1; transform: translateY(-0.06em) scale(1.06); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes nabs-gain-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(calc(var(--gain-rise, 1.5em) * -1)) scale(0.88); }
+}
+.gain-in  { animation: nabs-gain-in 420ms var(--e-out) both; }
+.gain-out { animation: nabs-gain-out 620ms var(--e-out) both; }
+
 /* Soft pulse used for "next race" / live accents. */
 @keyframes nabs-sheen {
   0% { background-position: -150% 0; }
@@ -1154,6 +1174,9 @@ body::before {
   .nav-season-dock { animation: none !important; transition: none !important; }
   .notif-pop { animation: none !important; }
   .search-pop { animation: none !important; }
+  /* The gain never gets this far — the sequence asks motion.js first and hands
+     back the plain total — but the classes agree with the JS all the same. */
+  .gain-in, .gain-out { animation: none !important; }
   .collapse-row { transition: none !important; }
   /* The feedback button still shrinks and grows with the scroll direction —
      it just does it instantly instead of gliding. */
@@ -1193,6 +1216,7 @@ body::before {
 .fx-lite .wipe-ltr, .fx-lite .wipe-rtl { clip-path: none !important; animation: none !important; }
 .fx-lite .fade-out { animation: none !important; opacity: 1; }
 .fx-lite .pop-in { animation: none !important; }
+.fx-lite .gain-in, .fx-lite .gain-out { animation: none !important; }
 .fx-lite .cascade > * { opacity: 1 !important; animation: none !important; }
 .fx-lite .bar-fill { width: var(--w, 0) !important; animation: none !important; }
 .fx-lite .bar-rise { height: var(--h, 0) !important; animation: none !important; }

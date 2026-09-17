@@ -17,6 +17,7 @@ import SocialLinks from "../components/SocialLinks.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import PointsGain from "../components/PointsGain.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { flagFor } from "../data/circuits.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
@@ -1306,7 +1307,7 @@ function TeamPanel({ driver, standings, career, teammateHistory = [] }) {
 
 // --- Classic top: the original dark "speed" hero banner. Kept as a fallback
 // (rendered only when LAYOUT === "classic").
-function ClassicHero({ driver, championship, color }) {
+function ClassicHero({ driver, championship, color, isMe = false }) {
   return (
     <div className="relative overflow-hidden rounded-2xl bg-ink text-white shadow-lg">
       <span className="absolute inset-x-0 top-0 z-10 h-1.5" style={{ backgroundColor: color }} />
@@ -1343,7 +1344,7 @@ function ClassicHero({ driver, championship, color }) {
           </div>
           <div>
             <div className="font-display text-4xl font-black leading-none tabular-nums" style={{ color }}>
-              <CountUp end={championship.points} />
+              <PointsGain id={driver.id} points={championship.points} enabled={isMe} />
             </div>
             <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-white/50">points</div>
           </div>
@@ -1392,7 +1393,7 @@ function AchievementBadge({ name, tagline, cat }) {
   );
 }
 
-function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges, teamBadges, pinnedAchievements, cardsEnabled = true }) {
+function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges, teamBadges, pinnedAchievements, cardsEnabled = true, isMe = false }) {
   // Season ⇄ All-time switch for the headline numbers. Only offered when the
   // driver actually spans several seasons (allTime comes with the career).
   const [scope, setScope] = useState("season");
@@ -1539,7 +1540,15 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                     : "no races yet"}
               </div>
               <div className="mt-3 font-display text-3xl font-black leading-none tabular-nums" style={{ color }}>
-                <CountUp end={showAll ? career.totals.points : championship.points} />
+                {/* On your own page, the season total opens by saying what it
+                    gained since you last looked (components/PointsGain.jsx).
+                    The career figure doesn't: "+25 all-time" is a number
+                    nobody is waiting for. */}
+                {showAll ? (
+                  <CountUp end={career.totals.points} />
+                ) : (
+                  <PointsGain id={driver.id} points={championship.points} enabled={isMe} />
+                )}
               </div>
               <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">points</div>
             </div>
@@ -1573,7 +1582,11 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
               <div className="h-11 w-px bg-border" />
               <div className="text-center">
                 <div className="font-display text-4xl font-black leading-none tabular-nums sm:text-5xl" style={{ color }}>
-                  <CountUp end={showAll ? career.totals.points : championship.points} />
+                  {showAll ? (
+                    <CountUp end={career.totals.points} />
+                  ) : (
+                    <PointsGain id={driver.id} points={championship.points} enabled={isMe} />
+                  )}
                 </div>
                 <div className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">points</div>
               </div>
@@ -1893,7 +1906,7 @@ export default function DriverProfile({ previewId, preview }) {
       {LAYOUT === "classic" ? (
         <>
           {/* Classic hero banner */}
-          <ClassicHero driver={driver} championship={championship} color={color} />
+          <ClassicHero driver={driver} championship={championship} color={color} isMe={isOwnProfile} />
 
           {/* Official rating card (FIFA/EA-style) + breakdown */}
           {rating && cardsEnabled && (
@@ -1924,6 +1937,7 @@ export default function DriverProfile({ previewId, preview }) {
           teamBadges={p.teamBadges}
           pinnedAchievements={p.pinnedAchievements}
           cardsEnabled={cardsEnabled}
+          isMe={isOwnProfile}
         />
       )}
 

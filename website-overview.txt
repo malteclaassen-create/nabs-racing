@@ -14,6 +14,9 @@ Home
   when the next race is with a live countdown. Under that you get the top of the
   driver table, both constructor tables (Tier 1 and Tier 2), and the points
   progression graphs.
+  Anyone logged in also gets a Personal Season band with their own numbers,
+  and the championship tile there is the first place the points gain shows up
+  (see below).
 
 Drivers
   The full driver standings, everyone sorted by total points. There is a filter
@@ -35,6 +38,16 @@ Driver profile
   Sprint view on the head to head, a Sprint
   column in the race by race table (with the weekend's points split), and
   Sprint Wins / Sprint Podiums stat tiles that break the totals down.
+  On your OWN profile the points box opens by saying what it gained: the first
+  time you look after a result has gone in, a green "+25" appears in place of
+  the total, lifts away, and the total then counts up from the number you last
+  saw to the one you have now. It fires once per browser per change - the
+  browser remembers the total it last showed you - and never on somebody else's
+  page. It stays away entirely if the browser asks for reduced motion or the
+  site is in Lite graphics mode. What it counts is the move in the CHAMPIONSHIP
+  TOTAL since your last visit, so with a drop rule in play, or two races
+  between visits, it is not always the same number as the points of the last
+  race.
 
 Constructors
   The Tier 1 and Tier 2 tables, both with a round by round points breakdown. The

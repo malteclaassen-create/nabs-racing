@@ -14,6 +14,7 @@ import Podium from "../components/Podium.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
+import PointsGain from "../components/PointsGain.jsx";
 import NextRaceCard, { circuitMark } from "../components/NextRaceCard.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
@@ -1549,7 +1550,16 @@ export default function Home() {
               to={`/drivers/${myDriverId}`}
               label={useTier ? `Tier ${myTier}` : "Championship"}
               value={useTier ? (myTierPos ? `P${myTierPos}` : NO_VALUE) : myRow.position ? `P${myRow.position}` : NO_VALUE}
-              sub={useTier ? `of ${tierRows.length} in tier` : `${myRow.total} pts`}
+              sub={
+                useTier ? (
+                  `of ${tierRows.length} in tier`
+                ) : (
+                  /* This is the first points readout a driver meets after a
+                     race — the home page is where they land. So it is the one
+                     that opens with what they gained (PointsGain.jsx). */
+                  <PointsGain id={myDriverId} points={myRow.total} suffix=" pts" compact />
+                )
+              }
               icon="podium"
               accent={myRow.team.color}
             />
@@ -1782,7 +1792,14 @@ function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = f
         {typeof value === "number" ? <CountUp end={value} prefix={prefix} /> : value}
       </div>
       {sub && (
-        <div className="relative mt-1.5 truncate font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
+        <div
+          className={`relative mt-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-light ${
+            // A caption that is a NODE brings its own layout — the points gain
+            // lifts out of the line as it fades, and `truncate` (overflow:
+            // hidden) would slice it in half. Plain text still gets the ellipsis.
+            typeof sub === "string" ? "truncate" : ""
+          }`}
+        >
           {sub}
         </div>
       )}

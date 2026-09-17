@@ -9,9 +9,14 @@ export const MEDAL = ["#EAB308", "#94A3B8", "#C2410C"]; // gold / silver / bronz
 // light mode so gold/silver stay readable on white; see --medal-* in index.css).
 export const MEDAL_TEXT = ["var(--medal-1)", "var(--medal-2)", "var(--medal-3)"];
 
-// Number that counts up from 0 to `end` the first time it scrolls into view.
-// Falls straight to the final value when motion is reduced. `prefix`/`suffix`
-// wrap the number (e.g. "+", "pts"); non-numeric stats should just render plain.
+// Number that counts up from `from` (0 unless told otherwise) to `end` the
+// first time it scrolls into view. Falls straight to the final value when
+// motion is reduced. `prefix`/`suffix` wrap the number (e.g. "+", "pts");
+// non-numeric stats should just render plain.
+//
+// `from` exists for the points gain (components/PointsGain.jsx): after a race
+// the total climbs from the number the driver last saw to the one they have
+// now, which only reads as a gain if it starts where they left off.
 //
 // `reserve` holds the box at the FINAL value's width for the whole count. A
 // number that starts at "0" and lands on "127" grows by two digits on the way,
@@ -19,12 +24,13 @@ export const MEDAL_TEXT = ["var(--medal-1)", "var(--medal-2)", "var(--medal-3)"]
 // column re-measures on every frame and drags every other column with it.
 // That's what made the round matrix twitch and pull in — header included —
 // for a second after opening it.
-export function CountUp({ end, prefix = "", suffix = "", duration = 1200, decimals = 0, className = "", reserve = false }) {
+export function CountUp({ end, from = 0, prefix = "", suffix = "", duration = 1200, decimals = 0, className = "", reserve = false }) {
   // Pre-trigger a little below the viewport so the count-up is already running
   // when the number scrolls in — a standing "0" at the bottom edge looks broken.
   const [ref, inView] = useInView({ rootMargin: "0px 0px 20% 0px" });
   const target = Number(end);
-  const [n, setN] = useState(0);
+  const start = isFinite(Number(from)) ? Number(from) : 0;
+  const [n, setN] = useState(start);
 
   useEffect(() => {
     if (!inView || !isFinite(target)) return;
@@ -39,16 +45,19 @@ export function CountUp({ end, prefix = "", suffix = "", duration = 1200, decima
       return;
     }
     let raf = 0;
-    const start = performance.now();
+    // `t0` and not `start`: `start` is the start VALUE a few lines up, and a
+    // timestamp shadowing it here counts the number up from "milliseconds
+    // since page load" towards the target.
+    const t0 = performance.now();
     const tick = (t) => {
-      const p = Math.min(1, (t - start) / duration);
+      const p = Math.min(1, (t - t0) / duration);
       const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic — fast then settles
-      setN(target * eased);
+      setN(start + (target - start) * eased);
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [inView, target, duration]);
+  }, [inView, target, duration, start]);
 
   if (!isFinite(target)) {
     return <span className={className}>{end}</span>;
