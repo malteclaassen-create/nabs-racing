@@ -28,9 +28,21 @@
 // the assignment the admin manages (lib/liveServers.js), resolved by the relay
 // and handed in here as the server's scopes.
 //
+// THE LAYOUT IS NOT PART OF THE MATCH. A track key is "<track>--<layout>" (lib/
+// telemetryLaps.js), and the league renames its layouts between weeks the way
+// other people bump a version: Baku ran as nabs_baku_2025 on Monday and as
+// nabs_baku on Wednesday, same circuit, same corners, a small fix in between.
+// Filing the laps under the full key keeps them honest about where they were
+// driven; the BOARD, though, carries every record of the same circuit — the
+// part of the key before "--" — whatever the layout was called that day,
+// because the league said so in as many words: a track change is usually not
+// a change. A circuit whose layouts really are different tracks (a short
+// course and a full one) does not exist on this league's calendar, and if it
+// ever does, the admin card says which layout each carried lap came from.
+//
 // Files under DATA_DIR/live-best-laps/<series>/s<season>/<trackKey>.json, one
-// per track: the laps kept from uploaded files, and a line per file so the
-// admin card can say what it has been given.
+// per track key: the laps kept from uploaded files, and a line per file so
+// the admin card can say what it has been given.
 // ---------------------------------------------------------------------------
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from "fs";
@@ -77,6 +89,14 @@ export function boardScopes(serverKey) {
 
 // ---- The per-track record ---------------------------------------------------
 
+// The circuit a track key names, without its layout: "baku-2022--nabs-baku"
+// and "baku-2022--nabs-baku-2025" are both "baku-2022".
+export function baseTrackOf(trackKey) {
+  const key = String(trackKey || "");
+  const cut = key.indexOf("--");
+  return cut > 0 ? key.slice(0, cut) : key;
+}
+
 function validScope(series, season, trackKey) {
   return !!String(series || "") && Number(season) > 0 && isTrackKey(String(trackKey || ""));
 }
@@ -90,16 +110,44 @@ function fileFor(series, season, trackKey) {
 }
 
 // The board is rebuilt several times a second and asks for its track every
-// time; the record only changes when an admin does something, so it is read
-// once and kept until one of the writes below lets go of it.
+// time; the records only change when an admin does something, so they are
+// read once and kept until one of the writes below lets go of them. Two
+// memos: each record, and the list of track keys a season has records for
+// (what the board scans to find every layout of its circuit).
 const trackCache = new Map(); // `${series}/${season}/${trackKey}` -> record | null
+const keysCache = new Map(); // `${series}/${season}` -> [trackKey]
+
+function seasonCacheKey(series, season) {
+  return `${seriesKeyOf(series)}/${seasonKeyOf(season)}`;
+}
 
 function cacheKey(series, season, trackKey) {
-  return `${seriesKeyOf(series)}/${seasonKeyOf(season)}/${trackKey}`;
+  return `${seasonCacheKey(series, season)}/${trackKey}`;
 }
 
 function forget(series, season, trackKey) {
   trackCache.delete(cacheKey(series, season, trackKey));
+  keysCache.delete(seasonCacheKey(series, season));
+}
+
+// Every track key one season has a record file for.
+function trackKeysOf(series, season) {
+  const key = seasonCacheKey(series, season);
+  if (keysCache.has(key)) return keysCache.get(key);
+  let keys = [];
+  try {
+    const dir = trackDir(series, season);
+    if (existsSync(dir)) {
+      keys = readdirSync(dir)
+        .filter((name) => name.endsWith(".json"))
+        .map((name) => name.slice(0, -5))
+        .filter((k) => isTrackKey(k));
+    }
+  } catch {
+    keys = [];
+  }
+  keysCache.set(key, keys);
+  return keys;
 }
 
 // One lap on its way to the board, or null if it is not one. Written
@@ -201,26 +249,38 @@ function writeTrack(series, season, trackKey, rec) {
 
 // ---- Reads ------------------------------------------------------------------
 
-// The laps one track carries in one series' season, fastest first, one row
-// per driver. Empty when it carries nothing.
+// The laps one track KEY carries in one series' season, fastest first, one
+// row per driver. Empty when it carries nothing. This is the record as filed;
+// what a board shows is circuitBests below.
 export function bestsFor(series, season, trackKey) {
   return readTrack(series, season, trackKey)?.laps ?? [];
 }
 
-// The files one track has been given, for the admin card.
+// The files one track key has been given, for the admin card.
 export function uploadedFiles(series, season, trackKey) {
   return readTrack(series, season, trackKey)?.files ?? [];
 }
 
-// The laps one SERVER's board is carrying for a track right now: bestsFor over
-// every (series, active season) that follows that server. This is the call
-// the live relay makes, so it is the one that has to be cheap: records are
-// memoised until something writes them, and merging a few dozen rows is
-// nothing.
+// Every record of the same circuit as `trackKey` in one season, whatever the
+// layout was called: the keys, and the laps merged across them, fastest first
+// and one row per driver. Each lap says which key it was filed under.
+export function circuitBests(series, season, trackKey) {
+  const base = baseTrackOf(trackKey);
+  if (!base) return { keys: [], laps: [] };
+  const keys = trackKeysOf(series, season).filter((k) => baseTrackOf(k) === base);
+  const laps = keys.flatMap((k) => bestsFor(series, season, k).map((l) => ({ ...l, trackKey: k })));
+  return { keys, laps: onePerDriver(laps) };
+}
+
+// The laps one SERVER's board is carrying for the track it is on: every
+// record of that circuit, in every (series, active season) that follows that
+// server. This is the call the live relay makes, so it is the one that has to
+// be cheap: the key list and the records are memoised until something writes
+// them, and merging a few dozen rows is nothing.
 export function currentBests(serverKey, trackKey) {
   const scopes = boardScopes(serverKey);
   if (!scopes.length) return [];
-  return onePerDriver(scopes.flatMap((s) => bestsFor(s.series, s.season, trackKey)));
+  return onePerDriver(scopes.flatMap((s) => circuitBests(s.series, s.season, trackKey).laps));
 }
 
 // ---- Writes -----------------------------------------------------------------
@@ -309,9 +369,10 @@ export function listTracks(series, season) {
   return out.sort((a, b) => String(b.changedAt || "").localeCompare(String(a.changedAt || "")));
 }
 
-// Tests drive the store through the filesystem, so they need the memo and the
+// Tests drive the store through the filesystem, so they need the memos and the
 // scopes cleared between cases; nothing in the running server calls this.
 export function __clearCache() {
   trackCache.clear();
+  keysCache.clear();
   scopesByServer.clear();
 }

@@ -1135,6 +1135,23 @@ describe("liveTiming carried training bests", () => {
     expect(getBoard().entries.map((e) => e.name)).toEqual(["Alice"]);
   });
 
+  it("a layout renamed between two weeks is still the same circuit on the board", () => {
+    // Monday's file names the layout "nabs_monza_2025"; the server now calls
+    // it "monza" with no config. The key differs, the circuit does not.
+    addUploadedLaps(SERIES, SEASON, "monza--nabs-monza-2025", {
+      track: "monza",
+      layout: "nabs_monza_2025",
+      laps: [{ steamId: CARA, name: "Cara", car: "f", lapTimeMs: 94_000, sectorsMs: [29_500, 32_000, 32_500] }],
+      file: { name: "monday.json", type: "PRACTICE" },
+    });
+    try {
+      ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+      expect(row(getBoard(), "Cara")?.bestLapMs).toBe(94_000);
+    } finally {
+      clearTrack(SERIES, SEASON, "monza--nabs-monza-2025");
+    }
+  });
+
   it("nothing given is the board exactly as it was", () => {
     ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
     const board = getBoard();

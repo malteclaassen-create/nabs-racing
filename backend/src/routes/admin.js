@@ -120,7 +120,7 @@ import {
   serverKeyForSeries,
 } from "../lib/liveServers.js";
 import { isTrackKey } from "../lib/telemetryLaps.js";
-import { clearTrack, listTracks, bestsFor, uploadedFiles, addUploadedLaps } from "../lib/liveBestLaps.js";
+import { clearTrack, listTracks, circuitBests, uploadedFiles, addUploadedLaps, baseTrackOf } from "../lib/liveBestLaps.js";
 import { refreshBoardScopes } from "../services/liveTiming.js";
 import { parsePracticeJson } from "../lib/practiceJson.js";
 import { getBoard as getLiveBoard, realGuidForPublicId } from "../services/liveTiming.js";
@@ -1694,7 +1694,8 @@ async function trainingScope(series) {
 // live lap has since beaten. No Steam ids: lib/privacy.js is explicit that
 // those never leave the building, and nothing on the card needs one.
 async function trainingRows(scope, trackKey, board) {
-  const laps = trackKey ? bestsFor(scope.seriesRow.slug, scope.seasonNumber, trackKey) : [];
+  // Every layout of the circuit, exactly as the board merges them.
+  const laps = trackKey ? circuitBests(scope.seriesRow.slug, scope.seasonNumber, trackKey).laps : [];
   if (!laps.length) return [];
 
   // What the board shows of its own accord. An entry that is already carrying
@@ -1719,6 +1720,9 @@ async function trainingRows(scope, trackKey, board) {
       car: lap.car,
       lapTimeMs: lap.lapTimeMs,
       sectors: !!lap.sectorsMs,
+      // The key this lap was filed under — the layout name of the day it was
+      // driven, which the board ignores and the card shows.
+      trackKey: lap.trackKey,
       recordedAt: lap.recordedAt,
       liveMs: live,
       // Whether this row is what the board shows, or a live lap has beaten it.
@@ -1738,12 +1742,16 @@ router.get("/live-best-laps", async (req, res, next) => {
     const board = getLiveBoard(scope.serverKey);
     const asked = String(req.query.track || "");
     const trackKey = isTrackKey(asked) ? asked : String(board?.session?.trackKey || "");
+    const circuit = trackKey ? circuitBests(scope.seriesRow.slug, scope.seasonNumber, trackKey) : { keys: [] };
     res.json({
       series: scope.seriesRow.slug,
       seriesName: scope.seriesRow.name,
       season: scope.seasonNumber,
       serverKey: scope.serverKey,
       trackKey,
+      // The circuit the board matches on, and every key carrying laps for it.
+      baseTrack: baseTrackOf(trackKey),
+      carriedKeys: circuit.keys,
       // What that server is doing right now, so the card can say why a carried
       // lap will or will not be visible: the merge is practice-only by design.
       session: board?.session
@@ -1751,7 +1759,10 @@ router.get("/live-best-laps", async (req, res, next) => {
         : null,
       connected: !!board?.connected,
       rows: await trainingRows(scope, trackKey, board),
-      files: trackKey ? uploadedFiles(scope.seriesRow.slug, scope.seasonNumber, trackKey) : [],
+      // The files behind every key of the circuit, each saying which key.
+      files: circuit.keys.flatMap((k) =>
+        uploadedFiles(scope.seriesRow.slug, scope.seasonNumber, k).map((f) => ({ ...f, trackKey: k }))
+      ),
       tracks: listTracks(scope.seriesRow.slug, scope.seasonNumber),
     });
   } catch (e) {

@@ -8,6 +8,8 @@ import {
   clearTrack,
   listTracks,
   bestsFor,
+  circuitBests,
+  baseTrackOf,
   currentBests,
   addUploadedLaps,
   uploadedFiles,
@@ -122,6 +124,57 @@ describe("liveBestLaps files", () => {
     const list = listTracks(SERIES, SEASON);
     expect(list.map((t) => t.trackKey).sort()).toEqual(["monza", "spa--gp"]);
     expect(list.find((t) => t.trackKey === "spa--gp")).toMatchObject({ laps: 2, bestMs: 103_000, files: 1 });
+  });
+});
+
+// The other rule the league stated outright, in its very first message: a
+// track change is usually not a change. The league renames its layouts between
+// weeks, and the board must not lose the week's laps to a suffix.
+describe("liveBestLaps circuits", () => {
+  it("a layout name is not part of the circuit", () => {
+    expect(baseTrackOf("baku-2022--nabs-baku")).toBe("baku-2022");
+    expect(baseTrackOf("baku-2022--nabs-baku-2025")).toBe("baku-2022");
+    expect(baseTrackOf("monza")).toBe("monza");
+    expect(baseTrackOf("")).toBe("");
+  });
+
+  it("the board carries every layout of the circuit it is on", () => {
+    give([fileLap(A, 100_000, "MondayAlice")], { track: "baku-2022--nabs-baku-2025" });
+    give([fileLap(B, 99_000, "Bob")], { track: "baku-2022--nabs-baku" });
+
+    // The server is on this week's layout name; Monday's laps come along.
+    const laps = currentBests(SERVER, "baku-2022--nabs-baku");
+    expect(laps.map((l) => [l.name, l.trackKey])).toEqual([
+      ["Bob", "baku-2022--nabs-baku"],
+      ["MondayAlice", "baku-2022--nabs-baku-2025"],
+    ]);
+    // …and the other way round, the same laps on the old name.
+    expect(currentBests(SERVER, "baku-2022--nabs-baku-2025").map((l) => l.name)).toEqual(["Bob", "MondayAlice"]);
+    expect(circuitBests(SERIES, SEASON, "baku-2022").keys.sort()).toEqual(["baku-2022--nabs-baku", "baku-2022--nabs-baku-2025"]);
+  });
+
+  it("the same driver on two layouts is one row, their quicker lap", () => {
+    give([fileLap(A, 100_000, "Alice")], { track: "baku-2022--nabs-baku-2025" });
+    give([fileLap(A, 98_000, "Alice")], { track: "baku-2022--nabs-baku" });
+    const laps = currentBests(SERVER, "baku-2022--nabs-baku");
+    expect(laps).toHaveLength(1);
+    expect(laps[0].lapTimeMs).toBe(98_000);
+  });
+
+  it("a different circuit is not carried, however similar its name", () => {
+    give([fileLap(A, 100_000, "Alice")], { track: "baku-2022--nabs-baku" });
+    give([fileLap(B, 60_000, "Bob")], { track: "baku-2022-short" }); // another folder, another track
+    expect(currentBests(SERVER, "baku-2022--nabs-baku").map((l) => l.name)).toEqual(["Alice"]);
+    expect(currentBests(SERVER, "baku-2022-short").map((l) => l.name)).toEqual(["Bob"]);
+  });
+
+  it("a record written after the key list was read is seen", () => {
+    give([fileLap(A, 100_000, "Alice")], { track: "baku-2022--nabs-baku" });
+    expect(currentBests(SERVER, "baku-2022--nabs-baku")).toHaveLength(1); // memoises the key list
+    give([fileLap(B, 99_000, "Bob")], { track: "baku-2022--nabs-baku-2025" });
+    expect(currentBests(SERVER, "baku-2022--nabs-baku")).toHaveLength(2);
+    clearTrack(SERIES, SEASON, "baku-2022--nabs-baku-2025");
+    expect(currentBests(SERVER, "baku-2022--nabs-baku")).toHaveLength(1);
   });
 });
 

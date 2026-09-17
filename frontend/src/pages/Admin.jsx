@@ -1051,7 +1051,9 @@ function TrainingBestLapsAdmin() {
         included, with every lap and the server&rsquo;s own <b className="text-dark">sector times</b> in it.
         Download the week&rsquo;s practice sessions from its Results page and drop them here — one or several. Each
         file lands on the track it names, its fastest clean lap per driver is kept, and a second file for the
-        same evening only ever adds drivers and improves times.
+        same evening only ever adds drivers and improves times. The board carries every lap of the{" "}
+        <b className="text-dark">same circuit, whatever the layout was called</b> that day — a track that was
+        &ldquo;nabs_baku_2025&rdquo; on Monday and &ldquo;nabs_baku&rdquo; on Wednesday is one Baku.
       </p>
       <p className="text-sm text-light">
         On the board the <b className="text-dark">faster lap wins per driver</b>: somebody who goes quicker on the
@@ -1133,6 +1135,13 @@ function TrainingBestLapsAdmin() {
             <span className="font-mono text-xs">{data.files.map((f) => f.name).join(", ")}</span>
           </>
         )}
+        {(data.carriedKeys || []).length > 1 && (
+          <>
+            {" · "}
+            Layouts carried as one circuit:{" "}
+            <span className="font-mono text-xs">{data.carriedKeys.join(", ")}</span>
+          </>
+        )}
       </div>
 
       {!practice && data.trackKey && !!rows.length && (
@@ -1142,19 +1151,21 @@ function TrainingBestLapsAdmin() {
         </Notice>
       )}
 
-      {/* The board looks its carried laps up by the track key the RACE SERVER
-          reports; a file's laps are filed under the key the file names. The
-          two are built the same way and normally agree — but a renamed track
-          mod is exactly the case where they do not, and laps nobody can see
-          are worse than a refused upload. */}
-      {data.session?.trackKey && data.trackKey && data.session.trackKey !== data.trackKey && (
-        <Notice kind="info">
-          These laps are filed under <b className="text-dark">{data.trackKey}</b>, and the server&rsquo;s board is
-          on <b className="text-dark">{data.session.trackKey}</b>. They will appear when the server is back on{" "}
-          <b className="text-dark">{data.trackKey}</b> — if that never happens, the track was renamed between the
-          two and the session files carry the old name.
-        </Notice>
-      )}
+      {/* The board matches carried laps on the CIRCUIT the race server reports
+          (the key before "--"), so a layout renamed between two weeks is not
+          a mismatch. A different circuit is: those laps sit on the board of
+          the track the file names, and only appear when the server is on it. */}
+      {data.session?.trackKey &&
+        data.trackKey &&
+        data.baseTrack &&
+        !data.session.trackKey.startsWith(`${data.baseTrack}--`) &&
+        data.session.trackKey !== data.baseTrack && (
+          <Notice kind="info">
+            You are looking at <b className="text-dark">{data.trackKey}</b>, and the server&rsquo;s board is on{" "}
+            <b className="text-dark">{data.session.trackKey}</b> — a different circuit. These laps appear when the
+            server is back on {data.baseTrack}.
+          </Notice>
+        )}
 
       {!rows.length ? (
         <Notice kind="info">Nothing carried for this track yet — no session file has been given for it.</Notice>
@@ -1165,6 +1176,7 @@ function TrainingBestLapsAdmin() {
               <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
                 <th className="py-2 pr-3">Driver</th>
                 <th className="py-2 pr-3">Training best</th>
+                <th className="py-2 pr-3">Layout</th>
                 <th className="py-2 pr-3">Sectors</th>
                 <th className="py-2 pr-3">Live now</th>
                 <th className="py-2">On the board</th>
@@ -1178,6 +1190,9 @@ function TrainingBestLapsAdmin() {
                     {r.team && <span className="ml-2 text-xs font-normal text-light">{r.team}</span>}
                   </td>
                   <td className="py-2 pr-3 font-mono tabular-nums text-dark">{formatLapTime(r.lapTimeMs)}</td>
+                  <td className="py-2 pr-3 font-mono text-xs text-light">
+                    {r.trackKey?.includes("--") ? r.trackKey.slice(r.trackKey.indexOf("--") + 2) : "—"}
+                  </td>
                   <td className="py-2 pr-3 text-xs text-light">{r.sectors ? "Yes" : "—"}</td>
                   <td className="py-2 pr-3 font-mono tabular-nums text-medium">
                     {r.liveMs == null ? "—" : formatLapTime(r.liveMs)}
