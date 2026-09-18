@@ -43,6 +43,39 @@ function toCsv(data, teamById) {
   return lines.join("\n");
 }
 
+// The roster problems this tab exists to clear up, read off the season:
+//   * a Tier 1 / Tier 2 team with more than two active seats — a driver was
+//     put into a team without the one they replaced being moved out, which is
+//     what the old "change the dropdown" way of transferring did;
+//   * one name on two rows of the same season — a driver created by hand and
+//     again by the attendance sign-up, say.
+// Neither is fixed here by itself (the code cannot know which of three
+// drivers is the current one); the list says what to do about each.
+export function rosterIssues(data) {
+  if (!data) return { crowded: [], duplicates: [] };
+  const teamById = new Map((data.teams || []).map((t) => [t.id, t]));
+  const seats = new Map();
+  for (const d of data.drivers || []) {
+    if (!d.isActive) continue;
+    const t = teamById.get(d.teamId);
+    if (!t || (t.tier !== 1 && t.tier !== 2)) continue;
+    if (!seats.has(t.id)) seats.set(t.id, []);
+    seats.get(t.id).push(d);
+  }
+  const crowded = [...seats.entries()]
+    .filter(([, list]) => list.length > 2)
+    .map(([teamId, list]) => ({ team: teamById.get(teamId), drivers: list.sort((a, b) => b.raced - a.raced) }));
+
+  const byName = new Map();
+  for (const d of data.drivers || []) {
+    const key = d.name.trim().toLowerCase();
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push(d);
+  }
+  const duplicates = [...byName.values()].filter((list) => list.length > 1).map((list) => list.sort((a, b) => b.raced - a.raced));
+  return { crowded, duplicates };
+}
+
 function download(name, text) {
   const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -67,6 +100,7 @@ export default function AdminTransfers() {
   const teams = useMemo(() => orderTeams(data?.teams), [data?.teams]);
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
   const driverById = useMemo(() => new Map((data?.drivers || []).map((d) => [d.id, d])), [data?.drivers]);
+  const issues = useMemo(() => rosterIssues(data), [data]);
   const pending = (data?.moves || []).filter((m) => m.pending);
   const done = (data?.moves || []).filter((m) => !m.pending);
 
@@ -154,6 +188,75 @@ export default function AdminTransfers() {
         {err && <Notice kind="error">{err}</Notice>}
         {msg && <Notice kind="success">{msg}</Notice>}
       </div>
+
+      {(issues.crowded.length > 0 || issues.duplicates.length > 0) && (
+        <div className="card space-y-5 border-amber-500/40 p-5">
+          <CardHead eyebrow="Needs attention" title="Roster to tidy up" />
+          {issues.crowded.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-sm text-medium">
+                <span className="font-semibold text-dark">More than two seats.</span> Somebody was put into the team
+                without the driver they replaced being moved out. For the one who left, record a transfer to the team
+                they went to, or to <span className="font-semibold">Reserve</span>, from the round after their last race
+                for this team. Their results stay where they are.
+              </p>
+              <ul className="divide-y divide-border">
+                {issues.crowded.map(({ team, drivers }) => (
+                  <li key={team.id} className="flex flex-wrap items-start gap-3 py-2.5">
+                    <span className="flex w-40 shrink-0 items-center gap-2">
+                      {mark(team.id)}
+                      <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">{team.name}</span>
+                      <span className="pill bg-amber-500/15 text-warn">{drivers.length}</span>
+                    </span>
+                    <ul className="flex min-w-0 flex-1 flex-wrap gap-2">
+                      {drivers.map((d) => {
+                        const last = d.stints.length ? d.stints[d.stints.length - 1] : null;
+                        const forTeam = d.stints.filter((st) => st.teamId === team.id).reduce((n, st) => n + st.races, 0);
+                        return (
+                          <li key={d.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface2/60 py-1 pl-2.5 pr-1 text-sm">
+                            <span className="font-semibold text-dark">{d.name}</span>
+                            <span className="font-mono text-[10px] text-light" title="Races for this team · last round driven">
+                              {forTeam} {forTeam === 1 ? "race" : "races"}
+                              {last
+                                ? ` · last R${last.to}${last.teamId !== team.id ? ` for ${teamName(last.teamId)}` : ""}`
+                                : " · none yet"}
+                            </span>
+                            <button className="btn-secondary px-2 py-0.5 text-xs" disabled={busy} onClick={() => open(d)}>
+                              Transfer
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {issues.duplicates.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-sm text-medium">
+                <span className="font-semibold text-dark">One name, two entries.</span> The same driver exists twice in
+                this season. Delete the entry without race results on the Drivers tab (an entry with results cannot be
+                deleted); if both have results, link them as one person on the Members tab instead.
+              </p>
+              <ul className="divide-y divide-border">
+                {issues.duplicates.map((list) => (
+                  <li key={list[0].id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+                    <span className="w-40 shrink-0 font-display font-bold uppercase tracking-tight text-dark">{list[0].name}</span>
+                    {list.map((d) => (
+                      <span key={d.id} className="rounded-lg border border-border bg-surface2/60 px-2.5 py-1 text-xs text-medium">
+                        <span className="font-mono text-light">{d.id}</span> · {teamName(d.teamId)} · {d.raced} {d.raced === 1 ? "race" : "races"}
+                        {!d.isActive && " · inactive"}
+                      </span>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="card p-5">
