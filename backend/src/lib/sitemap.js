@@ -45,6 +45,7 @@
 // distrust the whole file).
 // ---------------------------------------------------------------------------
 import { getSiteIndex } from "./siteIndex.js";
+import { TRACK_EDITOR_ENABLED } from "./features.js";
 
 // PAGES that have no business in a search index. Written as a denylist because
 // the interesting pages are all public by default.
@@ -143,7 +144,7 @@ export async function buildSitemapXml(prisma, origin) {
   // search — the sitemap is its ONLY way in, since no crawlable page links to
   // it. Spelled with the trailing slash to match the canonical the
   // /track-editor handler serves (backend/src/index.js).
-  urls.push("/track-editor/");
+  if (TRACK_EDITOR_ENABLED) urls.push("/track-editor/");
 
   // A database from before the series model has no Series rows at all; the site
   // then lives under its flat paths, so list those rather than nothing.

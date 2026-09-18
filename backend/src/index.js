@@ -53,6 +53,7 @@ import { legacyRedirects, canonicalUrl, applyCanonical, isKnownRoute, seriesSlug
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
+import { TRACK_EDITOR_ENABLED } from "./lib/features.js";
 import { backfillCardIntro, announceFeatures, ensureRaceReminders } from "./lib/notifications.js";
 import { recomputeStintsOnce } from "./lib/stintRecompute.js";
 import { syncAllRostersToTransfers } from "./services/driverTransfers.js";
@@ -489,7 +490,9 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
   // downloads use, because a plain navigation carries no Authorization header.
   const EDITOR_DIR = join(__dir, "../../track-editor/dist");
   const EDITOR_INDEX = join(EDITOR_DIR, "index.html");
-  if (existsSync(EDITOR_INDEX)) {
+  // Off the site for now (lib/features.js): the address falls through to the
+  // SPA fallback below and shows the site's not-found page.
+  if (TRACK_EDITOR_ENABLED && existsSync(EDITOR_INDEX)) {
     // Its own mount rather than a folder inside frontend/dist, because the
     // website's build empties that folder and would carry the editor off with
     // it on every deploy (see track-editor/vite.config.ts).

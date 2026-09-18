@@ -12,7 +12,7 @@ import TelemetryCompare from "../components/TelemetryCompare.jsx";
 // profile's member bar and the bell's "telemetry is open" announcement.
 //
 // This used to be the race-prep page as well, with a fuel calculator, a
-// practice analysis and a link to the track editor in front of the telemetry
+// practice analysis in front of the telemetry
 // card. The league asked for the telemetry alone; the calculators are in the
 // history of this file should they ever be wanted back. The path stays /tools
 // so every bookmark, bell link (/tools#telemetry) and ?tab=tools keeps landing.
