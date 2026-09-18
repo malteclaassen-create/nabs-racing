@@ -95,24 +95,17 @@ This sits behind a PIN (top right, "Admin"). From there I can:
     since are re-attributed and their constructor points move, which the
     dialog spells out before you confirm. Booked moves are listed with a Take
     back button, and the grid exports as CSV.
-  - Attendance tab, Activity: the season read the other way round - every
-    driver against every round that has been saved, split into Tier 1, Tier 2
-    and the reserve pool, so it is visible at a glance who is still turning up
-    and who has quietly stopped. Two numbers per driver, kept apart because
-    they mean different things: the rounds they RACED (a DNF still turned up,
-    a DNS did not) and the rounds they ANSWERED the sign-up for, whatever they
-    said. The status runs on both together - answering "out" is somebody who
-    read the post and replied, so a reserve who is needed for no round but
-    answers every one still counts as present. A round of silence is Quiet,
-    three or more is Inactive. It also flags who said yes and never started,
-    and the table exports as CSV.
-    Next to those numbers each driver has a Progress label the staff set by
-    hand - Full time, Possibly reserve, Deserving, In progress, Tentative -
-    which is the reserve spreadsheet moved onto the site. Nothing computes it
-    and no table scores off it: the numbers say what happened, the label says
-    what we decided about it, and having them on one line is the point. It is
-    saved the moment it is picked and belongs to that season only, so a new
-    season starts undecided.
+  - Attendance tab, Activity: who is still turning up. Every driver against
+    every round that has been saved, split into Tier 1, Tier 2 and the reserve
+    pool. Two numbers per driver: the rounds they RACED (a DNF counts, a DNS
+    does not) and the rounds they ANSWERED the sign-up for, whatever they said.
+    The status runs on both, so a reserve who only ever answers still counts as
+    present; a round with neither is Quiet, three is Inactive. It also flags
+    who said yes and never started, and exports as CSV.
+    Each driver also has a Progress label the staff set by hand: Full time,
+    Possibly reserve, Deserving, In progress, Tentative. That is the reserve
+    spreadsheet moved onto the site. Nothing computes it and no table scores
+    off it. It saves as you pick it and belongs to that season only.
   - Add and edit drivers and teams, including team colours and uploading team
     logos.
   - Manage seasons.

@@ -114,14 +114,23 @@ function Legend() {
   );
 }
 
-// "2 rounds ago", said the way somebody counts rounds rather than days — a
-// league that skips a fortnight has not lost anybody.
+// "2 rounds ago", counted in rounds rather than days: a league that skips a
+// fortnight has not lost anybody.
+//
+// The round number carries the round, so the track name only made the widest
+// column in the table wider still and pushed Progress off the edge. It stays in
+// the tooltip, where it costs nothing.
 function lastSeenText(d) {
   if (!d.lastSeen) return "never this season";
-  const when = `${roundLabel(d.lastSeen)} ${d.lastSeen.track}`;
   const how = d.lastSeen.raced ? "raced" : "answered";
   const ago = d.roundsSinceSeen === 0 ? "last round" : `${d.roundsSinceSeen} round${d.roundsSinceSeen === 1 ? "" : "s"} ago`;
-  return `${how} ${when} · ${ago}`;
+  return `${how} ${roundLabel(d.lastSeen)}, ${ago}`;
+}
+
+// The same thing with the track spelled out, for the tooltip and the CSV.
+function lastSeenFull(d) {
+  if (!d.lastSeen) return "never this season";
+  return `${lastSeenText(d)} (${d.lastSeen.track})`;
 }
 
 // The hand-set label. A native select rather than a menu of pills: it is
@@ -140,7 +149,7 @@ function ProgressPicker({ driver, options, busy, onChange }) {
       aria-label={`Progress for ${driver.name}`}
       onChange={(e) => onChange(driver, e.target.value || null)}
     >
-      <option value="">—</option>
+      <option value="">Not set</option>
       {options.map((o) => (
         <option key={o.key} value={o.key}>
           {o.label}
@@ -178,7 +187,9 @@ function DriverRow({ d, rounds, options, busy, onProgress }) {
       <td className="py-2 pr-3 text-right align-middle font-mono text-xs">
         {d.noShows > 0 ? <span className="text-bad">{d.noShows}</span> : <span className="text-faint">–</span>}
       </td>
-      <td className="whitespace-nowrap py-2 pr-3 align-middle text-xs text-light">{lastSeenText(d)}</td>
+      <td className="whitespace-nowrap py-2 pr-3 align-middle text-xs text-light" title={lastSeenFull(d)}>
+        {lastSeenText(d)}
+      </td>
       <td className="py-2 pr-3 align-middle">
         <span className={`pill whitespace-nowrap ${STATE_TONE[d.state]}`}>{STATE_LABEL[d.state]}</span>
       </td>
@@ -203,7 +214,7 @@ function Group({ title, hint, people, rounds, tally, options, busy, onProgress, 
           <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
             {title} <span className="text-light">({people.length})</span>
           </h3>
-          <p className="mt-0.5 text-xs text-light">{hint}</p>
+          {hint && <p className="mt-0.5 text-xs text-light">{hint}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {["active", "quiet", "inactive", "never"].map((s) =>
@@ -226,7 +237,7 @@ function Group({ title, hint, people, rounds, tally, options, busy, onProgress, 
       ) : (
         open && (
           <div className="mt-2 overflow-x-auto scrollbar-slim">
-            <table className="w-full min-w-[66rem] text-sm">
+            <table className="w-full min-w-[60rem] text-sm">
               <thead>
                 <tr className="border-b border-border text-left font-mono text-[11px] uppercase tracking-wider text-light">
                   <th className="w-56 py-2 pr-3 font-bold">Driver</th>
@@ -323,7 +334,7 @@ function csvFor(data, people, labelFor) {
           `${d.starts}/${d.rounds}`,
           `${d.answers}/${d.rounds}`,
           d.noShows,
-          lastSeenText(d),
+          lastSeenFull(d),
           ...d.cells.map((c) => CELL[cellKind(c)].label),
         ]
           .map(esc)
@@ -414,27 +425,37 @@ export default function AdminAttendanceActivity() {
   return (
     <div className="card space-y-4 p-5">
       <CardHead eyebrow="Attendance page" title="Activity tracker" />
+      {/* One line, and the rules folded away. Three paragraphs of definitions
+          sat above the table every single visit, and the person opening this
+          page has read them once. */}
       <p className="text-sm text-light">
-        Every driver on this season&rsquo;s roster against every round that has been saved: who is still turning up, and
-        who has quietly stopped. Tier 1, Tier 2 and the reserve pool are listed apart, because a silence means a
-        different thing in each.
+        Who is still turning up. Every driver against every round of this season.
       </p>
-      <p className="text-sm text-light">
-        <strong className="font-semibold text-medium">Raced</strong> counts the rounds they were in the classification —
-        a DNF still turned up, a DNS did not. <strong className="font-semibold text-medium">Answered</strong> counts the
-        rounds they touched the sign-up, whatever they said: answering &ldquo;out&rdquo; is somebody who read the post
-        and replied, not somebody who vanished. The status runs on both together, so a reserve who answers every round
-        and is needed for none still counts as present:{" "}
-        <strong className="font-semibold text-medium">Quiet</strong> is {quietAfter === 1 ? "a round" : `${quietAfter} rounds`} without
-        either, <strong className="font-semibold text-medium">Inactive</strong> is {inactiveAfter} or more. Drivers you
-        have deactivated are left out.
-      </p>
-      <p className="text-sm text-light">
-        <strong className="font-semibold text-medium">Progress</strong> is the other half, and it is yours: the label
-        the staff used to keep in the reserve spreadsheet, set by hand per driver and saved as you pick it. Nothing
-        computes it and no table scores off it — it sits next to the numbers because that is what the decision is made
-        against. It belongs to this season only, so next season starts undecided again.
-      </p>
+      <details className="group">
+        <summary className="cursor-pointer list-none text-sm font-semibold text-link hover:underline">
+          What the columns mean
+        </summary>
+        <ul className="mt-2 space-y-1 text-sm text-light">
+          <li>
+            <strong className="font-semibold text-medium">Raced</strong>: they were in the classification. A DNF counts,
+            a DNS does not.
+          </li>
+          <li>
+            <strong className="font-semibold text-medium">Answered</strong>: they touched the sign-up, whatever they
+            said.
+          </li>
+          <li>
+            <strong className="font-semibold text-medium">Status</strong>: runs on both, so a reserve who only ever
+            answers still counts as present. Quiet after{" "}
+            {quietAfter === 1 ? "a round" : `${quietAfter} rounds`} with neither, Inactive after {inactiveAfter}.
+          </li>
+          <li>
+            <strong className="font-semibold text-medium">Progress</strong>: your call, saved as you pick it. Nothing
+            computes it. It belongs to this season only.
+          </li>
+          <li>Deactivated drivers are left out.</li>
+        </ul>
+      </details>
 
       {error && <ErrorBox message={error} onRetry={reload} />}
       {saveError && <Notice kind="error">{saveError}</Notice>}
@@ -442,8 +463,7 @@ export default function AdminAttendanceActivity() {
 
       {data && rounds.length === 0 && (
         <p className="text-sm text-light">
-          No finished round in this season yet, so there is nothing to measure anybody against. The page fills itself in
-          as soon as a result is saved.
+          No finished round in this season yet. The page fills itself in as soon as a result is saved.
         </p>
       )}
 
@@ -488,7 +508,7 @@ export default function AdminAttendanceActivity() {
 
           <Group
             title="Tier 1"
-            hint="The top-tier seats. Someone quiet here is a car that may not be on the grid."
+            hint="Someone quiet here is a car that may not be on the grid."
             people={groups.tier1}
             rounds={rounds}
             tally={data.totals?.tier1}
@@ -498,7 +518,7 @@ export default function AdminAttendanceActivity() {
           />
           <Group
             title="Tier 2"
-            hint="The second-tier seats, read the same way."
+            hint=""
             people={groups.tier2}
             rounds={rounds}
             tally={data.totals?.tier2}
@@ -508,7 +528,7 @@ export default function AdminAttendanceActivity() {
           />
           <Group
             title="Reserves"
-            hint="The reserve pool. Most of them race only when they are asked, so the sign-ups are the signal here — a reserve who has stopped answering is one you can stop counting on."
+            hint="They race when asked, so the answers are the signal here."
             people={groups.reserve}
             rounds={rounds}
             tally={data.totals?.reserve}

@@ -169,7 +169,7 @@ export const ADMIN_INDEX = [
     tab: "attendance",
     view: "activity",
     title: "Mark a driver full time, deserving or still in progress",
-    hint: "The Progress label per driver, set by hand next to their season\u2019s numbers \u2014 the reserve spreadsheet, on the site.",
+    hint: "The Progress label per driver, set by hand next to their season\u2019s numbers.",
     keywords: "progress label full time possibly reserve deserving in progress tentative spreadsheet sheet promote promotion seat earn judgement staff decision reserve pool mark set status",
   },
   {
