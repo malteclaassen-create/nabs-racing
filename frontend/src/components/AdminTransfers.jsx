@@ -5,7 +5,7 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { useAsk } from "./overlay.jsx";
 import { CardHead, ErrorBox, Notice, TableSkeleton } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
-import TeamHistoryGrid, { orderTeams, worthShowing } from "./TeamHistoryGrid.jsx";
+import TeamHistoryGrid, { orderTeams, worthShowing, standingsMap } from "./TeamHistoryGrid.jsx";
 import TransferDialog from "./TransferDialog.jsx";
 
 // ---------------------------------------------------------------------------
@@ -90,6 +90,8 @@ export default function AdminTransfers() {
   const ask = useAsk();
   const { current: season } = useSeason();
   const { data, loading, error, reload } = useApi(useCallback(() => api.transferMarket(), []));
+  const standings = useApi(useCallback(() => api.driverStandings(), []));
+  const points = useMemo(() => standingsMap(standings.data), [standings.data]);
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -331,7 +333,9 @@ export default function AdminTransfers() {
           <TableSkeleton rows={10} />
         ) : (
           <TeamHistoryGrid
+            key={points ? "pts" : "plain"}
             data={data}
+            standings={points}
             renderActions={(d) => (
               <button className="btn-secondary px-3 py-1 text-xs" disabled={busy} onClick={() => open(d)}>
                 Transfer
@@ -353,6 +357,7 @@ export default function AdminTransfers() {
             setErr(null);
             setPick("");
             reload();
+            standings.reload();
           }}
         />
       )}

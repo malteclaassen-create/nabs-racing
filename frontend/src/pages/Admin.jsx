@@ -2726,6 +2726,11 @@ function Drivers() {
   const [busy, setBusy] = useState(false);
   // Which team's roster is unfolded — one at a time keeps the list scannable.
   const [openTeam, setOpenTeam] = useState(null);
+  // A search across every team's roster: the Reserve pool alone runs past a
+  // hundred entries, and "find that one reserve" was a scroll through all of
+  // them. While a query is typed, every team with a hit is unfolded and shows
+  // only its hits (name, Discord name, Discord id or Steam id).
+  const [rosterQuery, setRosterQuery] = useState("");
   // Ticked drivers for bulk removal (ids survive folding teams open/closed).
   const [selected, setSelected] = useState(() => new Set());
 
@@ -2899,6 +2904,18 @@ function Drivers() {
   const teamGroups = [...(teams || [])].sort(
     (a, b) => tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name)
   );
+  const q = rosterQuery.trim().toLowerCase();
+  const matches = (d) =>
+    !q ||
+    [d.name, d.discordName, d.formerName, d.discordUserId, d.inheritedDiscordUserId, d.steamId]
+      .some((v) => v && String(v).toLowerCase().includes(q));
+  // The groups as shown: filtered to the hits while searching, every team
+  // otherwise. `teamGroups` (unfiltered) stays what the transfer dialog and
+  // the add-driver form read.
+  const shownGroups = q
+    ? teamGroups.map((t) => ({ ...t, drivers: t.drivers.filter(matches) })).filter((t) => t.drivers.length > 0)
+    : teamGroups;
+  const isOpen = (t) => (q ? true : openTeam === t.id);
 
   return (
     <div>
@@ -2965,13 +2982,38 @@ function Drivers() {
           fills itself, from the first race a driver runs or from them connecting Steam on their profile, so only
           touch it to correct a wrong one.
         </p>
+        <div className="relative mb-3">
+          <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-light" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+          </svg>
+          <input
+            aria-label="Find a driver on the roster"
+            className="input pl-9 pr-8"
+            placeholder={`Find a driver on the roster (${allDrivers.length}) — name, Discord or Steam id…`}
+            value={rosterQuery}
+            onChange={(e) => setRosterQuery(e.target.value)}
+          />
+          {rosterQuery && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-light transition hover:text-dark"
+              onClick={() => setRosterQuery("")}
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          )}
+        </div>
         <div className="divide-y divide-border border-y border-border">
-          {teamGroups.map((t) => (
+          {q && shownGroups.length === 0 && (
+            <p className="py-3 text-sm text-light">Nobody on this season's roster matches "{rosterQuery.trim()}".</p>
+          )}
+          {shownGroups.map((t) => (
             <div key={t.id}>
               {/* one compact row per team — click to open the roster + search */}
               <button
                 type="button"
-                onClick={() => setOpenTeam(openTeam === t.id ? null : t.id)}
+                onClick={() => !q && setOpenTeam(openTeam === t.id ? null : t.id)}
                 className="flex w-full items-center gap-2.5 py-2.5 text-left transition hover:bg-surface2/60"
               >
                 <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={20} />
@@ -2983,9 +3025,9 @@ function Drivers() {
                 <span className="shrink-0 rounded-md bg-surface2 px-1.5 py-0.5 font-mono text-[11px] font-bold tabular-nums text-medium">
                   {t.drivers.length}
                 </span>
-                <svg viewBox="0 0 24 24" className={`h-4 w-4 shrink-0 text-faint transition-transform ${openTeam === t.id ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+                <svg viewBox="0 0 24 24" className={`h-4 w-4 shrink-0 text-faint transition-transform ${isOpen(t) ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
               </button>
-              {openTeam === t.id && (
+              {isOpen(t) && (
               <div className="pb-3">
               <DbSeatSearch
                 team={t}

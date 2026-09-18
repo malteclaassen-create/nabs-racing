@@ -35,6 +35,14 @@ export function orderTeams(teams) {
   return [...(teams || [])].sort((a, b) => tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name));
 }
 
+// driverId -> { total, position } off the driver standings payload, or null
+// while it has not arrived (the grid then falls back to sorting by team).
+export function standingsMap(standings) {
+  const rows = standings?.standings;
+  if (!Array.isArray(rows)) return null;
+  return new Map(rows.map((r) => [r.driverId, { total: r.total, position: r.position }]));
+}
+
 // Which drivers a reader wants to see by default: everyone with a seat, plus
 // anyone who drove or has a move on record. A deactivated row with nothing to
 // show is noise, and a long season has dozens of those.
@@ -152,11 +160,14 @@ function Legend() {
  *   driverHref    (driver) => path, or null for plain text
  *   teamHref      (team) => path, or null
  *   renderActions (driver) => node, rendered in a trailing column (admin)
+ *   standings     Map driverId -> { total, position } from the driver
+ *                 standings, or null. With it the grid sorts by points by
+ *                 default and shows a Pts column.
  */
-export default function TeamHistoryGrid({ data, driverHref = null, teamHref = null, renderActions = null }) {
+export default function TeamHistoryGrid({ data, driverHref = null, teamHref = null, renderActions = null, standings = null }) {
   const [teamFilter, setTeamFilter] = useState("all");
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState("team"); // team | name
+  const [sort, setSort] = useState(standings ? "points" : "team"); // points | team | name
   const [everyone, setEveryone] = useState(false);
 
   const teams = useMemo(() => orderTeams(data?.teams), [data?.teams]);
@@ -179,6 +190,12 @@ export default function TeamHistoryGrid({ data, driverHref = null, teamHref = nu
     if (q) list = list.filter((d) => d.name.toLowerCase().includes(q) || (d.formerName || "").toLowerCase().includes(q));
     const byName = (a, b) => a.name.localeCompare(b.name);
     if (sort === "name") return list.sort(byName);
+    if (sort === "points" && standings) {
+      // The standings' own order (ties, manual points and dropped rounds
+      // included); drivers not in the table line up behind, by name.
+      const pos = (d) => standings.get(d.id)?.position ?? Infinity;
+      return list.sort((a, b) => pos(a) - pos(b) || byName(a, b));
+    }
     return list.sort((a, b) => {
       const ta = teamById.get(a.teamId);
       const tb = teamById.get(b.teamId);
@@ -188,7 +205,7 @@ export default function TeamHistoryGrid({ data, driverHref = null, teamHref = nu
         byName(a, b)
       );
     });
-  }, [data?.drivers, everyone, teamFilter, query, sort, teamById]);
+  }, [data?.drivers, everyone, teamFilter, query, sort, teamById, standings]);
 
   const total = (data?.drivers || []).length;
   const nameCell = (d) => {
@@ -234,6 +251,7 @@ export default function TeamHistoryGrid({ data, driverHref = null, teamHref = nu
           onChange={(e) => setQuery(e.target.value)}
         />
         <select aria-label="Sort" className="input w-auto py-1.5" value={sort} onChange={(e) => setSort(e.target.value)}>
+          {standings && <option value="points">By points</option>}
           <option value="team">By team</option>
           <option value="name">By name</option>
         </select>
@@ -261,6 +279,7 @@ export default function TeamHistoryGrid({ data, driverHref = null, teamHref = nu
                   </th>
                 ))}
                 <th className="px-2 py-2 text-left">Teams</th>
+                {standings && <th className="px-2 py-2 text-right">Pts</th>}
                 {renderActions && <th className="px-2 py-2" />}
               </tr>
             </thead>
@@ -286,6 +305,18 @@ export default function TeamHistoryGrid({ data, driverHref = null, teamHref = nu
                   <td className="px-2 py-1.5">
                     <Stints driver={d} teamById={teamById} />
                   </td>
+                  {standings && (
+                    <td className="px-2 py-1.5 text-right">
+                      {standings.has(d.id) ? (
+                        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+                          <span className="font-mono text-[10px] text-light">P{standings.get(d.id).position}</span>
+                          <span className="font-mono text-sm font-bold tabular-nums text-dark">{standings.get(d.id).total}</span>
+                        </span>
+                      ) : (
+                        <span className="font-mono text-xs text-faint">–</span>
+                      )}
+                    </td>
+                  )}
                   {renderActions && <td className="px-2 py-1.5 text-right">{renderActions(d)}</td>}
                 </tr>
               ))}
