@@ -50,7 +50,21 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
       <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} sprintRounds={standings.sprintRounds || []} fastestLapPoints={standings.fastestLapPoints || 0} customPoints={standings.customPoints || {}} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} dropMode={standings.dropMode} teamDropWorst={standings.teamDropWorst} decided={decided} showMovement={showMovement} />
 
       <div className="space-y-3 pt-2">
-        <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Line-ups</h3>
+        {/* The cards show who is in each seat today and nothing else. Moves,
+            past and booked, live on the transfer market page, one tap away. */}
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Line-ups</h3>
+          <Link
+            to="/transfers"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark"
+            title="Every team change of this season, and who drove for whom round by round"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M7 17V5" /><path d="M3 9l4-4 4 4" /><path d="M17 7v12" /><path d="M13 15l4 4 4-4" />
+            </svg>
+            Team changes
+          </Link>
+        </div>
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {orderedTeams.map((team, i) => (
             <TeamCard key={team.id} team={team} index={i} champion={team.id === championTeamId} />
@@ -92,32 +106,11 @@ function TeamCard({ team, index = 0, champion = false }) {
                 className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm transition hover:bg-surface2"
               >
                 <span className="font-display font-bold uppercase tracking-tight text-dark">{d.name}</span>
-                {d.leaving ? (
-                  <span className="truncate font-mono text-[10px] font-bold uppercase tracking-wider text-brand" title={`Drives for ${d.leaving.toTeamName} from round ${d.leaving.fromRound}`}>
-                    → {d.leaving.toTeamName} from R{d.leaving.fromRound}
-                  </span>
-                ) : (
-                  <span className="truncate text-light">{d.discordName}</span>
-                )}
+                <span className="truncate text-light">{d.discordName}</span>
               </Link>
             </li>
           ))}
-          {team.drivers.length === 0 && (team.incoming || []).length === 0 && <li className="px-2 text-sm text-light">No drivers assigned.</li>}
-          {/* Booked to join from a round still ahead: listed with the team
-              already, marked as such, so the line-up says what the league has
-              announced (the transfer market, /transfers). */}
-          {(team.incoming || []).map((m) => (
-            <li key={`in-${m.driverId}`}>
-              <Link
-                to={`/drivers/${m.driverId}`}
-                className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-brand/50 px-2 py-1.5 text-sm transition hover:bg-surface2"
-                title={`Joins from ${m.fromTeamName} from round ${m.fromRound}`}
-              >
-                <span className="font-display font-bold uppercase tracking-tight text-dark">{m.name}</span>
-                <span className="truncate font-mono text-[10px] font-bold uppercase tracking-wider text-brand">joins from R{m.fromRound}</span>
-              </Link>
-            </li>
-          ))}
+          {team.drivers.length === 0 && <li className="px-2 text-sm text-light">No drivers assigned.</li>}
         </ul>
       </div>
     </div>
