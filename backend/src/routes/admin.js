@@ -115,6 +115,9 @@ import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson
 import {
   activityFor, byNeedsAttention, tallyStates, QUIET_AFTER, INACTIVE_AFTER,
 } from "../lib/attendanceActivity.js";
+import {
+  PROGRESS_STATES, parseProgress, readDriverProgress, writeDriverProgress,
+} from "../lib/driverProgress.js";
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
@@ -5509,7 +5512,7 @@ router.get("/attendance-activity", async (req, res, next) => {
     const roundOf = new Map(rounds.map((r) => [r.id, r.id]));
     for (const [childId, parentId] of parentOf) if (roundOf.has(parentId)) roundOf.set(childId, parentId);
 
-    const [driverRows, resultRows, rsvpRows, nameOverrides, people] = await Promise.all([
+    const [driverRows, resultRows, rsvpRows, nameOverrides, people, progress] = await Promise.all([
       prisma.driver.findMany({
         where: { seasonId },
         include: { team: { select: { name: true, tier: true, color: true } } },
@@ -5525,6 +5528,7 @@ router.get("/attendance-activity", async (req, res, next) => {
       }),
       getNameOverrides(prisma),
       getPersonGroups(prisma),
+      readDriverProgress(prisma, seasonId),
     ]);
 
     // People, not rows (lib/onePerPerson.js). Somebody with two roster rows in
@@ -5577,6 +5581,10 @@ router.get("/attendance-activity", async (req, res, next) => {
         // The row's TEAM tier decides, not the driver's own: a Tier-2 driver
         // parked in the Reserve pool is a reserve this season.
         tier: d.team?.tier ?? d.tier,
+        // The staff's own verdict (lib/driverProgress.js), set by hand and
+        // never computed. It rides along with the numbers because the two are
+        // read together: the evidence, and what the league decided about it.
+        progress: progress.get(d.id) || null,
         ...activityFor(rounds, resultsBy.get(key), rsvpsBy.get(key)),
       };
     };
@@ -5598,7 +5606,32 @@ router.get("/attendance-activity", async (req, res, next) => {
       // The thresholds travel with the data so the page explains itself with
       // the same numbers it was judged by.
       thresholds: { quietAfter: QUIET_AFTER, inactiveAfter: INACTIVE_AFTER },
+      // The dropdown's contents come from the server too, so the labels are
+      // written down once: a sixth one added in lib/driverProgress.js appears
+      // in the page without the browser having to be told about it.
+      progressOptions: PROGRESS_STATES,
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/drivers/:id/progress { progress: "<key>" | null }
+//
+// The one thing on the Activity view that is written rather than read. It sits
+// beside that route rather than with the other driver edits because it is
+// edited from there — the judgement is only worth making with the season's
+// numbers on the same line, which is the whole reason it stopped being a
+// spreadsheet. Clearing it (null) has to stay reachable: "nobody has decided
+// yet" is a real answer and the state every row starts in.
+router.put("/drivers/:id/progress", async (req, res, next) => {
+  try {
+    const parsed = parseProgress(req.body?.progress);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const driver = await prisma.driver.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
+    await writeDriverProgress(prisma, driver.id, parsed.value);
+    res.json({ ok: true, driverId: driver.id, progress: parsed.value });
   } catch (e) {
     next(e);
   }

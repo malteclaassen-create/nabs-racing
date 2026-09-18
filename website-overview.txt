@@ -106,6 +106,13 @@ This sits behind a PIN (top right, "Admin"). From there I can:
     answers every one still counts as present. A round of silence is Quiet,
     three or more is Inactive. It also flags who said yes and never started,
     and the table exports as CSV.
+    Next to those numbers each driver has a Progress label the staff set by
+    hand - Full time, Possibly reserve, Deserving, In progress, Tentative -
+    which is the reserve spreadsheet moved onto the site. Nothing computes it
+    and no table scores off it: the numbers say what happened, the label says
+    what we decided about it, and having them on one line is the point. It is
+    saved the moment it is picked and belongs to that season only, so a new
+    season starts undecided.
   - Add and edit drivers and teams, including team colours and uploading team
     logos.
   - Manage seasons.
