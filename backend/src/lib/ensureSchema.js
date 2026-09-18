@@ -267,6 +267,13 @@ export async function ensureAppSchema(prisma) {
   await addColumn(prisma, "Driver", "pointsAdjust", "INTEGER");
   await addColumn(prisma, "Driver", "pointsOverride", "INTEGER");
 
+  // --- The staff's judgement on this driver's season (migration
+  // driver_progress, lib/driverProgress.js), set by hand in the Attendance
+  // tab's Activity view: the five labels the league used to keep in a
+  // spreadsheet. null = nobody has formed a view yet, which is every row until
+  // somebody picks one. Nothing computes it and nothing scores off it.
+  await addColumn(prisma, "Driver", "progress", "TEXT");
+
   // --- Steam GUID (SteamID64) captured from AC race-result imports (migration
   // driver_steam_id). Stable per-person identity, preferred over fuzzy name
   // matching on future imports (see acJsonParser + raceWriter). Unique PER

@@ -95,6 +95,17 @@ This sits behind a PIN (top right, "Admin"). From there I can:
     since are re-attributed and their constructor points move, which the
     dialog spells out before you confirm. Booked moves are listed with a Take
     back button, and the grid exports as CSV.
+  - Attendance tab, Activity: who is still turning up. Every driver against
+    every round that has been saved, split into Tier 1, Tier 2 and the reserve
+    pool. Two numbers per driver: the rounds they RACED (a DNF counts, a DNS
+    does not) and the rounds they ANSWERED the sign-up for, whatever they said.
+    The status runs on both, so a reserve who only ever answers still counts as
+    present; a round with neither is Quiet, three is Inactive. It also flags
+    who said yes and never started, and exports as CSV.
+    Each driver also has a Progress label the staff set by hand: Full time,
+    Possibly reserve, Deserving, In progress, Tentative. That is the reserve
+    spreadsheet moved onto the site. Nothing computes it and no table scores
+    off it. It saves as you pick it and belongs to that season only.
   - Add and edit drivers and teams, including team colours and uploading team
     logos.
   - Manage seasons.

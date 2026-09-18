@@ -244,6 +244,13 @@ model Driver {
   // driver, 'safety' = safety car driver. Managed via raw SQL (ensureAppSchema),
   // migration driver_role.
   role          String?
+  // The staff's judgement on this driver's season (migration driver_progress),
+  // set by hand in the admin Attendance tab's Activity view: one of the five
+  // keys in lib/driverProgress.js, or null for a driver nobody has formed a
+  // view on. It is an opinion beside the numbers, not an input to them —
+  // nothing computes it and no standing reads it. Managed via raw SQL
+  // (ensureAppSchema + lib/driverProgress.js) like role/pointsAdjust below.
+  progress      String?
   // Admin-set: remove this (deactivated) driver from the public driver
   // standings entirely. Race results and constructor points stay untouched;
   // reactivating clears it. Managed via raw SQL (ensureAppSchema), migration

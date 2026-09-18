@@ -1273,6 +1273,13 @@ export const api = {
   // The other side of it, for ONE upcoming race: who is still silent.
   attendanceMissing: (raceId) =>
     request(`/admin/attendance-missing?raceId=${encodeURIComponent(raceId)}`, { auth: true }),
+  // The season read down the other way: every driver against every round, so a
+  // roster that has quietly stopped racing can be seen at all (season-scoped).
+  attendanceActivity: () => request(`/admin/attendance-activity${seasonQ()}`, { auth: true }),
+  // The one thing on that page that is written: the staff's own verdict on a
+  // driver's season. null clears it back to "nobody has decided yet".
+  setDriverProgress: (driverId, progress) =>
+    request(`/admin/drivers/${driverId}/progress`, { method: "PUT", body: { progress }, auth: true }),
 
   // Per-race sign-up switch (auto / forced open / forced closed).
   attendanceGates: () => request("/admin/attendance-gates", { auth: true }),
