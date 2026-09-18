@@ -98,7 +98,7 @@ describe("buildTeamHistory", () => {
     const h = history({ drivers, results });
     const d = h.drivers[0];
     expect(d.cells[1]).toEqual({ teamId: "reserve", status: "absent" });
-    expect(d.cells[2]).toEqual({ teamId: "ferrari", status: "sub" });
+    expect(d.cells[2]).toEqual({ teamId: "ferrari", status: "sub", fromTeamId: "reserve" });
     expect(d.cells[3]).toEqual({ teamId: "reserve", status: "driven" });
     expect(d.stints).toEqual([
       { teamId: "ferrari", from: 2, to: 2, races: 1 },
