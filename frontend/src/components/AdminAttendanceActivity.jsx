@@ -288,11 +288,16 @@ function Group({ title, hint, people, rounds, tally, options, busy, onProgress, 
   );
 }
 
+// "Most present" leads, because a table of attendance reads like any other
+// table of attendance: best at the top, and the people who have stopped coming
+// found at the bottom where you scroll to look for them. It opened on "Needs
+// attention" at first, which put 1-of-5 above 5-of-5 and made the whole list
+// look upside down.
 const SORTS = {
+  raced: "Most present",
   attention: "Needs attention",
   progress: "Progress",
   name: "Name",
-  raced: "Most races",
   team: "Team",
 };
 
@@ -302,7 +307,11 @@ function sortPeople(people, sort, progressRank) {
   if (sort === "attention") return people;
   const copy = [...people];
   if (sort === "name") return copy.sort((a, b) => a.name.localeCompare(b.name));
-  if (sort === "raced") return copy.sort((a, b) => b.starts - a.starts || a.name.localeCompare(b.name));
+  // Races first, then answers: between two drivers who have started the same
+  // number of rounds, the one who keeps replying is the one still with us.
+  if (sort === "raced") {
+    return copy.sort((a, b) => b.starts - a.starts || b.answers - a.answers || a.name.localeCompare(b.name));
+  }
   if (sort === "progress") {
     // In the order the labels are defined (holding a seat → being looked at),
     // with the undecided rows last: sorting by this is how you find the people
@@ -358,7 +367,7 @@ function download(name, text) {
 export default function AdminAttendanceActivity() {
   const { current: season } = useSeason();
   const { data, loading, error, reload } = useApi(useCallback(() => api.attendanceActivity(), []));
-  const [sort, setSort] = useState("attention");
+  const [sort, setSort] = useState("raced");
   const [needsOnly, setNeedsOnly] = useState(false);
   const [q, setQ] = useState("");
   // Progress the admin has just set, over the top of what was loaded. Held
